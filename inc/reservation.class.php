@@ -713,6 +713,13 @@ class Reservation extends CommonDBChild
         $default_delay = floor((strtotime($resa->fields["end"]) - strtotime($resa->fields["begin"]))
                                / $CFG_GLPI['time_step'] / MINUTE_TIMESTAMP)
                          * $CFG_GLPI['time_step'] * MINUTE_TIMESTAMP;
+        $resabegin = isset($resa->fields["begin"]) ? new DateTime($resa->fields["begin"]) : new DateTime(date('Y-m-d H:00:00'));
+        $default_delay = new DateInterval("PT{$default_delay}S");
+        $delayed_begin = new DateTime($resabegin->format('Y-m-d H:i:s'));
+        $delayed_begin->add($default_delay);
+        $resaend = isset($resa->fields["end"]) ? new DateTime($resa->fields["end"]) : $delayed_begin;
+        $resabegin = $resabegin->format('Y-m-d H:i:s');
+        $resaend = $resaend->format('Y-m-d H:i:s');
 
         $form = [
            'action'      => Reservation::getFormURL(),
@@ -769,17 +776,16 @@ class Reservation extends CommonDBChild
                           'value'  => $uid,
                       ] : [],
                       __('Start date') => [
+                          'name'  => 'resa[begin]',
                           'type'  => 'datetime-local',
-                          'name'  => __('Start date'),
-                          'value' => $resa->fields["begin"],
-                          'min'   => date('Y-m-d H:00:00'),
+                          'value' => $resabegin,
                       ],
                       __('End date') => [
+                          'name'  => 'resa[end]',
                           'type'  => 'datetime-local',
                           'id'    => 'entTimeStamp',
-                          'name'  =>  __('End date'),
-                          'value' => $resa->fields["end"],
-                          'min'   => $this->fields["begin"] ?? date('Y-m-d H:00:00'),
+                          'value' => $resaend,
+                          'min'   => $resa->fields["begin"]
                       ],
                       __('Repetition') => !empty($ID) ? [] : [
                           'type'  => 'select',
