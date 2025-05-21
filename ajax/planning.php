@@ -122,7 +122,9 @@ if ($_REQUEST["action"] == "get_filters_form") {
    Planning::showPlanningFilter();
 }
 
-if (($_POST["action"] ?? null) == "toggle_filter") {
+if (($_POST["type"] ?? null) == "view_filter") {
+   Planning::filterView($_POST);
+} else if (($_POST["action"] ?? null) == "toggle_filter") {
    Planning::toggleFilter($_POST);
 }
 
@@ -133,5 +135,6 @@ if (($_POST["action"] ?? null) == "color_filter") {
 if (($_POST["action"] ?? null) == "delete_filter") {
    Planning::deleteFilter($_POST);
 }
+
 
 Html::ajaxFooter();

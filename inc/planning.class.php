@@ -823,6 +823,7 @@ class Planning extends CommonGLPI {
       echo "</div>";
 
       echo "<div id='planning_filter_content'>";
+      $viewLabel = __('View');
       foreach ($_SESSION['glpi_plannings'] as $filter_heading => $filters) {
          if (!in_array($filter_heading, array_keys($headings))) {
             continue;
@@ -847,6 +848,31 @@ class Planning extends CommonGLPI {
          echo "</ul>";
          echo "</div>";
       }
+      echo <<<HTML
+        <div>
+          <h3>{$viewLabel}</h3>
+          <ul class='filters'>
+      HTML;
+      echo "<li class='view_filter' event_type='view_filter' event_name='start'>";
+      Html::showCheckbox(['name' => 'start', 'value' => 1, 'title' => __('Start date'), 'checked' => $_SESSION['glpi_plannings']['filters']['view_filter']['start'] == 'true']);
+      echo "<label for='start'>".__('Start date')."</label>";
+      echo "</li>";
+      echo "<li class='view_filter' event_type='view_filter' event_name='end'>";
+      Html::showCheckbox(['name' => 'end', 'value' => 1, 'title' => __('End date'), 'checked' => $_SESSION['glpi_plannings']['filters']['view_filter']['end'] == 'true']);
+      echo "<label for='end'>".__('End date')."</label>";
+      echo "</li>";
+      echo "<li class='view_filter' event_type='view_filter' event_name='user'>";
+      Html::showCheckbox(['name' => 'user', 'value' => 1, 'title' => __('All'), 'checked' => $_SESSION['glpi_plannings']['filters']['view_filter']['user'] == 'true']);
+      echo "<label for='all'>".User::getTypeName(1)."</label>";
+      echo "</li>";
+      echo "<li class='view_filter' event_type='view_filter' event_name='group'>";
+      Html::showCheckbox(['name' => 'group', 'value' => 1, 'title' => __('All'), 'checked' => $_SESSION['glpi_plannings']['filters']['view_filter']['group'] == 'true']);
+      echo "<label for='all'>".Group::getTypeName(1)."</label>";
+      echo "</li>";
+      echo <<<HTML
+          </ul>
+        </div>
+      HTML;
       echo "</div>";
       echo "</div>";
    }
@@ -1676,6 +1702,14 @@ class Planning extends CommonGLPI {
       self::savePlanningsInDB();
    }
 
+   static function filterView($options = []) {
+      if (!isset($_SESSION['glpi_plannings']['filters'][$options['type']])) {
+         $_SESSION['glpi_plannings']['filters'][$options['type']] = [];
+      }
+      $_SESSION['glpi_plannings']['filters'][$options['type']][$options['name']] = $options['display'];
+      self::savePlanningsInDB();
+   }
+
 
    static function savePlanningsInDB() {
 
@@ -1778,6 +1812,8 @@ class Planning extends CommonGLPI {
          $users_id = (isset($event['users_id_tech']) && !empty($event['users_id_tech'])?
                         $event['users_id_tech']:
                         $event['users_id']);
+         $groups_id = (isset($event['groups_id']) && !empty($event['groups_id'])?
+                        $event['groups_id_tech'] : -1);
          $content = Planning::displayPlanningItem($event, $users_id, 'in', false) ?: ($event['content'] ?? "");
          $tooltip = Planning::displayPlanningItem($event, $users_id, 'in', true) ?: ($event['tooltip'] ?? "");
 
@@ -1796,8 +1832,44 @@ class Planning extends CommonGLPI {
          $ms_duration = (strtotime($end) - strtotime($begin)) * 1000;
 
          $index_color = array_search("user_$users_id", array_keys($_SESSION['glpi_plannings']));
+         $userSet = isset($_SESSION['glpi_plannings']['filters']['view_filter']['user']) && $_SESSION['glpi_plannings']['filters']['view_filter']['user'] == 'true';
+         $groupSet = isset($_SESSION['glpi_plannings']['filters']['view_filter']['group']) && $_SESSION['glpi_plannings']['filters']['view_filter']['group'] == 'true';
+         $startSet = isset($_SESSION['glpi_plannings']['filters']['view_filter']['start']) && $_SESSION['glpi_plannings']['filters']['view_filter']['start'] == 'true';
+         $endSet = isset($_SESSION['glpi_plannings']['filters']['view_filter']['end']) && $_SESSION['glpi_plannings']['filters']['view_filter']['end'] == 'true';
+         $username = "";
+         if ($userSet) {
+             $user = new User();
+             $user->getFromDB($users_id);
+             if ($user->getName()) {
+                 $username = ' - ' . $user->getName();
+             }
+         }
+         $groupname = "";
+         if ($groupSet) {
+             $group = new Group();
+             $group->getFromDB($groups_id);
+             if ($group->getName()) {
+                 $groupname = ' - ' . $group->getName();
+             }
+         }
+         $datename = "";
+         if ($startSet || $endSet) {
+             $beginDate = new DateTime($begin);
+             $endDate = new DateTime($end);
+             if ($startSet) {
+                 $datename = '[' . $beginDate->format('Y-m-d');
+             } else {
+                 $datename = '[';
+             }
+             if ($endSet) {
+                 $datename .= ' > ' . $endDate->format('Y-m-d');
+             }
+             $datename .= ']';
+         }
+         $showDate = new DateTime($begin);
+         $title = $event['name'];
          $new_event = [
-            'title'       => $event['name'],
+            'title'       => [$datename . $username . $groupname . ' : "' . $event['name'] . '"'],
             'content'     => $content,
             'tooltip'     => $tooltip,
             'start'       => $begin,
