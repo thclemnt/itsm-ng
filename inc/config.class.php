@@ -37,6 +37,7 @@ use Glpi\System\RequirementsManager;
 use Laminas\Cache\Storage\AvailableSpaceCapableInterface;
 use Laminas\Cache\Storage\FlushableInterface;
 use Laminas\Cache\Storage\TotalSpaceCapableInterface;
+use Laminas\Cache\Storage\Adapter\BlackHole;
 use PHPMailer\PHPMailer\PHPMailer;
 
 if (!defined('GLPI_ROOT')) {
@@ -1721,7 +1722,7 @@ class Config extends CommonDBTM {
             <td></td>
             <td class='icons_block'><i class='fa fa-check-circle ok' title='$msg'></i><span class='sr-only'>$msg</span></td></tr>";
 
-      if ($ext != 'filesystem' && $GLPI_CACHE instanceof AvailableSpaceCapableInterface && $GLPI_CACHE instanceof TotalSpaceCapableInterface) {
+      if ($ext != 'filesystem' && $ext != 'blackhole' && $GLPI_CACHE instanceof AvailableSpaceCapableInterface && $GLPI_CACHE instanceof TotalSpaceCapableInterface) {
          $free = $GLPI_CACHE->getAvailableSpace();
          $max  = $GLPI_CACHE->getTotalSpace();
          $used = $max - $free;
@@ -1741,6 +1742,29 @@ class Config extends CommonDBTM {
          }
          echo "</td><td class='icons_block'><i title='$msg' class='fa fa-$class'></td></tr>";
       }
+
+      $conf = Config::getConfigurationValues('core', ['bypass_cache']);
+      $bypass_cache = $conf['bypass_cache'] ?? 0;
+      if ($bypass_cache == 1) {
+         $msg = sprintf(__s('"%s" cache system is bypassed'), $ext);
+         echo "<tr><td colspan='3'>" . $msg . "</td>
+               <td class='icons_block'><i class='fa fa-info-circle missing' title='$msg'></i><span class='sr-only'>$msg</span></td></tr>";
+      } else {
+         $msg = sprintf(__s('"%s" cache system is used'), $ext);
+         echo "<tr><td colspan='3'>" . $msg . "</td>
+               <td class='icons_block'><i class='fa fa-check-circle ok' title='$msg'></i><span class='sr-only'>$msg</span></td></tr>";
+      }
+      
+
+      echo "<tr><td></td><td colspan='3'>";
+      echo '<form method="POST" action="' . static::getFormURL() . '" style="display:inline;">';
+      echo Html::hidden('_glpi_csrf_token', ['value' => Session::getNewCSRFToken()]);
+      echo Html::hidden('bypass_cache', ['value' => $bypass_cache == 1 ? 0 : 1]);
+      echo '<button type="submit" name="update" value="update" class="vsubmit">';
+      echo $bypass_cache ? __('Disable bypass') : __('Enable bypass');
+      echo '</button>';
+      echo '</form>';
+      echo "</td></tr>";
 
       if ($GLPI_CACHE instanceof FlushableInterface) {
          echo "<tr><td></td><td colspan='3'>";
@@ -3140,7 +3164,7 @@ class Config extends CommonDBTM {
          && $DB->connected
          && $DB->fieldExists(self::getTable(), 'context')
       ) {
-         $conf = self::getConfigurationValues($context, [$optname]);
+         $conf = self::getConfigurationValues($context, [$optname, 'bypass_cache']);
       }
 
       // Adapter default options
@@ -3159,6 +3183,7 @@ class Config extends CommonDBTM {
          }
          $opt['options']['namespace'] = $namespace;
       }
+
       if (!isset($opt['adapter'])) {
          if (function_exists('apcu_fetch')) {
             $opt['adapter'] = (version_compare(PHP_VERSION, '7.0.0') >= 0) ? 'apcu' : 'apc';
@@ -3294,6 +3319,13 @@ class Config extends CommonDBTM {
              && Session::DEBUG_MODE == $_SESSION['glpi_use_mode']) {
             Toolbox::logDebug($e->getMessage());
          }
+      }
+
+      $bypass_cache = $conf['bypass_cache'] ?? true;
+
+      if ($bypass_cache && $optname !== 'cache_trans') {
+         // Bypass cache, return storage object
+         $storage = new BlackHole();
       }
 
       if ($psr16) {
