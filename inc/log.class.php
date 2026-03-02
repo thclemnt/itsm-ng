@@ -82,13 +82,18 @@ class Log extends CommonDBTM
 
     public function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)
     {
-
         $nb = 0;
         if ($_SESSION['glpishow_count_on_tabs']) {
+            $items_id = 0;
+            if ($item instanceof CommonDBTM) {
+                $items_id = $item->getID();
+            }
             $nb = countElementsInTable(
                 'glpi_logs',
-                ['itemtype' => $item->getType(),
-                                        'items_id' => $item->getID()]
+                [
+                    'itemtype' => $item->getType(), 
+                    'items_id' => $items_id
+                ]
             );
         }
         return self::createTabEntry(self::getTypeName(1), $nb);
@@ -287,20 +292,13 @@ class Log extends CommonDBTM
     **/
     public static function showForItem(CommonDBTM $item, $withtemplate = 0)
     {
+        global $CFG_GLPI;
+
         $itemtype = $item->getType();
         $items_id = $item->getField('id');
 
-        if (isset($_GET["start"])) {
-            $start = intval($_GET["start"]);
-        } else {
-            $start = 0;
-        }
-
-        $sql_filters = self::convertFiltersValuesToSqlCriteria(isset($_GET['filters']) ? $_GET['filters'] : []);
-
         // Total Number of events
         $total_number    = countElementsInTable("glpi_logs", ['items_id' => $items_id, 'itemtype' => $itemtype ]);
-        $filtered_number = countElementsInTable("glpi_logs", ['items_id' => $items_id, 'itemtype' => $itemtype ] + $sql_filters);
         // No Events in database
         if ($total_number < 1) {
             echo "<div class='center'>";
@@ -312,31 +310,24 @@ class Log extends CommonDBTM
         }
 
         $fields = [
-           __('ID'),
-           _n('Date', 'Dates', 1),
-           User::getTypeName(1),
-           _n('Field', 'Fields', 1),
-           _x('name', 'Update')
+           'id' => __('ID'),
+           'date_mod' => _n('Date', 'Dates', 1),
+           'user_name' => User::getTypeName(1),
+           'field' => _n('Field', 'Fields', 1),
+           'change' => _x('name', 'Update')
         ];
-        $values = [];
-        if ($filtered_number > 0) {
-            foreach (self::getHistoryData($item, $start, $_SESSION['glpilist_limit'], $sql_filters) as $data) {
-                if ($data['display_history']) {
-                    $values[] = [
-                       $data['id'],
-                       $data['date_mod'],
-                       $data['user_name'],
-                       $data['field'],
-                       Html::entities_deep($data['change']),
-                    ];
-                }
-            }
+        $filters = isset($_GET['filters']) ? $_GET['filters'] : [];
+        $history_url = $CFG_GLPI['root_doc'] . '/ajax/v2/log.php?itemtype=' . urlencode($itemtype)
+            . '&items_id=' . urlencode((string) $items_id);
+        if (!empty($filters)) {
+            $history_url .= '&filters=' . urlencode(json_encode($filters));
         }
 
         renderTwigTemplate('table.twig', [
            'id' => 'HistoricalTable',
            'fields' => $fields,
-           'values' => $values,
+           'url' => $history_url,
+           'pageSize' => (int) $_SESSION['glpilist_limit'],
         ]);
     }
 
@@ -350,7 +341,13 @@ class Log extends CommonDBTM
      *
      * @return array of localized log entry (TEXT only, no HTML)
     **/
-    public static function getHistoryData(CommonDBTM $item, $start = 0, $limit = 0, array $sqlfilters = [])
+    public static function getHistoryData(
+        CommonDBTM $item,
+        $start = 0,
+        $limit = 0,
+        array $sqlfilters = [],
+        array $options = []
+    )
     {
         $DBread = DBConnection::getReadConnection();
 
@@ -360,13 +357,23 @@ class Log extends CommonDBTM
 
         $SEARCHOPTION = Search::getOptions($itemtype);
 
+        $order_by = 'id DESC';
+        $sortable_fields = ['id', 'date_mod', 'user_name', 'id_search_option', 'linked_action'];
+        if (!empty($options['sort']) && in_array($options['sort'], $sortable_fields, true)) {
+            $order = 'DESC';
+            if (!empty($options['order']) && in_array(strtoupper($options['order']), ['ASC', 'DESC'], true)) {
+                $order = strtoupper($options['order']);
+            }
+            $order_by = $options['sort'] . ' ' . $order;
+        }
+
         $query = [
            'FROM'   => self::getTable(),
            'WHERE'  => [
               'items_id'  => $items_id,
               'itemtype'  => $itemtype
            ] + $sqlfilters,
-           'ORDER'  => 'id DESC'
+           'ORDER'  => $order_by
         ];
 
         if ($limit) {
