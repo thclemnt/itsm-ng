@@ -22,8 +22,11 @@ jobs:
       - name: Run composer install
         run: composer install
 
-      - name: Run PHP linter 
-        run: vendor/bin/php-cs-fixer check .
+      - name: Run PHP linter
+        run: composer lint:php
+
+      - name: Run Rector (dry-run)
+        run: vendor/bin/rector process --dry-run
 
       - name: Run Twig linter
         run: vendor/bin/twig-linter lint  templates
