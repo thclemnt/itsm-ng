@@ -1,5 +1,7 @@
 <?php
 
+use Glpi\Api\APIRest;
+
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
@@ -50,5 +52,5 @@ $GLPI->initErrorHandler();
 //init cache
 $GLPI_CACHE = Config::getCache('cache_db');
 
-$api = new Glpi\Api\APIRest();
+$api = new APIRest();
 $api->call();

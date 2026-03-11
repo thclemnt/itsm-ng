@@ -52,10 +52,10 @@ class MemoryLimit extends \GLPITestCase
         $this->array($this->testedInstance->getValidationMessages())
            ->isEqualTo(
                [
-                 'Allocated memory: ' . \Toolbox::getSize(\Toolbox::getMemoryLimit()),
-                 'A minimum of 16 Gio is commonly required for ITSM-NG.',
-                 'Try increasing the memory_limit parameter in the php.ini file.'
-            ]
+                   'Allocated memory: ' . \Toolbox::getSize(\Toolbox::getMemoryLimit()),
+                   'A minimum of 16 Gio is commonly required for ITSM-NG.',
+                   'Try increasing the memory_limit parameter in the php.ini file.',
+               ]
            );
     }
 }

@@ -129,8 +129,8 @@ trait DCBreadcrumb
      * Check if an item is part of an Enclosure
      *
      * @param string  $itemtype Item type
-     * @param integer $items_id Item ID
-     * @param boolean $getobj   Whether to return enclosure object
+     * @param int $items_id Item ID
+     * @param bool $getobj   Whether to return enclosure object
      *
      * @return false|Enclosure
      */
@@ -138,8 +138,8 @@ trait DCBreadcrumb
     {
         $ien = new Item_Enclosure();
         $found = $ien->getFromDBByCrit([
-           'itemtype'  => $itemtype,
-           'items_id'  => $items_id
+            'itemtype'  => $itemtype,
+            'items_id'  => $items_id,
         ]);
 
         if ($found && $getobj) {
@@ -159,8 +159,8 @@ trait DCBreadcrumb
      * Check if an item is part of a rack
      *
      * @param string  $itemtype Item type
-     * @param integer $items_id Item ID
-     * @param boolean $getobj   Whether to return rack object
+     * @param int $items_id Item ID
+     * @param bool $getobj   Whether to return rack object
      *
      * @return false|Rack
      */
@@ -168,11 +168,11 @@ trait DCBreadcrumb
     {
         $ira = new Item_Rack();
         $found = $ira->getFromDBByCrit([
-           'itemtype'  => $itemtype,
-           'items_id'  => $items_id
+            'itemtype'  => $itemtype,
+            'items_id'  => $items_id,
         ]);
         if ($found && $getobj) {
-            $rack = new \Rack();
+            $rack = new Rack();
             if ($rack->getFromDb($ira->fields['racks_id'])) {
                 return $rack;
             } else {

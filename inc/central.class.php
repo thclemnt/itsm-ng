@@ -33,7 +33,6 @@
 
 use Glpi\Event;
 use PharIo\Manifest\License;
-use Sabre\HTTP\HttpException;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -68,10 +67,10 @@ class Central extends CommonGLPI
         if ($item->getType() == __CLASS__) {
             $tabs = Session::haveRight('dashboard', READ) ? [ 0 => __('Dashboard') ] : [];
             $tabs += [
-               1 => __('Personal View'),
-               2 => __('Group View'),
-               3 => __('Global View'),
-               4 => _n('RSS feed', 'RSS feeds', Session::getPluralNumber()),
+                1 => __('Personal View'),
+                2 => __('Group View'),
+                3 => __('Global View'),
+                4 => _n('RSS feed', 'RSS feeds', Session::getPluralNumber()),
             ];
             return $tabs;
         }
@@ -112,34 +111,34 @@ class Central extends CommonGLPI
     {
         $dashboard = new Dashboard();
         $grid = [
-           __('General') => [
-               'right' => true,
-               'items' => [
-                   Entity::class,
-                   User::class,
-                   Budget::class,
-               ]
-           ],
-           __('Assets') => [
-               'right' => true,
-               'items' => [
-                   Computer::class,
-                   Monitor::class,
-                   NetworkEquipment::class,
-                   Peripheral::class,
-                   Phone::class,
-                   Printer::class,
-                   Software::class,
-               ]
-           ],
-           __('Tickets') => [
-               'right' => true,
-               'items' => [
-                   Ticket::class,
-                   Problem::class,
-                   Change::class,
-               ]
-           ],
+            __('General') => [
+                'right' => true,
+                'items' => [
+                    Entity::class,
+                    User::class,
+                    Budget::class,
+                ],
+            ],
+            __('Assets') => [
+                'right' => true,
+                'items' => [
+                    Computer::class,
+                    Monitor::class,
+                    NetworkEquipment::class,
+                    Peripheral::class,
+                    Phone::class,
+                    Printer::class,
+                    Software::class,
+                ],
+            ],
+            __('Tickets') => [
+                'right' => true,
+                'items' => [
+                    Ticket::class,
+                    Problem::class,
+                    Change::class,
+                ],
+            ],
         ];
         foreach ($grid as $title => $section) {
             if (!$section['right']) {
@@ -155,9 +154,9 @@ class Central extends CommonGLPI
             $dashboard = ['widgetGrid' => [[]]];
             foreach ($section['items'] as $item) {
                 $dashboard['widgetGrid'][0][] = [
-                      'title' => $item::getTypeName(2),
-                      'value' => countElementsInTableForMyEntities($item::getTable()),
-                      'icon' => $item::getIcon(),
+                    'title' => $item::getTypeName(2),
+                    'value' => countElementsInTableForMyEntities($item::getTable()),
+                    'icon' => $item::getIcon(),
                 ];
             }
             renderTwigTemplate('dashboard/dashboard.twig', $dashboard);

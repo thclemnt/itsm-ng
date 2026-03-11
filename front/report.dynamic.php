@@ -92,7 +92,7 @@ if (isset($_GET["display_type"])) {
                         break;
 
                     default:
-                        $val2 = (isset($params['value2']) ? $params['value2'] : 0);
+                        $val2 = ($params['value2'] ?? 0);
                         $val  = Stat::getItems(
                             $_GET["itemtype"],
                             $params["date1"],

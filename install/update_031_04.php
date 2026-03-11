@@ -489,7 +489,7 @@ function update031to04()
             if ($curend1 == $line['end1'] && $curend2 == $line['end2']) {
                 $q2 = "DELETE
                    FROM `glpi_networking_wire`
-                   WHERE `ID` = '".$line['ID']."' LIMIT 1";
+                   WHERE `ID` = '" . $line['ID'] . "' LIMIT 1";
                 $DB->query($q2);
             } else {
                 $curend1 = $line['end1'];
@@ -527,7 +527,7 @@ function update031to04()
             if ($curend1 == $line['end1'] && $curend2 == $line['end2'] && $curtype == $line['type']) {
                 $q2 = "DELETE
                    FROM `glpi_connect_wire`
-                   WHERE `ID`='".$line['ID']."'
+                   WHERE `ID`='" . $line['ID'] . "'
                    LIMIT 1";
                 $DB->query($q2);
             } else {

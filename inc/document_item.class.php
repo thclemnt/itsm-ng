@@ -142,17 +142,17 @@ class Document_Item extends CommonDBRelation
      *
      * @param array $input
      *
-     * @return boolean
+     * @return bool
      *
      * @since 9.5.0
      */
     public function alreadyExists(array $input): bool
     {
         $criteria = [
-           'documents_id'      => $input['documents_id'],
-           'itemtype'          => $input['itemtype'],
-           'items_id'          => $input['items_id'],
-           'timeline_position' => $input['timeline_position'] ?? null
+            'documents_id'      => $input['documents_id'],
+            'itemtype'          => $input['itemtype'],
+            'items_id'          => $input['items_id'],
+            'timeline_position' => $input['timeline_position'] ?? null,
         ];
         if (array_key_exists('timeline_position', $input) && !empty($input['timeline_position'])) {
             $criteria['timeline_position'] = $input['timeline_position'];
@@ -186,7 +186,7 @@ class Document_Item extends CommonDBRelation
                     countElementsInTable(
                         $this->getTable(),
                         ['items_id' => $this->fields['items_id'],
-                                         'itemtype' => 'Ticket' ]
+                            'itemtype' => 'Ticket' ]
                     ) == 1
                 ) {
                     $message = sprintf(
@@ -208,9 +208,9 @@ class Document_Item extends CommonDBRelation
         if ($this->fields['itemtype'] == 'Ticket' && ($this->input['_do_update_ticket'] ?? true)) {
             $ticket = new Ticket();
             $input  = [
-               'id'              => $this->fields['items_id'],
-               'date_mod'        => $_SESSION["glpi_currenttime"],
-               '_donotadddocs'   => true];
+                'id'              => $this->fields['items_id'],
+                'date_mod'        => $_SESSION["glpi_currenttime"],
+                '_donotadddocs'   => true];
 
             if (!isset($this->input['_do_notif']) || $this->input['_do_notif']) {
                 $input['_forcenotif'] = true;
@@ -236,9 +236,9 @@ class Document_Item extends CommonDBRelation
         if ($this->fields['itemtype'] == 'Ticket') {
             $ticket = new Ticket();
             $input = [
-               'id'              => $this->fields['items_id'],
-               'date_mod'        => $_SESSION["glpi_currenttime"],
-               '_donotadddocs'   => true];
+                'id'              => $this->fields['items_id'],
+                'date_mod'        => $_SESSION["glpi_currenttime"],
+                '_donotadddocs'   => true];
 
             if (!isset($this->input['_do_notif']) || $this->input['_do_notif']) {
                 $input['_forcenotif'] = true;
@@ -335,8 +335,8 @@ class Document_Item extends CommonDBRelation
      * @since 0.84
      *
      * @param string  $itemtype     itemtype of the item
-     * @param integer $oldid        ID of the item to clone
-     * @param integer $newid        ID of the item cloned
+     * @param int $oldid        ID of the item to clone
+     * @param int $newid        ID of the item cloned
      * @param string  $newitemtype  itemtype of the new item (= $itemtype if empty) (default '')
     **/
     public static function cloneItem($itemtype, $oldid, $newid, $newitemtype = '')
@@ -349,20 +349,20 @@ class Document_Item extends CommonDBRelation
         }
 
         $iterator = $DB->request([
-           'FIELDS' => ['documents_id'],
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'items_id'  => $oldid,
-              'itemtype'  => $itemtype
-           ]
+            'FIELDS' => ['documents_id'],
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'items_id'  => $oldid,
+                'itemtype'  => $itemtype,
+            ],
         ]);
         while ($data = $iterator->next()) {
             $docitem = new self();
             $docitem->add(
                 [
-                'documents_id' => $data["documents_id"],
-                'itemtype'     => $newitemtype,
-                'items_id'     => $newid]
+                    'documents_id' => $data["documents_id"],
+                    'itemtype'     => $newitemtype,
+                    'items_id'     => $newid]
             );
         }
     }
@@ -400,32 +400,32 @@ class Document_Item extends CommonDBRelation
                 $options[$itemtype] = $itemtype::getTypeName(1);
             };
             $form = [
-               'action' => Toolbox::getItemTypeFormURL(__CLASS__),
-               'buttons' => [
-                  [
-                     'type' => 'submit',
-                     'name' => 'add',
-                     'value' => _sx('button', 'Add an item'),
-                     'class' => 'btn btn-secondary'
-                  ]
-               ],
-               'content' => [
-                  __('Add an item') => [
-                     'visible' => true,
-                     'inputs' => [
-                        [
-                           'type' => 'hidden',
-                           'name' => 'documents_id',
-                           'value' => $instID
-                        ],
-                        __('Type') => [
-                           'type' => 'select',
-                           'id' => 'dropdown_itemtype',
-                           'name' => 'itemtype',
-                           'values' => [Dropdown::EMPTY_VALUE] + array_unique($options),
-                           'col_lg' => 6,
-                           'hooks' => [
-                              'change' => <<<JS
+                'action' => Toolbox::getItemTypeFormURL(__CLASS__),
+                'buttons' => [
+                    [
+                        'type' => 'submit',
+                        'name' => 'add',
+                        'value' => _sx('button', 'Add an item'),
+                        'class' => 'btn btn-secondary',
+                    ],
+                ],
+                'content' => [
+                    __('Add an item') => [
+                        'visible' => true,
+                        'inputs' => [
+                            [
+                                'type' => 'hidden',
+                                'name' => 'documents_id',
+                                'value' => $instID,
+                            ],
+                            __('Type') => [
+                                'type' => 'select',
+                                'id' => 'dropdown_itemtype',
+                                'name' => 'itemtype',
+                                'values' => [Dropdown::EMPTY_VALUE] + array_unique($options),
+                                'col_lg' => 6,
+                                'hooks' => [
+                                    'change' => <<<JS
                               $.ajax({
                                     method: "POST",
                                     url: "$CFG_GLPI[root_doc]/ajax/getDropdownValue.php",
@@ -447,38 +447,38 @@ class Document_Item extends CommonDBRelation
                                     }
                                  });
                            JS,
-                           ]
+                                ],
+                            ],
+                            __('Item') => [
+                                'type' => 'select',
+                                'id' => 'dropdown_items_id',
+                                'name' => 'items_id',
+                                'values' => [],
+                                'col_lg' => 6,
+                            ],
                         ],
-                        __('Item') => [
-                           'type' => 'select',
-                           'id' => 'dropdown_items_id',
-                           'name' => 'items_id',
-                           'values' => [],
-                           'col_lg' => 6,
-                        ],
-                     ]
-                  ]
-               ]
+                    ],
+                ],
             ];
             renderTwigForm($form);
         }
 
         if ($canedit && $number) {
             $massiveactionparams = [
-               'container'        => 'tableForDocumentItem',
-               'specific_actions' => [
-                  'purge' => _x('button', 'Delete permanently')
-               ],
-               'display_arrow' => false
+                'container'        => 'tableForDocumentItem',
+                'specific_actions' => [
+                    'purge' => _x('button', 'Delete permanently'),
+                ],
+                'display_arrow' => false,
             ];
             Html::showMassiveActions($massiveactionparams);
         }
         $fields = [
-           _n('Type', 'Types', 1),
-           __('Name'),
-           Entity::getTypeName(1),
-           __('Serial number'),
-           __('Inventory number')
+            _n('Type', 'Types', 1),
+            __('Name'),
+            Entity::getTypeName(1),
+            __('Serial number'),
+            __('Inventory number'),
         ];
         $values = [];
         $massiveactionValues = [];
@@ -548,14 +548,14 @@ class Document_Item extends CommonDBRelation
                     $name = "<a href='$link'>$linkname $linkname_extra</a>";
 
                     $newData = [
-                       $item->getTypeName(1),
-                       $name,
-                       isset($data['entity']) ? Dropdown::getDropdownName(
-                           "glpi_entities",
-                           $data['entity']
-                       ) : "-",
-                       isset($data["serial"]) ? "" . $data["serial"] . "" : "-",
-                       isset($data["otherserial"]) ? "" . $data["otherserial"] . "" : "-",
+                        $item->getTypeName(1),
+                        $name,
+                        isset($data['entity']) ? Dropdown::getDropdownName(
+                            "glpi_entities",
+                            $data['entity']
+                        ) : "-",
+                        isset($data["serial"]) ? "" . $data["serial"] . "" : "-",
+                        isset($data["otherserial"]) ? "" . $data["otherserial"] . "" : "-",
                     ];
                     $values[] = $newData;
                     $massiveactionValues[] = sprintf('item[%s][%s]', $itemtype, $data['id']);
@@ -564,10 +564,10 @@ class Document_Item extends CommonDBRelation
         }
 
         renderTwigTemplate('table.twig', [
-           'id' => 'tableForDocumentItem',
-           'fields' => $fields,
-           'values' => $values,
-           'massive_action' => $massiveactionValues,
+            'id' => 'tableForDocumentItem',
+            'fields' => $fields,
+            'values' => $values,
+            'massive_action' => $massiveactionValues,
         ]);
     }
 
@@ -645,7 +645,7 @@ class Document_Item extends CommonDBRelation
      * @param $withtemplate    (default 0)
      * @param $options         array
      *
-     * @return boolean
+     * @return bool
     **/
     public static function showAddFormForItem(CommonDBTM $item, $withtemplate = 0, $options = [])
     {
@@ -670,8 +670,8 @@ class Document_Item extends CommonDBRelation
         // find documents already associated to the item
         $doc_item   = new self();
         $used_found = $doc_item->find([
-           'items_id'  => $item->getID(),
-           'itemtype'  => $item->getType()
+            'items_id'  => $item->getID(),
+            'itemtype'  => $item->getType(),
         ]);
         $used       = array_keys($used_found);
         $used       = array_combine($used, $used);
@@ -699,11 +699,11 @@ class Document_Item extends CommonDBRelation
             $limit = getEntitiesRestrictRequest(" AND ", "glpi_documents", '', $entities, true);
 
             $count = $DB->request([
-               'COUNT'     => 'cpt',
-               'FROM'      => 'glpi_documents',
-               'WHERE'     => [
-                  'is_deleted' => 0
-               ] + getEntitiesRestrictCriteria('glpi_documents', '', $entities, true)
+                'COUNT'     => 'cpt',
+                'FROM'      => 'glpi_documents',
+                'WHERE'     => [
+                    'is_deleted' => 0,
+                ] + getEntitiesRestrictCriteria('glpi_documents', '', $entities, true),
             ])->next();
             $nb = $count['cpt'];
 
@@ -712,63 +712,63 @@ class Document_Item extends CommonDBRelation
             }
 
             $form = [
-               'method' => 'post',
-               'action' => Toolbox::getItemTypeFormURL('Document'),
-               'buttons' => [
-                  'submit' => [
-                     'type' => 'submit',
-                     'name' => 'add',
-                     'value' => _sx('button', 'Add a new file'),
-                     'class' => 'btn btn-primary mb-3'
-                  ]
-               ],
-               'content' => [
-                  __('Add a document') => [
-                     'visible' => true,
-                     'inputs' => [
-                        __('Heading') => [
-                           'type' => 'select',
-                           'name' => 'documentcategories_id',
-                           'values' => getOptionForItems('DocumentCategory'),
-                           'actions' => getItemActionButtons(['info', 'add'], 'DocumentCategory'),
-                           'col_lg' => 6,
+                'method' => 'post',
+                'action' => Toolbox::getItemTypeFormURL('Document'),
+                'buttons' => [
+                    'submit' => [
+                        'type' => 'submit',
+                        'name' => 'add',
+                        'value' => _sx('button', 'Add a new file'),
+                        'class' => 'btn btn-primary mb-3',
+                    ],
+                ],
+                'content' => [
+                    __('Add a document') => [
+                        'visible' => true,
+                        'inputs' => [
+                            __('Heading') => [
+                                'type' => 'select',
+                                'name' => 'documentcategories_id',
+                                'values' => getOptionForItems('DocumentCategory'),
+                                'actions' => getItemActionButtons(['info', 'add'], 'DocumentCategory'),
+                                'col_lg' => 6,
+                            ],
+                            __('File') => [
+                                'type' => 'file',
+                                'name' => 'files',
+                                'id' => 'fileSelectorForDocument',
+                                'data-max-size' => Document::getMaxUploadSizeInBytes(),
+                                'multiple' => 'multiple',
+                                'col_lg' => 6,
+                            ],
+                            [
+                                'type' => 'hidden',
+                                'name' => 'entities_id',
+                                'value' => $entity,
+                            ],
+                            [
+                                'type' => 'hidden',
+                                'name' => 'is_recursive',
+                                'value' => $item->isRecursive(),
+                            ],
+                            [
+                                'type' => 'hidden',
+                                'name' => 'itemtype',
+                                'value' => $item->getType(),
+                            ],
+                            [
+                                'type' => 'hidden',
+                                'name' => 'items_id',
+                                'value' => $item->getID(),
+                            ],
+                            $item->getType() == 'Ticket' ? [
+                                'type' => 'hidden',
+                                'name' => 'tickets_id',
+                                'value' => $item->getID(),
+                            ] : [],
                         ],
-                        __('File') => [
-                           'type' => 'file',
-                           'name' => 'files',
-                           'id' => 'fileSelectorForDocument',
-                           'data-max-size' => Document::getMaxUploadSizeInBytes(),
-                           'multiple' => 'multiple',
-                           'col_lg' => 6,
-                        ],
-                        [
-                           'type' => 'hidden',
-                           'name' => 'entities_id',
-                           'value' => $entity
-                        ],
-                        [
-                           'type' => 'hidden',
-                           'name' => 'is_recursive',
-                           'value' => $item->isRecursive()
-                        ],
-                        [
-                           'type' => 'hidden',
-                           'name' => 'itemtype',
-                           'value' => $item->getType()
-                        ],
-                        [
-                           'type' => 'hidden',
-                           'name' => 'items_id',
-                           'value' => $item->getID()
-                        ],
-                        $item->getType() == 'Ticket' ? [
-                           'type' => 'hidden',
-                           'name' => 'tickets_id',
-                           'value' => $item->getID()
-                        ] : [],
-                     ]
-                  ]
-               ]
+                    ],
+                ],
             ];
             renderTwigForm($form);
 
@@ -778,15 +778,15 @@ class Document_Item extends CommonDBRelation
             ) {
                 $values = getItemByEntity(Document::class, $entities);
                 $criteria = [
-                   'FROM'   => 'glpi_documentcategories',
-                   'WHERE'  => [
-                      'id' => new QuerySubQuery([
-                         'SELECT'          => 'documentcategories_id',
-                         'DISTINCT'        => true,
-                         'FROM'            => 'glpi_documents',
-                      ])
-                   ],
-                   'ORDER'  => 'name'
+                    'FROM'   => 'glpi_documentcategories',
+                    'WHERE'  => [
+                        'id' => new QuerySubQuery([
+                            'SELECT'          => 'documentcategories_id',
+                            'DISTINCT'        => true,
+                            'FROM'            => 'glpi_documents',
+                        ]),
+                    ],
+                    'ORDER'  => 'name',
                 ];
                 $iterator = $DB->request($criteria);
 
@@ -799,28 +799,28 @@ class Document_Item extends CommonDBRelation
                     unset($values[$id]);
                 }
                 $form = [
-                   'method' => 'post',
-                   'action' => Toolbox::getItemTypeFormURL(__CLASS__),
-                   'buttons' => [
-                      [
-                         'type' => 'submit',
-                         'name' => 'add',
-                         'value' => _sx('button', 'Associate an existing document'),
-                         'class' => 'btn btn-secondary'
-                      ]
-                   ],
-                   'content' => [
-                      __('Associate an existing document') => [
-                         'visible' => true,
-                         'inputs' => [
-                            __('Heading') => [
-                               'type' => 'select',
-                               'id' => 'selectForRubDocId',
-                               'name' => '_rubdoc',
-                               'values' => [Dropdown::EMPTY_VALUE] + $headings,
-                               'col_lg' => 6,
-                               'hooks' => [
-                                  'change' => <<<JS
+                    'method' => 'post',
+                    'action' => Toolbox::getItemTypeFormURL(__CLASS__),
+                    'buttons' => [
+                        [
+                            'type' => 'submit',
+                            'name' => 'add',
+                            'value' => _sx('button', 'Associate an existing document'),
+                            'class' => 'btn btn-secondary',
+                        ],
+                    ],
+                    'content' => [
+                        __('Associate an existing document') => [
+                            'visible' => true,
+                            'inputs' => [
+                                __('Heading') => [
+                                    'type' => 'select',
+                                    'id' => 'selectForRubDocId',
+                                    'name' => '_rubdoc',
+                                    'values' => [Dropdown::EMPTY_VALUE] + $headings,
+                                    'col_lg' => 6,
+                                    'hooks' => [
+                                        'change' => <<<JS
                               var rubdoc = $('#selectForRubDocId').val();
                               var entity = $entity;
                               $.ajax({
@@ -836,39 +836,39 @@ class Document_Item extends CommonDBRelation
                                  }
                               });
                               JS,
-                               ]
+                                    ],
+                                ],
+                                Document::getTypeName() => [
+                                    'type' => 'select',
+                                    'id' => 'selectForDocumentId',
+                                    'name' => 'documents_id',
+                                    'itemtype' => Document::class,
+                                    'col_lg' => 6,
+                                    'actions' => getItemActionButtons(['info'], Document::class),
+                                ],
+                                [
+                                    'type' => 'hidden',
+                                    'name' => 'itemtype',
+                                    'value' => $item->getType(),
+                                ],
+                                [
+                                    'type' => 'hidden',
+                                    'name' => 'items_id',
+                                    'value' => $item->getID(),
+                                ],
+                                $item->getType() == 'Ticket' ? [
+                                    'type' => 'hidden',
+                                    'name' => 'tickets_id',
+                                    'value' => $item->getID(),
+                                ] : [],
+                                $item->getType() == 'Ticket' ? [
+                                    'type' => 'hidden',
+                                    'name' => 'documentcategories_id',
+                                    'value' => $CFG_GLPI["documentcategories_id_forticket"],
+                                ] : [],
                             ],
-                            Document::getTypeName() => [
-                               'type' => 'select',
-                               'id' => 'selectForDocumentId',
-                               'name' => 'documents_id',
-                               'itemtype' => Document::class,
-                               'col_lg' => 6,
-                               'actions' => getItemActionButtons(['info'], Document::class)
-                            ],
-                            [
-                               'type' => 'hidden',
-                               'name' => 'itemtype',
-                               'value' => $item->getType()
-                            ],
-                            [
-                               'type' => 'hidden',
-                               'name' => 'items_id',
-                               'value' => $item->getID()
-                            ],
-                            $item->getType() == 'Ticket' ? [
-                               'type' => 'hidden',
-                               'name' => 'tickets_id',
-                               'value' => $item->getID()
-                            ] : [],
-                            $item->getType() == 'Ticket' ? [
-                               'type' => 'hidden',
-                               'name' => 'documentcategories_id',
-                               'value' => $CFG_GLPI["documentcategories_id_forticket"]
-                            ] : [],
-                         ]
-                      ]
-                   ]
+                        ],
+                    ],
                 ];
                 renderTwigForm($form);
             }
@@ -899,14 +899,14 @@ class Document_Item extends CommonDBRelation
         $canedit = $item->canAddItem('Document') && Document::canView();
 
         $columns = [
-           'name'      => __('Name'),
-           'entity'    => Entity::getTypeName(1),
-           'filename'  => __('File'),
-           'link'      => __('Web link'),
-           'headings'  => __('Heading'),
-           'mime'      => __('MIME type'),
-           'tag'       => __('Tag'),
-           'assocdate' => _n('Date', 'Dates', 1)
+            'name'      => __('Name'),
+            'entity'    => Entity::getTypeName(1),
+            'filename'  => __('File'),
+            'link'      => __('Web link'),
+            'headings'  => __('Heading'),
+            'mime'      => __('MIME type'),
+            'tag'       => __('Tag'),
+            'assocdate' => _n('Date', 'Dates', 1),
         ];
 
         if (isset($_GET["order"]) && ($_GET["order"] == "ASC")) {
@@ -934,42 +934,42 @@ class Document_Item extends CommonDBRelation
         }
 
         $criteria = [
-           'SELECT'    => [
-              'glpi_documents_items.id AS assocID',
-              'glpi_documents_items.date_creation AS assocdate',
-              'glpi_entities.id AS entityID',
-              'glpi_entities.completename AS entity',
-              'glpi_documentcategories.completename AS headings',
-              'glpi_documents.*'
-           ],
-           'FROM'      => 'glpi_documents_items',
-           'LEFT JOIN' => [
-              'glpi_documents'  => [
-                 'ON' => [
-                    'glpi_documents_items'  => 'documents_id',
-                    'glpi_documents'        => 'id'
-                 ]
-              ],
-              'glpi_entities'   => [
-                 'ON' => [
-                    'glpi_documents'  => 'entities_id',
-                    'glpi_entities'   => 'id'
-                 ]
-              ],
-              'glpi_documentcategories'  => [
-                 'ON' => [
-                    'glpi_documentcategories'  => 'id',
-                    'glpi_documents'           => 'documentcategories_id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_documents_items.items_id'  => $item->getID(),
-              'glpi_documents_items.itemtype'  => $item->getType()
-           ],
-           'ORDERBY'   => [
-              "$sort $order"
-           ]
+            'SELECT'    => [
+                'glpi_documents_items.id AS assocID',
+                'glpi_documents_items.date_creation AS assocdate',
+                'glpi_entities.id AS entityID',
+                'glpi_entities.completename AS entity',
+                'glpi_documentcategories.completename AS headings',
+                'glpi_documents.*',
+            ],
+            'FROM'      => 'glpi_documents_items',
+            'LEFT JOIN' => [
+                'glpi_documents'  => [
+                    'ON' => [
+                        'glpi_documents_items'  => 'documents_id',
+                        'glpi_documents'        => 'id',
+                    ],
+                ],
+                'glpi_entities'   => [
+                    'ON' => [
+                        'glpi_documents'  => 'entities_id',
+                        'glpi_entities'   => 'id',
+                    ],
+                ],
+                'glpi_documentcategories'  => [
+                    'ON' => [
+                        'glpi_documentcategories'  => 'id',
+                        'glpi_documents'           => 'documentcategories_id',
+                    ],
+                ],
+            ],
+            'WHERE'     => [
+                'glpi_documents_items.items_id'  => $item->getID(),
+                'glpi_documents_items.itemtype'  => $item->getType(),
+            ],
+            'ORDERBY'   => [
+                "$sort $order",
+            ],
         ];
 
         if (Session::getLoginUserID()) {
@@ -986,10 +986,10 @@ class Document_Item extends CommonDBRelation
             $o2where =  $owhere + ['glpi_documents_items.documents_id' => $item->getID()];
             unset($o2where['glpi_documents_items.items_id']);
             $criteria['WHERE'] = [
-               'OR' => [
-                  $owhere,
-                  $o2where
-               ]
+                'OR' => [
+                    $owhere,
+                    $o2where,
+                ],
             ];
         }
 
@@ -1011,21 +1011,21 @@ class Document_Item extends CommonDBRelation
             && ($withtemplate < 2)
         ) {
             $massiveactionparams = [
-               'container'      => $massiveActionContainerId,
-               'display_arrow' => false,
-               'is_deleted' => 0,
+                'container'      => $massiveActionContainerId,
+                'display_arrow' => false,
+                'is_deleted' => 0,
             ];
             Html::showMassiveActions($massiveactionparams);
         }
         $fields = [
-           __('Name'),
-           Entity::getTypeName(1),
-           __('File'),
-           __('Web link'),
-           __('Heading'),
-           __('MIME type'),
-           __('Tag'),
-           _n('Date', 'Dates', 1)
+            __('Name'),
+            Entity::getTypeName(1),
+            __('File'),
+            __('Web link'),
+            __('Heading'),
+            __('MIME type'),
+            __('Tag'),
+            _n('Date', 'Dates', 1),
         ];
         $values = [];
         $massive_action = [];
@@ -1047,22 +1047,22 @@ class Document_Item extends CommonDBRelation
             $assocID      = $data["assocID"];
 
             $values[] = [
-               $link,
-               $data['entity'],
-               $downloadlink,
-               !empty($data['link']) ? $data['link'] : NOT_AVAILABLE,
-               $data['headings'],
-               $data['mime'],
-               !empty($data['tag']) ? Document::getImageTag($data['tag']) : '',
-               Html::convDateTime($data['assocdate'])
+                $link,
+                $data['entity'],
+                $downloadlink,
+                !empty($data['link']) ? $data['link'] : NOT_AVAILABLE,
+                $data['headings'],
+                $data['mime'],
+                !empty($data['tag']) ? Document::getImageTag($data['tag']) : '',
+                Html::convDateTime($data['assocdate']),
             ];
             $massive_action[] = sprintf('item[%s][%s]', __CLASS__, $assocID);
         }
         renderTwigTemplate('table.twig', [
-           'id' => $massiveActionContainerId,
-           'fields' => $fields,
-           'values' => $values,
-           'massive_action' => $massive_action,
+            'id' => $massiveActionContainerId,
+            'fields' => $fields,
+            'values' => $values,
+            'massive_action' => $massive_action,
         ]);
     }
 
@@ -1104,9 +1104,9 @@ class Document_Item extends CommonDBRelation
      *
      * @since 9.3.1
      *
-     * @param integer $items_id Object id to restrict on
+     * @param int $items_id Object id to restrict on
      * @param string  $itemtype Type for items to retrieve
-     * @param boolean $noent    Flag to not compute enitty information (see Document_Item::getTypeItemsQueryParams)
+     * @param bool $noent    Flag to not compute enitty information (see Document_Item::getTypeItemsQueryParams)
      * @param array   $where    Inital WHERE clause. Defaults to []
      *
      * @return DBmysqlIterator
@@ -1114,11 +1114,11 @@ class Document_Item extends CommonDBRelation
     protected static function getTypeItemsQueryParams($items_id, $itemtype, $noent = false, $where = [])
     {
         $commonwhere = ['OR'  => [
-           static::getTable() . '.' . static::$items_id_1  => $items_id,
-           [
-              static::getTable() . '.itemtype'                => static::$itemtype_1,
-              static::getTable() . '.' . static::$items_id_2  => $items_id
-           ]
+            static::getTable() . '.' . static::$items_id_1  => $items_id,
+            [
+                static::getTable() . '.itemtype'                => static::$itemtype_1,
+                static::getTable() . '.' . static::$items_id_2  => $items_id,
+            ],
         ]];
 
         if ($itemtype != 'KnowbaseItem') {
@@ -1132,8 +1132,8 @@ class Document_Item extends CommonDBRelation
             if (!Session::getLoginUserID()) {
                 // Anonymous access
                 $kb_params['WHERE'] = [
-                   'glpi_entities_knowbaseitems.entities_id'    => 0,
-                   'glpi_entities_knowbaseitems.is_recursive'   => 1
+                    'glpi_entities_knowbaseitems.entities_id'    => 0,
+                    'glpi_entities_knowbaseitems.is_recursive'   => 1,
                 ];
             }
 
@@ -1149,7 +1149,7 @@ class Document_Item extends CommonDBRelation
      * @since 9.3.1
      *
      * @param CommonDBTM $item  Item instance
-     * @param boolean    $noent Flag to not compute entity information (see Document_Item::getTypeItemsQueryParams)
+     * @param bool    $noent Flag to not compute entity information (see Document_Item::getTypeItemsQueryParams)
      *
      * @return array
      */
@@ -1172,7 +1172,7 @@ class Document_Item extends CommonDBRelation
      *
      * @since 9.3.1
      *
-     * @param integer $items_id    Object id to restrict on
+     * @param int $items_id    Object id to restrict on
      * @param array   $extra_where Extra where clause
      *
      * @return array
@@ -1180,11 +1180,11 @@ class Document_Item extends CommonDBRelation
     public static function getDistinctTypesParams($items_id, $extra_where = [])
     {
         $commonwhere = ['OR'  => [
-           static::getTable() . '.' . static::$items_id_1  => $items_id,
-           [
-              static::getTable() . '.itemtype'                => static::$itemtype_1,
-              static::getTable() . '.' . static::$items_id_2  => $items_id
-           ]
+            static::getTable() . '.' . static::$items_id_1  => $items_id,
+            [
+                static::getTable() . '.itemtype'                => static::$itemtype_1,
+                static::getTable() . '.' . static::$items_id_2  => $items_id,
+            ],
         ]];
 
         $params = parent::getDistinctTypesParams($items_id, $extra_where);

@@ -65,9 +65,9 @@ class IPAddress_IPNetwork extends CommonDBRelation
 
         // First, remove all links of the current Network
         $iterator = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => $linkTable,
-           'WHERE'  => ['ipnetworks_id' => $ipnetworks_id]
+            'SELECT' => 'id',
+            'FROM'   => $linkTable,
+            'WHERE'  => ['ipnetworks_id' => $ipnetworks_id],
         ]);
         while ($link = $iterator->next()) {
             $linkObject->delete(['id' => $link['id']]);
@@ -75,13 +75,13 @@ class IPAddress_IPNetwork extends CommonDBRelation
 
         // Then, look each IP address contained inside current Network
         $iterator = $DB->request([
-           'SELECT' => [
-              new \QueryExpression($DB->quoteValue($ipnetworks_id) . ' AS ' . $DB->quoteName('ipnetworks_id')),
-              'id AS ipaddresses_id'
-           ],
-           'FROM'   => 'glpi_ipaddresses',
-           'WHERE'  => $network->getCriteriaForMatchingElement('glpi_ipaddresses', 'binary', 'version'),
-           'GROUP'  => 'id'
+            'SELECT' => [
+                new QueryExpression($DB->quoteValue($ipnetworks_id) . ' AS ' . $DB->quoteName('ipnetworks_id')),
+                'id AS ipaddresses_id',
+            ],
+            'FROM'   => 'glpi_ipaddresses',
+            'WHERE'  => $network->getCriteriaForMatchingElement('glpi_ipaddresses', 'binary', 'version'),
+            'GROUP'  => 'id',
         ]);
         while ($link = $iterator->next()) {
             $linkObject->add($link);

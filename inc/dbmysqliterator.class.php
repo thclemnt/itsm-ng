@@ -57,19 +57,19 @@ class DBmysqlIterator implements Iterator, Countable
 
     //Known query operators
     private $allowed_operators = [
-       '=',
-       '!=',
-       '<',
-       '<=',
-       '>',
-       '>=',
-       '<>',
-       'LIKE',
-       'REGEXP',
-       'NOT LIKE',
-       'NOT REGEX',
-       '&',
-       '|'
+        '=',
+        '!=',
+        '<',
+        '<=',
+        '>',
+        '>=',
+        '<>',
+        'LIKE',
+        'REGEXP',
+        'NOT LIKE',
+        'NOT REGEX',
+        '&',
+        '|',
     ];
 
     /**
@@ -89,7 +89,7 @@ class DBmysqlIterator implements Iterator, Countable
      *
      * @param string|array $table       Table name (optional when $crit have FROM entry)
      * @param string|array $crit        Fields/values, ex array("id"=>1), if empty => all rows (default '')
-     * @param boolean      $debug       To log the request (default false)
+     * @param bool      $debug       To log the request (default false)
      *
      * @return DBmysqlIterator
      */
@@ -106,7 +106,7 @@ class DBmysqlIterator implements Iterator, Countable
      *
      * @param string|array $table       Table name (optional when $crit have FROM entry)
      * @param string|array $crit        Fields/values, ex array("id"=>1), if empty => all rows (default '')
-     * @param boolean      $log         To log the request (default false)
+     * @param bool      $log         To log the request (default false)
      *
      * @return void
      */
@@ -152,7 +152,7 @@ class DBmysqlIterator implements Iterator, Countable
             $having   = '';
             if (is_array($crit) && count($crit)) {
                 foreach ($crit as $key => $val) {
-                    switch ((string)$key) {
+                    switch ((string) $key) {
                         case 'SELECT':
                         case 'FIELDS':
                             $field = $val;
@@ -265,9 +265,9 @@ class DBmysqlIterator implements Iterator, Countable
                     trigger_error("Missing table name", E_USER_ERROR);
                 }
             } elseif ($table) {
-                if ($table instanceof \AbstractQuery) {
+                if ($table instanceof AbstractQuery) {
                     $table = $table->getQuery();
-                } elseif ($table instanceof \QueryExpression) {
+                } elseif ($table instanceof QueryExpression) {
                     $table = $table->getValue();
                 } else {
                     $table = DBmysql::quoteName($table);
@@ -372,8 +372,8 @@ class DBmysqlIterator implements Iterator, Countable
     /**
      * Handle LIMIT and OFFSET
      *
-     * @param integer $limit  SQL LIMIT
-     * @param integer $offset Start OFFSET (defaults to null)
+     * @param int $limit  SQL LIMIT
+     * @param int $offset Start OFFSET (defaults to null)
      *
      * @return string
      */
@@ -392,7 +392,7 @@ class DBmysqlIterator implements Iterator, Countable
     /**
      * Handle fields
      *
-     * @param integer|string $t Table name or function
+     * @param int|string $t Table name or function
      * @param array|string   $f Field(s) name(s)
      *
      * @return void
@@ -400,9 +400,9 @@ class DBmysqlIterator implements Iterator, Countable
     private function handleFields($t, $f)
     {
         if (is_numeric($t)) {
-            if ($f instanceof \AbstractQuery) {
+            if ($f instanceof AbstractQuery) {
                 return $f->getQuery();
-            } elseif ($f instanceof \QueryExpression) {
+            } elseif ($f instanceof QueryExpression) {
                 return $f->getValue();
             } else {
                 return DBmysql::quoteName($f);
@@ -490,7 +490,7 @@ class DBmysqlIterator implements Iterator, Countable
      */
     public function __destruct()
     {
-        if ($this->res instanceof \mysqli_result) {
+        if ($this->res instanceof mysqli_result) {
             $this->conn->freeResult($this->res);
         }
     }
@@ -570,13 +570,13 @@ class DBmysqlIterator implements Iterator, Countable
                     $criterion_value = $value[1];
                 } else {
                     if (!count($value)) {
-                        throw new \RuntimeException('Empty IN are not allowed');
+                        throw new RuntimeException('Empty IN are not allowed');
                     }
                     // Array of Values
                     return "IN (" . $this->analyseCriterionValue($value) . ")";
                 }
             } else {
-                $comparison = ($value instanceof \AbstractQuery ? 'IN' : '=');
+                $comparison = ($value instanceof AbstractQuery ? 'IN' : '=');
                 $criterion_value = $value;
             }
             $criterion = "$comparison " . $this->getCriterionValue($criterion_value);
@@ -601,11 +601,11 @@ class DBmysqlIterator implements Iterator, Countable
      */
     private function getCriterionValue($value)
     {
-        if ($value instanceof \AbstractQuery) {
+        if ($value instanceof AbstractQuery) {
             return $value->getQuery();
-        } elseif ($value instanceof \QueryExpression) {
+        } elseif ($value instanceof QueryExpression) {
             return $value->getValue();
-        } elseif ($value instanceof \QueryParam) {
+        } elseif ($value instanceof QueryParam) {
             return $value->getValue();
         } else {
             return $this->analyseCriterionValue($value);
@@ -641,7 +641,7 @@ class DBmysqlIterator implements Iterator, Countable
         $query = '';
         foreach ($joinarray as $jointype => $jointables) {
             if (!in_array($jointype, ['JOIN', 'LEFT JOIN', 'INNER JOIN', 'RIGHT JOIN'])) {
-                throw new \RuntimeException('BAD JOIN');
+                throw new RuntimeException('BAD JOIN');
             }
 
             if ($jointype == 'JOIN') {
@@ -659,10 +659,10 @@ class DBmysqlIterator implements Iterator, Countable
                     $jointablekey = $jointablecrit['TABLE'];
                     unset($jointablecrit['TABLE']);
                 } elseif (is_numeric($jointablekey) || $jointablekey == 'FKEY' || $jointablekey == 'ON') {
-                    throw new \RuntimeException('BAD JOIN');
+                    throw new RuntimeException('BAD JOIN');
                 }
 
-                if ($jointablekey instanceof \QuerySubQuery) {
+                if ($jointablekey instanceof QuerySubQuery) {
                     $jointablekey = $jointablekey->getQuery();
                 } else {
                     $jointablekey = DBmysql::quoteName($jointablekey);
@@ -691,11 +691,11 @@ class DBmysqlIterator implements Iterator, Countable
                 $t2 = $keys[1];
                 $f2 = $values[$t2];
                 if ($f2 instanceof QuerySubQuery) {
-                    return (is_numeric($t1) ? DBmysql::quoteName($f1) : DBmysql::quoteName($t1) . '.' . DBmysql::quoteName($f1)) . ' = ' .
-                       $f2->getQuery();
+                    return (is_numeric($t1) ? DBmysql::quoteName($f1) : DBmysql::quoteName($t1) . '.' . DBmysql::quoteName($f1)) . ' = '
+                       . $f2->getQuery();
                 } else {
-                    return (is_numeric($t1) ? DBmysql::quoteName($f1) : DBmysql::quoteName($t1) . '.' . DBmysql::quoteName($f1)) . ' = ' .
-                       (is_numeric($t2) ? DBmysql::quoteName($f2) : DBmysql::quoteName($t2) . '.' . DBmysql::quoteName($f2));
+                    return (is_numeric($t1) ? DBmysql::quoteName($f1) : DBmysql::quoteName($t1) . '.' . DBmysql::quoteName($f1)) . ' = '
+                       . (is_numeric($t2) ? DBmysql::quoteName($f2) : DBmysql::quoteName($t2) . '.' . DBmysql::quoteName($f2));
                 }
             } elseif (count($values) == 3) {
                 $condition = array_pop($values);
@@ -737,7 +737,7 @@ class DBmysqlIterator implements Iterator, Countable
      */
     public function key(): mixed
     {
-        return (isset($this->row["id"]) ? $this->row["id"] : $this->position - 1);
+        return ($this->row["id"] ?? $this->position - 1);
     }
 
     /**
@@ -745,10 +745,10 @@ class DBmysqlIterator implements Iterator, Countable
      *
      * @return string[]|null fetch_assoc() of first results row
      */
-    #[\ReturnTypeWillChange]
+    #[ReturnTypeWillChange]
     public function next()
     {
-        if (!($this->res instanceof \mysqli_result)) {
+        if (!($this->res instanceof mysqli_result)) {
             return false;
         }
         $this->row = $this->conn->fetchAssoc($this->res);
@@ -759,21 +759,21 @@ class DBmysqlIterator implements Iterator, Countable
     /**
      * @todo phpdoc...
      *
-     * @return boolean
+     * @return bool
      */
     public function valid(): bool
     {
-        return $this->res instanceof \mysqli_result && $this->row;
+        return $this->res instanceof mysqli_result && $this->row;
     }
 
     /**
      * Number of rows on a result
      *
-     * @return integer
+     * @return int
      */
     public function numrows()
     {
-        return ($this->res instanceof \mysqli_result ? $this->conn->numrows($this->res) : 0);
+        return ($this->res instanceof mysqli_result ? $this->conn->numrows($this->res) : 0);
     }
 
     /**
@@ -781,11 +781,11 @@ class DBmysqlIterator implements Iterator, Countable
      *
      * @since 9.2
      *
-     * @return integer
+     * @return int
      */
     public function count(): int
     {
-        return ($this->res instanceof \mysqli_result ? $this->conn->numrows($this->res) : 0);
+        return ($this->res instanceof mysqli_result ? $this->conn->numrows($this->res) : 0);
     }
 
     /**
@@ -793,7 +793,7 @@ class DBmysqlIterator implements Iterator, Countable
      *
      * @param string $value Value to check
      *
-     * @return boolean
+     * @return bool
      */
     public function isOperator($value)
     {

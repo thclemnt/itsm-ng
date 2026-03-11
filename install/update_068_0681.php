@@ -72,43 +72,43 @@ function update068to0681()
 
     $tables = ["computers", "monitors", "networking", "peripherals", "phones", "printers"];
     foreach ($tables as $tbl) {
-        if (isIndex("glpi_".$tbl, "type")) {
+        if (isIndex("glpi_" . $tbl, "type")) {
             $query = "ALTER TABLE `glpi_$tbl`
                    DROP INDEX `type`";
             $DB->queryOrDie($query, "0.68.1 drop index type glpi_$tbl");
         }
 
-        if (isIndex("glpi_".$tbl, "type_2")) {
+        if (isIndex("glpi_" . $tbl, "type_2")) {
             $query = "ALTER TABLE `glpi_$tbl`
                    DROP INDEX `type_2`";
             $DB->queryOrDie($query, "0.68.1 drop index type_2 glpi_$tbl");
         }
 
-        if (isIndex("glpi_".$tbl, "model")) {
+        if (isIndex("glpi_" . $tbl, "model")) {
             $query = "ALTER TABLE `glpi_$tbl`
                    DROP INDEX `model`";
             $DB->queryOrDie($query, "0.68.1 drop index model glpi_$tbl");
         }
 
-        if (!isIndex("glpi_".$tbl, "type")) {
+        if (!isIndex("glpi_" . $tbl, "type")) {
             $query = "ALTER TABLE `glpi_$tbl`
                    ADD INDEX (`type`)";
             $DB->queryOrDie($query, "0.68.1 add index type glpi_$tbl");
         }
 
-        if (!isIndex("glpi_".$tbl, "model")) {
+        if (!isIndex("glpi_" . $tbl, "model")) {
             $query = "ALTER TABLE `glpi_$tbl`
                    ADD INDEX (`model`)";
             $DB->queryOrDie($query, "0.68.1 add index model glpi_$tbl");
         }
 
-        if (!isIndex("glpi_".$tbl, "FK_groups")) {
+        if (!isIndex("glpi_" . $tbl, "FK_groups")) {
             $query = "ALTER TABLE `glpi_$tbl`
                    ADD INDEX (`FK_groups`)";
             $DB->queryOrDie($query, "0.68.1 add index on glpi_$tbl.FK_groups");
         }
 
-        if (!isIndex("glpi_".$tbl, "FK_users")) {
+        if (!isIndex("glpi_" . $tbl, "FK_users")) {
             $query = "ALTER TABLE `glpi_$tbl`
                    ADD INDEX ( `FK_users` )";
             $DB->queryOrDie($query, "0.68.1 add index on glpi_$tbl.FK_users");
@@ -621,7 +621,7 @@ function update068to0681()
             // Get ocs information
             $query_ocs = "SELECT *
                        FROM `hardware`
-                       WHERE `DEVICEID` = '".$data_glpi["ocs_deviceid"]."'
+                       WHERE `DEVICEID` = '" . $data_glpi["ocs_deviceid"] . "'
                        LIMIT 1";
             $result_ocs = $DBocs->queryOrDie($query_ocs, "0.68.1 get ocs infos");
 
@@ -629,9 +629,9 @@ function update068to0681()
                 $data_ocs = $DBocs->fetchArray($result_ocs);
 
                 $query_update = "UPDATE `glpi_ocs_link`
-                             SET `ocs_id` = '".$data_ocs["ID"]."',
-                                 `last_ocs_update` = '".$data_ocs["LASTDATE"]."'
-                             WHERE `ID` = '".$data_glpi["ID"]."'";
+                             SET `ocs_id` = '" . $data_ocs["ID"] . "',
+                                 `last_ocs_update` = '" . $data_ocs["LASTDATE"] . "'
+                             WHERE `ID` = '" . $data_glpi["ID"] . "'";
                 $DB->queryOrDie($query_update, "0.68.1 update ocs infos");
             }
         }
@@ -702,9 +702,9 @@ function update068to0681()
             while ($data = $DB->fetchArray($result)) {
                 $query2 = "DELETE
                        FROM `glpi_state_item`
-                       WHERE `device_type` = '".$data["device_type"]."'
-                             AND `id_device` = '".$data["id_device"]."'
-                       LIMIT ".($data["CPT"] - 1)."";
+                       WHERE `device_type` = '" . $data["device_type"] . "'
+                             AND `id_device` = '" . $data["id_device"] . "'
+                       LIMIT " . ($data["CPT"] - 1) . "";
                 $DB->queryOrDie($query2, "0.68.1 clean glpi_state_item");
             }
         }

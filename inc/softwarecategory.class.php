@@ -44,12 +44,12 @@ class SoftwareCategory extends CommonTreeDropdown
     {
 
         return [
-           __('As child of') => [
-              'name'  => $this->getForeignKeyField(),
-              'type'  => 'select',
-              'values'  => getOptionForItems('SoftwareCategory', ['NOT' => ['id' => $this->getID()]]),
-              'value' => $this->fields[$this->getForeignKeyField()],
-           ]
+            __('As child of') => [
+                'name'  => $this->getForeignKeyField(),
+                'type'  => 'select',
+                'values'  => getOptionForItems('SoftwareCategory', ['NOT' => ['id' => $this->getID()]]),
+                'value' => $this->fields[$this->getForeignKeyField()],
+            ],
         ];
     }
 
@@ -72,12 +72,12 @@ class SoftwareCategory extends CommonTreeDropdown
         parent::cleanRelationData();
 
         if ($this->isUsedAsCategoryOnSoftwareDeletion()) {
-            $newval = (isset($this->input['_replace_by']) ? $this->input['_replace_by'] : 0);
+            $newval = ($this->input['_replace_by'] ?? 0);
 
             Config::setConfigurationValues(
                 'core',
                 [
-                  'softwarecategories_id_ondelete' => $newval,
+                    'softwarecategories_id_ondelete' => $newval,
                 ]
             );
         }
@@ -98,7 +98,7 @@ class SoftwareCategory extends CommonTreeDropdown
     /**
      * Check if type is used as category for softwares deleted by rules.
      *
-     * @return boolean
+     * @return bool
      */
     private function isUsedAsCategoryOnSoftwareDeletion()
     {

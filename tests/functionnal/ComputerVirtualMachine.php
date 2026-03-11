@@ -50,13 +50,13 @@ class ComputerVirtualMachine extends DbTestCase
         $this->object($computer)->isInstanceOf('\Computer');
 
         $this->integer(
-            $id = (int)$obj->add([
-              'computers_id' => $computer->fields['id'],
-              'name'         => 'Virtu Hall',
-              'uuid'         => $uuid,
-              'vcpu'         => 1,
-              'ram'          => 1024
-         ])
+            $id = (int) $obj->add([
+                'computers_id' => $computer->fields['id'],
+                'name'         => 'Virtu Hall',
+                'uuid'         => $uuid,
+                'vcpu'         => 1,
+                'ram'          => 1024,
+            ])
         )->isGreaterThan(0);
         $this->boolean($obj->getFromDB($id))->isTrue();
         $this->string($obj->fields['uuid'])->isIdenticalTo($uuid);
@@ -66,11 +66,11 @@ class ComputerVirtualMachine extends DbTestCase
         $this->boolean($obj->findVirtualMachine(['uuid' => $uuid]))->isFalse();
 
         $this->integer(
-            $cid = (int)$computer->add([
-              'name'         => 'Virtu Hall',
-              'uuid'         => $uuid,
-              'entities_id'  => 0
-         ])
+            $cid = (int) $computer->add([
+                'name'         => 'Virtu Hall',
+                'uuid'         => $uuid,
+                'entities_id'  => 0,
+            ])
         )->isGreaterThan(0);
 
         $this->variable($obj->findVirtualMachine(['uuid' => $uuid]))->isEqualTo($cid);

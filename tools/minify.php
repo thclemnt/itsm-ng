@@ -24,7 +24,7 @@ class Itsm_minify
             'js' => [
                 __DIR__ . '/../js',
                 __DIR__ . '/../lib',
-            ]
+            ],
 
         ];
 

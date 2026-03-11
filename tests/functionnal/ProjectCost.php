@@ -43,26 +43,26 @@ class ProjectCost extends DbTestCase
 
         $project = new \Project();
         $project_id = $project->add([
-           'name' => 'project-cost-' . $this->getUniqueString(),
+            'name' => 'project-cost-' . $this->getUniqueString(),
         ]);
-        $this->integer((int)$project_id)->isGreaterThan(0);
+        $this->integer((int) $project_id)->isGreaterThan(0);
 
         $obj = new \ProjectCost();
         $id = $obj->add([
-           'projects_id' => $project_id,
-           'name'        => 'cost-' . $this->getUniqueString(),
-           'begin_date'  => '2025-03-10',
-           'end_date'    => '2025-03-01',
-           'cost'        => 75,
+            'projects_id' => $project_id,
+            'name'        => 'cost-' . $this->getUniqueString(),
+            'begin_date'  => '2025-03-10',
+            'end_date'    => '2025-03-01',
+            'cost'        => 75,
         ]);
-        $this->integer((int)$id)->isGreaterThan(0);
+        $this->integer((int) $id)->isGreaterThan(0);
         $this->boolean($obj->getFromDB($id))->isTrue();
         $this->string($obj->getField('end_date'))->isEqualTo('2025-03-10');
 
         $this->boolean($obj->update([
-           'id'          => $id,
-           'begin_date'  => '2025-04-12',
-           'end_date'    => '2025-04-01',
+            'id'          => $id,
+            'begin_date'  => '2025-04-12',
+            'end_date'    => '2025-04-01',
         ]))->isTrue();
         $this->boolean($obj->getFromDB($id))->isTrue();
         $this->string($obj->getField('end_date'))->isEqualTo('2025-04-12');
@@ -74,26 +74,26 @@ class ProjectCost extends DbTestCase
 
         $project = new \Project();
         $project_id = $project->add([
-           'name' => 'project-cost-prev-' . $this->getUniqueString(),
+            'name' => 'project-cost-prev-' . $this->getUniqueString(),
         ]);
-        $this->integer((int)$project_id)->isGreaterThan(0);
+        $this->integer((int) $project_id)->isGreaterThan(0);
 
         $previous = new \ProjectCost();
         $previous_id = $previous->add([
-           'projects_id' => $project_id,
-           'name'        => 'previous-cost-' . $this->getUniqueString(),
-           'begin_date'  => '2025-01-01',
-           'end_date'    => '2025-01-15',
-           'cost'        => 120,
+            'projects_id' => $project_id,
+            'name'        => 'previous-cost-' . $this->getUniqueString(),
+            'begin_date'  => '2025-01-01',
+            'end_date'    => '2025-01-15',
+            'cost'        => 120,
         ]);
-        $this->integer((int)$previous_id)->isGreaterThan(0);
+        $this->integer((int) $previous_id)->isGreaterThan(0);
 
         $obj = new \ProjectCost();
         $obj->fields['projects_id'] = $project_id;
         $obj->initBasedOnPrevious();
 
-        $this->string((string)$obj->fields['begin_date'])->isEqualTo('2025-01-15');
-        $this->string((string)$obj->fields['name'])->isEqualTo((string)$previous->fields['name']);
-        $this->integer((int)$obj->fields['cost'])->isEqualTo(120);
+        $this->string((string) $obj->fields['begin_date'])->isEqualTo('2025-01-15');
+        $this->string((string) $obj->fields['name'])->isEqualTo((string) $previous->fields['name']);
+        $this->integer((int) $obj->fields['cost'])->isEqualTo(120);
     }
 }

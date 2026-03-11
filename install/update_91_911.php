@@ -58,8 +58,8 @@ function update91to911()
         // rename new tables if exists ?
         if ($DB->tableExists($new_table)) {
             $migration->dropTable("backup_$new_table");
-            $migration->displayWarning("$new_table table already exists. ".
-                                       "A backup have been done to backup_$new_table.");
+            $migration->displayWarning("$new_table table already exists. "
+                                       . "A backup have been done to backup_$new_table.");
             $backup_tables = true;
             $query         = $migration->renameTable("$new_table", "backup_$new_table");
         }
@@ -77,11 +77,11 @@ function update91to911()
             $DB->insertOrDie(
                 "glpi_profilerights",
                 [
-                  'id'           => null,
-                  'profiles_id'  => $profrights['profiles_id'],
-                  'name'         => "license",
-                  'rights'       => $profrights['rights']
-            ],
+                    'id'           => null,
+                    'profiles_id'  => $profrights['profiles_id'],
+                    'name'         => "license",
+                    'rights'       => $profrights['rights'],
+                ],
                 "9.1 add right for softwarelicense"
             );
         }

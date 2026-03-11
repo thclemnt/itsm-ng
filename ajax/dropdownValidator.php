@@ -47,13 +47,13 @@ if (isset($_POST["validatortype"])) {
             if (isset($_POST['users_id_validate']['groups_id'])) {
                 $_POST['users_id_validate'] = [];
             }
-            $value = (isset($_POST['users_id_validate'][0]) ? $_POST['users_id_validate'][0] : 0);
+            $value = ($_POST['users_id_validate'][0] ?? 0);
             echo json_encode(getOptionsForUsers($_POST['right'], $_POST['entity'] ? ['entities_id' => $_POST['entity']] : []));
             break;
 
         case 'group':
             $name = !empty($_POST['name']) ? $_POST['name'] . '[groups_id]' : 'groups_id';
-            $value = (isset($_POST['users_id_validate']['groups_id']) ? $_POST['users_id_validate']['groups_id'] : $_POST['groups_id']);
+            $value = ($_POST['users_id_validate']['groups_id'] ?? $_POST['groups_id']);
 
             echo json_encode(getItemByEntity(Group::class, $_POST['entity'] ?? Session::getActiveEntity()));
             break;
@@ -63,8 +63,8 @@ if (isset($_POST["validatortype"])) {
                 $_POST['users_id_validate'] = [];
             }
             $opt             = ['groups_id' => $_POST["groups_id"],
-                                     'right'     => $_POST['right'],
-                                     'entity'    => $_POST["entity"]];
+                'right'     => $_POST['right'],
+                'entity'    => $_POST["entity"]];
             $data_users      = TicketValidation::getGroupUserHaveRights($opt);
             $users           = [];
             $param['values'] = [];
@@ -106,13 +106,13 @@ if (isset($_POST["validatortype"])) {
             if (!empty($_POST['groups_id'])) {
                 echo "<br><br><a id='all_users' class='vsubmit'>" . __('All') . "</a>";
                 $param_button = [
-                   'validatortype'     => 'list_users',
-                   'name'              => !empty($_POST['name']) ? $_POST['name'] : '',
-                   'users_id_validate' => '',
-                   'all_users'         => 1,
-                   'groups_id'         => $_POST['groups_id'],
-                   'entity'            => $_POST['entity'],
-                   'right'             => $_POST['right'],
+                    'validatortype'     => 'list_users',
+                    'name'              => !empty($_POST['name']) ? $_POST['name'] : '',
+                    'users_id_validate' => '',
+                    'all_users'         => 1,
+                    'groups_id'         => $_POST['groups_id'],
+                    'entity'            => $_POST['entity'],
+                    'right'             => $_POST['right'],
                 ];
                 Ajax::updateItemOnEvent(
                     'all_users',

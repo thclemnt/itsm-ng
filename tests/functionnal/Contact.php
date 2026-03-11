@@ -43,17 +43,17 @@ class Contact extends DbTestCase
 
         $obj = new \Contact();
         $id = $obj->add([
-           'name'        => 'contact-' . $this->getUniqueString(),
-           'firstname'   => 'firstname-' . $this->getUniqueString(),
-           'entities_id' => 0,
-           'email'       => 'contact-' . mt_rand(1000, 9999) . '@example.com',
+            'name'        => 'contact-' . $this->getUniqueString(),
+            'firstname'   => 'firstname-' . $this->getUniqueString(),
+            'entities_id' => 0,
+            'email'       => 'contact-' . mt_rand(1000, 9999) . '@example.com',
         ]);
-        $this->integer((int)$id)->isGreaterThan(0);
+        $this->integer((int) $id)->isGreaterThan(0);
         $this->boolean($obj->getFromDB($id))->isTrue();
 
         $this->boolean($obj->update([
-           'id'    => $id,
-           'phone' => '0102030405',
+            'id'    => $id,
+            'phone' => '0102030405',
         ]))->isTrue();
         $this->boolean($obj->getFromDB($id))->isTrue();
         $this->string($obj->getField('phone'))->isEqualTo('0102030405');

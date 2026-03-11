@@ -108,24 +108,24 @@ function displayMigrationMessage($id, $msg = "")
  * @param $table string table name
  * @param $name string name of the imported dropdown
  *
- * @return integer (ID of the existing/new dropdown)
+ * @return int (ID of the existing/new dropdown)
 **/
 function update_importDropdown($table, $name)
 {
     global $DB;
 
     $query = "SELECT `ID`
-             FROM `".$table."`
-             WHERE `name` = '".addslashes($name)."'";
+             FROM `" . $table . "`
+             WHERE `name` = '" . addslashes($name) . "'";
 
     if ($result = $DB->query($query)) {
         if ($DB->numrows($result) > 0) {
             return $DB->result($result, 0, "ID");
         }
     }
-    $query = "INSERT INTO `".$table."`
+    $query = "INSERT INTO `" . $table . "`
              (`name`)
-             VALUES ('".addslashes($name)."')";
+             VALUES ('" . addslashes($name) . "')";
     if ($result = $DB->query($query)) {
         return $DB->insertId();
     }
@@ -143,8 +143,8 @@ function showContentUpdateForm()
     $_SESSION['do_content_update'] = true;
     echo "<form aria-label='Content Update' action='update_content.php' method='post'>";
     echo "<div class='center'>";
-    echo "<h3>".__('Update successful, your database is up to date')."</h3>";
-    echo "<p>".__('You must now proceed to updating your database content')."</p></div>";
+    echo "<h3>" . __('Update successful, your database is up to date') . "</h3>";
+    echo "<p>" . __('You must now proceed to updating your database content') . "</p></div>";
     echo "<p>";
     echo "<input type='submit' class='vsubmit' value='.__('Continue?').'/>";
     echo "</form>";
@@ -179,7 +179,7 @@ function display_new_locations()
         $SELECT_ALL .= " , location$i.`name` AS NAME$i
                        , location$i.`parentID` AS PARENT$i ";
         $FROM_ALL   .= " LEFT JOIN `glpi_dropdown_locations_new` AS location$i
-                           ON location".($i - 1).".`ID` = location$i.`parentID` ";
+                           ON location" . ($i - 1) . ".`ID` = location$i.`parentID` ";
         $ORDER_ALL  .= " , NAME$i";
     }
 
@@ -210,7 +210,7 @@ function display_new_locations()
 
                 $name = $data["NAME$i"];
 
-                if (isset($data["NAME".($i + 1)]) && !empty($data["NAME".($i + 1)])) {
+                if (isset($data["NAME" . ($i + 1)]) && !empty($data["NAME" . ($i + 1)])) {
                     $arrow = "--->";
                 } else {
                     $arrow = "";
@@ -221,7 +221,7 @@ function display_new_locations()
                 $arrow = "";
             }
 
-            echo "<td>".$name."</td>";
+            echo "<td>" . $name . "</td>";
             echo "<td>$arrow</td>";
         }
 
@@ -244,7 +244,7 @@ function display_old_locations()
     $result = $DB->query($query);
 
     while ($data = $DB->fetchAssoc($result)) {
-        echo "<span class='b'>".$data['name']."</span> - ";
+        echo "<span class='b'>" . $data['name'] . "</span> - ";
     }
 
     $DB->freeResult($result);
@@ -277,7 +277,7 @@ function location_create_new($split_char, $add_first)
         $root_ID = $new_ID;
         $new_ID++;
         $query_insert = "INSERT INTO `glpi_dropdown_locations_new`
-                       VALUES ('$root_ID', '".addslashes($add_first)."', 0, '')";
+                       VALUES ('$root_ID', '" . addslashes($add_first) . "', 0, '')";
 
         $result_insert = $DB->query($query_insert);
 
@@ -299,15 +299,15 @@ function location_create_new($split_char, $add_first)
             // Entree existe deja ??
             $query_search = "SELECT `ID`
                           FROM `glpi_dropdown_locations_new`
-                          WHERE `name` = '".addslashes($splitter[$i])."'
-                               AND `parentID` = '".$up_ID."'";
+                          WHERE `name` = '" . addslashes($splitter[$i]) . "'
+                               AND `parentID` = '" . $up_ID . "'";
             $result_search = $DB->query($query_search);
 
             if ($DB->numrows($result_search) == 1) { // Found
                 $up_ID = $DB->result($result_search, 0, "ID");
             } else { // Not FOUND -> INSERT
                 $query_insert = "INSERT INTO `glpi_dropdown_locations_new`
-                             VALUES ('$new_ID', '".addslashes($splitter[$i])."', '$up_ID', '')";
+                             VALUES ('$new_ID', '" . addslashes($splitter[$i]) . "', '$up_ID', '')";
                 $result_insert = $DB->query($query_insert);
 
                 $up_ID = $new_ID++;
@@ -317,7 +317,7 @@ function location_create_new($split_char, $add_first)
 
         // Ajout du dernier
         $query_insert = "INSERT INTO `glpi_dropdown_locations_new`
-                       VALUES ('".$data["ID"]."', '".addslashes($splitter[count($splitter) - 1])."',
+                       VALUES ('" . $data["ID"] . "', '" . addslashes($splitter[count($splitter) - 1]) . "',
                                '$up_ID', '')";
         $result_insert = $DB->query($query_insert);
     }
@@ -365,17 +365,17 @@ function showLocationUpdateForm()
 
     if (!isset($_POST["validate_location"])) {
         echo "<div class='center'>";
-        echo "<h4>".__('Locations update')."</h4>";
-        echo "<p>".__('The new structure is hierarchical')."</p>";
-        echo "<p>".__('Provide a delimiter in order to automate the new hierarchy generation.')."<br>";
+        echo "<h4>" . __('Locations update') . "</h4>";
+        echo "<p>" . __('The new structure is hierarchical') . "</p>";
+        echo "<p>" . __('Provide a delimiter in order to automate the new hierarchy generation.') . "<br>";
         echo __('You can also specify a root location which will include all the generated locations.');
         echo "</p>";
-        echo "<form aria-label='Validate Location' action='".$CFG_GLPI["root_doc"]."/install/update.php' method='post'>";
-        echo "<p>".__('Delimiter')."&nbsp;".
-              "<input type='text' name='car_sep' value='".$_POST['car_sep']."'></p>";
-        echo "<p>".__('Root location').'&nbsp;'.
-              "<input type='text' name='root' value='".$_POST['root']."'></p>";
-        echo "<input type='submit' class='submit' name='new_location' value=\""._sx('button', 'Post')."\">";
+        echo "<form aria-label='Validate Location' action='" . $CFG_GLPI["root_doc"] . "/install/update.php' method='post'>";
+        echo "<p>" . __('Delimiter') . "&nbsp;"
+              . "<input type='text' name='car_sep' value='" . $_POST['car_sep'] . "'></p>";
+        echo "<p>" . __('Root location') . '&nbsp;'
+              . "<input type='text' name='root' value='" . $_POST['root'] . "'></p>";
+        echo "<input type='submit' class='submit' name='new_location' value=\"" . _sx('button', 'Post') . "\">";
         echo "<input type='hidden' name='from_update' value='from_update'>";
         Html::closeForm();
         echo "</div>";
@@ -383,15 +383,15 @@ function showLocationUpdateForm()
 
     if (isset($_POST["new_location"])) {
         location_create_new($_POST['car_sep'], $_POST['root']);
-        echo "<h4>".__('Actual locations')." : </h4>";
+        echo "<h4>" . __('Actual locations') . " : </h4>";
         display_old_locations();
-        echo "<h4>".__('New hierarchy')." : </h4>";
+        echo "<h4>" . __('New hierarchy') . " : </h4>";
         display_new_locations();
-        echo "<p>".__("This is the new hierarchy. If it's complete approve it.")."</p>";
+        echo "<p>" . __("This is the new hierarchy. If it's complete approve it.") . "</p>";
         echo "<div class='center'>";
-        echo "<form aria-label='New Location' action='".$CFG_GLPI["root_doc"]."/install/update.php' method='post'>";
-        echo "<input type='submit' class='submit' name='validate_location' value=\"".
-               _sx('button', 'Post')."\">";
+        echo "<form aria-label='New Location' action='" . $CFG_GLPI["root_doc"] . "/install/update.php' method='post'>";
+        echo "<input type='submit' class='submit' name='validate_location' value=\""
+               . _sx('button', 'Post') . "\">";
         echo "<input type='hidden' name='from_update' value='from_update'>";
         echo "</div>";
         Html::closeForm();
@@ -436,14 +436,14 @@ function changeVarcharToID($table1, $table2, $chps)
     $DB->queryOrDie($query);
 
     $iterator = $DB->request([
-       'SELECT' => [
-          "$table1.ID AS row1",
-          "$table2.ID AS row2",
-       ],
-       'FROM'   => [$table1, $table2],
-       'WHERE'  => [
-          "$table2.name" => new \QueryExpression(DBmysql::quoteName("$table1.$chps"))
-       ]
+        'SELECT' => [
+            "$table1.ID AS row1",
+            "$table2.ID AS row2",
+        ],
+        'FROM'   => [$table1, $table2],
+        'WHERE'  => [
+            "$table2.name" => new QueryExpression(DBmysql::quoteName("$table1.$chps")),
+        ],
     ]);
 
     while ($line = $iterator->next()) {
@@ -585,7 +585,7 @@ echo "<body>";
 echo "<div class='container'>";
 echo "<div id='logo_bloc'></div>";
 echo "<h2 class='alert alert-primary text-center'>ITSM-NG SETUP</h2>";
-echo "<h3>".__('Upgrade')."</h3>";
+echo "<h3>" . __('Upgrade') . "</h3>";
 
 // step 1    avec bouton de confirmation
 
@@ -602,20 +602,20 @@ if (($_SESSION['can_process_update'] ?? false) === false) {
 
     if (empty($from_install) && !isset($_POST["from_update"])) {
         echo "<div class='center'>";
-        echo "<h3><span class='migred'>".__('Impossible to accomplish an update by this way!')."</span>";
+        echo "<h3><span class='migred'>" . __('Impossible to accomplish an update by this way!') . "</span>";
         echo "<p>";
-        echo "<a class='btn btn-primary' href='../index.php'>".__('Go back to ITSM-NG')."</a></p>";
+        echo "<a class='btn btn-primary' href='../index.php'>" . __('Go back to ITSM-NG') . "</a></p>";
         echo "</div>";
 
     } else {
         echo "<div class='center'>";
-        echo "<h3><span class='migred'>".sprintf(__('Caution! You will update the ITSM-NG database named: %s'), $DB->dbdefault) ."</h3>";
+        echo "<h3><span class='migred'>" . sprintf(__('Caution! You will update the ITSM-NG database named: %s'), $DB->dbdefault) . "</h3>";
 
         echo "<form aria-label='Database Name Update' action='update.php' method='post'>";
         if (strlen(ITSM_SCHEMA_VERSION) > 40) {
             echo Config::agreeDevMessage();
         }
-        echo "<input type='submit' class='btn btn-primary' name='continuer' value=\"".__('Continue')."\">";
+        echo "<input type='submit' class='btn btn-primary' name='continuer' value=\"" . __('Continue') . "\">";
         Html::closeForm();
         echo "</div>";
     }
@@ -623,7 +623,7 @@ if (($_SESSION['can_process_update'] ?? false) === false) {
 } else {
     // Step 2
     if (test_connect()) {
-        echo "<h3>".__('Database connection successful')."</h3>";
+        echo "<h3>" . __('Database connection successful') . "</h3>";
         echo "<p class='center'>";
         $result = Config::displayCheckDbEngine(true);
         echo "</p>";
@@ -668,11 +668,11 @@ if (($_SESSION['can_process_update'] ?? false) === false) {
                         break;
 
                     default:
-                        echo "<form aria-label='Connection Database' action='".$CFG_GLPI["root_doc"]."/install/update.php' method='post'>";
+                        echo "<form aria-label='Connection Database' action='" . $CFG_GLPI["root_doc"] . "/install/update.php' method='post'>";
                         echo "<input type='hidden' name='update_end' value='1'/>";
 
-                        echo "<p class='w-100 text-center'><input type='submit' name='submit' class='btn btn-primary' value='".
-                                 __('Use ITSM-NG')."'></p>";
+                        echo "<p class='w-100 text-center'><input type='submit' name='submit' class='btn btn-primary' value='"
+                                 . __('Use ITSM-NG') . "'></p>";
                         Html::closeForm();
                 }
             }
@@ -681,7 +681,7 @@ if (($_SESSION['can_process_update'] ?? false) === false) {
 
     } else {
         echo "<h3>";
-        echo __("Connection to database failed, verify the connection parameters included in config_db.php file")."</h3>";
+        echo __("Connection to database failed, verify the connection parameters included in config_db.php file") . "</h3>";
     }
 
 }

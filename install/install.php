@@ -37,13 +37,13 @@ $header_data = [
         Html::script("node_modules/htm/dist/htm.umd.js"),
         Html::script("node_modules/vhtml/dist/vhtml.min.js"),
         Html::script("js/table.js"),
-        ],
+    ],
     "css"     =>  [
         Html::css('vendor/twbs/bootstrap/dist/css/bootstrap.min.css'),
         Html::css('vendor/wenzhixin/bootstrap-table/dist/bootstrap-table.min.css'),
         Html::css('public/lib/base.css'),
         Html::css("css/style_install.css"),
-        ]
+    ],
 ];
 
 $steps =   ['0', '1', '2', '3', '4', '5', '6','7','8', 'error'];
@@ -70,7 +70,7 @@ switch ($step) {
         } else {
             $language = Session::getPreferredLanguage();
         }
-        $twig_vars = ['languages' => $regions , 'preferred_language' =>  $language];
+        $twig_vars = ['languages' => $regions, 'preferred_language' =>  $language];
         break;
 
     case "1":
@@ -114,8 +114,8 @@ switch ($step) {
         break;
 
     case "4":
-        $host = isset($_SESSION['db_host']) ? $_SESSION['db_host'] : "";
-        $user = isset($_SESSION['db_user']) ? $_SESSION['db_user'] : "";
+        $host = $_SESSION['db_host'] ?? "";
+        $user = $_SESSION['db_user'] ?? "";
 
         $twig_vars = ['host' => $host, 'user' => $user];
         break;
@@ -165,9 +165,9 @@ switch ($step) {
             $link->close();
         }
         $twig_vars = [  'host' =>           $_SESSION['db_host'],   'user' =>       $_SESSION['db_user'],
-                        'connect_error' =>  $connect_error,         'version' =>    $version,
-                        'ver_too_old' =>    $ver_too_old,           'action' =>     $_SESSION['action'],
-                        'databases' =>      $databases_info];
+            'connect_error' =>  $connect_error,         'version' =>    $version,
+            'ver_too_old' =>    $ver_too_old,           'action' =>     $_SESSION['action'],
+            'databases' =>      $databases_info];
         break;
 
     case "6":
@@ -200,7 +200,7 @@ switch ($step) {
                 $databasename = $link->real_escape_string($_SESSION['databasename']);// use db already created
                 $DB_selected = $link->select_db($databasename);
                 if ($new_db && !$DB_selected) {
-                    if ($link->query("CREATE DATABASE IF NOT EXISTS `".$databasename."`")) {
+                    if ($link->query("CREATE DATABASE IF NOT EXISTS `" . $databasename . "`")) {
                         $DB_selected = $link->select_db($databasename);
                         $db_created = true;
                     } else {
@@ -236,12 +236,12 @@ switch ($step) {
         }
 
         $twig_vars = [  'action'    => $_SESSION['action'],
-                        'created'   =>  $db_created,
-                        'error'     => $error,
-                        'secured'   => $secured,
-                        'sql_error' => $sql_error,
-                        'update'    => isset($update) ? $update : null,
-                    ];
+            'created'   =>  $db_created,
+            'error'     => $error,
+            'secured'   => $secured,
+            'sql_error' => $sql_error,
+            'update'    => $update ?? null,
+        ];
         break;
     case "7":
         Toolbox::createSchema($_SESSION['language']);
@@ -257,7 +257,7 @@ switch ($step) {
             ['value' => $DB->escape($url_base)],
             [
                 'context'   => 'core',
-                'name'      => 'url_base'
+                'name'      => 'url_base',
             ]
         );
 
@@ -267,7 +267,7 @@ switch ($step) {
             ['value' => $DB->escape($url_base_api)],
             [
                 'context'   => 'core',
-                'name'      => 'url_base_api'
+                'name'      => 'url_base_api',
             ]
         );
 }
@@ -276,6 +276,6 @@ try {
     renderTwigTemplate('install/index.twig', [
         'step' => ['number' => $step, 'progress' => $step / count($steps), 'name' => $steps_name[$step]],
         'header_data' => $header_data] + $twig_vars);
-} catch (\Exception $e) {
+} catch (Exception $e) {
     echo $e->getMessage();
 }

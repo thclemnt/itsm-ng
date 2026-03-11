@@ -47,127 +47,125 @@ class Link extends DbTestCase
         $network = $this->createItem(
             \Network::class,
             [
-              'name' => 'LAN',
-         ]
+                'name' => 'LAN',
+            ]
         );
 
         // Create computer
         $item = $this->createItem(
             \Computer::class,
             [
-              'name'         => 'Test computer',
-              'serial'       => 'ABC0004E6',
-              'otherserial'  => 'X0000015',
-              'uuid'         => 'c938f085-4192-4473-a566-46734bbaf6ad',
-              'entities_id'  => $_SESSION['glpiactive_entity'],
-              'locations_id' => getItemByTypeName(\Location::class, '_location01', true),
-              'networks_id'  => $network->getID(),
-              'users_id'     => getItemByTypeName(\User::class, 'itsm', true),
-         ]
+                'name'         => 'Test computer',
+                'serial'       => 'ABC0004E6',
+                'otherserial'  => 'X0000015',
+                'uuid'         => 'c938f085-4192-4473-a566-46734bbaf6ad',
+                'entities_id'  => $_SESSION['glpiactive_entity'],
+                'locations_id' => getItemByTypeName(\Location::class, '_location01', true),
+                'networks_id'  => $network->getID(),
+                'users_id'     => getItemByTypeName(\User::class, 'itsm', true),
+            ]
         );
 
         // Attach domains
         $domain1 = $this->createItem(
             \Domain::class,
             [
-              'name'        => 'domain1.tld',
-              'entities_id' => $_SESSION['glpiactive_entity'],
-         ]
+                'name'        => 'domain1.tld',
+                'entities_id' => $_SESSION['glpiactive_entity'],
+            ]
         );
         $this->createItem(
             \Domain_Item::class,
             [
-              'domains_id' => $domain1->getID(),
-              'itemtype'   => \Computer::class,
-              'items_id'   => $item->getID(),
-         ]
+                'domains_id' => $domain1->getID(),
+                'itemtype'   => \Computer::class,
+                'items_id'   => $item->getID(),
+            ]
         );
         $domain2 = $this->createItem(
             \Domain::class,
             [
-              'name'        => 'domain2.tld',
-              'entities_id' => $_SESSION['glpiactive_entity'],
-         ]
+                'name'        => 'domain2.tld',
+                'entities_id' => $_SESSION['glpiactive_entity'],
+            ]
         );
         $this->createItem(
             \Domain_Item::class,
             [
-              'domains_id' => $domain2->getID(),
-              'itemtype'   => \Computer::class,
-              'items_id'   => $item->getID(),
-         ]
+                'domains_id' => $domain2->getID(),
+                'itemtype'   => \Computer::class,
+                'items_id'   => $item->getID(),
+            ]
         );
 
         // Empty link
         yield [
-           'link'     => '',
-           'item'     => $item,
-           'safe_url' => false,
-           'expected' => [''],
+            'link'     => '',
+            'item'     => $item,
+            'safe_url' => false,
+            'expected' => [''],
         ];
         yield [
-           'link'     => '',
-           'item'     => $item,
-           'safe_url' => true,
-           'expected' => ['#'],
+            'link'     => '',
+            'item'     => $item,
+            'safe_url' => true,
+            'expected' => ['#'],
         ];
 
         foreach ([true, false] as $safe_url) {
             // Link that is actually a title (it is a normal usage!)
             yield [
-               'link'     => '[LOCATION] > [SERIAL] ([USER])',
-               'item'     => $item,
-               'safe_url' => $safe_url,
-               'expected' => ['_location01 > ABC0004E6 (itsm)'],
+                'link'     => '[LOCATION] > [SERIAL] ([USER])',
+                'item'     => $item,
+                'safe_url' => $safe_url,
+                'expected' => ['_location01 > ABC0004E6 (itsm)'],
             ];
 
             // Link that is actually a long text (it is a normal usage!)
             yield [
-               'link'     => <<<TEXT
+                'link'     => <<<TEXT
 id:       [ID]
 name:     [NAME]
 serial:   [SERIAL]/[OTHERSERIAL]
 location: [LOCATION] ([LOCATIONID])
 domain:   [DOMAIN] ([NETWORK])
 owner:    [USER]
-TEXT
-               ,
-               'item'     => $item,
-               'safe_url' => $safe_url,
-               'expected' => [
-                  <<<TEXT
+TEXT,
+                'item'     => $item,
+                'safe_url' => $safe_url,
+                'expected' => [
+                    <<<TEXT
 id:       {$item->getID()}
 name:     Test computer
 serial:   ABC0004E6/X0000015
 location: _location01 ({$item->fields['locations_id']})
 domain:   domain1.tld (LAN)
 owner:    itsm
-TEXT
-                  ,
-               ],
+TEXT,
+                ],
             ];
 
             // Valid http link
             yield [
-               'link'     => 'https://[LOGIN]@[DOMAIN]/[FIELD:uuid]/',
-               'item'     => $item,
-               'safe_url' => $safe_url,
-               'expected' => ['https://_test_user@domain1.tld/c938f085-4192-4473-a566-46734bbaf6ad/'],
+                'link'     => 'https://[LOGIN]@[DOMAIN]/[FIELD:uuid]/',
+                'item'     => $item,
+                'safe_url' => $safe_url,
+                'expected' => ['https://_test_user@domain1.tld/c938f085-4192-4473-a566-46734bbaf6ad/'],
             ];
         }
 
         // Javascript link
         yield [
-           'link'     => 'javascript:alert(1);" title="[NAME]"',
-           'item'     => $item,
-           'safe_url' => false,
-           'expected' => ['javascript:alert(1);" title="Test computer"'],
+            'link'     => 'javascript:alert(1);" title="[NAME]"',
+            'item'     => $item,
+            'safe_url' => false,
+            'expected' => ['javascript:alert(1);" title="Test computer"'],
         ];
         yield [
-           'link'     => 'javascript:alert(1);" title="[NAME]"',
-           'item'     => $item,
-           'safe_url' => true,
-           'expected' => ['#'],
+            'link'     => 'javascript:alert(1);" title="[NAME]"',
+            'item'     => $item,
+            'safe_url' => true,
+            'expected' => ['#'],
         ];
     }
 

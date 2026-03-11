@@ -87,8 +87,8 @@ class CartridgeItem extends CommonDBTM
 
         $this->deleteChildrenAndRelationsFromDb(
             [
-              Cartridge::class,
-              CartridgeItem_PrinterModel::class,
+                Cartridge::class,
+                CartridgeItem_PrinterModel::class,
             ]
         );
 
@@ -132,7 +132,7 @@ class CartridgeItem extends CommonDBTM
     /**
      * Count cartridge of the cartridge type
      *
-     * @param integer $id Item id
+     * @param int $id Item id
      *
      * @return number of cartridges
      *
@@ -143,9 +143,9 @@ class CartridgeItem extends CommonDBTM
         global $DB;
 
         $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => 'glpi_cartridges',
-           'WHERE'  => ['cartridgeitems_id' => $id]
+            'COUNT'  => 'cpt',
+            'FROM'   => 'glpi_cartridges',
+            'WHERE'  => ['cartridgeitems_id' => $id],
         ])->next();
         return $result['cpt'];
     }
@@ -157,7 +157,7 @@ class CartridgeItem extends CommonDBTM
      * @param $cartridgeitems_id  integer: cartridge type identifier
      * @param printermodels_id    integer: printer type identifier
      *
-     * @return boolean : true for success
+     * @return bool : true for success
     **/
     public function addCompatibleType($cartridgeitems_id, $printermodels_id)
     {
@@ -168,8 +168,8 @@ class CartridgeItem extends CommonDBTM
             && ($printermodels_id > 0)
         ) {
             $params = [
-               'cartridgeitems_id' => $cartridgeitems_id,
-               'printermodels_id'  => $printermodels_id
+                'cartridgeitems_id' => $cartridgeitems_id,
+                'printermodels_id'  => $printermodels_id,
             ];
             $result = $DB->insert('glpi_cartridgeitems_printermodels', $params);
 
@@ -189,79 +189,79 @@ class CartridgeItem extends CommonDBTM
      *     - target for the Form
      *     - withtemplate : 1 for newtemplate, 2 for newobject from template
      *
-     * @return boolean
+     * @return bool
     **/
     public function showForm($ID, $options = [])
     {
 
         $form = [
-           'action' => $this->getFormURL(),
-           'itemtype' => $this::class,
-           'content' => [
-              __('General') => [
-                 'inputs' => [
-                    __('Name') => [
-                    'name' => 'name',
-                    'type' => 'text',
-                    'value' => $this->fields["name"] ?? '',
+            'action' => $this->getFormURL(),
+            'itemtype' => $this::class,
+            'content' => [
+                __('General') => [
+                    'inputs' => [
+                        __('Name') => [
+                            'name' => 'name',
+                            'type' => 'text',
+                            'value' => $this->fields["name"] ?? '',
+                        ],
+                        _n('Type', 'Types', 1) => [
+                            'name' => 'cartridgeitemtypes_id',
+                            'type' => 'select',
+                            'values' => getOptionForItems('CartridgeItemType'),
+                            'value' => $this->fields["cartridgeitemtypes_id"] ?? '',
+                            'actions' => getItemActionButtons(['info', 'add'], "CartridgeItemType"),
+                        ],
+                        __('Reference') => [
+                            'name' => 'ref',
+                            'type' => 'text',
+                            'value' => $this->fields["ref"] ?? '',
+                        ],
+                        Manufacturer::getTypeName(1) => [
+                            'name' => 'manufacturers_id',
+                            'type' => 'select',
+                            'values' => getOptionForItems('Manufacturer'),
+                            'value' => $this->fields["manufacturers_id"] ?? '',
+                            'actions' => getItemActionButtons(['info', 'add'], "Manufacturer"),
+                        ],
+                        __('Technician in charge of the hardware') => [
+                            'name' => 'users_id_tech',
+                            'type' => 'select',
+                            'values' => getOptionsForUsers('own_ticket', ['entities_id' => $this->fields['entities_id']]),
+                            'entity' => $this->fields["entities_id"],
+                            'value' => $this->fields["users_id_tech"] ?? '',
+                            'actions' => getItemActionButtons(['info'], "User"),
+                        ],
+                        __('Comments') => [
+                            'name' => 'comment',
+                            'type' => 'textarea',
+                            'value' => $this->fields["comment"] ?? '',
+                        ],
+                        __('Group in charge of the hardware') => [
+                            'name' => 'groups_id_tech',
+                            'type' => 'select',
+                            'values' => getOptionForItems('Group', ['is_assign' => 1,]),
+                            'value' => $this->fields["groups_id_tech"] ?? '',
+                            'actions' => getItemActionButtons(['info', 'add'], "Group"),
+                        ],
+                        __('Stock location') => [
+                            'name' => 'locations_id',
+                            'type' => 'select',
+                            'itemtype' => Location::class,
+                            'value' => $this->fields["locations_id"] ?? '',
+                            'actions' => getItemActionButtons(['info', 'add'], "Location"),
+                        ],
+                        __('Alert threshold') => [
+                            'name' => 'alarm_threshold',
+                            'type' => 'number',
+                            'value' => $this->fields["alarm_threshold"] ?? '',
+                            'min' => 0,
+                            'max' => 100,
+                            'step' => 1,
+                        ],
                     ],
-                    _n('Type', 'Types', 1) => [
-                       'name' => 'cartridgeitemtypes_id',
-                       'type' => 'select',
-                       'values' => getOptionForItems('CartridgeItemType'),
-                       'value' => $this->fields["cartridgeitemtypes_id"] ?? '',
-                       'actions' => getItemActionButtons(['info', 'add'], "CartridgeItemType"),
-                    ],
-                    __('Reference') => [
-                       'name' => 'ref',
-                       'type' => 'text',
-                       'value' => $this->fields["ref"] ?? '',
-                    ],
-                    Manufacturer::getTypeName(1) => [
-                       'name' => 'manufacturers_id',
-                       'type' => 'select',
-                       'values' => getOptionForItems('Manufacturer'),
-                       'value' => $this->fields["manufacturers_id"] ?? '',
-                       'actions' => getItemActionButtons(['info', 'add'], "Manufacturer"),
-                    ],
-                    __('Technician in charge of the hardware') => [
-                       'name' => 'users_id_tech',
-                       'type' => 'select',
-                       'values' => getOptionsForUsers('own_ticket', ['entities_id' => $this->fields['entities_id']]),
-                       'entity' => $this->fields["entities_id"],
-                       'value' => $this->fields["users_id_tech"] ?? '',
-                       'actions' => getItemActionButtons(['info'], "User"),
-                    ],
-                    __('Comments') => [
-                       'name' => 'comment',
-                       'type' => 'textarea',
-                       'value' => $this->fields["comment"] ?? '',
-                    ],
-                    __('Group in charge of the hardware') => [
-                       'name' => 'groups_id_tech',
-                       'type' => 'select',
-                       'values' => getOptionForItems('Group', ['is_assign' => 1,]),
-                       'value' => $this->fields["groups_id_tech"] ?? '',
-                       'actions' => getItemActionButtons(['info', 'add'], "Group"),
-                    ],
-                    __('Stock location') => [
-                       'name' => 'locations_id',
-                       'type' => 'select',
-                       'itemtype' => Location::class,
-                       'value' => $this->fields["locations_id"] ?? '',
-                       'actions' => getItemActionButtons(['info', 'add'], "Location"),
-                    ],
-                    __('Alert threshold') => [
-                       'name' => 'alarm_threshold',
-                       'type' => 'number',
-                       'value' => $this->fields["alarm_threshold"] ?? '',
-                       'min' => 0,
-                       'max' => 100,
-                       'step' => 1,
-                    ]
-                 ]
-              ],
-           ]
+                ],
+            ],
         ];
 
         renderTwigForm($form, '', $this->fields);
@@ -274,164 +274,164 @@ class CartridgeItem extends CommonDBTM
         $tab = parent::rawSearchOptions();
 
         $tab[] = [
-           'id'                 => '2',
-           'table'              => $this->getTable(),
-           'field'              => 'id',
-           'name'               => __('ID'),
-           'massiveaction'      => false,
-           'datatype'           => 'number'
+            'id'                 => '2',
+            'table'              => $this->getTable(),
+            'field'              => 'id',
+            'name'               => __('ID'),
+            'massiveaction'      => false,
+            'datatype'           => 'number',
         ];
 
         $tab[] = [
-           'id'                 => '34',
-           'table'              => $this->getTable(),
-           'field'              => 'ref',
-           'name'               => __('Reference'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '34',
+            'table'              => $this->getTable(),
+            'field'              => 'ref',
+            'name'               => __('Reference'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '4',
-           'table'              => 'glpi_cartridgeitemtypes',
-           'field'              => 'name',
-           'name'               => _n('Type', 'Types', 1),
-           'datatype'           => 'dropdown'
+            'id'                 => '4',
+            'table'              => 'glpi_cartridgeitemtypes',
+            'field'              => 'name',
+            'name'               => _n('Type', 'Types', 1),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '23',
-           'table'              => 'glpi_manufacturers',
-           'field'              => 'name',
-           'name'               => Manufacturer::getTypeName(1),
-           'datatype'           => 'dropdown'
+            'id'                 => '23',
+            'table'              => 'glpi_manufacturers',
+            'field'              => 'name',
+            'name'               => Manufacturer::getTypeName(1),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '9',
-           'table'              => $this->getTable(),
-           'field'              => '_virtual',
-           'name'               => _n('Cartridge', 'Cartridges', Session::getPluralNumber()),
-           'datatype'           => 'specific',
-           'massiveaction'      => false,
-           'nosearch'           => true,
-           'nosort'             => true,
-           'additionalfields'   => ['alarm_threshold']
+            'id'                 => '9',
+            'table'              => $this->getTable(),
+            'field'              => '_virtual',
+            'name'               => _n('Cartridge', 'Cartridges', Session::getPluralNumber()),
+            'datatype'           => 'specific',
+            'massiveaction'      => false,
+            'nosearch'           => true,
+            'nosort'             => true,
+            'additionalfields'   => ['alarm_threshold'],
         ];
 
         $tab[] = [
-           'id'                 => '17',
-           'table'              => 'glpi_cartridges',
-           'field'              => 'id',
-           'name'               => __('Number of used cartridges'),
-           'datatype'           => 'count',
-           'forcegroupby'       => true,
-           'usehaving'          => true,
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => 'AND NEWTABLE.`date_use` IS NOT NULL
-                                     AND NEWTABLE.`date_out` IS NULL'
-           ]
+            'id'                 => '17',
+            'table'              => 'glpi_cartridges',
+            'field'              => 'id',
+            'name'               => __('Number of used cartridges'),
+            'datatype'           => 'count',
+            'forcegroupby'       => true,
+            'usehaving'          => true,
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => 'AND NEWTABLE.`date_use` IS NOT NULL
+                                     AND NEWTABLE.`date_out` IS NULL',
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '18',
-           'table'              => 'glpi_cartridges',
-           'field'              => 'id',
-           'name'               => __('Number of worn cartridges'),
-           'datatype'           => 'count',
-           'forcegroupby'       => true,
-           'usehaving'          => true,
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => 'AND NEWTABLE.`date_out` IS NOT NULL'
-           ]
+            'id'                 => '18',
+            'table'              => 'glpi_cartridges',
+            'field'              => 'id',
+            'name'               => __('Number of worn cartridges'),
+            'datatype'           => 'count',
+            'forcegroupby'       => true,
+            'usehaving'          => true,
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => 'AND NEWTABLE.`date_out` IS NOT NULL',
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '19',
-           'table'              => 'glpi_cartridges',
-           'field'              => 'id',
-           'name'               => __('Number of new cartridges'),
-           'datatype'           => 'count',
-           'forcegroupby'       => true,
-           'usehaving'          => true,
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => 'AND NEWTABLE.`date_use` IS NULL
-                                     AND NEWTABLE.`date_out` IS NULL'
-           ]
+            'id'                 => '19',
+            'table'              => 'glpi_cartridges',
+            'field'              => 'id',
+            'name'               => __('Number of new cartridges'),
+            'datatype'           => 'count',
+            'forcegroupby'       => true,
+            'usehaving'          => true,
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => 'AND NEWTABLE.`date_use` IS NULL
+                                     AND NEWTABLE.`date_out` IS NULL',
+            ],
         ];
 
         $tab = array_merge($tab, Location::rawSearchOptionsToAdd());
 
         $tab[] = [
-           'id'                 => '24',
-           'table'              => 'glpi_users',
-           'field'              => 'name',
-           'linkfield'          => 'users_id_tech',
-           'name'               => __('Technician in charge of the hardware'),
-           'datatype'           => 'dropdown',
-           'right'              => 'own_ticket'
+            'id'                 => '24',
+            'table'              => 'glpi_users',
+            'field'              => 'name',
+            'linkfield'          => 'users_id_tech',
+            'name'               => __('Technician in charge of the hardware'),
+            'datatype'           => 'dropdown',
+            'right'              => 'own_ticket',
         ];
 
         $tab[] = [
-           'id'                 => '49',
-           'table'              => 'glpi_groups',
-           'field'              => 'completename',
-           'linkfield'          => 'groups_id_tech',
-           'name'               => __('Group in charge of the hardware'),
-           'condition'          => ['is_assign' => 1],
-           'datatype'           => 'dropdown'
+            'id'                 => '49',
+            'table'              => 'glpi_groups',
+            'field'              => 'completename',
+            'linkfield'          => 'groups_id_tech',
+            'name'               => __('Group in charge of the hardware'),
+            'condition'          => ['is_assign' => 1],
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '8',
-           'table'              => $this->getTable(),
-           'field'              => 'alarm_threshold',
-           'name'               => __('Alert threshold'),
-           'datatype'           => 'number',
-           'toadd'              => [
-              '-1'                 => 'Never'
-           ]
+            'id'                 => '8',
+            'table'              => $this->getTable(),
+            'field'              => 'alarm_threshold',
+            'name'               => __('Alert threshold'),
+            'datatype'           => 'number',
+            'toadd'              => [
+                '-1'                 => 'Never',
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '16',
-           'table'              => $this->getTable(),
-           'field'              => 'comment',
-           'name'               => __('Comments'),
-           'datatype'           => 'text'
+            'id'                 => '16',
+            'table'              => $this->getTable(),
+            'field'              => 'comment',
+            'name'               => __('Comments'),
+            'datatype'           => 'text',
         ];
 
         $tab[] = [
-           'id'                 => '80',
-           'table'              => 'glpi_entities',
-           'field'              => 'completename',
-           'name'               => Entity::getTypeName(1),
-           'massiveaction'      => false,
-           'datatype'           => 'dropdown'
+            'id'                 => '80',
+            'table'              => 'glpi_entities',
+            'field'              => 'completename',
+            'name'               => Entity::getTypeName(1),
+            'massiveaction'      => false,
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '40',
-           'table'              => 'glpi_printermodels',
-           'field'              => 'name',
-           'datatype'           => 'dropdown',
-           'name'               => _n('Printer model', 'Printer models', Session::getPluralNumber()),
-           'forcegroupby'       => true,
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'beforejoin'         => [
-                 'table'              => 'glpi_cartridgeitems_printermodels',
-                 'joinparams'         => [
-                    'jointype'           => 'child'
-                 ]
-              ]
-           ]
+            'id'                 => '40',
+            'table'              => 'glpi_printermodels',
+            'field'              => 'name',
+            'datatype'           => 'dropdown',
+            'name'               => _n('Printer model', 'Printer models', Session::getPluralNumber()),
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'beforejoin'         => [
+                    'table'              => 'glpi_cartridgeitems_printermodels',
+                    'joinparams'         => [
+                        'jointype'           => 'child',
+                    ],
+                ],
+            ],
         ];
 
         $tab = array_merge($tab, Notepad::rawSearchOptionsToAdd());
@@ -466,36 +466,36 @@ class CartridgeItem extends CommonDBTM
                 // if you change this query, please don't forget to also change in showDebug()
                 $result = $DB->request(
                     [
-                      'SELECT'    => [
-                         'glpi_cartridgeitems.id AS cartID',
-                         'glpi_cartridgeitems.entities_id AS entity',
-                         'glpi_cartridgeitems.ref AS ref',
-                         'glpi_cartridgeitems.name AS name',
-                         'glpi_cartridgeitems.alarm_threshold AS threshold',
-                         'glpi_alerts.id AS alertID',
-                         'glpi_alerts.date',
-                      ],
-                      'FROM'      => self::getTable(),
-                      'LEFT JOIN' => [
-                         'glpi_alerts' => [
-                            'FKEY' => [
-                               'glpi_alerts'         => 'items_id',
-                               'glpi_cartridgeitems' => 'id',
-                               [
-                                  'AND' => ['glpi_alerts.itemtype' => 'CartridgeItem'],
-                               ],
-                            ]
-                         ]
-                      ],
-                      'WHERE'     => [
-                         'glpi_cartridgeitems.is_deleted'      => 0,
-                         'glpi_cartridgeitems.alarm_threshold' => ['>=', 0],
-                         'glpi_cartridgeitems.entities_id'     => $entity,
-                         'OR'                                  => [
-                            ['glpi_alerts.date' => null],
-                            ['glpi_alerts.date' => ['<', new QueryExpression('CURRENT_TIMESTAMP() - INTERVAL ' . $repeat . ' second')]],
-                         ],
-                      ],
+                        'SELECT'    => [
+                            'glpi_cartridgeitems.id AS cartID',
+                            'glpi_cartridgeitems.entities_id AS entity',
+                            'glpi_cartridgeitems.ref AS ref',
+                            'glpi_cartridgeitems.name AS name',
+                            'glpi_cartridgeitems.alarm_threshold AS threshold',
+                            'glpi_alerts.id AS alertID',
+                            'glpi_alerts.date',
+                        ],
+                        'FROM'      => self::getTable(),
+                        'LEFT JOIN' => [
+                            'glpi_alerts' => [
+                                'FKEY' => [
+                                    'glpi_alerts'         => 'items_id',
+                                    'glpi_cartridgeitems' => 'id',
+                                    [
+                                        'AND' => ['glpi_alerts.itemtype' => 'CartridgeItem'],
+                                    ],
+                                ],
+                            ],
+                        ],
+                        'WHERE'     => [
+                            'glpi_cartridgeitems.is_deleted'      => 0,
+                            'glpi_cartridgeitems.alarm_threshold' => ['>=', 0],
+                            'glpi_cartridgeitems.entities_id'     => $entity,
+                            'OR'                                  => [
+                                ['glpi_alerts.date' => null],
+                                ['glpi_alerts.date' => ['<', new QueryExpression('CURRENT_TIMESTAMP() - INTERVAL ' . $repeat . ' second')]],
+                            ],
+                        ],
                     ]
                 );
 
@@ -524,8 +524,8 @@ class CartridgeItem extends CommonDBTM
 
                 if (!empty($items)) {
                     $options = [
-                       'entities_id' => $entity,
-                       'items'       => $items,
+                        'entities_id' => $entity,
+                        'items'       => $items,
                     ];
 
                     $entityname = Dropdown::getDropdownName("glpi_entities", $entity);
@@ -542,8 +542,8 @@ class CartridgeItem extends CommonDBTM
                         }
 
                         $input = [
-                           'type'     => Alert::THRESHOLD,
-                           'itemtype' => 'CartridgeItem',
+                            'type'     => Alert::THRESHOLD,
+                            'itemtype' => 'CartridgeItem',
                         ];
 
                         // add alerts
@@ -575,52 +575,52 @@ class CartridgeItem extends CommonDBTM
      *
      * @param $printer Printer object
      *
-     * @return string|boolean
+     * @return string|bool
     **/
     public static function dropdownForPrinter(Printer $printer)
     {
         global $DB;
 
         $iterator = $DB->request([
-           'SELECT'       => [
-              'COUNT'  => '* AS cpt',
-              'glpi_locations.completename AS location',
-              'glpi_cartridgeitems.ref AS ref',
-              'glpi_cartridgeitems.name AS name',
-              'glpi_cartridgeitems.id AS tID'
-           ],
-           'FROM'         => self::getTable(),
-           'INNER JOIN'   => [
-              'glpi_cartridgeitems_printermodels' => [
-                 'ON' => [
-                    'glpi_cartridgeitems_printermodels' => 'cartridgeitems_id',
-                    'glpi_cartridgeitems'               => 'id'
-                 ]
-              ],
-              'glpi_cartridges'                   => [
-                 'ON' => [
-                    'glpi_cartridgeitems'   => 'id',
-                    'glpi_cartridges'       => 'cartridgeitems_id', [
-                       'AND' => [
-                          'glpi_cartridges.date_use' => null
-                       ]
-                    ]
-                 ]
-              ]
-           ],
-           'LEFT JOIN'    => [
-              'glpi_locations'                    => [
-                 'ON' => [
-                    'glpi_cartridgeitems'   => 'locations_id',
-                    'glpi_locations'        => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'        => [
-              'glpi_cartridgeitems_printermodels.printermodels_id'  => $printer->fields['printermodels_id']
-           ] + getEntitiesRestrictCriteria('glpi_cartridgeitems', '', $printer->fields['entities_id'], true),
-           'GROUPBY'      => 'tID',
-           'ORDERBY'      => ['name', 'ref']
+            'SELECT'       => [
+                'COUNT'  => '* AS cpt',
+                'glpi_locations.completename AS location',
+                'glpi_cartridgeitems.ref AS ref',
+                'glpi_cartridgeitems.name AS name',
+                'glpi_cartridgeitems.id AS tID',
+            ],
+            'FROM'         => self::getTable(),
+            'INNER JOIN'   => [
+                'glpi_cartridgeitems_printermodels' => [
+                    'ON' => [
+                        'glpi_cartridgeitems_printermodels' => 'cartridgeitems_id',
+                        'glpi_cartridgeitems'               => 'id',
+                    ],
+                ],
+                'glpi_cartridges'                   => [
+                    'ON' => [
+                        'glpi_cartridgeitems'   => 'id',
+                        'glpi_cartridges'       => 'cartridgeitems_id', [
+                            'AND' => [
+                                'glpi_cartridges.date_use' => null,
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+            'LEFT JOIN'    => [
+                'glpi_locations'                    => [
+                    'ON' => [
+                        'glpi_cartridgeitems'   => 'locations_id',
+                        'glpi_locations'        => 'id',
+                    ],
+                ],
+            ],
+            'WHERE'        => [
+                'glpi_cartridgeitems_printermodels.printermodels_id'  => $printer->fields['printermodels_id'],
+            ] + getEntitiesRestrictCriteria('glpi_cartridgeitems', '', $printer->fields['entities_id'], true),
+            'GROUPBY'      => 'tID',
+            'ORDERBY'      => ['name', 'ref'],
         ]);
 
         $results = [];
@@ -651,10 +651,10 @@ class CartridgeItem extends CommonDBTM
 
         // see query_alert in cronCartridge()
         $item = ['cartID'    => $this->fields['id'],
-                      'entity'    => $this->fields['entities_id'],
-                      'ref'       => $this->fields['ref'],
-                      'name'      => $this->fields['name'],
-                      'threshold' => $this->fields['alarm_threshold']];
+            'entity'    => $this->fields['entities_id'],
+            'ref'       => $this->fields['ref'],
+            'name'      => $this->fields['name'],
+            'threshold' => $this->fields['alarm_threshold']];
 
         $options = [];
         $options['entities_id'] = $this->getEntityID();

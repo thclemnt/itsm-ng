@@ -53,7 +53,7 @@ class DisableMaintenanceModeCommand extends AbstractCommand
         $this->setName('itsmng:maintenance:disable');
         $this->setAliases(
             [
-              'maintenance:disable',
+                'maintenance:disable',
             ]
         );
         $this->setDescription(__('Disable maintenance mode'));

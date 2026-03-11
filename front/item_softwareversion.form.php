@@ -46,7 +46,7 @@ if (isset($_POST['add'])) {
         $input = [
             'itemtype' => $_POST['itemtype'],
             'items_id' => $_POST['items_id'],
-            'softwareversions_id' => $_POST['softwareversions_id']
+            'softwareversions_id' => $_POST['softwareversions_id'],
         ];
         $inst->check(-1, CREATE, $input);
         if ($inst->add($input)) {

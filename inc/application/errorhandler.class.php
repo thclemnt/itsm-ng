@@ -52,20 +52,20 @@ class ErrorHandler
      * @var array
      */
     public const ERROR_LEVEL_MAP = [
-       E_ERROR             => LogLevel::CRITICAL,
-       E_WARNING           => LogLevel::WARNING,
-       E_PARSE             => LogLevel::ALERT,
-       E_NOTICE            => LogLevel::NOTICE,
-       E_CORE_ERROR        => LogLevel::CRITICAL,
-       E_CORE_WARNING      => LogLevel::WARNING,
-       E_COMPILE_ERROR     => LogLevel::ALERT,
-       E_COMPILE_WARNING   => LogLevel::WARNING,
-       E_USER_ERROR        => LogLevel::ERROR,
-       E_USER_WARNING      => LogLevel::WARNING,
-       E_USER_NOTICE       => LogLevel::NOTICE,
-       E_RECOVERABLE_ERROR => LogLevel::ERROR,
-       E_DEPRECATED        => LogLevel::NOTICE,
-       E_USER_DEPRECATED   => LogLevel::NOTICE,
+        E_ERROR             => LogLevel::CRITICAL,
+        E_WARNING           => LogLevel::WARNING,
+        E_PARSE             => LogLevel::ALERT,
+        E_NOTICE            => LogLevel::NOTICE,
+        E_CORE_ERROR        => LogLevel::CRITICAL,
+        E_CORE_WARNING      => LogLevel::WARNING,
+        E_COMPILE_ERROR     => LogLevel::ALERT,
+        E_COMPILE_WARNING   => LogLevel::WARNING,
+        E_USER_ERROR        => LogLevel::ERROR,
+        E_USER_WARNING      => LogLevel::WARNING,
+        E_USER_NOTICE       => LogLevel::NOTICE,
+        E_RECOVERABLE_ERROR => LogLevel::ERROR,
+        E_DEPRECATED        => LogLevel::NOTICE,
+        E_USER_DEPRECATED   => LogLevel::NOTICE,
     ];
 
     /**
@@ -74,12 +74,12 @@ class ErrorHandler
      * @var array
      */
     public const FATAL_ERRORS = [
-       E_ERROR,
-       E_PARSE,
-       E_CORE_ERROR,
-       E_COMPILE_ERROR,
-       E_USER_ERROR,
-       E_RECOVERABLE_ERROR,
+        E_ERROR,
+        E_PARSE,
+        E_CORE_ERROR,
+        E_COMPILE_ERROR,
+        E_USER_ERROR,
+        E_RECOVERABLE_ERROR,
     ];
 
     /**
@@ -92,7 +92,7 @@ class ErrorHandler
     /**
      * Flag to indicate if error should be forwarded to PHP internal error handler.
      *
-     * @var boolean
+     * @var bool
      */
     private $forward_to_internal_handler = true;
 
@@ -161,12 +161,12 @@ class ErrorHandler
     /**
      * Error handler.
      *
-     * @param integer $error_code
+     * @param int $error_code
      * @param string  $error_message
      * @param string  $filename
-     * @param integer $line_number
+     * @param int $line_number
      *
-     * @return boolean
+     * @return bool
      */
     public function handleError($error_code, $error_message, $filename, $line_number)
     {
@@ -217,7 +217,7 @@ class ErrorHandler
      *
      * This handler is manually by application when a SQL error occured.
      *
-     * @param integer $error_code
+     * @param int $error_code
      * @param string  $error_message
      * @param string  $query
      *
@@ -356,7 +356,7 @@ class ErrorHandler
      * @param string  $error_type
      * @param string  $message
      * @param string  $log_level
-     * @param boolean $force
+     * @param bool $force
      *
      * @return void
      */
@@ -415,20 +415,20 @@ class ErrorHandler
     private function codeToString(int $error_code): string
     {
         $map = [
-           E_ERROR             => 'Error',
-           E_WARNING           => 'Warning',
-           E_PARSE             => 'Parsing Error',
-           E_NOTICE            => 'Notice',
-           E_CORE_ERROR        => 'Core Error',
-           E_CORE_WARNING      => 'Core Warning',
-           E_COMPILE_ERROR     => 'Compile Error',
-           E_COMPILE_WARNING   => 'Compile Warning',
-           E_USER_ERROR        => 'User Error',
-           E_USER_WARNING      => 'User Warning',
-           E_USER_NOTICE       => 'User Notice',
-           E_RECOVERABLE_ERROR => 'Catchable Fatal Error',
-           E_DEPRECATED        => 'Deprecated function',
-           E_USER_DEPRECATED   => 'User deprecated function',
+            E_ERROR             => 'Error',
+            E_WARNING           => 'Warning',
+            E_PARSE             => 'Parsing Error',
+            E_NOTICE            => 'Notice',
+            E_CORE_ERROR        => 'Core Error',
+            E_CORE_WARNING      => 'Core Warning',
+            E_COMPILE_ERROR     => 'Compile Error',
+            E_COMPILE_WARNING   => 'Compile Warning',
+            E_USER_ERROR        => 'User Error',
+            E_USER_WARNING      => 'User Warning',
+            E_USER_NOTICE       => 'User Notice',
+            E_RECOVERABLE_ERROR => 'Catchable Fatal Error',
+            E_DEPRECATED        => 'Deprecated function',
+            E_USER_DEPRECATED   => 'User deprecated function',
         ];
 
         return $map[$error_code] ?? 'Unknown error';

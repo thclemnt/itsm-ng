@@ -77,14 +77,14 @@ final class StatusChecker
 
         if ($status === null) {
             $status = [
-               'status' => self::STATUS_OK,
-               'master' => [
-                  'status' => self::STATUS_OK,
-               ],
-               'slaves' => [
-                  'status' => self::STATUS_NO_DATA,
-                  'servers' => []
-               ]
+                'status' => self::STATUS_OK,
+                'master' => [
+                    'status' => self::STATUS_OK,
+                ],
+                'slaves' => [
+                    'status' => self::STATUS_NO_DATA,
+                    'servers' => [],
+                ],
             ];
             // Check slave server connection
             if (DBConnection::isDBSlaveActive()) {
@@ -103,22 +103,22 @@ final class StatusChecker
                     $diff = DBConnection::getReplicateDelay($num);
                     if (abs($diff) > 1000000000) {
                         $status['slaves']['servers'][$num] = [
-                           'status'             => self::STATUS_PROBLEM,
-                           'replication_delay'  => '-1'
+                            'status'             => self::STATUS_PROBLEM,
+                            'replication_delay'  => '-1',
                         ];
                         $status['slaves']['status'] = self::STATUS_PROBLEM;
                         $status['status'] = self::STATUS_PROBLEM;
                     } elseif (abs($diff) > HOUR_TIMESTAMP) {
                         $status['slaves']['servers'][$num] = [
-                           'status'             => self::STATUS_PROBLEM,
-                           'replication_delay'  => abs($diff)
+                            'status'             => self::STATUS_PROBLEM,
+                            'replication_delay'  => abs($diff),
                         ];
                         $status['slaves']['status'] = self::STATUS_PROBLEM;
                         $status['status'] = self::STATUS_PROBLEM;
                     } else {
                         $status['slaves']['servers'][$num] = [
-                           'status'             => self::STATUS_OK,
-                           'replication_delay'  => abs($diff)
+                            'status'             => self::STATUS_OK,
+                            'replication_delay'  => abs($diff),
                         ];
                     }
                 }
@@ -127,7 +127,7 @@ final class StatusChecker
             // Check main server connection
             if (!DBConnection::establishDBConnection(false, true, false)) {
                 $status['master'] = [
-                   'status' => self::STATUS_PROBLEM
+                    'status' => self::STATUS_PROBLEM,
                 ];
                 $status['status'] = self::STATUS_PROBLEM;
             }
@@ -158,8 +158,8 @@ final class StatusChecker
 
         if ($status === null) {
             $status = [
-               'status' => self::STATUS_NO_DATA,
-               'servers' => []
+                'status' => self::STATUS_NO_DATA,
+                'servers' => [],
             ];
             if (self::isDBAvailable()) {
                 // Check LDAP Auth connections
@@ -178,18 +178,18 @@ final class StatusChecker
                                 )
                             ) {
                                 $status['servers'][$display_name] = [
-                                   'status' => self::STATUS_OK
+                                    'status' => self::STATUS_OK,
                                 ];
                             } else {
                                 $status['servers'][$display_name] = [
-                                   'status' => self::STATUS_PROBLEM
+                                    'status' => self::STATUS_PROBLEM,
                                 ];
                                 $status['status'] = self::STATUS_PROBLEM;
                             }
                         } catch (\RuntimeException $e) {
                             // May be missing LDAP extension (Probably test environment)
                             $status['servers'][$method['name']] = [
-                               'status' => self::STATUS_PROBLEM
+                                'status' => self::STATUS_PROBLEM,
                             ];
                             $status['status'] = self::STATUS_PROBLEM;
                         }
@@ -211,8 +211,8 @@ final class StatusChecker
 
         if ($status === null) {
             $status = [
-               'status' => self::STATUS_NO_DATA,
-               'servers' => []
+                'status' => self::STATUS_NO_DATA,
+                'servers' => [],
             ];
             if (self::isDBAvailable()) {
                 // Check IMAP Auth connections
@@ -232,11 +232,11 @@ final class StatusChecker
                         }
                         if ($fp = @fsockopen($host, $param['port'], $errno, $errstr, 1)) {
                             $status['servers'][$display_name] = [
-                               'status' => 'OK'
+                                'status' => 'OK',
                             ];
                         } else {
                             $status['servers'][$display_name] = [
-                               'status' => self::STATUS_PROBLEM
+                                'status' => self::STATUS_PROBLEM,
                             ];
                             $status['status'] = self::STATUS_PROBLEM;
                         }
@@ -266,7 +266,7 @@ final class StatusChecker
             if (!empty($CFG_GLPI['cas_host'])) {
                 $url = $CFG_GLPI['cas_host'];
                 if (!empty($CFG_GLPI['cas_port'])) {
-                    $url .= ':' . (int)$CFG_GLPI['cas_port'];
+                    $url .= ':' . (int) $CFG_GLPI['cas_port'];
                 }
                 $url .= '/' . $CFG_GLPI['cas_uri'];
                 $data = Toolbox::getURLContent($url);
@@ -291,8 +291,8 @@ final class StatusChecker
 
         if ($status === null) {
             $status = [
-               'status' => self::STATUS_NO_DATA,
-               'servers' => []
+                'status' => self::STATUS_NO_DATA,
+                'servers' => [],
             ];
             if (self::isDBAvailable()) {
                 $mailcollectors = getAllDataFromTable('glpi_mailcollectors', ['is_active' => 1]);
@@ -305,12 +305,12 @@ final class StatusChecker
                             try {
                                 $mailcol->connect();
                                 $status['servers'][$display_name] = [
-                                   'status' => 'OK'
+                                    'status' => 'OK',
                                 ];
                             } catch (\Exception $e) {
                                 $status['servers'][$display_name] = [
-                                   'status'       => self::STATUS_PROBLEM,
-                                   'error_code'   => $e->getCode()
+                                    'status'       => self::STATUS_PROBLEM,
+                                    'error_code'   => $e->getCode(),
                                 ];
                                 $status['status'] = self::STATUS_PROBLEM;
                             }
@@ -333,24 +333,24 @@ final class StatusChecker
 
         if ($status === null) {
             $status = [
-               'status' => self::STATUS_NO_DATA,
-               'stuck' => []
+                'status' => self::STATUS_NO_DATA,
+                'stuck' => [],
             ];
             if (self::isDBAvailable()) {
                 $stuck_crontasks = getAllDataFromTable(
                     'glpi_crontasks',
                     [
-                      'state'  => CronTask::STATE_RUNNING,
-                      'OR'     => [
-                         new \QueryExpression(
-                             '(unix_timestamp(' . DBmysql::quoteName('lastrun') . ') + 2 * ' .
-                             DBmysql::quoteName('frequency') . ' < unix_timestamp(now()))'
-                         ),
-                         new \QueryExpression(
-                             '(unix_timestamp(' . DBmysql::quoteName('lastrun') . ') + 2 * ' .
-                             HOUR_TIMESTAMP . ' < unix_timestamp(now()))'
-                         )
-                      ]
+                        'state'  => CronTask::STATE_RUNNING,
+                        'OR'     => [
+                            new \QueryExpression(
+                                '(unix_timestamp(' . DBmysql::quoteName('lastrun') . ') + 2 * '
+                                . DBmysql::quoteName('frequency') . ' < unix_timestamp(now()))'
+                            ),
+                            new \QueryExpression(
+                                '(unix_timestamp(' . DBmysql::quoteName('lastrun') . ') + 2 * '
+                                . HOUR_TIMESTAMP . ' < unix_timestamp(now()))'
+                            ),
+                        ],
                     ]
                 );
                 foreach ($stuck_crontasks as $ct) {
@@ -373,22 +373,22 @@ final class StatusChecker
 
         if ($status === null) {
             $status = [
-               'status' => self::STATUS_OK,
-               'session_dir' => [
-                  'status' => self::STATUS_OK
-               ]
+                'status' => self::STATUS_OK,
+                'session_dir' => [
+                    'status' => self::STATUS_OK,
+                ],
             ];
             // Check session dir (useful when NFS mounted))
             if (!is_dir(GLPI_SESSION_DIR)) {
                 $status['session_dir'] = [
-                   'status' => self::STATUS_PROBLEM,
-                   'status_msg'   => 'GLPI_SESSION_DIR variable is not a directory'
+                    'status' => self::STATUS_PROBLEM,
+                    'status_msg'   => 'GLPI_SESSION_DIR variable is not a directory',
                 ];
                 $status['status'] = self::STATUS_PROBLEM;
             } elseif (!is_writable(GLPI_SESSION_DIR)) {
                 $status['session_dir'] = [
-                   'status' => self::STATUS_PROBLEM,
-                   'status_msg'   => 'GLPI_SESSION_DIR is not writeable'
+                    'status' => self::STATUS_PROBLEM,
+                    'status_msg'   => 'GLPI_SESSION_DIR is not writeable',
                 ];
                 $status['status'] = self::STATUS_PROBLEM;
             }
@@ -420,8 +420,8 @@ final class StatusChecker
                 }
                 if (isset($plugin_status['ok']) && count(array_keys($plugin_status)) === 1) {
                     $status[$plugin] = [
-                       'status'    => $plugin_status['ok'] ? self::STATUS_OK : self::STATUS_PROBLEM,
-                       'version'   => Plugin::getInfo($plugin)['version']
+                        'status'    => $plugin_status['ok'] ? self::STATUS_OK : self::STATUS_PROBLEM,
+                        'version'   => Plugin::getInfo($plugin)['version'],
                     ];
                 } else {
                     $status[$plugin] = $plugin_status;
@@ -455,17 +455,17 @@ final class StatusChecker
 
         if ($status === null) {
             $status = [
-               'db'              => self::getDBStatus($public_only),
-               'cas'             => self::getCASStatus($public_only),
-               'ldap'            => self::getLDAPStatus($public_only),
-               'imap'            => self::getIMAPStatus($public_only),
-               'mail_collectors' => self::getMailCollectorStatus($public_only),
-               'crontasks'       => self::getCronTaskStatus($public_only),
-               'filesystem'      => self::getFilesystemStatus($public_only),
-               'glpi'            => [
-                  'status'    => self::STATUS_OK,
-               ],
-               'plugins'         => self::getPluginsStatus($public_only)
+                'db'              => self::getDBStatus($public_only),
+                'cas'             => self::getCASStatus($public_only),
+                'ldap'            => self::getLDAPStatus($public_only),
+                'imap'            => self::getIMAPStatus($public_only),
+                'mail_collectors' => self::getMailCollectorStatus($public_only),
+                'crontasks'       => self::getCronTaskStatus($public_only),
+                'filesystem'      => self::getFilesystemStatus($public_only),
+                'glpi'            => [
+                    'status'    => self::STATUS_OK,
+                ],
+                'plugins'         => self::getPluginsStatus($public_only),
             ];
             // Compute GLPI status from top-level services
             $statuses = array_column($status, 'status');

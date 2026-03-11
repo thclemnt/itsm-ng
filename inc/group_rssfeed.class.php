@@ -52,7 +52,7 @@ class Group_RSSFeed extends CommonDBRelation
     /**
      * Get groups for a rssfeed
      *
-     * @param integer $rssfeeds_id ID of the rssfeed
+     * @param int $rssfeeds_id ID of the rssfeed
      *
      * @return array of groups linked to a rssfeed
     **/
@@ -62,8 +62,8 @@ class Group_RSSFeed extends CommonDBRelation
 
         $groups = [];
         $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['rssfeeds_id' => $rssfeeds_id]
+            'FROM'   => self::getTable(),
+            'WHERE'  => ['rssfeeds_id' => $rssfeeds_id],
         ]);
 
         while ($data = $iterator->next()) {

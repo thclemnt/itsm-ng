@@ -42,7 +42,7 @@ if (!isset($_POST["itemtype"]) || !($item = getItemForItemtype($_POST['itemtype'
 
 if (Infocom::canApplyOn($_POST["itemtype"])) {
     Session::checkSeveralRightsOr([$_POST["itemtype"] => UPDATE,
-                                        "infocom"          => UPDATE]);
+        "infocom"          => UPDATE]);
 } else {
     $item->checkGlobal(UPDATE);
 }
@@ -81,7 +81,7 @@ if (
             $plug['plugin'],
             'MassiveActionsFieldsDisplay',
             ['itemtype' => $_POST["itemtype"],
-                                               'options'  => $search]
+                'options'  => $search]
         );
     }
 
@@ -119,7 +119,7 @@ if (
                         $params = [
                             'name' => $fieldname,
                             'value' => $value,
-                            'display' => false
+                            'display' => false,
                         ];
 
                         if (isset($options['entity'])) {

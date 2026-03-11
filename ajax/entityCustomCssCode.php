@@ -67,20 +67,20 @@ if (isset($_POST['enable_custom_css']) && isset($_POST['entities_id'])) {
     echo '</textarea>';
 
     $editor_options = [
-       'mode'               => 'text/css',
-       'lineNumbers'        => true,
+        'mode'               => 'text/css',
+        'lineNumbers'        => true,
 
-       // Autocomplete with CTRL+SPACE
-       'extraKeys'          => [
-          'Ctrl-Space' => 'autocomplete',
-       ],
+        // Autocomplete with CTRL+SPACE
+        'extraKeys'          => [
+            'Ctrl-Space' => 'autocomplete',
+        ],
 
-       // Code folding configuration
-       'foldGutter' => true,
-       'gutters'    => [
-          'CodeMirror-linenumbers',
-          'CodeMirror-foldgutter'
-       ],
+        // Code folding configuration
+        'foldGutter' => true,
+        'gutters'    => [
+            'CodeMirror-linenumbers',
+            'CodeMirror-foldgutter',
+        ],
     ];
     if (!$enable_custom_css) {
         $editor_options['readOnly'] = 'nocursor'; // readonly and no type cursor if input disabled

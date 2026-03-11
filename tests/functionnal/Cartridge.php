@@ -33,6 +33,7 @@
 
 namespace tests\units;
 
+use atoum\atoum\mock\controller;
 use DbTestCase;
 
 /* Test for inc/cartridge.class.php */
@@ -44,14 +45,12 @@ class Cartridge extends DbTestCase
         $ok = 0;
         $ko = 0;
 
-        $controller = new \atoum\atoum\mock\controller();
-        $controller->__construct = function ($args) {
-        };
+        $controller = new controller();
+        $controller->__construct = function ($args) {};
 
         $ma = new \mock\MassiveAction([], [], '', false, $controller);
         $ma->getMockController()->getAction = $action;
-        $ma->getMockController()->addMessage = function () {
-        };
+        $ma->getMockController()->addMessage = function () {};
         $ma->getMockController()->getInput = $input;
         $ma->getMockController()->itemDone = function ($itemtype, $id, $res) use (&$ok, &$ko) {
             if ($res == \MassiveAction::ACTION_OK) {
@@ -70,33 +69,33 @@ class Cartridge extends DbTestCase
     {
         $printer = new \Printer();
         $pid = $printer->add([
-           'name'         => 'Test printer',
-           'entities_id'  => getItemByTypeName('Entity', '_test_root_entity', true)
+            'name'         => 'Test printer',
+            'entities_id'  => getItemByTypeName('Entity', '_test_root_entity', true),
         ]);
-        $this->integer((int)$pid)->isGreaterThan(0);
+        $this->integer((int) $pid)->isGreaterThan(0);
         $this->boolean($printer->getFromDB($pid))->isTrue();
 
         $ctype = new \CartridgeItemType();
         $tid = $ctype->add([
-           'name'         => 'Test cartridge type',
+            'name'         => 'Test cartridge type',
         ]);
-        $this->integer((int)$tid)->isGreaterThan(0);
+        $this->integer((int) $tid)->isGreaterThan(0);
         $this->boolean($ctype->getFromDB($tid))->isTrue();
 
         $citem = new \CartridgeItem();
         $ciid = $citem->add([
-           'name'                  => 'Test cartridge item',
-           'cartridgeitemtypes_id' => $tid
+            'name'                  => 'Test cartridge item',
+            'cartridgeitemtypes_id' => $tid,
         ]);
-        $this->integer((int)$ciid)->isGreaterThan(0);
+        $this->integer((int) $ciid)->isGreaterThan(0);
         $this->boolean($citem->getFromDB($ciid))->isTrue();
 
         $cartridge = new \Cartridge();
         $cid = $cartridge->add([
-           'name'               => 'Test cartridge',
-           'cartridgeitems_id'  => $ciid
+            'name'               => 'Test cartridge',
+            'cartridgeitems_id'  => $ciid,
         ]);
-        $this->integer((int)$cid)->isGreaterThan(0);
+        $this->integer((int) $cid)->isGreaterThan(0);
         $this->boolean($cartridge->getFromDB($cid))->isTrue();
         $this->integer($cartridge->getUsedNumber($ciid))->isIdenticalTo(0);
         $this->integer($cartridge->getTotalNumberForPrinter($pid))->isIdenticalTo(0);
@@ -131,28 +130,28 @@ class Cartridge extends DbTestCase
 
         $cartridge_item = new \CartridgeItem();
         $cu_id = (int) $cartridge_item->add([
-           'name' => 'Test cartridge item'
+            'name' => 'Test cartridge item',
         ]);
         $this->integer($cu_id)->isGreaterThan(0);
 
         $infocom = new \Infocom();
         $infocom_id = (int) $infocom->add([
-           'itemtype'  => \CartridgeItem::getType(),
-           'items_id'  => $cu_id,
-           'buy_date'  => '2020-10-21',
-           'value'     => '500'
+            'itemtype'  => \CartridgeItem::getType(),
+            'items_id'  => $cu_id,
+            'buy_date'  => '2020-10-21',
+            'value'     => '500',
         ]);
         $this->integer($infocom_id)->isGreaterThan(0);
 
         $cartridge_id = $cartridge->add([
-           'cartridgeitems_id' => $cu_id
+            'cartridgeitems_id' => $cu_id,
         ]);
         $this->integer($cartridge_id)->isGreaterThan(0);
 
         $infocom2 = new \Infocom();
         $infocom2_id = (int) $infocom2->getFromDBByCrit([
-           'itemtype'  => \Cartridge::getType(),
-           'items_id'  => $cartridge_id
+            'itemtype'  => \Cartridge::getType(),
+            'items_id'  => $cartridge_id,
         ]);
         $this->integer($infocom2_id)->isGreaterThan(0);
         $this->string($infocom2->fields['buy_date'])->isEqualTo($infocom->fields['buy_date']);
@@ -168,27 +167,27 @@ class Cartridge extends DbTestCase
 
         try {
             $printer = new \Printer();
-            $printers_id = (int)$printer->add([
+            $printers_id = (int) $printer->add([
                 'name'        => 'massive-printer-' . $this->getUniqueString(),
                 'entities_id' => getItemByTypeName('Entity', '_test_root_entity', true),
             ]);
             $this->integer($printers_id)->isGreaterThan(0);
 
             $ctype = new \CartridgeItemType();
-            $cartridgeitemtypes_id = (int)$ctype->add([
+            $cartridgeitemtypes_id = (int) $ctype->add([
                 'name' => 'massive-cart-type-' . $this->getUniqueString(),
             ]);
             $this->integer($cartridgeitemtypes_id)->isGreaterThan(0);
 
             $citem = new \CartridgeItem();
-            $cartridgeitems_id = (int)$citem->add([
+            $cartridgeitems_id = (int) $citem->add([
                 'name'                  => 'massive-cart-item-' . $this->getUniqueString(),
                 'cartridgeitemtypes_id' => $cartridgeitemtypes_id,
             ]);
             $this->integer($cartridgeitems_id)->isGreaterThan(0);
 
             $cartridge = new \Cartridge();
-            $cartridges_id = (int)$cartridge->add([
+            $cartridges_id = (int) $cartridge->add([
                 'name'              => 'massive-cart-' . $this->getUniqueString(),
                 'cartridgeitems_id' => $cartridgeitems_id,
             ]);
@@ -206,17 +205,17 @@ class Cartridge extends DbTestCase
             $this->integer($ko)->isEqualTo(0);
 
             $this->boolean($cartridge->getFromDB($cartridges_id))->isTrue();
-            $this->integer((int)$cartridge->fields['pages'])->isEqualTo(321);
+            $this->integer((int) $cartridge->fields['pages'])->isEqualTo(321);
 
             $this->boolean($printer->getFromDB($printers_id))->isTrue();
-            $this->integer((int)$printer->fields['last_pages_counter'])->isEqualTo(321);
+            $this->integer((int) $printer->fields['last_pages_counter'])->isEqualTo(321);
 
             [$ok, $ko] = $this->processMassiveAction('backtostock', $cartridge, [$cartridges_id]);
             $this->integer($ok)->isEqualTo(1);
             $this->integer($ko)->isEqualTo(0);
 
             $this->boolean($cartridge->getFromDB($cartridges_id))->isTrue();
-            $this->integer((int)$cartridge->fields['printers_id'])->isEqualTo(0);
+            $this->integer((int) $cartridge->fields['printers_id'])->isEqualTo(0);
             $this->variable($cartridge->fields['date_use'])->isNull();
             $this->variable($cartridge->fields['date_out'])->isNull();
         } finally {

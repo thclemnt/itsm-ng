@@ -103,7 +103,7 @@ class ActivateCommand extends AbstractPluginCommand
      *
      * @param string  $directory
      *
-     * @return boolean
+     * @return bool
      */
     private function canRunActivateMethod($directory)
     {
@@ -161,10 +161,10 @@ class ActivateCommand extends AbstractPluginCommand
         $choices = [];
         $plugin_iterator = $this->db->request(
             [
-              'FROM'  => Plugin::getTable(),
-              'WHERE' => [
-                 'state' => Plugin::NOTACTIVATED
-              ]
+                'FROM'  => Plugin::getTable(),
+                'WHERE' => [
+                    'state' => Plugin::NOTACTIVATED,
+                ],
             ]
         );
         foreach ($plugin_iterator as $plugin) {

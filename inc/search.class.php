@@ -124,16 +124,16 @@ class Search
         }
 
         $params['criteria'][] = [
-           'link'         => 'AND NOT',
-           'field'        => $latitude,
-           'searchtype'   => 'contains',
-           'value'        => 'NULL'
+            'link'         => 'AND NOT',
+            'field'        => $latitude,
+            'searchtype'   => 'contains',
+            'value'        => 'NULL',
         ];
         $params['criteria'][] = [
-           'link'         => 'AND NOT',
-           'field'        => $longitude,
-           'searchtype'   => 'contains',
-           'value'        => 'NULL'
+            'link'         => 'AND NOT',
+            'field'        => $longitude,
+            'searchtype'   => 'contains',
+            'value'        => 'NULL',
         ];
 
         $data = self::getDatas($itemtype, $params);
@@ -145,20 +145,20 @@ class Search
             array_pop($criteria);
             array_pop($criteria);
             $criteria[] = [
-               'link'         => 'AND',
-               'field'        => ($itemtype == 'Location' || $itemtype == 'Entity') ? 1 : (($itemtype == 'Ticket') ? 83 : 3),
-               'searchtype'   => 'equals',
-               'value'        => 'CURLOCATION'
+                'link'         => 'AND',
+                'field'        => ($itemtype == 'Location' || $itemtype == 'Entity') ? 1 : (($itemtype == 'Ticket') ? 83 : 3),
+                'searchtype'   => 'equals',
+                'value'        => 'CURLOCATION',
             ];
             $globallinkto = Toolbox::append_params(
                 [
-                  'criteria'     => Toolbox::stripslashes_deep($criteria),
-                  'metacriteria' => Toolbox::stripslashes_deep($data['search']['metacriteria'])
+                    'criteria'     => Toolbox::stripslashes_deep($criteria),
+                    'metacriteria' => Toolbox::stripslashes_deep($data['search']['metacriteria']),
                 ],
                 '&amp;'
             );
-            $parameters = "as_map=0&amp;sort=" . $data['search']['sort'] . "&amp;order=" . $data['search']['order'] . '&amp;' .
-                           $globallinkto;
+            $parameters = "as_map=0&amp;sort=" . $data['search']['sort'] . "&amp;order=" . $data['search']['order'] . '&amp;'
+                           . $globallinkto;
 
             if (strpos($target, '?') == false) {
                 $fulltarget = $target . "?" . $parameters;
@@ -166,8 +166,8 @@ class Search
                 $fulltarget = $target . "&" . $parameters;
             }
             $fulltarget = URL::sanitizeURL($fulltarget);
-            $typename = class_exists($itemtype) ? $itemtype::getTypeName($data['data']['totalcount']) :
-                           ($itemtype == 'AllAssets' ? __('assets') : $itemtype);
+            $typename = class_exists($itemtype) ? $itemtype::getTypeName($data['data']['totalcount'])
+                           : ($itemtype == 'AllAssets' ? __('assets') : $itemtype);
 
             echo "<div class='center'><p>" . __('Search results for localized items only') . "</p>";
             $js = "$(function() {
@@ -664,7 +664,7 @@ class Search
                 $LINK  = " ";
                 $first = false;
             }
-            $COMMONWHERE .= $LINK . "`$itemtable`.`is_deleted` = " . (int)$data['search']['is_deleted'] . " ";
+            $COMMONWHERE .= $LINK . "`$itemtable`.`is_deleted` = " . (int) $data['search']['is_deleted'] . " ";
         }
 
         // Remove template items
@@ -761,14 +761,14 @@ class Search
             if ($data['search']['list_limit'] == 0) {
                 $data['search']['list_limit'] = '18446744073709551615';
             }
-            $LIMIT = " LIMIT " . (int)$data['search']['start'] . ", " . (int)$data['search']['list_limit'];
+            $LIMIT = " LIMIT " . (int) $data['search']['start'] . ", " . (int) $data['search']['list_limit'];
 
             $count = "count(DISTINCT `$itemtable`.`id`)";
             // request currentuser for SQL supervision, not displayed
             $query_num = "SELECT $count,
                               '" . Toolbox::addslashes_deep($_SESSION['glpiname']) . "' AS currentuser
-                       FROM `$itemtable`" .
-                          $COMMONLEFTJOIN;
+                       FROM `$itemtable`"
+                          . $COMMONLEFTJOIN;
 
             $first     = true;
 
@@ -825,8 +825,8 @@ class Search
                                            AND `$reftable`.`itemtype` = '$ctype')";
 
                             $query_num = str_replace(
-                                "FROM `" .
-                                                       $CFG_GLPI["union_search_type"][$data['itemtype']] . "`",
+                                "FROM `"
+                                                       . $CFG_GLPI["union_search_type"][$data['itemtype']] . "`",
                                 $replace,
                                 $tmpquery
                             );
@@ -891,9 +891,9 @@ class Search
                     $tmpquery = "";
                     // AllAssets case
                     if ($data['itemtype'] == 'AllAssets') {
-                        $tmpquery = $SELECT . ", '$ctype' AS TYPE " .
-                                    $FROM .
-                                    $WHERE;
+                        $tmpquery = $SELECT . ", '$ctype' AS TYPE "
+                                    . $FROM
+                                    . $WHERE;
 
                         $tmpquery .= " AND `$ctable`.`id` IS NOT NULL ";
 
@@ -907,8 +907,8 @@ class Search
                             $tmpquery .= " AND `$ctable`.`is_template` = 0 ";
                         }
 
-                        $tmpquery .= $GROUPBY .
-                                    $HAVING;
+                        $tmpquery .= $GROUPBY
+                                    . $HAVING;
 
                         // Replace 'asset_types' by itemtype table name
                         $tmpquery = str_replace(
@@ -928,9 +928,9 @@ class Search
 
                         $tmpquery = $SELECT . ", '$ctype' AS TYPE,
                                       `$reftable`.`id` AS refID, " . "
-                                      `$ctable`.`entities_id` AS ENTITY " .
-                                    $FROM .
-                                    $WHERE;
+                                      `$ctable`.`entities_id` AS ENTITY "
+                                    . $FROM
+                                    . $WHERE;
                         if ($data['item']->maybeDeleted()) {
                             $tmpquery = str_replace(
                                 "`" . $CFG_GLPI["union_search_type"][$data['itemtype']] . "`.
@@ -945,8 +945,8 @@ class Search
                                  ON (`$reftable`.`items_id`=`$ctable`.`id`" . "
                                      AND `$reftable`.`itemtype` = '$ctype')";
                         $tmpquery = str_replace(
-                            "FROM `" .
-                                                   $CFG_GLPI["union_search_type"][$data['itemtype']] . "`",
+                            "FROM `"
+                                                   . $CFG_GLPI["union_search_type"][$data['itemtype']] . "`",
                             $replace,
                             $tmpquery
                         );
@@ -982,16 +982,16 @@ class Search
                 echo self::showError($data['display_type']);
                 return;
             }
-            $QUERY .= str_replace($CFG_GLPI["union_search_type"][$data['itemtype']] . ".", "", $ORDER) .
-                      $LIMIT;
+            $QUERY .= str_replace($CFG_GLPI["union_search_type"][$data['itemtype']] . ".", "", $ORDER)
+                      . $LIMIT;
         } else {
-            $QUERY = $SELECT .
-                     $FROM .
-                     $WHERE .
-                     $GROUPBY .
-                     $HAVING .
-                     $ORDER .
-                     $LIMIT;
+            $QUERY = $SELECT
+                     . $FROM
+                     . $WHERE
+                     . $GROUPBY
+                     . $HAVING
+                     . $ORDER
+                     . $LIMIT;
         }
         $data['sql']['search'] = $QUERY;
     }
@@ -1010,7 +1010,7 @@ class Search
      *                            contains all the search part (sql, criteria, params, itemtype etc)
      *                            TODO: should be a property of the class
      * @param  array   $searchopt Search options for the current itemtype
-     * @param  boolean $is_having Do we construct sql WHERE or HAVING part
+     * @param  bool $is_having Do we construct sql WHERE or HAVING part
      *
      * @return string             the sql sub string
      */
@@ -1292,7 +1292,7 @@ class Search
      * @since 0.85
      *
      * @param array   $data      array of search data prepared to get data
-     * @param boolean $onlycount If we just want to count results
+     * @param bool $onlycount If we just want to count results
      *
      * @return void
     **/
@@ -1335,9 +1335,9 @@ class Search
                 if ($res['Code'] == 1116) { // too many tables
                     echo self::showError(
                         $data['search']['display_type'],
-                        __("'All' criterion is not usable with this object list, " .
-                                            "sql query fails (too many tables). " .
-                                            "Please use 'Items seen' criterion instead")
+                        __("'All' criterion is not usable with this object list, "
+                                            . "sql query fails (too many tables). "
+                                            . "Please use 'Items seen' criterion instead")
                     );
                     return false;
                 }
@@ -1348,7 +1348,7 @@ class Search
             $data['data']['execution_time'] = $DBread->execution_time;
             if (isset($data['search']['savedsearches_id'])) {
                 SavedSearch::updateExecutionTime(
-                    (int)$data['search']['savedsearches_id'],
+                    (int) $data['search']['savedsearches_id'],
                     $DBread->execution_time
                 );
             }
@@ -1425,11 +1425,11 @@ class Search
 
             foreach ($data['toview'] as $opt_id) {
                 $data['data']['cols'][] = [
-                   'itemtype'  => $data['itemtype'],
-                   'id'        => $opt_id,
-                   'name'      => $searchopt[$opt_id]["name"],
-                   'meta'      => 0,
-                   'searchopt' => $searchopt[$opt_id],
+                    'itemtype'  => $data['itemtype'],
+                    'id'        => $opt_id,
+                    'name'      => $searchopt[$opt_id]["name"],
+                    'meta'      => 0,
+                    'searchopt' => $searchopt[$opt_id],
                 ];
             }
 
@@ -1438,11 +1438,11 @@ class Search
                 $searchopt = &self::getOptions($m_itemtype);
                 foreach ($toview as $opt_id) {
                     $data['data']['cols'][] = [
-                       'itemtype'  => $m_itemtype,
-                       'id'        => $opt_id,
-                       'name'      => $searchopt[$opt_id]["name"],
-                       'meta'      => 1,
-                       'searchopt' => $searchopt[$opt_id],
+                        'itemtype'  => $m_itemtype,
+                        'id'        => $opt_id,
+                        'name'      => $searchopt[$opt_id]["name"],
+                        'meta'      => 1,
+                        'searchopt' => $searchopt[$opt_id],
                     ];
                 }
             }
@@ -1460,11 +1460,11 @@ class Search
                             $searchopt = &self::getOptions($metacriteria['itemtype']);
 
                             $data['data']['cols'][] = [
-                               'itemtype'  => $metacriteria['itemtype'],
-                               'id'        => $metacriteria['field'],
-                               'name'      => $searchopt[$metacriteria['field']]["name"],
-                               'meta'      => 1,
-                               'searchopt' => $searchopt[$metacriteria['field']]
+                                'itemtype'  => $metacriteria['itemtype'],
+                                'id'        => $metacriteria['field'],
+                                'name'      => $searchopt[$metacriteria['field']]["name"],
+                                'meta'      => 1,
+                                'searchopt' => $searchopt[$metacriteria['field']],
                             ];
 
                             $already_printed[$metacriteria['itemtype'] . $metacriteria['field']] = 1;
@@ -1750,10 +1750,10 @@ class Search
             }
         }
         $massiveactionparams = $data['search']['massiveactionparams'] + [
-           'container'      => 'SearchTableFor' . $data['itemtype'],
-           'display_arrow'  => false,
-           'is_deleted'     => $data['search']['is_deleted'],
-           'itemtype'       => $data['itemtype']
+            'container'      => 'SearchTableFor' . $data['itemtype'],
+            'display_arrow'  => false,
+            'is_deleted'     => $data['search']['is_deleted'],
+            'itemtype'       => $data['itemtype'],
         ];
         $can_trash = isset($data['item']->fields['is_deleted']);
 
@@ -1787,16 +1787,16 @@ class Search
         }
 
         renderTwigTemplate('table.twig', [
-           'id' => 'SearchTableFor' . $data['itemtype'],
-           'fields' => $fields,
-           'url' => $url,
-           'can_trash' => $can_trash,
-           'is_trash' => $data['search']['is_deleted'],
-           'massive_action' => $massiveActionValues,
-           'itemtype' => $data['itemtype'],
-           'column_edit' => $can_edit_columns,
-           'export_target' => $CFG_GLPI['root_doc'] . '/front/report.dynamic.php',
-           'export_params' => $export_params,
+            'id' => 'SearchTableFor' . $data['itemtype'],
+            'fields' => $fields,
+            'url' => $url,
+            'can_trash' => $can_trash,
+            'is_trash' => $data['search']['is_deleted'],
+            'massive_action' => $massiveActionValues,
+            'itemtype' => $data['itemtype'],
+            'column_edit' => $can_edit_columns,
+            'export_target' => $CFG_GLPI['root_doc'] . '/front/report.dynamic.php',
+            'export_params' => $export_params,
         ]);
     }
 
@@ -1804,7 +1804,7 @@ class Search
     /**
      * @since 0.90
      *
-     * @param boolean $is_deleted
+     * @param bool $is_deleted
      * @param string  $itemtype
      *
      * @return string
@@ -1812,18 +1812,18 @@ class Search
     public static function isDeletedSwitch($is_deleted, $itemtype = "")
     {
         $rand = mt_rand();
-        return "<div class='switch grey_border pager_controls'>" .
-               "<label for='is_deletedswitch$rand' title='" . __s('Show the trashbin') . "' >" .
-                  "<span class='sr-only'>" . __s('Show the trashbin') . "</span>" .
-                  "<input type='hidden' name='is_deleted' value='0' /> " .
-                  "<input type='checkbox' id='is_deletedswitch$rand' name='is_deleted' value='1' " .
-                    ($is_deleted ? "checked='checked'" : "") .
-                    " onClick = \"toogle('is_deleted','','','');
-                              document.forms['searchform$itemtype'].submit();\" />" .
-                  "<span class='fa fa-trash-alt pointer'></span>" .
-                  "<span class='lever'></span>" .
-                  "</label>" .
-               "</div>";
+        return "<div class='switch grey_border pager_controls'>"
+               . "<label for='is_deletedswitch$rand' title='" . __s('Show the trashbin') . "' >"
+                  . "<span class='sr-only'>" . __s('Show the trashbin') . "</span>"
+                  . "<input type='hidden' name='is_deleted' value='0' /> "
+                  . "<input type='checkbox' id='is_deletedswitch$rand' name='is_deleted' value='1' "
+                    . ($is_deleted ? "checked='checked'" : "")
+                    . " onClick = \"toogle('is_deleted','','','');
+                              document.forms['searchform$itemtype'].submit();\" />"
+                  . "<span class='fa fa-trash-alt pointer'></span>"
+                  . "<span class='lever'></span>"
+                  . "</label>"
+               . "</div>";
     }
 
 
@@ -1993,8 +1993,8 @@ class Search
             }
         }
         if (
-            isset($data['search']['metacriteria']) &&
-            count($data['search']['metacriteria'])
+            isset($data['search']['metacriteria'])
+            && count($data['search']['metacriteria'])
         ) {
             $metanames = [];
             foreach ($data['search']['metacriteria'] as $metacriteria) {
@@ -2203,15 +2203,15 @@ class Search
         }
 
         $key_to_itemtypes = [
-           'directconnect_types'  => ['Computer'],
-           'infocom_types'        => ['Budget', 'Infocom'],
-           'linkgroup_types'      => ['Group'],
-           // 'linkgroup_tech_types' => ['Group'], // Cannot handle ambiguity with 'Group' from 'linkgroup_types'
-           'linkuser_types'       => ['User'],
-           // 'linkuser_tech_types'  => ['User'], // Cannot handle ambiguity with 'User' from 'linkuser_types'
-           'project_asset_types'  => ['Project'],
-           'rackable_types'       => ['Enclosure', 'Rack'],
-           'ticket_types'         => ['Change', 'Problem', 'Ticket'],
+            'directconnect_types'  => ['Computer'],
+            'infocom_types'        => ['Budget', 'Infocom'],
+            'linkgroup_types'      => ['Group'],
+            // 'linkgroup_tech_types' => ['Group'], // Cannot handle ambiguity with 'Group' from 'linkgroup_types'
+            'linkuser_types'       => ['User'],
+            // 'linkuser_tech_types'  => ['User'], // Cannot handle ambiguity with 'User' from 'linkuser_types'
+            'project_asset_types'  => ['Project'],
+            'rackable_types'       => ['Enclosure', 'Rack'],
+            'ticket_types'         => ['Change', 'Problem', 'Ticket'],
         ];
 
         if (array_key_exists($config_key, $key_to_itemtypes)) {
@@ -2232,7 +2232,7 @@ class Search
      * @param string $parent_itemtype
      * @param string $child_itemtype
      *
-     * @return boolean
+     * @return bool
      */
     private static function isPossibleMetaSubitemOf(string $parent_itemtype, string $child_itemtype)
     {
@@ -2271,15 +2271,15 @@ class Search
 
         // Use reference type if given itemtype extends a reference type.
         $types = [
-           'Computer',
-           'Problem',
-           'Change',
-           'Ticket',
-           'Printer',
-           'Monitor',
-           'Peripheral',
-           'Software',
-           'Phone'
+            'Computer',
+            'Problem',
+            'Change',
+            'Ticket',
+            'Printer',
+            'Monitor',
+            'Peripheral',
+            'Software',
+            'Phone',
         ];
         foreach ($types as $type) {
             if (is_a($itemtype, $type, true)) {
@@ -2298,16 +2298,16 @@ class Search
     {
         if ($only_not) {
             return [
-               'AND'     => Dropdown::EMPTY_VALUE,
-               'AND NOT' => __("NOT")
+                'AND'     => Dropdown::EMPTY_VALUE,
+                'AND NOT' => __("NOT"),
             ];
         }
 
         return [
-           'AND'     => __('AND'),
-           'OR'      => __('OR'),
-           'AND NOT' => __('AND NOT'),
-           'OR NOT'  => __('OR NOT')
+            'AND'     => __('AND'),
+            'OR'      => __('OR'),
+            'AND NOT' => __('AND NOT'),
+            'OR NOT'  => __('OR NOT'),
         ];
     }
 
@@ -2373,9 +2373,9 @@ class Search
         $i = 0;
         foreach (array_keys($p['criteria']) as $i) {
             self::displayCriteria([
-               'itemtype' => $itemtype,
-               'num'      => $i,
-               'p'        => $p
+                'itemtype' => $itemtype,
+                'num'      => $i,
+                'p'        => $p,
             ]);
         }
 
@@ -2422,7 +2422,7 @@ class Search
                        . $p['target']
                        . (strpos($p['target'], '?') ? '&amp;' : '?')
                        . "reset=reset' title=\"" . __s('Blank') . "\"
-                  ><span class='sr-only'>" . __s('Blank')  . "</span></a>";
+                  ><span class='sr-only'>" . __s('Blank') . "</span></a>";
                 }
 
                 if ($p['showfolding']) {
@@ -2566,8 +2566,8 @@ JAVASCRIPT;
         $randrow     = mt_rand();
         $rowid       = 'searchrow' . $request['itemtype'] . $randrow;
         $addclass    = $num == 0 ? ' headerRow' : '';
-        $prefix      = isset($p['prefix_crit']) ? $p['prefix_crit'] : '';
-        $parents_num = isset($p['parents_num']) ? $p['parents_num'] : [];
+        $prefix      = $p['prefix_crit'] ?? '';
+        $parents_num = $p['parents_num'] ?? [];
         $criteria    = [];
         $from_meta   = isset($request['from_meta']) && $request['from_meta'];
 
@@ -2637,32 +2637,32 @@ JAVASCRIPT;
         $spanid   = Html::cleanId('SearchSpan' . $request["itemtype"] . $prefix . $num);
         $json_p   = json_encode($p);
         $idor_display_criteria = Session::getNewIDORToken($request["itemtype"]);
-        $searchtype = isset($criteria['searchtype']) ? $criteria['searchtype'] : '';
+        $searchtype = $criteria['searchtype'] ?? '';
 
         renderTwigTemplate('search/searchCriteria.twig', [
-           'is_deleted' => $p['is_deleted'],
-           'as_map' => $p['as_map'],
-           'rowid' => $rowid,
-           'addclass' => $addclass,
-           'spanid' => $spanid,
-           'from_meta' => $from_meta,
-           'inputs' => [
-              $from_meta ? [] : [
-                 'type' => 'select',
-                 'name' => "criteria{$prefix}[$num][link]",
-                 'values' => Search::getLogicalOperators(($num == 0)),
-                 'value' => isset($criteria["link"]) ? $criteria["link"] : '',
-                 'noLib' => true,
-              ],
-              [
-                 'type' => 'select',
-                 'id' => "dropdown_criteria{$prefix}_{$num}_field_{$randrow}",
-                 'name' => "criteria{$prefix}[$num][field]",
-                 'values' => $values,
-                 'value' => $value,
-                 'noLib' => true,
-                 'hooks' => [
-                    'change' => <<<JS
+            'is_deleted' => $p['is_deleted'],
+            'as_map' => $p['as_map'],
+            'rowid' => $rowid,
+            'addclass' => $addclass,
+            'spanid' => $spanid,
+            'from_meta' => $from_meta,
+            'inputs' => [
+                $from_meta ? [] : [
+                    'type' => 'select',
+                    'name' => "criteria{$prefix}[$num][link]",
+                    'values' => Search::getLogicalOperators(($num == 0)),
+                    'value' => $criteria["link"] ?? '',
+                    'noLib' => true,
+                ],
+                [
+                    'type' => 'select',
+                    'id' => "dropdown_criteria{$prefix}_{$num}_field_{$randrow}",
+                    'name' => "criteria{$prefix}[$num][field]",
+                    'values' => $values,
+                    'value' => $value,
+                    'noLib' => true,
+                    'hooks' => [
+                        'change' => <<<JS
                             const \$select = $(this);
                             const \$container = \$select.closest('[data-search-container]');
                             const containerKey = \$container.data('search-container');
@@ -2697,8 +2697,8 @@ JAVASCRIPT;
                                 }
                             });
                   JS,
-                 ],
-                 'init' => <<<JS
+                    ],
+                    'init' => <<<JS
                         const \$field = $('#dropdown_criteria{$prefix}_{$num}_field_{$randrow}');
                         const \$container = $('[data-search-container="{$spanid}"]');
                         const dataKey = 'searchOption_{$spanid}';
@@ -2732,8 +2732,8 @@ JAVASCRIPT;
                             }
                         });
                JS,
-              ]
-           ]
+                ],
+            ],
         ]);
     }
 
@@ -2760,8 +2760,8 @@ JAVASCRIPT;
 
         $p            = $request['p'];
         $num          = (int) $request['num'];
-        $prefix       = isset($p['prefix_crit']) ? $p['prefix_crit'] : '';
-        $parents_num  = isset($p['parents_num']) ? $p['parents_num'] : [];
+        $prefix       = $p['prefix_crit'] ?? '';
+        $parents_num  = $p['parents_num'] ?? [];
         $itemtype     = $request["itemtype"];
         $metacriteria = [];
 
@@ -2791,7 +2791,7 @@ JAVASCRIPT;
             }
         }
         asort($values);
-        $value    = isset($metacriteria['itemtype']) ? $metacriteria['itemtype'] : '';
+        $value    = $metacriteria['itemtype'] ?? '';
 
         $randrow  = mt_rand();
 
@@ -2818,34 +2818,34 @@ JAVASCRIPT;
         //    ])
         // ];
         renderTwigTemplate('search/searchCriteria.twig', [
-           'is_deleted' => $p['is_deleted'],
-           'as_map' => $p['as_map'],
-           'rowid' => $rowid,
-           'spanid' => $spanid,
-           'noLib' => true,
-           'meta' => true,
-           'inputs' => [
-              [
-                 'type' => 'hidden',
-                 'name' => "criteria{$prefix}[$num][meta]",
-                 'value' => true
-              ],
-              [
-                 'type' => 'select',
-                 'name' => "criteria{$prefix}[$num][link]",
-                 'values' => Search::getLogicalOperators(($num == 0)),
-                 'value' => isset($criteria["link"]) ? $criteria["link"] : '',
-                 'noLib' => true,
-              ],
-              [
-                 'type' => 'select',
-                 'id' => "dropdown_criteria{$prefix}_{$num}_field_{$randrow}",
-                 'name' => "criteria{$prefix}[$num][itemtype]",
-                 'values' => $values,
-                 'value' => $value,
-                 'noLib' => true,
-                 'hooks' => [
-                    'change' => <<<JS
+            'is_deleted' => $p['is_deleted'],
+            'as_map' => $p['as_map'],
+            'rowid' => $rowid,
+            'spanid' => $spanid,
+            'noLib' => true,
+            'meta' => true,
+            'inputs' => [
+                [
+                    'type' => 'hidden',
+                    'name' => "criteria{$prefix}[$num][meta]",
+                    'value' => true,
+                ],
+                [
+                    'type' => 'select',
+                    'name' => "criteria{$prefix}[$num][link]",
+                    'values' => Search::getLogicalOperators(($num == 0)),
+                    'value' => $criteria["link"] ?? '',
+                    'noLib' => true,
+                ],
+                [
+                    'type' => 'select',
+                    'id' => "dropdown_criteria{$prefix}_{$num}_field_{$randrow}",
+                    'name' => "criteria{$prefix}[$num][itemtype]",
+                    'values' => $values,
+                    'value' => $value,
+                    'noLib' => true,
+                    'hooks' => [
+                        'change' => <<<JS
                      $.ajax({
                         url: '{$CFG_GLPI['root_doc']}/ajax/search.php',
                         type: 'POST',
@@ -2863,8 +2863,8 @@ JAVASCRIPT;
                         }
                      });
                   JS,
-                 ],
-                 'init' => <<<JS
+                    ],
+                    'init' => <<<JS
                   $.ajax({
                      url: '{$CFG_GLPI['root_doc']}/ajax/search.php',
                      type: 'POST',
@@ -2882,8 +2882,8 @@ JAVASCRIPT;
                      }
                   });
                JS,
-              ]
-           ]
+                ],
+            ],
         ]);
         echo "</li>";
     }
@@ -2905,30 +2905,30 @@ JAVASCRIPT;
         $randrow     = mt_rand();
         $rowid       = 'searchrow' . $request['itemtype'] . $randrow;
         $addclass    = $num == 0 ? ' headerRow' : '';
-        $prefix      = isset($p['prefix_crit']) ? $p['prefix_crit'] : '';
-        $parents_num = isset($p['parents_num']) ? $p['parents_num'] : [];
+        $prefix      = $p['prefix_crit'] ?? '';
+        $parents_num = $p['parents_num'] ?? [];
 
         if (!$criteria = self::findCriteriaInSession($request['itemtype'], $num, $parents_num)) {
             $criteria = [
-               'criteria' => self::getDefaultCriteria($request['itemtype']),
+                'criteria' => self::getDefaultCriteria($request['itemtype']),
             ];
         }
 
         echo "<li class='normalcriteria$addclass' id='$rowid'>";
-        echo "<i class='far fa-minus-square remove-search-criteria' alt='-' title=\"" .
-                 __s('Delete a rule') . "\" data-rowid='$rowid'></i>&nbsp;";
+        echo "<i class='far fa-minus-square remove-search-criteria' alt='-' title=\""
+                 . __s('Delete a rule') . "\" data-rowid='$rowid'></i>&nbsp;";
         Dropdown::showFromArray("criteria{$prefix}[$num][link]", Search::getLogicalOperators(), [
-           'value' => isset($criteria["link"]) ? $criteria["link"] : '',
-           'width' => '80px'
+            'value' => $criteria["link"] ?? '',
+            'width' => '80px',
         ]);
 
-        $parents_num = isset($p['parents_num']) ? $p['parents_num'] : [];
+        $parents_num = $p['parents_num'] ?? [];
         array_push($parents_num, $num);
         $params = [
-           'mainform'    => false,
-           'prefix_crit' => "{$prefix}[$num][criteria]",
-           'parents_num' => $parents_num,
-           'criteria'    => $criteria['criteria'],
+            'mainform'    => false,
+            'prefix_crit' => "{$prefix}[$num][criteria]",
+            'parents_num' => $parents_num,
+            'criteria'    => $criteria['criteria'],
         ];
 
         echo self::showGenericSearch($request['itemtype'], $params);
@@ -2941,7 +2941,7 @@ JAVASCRIPT;
      * @since 9.4
      *
      * @param  string  $itemtype    which glpi type we must search in session
-     * @param  integer $num         index of the criteria
+     * @param  int $num         index of the criteria
      * @param  array   $parents_num node indexes of the parents (@see displayCriteriaGroup)
      *
      * @return mixed   the found criteria array of false of nothing found
@@ -3003,11 +3003,11 @@ JAVASCRIPT;
         }
 
         return [
-           [
-              'field' => $field,
-              'link'  => 'contains',
-              'value' => ''
-           ]
+            [
+                'field' => $field,
+                'link'  => 'contains',
+                'value' => '',
+            ],
         ];
     }
 
@@ -3038,14 +3038,14 @@ JAVASCRIPT;
 
         $p      = $request['p'];
         $num    = (int) $request['num'];
-        $prefix = isset($p['prefix_crit']) ? $p['prefix_crit'] : '';
+        $prefix = $p['prefix_crit'] ?? '';
 
         $itemtype = $request['itemtype'];
         if (
             !is_subclass_of($itemtype, 'CommonDBTM')
             && !isset($CFG_GLPI['union_search_type'][$itemtype])
         ) {
-            throw new \RuntimeException('Invalid itemtype provided!');
+            throw new RuntimeException('Invalid itemtype provided!');
         }
 
         if (isset($request['meta']) && $request['meta']) {
@@ -3069,10 +3069,10 @@ JAVASCRIPT;
         }
 
         $rands = -1;
-        $dropdownname = Html::cleanId("spansearchtype$fieldname" .
-                                      $request["itemtype"] .
-                                      $prefix .
-                                      $num);
+        $dropdownname = Html::cleanId("spansearchtype$fieldname"
+                                      . $request["itemtype"]
+                                      . $prefix
+                                      . $num);
         $searchopt = [];
         if (count($actions) > 0) {
             // get already get search options
@@ -3084,23 +3084,22 @@ JAVASCRIPT;
             }
             $searchtype_name = "{$fieldname}{$prefix}[$num][searchtype]";
             $rands = Dropdown::showFromArray($searchtype_name, $actions, [
-               'value' => $request["searchtype"],
+                'value' => $request["searchtype"],
             ]);
             $fieldsearch_id = Html::cleanId("dropdown_$searchtype_name$rands");
         }
 
         $params = [
-           'value'       => rawurlencode(stripslashes((string) $request['value'])),
-           'searchopt'   => $searchopt,
-           'searchtype'  => $request["searchtype"],
-           'num'         => $num,
-           'itemtype'    => $request["itemtype"],
-           '_idor_token' => Session::getNewIDORToken($request["itemtype"]),
-           'from_meta'   => isset($request['from_meta'])
-                             ? $request['from_meta']
-                             : false,
-           'field'       => $request["field"],
-           'p'           => $p,
+            'value'       => rawurlencode(stripslashes((string) $request['value'])),
+            'searchopt'   => $searchopt,
+            'searchtype'  => $request["searchtype"],
+            'num'         => $num,
+            'itemtype'    => $request["itemtype"],
+            '_idor_token' => Session::getNewIDORToken($request["itemtype"]),
+            'from_meta'   => $request['from_meta']
+                              ?? false,
+            'field'       => $request["field"],
+            'p'           => $p,
         ];
 
         Ajax::updateItemOnSelectEvent(
@@ -3108,8 +3107,8 @@ JAVASCRIPT;
             $dropdownname,
             $CFG_GLPI["root_doc"] . "/ajax/search.php",
             [
-              'action'     => 'display_searchoption_value',
-              'searchtype' => '__VALUE__',
+                'action'     => 'display_searchoption_value',
+                'searchtype' => '__VALUE__',
             ] + $params
         );
 
@@ -3136,8 +3135,8 @@ JAVASCRIPT;
         }
 
         $p                 = $request['p'];
-        $prefix            = isset($p['prefix_crit']) ? $p['prefix_crit'] : '';
-        $searchopt         = isset($request['searchopt']) ? $request['searchopt'] : [];
+        $prefix            = $p['prefix_crit'] ?? '';
+        $searchopt         = $request['searchopt'] ?? [];
         $request['value']  = rawurldecode((string) $request['value']);
         $fieldname         = isset($request['meta']) && $request['meta']
                                 ? 'metacriteria'
@@ -3194,7 +3193,7 @@ JAVASCRIPT;
                             break;
 
                         case "glpi_users.name":
-                            $options2['right']            = (isset($searchopt['right']) ? $searchopt['right'] : 'all');
+                            $options2['right']            = ($searchopt['right'] ?? 'all');
                             $options2['inactive_deleted'] = 1;
                             break;
                     }
@@ -3225,10 +3224,10 @@ JAVASCRIPT;
                             $plug['plugin'],
                             'searchOptionsValues',
                             [
-                              'name'           => $inputname,
-                              'searchtype'     => $request['searchtype'],
-                              'searchoption'   => $searchopt,
-                              'value'          => $request['value']
+                                'name'           => $inputname,
+                                'searchtype'     => $request['searchtype'],
+                                'searchoption'   => $searchopt,
+                                'value'          => $request['value'],
                             ]
                         );
                     }
@@ -3236,8 +3235,8 @@ JAVASCRIPT;
                 break;
             default:
                 if (!$display) {
-                    echo "<input type='text' size='13' name='$inputname' class='form-control' value=\"" .
-                             Html::cleanInputText($request['value']) . "\">";
+                    echo "<input type='text' size='13' name='$inputname' class='form-control' value=\""
+                             . Html::cleanInputText($request['value']) . "\">";
                 }
                 break;
         }
@@ -3252,7 +3251,7 @@ JAVASCRIPT;
      * @param string  $LINK           link to use
      * @param string  $NOT            is is a negative search ?
      * @param string  $itemtype       item type
-     * @param integer $ID             ID of the item to search
+     * @param int $ID             ID of the item to search
      * @param string  $searchtype     search type ('contains' or 'equals')
      * @param string  $val            value search
      *
@@ -3368,12 +3367,12 @@ JAVASCRIPT;
                         if (isset($searchopt[$ID]["width"])) {
                             if (!$NOT) {
                                 return " $LINK (`$NAME` < " . (intval($val) + $searchopt[$ID]["width"]) . "
-                                        AND `$NAME` > " .
-                                                   (intval($val) - $searchopt[$ID]["width"]) . ") ";
+                                        AND `$NAME` > "
+                                                   . (intval($val) - $searchopt[$ID]["width"]) . ") ";
                             }
                             return " $LINK (`$NAME` > " . (intval($val) + $searchopt[$ID]["width"]) . "
-                                     OR `$NAME` < " .
-                                               (intval($val) - $searchopt[$ID]["width"]) . " ) ";
+                                     OR `$NAME` < "
+                                               . (intval($val) - $searchopt[$ID]["width"]) . " ) ";
                         }
                         // Exact search
                         if (!$NOT) {
@@ -3395,7 +3394,7 @@ JAVASCRIPT;
      * @since 9.4: $key param has been dropped
      *
      * @param string  $itemtype  ID of the device type
-     * @param integer $ID        field to add
+     * @param int $ID        field to add
      * @param string  $order     order define
      *
      * @return select string
@@ -3457,11 +3456,11 @@ JAVASCRIPT;
             case "glpi_auth_tables.name":
                 $user_searchopt = self::getOptions('User');
                 return " ORDER BY `glpi_users`.`authtype` $order,
-                              `glpi_authldaps" . $addtable . "_" .
-                                     self::computeComplexJoinID($user_searchopt[30]['joinparams']) . "`.
+                              `glpi_authldaps" . $addtable . "_"
+                                     . self::computeComplexJoinID($user_searchopt[30]['joinparams']) . "`.
                                  `name` $order,
-                              `glpi_authmails" . $addtable . "_" .
-                                     self::computeComplexJoinID($user_searchopt[31]['joinparams']) . "`.
+                              `glpi_authmails" . $addtable . "_"
+                                     . self::computeComplexJoinID($user_searchopt[31]['joinparams']) . "`.
                                  `name` $order ";
 
             case "glpi_users.name":
@@ -3518,8 +3517,8 @@ JAVASCRIPT;
                         $add_minus = "- `$table$addtable`.`" . $searchopt[$ID]["datafields"][3] . "`";
                     }
                     return " ORDER BY ADDDATE(`$table$addtable`.`" . $searchopt[$ID]["datafields"][1] . "`,
-                                         INTERVAL (`$table$addtable`.`" .
-                                                        $searchopt[$ID]["datafields"][2] . "` $add_minus)
+                                         INTERVAL (`$table$addtable`.`"
+                                                        . $searchopt[$ID]["datafields"][2] . "` $add_minus)
                                          $interval) $order ";
             }
         }
@@ -3624,9 +3623,9 @@ JAVASCRIPT;
      * @since 9.4: $num param has been dropped
      *
      * @param string  $itemtype     item type
-     * @param integer $ID           ID of the item to add
-     * @param boolean $meta         boolean is a meta
-     * @param integer $meta_type    meta type table ID (default 0)
+     * @param int $ID           ID of the item to add
+     * @param bool $meta         boolean is a meta
+     * @param int $meta_type    meta type table ID (default 0)
      *
      * @return string Select string
     **/
@@ -3735,8 +3734,8 @@ JAVASCRIPT;
                                       == 'glpi_changes_users'))
                         ) { // For tickets_users
                             $ticket_user_table
-                               = $searchopt[$ID]['joinparams']['beforejoin']['table'] .
-                                 "_" . self::computeComplexJoinID($searchopt[$ID]['joinparams']['beforejoin']
+                               = $searchopt[$ID]['joinparams']['beforejoin']['table']
+                                 . "_" . self::computeComplexJoinID($searchopt[$ID]['joinparams']['beforejoin']
                                                                           ['joinparams']) . $addmeta;
                             $addaltemail
                                = "GROUP_CONCAT(DISTINCT CONCAT(`$ticket_user_table`.`users_id`, ' ',
@@ -3817,11 +3816,11 @@ JAVASCRIPT;
                 $user_searchopt = self::getOptions('User');
                 return " `glpi_users`.`authtype` AS `" . $NAME . "`,
                      `glpi_users`.`auths_id` AS `" . $NAME . "_auths_id`,
-                     `glpi_authldaps" . $addtable . "_" .
-                               self::computeComplexJoinID($user_searchopt[30]['joinparams']) . $addmeta . "`.`$field`
+                     `glpi_authldaps" . $addtable . "_"
+                               . self::computeComplexJoinID($user_searchopt[30]['joinparams']) . $addmeta . "`.`$field`
                               AS `" . $NAME . "_" . $ID . "_ldapname`,
-                     `glpi_authmails" . $addtable . "_" .
-                               self::computeComplexJoinID($user_searchopt[31]['joinparams']) . $addmeta . "`.`$field`
+                     `glpi_authmails" . $addtable . "_"
+                               . self::computeComplexJoinID($user_searchopt[31]['joinparams']) . $addmeta . "`.`$field`
                               AS `" . $NAME . "_mailname`,
                      $ADDITONALFIELDS";
 
@@ -3931,17 +3930,17 @@ JAVASCRIPT;
                         $meta
                         || (isset($searchopt[$ID]["forcegroupby"]) && $searchopt[$ID]["forcegroupby"])
                     ) {
-                        return " GROUP_CONCAT(DISTINCT ADDDATE(`$table$addtable`.`" .
-                                                                  $searchopt[$ID]["datafields"][1] . "`,
-                                                         INTERVAL (`$table$addtable`.`" .
-                                                                          $searchopt[$ID]["datafields"][2] .
-                                                                          "` $add_minus) $interval)
+                        return " GROUP_CONCAT(DISTINCT ADDDATE(`$table$addtable`.`"
+                                                                  . $searchopt[$ID]["datafields"][1] . "`,
+                                                         INTERVAL (`$table$addtable`.`"
+                                                                          . $searchopt[$ID]["datafields"][2]
+                                                                          . "` $add_minus) $interval)
                                          SEPARATOR '" . self::LONGSEP . "') AS `" . $NAME . "`,
                            $ADDITONALFIELDS";
                     }
                     return "ADDDATE(`$table$addtable`.`" . $searchopt[$ID]["datafields"][1] . "`,
-                               INTERVAL (`$table$addtable`.`" . $searchopt[$ID]["datafields"][2] .
-                                               "` $add_minus) $interval) AS `" . $NAME . "`,
+                               INTERVAL (`$table$addtable`.`" . $searchopt[$ID]["datafields"][2]
+                                               . "` $add_minus) $interval) AS `" . $NAME . "`,
                        $ADDITONALFIELDS";
 
                 case "itemlink":
@@ -4070,30 +4069,30 @@ JAVASCRIPT;
                     $searchopt
                        = &self::getOptions($itemtype);
                     $requester_table
-                       = '`glpi_tickets_users_' .
-                          self::computeComplexJoinID($searchopt[4]['joinparams']['beforejoin']
+                       = '`glpi_tickets_users_'
+                          . self::computeComplexJoinID($searchopt[4]['joinparams']['beforejoin']
                                                                ['joinparams']) . '`';
                     $requestergroup_table
-                       = '`glpi_groups_tickets_' .
-                          self::computeComplexJoinID($searchopt[71]['joinparams']['beforejoin']
+                       = '`glpi_groups_tickets_'
+                          . self::computeComplexJoinID($searchopt[71]['joinparams']['beforejoin']
                                                                ['joinparams']) . '`';
 
                     $assign_table
-                       = '`glpi_tickets_users_' .
-                          self::computeComplexJoinID($searchopt[5]['joinparams']['beforejoin']
+                       = '`glpi_tickets_users_'
+                          . self::computeComplexJoinID($searchopt[5]['joinparams']['beforejoin']
                                                                ['joinparams']) . '`';
                     $assigngroup_table
-                       = '`glpi_groups_tickets_' .
-                          self::computeComplexJoinID($searchopt[8]['joinparams']['beforejoin']
+                       = '`glpi_groups_tickets_'
+                          . self::computeComplexJoinID($searchopt[8]['joinparams']['beforejoin']
                                                                ['joinparams']) . '`';
 
                     $observer_table
-                       = '`glpi_tickets_users_' .
-                          self::computeComplexJoinID($searchopt[66]['joinparams']['beforejoin']
+                       = '`glpi_tickets_users_'
+                          . self::computeComplexJoinID($searchopt[66]['joinparams']['beforejoin']
                                                                ['joinparams']) . '`';
                     $observergroup_table
-                       = '`glpi_groups_tickets_' .
-                          self::computeComplexJoinID($searchopt[65]['joinparams']['beforejoin']
+                       = '`glpi_groups_tickets_'
+                          . self::computeComplexJoinID($searchopt[65]['joinparams']['beforejoin']
                                                                ['joinparams']) . '`';
 
                     $condition = "(";
@@ -4134,7 +4133,7 @@ JAVASCRIPT;
                         Session::haveRightsOr(
                             'ticketvalidation',
                             [TicketValidation::VALIDATEINCIDENT,
-                                                    TicketValidation::VALIDATEREQUEST]
+                                TicketValidation::VALIDATEREQUEST]
                         )
                     ) {
                         $condition .= " OR `glpi_ticketvalidations`.`users_id_validate`
@@ -4160,25 +4159,25 @@ JAVASCRIPT;
                 if (!Session::haveRight("$right", $itemtype::READALL)) {
                     $searchopt       = &self::getOptions($itemtype);
                     if (Session::haveRight("$right", $itemtype::READMY)) {
-                        $requester_table      = '`glpi_' . $table . '_users_' .
-                                                self::computeComplexJoinID($searchopt[4]['joinparams']
+                        $requester_table      = '`glpi_' . $table . '_users_'
+                                                . self::computeComplexJoinID($searchopt[4]['joinparams']
                                                                            ['beforejoin']['joinparams']) . '`';
-                        $requestergroup_table = $groupetable .
-                                                self::computeComplexJoinID($searchopt[71]['joinparams']
+                        $requestergroup_table = $groupetable
+                                                . self::computeComplexJoinID($searchopt[71]['joinparams']
                                                                            ['beforejoin']['joinparams']) . '`';
 
-                        $observer_table       = '`glpi_' . $table . '_users_' .
-                                                self::computeComplexJoinID($searchopt[66]['joinparams']
+                        $observer_table       = '`glpi_' . $table . '_users_'
+                                                . self::computeComplexJoinID($searchopt[66]['joinparams']
                                                                            ['beforejoin']['joinparams']) . '`';
-                        $observergroup_table  = $groupetable .
-                                                self::computeComplexJoinID($searchopt[65]['joinparams']
+                        $observergroup_table  = $groupetable
+                                                . self::computeComplexJoinID($searchopt[65]['joinparams']
                                                                           ['beforejoin']['joinparams']) . '`';
 
-                        $assign_table         = '`glpi_' . $table . '_users_' .
-                                                self::computeComplexJoinID($searchopt[5]['joinparams']
+                        $assign_table         = '`glpi_' . $table . '_users_'
+                                                . self::computeComplexJoinID($searchopt[5]['joinparams']
                                                                            ['beforejoin']['joinparams']) . '`';
-                        $assigngroup_table    = $groupetable .
-                                                self::computeComplexJoinID($searchopt[8]['joinparams']
+                        $assigngroup_table    = $groupetable
+                                                . self::computeComplexJoinID($searchopt[8]['joinparams']
                                                                            ['beforejoin']['joinparams']) . '`';
                     }
                     $condition = "(";
@@ -4268,12 +4267,12 @@ JAVASCRIPT;
                 $condition .= "AND (";
 
                 // Filter for "ticket" parents
-                $condition .= ITILFollowup::buildParentCondition(\Ticket::getType());
+                $condition .= ITILFollowup::buildParentCondition(Ticket::getType());
                 $condition .= "OR ";
 
                 // Filter for "change" parents
                 $condition .= ITILFollowup::buildParentCondition(
-                    \Change::getType(),
+                    Change::getType(),
                     'changes_id',
                     "glpi_changes_users",
                     "glpi_changes_groups"
@@ -4282,7 +4281,7 @@ JAVASCRIPT;
 
                 // Fitler for "problem" parents
                 $condition .= ITILFollowup::buildParentCondition(
-                    \Problem::getType(),
+                    Problem::getType(),
                     'problems_id',
                     "glpi_problems_users",
                     "glpi_groups_problems"
@@ -4300,7 +4299,7 @@ JAVASCRIPT;
         }
 
         /* Hook to restrict user right on current itemtype */
-        list($itemtype, $condition) = Plugin::doHookFunction('add_default_where', [$itemtype, $condition]);
+        [$itemtype, $condition] = Plugin::doHookFunction('add_default_where', [$itemtype, $condition]);
         return $condition;
     }
 
@@ -4308,12 +4307,12 @@ JAVASCRIPT;
      * Generic Function to add where to a request
      *
      * @param string  $link         Link string
-     * @param boolean $nott         Is it a negative search ?
+     * @param bool $nott         Is it a negative search ?
      * @param string  $itemtype     Item type
-     * @param integer $ID           ID of the item to search
+     * @param int $ID           ID of the item to search
      * @param string  $searchtype   Searchtype used (equals or contains)
      * @param string  $val          Item num in the request
-     * @param integer $meta         Is a meta search (meta=2 in search.class.php) (default 0)
+     * @param int $meta         Is a meta search (meta=2 in search.class.php) (default 0)
      *
      * @return string Where string
     **/
@@ -4362,8 +4361,8 @@ JAVASCRIPT;
 
         // Hack to allow search by ID on every sub-table
         if (preg_match('/^\$\$\$\$([0-9]+)$/', $val, $regs)) {
-            return $link . " (`$table`.`id` " . ($nott ? "<>" : "=") . $regs[1] . " " .
-                            (($regs[1] == 0) ? " OR `$table`.`id` IS NULL" : '') . ") ";
+            return $link . " (`$table`.`id` " . ($nott ? "<>" : "=") . $regs[1] . " "
+                            . (($regs[1] == 0) ? " OR `$table`.`id` IS NULL" : '') . ") ";
         }
 
         // Preparse value
@@ -4482,9 +4481,9 @@ JAVASCRIPT;
                 }
 
                 if (in_array($searchtype, ['equals', 'notequals'])) {
-                    return " $link (`$table`.`id`" . $SEARCH .
-                                    (($val == 0) ? " OR `$table`.`id` IS" .
-                                        (($searchtype == "notequals") ? " NOT" : "") . " NULL" : '') . ') ';
+                    return " $link (`$table`.`id`" . $SEARCH
+                                    . (($val == 0) ? " OR `$table`.`id` IS"
+                                        . (($searchtype == "notequals") ? " NOT" : "") . " NULL" : '') . ') ';
                 }
                 $toadd   = '';
 
@@ -4572,11 +4571,11 @@ JAVASCRIPT;
                 if ($nott) {
                     $tmplink = 'AND';
                 }
-                return $link . " (`glpi_authmails" . $addtable . "_" .
-                                  self::computeComplexJoinID($user_searchopt[31]['joinparams']) . $addmeta . "`.`name`
+                return $link . " (`glpi_authmails" . $addtable . "_"
+                                  . self::computeComplexJoinID($user_searchopt[31]['joinparams']) . $addmeta . "`.`name`
                            $SEARCH
-                           $tmplink `glpi_authldaps" . $addtable . "_" .
-                                  self::computeComplexJoinID($user_searchopt[30]['joinparams']) . $addmeta . "`.`name`
+                           $tmplink `glpi_authldaps" . $addtable . "_"
+                                  . self::computeComplexJoinID($user_searchopt[30]['joinparams']) . $addmeta . "`.`name`
                            $SEARCH ) ";
 
             case "glpi_ipaddresses.name":
@@ -4724,7 +4723,7 @@ JAVASCRIPT;
             case "glpi_notifications.event":
                 if (in_array($searchtype, ['equals', 'notequals']) && strpos($val, self::SHORTSEP)) {
                     $not = 'notequals' === $searchtype ? 'NOT' : '';
-                    list($itemtype_val, $event_val) = explode(self::SHORTSEP, $val);
+                    [$itemtype_val, $event_val] = explode(self::SHORTSEP, $val);
                     return " $link $not(`$table`.`event` = '$event_val'
                                AND `$table`.`itemtype` = '$itemtype_val')";
                 }
@@ -4779,8 +4778,8 @@ JAVASCRIPT;
                 case "datetime":
                 case "date":
                 case "date_delay":
-                    if ($searchopt[$ID]["datatype"] == 'datetime' ||
-                        ($searchopt[$ID]["datatype"] == 'date' && $inittable == 'glpi_tickets')) {
+                    if ($searchopt[$ID]["datatype"] == 'datetime'
+                        || ($searchopt[$ID]["datatype"] == 'date' && $inittable == 'glpi_tickets')) {
 
                         // Specific search for datetime
                         if (in_array($searchtype, ['equals', 'notequals'])) {
@@ -5143,7 +5142,7 @@ JAVASCRIPT;
                         Session::haveRightsOr(
                             'ticketvalidation',
                             [TicketValidation::VALIDATEINCIDENT,
-                                                    TicketValidation::VALIDATEREQUEST]
+                                TicketValidation::VALIDATEREQUEST]
                         )
                     ) {
                         $out .= self::addLeftJoin(
@@ -5284,8 +5283,8 @@ JAVASCRIPT;
      * @param array   $already_link_tables  Array of tables already joined
      * @param string  $new_table            New table to join
      * @param string  $linkfield            Linkfield for LeftJoin
-     * @param boolean $meta                 Is it a meta item ? (default 0)
-     * @param integer $meta_type            Meta type table (default 0)
+     * @param bool $meta                 Is it a meta item ? (default 0)
+     * @param int $meta_type            Meta type table (default 0)
      * @param array   $joinparams           Array join parameters (condition / joinbefore...)
      * @param string  $field                Field to display (needed for translation join) (default '')
      *
@@ -5868,7 +5867,7 @@ JAVASCRIPT;
      * @since 9.4: $num param has been dropped
      *
      * @param string  $itemtype item type
-     * @param integer $ID       ID of the SEARCH_OPTION item
+     * @param int $ID       ID of the SEARCH_OPTION item
      * @param array   $data     array retrieved data array
      *
      * @return string String to print
@@ -5937,9 +5936,9 @@ JAVASCRIPT;
      * @since 9.4: $num param has been dropped
      *
      * @param string  $itemtype        item type
-     * @param integer $ID              ID of the SEARCH_OPTION item
+     * @param int $ID              ID of the SEARCH_OPTION item
      * @param array   $data            array containing data results
-     * @param boolean $meta            is a meta item ? (default 0)
+     * @param bool $meta            is a meta item ? (default 0)
      * @param array   $addobjectparams array added parameters for union search
      * @param string  $orig_itemtype   Original itemtype, used for union_search_type
      *
@@ -6054,7 +6053,7 @@ JAVASCRIPT;
                                             $tooltip = Html::showToolTip(
                                                 $userdata["comment"],
                                                 ['link'    => $userdata["link"],
-                                                                               'display' => false]
+                                                    'display' => false]
                                             );
                                         }
                                         $out .= sprintf(__('%1$s %2$s'), $userdata['name'], $tooltip);
@@ -6096,7 +6095,7 @@ JAVASCRIPT;
                             $toadd    = Html::showToolTip(
                                 $userdata["comment"],
                                 ['link'    => $userdata["link"],
-                                                                'display' => false]
+                                    'display' => false]
                             );
                         }
                         $usernameformat = formatUserName(
@@ -6121,7 +6120,7 @@ JAVASCRIPT;
                         $added         = [];
                         for ($k = 0; $k < $data[$ID]['count']; $k++) {
                             if (
-                                strlen(trim((string)($data[$ID][$k]['name'] ?? ''))) > 0
+                                strlen(trim((string) ($data[$ID][$k]['name'] ?? ''))) > 0
                                 && !in_array(
                                     $data[$ID][$k]['name'] . "-" . $data[$ID][$k]['entities_id'],
                                     $added
@@ -6168,7 +6167,7 @@ JAVASCRIPT;
                         for ($k = 0; $k < $data[$ID]['count']; $k++) {
                             if (
                                 isset($data[$ID][$k]['name'])
-                                && (strlen(trim((string)($data[$ID][$k]['name'] ?? ''))) > 0)
+                                && (strlen(trim((string) ($data[$ID][$k]['name'] ?? ''))) > 0)
                                 && !in_array(
                                     $data[$ID][$k]['name'] . "-" . $data[$ID][$k]['profiles_id'],
                                     $added
@@ -6209,8 +6208,8 @@ JAVASCRIPT;
 
                 case "glpi_documenttypes.icon":
                     if (!empty($data[$ID][0]['name'])) {
-                        return "<img class='middle' alt='' src='" . $CFG_GLPI["typedoc_icon_dir"] . "/" .
-                                 $data[$ID][0]['name'] . "'>";
+                        return "<img class='middle' alt='' src='" . $CFG_GLPI["typedoc_icon_dir"] . "/"
+                                 . $data[$ID][0]['name'] . "'>";
                     }
                     return "&nbsp;";
 
@@ -6271,8 +6270,8 @@ JAVASCRIPT;
                             $options['reset'] = 'reset';
 
                             $out  = "<a id='problem$itemtype" . $data['id'] . "' ";
-                            $out .= "href=\"" . $CFG_GLPI["root_doc"] . "/front/problem.php?" .
-                                     Toolbox::append_params($options, '&amp;') . "\">";
+                            $out .= "href=\"" . $CFG_GLPI["root_doc"] . "/front/problem.php?"
+                                     . Toolbox::append_params($options, '&amp;') . "\">";
                             $out .= $data[$ID][0]['name'] . "</a>";
                             return $out;
                         }
@@ -6332,8 +6331,8 @@ JAVASCRIPT;
                             $options['reset'] = 'reset';
 
                             $out  = "<a id='ticket$itemtype" . $data['id'] . "' ";
-                            $out .= "href=\"" . $CFG_GLPI["root_doc"] . "/front/ticket.php?" .
-                                     Toolbox::append_params($options, '&amp;') . "\">";
+                            $out .= "href=\"" . $CFG_GLPI["root_doc"] . "/front/ticket.php?"
+                                     . Toolbox::append_params($options, '&amp;') . "\">";
                             $out .= $data[$ID][0]['name'] . "</a>";
                             return $out;
                         }
@@ -6481,10 +6480,10 @@ JAVASCRIPT;
                         }
 
                         $progressbar_data = [
-                           'text'         => Html::convDateTime($data[$ID][0]['name']),
-                           'percent'      => $percentage,
-                           'percent_text' => $percentage_text,
-                           'color'        => $color
+                            'text'         => Html::convDateTime($data[$ID][0]['name']),
+                            'percent'      => $percentage,
+                            'percent_text' => $percentage_text,
+                            'color'        => $color,
                         ];
                     }
                     break;
@@ -6524,21 +6523,21 @@ JAVASCRIPT;
 
                 case 'glpi_changes.status':
                     $status = Change::getStatus($data[$ID][0]['name']);
-                    return "<span class='no-wrap'>" .
-                           Change::getStatusIcon($data[$ID][0]['name']) . "&nbsp;$status" .
-                           "</span>";
+                    return "<span class='no-wrap'>"
+                           . Change::getStatusIcon($data[$ID][0]['name']) . "&nbsp;$status"
+                           . "</span>";
 
                 case 'glpi_problems.status':
                     $status = Problem::getStatus($data[$ID][0]['name']);
-                    return "<span class='no-wrap'>" .
-                           Problem::getStatusIcon($data[$ID][0]['name']) . "&nbsp;$status" .
-                           "</span>";
+                    return "<span class='no-wrap'>"
+                           . Problem::getStatusIcon($data[$ID][0]['name']) . "&nbsp;$status"
+                           . "</span>";
 
                 case 'glpi_tickets.status':
                     $status = Ticket::getStatus($data[$ID][0]['name']);
-                    return "<span class='no-wrap'>" .
-                           Ticket::getStatusIcon($data[$ID][0]['name']) . "&nbsp;$status" .
-                           "</span>";
+                    return "<span class='no-wrap'>"
+                           . Ticket::getStatusIcon($data[$ID][0]['name']) . "&nbsp;$status"
+                           . "</span>";
 
                 case 'glpi_projectstates.name':
                     $out = '';
@@ -6634,9 +6633,9 @@ JAVASCRIPT;
                             $out,
                             Html::showToolTip(
                                 nl2br(Html::Clean($content)),
-                                ['applyto' => $itemtype .
-                                                                       $data[$ID][0]['id'],
-                                                          'display' => false]
+                                ['applyto' => $itemtype
+                                                                       . $data[$ID][0]['id'],
+                                    'display' => false]
                             )
                         );
                         return $out;
@@ -6649,8 +6648,8 @@ JAVASCRIPT;
                         if ($data[$ID][$k]['name']) {
                             $status  = TicketValidation::getStatus($data[$ID][$k]['name']);
                             $bgcolor = TicketValidation::getStatusColor($data[$ID][$k]['name']);
-                            $out    .= (empty($out) ? '' : self::LBBR) .
-                                        "<div style=\"background-color:" . $bgcolor . ";\">" . $status . '</div>';
+                            $out    .= (empty($out) ? '' : self::LBBR)
+                                        . "<div style=\"background-color:" . $bgcolor . ";\">" . $status . '</div>';
                         }
                     }
                     return $out;
@@ -6717,9 +6716,9 @@ JAVASCRIPT;
 
                 case 'glpi_reservationitems._virtual':
                     if ($data[$ID][0]['is_active']) {
-                        return "<a href='reservation.php?reservationitems_id=" .
-                                                $data["refID"] . "' title=\"" . __s('See planning') . "\">" .
-                                                "<i class='far fa-calendar-alt' aria-hidden='true'></i><span class='sr-only'>" . __('See planning') . "</span></a>";
+                        return "<a href='reservation.php?reservationitems_id="
+                                                . $data["refID"] . "' title=\"" . __s('See planning') . "\">"
+                                                . "<i class='far fa-calendar-alt' aria-hidden='true'></i><span class='sr-only'>" . __('See planning') . "</span></a>";
                     } else {
                         return "&nbsp;";
                     }
@@ -6801,9 +6800,9 @@ JAVASCRIPT;
                             if ($_SESSION["glpiis_ids_visible"] || empty($data[$ID][$k]['name'])) {
                                 $name = sprintf(__('%1$s (%2$s)'), $name, $data[$ID][$k]['id']);
                             }
-                            $out  .= "<a id='" . $linkitemtype . "_" . $data['id'] . "_" .
-                                       $data[$ID][$k]['id'] . "' href='$page'>" .
-                                      $name . "</a>";
+                            $out  .= "<a id='" . $linkitemtype . "_" . $data['id'] . "_"
+                                       . $data[$ID][$k]['id'] . "' href='$page'>"
+                                      . $name . "</a>";
                         }
                     }
                     return $out;
@@ -6817,7 +6816,7 @@ JAVASCRIPT;
                     $out           = '';
                     $count_display = 0;
                     for ($k = 0; $k < $data[$ID]['count']; $k++) {
-                        if (strlen(trim((string)($data[$ID][$k]['name'] ?? ''))) > 0) {
+                        if (strlen(trim((string) ($data[$ID][$k]['name'] ?? ''))) > 0) {
                             if ($count_display) {
                                 $out .= $separate;
                             }
@@ -6835,17 +6834,17 @@ JAVASCRIPT;
                             ) {
                                 $rand = mt_rand();
                                 $popup_params = [
-                                   'display'   => false
+                                    'display'   => false,
                                 ];
                                 if (Toolbox::strlen($text) > $CFG_GLPI['cut']) {
                                     $popup_params += [
-                                       'awesome-class'   => 'fa-comments',
-                                       'autoclose'       => false,
-                                       'onclick'         => true
+                                        'awesome-class'   => 'fa-comments',
+                                        'autoclose'       => false,
+                                        'onclick'         => true,
                                     ];
                                 } else {
                                     $popup_params += [
-                                       'applyto'   => "text$rand",
+                                        'applyto'   => "text$rand",
                                     ];
                                 }
                                 $out .= sprintf(
@@ -6946,7 +6945,7 @@ JAVASCRIPT;
                     $out           = "";
                     $count_display = 0;
                     for ($k = 0; $k < $data[$ID]['count']; $k++) {
-                        if (strlen(trim((string)($data[$ID][$k]['name'] ?? ''))) > 0) {
+                        if (strlen(trim((string) ($data[$ID][$k]['name'] ?? ''))) > 0) {
                             if ($count_display) {
                                 $out .= self::LBBR;
                             }
@@ -6967,7 +6966,7 @@ JAVASCRIPT;
                     $out           = "";
                     $count_display = 0;
                     for ($k = 0; $k < $data[$ID]['count']; $k++) {
-                        if (strlen(trim((string)($data[$ID][$k]['name'] ?? ''))) > 0) {
+                        if (strlen(trim((string) ($data[$ID][$k]['name'] ?? ''))) > 0) {
                             if ($count_display) {
                                 $out .= self::LBBR;
                             }
@@ -6988,7 +6987,7 @@ JAVASCRIPT;
                     $out           = "";
                     $count_display = 0;
                     for ($k = 0; $k < $data[$ID]['count']; $k++) {
-                        if (strlen(trim((string)($data[$ID][$k]['name'] ?? ''))) > 0) {
+                        if (strlen(trim((string) ($data[$ID][$k]['name'] ?? ''))) > 0) {
                             if ($count_display) {
                                 $out .= self::LBBR;
                             }
@@ -7013,10 +7012,10 @@ JAVASCRIPT;
                     if (!isset($progressbar_data)) {
                         $bar_color = 'green';
                         $progressbar_data = [
-                           'percent'      => $data[$ID][0]['name'],
-                           'percent_text' => $data[$ID][0]['name'],
-                           'color'        => $bar_color,
-                           'text'         => ''
+                            'percent'      => $data[$ID][0]['name'],
+                            'percent_text' => $data[$ID][0]['name'],
+                            'color'        => $bar_color,
+                            'text'         => '',
                         ];
                     }
 
@@ -7039,7 +7038,7 @@ JAVASCRIPT;
             $separate = self::LBHR;
         }
         for ($k = 0; $k < $data[$ID]['count']; $k++) {
-            if (strlen(trim((string)($data[$ID][$k]['name'] ?? ''))) > 0) {
+            if (strlen(trim((string) ($data[$ID][$k]['name'] ?? ''))) > 0) {
                 if ($count_display) {
                     $out .= $separate;
                 }
@@ -7056,9 +7055,9 @@ JAVASCRIPT;
                             $field,
                             $tmpdata,
                             [
-                              'html'      => true,
-                              'searchopt' => $so,
-                              'raw_data'  => $data
+                                'html'      => true,
+                                'searchopt' => $so,
+                                'raw_data'  => $data,
                             ]
                         );
                     }
@@ -7109,8 +7108,8 @@ JAVASCRIPT;
      *
      * @param string  $itemtype        Item type to manage
      * @param array   $params          Params to parse
-     * @param boolean $usesession      Use datas save in session (true by default)
-     * @param boolean $forcebookmark   Force trying to load parameters from default bookmark:
+     * @param bool $usesession      Use datas save in session (true by default)
+     * @param bool $forcebookmark   Force trying to load parameters from default bookmark:
      *                                  used for global search (false by default)
      *
      * @return array parsed params
@@ -7130,7 +7129,7 @@ JAVASCRIPT;
         $default_values["as_map"]      = 0;
 
         if (isset($params['start'])) {
-            $params['start'] = (int)$params['start'];
+            $params['start'] = (int) $params['start'];
         }
 
         $default_values["criteria"]     = self::getDefaultCriteria($itemtype);
@@ -7270,17 +7269,17 @@ JAVASCRIPT;
     public static function cleanParams(array $params): array
     {
         $int_params = [
-            'sort'
+            'sort',
         ];
 
         foreach ($params as $key => &$val) {
             if (in_array($key, $int_params)) {
                 if (is_array($val)) {
                     foreach ($val as &$subval) {
-                        $subval = (int)$subval;
+                        $subval = (int) $subval;
                     }
                 } else {
-                    $val = (int)$val;
+                    $val = (int) $val;
                 }
             }
         }
@@ -7293,9 +7292,9 @@ JAVASCRIPT;
      * Clean search options depending of user active profile
      *
      * @param string  $itemtype     Item type to manage
-     * @param integer $action       Action which is used to manupulate searchoption
+     * @param int $action       Action which is used to manupulate searchoption
      *                               (default READ)
-     * @param boolean $withplugins  Get plugins options (true by default)
+     * @param bool $withplugins  Get plugins options (true by default)
      *
      * @return array Clean $SEARCH_OPTION array
     **/
@@ -7368,7 +7367,7 @@ JAVASCRIPT;
      * @param string $itemtype  Item type
      * @param string $field     Name
      *
-     * @return integer
+     * @return int
     **/
     public static function getOptionNumber($itemtype, $field)
     {
@@ -7393,7 +7392,7 @@ JAVASCRIPT;
      * Get the SEARCH_OPTION array
      *
      * @param string  $itemtype     Item type
-     * @param boolean $withplugins  Get search options from plugins (true by default)
+     * @param bool $withplugins  Get search options from plugins (true by default)
      *
      * @return array The reference to the array of search options for the given item type
     **/
@@ -7529,14 +7528,14 @@ JAVASCRIPT;
                 self::$search[$itemtype][60]['joinparams']    = ['beforejoin'
                                                                   => ['table'
                                                                             => 'glpi_items_tickets',
-                                                                           'joinparams'
-                                                                            => ['jointype'
-                                                                                      => 'itemtype_item']],
-                                                                  'condition'
-                                                                  => getEntitiesRestrictRequest(
-                                                                      'AND',
-                                                                      'NEWTABLE'
-                                                                  )];
+                                                                      'joinparams'
+                                                                       => ['jointype'
+                                                                                 => 'itemtype_item']],
+                    'condition'
+                    => getEntitiesRestrictRequest(
+                        'AND',
+                        'NEWTABLE'
+                    )];
 
                 self::$search[$itemtype][140]['table']         = 'glpi_problems';
                 self::$search[$itemtype][140]['field']         = 'id';
@@ -7546,16 +7545,16 @@ JAVASCRIPT;
                 self::$search[$itemtype][140]['usehaving']     = true;
                 self::$search[$itemtype][140]['massiveaction'] = false;
                 self::$search[$itemtype][140]['joinparams']    = ['beforejoin'
-                                                                  => ['table'
-                                                                            => 'glpi_items_problems',
-                                                                           'joinparams'
-                                                                            => ['jointype'
-                                                                                      => 'itemtype_item']],
-                                                                  'condition'
-                                                                  => getEntitiesRestrictRequest(
-                                                                      'AND',
-                                                                      'NEWTABLE'
-                                                                  )];
+                    => ['table'
+                              => 'glpi_items_problems',
+                        'joinparams'
+                         => ['jointype'
+                                   => 'itemtype_item']],
+                    'condition'
+                    => getEntitiesRestrictRequest(
+                        'AND',
+                        'NEWTABLE'
+                    )];
             }
 
             if (
@@ -7659,9 +7658,9 @@ JAVASCRIPT;
      * Is the search item related to infocoms
      *
      * @param string  $itemtype  Item type
-     * @param integer $searchID  ID of the element in $SEARCHOPTION
+     * @param int $searchID  ID of the element in $SEARCHOPTION
      *
-     * @return boolean
+     * @return bool
     **/
     public static function isInfocomOption($itemtype, $searchID)
     {
@@ -7680,16 +7679,16 @@ JAVASCRIPT;
 
     /**
      * @param string  $itemtype
-     * @param integer $field_num
+     * @param int $field_num
     **/
     public static function getActionsFor($itemtype, $field_num)
     {
 
         $searchopt = &self::getOptions($itemtype);
         $actions   = [
-           'contains'    => __('contains'),
-           'notcontains' => __('not contains'),
-           'searchopt'   => []
+            'contains'    => __('contains'),
+            'notcontains' => __('not contains'),
+            'searchopt'   => [],
         ];
 
         if (isset($searchopt[$field_num]) && isset($searchopt[$field_num]['table'])) {
@@ -7747,11 +7746,11 @@ JAVASCRIPT;
                     case 'count':
                     case 'number':
                         $opt = [
-                           'contains'    => __('contains'),
-                           'notcontains' => __('not contains'),
-                           'equals'      => __('is'),
-                           'notequals'   => __('is not'),
-                           'searchopt'   => $searchopt[$field_num]
+                            'contains'    => __('contains'),
+                            'notcontains' => __('not contains'),
+                            'equals'      => __('is'),
+                            'notequals'   => __('is not'),
+                            'searchopt'   => $searchopt[$field_num],
                         ];
                         // No is / isnot if no limits defined
                         if (
@@ -7771,34 +7770,34 @@ JAVASCRIPT;
 
                     case 'bool':
                         return [
-                           'equals'      => __('is'),
-                           'notequals'   => __('is not'),
-                           'contains'    => __('contains'),
-                           'notcontains' => __('not contains'),
-                           'searchopt'   => $searchopt[$field_num]
+                            'equals'      => __('is'),
+                            'notequals'   => __('is not'),
+                            'contains'    => __('contains'),
+                            'notcontains' => __('not contains'),
+                            'searchopt'   => $searchopt[$field_num],
                         ];
 
                     case 'right':
                         return ['equals'    => __('is'),
-                                     'notequals' => __('is not'),
-                                     'searchopt' => $searchopt[$field_num]];
+                            'notequals' => __('is not'),
+                            'searchopt' => $searchopt[$field_num]];
 
                     case 'itemtypename':
                         return ['equals'    => __('is'),
-                                     'notequals' => __('is not'),
-                                     'searchopt' => $searchopt[$field_num]];
+                            'notequals' => __('is not'),
+                            'searchopt' => $searchopt[$field_num]];
 
                     case 'date':
                     case 'datetime':
                     case 'date_delay':
                         return [
-                           'equals'      => __('is'),
-                           'notequals'   => __('is not'),
-                           'lessthan'    => __('before'),
-                           'morethan'    => __('after'),
-                           'contains'    => __('contains'),
-                           'notcontains' => __('not contains'),
-                           'searchopt'   => $searchopt[$field_num]
+                            'equals'      => __('is'),
+                            'notequals'   => __('is not'),
+                            'lessthan'    => __('before'),
+                            'morethan'    => __('after'),
+                            'contains'    => __('contains'),
+                            'notcontains' => __('not contains'),
+                            'searchopt'   => $searchopt[$field_num],
                         ];
                 }
             }
@@ -7813,17 +7812,17 @@ JAVASCRIPT;
             switch ($searchopt[$field_num]['field']) {
                 case 'id':
                     return ['equals'    => __('is'),
-                                 'notequals' => __('is not'),
-                                 'searchopt' => $searchopt[$field_num]];
+                        'notequals' => __('is not'),
+                        'searchopt' => $searchopt[$field_num]];
 
                 case 'name':
                 case 'completename':
                     $actions = [
-                       'contains'    => __('contains'),
-                       'notcontains' => __('not contains'),
-                       'equals'      => __('is'),
-                       'notequals'   => __('is not'),
-                       'searchopt'   => $searchopt[$field_num]
+                        'contains'    => __('contains'),
+                        'notcontains' => __('not contains'),
+                        'equals'      => __('is'),
+                        'notequals'   => __('is not'),
+                        'searchopt'   => $searchopt[$field_num],
                     ];
 
                     // Specific case of TreeDropdown : add under
@@ -7844,11 +7843,11 @@ JAVASCRIPT;
     /**
      * Print generic Header Column
      *
-     * @param integer          $type     Display type (0=HTML, 1=Sylk, 2=PDF, 3=CSV)
+     * @param int          $type     Display type (0=HTML, 1=Sylk, 2=PDF, 3=CSV)
      * @param string           $value    Value to display
-     * @param integer          &$num     Column number
+     * @param int          &$num     Column number
      * @param string           $linkto   Link display element (HTML specific) (default '')
-     * @param boolean|integer  $issort   Is the sort column ? (default 0)
+     * @param bool|int  $issort   Is the sort column ? (default 0)
      * @param string           $order    Order type ASC or DESC (defaut '')
      * @param string           $options  Options to add (default '')
      *
@@ -7906,10 +7905,10 @@ JAVASCRIPT;
     /**
      * Print generic normal Item Cell
      *
-     * @param integer $type        Display type (0=HTML, 1=Sylk, 2=PDF, 3=CSV)
+     * @param int $type        Display type (0=HTML, 1=Sylk, 2=PDF, 3=CSV)
      * @param string  $value       Value to display
-     * @param integer &$num        Column number
-     * @param integer $row         Row number
+     * @param int &$num        Column number
+     * @param int $row         Row number
      * @param string  $extraparam  Extra parameters for display (default '')
      *
      * @return string HTML to display
@@ -7975,10 +7974,10 @@ JAVASCRIPT;
                     $valTip = "&nbsp;" . Html::showToolTip(
                         $value,
                         [
-                          'awesome-class'   => 'fa-comments',
-                          'display'         => false,
-                          'autoclose'       => false,
-                          'onclick'         => true
+                            'awesome-class'   => 'fa-comments',
+                            'display'         => false,
+                            'autoclose'       => false,
+                            'onclick'         => true,
                         ]
                     );
                     $out .= $values[0] . $valTip;
@@ -7997,7 +7996,7 @@ JAVASCRIPT;
     /**
      * Print generic error
      *
-     * @param integer $type     Display type (0=HTML, 1=Sylk, 2=PDF, 3=CSV)
+     * @param int $type     Display type (0=HTML, 1=Sylk, 2=PDF, 3=CSV)
      * @param string  $message  Message to display, if empty "no item found" will be displayed
      *
      * @return string HTML to display
@@ -8026,9 +8025,9 @@ JAVASCRIPT;
     /**
      * Print generic footer
      *
-     * @param integer $type  Display type (0=HTML, 1=Sylk, 2=PDF, 3=CSV)
+     * @param int $type  Display type (0=HTML, 1=Sylk, 2=PDF, 3=CSV)
      * @param string  $title title of file : used for PDF (default '')
-     * @param integer $count Total number of results
+     * @param int $count Total number of results
      *
      * @return string HTML to display
     **/
@@ -8116,10 +8115,10 @@ JAVASCRIPT;
     /**
      * Print generic footer
      *
-     * @param integer         $type   Display type (0=HTML, 1=Sylk, 2=PDF, 3=CSV)
-     * @param integer         $rows   Number of rows
-     * @param integer         $cols   Number of columns
-     * @param boolean|integer $fixed  Used tab_cadre_fixe table for HTML export ? (default 0)
+     * @param int         $type   Display type (0=HTML, 1=Sylk, 2=PDF, 3=CSV)
+     * @param int         $rows   Number of rows
+     * @param int         $cols   Number of columns
+     * @param bool|int $fixed  Used tab_cadre_fixe table for HTML export ? (default 0)
      *
      * @return string HTML to display
     **/
@@ -8190,7 +8189,7 @@ JAVASCRIPT;
     /**
      * Print begin of header part
      *
-     * @param integer $type   Display type (0=HTML, 1=Sylk, 2=PDF, 3=CSV)
+     * @param int $type   Display type (0=HTML, 1=Sylk, 2=PDF, 3=CSV)
      *
      * @since 0.85
      *
@@ -8221,7 +8220,7 @@ JAVASCRIPT;
     /**
      * Print end of header part
      *
-     * @param integer $type   Display type (0=HTML, 1=Sylk, 2=PDF, 3=CSV)
+     * @param int $type   Display type (0=HTML, 1=Sylk, 2=PDF, 3=CSV)
      *
      * @since 0.85
      *
@@ -8252,9 +8251,9 @@ JAVASCRIPT;
     /**
      * Print generic new line
      *
-     * @param integer $type        Display type (0=HTML, 1=Sylk, 2=PDF, 3=CSV)
-     * @param boolean $odd         Is it a new odd line ? (false by default)
-     * @param boolean $is_deleted  Is it a deleted search ? (false by default)
+     * @param int $type        Display type (0=HTML, 1=Sylk, 2=PDF, 3=CSV)
+     * @param bool $odd         Is it a new odd line ? (false by default)
+     * @param bool $is_deleted  Is it a deleted search ? (false by default)
      *
      * @return string HTML to display
     **/
@@ -8291,7 +8290,7 @@ JAVASCRIPT;
     /**
      * Print generic end line
      *
-     * @param integer $type  Display type (0=HTML, 1=Sylk, 2=PDF, 3=CSV)
+     * @param int $type  Display type (0=HTML, 1=Sylk, 2=PDF, 3=CSV)
      *
      * @return string HTML to display
     **/
@@ -8415,7 +8414,7 @@ JAVASCRIPT;
      *
      * @param string  $field  Nname (should be ` protected)
      * @param string  $val    Value to search
-     * @param boolean $not    Is a negative search ? (false by default)
+     * @param bool $not    Is a negative search ? (false by default)
      * @param string  $link   With previous criteria (default 'AND')
      *
      * @return search SQL string
@@ -8495,7 +8494,7 @@ JAVASCRIPT;
      * Create SQL search condition
      *
      * @param string  $val  Value to search
-     * @param boolean $not  Is a negative search ? (false by default)
+     * @param bool $not  Is a negative search ? (false by default)
      *
      * @return string Search string
     **/
@@ -8559,8 +8558,8 @@ JAVASCRIPT;
         return "LEFT JOIN `glpi_dropdowntranslations` AS `$alias`
                   ON (`$alias`.`itemtype` = '$itemtype'
                         AND `$alias`.`items_id` = `$table`.`id`
-                        AND `$alias`.`language` = '" .
-                                $_SESSION['glpilanguage'] . "'
+                        AND `$alias`.`language` = '"
+                                . $_SESSION['glpilanguage'] . "'
                         AND `$alias`.`field` = '$field')";
     }
 

@@ -101,7 +101,7 @@ class RuleDictionnaryDropdownCollection extends RuleCollection
 
                     if ($dropdown = getItemForItemtype($type)) {
                         $dropdown->delete(['id'          => $data['id'],
-                                                '_replace_by' => $ID]);
+                            '_replace_by' => $ID]);
                     }
                 }
                 $i++;
@@ -151,35 +151,35 @@ class RuleDictionnaryDropdownCollection extends RuleCollection
 
         // Need to give manufacturer from item table
         $criteria = [
-           'SELECT'          => [
-              'glpi_manufacturers.id AS idmanu',
-              'glpi_manufacturers.name AS manufacturer',
-              $this->item_table . '.id',
-              $this->item_table . '.name AS name',
-              $this->item_table . '.comment'
-           ],
-           'DISTINCT'        => true,
-           'FROM'            => $this->item_table,
-           'INNER JOIN'      => [
-              $model_table         => [
-                 'ON' => [
-                    $this->item_table => 'id',
-                    $model_table      => $model_field
-                 ]
-              ]
-           ],
-           'LEFT JOIN'       => [
-              'glpi_manufacturers' => [
-                 'ON' => [
-                    'glpi_manufacturers' => 'id',
-                    $model_table         => 'manufacturers_id'
-                 ]
-              ]
-           ]
+            'SELECT'          => [
+                'glpi_manufacturers.id AS idmanu',
+                'glpi_manufacturers.name AS manufacturer',
+                $this->item_table . '.id',
+                $this->item_table . '.name AS name',
+                $this->item_table . '.comment',
+            ],
+            'DISTINCT'        => true,
+            'FROM'            => $this->item_table,
+            'INNER JOIN'      => [
+                $model_table         => [
+                    'ON' => [
+                        $this->item_table => 'id',
+                        $model_table      => $model_field,
+                    ],
+                ],
+            ],
+            'LEFT JOIN'       => [
+                'glpi_manufacturers' => [
+                    'ON' => [
+                        'glpi_manufacturers' => 'id',
+                        $model_table         => 'manufacturers_id',
+                    ],
+                ],
+            ],
         ];
 
         if ($offset) {
-            $criteria['START'] = (int)$offset;
+            $criteria['START'] = (int) $offset;
         }
 
         $iterator = $DB->request($criteria);
@@ -217,13 +217,13 @@ class RuleDictionnaryDropdownCollection extends RuleCollection
                 if ($data['id'] != $ID) {
                     $tocheck[$data["id"]][] = $ID;
                     $where = [
-                       $model_field => $data['id']
+                        $model_field => $data['id'],
                     ];
 
                     if (empty($data['idmanu'])) {
                         $where['OR'] = [
-                           ['manufacturers_id'  => null],
-                           ['manufacturers_id'  => 0]
+                            ['manufacturers_id'  => null],
+                            ['manufacturers_id'  => 0],
                         ];
                     } else {
                         $where['manufacturers_id'] = $data['idmanu'];
@@ -246,9 +246,9 @@ class RuleDictionnaryDropdownCollection extends RuleCollection
 
             foreach ($tocheck as $ID => $tab) {
                 $result = $DB->request([
-                   'COUNT'  => 'cpt',
-                   'FROM'   => $model_table,
-                   'WHERE'  => [$model_field => $ID]
+                    'COUNT'  => 'cpt',
+                    'FROM'   => $model_table,
+                    'WHERE'  => [$model_field => $ID],
                 ])->next();
 
                 $deletecartmodel  = false;
@@ -261,7 +261,7 @@ class RuleDictionnaryDropdownCollection extends RuleCollection
                     $DB->delete(
                         $this->item_table,
                         [
-                          'id'  => $ID
+                            'id'  => $ID,
                         ]
                     );
                     $deletecartmodel  = true;
@@ -270,8 +270,8 @@ class RuleDictionnaryDropdownCollection extends RuleCollection
                 // Manage cartridge assoc Update items
                 if ($this->getRuleClassName() == 'RuleDictionnaryPrinterModel') {
                     $iterator2 = $DB->request([
-                       'FROM'   => 'glpi_cartridgeitems_printermodels',
-                       'WHERE'  => ['printermodels_id' => $ID]
+                        'FROM'   => 'glpi_cartridgeitems_printermodels',
+                        'WHERE'  => ['printermodels_id' => $ID],
                     ]);
 
                     if (count($iterator2)) {
@@ -285,7 +285,7 @@ class RuleDictionnaryDropdownCollection extends RuleCollection
                             $DB->delete(
                                 'glpi_cartridgeitems_printermodels',
                                 [
-                                  'printermodels_id'   => $ID
+                                    'printermodels_id'   => $ID,
                                 ]
                             );
                         }

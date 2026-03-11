@@ -60,18 +60,18 @@ class DBConnection extends CommonDBTM
      * @param string $password  The DB password
      * @param string $DBname    The name of the DB
      *
-     * @return boolean
+     * @return bool
      *
     **/
     public static function createMainConfig($host, $user, $password, $DBname)
     {
 
-        $DB_str = "<?php\nclass DB extends DBmysql {\n" .
-                  "   public \$dbhost     = '$host';\n" .
-                  "   public \$dbuser     = '$user';\n" .
-                  "   public \$dbpassword = '" . rawurlencode($password) . "';\n" .
-                  "   public \$dbdefault  = '$DBname';\n" .
-                  "}\n";
+        $DB_str = "<?php\nclass DB extends DBmysql {\n"
+                  . "   public \$dbhost     = '$host';\n"
+                  . "   public \$dbuser     = '$user';\n"
+                  . "   public \$dbpassword = '" . rawurlencode($password) . "';\n"
+                  . "   public \$dbdefault  = '$DBname';\n"
+                  . "}\n";
 
         return Toolbox::writeConfig('config_db.php', $DB_str);
     }
@@ -85,7 +85,7 @@ class DBConnection extends CommonDBTM
      * @param string $password  The slave DB password
      * @param string $DBname    The name of the slave DB
      *
-     * @return boolean for success
+     * @return bool for success
     **/
     public static function createSlaveConnectionFile($host, $user, $password, $DBname)
     {
@@ -109,8 +109,8 @@ class DBConnection extends CommonDBTM
         } else {
             $DB_str .= "'$host';\n";
         }
-        $DB_str .= " public \$dbuser = '" . $user . "'; \n public \$dbpassword= '" .
-                    rawurlencode($password) . "'; \n public \$dbdefault = '" . $DBname . "'; \n }\n";
+        $DB_str .= " public \$dbuser = '" . $user . "'; \n public \$dbpassword= '"
+                    . rawurlencode($password) . "'; \n public \$dbdefault = '" . $DBname . "'; \n }\n";
 
         return Toolbox::writeConfig('config_db_slave.php', $DB_str);
     }
@@ -130,7 +130,7 @@ class DBConnection extends CommonDBTM
     /**
      * Read slave DB configuration file
      *
-     * @param integer $choice  Host number (default NULL)
+     * @param int $choice  Host number (default NULL)
      *
      * @return DBmysql object
     **/
@@ -273,12 +273,12 @@ class DBConnection extends CommonDBTM
     /**
      *  Establish a connection to a mysql server (main or replicate)
      *
-     * @param boolean $use_slave try to connect to slave server first not to main server
-     * @param boolean $required  connection to the specified server is required
+     * @param bool $use_slave try to connect to slave server first not to main server
+     * @param bool $required  connection to the specified server is required
      *                           (if connection failed, do not try to connect to the other server)
-     * @param boolean $display   display error message (true by default)
+     * @param bool $display   display error message (true by default)
      *
-     * @return boolean True if successfull, false otherwise
+     * @return bool True if successfull, false otherwise
     **/
     public static function establishDBConnection($use_slave, $required, $display = true)
     {
@@ -333,9 +333,9 @@ class DBConnection extends CommonDBTM
     /**
      * Get delay between slave and master
      *
-     * @param integer $choice  Host number (default NULL)
+     * @param int $choice  Host number (default NULL)
      *
-     * @return integer
+     * @return int
     **/
     public static function getReplicateDelay($choice = null)
     {
@@ -406,7 +406,7 @@ class DBConnection extends CommonDBTM
     {
 
         return ['description' => __('Check the SQL replica'),
-                     'parameter'   => __('Max delay between master and slave (minutes)')];
+            'parameter'   => __('Max delay between master and slave (minutes)')];
     }
 
 
@@ -415,7 +415,7 @@ class DBConnection extends CommonDBTM
      *
      * @param CronTask $task to log and get param
      *
-     * @return integer
+     * @return int
     **/
     public static function cronCheckDBreplicate(CronTask $task)
     {
@@ -451,8 +451,8 @@ class DBConnection extends CommonDBTM
                 if ($diff > ($task->fields['param'] * 60)) {
                     //Raise event if replicate is not synchronized
                     $options = ['diff'        => $diff,
-                                     'name'        => $name,
-                                     'entities_id' => 0]; // entity to avoid warning in getReplyTo
+                        'name'        => $name,
+                        'entities_id' => 0]; // entity to avoid warning in getReplyTo
                     NotificationEvent::raiseEvent('desynchronization', new self(), $options);
                 }
             }
@@ -521,7 +521,7 @@ class DBConnection extends CommonDBTM
     /**
      * Enable or disable db replication check cron task
      *
-     * @param boolean $enable Enable or disable cron task (true by default)
+     * @param bool $enable Enable or disable cron task (true by default)
     **/
     public static function changeCronTaskStatus($enable = true)
     {
@@ -529,8 +529,8 @@ class DBConnection extends CommonDBTM
         $cron           = new CronTask();
         $cron->getFromDBbyName('DBConnection', 'CheckDBreplicate');
         $input = [
-           'id'    => $cron->fields['id'],
-           'state' => ($enable ? 1 : 0)
+            'id'    => $cron->fields['id'],
+            'state' => ($enable ? 1 : 0),
         ];
         $cron->update($input);
     }

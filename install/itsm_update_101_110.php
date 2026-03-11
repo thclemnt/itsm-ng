@@ -58,12 +58,12 @@ function update101to110()
         `is_forced`   TINYINT(1) NOT NULL DEFAULT 0,
         PRIMARY KEY (`id`)
         ) ENGINE=InnoDB  DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;";
-        $DB->queryOrDie($config, "erreur lors de la création de la table de configuration ".$DB->error());
+        $DB->queryOrDie($config, "erreur lors de la création de la table de configuration " . $DB->error());
     }
 
     $oidc_config = [
         "is_activate" => 0,
-        "is_forced" => 0
+        "is_forced" => 0,
     ];
 
     // Update or insert OIDC config

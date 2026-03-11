@@ -62,31 +62,31 @@ class Datacenter extends CommonDBTM
     public function showForm($ID)
     {
         $form = [
-           'action' => Toolbox::getItemTypeFormURL('datacenter'),
-           'itemtype' => $this::class,
-           'content' => [
-               __('Data center') => [
-                 'visible' => true,
-                 'inputs' => [
-                    $this->isNewID($ID) ? [] : [
-                          'type' => 'hidden',
-                          'name' => 'id',
-                          'value' => $ID
+            'action' => Toolbox::getItemTypeFormURL('datacenter'),
+            'itemtype' => $this::class,
+            'content' => [
+                __('Data center') => [
+                    'visible' => true,
+                    'inputs' => [
+                        $this->isNewID($ID) ? [] : [
+                            'type' => 'hidden',
+                            'name' => 'id',
+                            'value' => $ID,
+                        ],
+                        __('Name') => [
+                            'name' => 'name',
+                            'type' => 'text',
+                            'value' => $this->fields['name'] ?? '',
+                        ],
+                        __('Location') => [
+                            'name' => 'locations_id',
+                            'type' => 'select',
+                            'itemtype' => Location::class,
+                            'value' => $this->fields['locations_id'] ?? '',
+                        ],
                     ],
-                    __('Name') => [
-                          'name' => 'name',
-                          'type' => 'text',
-                          'value' => $this->fields['name'] ?? '',
-                    ],
-                    __('Location') => [
-                          'name' => 'locations_id',
-                          'type' => 'select',
-                          'itemtype' => Location::class,
-                          'value' => $this->fields['locations_id'] ?? '',
-                    ],
-                 ]
-               ]
-           ]
+                ],
+            ],
         ];
 
         renderTwigForm($form, '', $this->fields);
@@ -100,55 +100,55 @@ class Datacenter extends CommonDBTM
         $tab = [];
 
         $tab[] = [
-           'id'                 => 'common',
-           'name'               => __('Characteristics')
+            'id'                 => 'common',
+            'name'               => __('Characteristics'),
         ];
 
         $tab[] = [
-           'id'                 => '1',
-           'table'              => $this->getTable(),
-           'field'              => 'name',
-           'name'               => __('Name'),
-           'datatype'           => 'itemlink',
-           'massiveaction'      => false, // implicit key==1
-           'autocomplete'       => true,
+            'id'                 => '1',
+            'table'              => $this->getTable(),
+            'field'              => 'name',
+            'name'               => __('Name'),
+            'datatype'           => 'itemlink',
+            'massiveaction'      => false, // implicit key==1
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '2',
-           'table'              => $this->getTable(),
-           'field'              => 'id',
-           'name'               => __('ID'),
-           'massiveaction'      => false, // implicit field is id
-           'datatype'           => 'number'
+            'id'                 => '2',
+            'table'              => $this->getTable(),
+            'field'              => 'id',
+            'name'               => __('ID'),
+            'massiveaction'      => false, // implicit field is id
+            'datatype'           => 'number',
         ];
 
         $tab = array_merge($tab, Location::rawSearchOptionsToAdd());
 
         $tab[] = [
-           'id'                 => '19',
-           'table'              => $this->getTable(),
-           'field'              => 'date_mod',
-           'name'               => __('Last update'),
-           'datatype'           => 'datetime',
-           'massiveaction'      => false
+            'id'                 => '19',
+            'table'              => $this->getTable(),
+            'field'              => 'date_mod',
+            'name'               => __('Last update'),
+            'datatype'           => 'datetime',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '121',
-           'table'              => $this->getTable(),
-           'field'              => 'date_creation',
-           'name'               => __('Creation date'),
-           'datatype'           => 'datetime',
-           'massiveaction'      => false
+            'id'                 => '121',
+            'table'              => $this->getTable(),
+            'field'              => 'date_creation',
+            'name'               => __('Creation date'),
+            'datatype'           => 'datetime',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '80',
-           'table'              => 'glpi_entities',
-           'field'              => 'completename',
-           'name'               => Entity::getTypeName(1),
-           'datatype'           => 'dropdown'
+            'id'                 => '80',
+            'table'              => 'glpi_entities',
+            'field'              => 'completename',
+            'name'               => Entity::getTypeName(1),
+            'datatype'           => 'dropdown',
         ];
 
         return $tab;
@@ -158,24 +158,24 @@ class Datacenter extends CommonDBTM
     public static function rawSearchOptionsToAdd($itemtype)
     {
         return [
-           [
-              'id'                 => 'datacenter',
-              'name'               => _n('Data center', 'Data centers', Session::getPluralNumber())
-           ],
-           [
-              'id'                 => '178',
-              'table'              => $itemtype::getTable(),
-              'field'              => '_virtual_datacenter_position', // virtual field
-              'additionalfields'   => [
-                 'id',
-                 'name'
-              ],
-              'name'               => __('Data center position'),
-              'datatype'           => 'specific',
-              'nosearch'           => true,
-              'nosort'             => true,
-              'massiveaction'      => false
-           ],
+            [
+                'id'                 => 'datacenter',
+                'name'               => _n('Data center', 'Data centers', Session::getPluralNumber()),
+            ],
+            [
+                'id'                 => '178',
+                'table'              => $itemtype::getTable(),
+                'field'              => '_virtual_datacenter_position', // virtual field
+                'additionalfields'   => [
+                    'id',
+                    'name',
+                ],
+                'name'               => __('Data center position'),
+                'datatype'           => 'specific',
+                'nosearch'           => true,
+                'nosort'             => true,
+                'massiveaction'      => false,
+            ],
         ];
     }
 
@@ -183,8 +183,8 @@ class Datacenter extends CommonDBTM
     {
         $links = [];
         if (static::canView()) {
-            $rooms = "<i class=\"fa fa-building pointer\" title=\"" . DCRoom::getTypeName(Session::getPluralNumber()) .
-               "\"></i><span class=\"sr-only\">" . DCRoom::getTypeName(Session::getPluralNumber()) . "</span>";
+            $rooms = "<i class=\"fa fa-building pointer\" title=\"" . DCRoom::getTypeName(Session::getPluralNumber())
+               . "\"></i><span class=\"sr-only\">" . DCRoom::getTypeName(Session::getPluralNumber()) . "</span>";
             $links[$rooms] = DCRoom::getSearchURL(false);
         }
         if (count($links)) {
@@ -197,14 +197,14 @@ class Datacenter extends CommonDBTM
     {
         if (static::canView()) {
             return [
-               'dcroom' => [
-                  'title' => DCRoom::getTypeName(Session::getPluralNumber()),
-                  'page'  => DCRoom::getSearchURL(false),
-                  'links' => [
-                     'add'    => '/front/dcroom.form.php',
-                     'search' => '/front/dcroom.php',
-                  ]
-               ]
+                'dcroom' => [
+                    'title' => DCRoom::getTypeName(Session::getPluralNumber()),
+                    'page'  => DCRoom::getSearchURL(false),
+                    'links' => [
+                        'add'    => '/front/dcroom.form.php',
+                        'search' => '/front/dcroom.php',
+                    ],
+                ],
             ];
         }
     }

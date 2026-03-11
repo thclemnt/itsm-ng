@@ -1,5 +1,7 @@
 <?php
 
+use Glpi\Features\Clonable;
+
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
@@ -39,7 +41,7 @@ if (!defined('GLPI_ROOT')) {
 **/
 class Software extends CommonDBTM
 {
-    use Glpi\Features\Clonable;
+    use Clonable;
 
     // From CommonDBTM
     public $dohistory                   = true;
@@ -52,10 +54,10 @@ class Software extends CommonDBTM
     public function getCloneRelations(): array
     {
         return [
-           Infocom::class,
-           Contract_Item::class,
-           Document_Item::class,
-           KnowbaseItem_Item::class
+            Infocom::class,
+            Contract_Item::class,
+            Document_Item::class,
+            KnowbaseItem_Item::class,
         ];
     }
 
@@ -188,8 +190,8 @@ class Software extends CommonDBTM
 
         $this->deleteChildrenAndRelationsFromDb(
             [
-              Item_Project::class,
-              SoftwareVersion::class,
+                Item_Project::class,
+                SoftwareVersion::class,
             ]
         );
     }
@@ -214,14 +216,14 @@ class Software extends CommonDBTM
                 countElementsInTable(
                     'glpi_softwarelicenses',
                     ['softwares_id' => $ID,
-                                      'NOT' => [ 'is_valid']]
+                        'NOT' => [ 'is_valid']]
                 ) > 0
             ) {
                 $valid = 0;
             }
             if ($valid != $soft->fields['is_valid']) {
                 $soft->update(['id'       => $ID,
-                                   'is_valid' => $valid]);
+                    'is_valid' => $valid]);
             }
         }
     }
@@ -235,7 +237,7 @@ class Software extends CommonDBTM
      *     - target filename : where to go when done.
      *     - withtemplate boolean : template or basic item
      *
-     *@return boolean item found
+     *@return bool item found
     **/
     public function showForm($ID, $options = [])
     {
@@ -243,98 +245,98 @@ class Software extends CommonDBTM
         $isNew = $this->isNewID($ID) || (isset($options['withtemplate']) && $options['withtemplate'] == 2);
 
         $form = [
-           'action' => $this->getFormURL(),
-           'itemtype' => $this::class,
-           'content' => [
-              $title => [
-                 'visible' => true,
-                 'inputs' => [
-                    __('Name') => [
-                       'name' => 'name',
-                       'type' => 'text',
-                       'value' => $this->fields['name'],
+            'action' => $this->getFormURL(),
+            'itemtype' => $this::class,
+            'content' => [
+                $title => [
+                    'visible' => true,
+                    'inputs' => [
+                        __('Name') => [
+                            'name' => 'name',
+                            'type' => 'text',
+                            'value' => $this->fields['name'],
+                        ],
+                        __('Publisher') => [
+                            'name' => 'manufacturers_id',
+                            'type' => 'select',
+                            'value' => $this->fields['manufacturers_id'],
+                            'values' => getOptionForItems("Manufacturer"),
+                            'actions' => getItemActionButtons(['info', 'add'], "Manufacturer"),
+                        ],
+                        __('Location') => [
+                            'name' => 'locations_id',
+                            'type' => 'select',
+                            'itemtype' => Location::class,
+                            'value' => $this->fields['locations_id'],
+                            'actions' => getItemActionButtons(['info', 'add'], "Location"),
+                        ],
+                        __('Category') => [
+                            'name' => 'softwarecategories_id',
+                            'type' => 'select',
+                            'value' => $this->fields['softwarecategories_id'],
+                            'values' => getOptionForItems("SoftwareCategory"),
+                            'actions' => getItemActionButtons(['info', 'add'], "SoftwareCategory"),
+                        ],
+                        __("Technician in charge of the software") => [
+                            'name' => 'users_id_tech',
+                            'type' => 'select',
+                            'value' => $this->fields['users_id_tech'],
+                            'values' => getOptionsForUsers('own_ticket', ['entities_id' => $this->fields['entities_id']]),
+                            'actions' => getItemActionButtons(['info'], "User"),
+                        ],
+                        __("Associable to a ticket") => [
+                            'name' => 'is_helpdesk_visible',
+                            'type' => 'checkbox',
+                            'value' => $this->fields['is_helpdesk_visible'],
+                        ],
+                        __("Group in charge of the software") => [
+                            'name' => 'groups_id_tech',
+                            'type' => 'select',
+                            'itemtype' => Group::class,
+                            'conditions' => ['is_assign' => 1],
+                            'value' => $this->fields['groups_id_tech'],
+                            'actions' => getItemActionButtons(['info', 'add'], "Group"),
+                        ],
+                        __("User") => [
+                            'name' => 'users_id',
+                            'type' => 'select',
+                            'value' => $this->fields['users_id'],
+                            'values' => getOptionForItems("User", ['entities_id' => $this->fields['entities_id']]), // NEED right => all
+                            'actions' => getItemActionButtons(['info'], "User"),
+                        ],
+                        __("Group") => [
+                            'name' => 'groups_id',
+                            'type' => 'select',
+                            'itemtype' => Group::class,
+                            'conditions' => ['is_itemgroup' => 1],
+                            'value' => $this->fields['groups_id'],
+                            'actions' => getItemActionButtons(['info', 'add'], "Group"),
+                        ],
                     ],
-                    __('Publisher') => [
-                       'name' => 'manufacturers_id',
-                       'type' => 'select',
-                       'value' => $this->fields['manufacturers_id'],
-                       'values' => getOptionForItems("Manufacturer"),
-                       'actions' => getItemActionButtons(['info', 'add'], "Manufacturer"),
-                    ],
-                     __('Location') => [
-                        'name' => 'locations_id',
-                        'type' => 'select',
-                        'itemtype' => Location::class,
-                        'value' => $this->fields['locations_id'],
-                        'actions' => getItemActionButtons(['info', 'add'], "Location"),
-                     ],
-                    __('Category') => [
-                       'name' => 'softwarecategories_id',
-                       'type' => 'select',
-                       'value' => $this->fields['softwarecategories_id'],
-                       'values' => getOptionForItems("SoftwareCategory"),
-                       'actions' => getItemActionButtons(['info', 'add'], "SoftwareCategory"),
-                    ],
-                    __("Technician in charge of the software") => [
-                       'name' => 'users_id_tech',
-                       'type' => 'select',
-                       'value' => $this->fields['users_id_tech'],
-                       'values' => getOptionsForUsers('own_ticket', ['entities_id' => $this->fields['entities_id']]),
-                       'actions' => getItemActionButtons(['info'], "User"),
-                    ],
-                    __("Associable to a ticket") => [
-                       'name' => 'is_helpdesk_visible',
-                       'type' => 'checkbox',
-                       'value' => $this->fields['is_helpdesk_visible'],
-                    ],
-                     __("Group in charge of the software") => [
-                        'name' => 'groups_id_tech',
-                        'type' => 'select',
-                        'itemtype' => Group::class,
-                        'conditions' => ['is_assign' => 1],
-                        'value' => $this->fields['groups_id_tech'],
-                        'actions' => getItemActionButtons(['info', 'add'], "Group"),
-                     ],
-                    __("User") => [
-                       'name' => 'users_id',
-                       'type' => 'select',
-                       'value' => $this->fields['users_id'],
-                       'values' => getOptionForItems("User", ['entities_id' => $this->fields['entities_id']]), // NEED right => all
-                       'actions' => getItemActionButtons(['info'], "User"),
-                    ],
-                     __("Group") => [
-                        'name' => 'groups_id',
-                        'type' => 'select',
-                        'itemtype' => Group::class,
-                        'conditions' => ['is_itemgroup' => 1],
-                        'value' => $this->fields['groups_id'],
-                        'actions' => getItemActionButtons(['info', 'add'], "Group"),
-                     ],
-                 ]
-              ],
-              __('Upgrade') => [
-                 'visible' => true,
-                 'inputs' => [
-                    __("Upgrade") => [
-                       'name' => 'is_update',
-                       'type' => 'checkbox',
-                       'value' => $this->fields['is_update'],
-                       'id' => 'is_update_checkbox',
-                       'hooks' => [
-                          'click' => <<<JS
+                ],
+                __('Upgrade') => [
+                    'visible' => true,
+                    'inputs' => [
+                        __("Upgrade") => [
+                            'name' => 'is_update',
+                            'type' => 'checkbox',
+                            'value' => $this->fields['is_update'],
+                            'id' => 'is_update_checkbox',
+                            'hooks' => [
+                                'click' => <<<JS
                         console.log('click !')
-                        JS
-                       ],
+                        JS,
+                            ],
+                        ],
+                        __('from') => [
+                            'name' => 'softwares_id',
+                            'type' => 'select',
+                            'value' => $this->fields['softwares_id'],
+                            'values' => getOptionForItems("Software"),
+                        ],
                     ],
-                    __('from') => [
-                       'name' => 'softwares_id',
-                       'type' => 'select',
-                       'value' => $this->fields['softwares_id'],
-                       'values' => getOptionForItems("Software"),
-                    ],
-                 ]
-              ]
-           ]
+                ],
+            ],
         ];
 
         renderTwigForm($form, '', $this->fields);
@@ -364,8 +366,8 @@ class Software extends CommonDBTM
             && (countElementsInTable("glpi_rules", ['sub_type' => 'RuleSoftwareCategory']) > 0)
         ) {
             $actions[__CLASS__ . MassiveAction::CLASS_ACTION_SEPARATOR . 'compute_software_category']
-               = "<i class='ma-icon fas fa-calculator' aria-hidden='true'></i>" .
-                 __('Recalculate the category');
+               = "<i class='ma-icon fas fa-calculator' aria-hidden='true'></i>"
+                 . __('Recalculate the category');
         }
 
         if (
@@ -373,8 +375,8 @@ class Software extends CommonDBTM
              && (countElementsInTable("glpi_rules", ['sub_type' => 'RuleDictionnarySoftware']) > 0)
         ) {
             $actions[__CLASS__ . MassiveAction::CLASS_ACTION_SEPARATOR . 'replay_dictionnary']
-               = "<i class='ma-icon fas fa-undo' aria-hidden='true'></i>" .
-                 __('Replay the dictionary rules');
+               = "<i class='ma-icon fas fa-undo' aria-hidden='true'></i>"
+                 . __('Replay the dictionary rules');
         }
 
         if ($isadmin) {
@@ -435,8 +437,8 @@ class Software extends CommonDBTM
                         if (
                             isset($output['softwarecategories_id'])
                             && $item->update(['id' => $id,
-                                                   'softwarecategories_id'
-                                                        => $output['softwarecategories_id']])
+                                'softwarecategories_id'
+                                     => $output['softwarecategories_id']])
                         ) {
                             $ma->itemDone($item->getType(), $id, MassiveAction::ACTION_OK);
                         } else {
@@ -479,153 +481,153 @@ class Software extends CommonDBTM
         $tab = parent::rawSearchOptions();
 
         $tab[] = [
-           'id'                 => '2',
-           'table'              => $this->getTable(),
-           'field'              => 'id',
-           'name'               => __('ID'),
-           'massiveaction'      => false,
-           'datatype'           => 'number'
+            'id'                 => '2',
+            'table'              => $this->getTable(),
+            'field'              => 'id',
+            'name'               => __('ID'),
+            'massiveaction'      => false,
+            'datatype'           => 'number',
         ];
 
         $tab = array_merge($tab, Location::rawSearchOptionsToAdd());
 
         $tab[] = [
-           'id'                 => '16',
-           'table'              => $this->getTable(),
-           'field'              => 'comment',
-           'name'               => __('Comments'),
-           'datatype'           => 'text'
+            'id'                 => '16',
+            'table'              => $this->getTable(),
+            'field'              => 'comment',
+            'name'               => __('Comments'),
+            'datatype'           => 'text',
         ];
 
         $tab[] = [
-           'id'                 => '62',
-           'table'              => 'glpi_softwarecategories',
-           'field'              => 'completename',
-           'name'               => __('Category'),
-           'datatype'           => 'dropdown'
+            'id'                 => '62',
+            'table'              => 'glpi_softwarecategories',
+            'field'              => 'completename',
+            'name'               => __('Category'),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '19',
-           'table'              => $this->getTable(),
-           'field'              => 'date_mod',
-           'name'               => __('Last update'),
-           'datatype'           => 'datetime',
-           'massiveaction'      => false
+            'id'                 => '19',
+            'table'              => $this->getTable(),
+            'field'              => 'date_mod',
+            'name'               => __('Last update'),
+            'datatype'           => 'datetime',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '121',
-           'table'              => $this->getTable(),
-           'field'              => 'date_creation',
-           'name'               => __('Creation date'),
-           'datatype'           => 'datetime',
-           'massiveaction'      => false
+            'id'                 => '121',
+            'table'              => $this->getTable(),
+            'field'              => 'date_creation',
+            'name'               => __('Creation date'),
+            'datatype'           => 'datetime',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '23',
-           'table'              => 'glpi_manufacturers',
-           'field'              => 'name',
-           'name'               => __('Publisher'),
-           'datatype'           => 'dropdown'
+            'id'                 => '23',
+            'table'              => 'glpi_manufacturers',
+            'field'              => 'name',
+            'name'               => __('Publisher'),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '24',
-           'table'              => 'glpi_users',
-           'field'              => 'name',
-           'linkfield'          => 'users_id_tech',
-           'name'               => __('Technician in charge of the software'),
-           'datatype'           => 'dropdown',
-           'right'              => 'own_ticket'
+            'id'                 => '24',
+            'table'              => 'glpi_users',
+            'field'              => 'name',
+            'linkfield'          => 'users_id_tech',
+            'name'               => __('Technician in charge of the software'),
+            'datatype'           => 'dropdown',
+            'right'              => 'own_ticket',
         ];
 
         $tab[] = [
-           'id'                 => '49',
-           'table'              => 'glpi_groups',
-           'field'              => 'completename',
-           'linkfield'          => 'groups_id_tech',
-           'name'               => __('Group in charge of the software'),
-           'condition'          => ['is_assign' => 1],
-           'datatype'           => 'dropdown'
+            'id'                 => '49',
+            'table'              => 'glpi_groups',
+            'field'              => 'completename',
+            'linkfield'          => 'groups_id_tech',
+            'name'               => __('Group in charge of the software'),
+            'condition'          => ['is_assign' => 1],
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '64',
-           'table'              => $this->getTable(),
-           'field'              => 'template_name',
-           'name'               => __('Template name'),
-           'datatype'           => 'text',
-           'massiveaction'      => false,
-           'nosearch'           => true,
-           'nodisplay'          => true,
-           'autocomplete'       => true,
+            'id'                 => '64',
+            'table'              => $this->getTable(),
+            'field'              => 'template_name',
+            'name'               => __('Template name'),
+            'datatype'           => 'text',
+            'massiveaction'      => false,
+            'nosearch'           => true,
+            'nodisplay'          => true,
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '70',
-           'table'              => 'glpi_users',
-           'field'              => 'name',
-           'name'               => User::getTypeName(1),
-           'datatype'           => 'dropdown',
-           'right'              => 'all'
+            'id'                 => '70',
+            'table'              => 'glpi_users',
+            'field'              => 'name',
+            'name'               => User::getTypeName(1),
+            'datatype'           => 'dropdown',
+            'right'              => 'all',
         ];
 
         $tab[] = [
-           'id'                 => '71',
-           'table'              => 'glpi_groups',
-           'field'              => 'completename',
-           'name'               => Group::getTypeName(1),
-           'condition'          => ['is_itemgroup' => 1],
-           'datatype'           => 'dropdown'
+            'id'                 => '71',
+            'table'              => 'glpi_groups',
+            'field'              => 'completename',
+            'name'               => Group::getTypeName(1),
+            'condition'          => ['is_itemgroup' => 1],
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '61',
-           'table'              => $this->getTable(),
-           'field'              => 'is_helpdesk_visible',
-           'name'               => __('Associable to a ticket'),
-           'datatype'           => 'bool'
+            'id'                 => '61',
+            'table'              => $this->getTable(),
+            'field'              => 'is_helpdesk_visible',
+            'name'               => __('Associable to a ticket'),
+            'datatype'           => 'bool',
         ];
 
         $tab[] = [
-           'id'                 => '63',
-           'table'              => $this->getTable(),
-           'field'              => 'is_valid',
-                                //TRANS: Indicator to know is all licenses of the software are valids
-           'name'               => __('Valid licenses'),
-           'datatype'           => 'bool'
+            'id'                 => '63',
+            'table'              => $this->getTable(),
+            'field'              => 'is_valid',
+            //TRANS: Indicator to know is all licenses of the software are valids
+            'name'               => __('Valid licenses'),
+            'datatype'           => 'bool',
         ];
 
         $tab[] = [
-           'id'                 => '80',
-           'table'              => 'glpi_entities',
-           'field'              => 'completename',
-           'name'               => Entity::getTypeName(1),
-           'massiveaction'      => false,
-           'datatype'           => 'dropdown'
+            'id'                 => '80',
+            'table'              => 'glpi_entities',
+            'field'              => 'completename',
+            'name'               => Entity::getTypeName(1),
+            'massiveaction'      => false,
+            'datatype'           => 'dropdown',
         ];
 
         $newtab = [
-           'id'                 => '72',
-           'table'              => 'glpi_items_softwareversions',
-           'field'              => 'id',
-           'name'               => _x('quantity', 'Number of installations'),
-           'forcegroupby'       => true,
-           'usehaving'          => true,
-           'datatype'           => 'count',
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'jointype'   => 'child',
-              'beforejoin' => [
-                 'table'      => 'glpi_softwareversions',
-                 'joinparams' => ['jointype' => 'child'],
-              ],
-              'condition'  => "AND NEWTABLE.`is_deleted_item` = 0
+            'id'                 => '72',
+            'table'              => 'glpi_items_softwareversions',
+            'field'              => 'id',
+            'name'               => _x('quantity', 'Number of installations'),
+            'forcegroupby'       => true,
+            'usehaving'          => true,
+            'datatype'           => 'count',
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'jointype'   => 'child',
+                'beforejoin' => [
+                    'table'      => 'glpi_softwareversions',
+                    'joinparams' => ['jointype' => 'child'],
+                ],
+                'condition'  => "AND NEWTABLE.`is_deleted_item` = 0
                              AND NEWTABLE.`is_deleted` = 0
                              AND NEWTABLE.`is_template_item` = 0",
-           ]
+            ],
         ];
 
         if (Session::getLoginUserID()) {
@@ -634,92 +636,92 @@ class Software extends CommonDBTM
         $tab[] = $newtab;
 
         $tab[] = [
-           'id'                 => '73',
-           'table'              => 'glpi_items_softwareversions',
-           'field'              => 'date_install',
-           'name'               => __('Installation date'),
-           'datatype'           => 'date',
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'jointype'   => 'child',
-              'beforejoin' => [
-                 'table'      => 'glpi_softwareversions',
-                 'joinparams' => ['jointype' => 'child'],
-              ],
-              'condition'  => "AND NEWTABLE.`is_deleted_item` = 0
+            'id'                 => '73',
+            'table'              => 'glpi_items_softwareversions',
+            'field'              => 'date_install',
+            'name'               => __('Installation date'),
+            'datatype'           => 'date',
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'jointype'   => 'child',
+                'beforejoin' => [
+                    'table'      => 'glpi_softwareversions',
+                    'joinparams' => ['jointype' => 'child'],
+                ],
+                'condition'  => "AND NEWTABLE.`is_deleted_item` = 0
                              AND NEWTABLE.`is_deleted` = 0
                              AND NEWTABLE.`is_template_item` = 0",
-           ]
+            ],
         ];
 
         $tab = array_merge($tab, SoftwareLicense::rawSearchOptionsToAdd());
 
         $name = _n('Version', 'Versions', Session::getPluralNumber());
         $tab[] = [
-           'id'                 => 'versions',
-           'name'               => $name
+            'id'                 => 'versions',
+            'name'               => $name,
         ];
 
         $tab[] = [
-           'id'                 => '5',
-           'table'              => 'glpi_softwareversions',
-           'field'              => 'name',
-           'name'               => __('Name'),
-           'forcegroupby'       => true,
-           'massiveaction'      => false,
-           'displaywith'        => ['softwares_id'],
-           'joinparams'         => [
-              'jointype'           => 'child'
-           ],
-           'datatype'           => 'dropdown'
+            'id'                 => '5',
+            'table'              => 'glpi_softwareversions',
+            'field'              => 'name',
+            'name'               => __('Name'),
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
+            'displaywith'        => ['softwares_id'],
+            'joinparams'         => [
+                'jointype'           => 'child',
+            ],
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '31',
-           'table'              => 'glpi_states',
-           'field'              => 'completename',
-           'name'               => __('Status'),
-           'datatype'           => 'dropdown',
-           'forcegroupby'       => true,
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'beforejoin'         => [
-                 'table'              => 'glpi_softwareversions',
-                 'joinparams'         => [
-                    'jointype'           => 'child'
-                 ]
-              ]
-           ],
+            'id'                 => '31',
+            'table'              => 'glpi_states',
+            'field'              => 'completename',
+            'name'               => __('Status'),
+            'datatype'           => 'dropdown',
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'beforejoin'         => [
+                    'table'              => 'glpi_softwareversions',
+                    'joinparams'         => [
+                        'jointype'           => 'child',
+                    ],
+                ],
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '170',
-           'table'              => 'glpi_softwareversions',
-           'field'              => 'comment',
-           'name'               => __('Comments'),
-           'forcegroupby'       => true,
-           'datatype'           => 'text',
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'jointype'           => 'child'
-           ]
+            'id'                 => '170',
+            'table'              => 'glpi_softwareversions',
+            'field'              => 'comment',
+            'name'               => __('Comments'),
+            'forcegroupby'       => true,
+            'datatype'           => 'text',
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'jointype'           => 'child',
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '4',
-           'table'              => 'glpi_operatingsystems',
-           'field'              => 'name',
-           'datatype'           => 'dropdown',
-           'name'               => OperatingSystem::getTypeName(1),
-           'forcegroupby'       => true,
-           'joinparams'         => [
-              'beforejoin'         => [
-                 'table'              => 'glpi_softwareversions',
-                 'joinparams'         => [
-                    'jointype'           => 'child'
-                 ]
-              ]
-           ],
+            'id'                 => '4',
+            'table'              => 'glpi_operatingsystems',
+            'field'              => 'name',
+            'datatype'           => 'dropdown',
+            'name'               => OperatingSystem::getTypeName(1),
+            'forcegroupby'       => true,
+            'joinparams'         => [
+                'beforejoin'         => [
+                    'table'              => 'glpi_softwareversions',
+                    'joinparams'         => [
+                        'jointype'           => 'child',
+                    ],
+                ],
+            ],
         ];
 
         $tab = array_merge($tab, Notepad::rawSearchOptionsToAdd());
@@ -735,7 +737,7 @@ class Software extends CommonDBTM
      * @param $myname          select name
      * @param $entity_restrict restrict to a defined entity
      *
-     * @return integer random part of elements id
+     * @return int random part of elements id
     **/
     public static function dropdownSoftwareToInstall($myname, $entity_restrict)
     {
@@ -752,7 +754,7 @@ class Software extends CommonDBTM
         $rand = Dropdown::show('Software', ['condition' => $where]);
 
         $paramsselsoft = ['softwares_id' => '__VALUE__',
-                               'myname'       => $myname];
+            'myname'       => $myname];
 
         Ajax::updateItemOnSelectEvent(
             "dropdown_softwares_id$rand",
@@ -773,32 +775,32 @@ class Software extends CommonDBTM
      * @param $myname          select name
      * @param $entity_restrict restrict to a defined entity
      *
-     * @return integer random part of elements id
+     * @return int random part of elements id
     **/
     public static function dropdownLicenseToInstall($myname, $entity_restrict)
     {
         global $CFG_GLPI, $DB;
 
         $iterator = $DB->request([
-           'SELECT'          => [
-              'glpi_softwares.id',
-              'glpi_softwares.name'
-           ],
-           'DISTINCT'        => true,
-           'FROM'            => 'glpi_softwares',
-           'INNER JOIN'      => [
-              'glpi_softwarelicenses' => [
-                 'ON' => [
-                    'glpi_softwarelicenses' => 'softwares_id',
-                    'glpi_softwares'        => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'           => [
-              'glpi_softwares.is_deleted'    => 0,
-              'glpi_softwares.is_template'  => 0
-           ] + getEntitiesRestrictCriteria('glpi_softwarelicenses', 'entities_id', $entity_restrict, true),
-           'ORDERBY'         => 'glpi_softwares.name'
+            'SELECT'          => [
+                'glpi_softwares.id',
+                'glpi_softwares.name',
+            ],
+            'DISTINCT'        => true,
+            'FROM'            => 'glpi_softwares',
+            'INNER JOIN'      => [
+                'glpi_softwarelicenses' => [
+                    'ON' => [
+                        'glpi_softwarelicenses' => 'softwares_id',
+                        'glpi_softwares'        => 'id',
+                    ],
+                ],
+            ],
+            'WHERE'           => [
+                'glpi_softwares.is_deleted'    => 0,
+                'glpi_softwares.is_template'  => 0,
+            ] + getEntitiesRestrictCriteria('glpi_softwarelicenses', 'entities_id', $entity_restrict, true),
+            'ORDERBY'         => 'glpi_softwares.name',
         ]);
 
         $values = [];
@@ -809,8 +811,8 @@ class Software extends CommonDBTM
         $rand = Dropdown::showFromArray('softwares_id', $values, ['display_emptychoice' => true]);
 
         $paramsselsoft = ['softwares_id'    => '__VALUE__',
-                               'entity_restrict' => $entity_restrict,
-                               'myname'          => $myname];
+            'entity_restrict' => $entity_restrict,
+            'myname'          => $myname];
 
         Ajax::updateItemOnSelectEvent(
             "dropdown_softwares_id$rand",
@@ -907,16 +909,16 @@ class Software extends CommonDBTM
         }
 
         $iterator = $DB->request([
-           'SELECT' => [
-              'glpi_softwares.id',
-              'glpi_softwares.is_deleted'
-           ],
-           'FROM'   => 'glpi_softwares',
-           'WHERE'  => [
-              'name'               => $name,
-              'manufacturers_id'   => $manufacturer_id,
-              'is_template'        => 0
-           ] + getEntitiesRestrictCriteria('glpi_softwares', 'entities_id', $entity, true)
+            'SELECT' => [
+                'glpi_softwares.id',
+                'glpi_softwares.is_deleted',
+            ],
+            'FROM'   => 'glpi_softwares',
+            'WHERE'  => [
+                'name'               => $name,
+                'manufacturers_id'   => $manufacturer_id,
+                'is_template'        => 0,
+            ] + getEntitiesRestrictCriteria('glpi_softwares', 'entities_id', $entity, true),
         ]);
 
         if (count($iterator)) {
@@ -952,7 +954,7 @@ class Software extends CommonDBTM
      * @param $ID        the ID of the software to put in trashbin
      * @param $comment   the comment to add to the already existing software's comment (default '')
      *
-     * @return boolean (success)
+     * @return bool (success)
     **/
     public function putInTrash($ID, $comment = '')
     {
@@ -982,7 +984,7 @@ class Software extends CommonDBTM
      *
      * @param $ID  the ID of the software to put in trashbin
      *
-     * @return boolean (success)
+     * @return bool (success)
     **/
     public function removeFromTrash($ID)
     {
@@ -997,7 +999,7 @@ class Software extends CommonDBTM
             && ($result['softwarecategories_id'] != $this->fields['softwarecategories_id'])
         ) {
             $this->update(['id'                    => $ID,
-                                'softwarecategories_id' => $result['softwarecategories_id']]);
+                'softwarecategories_id' => $result['softwarecategories_id']]);
         }
 
         return $res;
@@ -1019,32 +1021,32 @@ class Software extends CommonDBTM
 
         echo "<div class='center'>";
         $iterator = $DB->request([
-           'SELECT'    => [
-              'glpi_softwares.id',
-              'glpi_softwares.name',
-              'glpi_entities.completename AS entity'
-           ],
-           'FROM'      => 'glpi_softwares',
-           'LEFT JOIN' => [
-              'glpi_entities'   => [
-                 'ON' => [
-                    'glpi_softwares'  => 'entities_id',
-                    'glpi_entities'   => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_softwares.id'           => ['!=', $ID],
-              'glpi_softwares.name'         => addslashes((string) $this->fields['name']),
-              'glpi_softwares.is_deleted'   => 0,
-              'glpi_softwares.is_template'  => 0
-           ] + getEntitiesRestrictCriteria(
-               'glpi_softwares',
-               'entities_id',
-               getSonsOf("glpi_entities", $this->fields["entities_id"]),
-               false
-           ),
-           'ORDERBY'   => 'entity'
+            'SELECT'    => [
+                'glpi_softwares.id',
+                'glpi_softwares.name',
+                'glpi_entities.completename AS entity',
+            ],
+            'FROM'      => 'glpi_softwares',
+            'LEFT JOIN' => [
+                'glpi_entities'   => [
+                    'ON' => [
+                        'glpi_softwares'  => 'entities_id',
+                        'glpi_entities'   => 'id',
+                    ],
+                ],
+            ],
+            'WHERE'     => [
+                'glpi_softwares.id'           => ['!=', $ID],
+                'glpi_softwares.name'         => addslashes((string) $this->fields['name']),
+                'glpi_softwares.is_deleted'   => 0,
+                'glpi_softwares.is_template'  => 0,
+            ] + getEntitiesRestrictCriteria(
+                'glpi_softwares',
+                'entities_id',
+                getSonsOf("glpi_entities", $this->fields["entities_id"]),
+                false
+            ),
+            'ORDERBY'   => 'entity',
         ]);
         $nb = count($iterator);
 
@@ -1053,12 +1055,12 @@ class Software extends CommonDBTM
             Html::openMassiveActionsForm('mass' . __CLASS__ . $rand);
             $massiveactionparams
                = ['num_displayed' => min($_SESSION['glpilist_limit'], $nb),
-                       'container'     => 'mass' . __CLASS__ . $rand,
-                       'deprecated'      => true,
-                       'specific_actions'
-                                       => [__CLASS__ . MassiveAction::CLASS_ACTION_SEPARATOR . 'merge'
-                                                   => __('Merge')],
-                                       'item'          => $this];
+                   'container'     => 'mass' . __CLASS__ . $rand,
+                   'deprecated'      => true,
+                   'specific_actions'
+                                   => [__CLASS__ . MassiveAction::CLASS_ACTION_SEPARATOR . 'merge'
+                                               => __('Merge')],
+                   'item'          => $this];
             Html::showMassiveActions($massiveactionparams);
 
             echo "<table class='tab_cadre_fixehov' aria-label='Installations'>";
@@ -1094,9 +1096,9 @@ class Software extends CommonDBTM
      * Merge softwares with current
      *
      * @param $item array of software ID to be merged
-     * @param boolean display html progress bar
+     * @param bool display html progress bar
      *
-     * @return boolean about success
+     * @return bool about success
     **/
     public function merge($item, $html = true)
     {
@@ -1126,27 +1128,27 @@ class Software extends CommonDBTM
                     $DB->request(
                         "glpi_softwareversions",
                         ["softwares_id" => $ID,
-                                            "name"         => $from["name"]]
+                            "name"         => $from["name"]]
                     ) as $dest
                 ) {
                     // Update version ID on License
                     $DB->update(
                         'glpi_softwarelicenses',
                         [
-                          'softwareversions_id_buy' => $dest['id']
+                            'softwareversions_id_buy' => $dest['id'],
                         ],
                         [
-                          'softwareversions_id_buy' => $from['id']
+                            'softwareversions_id_buy' => $from['id'],
                         ]
                     );
 
                     $DB->update(
                         'glpi_softwarelicenses',
                         [
-                          'softwareversions_id_use' => $dest['id']
+                            'softwareversions_id_use' => $dest['id'],
                         ],
                         [
-                          'softwareversions_id_use' => $from['id']
+                            'softwareversions_id_use' => $from['id'],
                         ]
                     );
 
@@ -1154,10 +1156,10 @@ class Software extends CommonDBTM
                     $found = $DB->update(
                         'glpi_items_softwareversions',
                         [
-                          'softwareversions_id' => $dest['id']
+                            'softwareversions_id' => $dest['id'],
                         ],
                         [
-                          'softwareversions_id' => $from['id']
+                            'softwareversions_id' => $from['id'],
                         ]
                     );
                 }
@@ -1167,7 +1169,7 @@ class Software extends CommonDBTM
                     $result = $DB->delete(
                         'glpi_softwareversions',
                         [
-                          'id'  => $from['id']
+                            'id'  => $from['id'],
                         ]
                     );
                 } else {
@@ -1175,11 +1177,11 @@ class Software extends CommonDBTM
                     $result = $DB->update(
                         'glpi_softwareversions',
                         [
-                          'softwares_id' => $ID,
-                          'entities_id'  => $this->getField('entities_id')
+                            'softwares_id' => $ID,
+                            'entities_id'  => $this->getField('entities_id'),
                         ],
                         [
-                          'id' => $from['id']
+                            'id' => $from['id'],
                         ]
                     );
                 }
@@ -1197,10 +1199,10 @@ class Software extends CommonDBTM
         $result = $DB->update(
             'glpi_softwarelicenses',
             [
-              'softwares_id' => $ID
+                'softwares_id' => $ID,
             ],
             [
-              'softwares_id' => $item
+                'softwares_id' => $item,
             ]
         );
 
@@ -1225,7 +1227,7 @@ class Software extends CommonDBTM
     public static function getDefaultSearchRequest()
     {
         return [
-           'sort' => 0
+            'sort' => 0,
         ];
     }
 

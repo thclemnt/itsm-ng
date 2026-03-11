@@ -31,7 +31,7 @@ while ($row = $result->next()) {
     if (!isset($monthIndex[$month])) {
         continue;
     }
-    $ticketData[$monthIndex[$month]] = (int)$row['ticket_count'];
+    $ticketData[$monthIndex[$month]] = (int) $row['ticket_count'];
 }
 
 // json parsing

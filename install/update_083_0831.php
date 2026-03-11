@@ -53,8 +53,8 @@ function update083to0831()
         // rename new tables if exists ?
         if ($DB->tableExists($new_table)) {
             $migration->dropTable("backup_$new_table");
-            $migration->displayWarning("$new_table table already exists. ".
-                                       "A backup have been done to backup_$new_table.");
+            $migration->displayWarning("$new_table table already exists. "
+                                       . "A backup have been done to backup_$new_table.");
             $backup_tables = true;
             $query         = $migration->renameTable("$new_table", "backup_$new_table");
         }
@@ -74,8 +74,8 @@ function update083to0831()
         "knowbase_admin",
         "char",
         ['after'     => "knowbase",
-                               'update'    => "1",
-                               'condition' => " WHERE `config` = 'w'"]
+            'update'    => "1",
+            'condition' => " WHERE `config` = 'w'"]
     );
 
     $migration->addField("glpi_configs", "display_count_on_home", "integer", ['value' => 5]);
@@ -94,7 +94,7 @@ function update083to0831()
                 while ($data = $DB->fetchAssoc($result)) {
                     $query = "SELECT MAX(`rank`)
                          FROM `glpi_displaypreferences`
-                         WHERE `users_id` = '".$data['users_id']."'
+                         WHERE `users_id` = '" . $data['users_id'] . "'
                                AND `itemtype` = '$type'";
                     $result = $DB->query($query);
                     $rank   = $DB->result($result, 0, 0);
@@ -103,15 +103,15 @@ function update083to0831()
                     foreach ($tab as $newval) {
                         $query = "SELECT *
                             FROM `glpi_displaypreferences`
-                            WHERE `users_id` = '".$data['users_id']."'
+                            WHERE `users_id` = '" . $data['users_id'] . "'
                                   AND `num` = '$newval'
                                   AND `itemtype` = '$type'";
                         if ($result2 = $DB->query($query)) {
                             if ($DB->numrows($result2) == 0) {
                                 $query = "INSERT INTO `glpi_displaypreferences`
                                          (`itemtype` ,`num` ,`rank` ,`users_id`)
-                                  VALUES ('$type', '$newval', '".$rank++."',
-                                          '".$data['users_id']."')";
+                                  VALUES ('$type', '$newval', '" . $rank++ . "',
+                                          '" . $data['users_id'] . "')";
                                 $DB->query($query);
                             }
                         }
@@ -123,7 +123,7 @@ function update083to0831()
                 foreach ($tab as $newval) {
                     $query = "INSERT INTO `glpi_displaypreferences`
                                 (`itemtype` ,`num` ,`rank` ,`users_id`)
-                         VALUES ('$type', '$newval', '".$rank++."', '0')";
+                         VALUES ('$type', '$newval', '" . $rank++ . "', '0')";
                     $DB->query($query);
                 }
             }

@@ -55,13 +55,13 @@ class KnowbaseItem_Comment extends CommonDBTM
             $where = [];
             if ($item->getType() == KnowbaseItem::getType()) {
                 $where = [
-                   'knowbaseitems_id' => $item->getID(),
-                   'language'         => null
+                    'knowbaseitems_id' => $item->getID(),
+                    'language'         => null,
                 ];
             } else {
                 $where = [
-                   'knowbaseitems_id' => $item->fields['knowbaseitems_id'],
-                   'language'         => $item->fields['language']
+                    'knowbaseitems_id' => $item->fields['knowbaseitems_id'],
+                    'language'         => $item->fields['language'],
                 ];
             }
 
@@ -92,13 +92,13 @@ class KnowbaseItem_Comment extends CommonDBTM
         // Total Number of comments
         if ($item->getType() == KnowbaseItem::getType()) {
             $where = [
-               'knowbaseitems_id' => $item->getID(),
-               'language'         => null
+                'knowbaseitems_id' => $item->getID(),
+                'language'         => null,
             ];
         } else {
             $where = [
-               'knowbaseitems_id' => $item->fields['knowbaseitems_id'],
-               'language'         => $item->fields['language']
+                'knowbaseitems_id' => $item->fields['knowbaseitems_id'],
+                'language'         => $item->fields['language'],
             ];
         }
 
@@ -178,8 +178,8 @@ class KnowbaseItem_Comment extends CommonDBTM
                           _bindForm(_form);
                           _this.parents('.h_item').after(_form);
                        },
-                       error: function() { " .
-                            Html::jsAlertCallback(__('Contact your ITSM-NG admin!'), __('Unable to load revision!')) . "
+                       error: function() { "
+                            . Html::jsAlertCallback(__('Contact your ITSM-NG admin!'), __('Unable to load revision!')) . "
                        }
                     });
                  });
@@ -212,8 +212,8 @@ class KnowbaseItem_Comment extends CommonDBTM
                            .parent()
                            .append(_form);
                        },
-                       error: function() { " .
-                            Html::jsAlertCallback(__('Contact your ITSM-NG admin!'), __('Unable to load revision!')) . "
+                       error: function() { "
+                            . Html::jsAlertCallback(__('Contact your ITSM-NG admin!'), __('Unable to load revision!')) . "
                        }
                     });
                  });
@@ -228,9 +228,9 @@ class KnowbaseItem_Comment extends CommonDBTM
     /**
      * Gat all comments for specified KB entry
      *
-     * @param integer $kbitem_id KB entry ID
+     * @param int $kbitem_id KB entry ID
      * @param string  $lang      Requested language
-     * @param integer $parent    Parent ID (defaults to 0)
+     * @param int $parent    Parent ID (defaults to 0)
      *
      * @return array
      */
@@ -239,9 +239,9 @@ class KnowbaseItem_Comment extends CommonDBTM
         global $DB;
 
         $where = [
-           'knowbaseitems_id'  => $kbitem_id,
-           'language'          => $lang,
-           'parent_comment_id' => $parent
+            'knowbaseitems_id'  => $kbitem_id,
+            'language'          => $lang,
+            'parent_comment_id' => $parent,
         ];
 
         $db_comments = $DB->request(
@@ -262,8 +262,8 @@ class KnowbaseItem_Comment extends CommonDBTM
      * Display comments
      *
      * @param array   $comments   Comments
-     * @param boolean $cancomment Whether user can comment or not
-     * @param integer $level      Current level, defaults to 0
+     * @param bool $cancomment Whether user can comment or not
+     * @param int $level      Current level, defaults to 0
      *
      * @return string
      */
@@ -283,8 +283,8 @@ class KnowbaseItem_Comment extends CommonDBTM
             $html .= "<div class='h_date'>" . Html::convDateTime($comment['date_creation']) . "</div>";
             $html .= "<div class='h_user'>";
             $html .= "<div class='tooltip_picture_border'>";
-            $html .= "<img class='user_picture' alt='' src='" .
-                   User::getThumbnailURLForPicture($user->fields['picture'] ?? '') . "'>";
+            $html .= "<img class='user_picture' alt='' src='"
+                   . User::getThumbnailURLForPicture($user->fields['picture'] ?? '') . "'>";
             $html .= "</div>";
             $html .= "<span class='h_user_name'>";
             $userdata = getUserName($user->getID(), 2);
@@ -341,10 +341,10 @@ class KnowbaseItem_Comment extends CommonDBTM
     /**
      * Get comment form
      *
-     * @param integer       $kbitem_id Knowbase item ID
+     * @param int       $kbitem_id Knowbase item ID
      * @param string        $lang      Related item language
-     * @param false|integer $edit      Comment id to edit, or false
-     * @param false|integer $answer    Comment id to answer to, or false
+     * @param false|int $edit      Comment id to edit, or false
+     * @param false|int $answer    Comment id to answer to, or false
      * @return string
      */
     public static function getCommentForm($kbitem_id, $lang = null, $edit = false, $answer = false)
@@ -357,62 +357,62 @@ class KnowbaseItem_Comment extends CommonDBTM
         }
 
         $form = [
-           'action' => Toolbox::getItemTypeFormURL(__CLASS__),
-           'buttons' => [
-              [
-                 'type'  => 'submit',
-                 'name'  => 'add',
-                 'value' => _sx('button', 'Add'),
-                 'class' => 'btn btn-secondary',
-              ],
-              ($edit !== false || $answer !== false) ? [
-                 'type'  => 'reset',
-                 'name'  => 'cancel',
-                 'value' => __('Cancel'),
-                 'class' => 'btn btn-secondary',
-              ] : [],
-              ($edit !== false) ? [
-                 'type'  => 'submit',
-                 'name'  => 'edit',
-                 'value' => _sx('button', 'Edit'),
-                 'class' => 'btn btn-secondary',
-              ] : [],
-           ],
-           'content' => [
-              ($edit === false ? __('New comment') : __('Edit comment')) => [
-                 'visible' => true,
-                 'inputs' => [
-                    [
-                       'type'  => 'hidden',
-                       'name'  => 'knowbaseitems_id',
-                       'value' => $kbitem_id,
+            'action' => Toolbox::getItemTypeFormURL(__CLASS__),
+            'buttons' => [
+                [
+                    'type'  => 'submit',
+                    'name'  => 'add',
+                    'value' => _sx('button', 'Add'),
+                    'class' => 'btn btn-secondary',
+                ],
+                ($edit !== false || $answer !== false) ? [
+                    'type'  => 'reset',
+                    'name'  => 'cancel',
+                    'value' => __('Cancel'),
+                    'class' => 'btn btn-secondary',
+                ] : [],
+                ($edit !== false) ? [
+                    'type'  => 'submit',
+                    'name'  => 'edit',
+                    'value' => _sx('button', 'Edit'),
+                    'class' => 'btn btn-secondary',
+                ] : [],
+            ],
+            'content' => [
+                ($edit === false ? __('New comment') : __('Edit comment')) => [
+                    'visible' => true,
+                    'inputs' => [
+                        [
+                            'type'  => 'hidden',
+                            'name'  => 'knowbaseitems_id',
+                            'value' => $kbitem_id,
+                        ],
+                        ($lang !== null) ? [
+                            'type'  => 'hidden',
+                            'name'  => 'language',
+                            'value' => $lang,
+                        ] : [],
+                        ($answer !== false) ? [
+                            'type'  => 'hidden',
+                            'name'  => 'parent_comment_id',
+                            'value' => $answer,
+                        ] : [],
+                        ($edit !== false) ? [
+                            'type'  => 'hidden',
+                            'name'  => 'id',
+                            'value' => $edit,
+                        ] : [],
+                        _n('Comment', 'Comments', 1) => [
+                            'type'  => 'textarea',
+                            'name'  => 'comment',
+                            'value' => $content,
+                            'required' => true,
+                            'col_lg' => 12,
+                            'col_md' => 12,
+                        ],
                     ],
-                    ($lang !== null) ? [
-                       'type'  => 'hidden',
-                       'name'  => 'language',
-                       'value' => $lang,
-                    ] : [],
-                    ($answer !== false) ? [
-                       'type'  => 'hidden',
-                       'name'  => 'parent_comment_id',
-                       'value' => $answer,
-                    ] : [],
-                    ($edit !== false) ? [
-                       'type'  => 'hidden',
-                       'name'  => 'id',
-                       'value' => $edit,
-                    ] : [],
-                    _n('Comment', 'Comments', 1) => [
-                       'type'  => 'textarea',
-                       'name'  => 'comment',
-                       'value' => $content,
-                       'required' => true,
-                       'col_lg' => 12,
-                       'col_md' => 12,
-                    ],
-                 ]
-              ]
-           ]
+                ],
+            ],
         ];
         renderTwigForm($form);
     }

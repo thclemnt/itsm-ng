@@ -112,7 +112,7 @@ class XHProf
             $id   = $runs->save_run($data, 'glpi');
 
             $url  = (defined('XHPROF_URL') ? XHPROF_URL : self::XHPROF_URL);
-            $host = (isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : 'localhost');
+            $host = ($_SERVER['HTTP_HOST'] ?? 'localhost');
             $link = "http://" . $host . "$url/index.php?run=$id&source=glpi";
             Toolbox::logDebug("Stop profiling with XHProf, result URL", $link);
 

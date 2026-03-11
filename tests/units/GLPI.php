@@ -33,6 +33,8 @@
 
 namespace tests\units;
 
+use Monolog\Logger;
+
 /* Test for inc/glpi.class.php */
 
 class GLPI extends \GLPITestCase
@@ -41,7 +43,7 @@ class GLPI extends \GLPITestCase
     {
         $glpi = new \GLPI();
         $glpi->initLogger();
-        $this->integer($glpi->getLogLevel())->isIdenticalTo(\Monolog\Logger::DEBUG);
+        $this->integer($glpi->getLogLevel())->isIdenticalTo(Logger::DEBUG);
     }
 
     public function testMissingLanguages()

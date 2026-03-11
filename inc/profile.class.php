@@ -44,29 +44,29 @@ class Profile extends CommonDBTM
 
     /// Helpdesk fields of helpdesk profiles
     public static $helpdesk_rights = [
-       'create_ticket_on_login',
-       'changetemplates_id',
-       'followup',
-       'helpdesk_hardware',
-       'helpdesk_item_type',
-       'knowbase',
-       'password_update',
-       'personalization',
-       'problemtemplates_id',
-       'reminder_public',
-       'reservation',
-       'rssfeed_public',
-       'show_group_hardware',
-       'task',
-       'ticket',
-       'ticket_cost',
-       'ticket_status',
-       'tickettemplates_id',
-       'ticketvalidation',
-       'accessibility',
-       'changefont',
-       'changezoom',
-       'useshortcuts',
+        'create_ticket_on_login',
+        'changetemplates_id',
+        'followup',
+        'helpdesk_hardware',
+        'helpdesk_item_type',
+        'knowbase',
+        'password_update',
+        'personalization',
+        'problemtemplates_id',
+        'reminder_public',
+        'reservation',
+        'rssfeed_public',
+        'show_group_hardware',
+        'task',
+        'ticket',
+        'ticket_cost',
+        'ticket_status',
+        'tickettemplates_id',
+        'ticketvalidation',
+        'accessibility',
+        'changefont',
+        'changezoom',
+        'useshortcuts',
     ];
 
 
@@ -213,10 +213,10 @@ class Profile extends CommonDBTM
             $DB->update(
                 $this->getTable(),
                 [
-                  'is_default' => 0
+                    'is_default' => 0,
                 ],
                 [
-                  'id' => ['<>', $this->input['id']]
+                    'id' => ['<>', $this->input['id']],
                 ]
             );
         }
@@ -251,10 +251,10 @@ class Profile extends CommonDBTM
             $DB->update(
                 $this->getTable(),
                 [
-                  'is_default' => 0
+                    'is_default' => 0,
                 ],
                 [
-                  'id' => ['<>', $this->fields['id']]
+                    'id' => ['<>', $this->fields['id']],
                 ]
             );
         }
@@ -266,11 +266,11 @@ class Profile extends CommonDBTM
 
         $this->deleteChildrenAndRelationsFromDb(
             [
-              KnowbaseItem_Profile::class,
-              Profile_Reminder::class,
-              Profile_RSSFeed::class,
-              Profile_User::class,
-              ProfileRight::class,
+                KnowbaseItem_Profile::class,
+                Profile_Reminder::class,
+                Profile_RSSFeed::class,
+                Profile_User::class,
+                ProfileRight::class,
             ]
         );
 
@@ -423,7 +423,7 @@ class Profile extends CommonDBTM
      *
      * @since 0.85
      *
-     * @return boolean
+     * @return bool
      **/
     public function pre_deleteItem()
     {
@@ -466,7 +466,7 @@ class Profile extends CommonDBTM
         }
 
         // Set default values, only needed for helpdesk
-        $interface = isset($input['interface']) ? $input['interface'] : "";
+        $interface = $input['interface'] ?? "";
         if ($interface == "helpdesk" && !isset($input["_cycle_ticket"])) {
             $tab   = array_keys(Ticket::getAllStatusArray());
             $cycle = [];
@@ -572,7 +572,7 @@ class Profile extends CommonDBTM
         // First, get all possible rights
         $right_subqueries = [];
         foreach (ProfileRight::getAllPossibleRights() as $key => $default) {
-            $val = isset($_SESSION['glpiactiveprofile'][$key]) ? $_SESSION['glpiactiveprofile'][$key] : 0;
+            $val = $_SESSION['glpiactiveprofile'][$key] ?? 0;
 
             if (
                 !is_array($val) // Do not include entities field added by login
@@ -580,30 +580,30 @@ class Profile extends CommonDBTM
                    || in_array($key, self::$helpdesk_rights))
             ) {
                 $right_subqueries[] = [
-                   'glpi_profilerights.name'     => $key,
-                   'RAW'                         => [
-                      '(' . DBmysql::quoteName('glpi_profilerights.rights') . ' | ' . DBmysql::quoteValue($val) . ')' => $val
-                   ]
+                    'glpi_profilerights.name'     => $key,
+                    'RAW'                         => [
+                        '(' . DBmysql::quoteName('glpi_profilerights.rights') . ' | ' . DBmysql::quoteValue($val) . ')' => $val,
+                    ],
                 ];
             }
         }
 
         $sub_query = new QuerySubQuery([
-           'FROM'   => 'glpi_profilerights',
-           'COUNT'  => 'cpt',
-           'WHERE'  => [
-              'glpi_profilerights.profiles_id' => new \QueryExpression(\DBmysql::quoteName('glpi_profiles.id')),
-              'OR'                             => $right_subqueries
-           ]
+            'FROM'   => 'glpi_profilerights',
+            'COUNT'  => 'cpt',
+            'WHERE'  => [
+                'glpi_profilerights.profiles_id' => new QueryExpression(DBmysql::quoteName('glpi_profiles.id')),
+                'OR'                             => $right_subqueries,
+            ],
         ]);
-        $criteria[] = new \QueryExpression(count($right_subqueries) . " = " . $sub_query->getQuery());
+        $criteria[] = new QueryExpression(count($right_subqueries) . " = " . $sub_query->getQuery());
 
         if (Session::getCurrentInterface() == 'central') {
             return [
-               'OR'  => [
-                  'glpi_profiles.interface' => 'helpdesk',
-                  $criteria
-               ]
+                'OR'  => [
+                    'glpi_profiles.interface' => 'helpdesk',
+                    $criteria,
+                ],
             ];
         }
 
@@ -616,7 +616,7 @@ class Profile extends CommonDBTM
      *
      * @param $IDs array of profile ID to test
      *
-     * @return boolean true if have more right
+     * @return bool true if have more right
      **/
     public static function currentUserHaveMoreRightThan($IDs = [])
     {
@@ -636,8 +636,8 @@ class Profile extends CommonDBTM
         $under_profiles = [];
 
         $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => self::getUnderActiveProfileRestrictCriteria()
+            'FROM'   => self::getTable(),
+            'WHERE'  => self::getUnderActiveProfileRestrictCriteria(),
         ]);
 
         while ($data = $iterator->next()) {
@@ -696,69 +696,69 @@ class Profile extends CommonDBTM
      *     - target filename : where to go when done.
      *     - withtemplate boolean : template or basic item
      *
-     * @return boolean item found
+     * @return bool item found
      **/
     public function showForm($ID, $options = [])
     {
         $form = [
-           'action' => Toolbox::getItemTypeFormURL('profile'),
-           'itemtype' => self::class,
-           'content' => [
-                  __('Profile') => [
-                      'visible' => true,
-                      'inputs' => [
-                          __('Name') => [
-                              'name' => 'name',
-                              'type' => 'text',
-                              'value' => $this->fields['name'] ?? '',
-                          ],
-                          __('Default profile') => [
-                              'name' => 'is_default',
-                              'type' => 'select',
-                          'id' => 'is_default',
-                          'values' => [
-                          '0' => __('No'),
-                          '1' => __('Yes'),
-                              ],
-                              'value' => $this->fields['is_default']
-                          ],
-                          __('Profile\'s interface') => [
-                              'name' => 'interface',
-                              'type' => 'select',
-                              'value' => $this->fields['interface'],
-                          'values' => [
-                          'central' => __('Standard interface'),
-                          'helpdesk' => __('Simplified interface'),
-                              ]
-                          ],
-                          __('Update password') => [
-                              'name' => '_password_update',
-                              'type' => 'select',
-                          'id' => 'password_update',
-                          'values' => [
-                          '0' => __('No'),
-                          '1' => __('Yes'),
-                              ],
-                              'value' => $this->fields['password_update']
-                          ],
-                          __('Ticket creation form on login') => [
-                              'name' => 'create_ticket_on_login',
-                              'type' => 'select',
-                          'id' => 'create_ticket_on_login',
-                          'values' => [
-                          '0' => __('No'),
-                          '1' => __('Yes'),
-                              ],
-                              'value' => $this->fields['create_ticket_on_login']
-                          ],
-                          __('Comment') => [
-                          'name' => 'comment',
-                          'type' => 'textarea',
-                          'value' => $this->fields['comment'] ?? ''
-                          ],
-                      ]
-                  ]
-           ]
+            'action' => Toolbox::getItemTypeFormURL('profile'),
+            'itemtype' => self::class,
+            'content' => [
+                __('Profile') => [
+                    'visible' => true,
+                    'inputs' => [
+                        __('Name') => [
+                            'name' => 'name',
+                            'type' => 'text',
+                            'value' => $this->fields['name'] ?? '',
+                        ],
+                        __('Default profile') => [
+                            'name' => 'is_default',
+                            'type' => 'select',
+                            'id' => 'is_default',
+                            'values' => [
+                                '0' => __('No'),
+                                '1' => __('Yes'),
+                            ],
+                            'value' => $this->fields['is_default'],
+                        ],
+                        __('Profile\'s interface') => [
+                            'name' => 'interface',
+                            'type' => 'select',
+                            'value' => $this->fields['interface'],
+                            'values' => [
+                                'central' => __('Standard interface'),
+                                'helpdesk' => __('Simplified interface'),
+                            ],
+                        ],
+                        __('Update password') => [
+                            'name' => '_password_update',
+                            'type' => 'select',
+                            'id' => 'password_update',
+                            'values' => [
+                                '0' => __('No'),
+                                '1' => __('Yes'),
+                            ],
+                            'value' => $this->fields['password_update'],
+                        ],
+                        __('Ticket creation form on login') => [
+                            'name' => 'create_ticket_on_login',
+                            'type' => 'select',
+                            'id' => 'create_ticket_on_login',
+                            'values' => [
+                                '0' => __('No'),
+                                '1' => __('Yes'),
+                            ],
+                            'value' => $this->fields['create_ticket_on_login'],
+                        ],
+                        __('Comment') => [
+                            'name' => 'comment',
+                            'type' => 'textarea',
+                            'value' => $this->fields['comment'] ?? '',
+                        ],
+                    ],
+                ],
+            ],
         ];
 
         renderTwigForm($form, '', $this->fields);
@@ -784,31 +784,31 @@ class Profile extends CommonDBTM
         }
 
         $matrix_options = [
-           'canedit'       => $canedit,
-           'default_class' => 'tab_bg_2'
+            'canedit'       => $canedit,
+            'default_class' => 'tab_bg_2',
         ];
 
         $rights = [
-           [
-              'rights'     => Profile::getRightsFor('Ticket', 'helpdesk'),
-              'label'      => _n('Ticket', 'Tickets', Session::getPluralNumber()),
-              'field'      => 'ticket'
-           ],
-           [
-              'rights'     => Profile::getRightsFor('ITILFollowup', 'helpdesk'),
-              'label'      => _n('Followup', 'Followups', Session::getPluralNumber()),
-              'field'      => 'followup'
-           ],
-           [
-              'rights'     => Profile::getRightsFor('TicketTask', 'helpdesk'),
-              'label'      => _n('Task', 'Tasks', Session::getPluralNumber()),
-              'field'      => 'task'
-           ],
-           [
-              'rights'     => Profile::getRightsFor('TicketValidation', 'helpdesk'),
-              'label'      => _n('Validation', 'Validations', Session::getPluralNumber()),
-              'field'      => 'ticketvalidation'
-           ]
+            [
+                'rights'     => Profile::getRightsFor('Ticket', 'helpdesk'),
+                'label'      => _n('Ticket', 'Tickets', Session::getPluralNumber()),
+                'field'      => 'ticket',
+            ],
+            [
+                'rights'     => Profile::getRightsFor('ITILFollowup', 'helpdesk'),
+                'label'      => _n('Followup', 'Followups', Session::getPluralNumber()),
+                'field'      => 'followup',
+            ],
+            [
+                'rights'     => Profile::getRightsFor('TicketTask', 'helpdesk'),
+                'label'      => _n('Task', 'Tasks', Session::getPluralNumber()),
+                'field'      => 'task',
+            ],
+            [
+                'rights'     => Profile::getRightsFor('TicketValidation', 'helpdesk'),
+                'label'      => _n('Validation', 'Validations', Session::getPluralNumber()),
+                'field'      => 'ticketvalidation',
+            ],
         ];
 
         $matrix_options['title'] = __('Assistance');
@@ -820,8 +820,8 @@ class Profile extends CommonDBTM
         echo "<tr class='tab_bg_2'>";
         echo "<td width=30%>" . __('See hardware of my groups') . "</td><td>";
         Html::showCheckbox([
-           'name'    => '_show_group_hardware',
-           'checked' => $this->fields['show_group_hardware']
+            'name'    => '_show_group_hardware',
+            'checked' => $this->fields['show_group_hardware'],
         ]);
         echo "</td></tr>\n";
 
@@ -831,8 +831,8 @@ class Profile extends CommonDBTM
         self::getLinearRightChoice(
             self::getHelpdeskHardwareTypes(true),
             [
-              'field' => 'helpdesk_hardware',
-              'value' => $this->fields['helpdesk_hardware']
+                'field' => 'helpdesk_hardware',
+                'value' => $this->fields['helpdesk_hardware'],
             ]
         );
         echo "</td></tr>\n";
@@ -849,8 +849,8 @@ class Profile extends CommonDBTM
         echo "<td>" . __('Default ticket template') . "</td><td>";
         // Only root entity ones and recursive
         $options = [
-           'value'     => $this->fields["tickettemplates_id"],
-           'entity'    => 0
+            'value'     => $this->fields["tickettemplates_id"],
+            'entity'    => 0,
         ];
         if (Session::isMultiEntitiesMode()) {
             $options['condition'] = ['is_recursive' => 1];
@@ -867,8 +867,8 @@ class Profile extends CommonDBTM
         echo "<td>" . __('Default change template') . "</td><td>";
         // Only root entity ones and recursive
         $options = [
-           'value'     => $this->fields["changetemplates_id"],
-           'entity'    => 0
+            'value'     => $this->fields["changetemplates_id"],
+            'entity'    => 0,
         ];
         if (Session::isMultiEntitiesMode()) {
             $options['condition'] = ['is_recursive' => 1];
@@ -885,8 +885,8 @@ class Profile extends CommonDBTM
         echo "<td>" . __('Default problem template') . "</td><td>";
         // Only root entity ones and recursive
         $options = [
-           'value'     => $this->fields["problemtemplates_id"],
-           'entity'    => 0
+            'value'     => $this->fields["problemtemplates_id"],
+            'entity'    => 0,
         ];
         if (Session::isMultiEntitiesMode()) {
             $options['condition'] = ['is_recursive' => 1];
@@ -931,31 +931,31 @@ class Profile extends CommonDBTM
         }
 
         $matrix_options = [
-           'canedit'       => $canedit,
-           'default_class' => 'tab_bg_2'
+            'canedit'       => $canedit,
+            'default_class' => 'tab_bg_2',
         ];
 
         $rights = [
-           [
-              'rights'    => Profile::getRightsFor('KnowbaseItem', 'helpdesk'),
-              'label'     => __('FAQ'),
-              'field'     => 'knowbase'
-           ],
-           [
-              'rights'  => Profile::getRightsFor('ReservationItem', 'helpdesk'),
-              'label'     => _n('Reservation', 'Reservations', Session::getPluralNumber()),
-              'field'     => 'reservation'
-           ],
-           [
-              'rights'    => Profile::getRightsFor('Reminder', 'helpdesk'),
-              'label'     => _n('Public reminder', 'Public reminders', Session::getPluralNumber()),
-              'field'     => 'reminder_public'
-           ],
-           [
-              'rights'    => Profile::getRightsFor('RSSFeed', 'helpdesk'),
-              'label'     => _n('Public RSS feed', 'Public RSS feeds', Session::getPluralNumber()),
-              'field'     => 'rssfeed_public'
-           ]
+            [
+                'rights'    => Profile::getRightsFor('KnowbaseItem', 'helpdesk'),
+                'label'     => __('FAQ'),
+                'field'     => 'knowbase',
+            ],
+            [
+                'rights'  => Profile::getRightsFor('ReservationItem', 'helpdesk'),
+                'label'     => _n('Reservation', 'Reservations', Session::getPluralNumber()),
+                'field'     => 'reservation',
+            ],
+            [
+                'rights'    => Profile::getRightsFor('Reminder', 'helpdesk'),
+                'label'     => _n('Public reminder', 'Public reminders', Session::getPluralNumber()),
+                'field'     => 'reminder_public',
+            ],
+            [
+                'rights'    => Profile::getRightsFor('RSSFeed', 'helpdesk'),
+                'label'     => _n('Public RSS feed', 'Public RSS feeds', Session::getPluralNumber()),
+                'field'     => 'rssfeed_public',
+            ],
         ];
 
         $matrix_options['title'] = __('Tools');
@@ -998,71 +998,71 @@ class Profile extends CommonDBTM
         }
 
         $rights = [
-           [
-              'itemtype'  => 'Computer',
-              'label'     => _n('Computer', 'Computers', Session::getPluralNumber()),
-              'field'     => 'computer'
-           ],
-           [
-              'itemtype'  => 'Monitor',
-              'label'     => _n('Monitor', 'Monitors', Session::getPluralNumber()),
-              'field'     => 'monitor'
-           ],
-           [
-              'itemtype'  => 'Software',
-              'label'     => _n('Software', 'Software', Session::getPluralNumber()),
-              'field'     => 'software'
-           ],
-           [
-              'itemtype'  => 'NetworkEquipment',
-              'label'     => _n('Network', 'Networks', Session::getPluralNumber()),
-              'field'     => 'networking'
-           ],
-           [
-              'itemtype'  => 'Printer',
-              'label'     => _n('Printer', 'Printers', Session::getPluralNumber()),
-              'field'     => 'printer'
-           ],
-           [
-              'itemtype'  => 'Cartridge',
-              'label'     => _n('Cartridge', 'Cartridges', Session::getPluralNumber()),
-              'field'     => 'cartridge'
-           ],
-           [
-              'itemtype'  => 'Consumable',
-              'label'     => _n('Consumable', 'Consumables', Session::getPluralNumber()),
-              'field'     => 'consumable'
-           ],
-           [
-              'itemtype'  => 'Phone',
-              'label'     => Phone::getTypeName(Session::getPluralNumber()),
-              'field'     => 'phone'
-           ],
-           [
-              'itemtype'  => 'Peripheral',
-              'label'     => Peripheral::getTypeName(Session::getPluralNumber()),
-              'field'     => 'peripheral'
-           ],
-           [
-              'itemtype'  => 'NetworkName',
-              'label'     => __('Internet'),
-              'field'     => 'internet'
-           ],
-           [
-              'itemtype'  => 'DeviceSimcard',
-              'label'     => __('Simcard PIN/PUK'),
-              'field'     => 'devicesimcard_pinpuk',
-              'rights'    => [
-                 READ    => __('Read'),
-                 UPDATE  => __('Update')
-              ]
-           ]
+            [
+                'itemtype'  => 'Computer',
+                'label'     => _n('Computer', 'Computers', Session::getPluralNumber()),
+                'field'     => 'computer',
+            ],
+            [
+                'itemtype'  => 'Monitor',
+                'label'     => _n('Monitor', 'Monitors', Session::getPluralNumber()),
+                'field'     => 'monitor',
+            ],
+            [
+                'itemtype'  => 'Software',
+                'label'     => _n('Software', 'Software', Session::getPluralNumber()),
+                'field'     => 'software',
+            ],
+            [
+                'itemtype'  => 'NetworkEquipment',
+                'label'     => _n('Network', 'Networks', Session::getPluralNumber()),
+                'field'     => 'networking',
+            ],
+            [
+                'itemtype'  => 'Printer',
+                'label'     => _n('Printer', 'Printers', Session::getPluralNumber()),
+                'field'     => 'printer',
+            ],
+            [
+                'itemtype'  => 'Cartridge',
+                'label'     => _n('Cartridge', 'Cartridges', Session::getPluralNumber()),
+                'field'     => 'cartridge',
+            ],
+            [
+                'itemtype'  => 'Consumable',
+                'label'     => _n('Consumable', 'Consumables', Session::getPluralNumber()),
+                'field'     => 'consumable',
+            ],
+            [
+                'itemtype'  => 'Phone',
+                'label'     => Phone::getTypeName(Session::getPluralNumber()),
+                'field'     => 'phone',
+            ],
+            [
+                'itemtype'  => 'Peripheral',
+                'label'     => Peripheral::getTypeName(Session::getPluralNumber()),
+                'field'     => 'peripheral',
+            ],
+            [
+                'itemtype'  => 'NetworkName',
+                'label'     => __('Internet'),
+                'field'     => 'internet',
+            ],
+            [
+                'itemtype'  => 'DeviceSimcard',
+                'label'     => __('Simcard PIN/PUK'),
+                'field'     => 'devicesimcard_pinpuk',
+                'rights'    => [
+                    READ    => __('Read'),
+                    UPDATE  => __('Update'),
+                ],
+            ],
         ];
 
         $this->displayRightsChoiceMatrix($rights, [
-           'canedit'       => $canedit,
-           'default_class' => 'tab_bg_2',
-           'title'         => __('Assets')
+            'canedit'       => $canedit,
+            'default_class' => 'tab_bg_2',
+            'title'         => __('Assets'),
         ]);
 
         if (
@@ -1105,76 +1105,76 @@ class Profile extends CommonDBTM
         }
 
         $matrix_options = [
-           'canedit'       => $canedit,
-           'default_class' => 'tab_bg_2'
+            'canedit'       => $canedit,
+            'default_class' => 'tab_bg_2',
         ];
 
         $rights = [
-           [
-              'itemtype'  => 'SoftwareLicense',
-              'label'     => SoftwareLicense::getTypeName(Session::getPluralNumber()),
-              'field'     => 'license'
-           ],
-           [
-              'itemtype'  => 'Contact',
-              'label'     => _n('Contact', 'Contacts', Session::getPluralNumber()) . " / " .
-                 _n('Supplier', 'Suppliers', Session::getPluralNumber()),
-              'field'     => 'contact_enterprise'
-           ],
-           [
-              'itemtype'  => 'Document',
-              'label'     => Document::getTypeName(Session::getPluralNumber()),
-              'field'     => 'document'
-           ],
-           [
-              'itemtype'  => 'Contract',
-              'label'     => _n('Contract', 'Contracts', Session::getPluralNumber()),
-              'field'     => 'contract'
-           ],
-           [
-              'itemtype'  => 'Infocom',
-              'label'     => __('Financial and administratives information'),
-              'field'     => 'infocom'
-           ],
-           [
-              'itemtype'  => 'Budget',
-              'label'     => Budget::getTypeName(1),
-              'field'     => 'budget'
-           ],
-           [
-              'itemtype'  => 'Line',
-              'label'     => Line::getTypeName(1),
-              'field'     => 'line'
-           ],
-           [
-              'itemtype'  => 'Certificate',
-              'label'     => _n(
-                  'Certificate',
-                  'Certificates',
-                  Session::getPluralNumber()
-              ),
-              'field'     => 'certificate'
-           ],
-           [
-              'itemtype'  => 'Datacenter',
-              'label'     => Datacenter::getTypeName(Session::getPluralNumber()),
-              'field'     => 'datacenter'
-           ],
-           [
-              'itemtype'  => 'Cluster',
-              'label'     => Cluster::getTypeName(Session::getPluralNumber()),
-              'field'     => 'cluster'
-           ],
-           [
-              'itemtype'  => 'Domain',
-              'label'     => _n('Domain', 'Domains', Session::getPluralNumber()),
-              'field'     => 'domain'
-           ],
-           [
-              'itemtype'  => 'Appliance',
-              'label'     => Appliance::getTypeName(Session::getPluralNumber()),
-              'field'     => 'appliance'
-           ],
+            [
+                'itemtype'  => 'SoftwareLicense',
+                'label'     => SoftwareLicense::getTypeName(Session::getPluralNumber()),
+                'field'     => 'license',
+            ],
+            [
+                'itemtype'  => 'Contact',
+                'label'     => _n('Contact', 'Contacts', Session::getPluralNumber()) . " / "
+                   . _n('Supplier', 'Suppliers', Session::getPluralNumber()),
+                'field'     => 'contact_enterprise',
+            ],
+            [
+                'itemtype'  => 'Document',
+                'label'     => Document::getTypeName(Session::getPluralNumber()),
+                'field'     => 'document',
+            ],
+            [
+                'itemtype'  => 'Contract',
+                'label'     => _n('Contract', 'Contracts', Session::getPluralNumber()),
+                'field'     => 'contract',
+            ],
+            [
+                'itemtype'  => 'Infocom',
+                'label'     => __('Financial and administratives information'),
+                'field'     => 'infocom',
+            ],
+            [
+                'itemtype'  => 'Budget',
+                'label'     => Budget::getTypeName(1),
+                'field'     => 'budget',
+            ],
+            [
+                'itemtype'  => 'Line',
+                'label'     => Line::getTypeName(1),
+                'field'     => 'line',
+            ],
+            [
+                'itemtype'  => 'Certificate',
+                'label'     => _n(
+                    'Certificate',
+                    'Certificates',
+                    Session::getPluralNumber()
+                ),
+                'field'     => 'certificate',
+            ],
+            [
+                'itemtype'  => 'Datacenter',
+                'label'     => Datacenter::getTypeName(Session::getPluralNumber()),
+                'field'     => 'datacenter',
+            ],
+            [
+                'itemtype'  => 'Cluster',
+                'label'     => Cluster::getTypeName(Session::getPluralNumber()),
+                'field'     => 'cluster',
+            ],
+            [
+                'itemtype'  => 'Domain',
+                'label'     => _n('Domain', 'Domains', Session::getPluralNumber()),
+                'field'     => 'domain',
+            ],
+            [
+                'itemtype'  => 'Appliance',
+                'label'     => Appliance::getTypeName(Session::getPluralNumber()),
+                'field'     => 'appliance',
+            ],
         ];
         $matrix_options['title'] = __('Management');
         $this->displayRightsChoiceMatrix($rights, $matrix_options);
@@ -1188,11 +1188,11 @@ class Profile extends CommonDBTM
         renderTwigTemplate(
             'macros/input.twig',
             [
-              'type'     => 'select',
-              'name'     => 'managed_domainrecordtypes[]',
-              'multiple' => true,
-              'values'  => $values,
-              'value'   => $this->fields['managed_domainrecordtypes'],
+                'type'     => 'select',
+                'name'     => 'managed_domainrecordtypes[]',
+                'multiple' => true,
+                'values'  => $values,
+                'value'   => $this->fields['managed_domainrecordtypes'],
             ]
         );
         echo "</div>\n";
@@ -1236,56 +1236,56 @@ class Profile extends CommonDBTM
         }
 
         $matrix_options = [
-           'canedit'       => $canedit,
-           'default_class' => 'tab_bg_2'
+            'canedit'       => $canedit,
+            'default_class' => 'tab_bg_2',
         ];
 
         $rights = [
-           [
-              'itemtype'  => 'Reminder',
-              'label'     => _n('Public reminder', 'Public reminders', Session::getPluralNumber()),
-              'field'     => 'reminder_public'
-           ],
-           [
-              'itemtype'  => 'RSSFeed',
-              'label'     => _n('Public RSS feed', 'Public RSS feeds', Session::getPluralNumber()),
-              'field'     => 'rssfeed_public'
-           ],
-           [
-              'itemtype'  => 'SavedSearch',
-              'label'     => _n('Public saved search', 'Public saved searches', Session::getPluralNumber()),
-              'field'     => 'bookmark_public'
-           ],
-           [
-              'itemtype'  => 'Report',
-              'label'     => _n('Report', 'Reports', Session::getPluralNumber()),
-              'field'     => 'reports'
-           ],
-           [
-              'itemtype'  => 'KnowbaseItem',
-              'label'     => __('Knowledge base'),
-              'field'     => 'knowbase'
-           ],
-           [
-              'itemtype'  => 'ReservationItem',
-              'label'     => __('Administration of reservations'),
-              'field'     => 'reservation'
-           ]
+            [
+                'itemtype'  => 'Reminder',
+                'label'     => _n('Public reminder', 'Public reminders', Session::getPluralNumber()),
+                'field'     => 'reminder_public',
+            ],
+            [
+                'itemtype'  => 'RSSFeed',
+                'label'     => _n('Public RSS feed', 'Public RSS feeds', Session::getPluralNumber()),
+                'field'     => 'rssfeed_public',
+            ],
+            [
+                'itemtype'  => 'SavedSearch',
+                'label'     => _n('Public saved search', 'Public saved searches', Session::getPluralNumber()),
+                'field'     => 'bookmark_public',
+            ],
+            [
+                'itemtype'  => 'Report',
+                'label'     => _n('Report', 'Reports', Session::getPluralNumber()),
+                'field'     => 'reports',
+            ],
+            [
+                'itemtype'  => 'KnowbaseItem',
+                'label'     => __('Knowledge base'),
+                'field'     => 'knowbase',
+            ],
+            [
+                'itemtype'  => 'ReservationItem',
+                'label'     => __('Administration of reservations'),
+                'field'     => 'reservation',
+            ],
         ];
         $matrix_options['title'] = __('Tools');
         $this->displayRightsChoiceMatrix($rights, $matrix_options);
 
         $rights = [
-           [
-              'itemtype'   => 'Project',
-              'label'      => _n('Project', 'Projects', Session::getPluralNumber()),
-              'field'      => 'project'
-           ],
-           [
-              'itemtype'   => 'ProjectTask',
-              'label'      => _n('Task', 'Task', Session::getPluralNumber()),
-              'field'      => 'projecttask'
-           ]
+            [
+                'itemtype'   => 'Project',
+                'label'      => _n('Project', 'Projects', Session::getPluralNumber()),
+                'field'      => 'project',
+            ],
+            [
+                'itemtype'   => 'ProjectTask',
+                'label'      => _n('Task', 'Task', Session::getPluralNumber()),
+                'field'      => 'projecttask',
+            ],
         ];
         $matrix_options['title'] = _n('Project', 'Projects', Session::getPluralNumber());
         $this->displayRightsChoiceMatrix($rights, $matrix_options);
@@ -1334,8 +1334,8 @@ class Profile extends CommonDBTM
             echo "<td>" . sprintf(__('Default %1$s template'), $object->getTypeName()) . "</td><td  width='30%'>";
             // Only root entity ones and recursive
             $options = [
-               'value'     => $this->fields[strtolower($itiltype) . "templates_id"],
-               'entity'    => 0
+                'value'     => $this->fields[strtolower($itiltype) . "templates_id"],
+                'entity'    => 0,
             ];
             if (Session::isMultiEntitiesMode()) {
                 $options['condition'] = ['is_recursive' => 1];
@@ -1353,57 +1353,57 @@ class Profile extends CommonDBTM
         echo "</table>";
 
         $matrix_options = [
-           'canedit'       => $canedit,
-           'default_class' => 'tab_bg_2'
+            'canedit'       => $canedit,
+            'default_class' => 'tab_bg_2',
         ];
 
         $rights = [[
-           'itemtype'  => 'TicketTemplate',
-           'label'     => _n('Template', 'Templates', Session::getPluralNumber()),
-           'field'     => 'itiltemplate'
+            'itemtype'  => 'TicketTemplate',
+            'label'     => _n('Template', 'Templates', Session::getPluralNumber()),
+            'field'     => 'itiltemplate',
         ]];
         $matrix_options['title'] = _n('ITIL object', 'ITIL objects', Session::getPluralNumber());
         $this->displayRightsChoiceMatrix($rights, $matrix_options);
 
         $rights = [
-           [
-              'itemtype'  => 'Ticket',
-              'label'     => _n('Ticket', 'Tickets', Session::getPluralNumber()),
-              'field'     => 'ticket'
-           ],
-           [
-              'itemtype'  => 'TicketCost',
-              'label'     => _n('Ticket cost', 'Ticket costs', Session::getPluralNumber()),
-              'field'     => 'ticketcost'
-           ],
-           [
-              'itemtype'  => 'TicketRecurrent',
-              'label'     => __('Recurrent tickets'),
-              'field'     => 'ticketrecurrent'
-           ]
+            [
+                'itemtype'  => 'Ticket',
+                'label'     => _n('Ticket', 'Tickets', Session::getPluralNumber()),
+                'field'     => 'ticket',
+            ],
+            [
+                'itemtype'  => 'TicketCost',
+                'label'     => _n('Ticket cost', 'Ticket costs', Session::getPluralNumber()),
+                'field'     => 'ticketcost',
+            ],
+            [
+                'itemtype'  => 'TicketRecurrent',
+                'label'     => __('Recurrent tickets'),
+                'field'     => 'ticketrecurrent',
+            ],
         ];
         $matrix_options['title'] = _n('Ticket', 'Tickets', Session::getPluralNumber());
         $this->displayRightsChoiceMatrix($rights, $matrix_options);
 
         $rights = [
-           [
-              'itemtype'  => 'ITILFollowup',
-              'label'     => _n('Followup', 'Followups', Session::getPluralNumber()),
-              'field'     => 'followup'
-           ],
-           [
-              'itemtype'  => 'TicketTask',
-              'label'     => _n('Task', 'Tasks', Session::getPluralNumber()),
-              'field'     => 'task'
-           ]
+            [
+                'itemtype'  => 'ITILFollowup',
+                'label'     => _n('Followup', 'Followups', Session::getPluralNumber()),
+                'field'     => 'followup',
+            ],
+            [
+                'itemtype'  => 'TicketTask',
+                'label'     => _n('Task', 'Tasks', Session::getPluralNumber()),
+                'field'     => 'task',
+            ],
         ];
         $matrix_options['title'] = _n('Followup', 'Followups', Session::getPluralNumber()) . " / " . _n('Task', 'Tasks', Session::getPluralNumber());
         $this->displayRightsChoiceMatrix($rights, $matrix_options);
 
         $rights = [[
-           'itemtype'  => 'TicketValidation',
-           'label'     => _n('Validation', 'Validations', Session::getPluralNumber()),
-           'field'     => 'ticketvalidation'
+            'itemtype'  => 'TicketValidation',
+            'label'     => _n('Validation', 'Validations', Session::getPluralNumber()),
+            'field'     => 'ticketvalidation',
         ]];
         $matrix_options['title'] = _n('Validation', 'Validations', Session::getPluralNumber());
         $this->displayRightsChoiceMatrix($rights, $matrix_options);
@@ -1416,8 +1416,8 @@ class Profile extends CommonDBTM
         echo "<tr class='tab_bg_2'>";
         echo "<td>" . __('See hardware of my groups') . "</td><td>";
         Html::showCheckbox([
-           'name'    => '_show_group_hardware',
-           'checked' => $this->fields['show_group_hardware']
+            'name'    => '_show_group_hardware',
+            'checked' => $this->fields['show_group_hardware'],
         ]);
         echo "</td></tr>";
 
@@ -1427,8 +1427,8 @@ class Profile extends CommonDBTM
         self::getLinearRightChoice(
             self::getHelpdeskHardwareTypes(true),
             [
-              'field' => 'helpdesk_hardware',
-              'value' => $this->fields['helpdesk_hardware']
+                'field' => 'helpdesk_hardware',
+                'value' => $this->fields['helpdesk_hardware'],
             ]
         );
         echo "</td></tr>\n";
@@ -1453,49 +1453,49 @@ class Profile extends CommonDBTM
         echo "</table>";
 
         $rights = [
-           [
-              'itemtype'   => 'Stat',
-              'label'      => __('Statistics'),
-              'field'      => 'statistic'
-           ], [
-              'itemtype'   => 'Planning',
-              'label'      => __('Planning'),
-              'field'      => 'planning'
-           ]
+            [
+                'itemtype'   => 'Stat',
+                'label'      => __('Statistics'),
+                'field'      => 'statistic',
+            ], [
+                'itemtype'   => 'Planning',
+                'label'      => __('Planning'),
+                'field'      => 'planning',
+            ],
         ];
         $matrix_options['title'] = __('Visibility');
         $this->displayRightsChoiceMatrix($rights, $matrix_options);
 
         $rights = [
-           [
-              'itemtype'   => 'PlanningExternalEvent',
-              'label'      => PlanningExternalEvent::getTypeName(Session::getPluralNumber()),
-              'field'      => 'externalevent'
-           ]
+            [
+                'itemtype'   => 'PlanningExternalEvent',
+                'label'      => PlanningExternalEvent::getTypeName(Session::getPluralNumber()),
+                'field'      => 'externalevent',
+            ],
         ];
 
         $matrix_options['title'] = __('Planning');
         $this->displayRightsChoiceMatrix($rights, $matrix_options);
 
         $rights = [[
-           'itemtype'   => 'Problem',
-           'label'      => Problem::getTypeName(Session::getPluralNumber()),
-           'field'      => 'problem'
+            'itemtype'   => 'Problem',
+            'label'      => Problem::getTypeName(Session::getPluralNumber()),
+            'field'      => 'problem',
         ]];
         $matrix_options['title'] = Problem::getTypeName(Session::getPluralNumber());
         $this->displayRightsChoiceMatrix($rights, $matrix_options);
 
         $rights = [
-           [
-              'itemtype'   => 'Change',
-              'label'      => _n('Change', 'Changes', Session::getPluralNumber()),
-              'field'      => 'change'
-           ],
-           [
-              'itemtype'  => 'ChangeValidation',
-              'label'     => _n('Validation', 'Validations', Session::getPluralNumber()),
-              'field'     => 'changevalidation'
-           ]
+            [
+                'itemtype'   => 'Change',
+                'label'      => _n('Change', 'Changes', Session::getPluralNumber()),
+                'field'      => 'change',
+            ],
+            [
+                'itemtype'  => 'ChangeValidation',
+                'label'     => _n('Validation', 'Validations', Session::getPluralNumber()),
+                'field'     => 'changevalidation',
+            ],
         ];
         $matrix_options['title'] = _n('Change', 'Changes', Session::getPluralNumber());
         $this->displayRightsChoiceMatrix($rights, $matrix_options);
@@ -1536,8 +1536,8 @@ class Profile extends CommonDBTM
         foreach ($statuses as $index_1 => $status_1) {
             $columns[$index_1] = $status_1;
             $row               = [
-               'label'      => $status_1,
-               'columns'    => []
+                'label'      => $status_1,
+                'columns'    => [],
             ];
 
             foreach ($statuses as $index_2 => $status_2) {
@@ -1556,10 +1556,10 @@ class Profile extends CommonDBTM
             $columns,
             $rows,
             [
-              'title'         => $title,
-              'row_check_all' => true,
-              'col_check_all' => true,
-              'first_cell'    => '<b>' . __("From \ To") . '</b>'
+                'title'         => $title,
+                'row_check_all' => true,
+                'col_check_all' => true,
+                'first_cell'    => '<b>' . __("From \ To") . '</b>',
             ]
         );
     }
@@ -1648,22 +1648,22 @@ class Profile extends CommonDBTM
             $statuses[$val] = $allstatuses[$val];
         }
         $alwaysok     = [
-           Ticket::INCOMING => [],
-           Ticket::SOLVED   => [Ticket::INCOMING],
-           Ticket::CLOSED   => []
+            Ticket::INCOMING => [],
+            Ticket::SOLVED   => [Ticket::INCOMING],
+            Ticket::CLOSED   => [],
         ];
 
         $allowactions = [
-           Ticket::INCOMING => [],
-           Ticket::SOLVED   => [Ticket::CLOSED],
-           Ticket::CLOSED   => [Ticket::INCOMING]
+            Ticket::INCOMING => [],
+            Ticket::SOLVED   => [Ticket::CLOSED],
+            Ticket::CLOSED   => [Ticket::INCOMING],
         ];
 
         foreach ($statuses as $index_1 => $status_1) {
             $columns[$index_1] = $status_1;
             $row               = [
-               'label'      => $status_1,
-               'columns'    => []
+                'label'      => $status_1,
+                'columns'    => [],
             ];
 
             foreach ($statuses as $index_2 => $status_2) {
@@ -1691,8 +1691,8 @@ class Profile extends CommonDBTM
             $columns,
             $rows,
             [
-              'title'         => $title,
-              'first_cell'    => '<b>' . __("From \ To") . '</b>'
+                'title'         => $title,
+                'first_cell'    => '<b>' . __("From \ To") . '</b>',
             ]
         );
     }
@@ -1764,16 +1764,16 @@ class Profile extends CommonDBTM
         }
 
         $matrix_options = [
-           'canedit'       => $canedit,
-           'default_class' => 'tab_bg_4'
+            'canedit'       => $canedit,
+            'default_class' => 'tab_bg_4',
         ];
 
         $rights = [
-           [
-              'itemtype'  => 'Accessibility',
-              'label'     => __("Edit accessibility"),
-              'field'     => 'accessibility'
-           ],
+            [
+                'itemtype'  => 'Accessibility',
+                'label'     => __("Edit accessibility"),
+                'field'     => 'accessibility',
+            ],
         ];
 
         $matrix_options['title'] = __('Accessibility');
@@ -1816,14 +1816,14 @@ class Profile extends CommonDBTM
         }
 
         $matrix_options = ['canedit'       => $canedit,
-              'default_class' => 'tab_bg_4'];
+            'default_class' => 'tab_bg_4'];
 
         $rights = [
-              [
-                 'itemtype'  => 'Accessibility',
-                 'label'     => __("Edit accessibility"),
-                 'field'     => 'accessibility'
-              ]
+            [
+                'itemtype'  => 'Accessibility',
+                'label'     => __("Edit accessibility"),
+                'field'     => 'accessibility',
+            ],
         ];
 
         $matrix_options['title'] = __('Accessibility');
@@ -1868,115 +1868,115 @@ class Profile extends CommonDBTM
         }
 
         $matrix_options = [
-           'canedit'       => $canedit,
-           'default_class' => 'tab_bg_4'
+            'canedit'       => $canedit,
+            'default_class' => 'tab_bg_4',
         ];
 
         $rights = [
-           [
-              'itemtype'  => 'User',
-              'label'     => User::getTypeName(Session::getPluralNumber()),
-              'field'     => 'user',
-              'row_class' => 'tab_bg_2'
-           ],
-           [
-              'itemtype'  => 'Entity',
-              'label'     => Entity::getTypeName(Session::getPluralNumber()),
-              'field'     => 'entity'
-           ],
-           [
-              'itemtype'  => 'Group',
-              'label'     => Group::getTypeName(Session::getPluralNumber()),
-              'field'     => 'group'
-           ],
-           [
-              'itemtype'  => 'Profile',
-              'label'     => Profile::getTypeName(Session::getPluralNumber()),
-              'field'     => 'profile'
-           ],
-           [
-              'itemtype'  => 'QueuedNotification',
-              'label'     => __('Notification queue'),
-              'field'     => 'queuednotification'
-           ],
-           [
-              'itemtype'  => 'QueuedChat',
-              'label'     => __('Chat queue'),
-              'field'     => 'queuedchat'
-           ],
-           [
-              'itemtype'  => 'Log',
-              'label'     => Log::getTypeName(Session::getPluralNumber()),
-              'field'     => 'logs'
-           ],
-           [
-              'itemtype'  => 'impersonate',
-              'label'     => __('Impersonate'),
-              'field'     => 'impersonate',
-              'rights'    => [Session::IMPERSONATE => __('Allow to impersonate other users')]
-           ]
+            [
+                'itemtype'  => 'User',
+                'label'     => User::getTypeName(Session::getPluralNumber()),
+                'field'     => 'user',
+                'row_class' => 'tab_bg_2',
+            ],
+            [
+                'itemtype'  => 'Entity',
+                'label'     => Entity::getTypeName(Session::getPluralNumber()),
+                'field'     => 'entity',
+            ],
+            [
+                'itemtype'  => 'Group',
+                'label'     => Group::getTypeName(Session::getPluralNumber()),
+                'field'     => 'group',
+            ],
+            [
+                'itemtype'  => 'Profile',
+                'label'     => Profile::getTypeName(Session::getPluralNumber()),
+                'field'     => 'profile',
+            ],
+            [
+                'itemtype'  => 'QueuedNotification',
+                'label'     => __('Notification queue'),
+                'field'     => 'queuednotification',
+            ],
+            [
+                'itemtype'  => 'QueuedChat',
+                'label'     => __('Chat queue'),
+                'field'     => 'queuedchat',
+            ],
+            [
+                'itemtype'  => 'Log',
+                'label'     => Log::getTypeName(Session::getPluralNumber()),
+                'field'     => 'logs',
+            ],
+            [
+                'itemtype'  => 'impersonate',
+                'label'     => __('Impersonate'),
+                'field'     => 'impersonate',
+                'rights'    => [Session::IMPERSONATE => __('Allow to impersonate other users')],
+            ],
         ];
         $matrix_options['title'] = __('Administration');
         $this->displayRightsChoiceMatrix($rights, $matrix_options);
 
         $rights = [
-           [
-              'itemtype'  => 'Rule',
-              'label'     => __('Authorizations assignment rules'),
-              'field'     => 'rule_ldap'
-           ],
-           [
-              'itemtype'  => 'RuleImportComputer',
-              'label'     => __('Rules for assigning a computer to an entity'),
-              'field'     => 'rule_import'
-           ],
-           [
-              'itemtype'  => 'RuleMailCollector',
-              'label'     => __('Rules for assigning a ticket created through a mails receiver'),
-              'field'     => 'rule_mailcollector'
-           ],
-           [
-              'itemtype'  => 'RuleSoftwareCategory',
-              'label'     => __('Rules for assigning a category to a software'),
-              'field'     => 'rule_softwarecategories'
-           ],
-           [
-              'itemtype'  => 'RuleTicket',
-              'label'     => __('Business rules for tickets (entity)'),
-              'field'     => 'rule_ticket',
-              'row_class' => 'tab_bg_2'
-           ],
-           [
-              'itemtype'  => 'RuleAsset',
-              'label'     => __('Business rules for assets'),
-              'field'     => 'rule_asset',
-              'row_class' => 'tab_bg_2'
-           ],
-           [
-              'itemtype'  => 'Transfer',
-              'label'     => __('Transfer'),
-              'field'     => 'transfer'
-           ]
+            [
+                'itemtype'  => 'Rule',
+                'label'     => __('Authorizations assignment rules'),
+                'field'     => 'rule_ldap',
+            ],
+            [
+                'itemtype'  => 'RuleImportComputer',
+                'label'     => __('Rules for assigning a computer to an entity'),
+                'field'     => 'rule_import',
+            ],
+            [
+                'itemtype'  => 'RuleMailCollector',
+                'label'     => __('Rules for assigning a ticket created through a mails receiver'),
+                'field'     => 'rule_mailcollector',
+            ],
+            [
+                'itemtype'  => 'RuleSoftwareCategory',
+                'label'     => __('Rules for assigning a category to a software'),
+                'field'     => 'rule_softwarecategories',
+            ],
+            [
+                'itemtype'  => 'RuleTicket',
+                'label'     => __('Business rules for tickets (entity)'),
+                'field'     => 'rule_ticket',
+                'row_class' => 'tab_bg_2',
+            ],
+            [
+                'itemtype'  => 'RuleAsset',
+                'label'     => __('Business rules for assets'),
+                'field'     => 'rule_asset',
+                'row_class' => 'tab_bg_2',
+            ],
+            [
+                'itemtype'  => 'Transfer',
+                'label'     => __('Transfer'),
+                'field'     => 'transfer',
+            ],
         ];
         $matrix_options['title'] = _n('Rule', 'Rules', Session::getPluralNumber());
         $this->displayRightsChoiceMatrix($rights, $matrix_options);
 
         $rights = [
-           [
-              'itemtype'  => 'RuleDictionnaryDropdown',
-              'label'     => __('Dropdowns dictionary'),
-              'field'     => 'rule_dictionnary_dropdown'
-           ],
-           [
-              'itemtype'  => 'RuleDictionnarySoftware',
-              'label'     => __('Software dictionary'),
-              'field'     => 'rule_dictionnary_software'
-           ],
-           [
-              'itemtype'  => 'RuleDictionnaryPrinter',
-              'label'     => __('Printers dictionnary'),
-              'field'     => 'rule_dictionnary_printer'
-           ]
+            [
+                'itemtype'  => 'RuleDictionnaryDropdown',
+                'label'     => __('Dropdowns dictionary'),
+                'field'     => 'rule_dictionnary_dropdown',
+            ],
+            [
+                'itemtype'  => 'RuleDictionnarySoftware',
+                'label'     => __('Software dictionary'),
+                'field'     => 'rule_dictionnary_software',
+            ],
+            [
+                'itemtype'  => 'RuleDictionnaryPrinter',
+                'label'     => __('Printers dictionnary'),
+                'field'     => 'rule_dictionnary_printer',
+            ],
         ];
         $matrix_options['title'] = __('Dropdowns dictionary');
         $this->displayRightsChoiceMatrix($rights, $matrix_options);
@@ -2022,131 +2022,131 @@ class Profile extends CommonDBTM
         unset($dropdown_rights[UNLOCK]);
 
         $rights = [
-           [
-              'itemtype'  => 'Config',
-              'label'     => __('General setup'),
-              'field'     => 'config'
-           ],
-           [
-              'rights'  => [
-                 READ    => __('Read'),
-                 UPDATE  => __('Update')
-              ],
-              'label'  => __('Personalization'),
-              'field'  => 'personalization'
-           ],
-           [
-              'itemtype'  => 'Grid',
-              'label'     => __('Dashboards'),
-              'field'     => 'dashboard',
-              'rights'    => [
-                 READ    => __('Read'),
-                 Ticket::READALL  => __('Read my'),
-                 UPDATE  => __('Update')
-              ],
-           ],
-           [
-              'itemtype'  => 'DisplayPreference',
-              'label'     => __('Search result display'),
-              'field'     => 'search_config'
-           ],
-           [
-              'itemtype'  => 'Item_Devices',
-              'label'     => _n('Component', 'Components', Session::getPluralNumber()),
-              'field'     => 'device'
-           ],
-           [
-              'rights'    => $dropdown_rights,
-              'label'     => _n('Global dropdown', 'Global dropdowns', Session::getPluralNumber()),
-              'field'     => 'dropdown'
-           ],
-           __('Entity dropdowns'),
-           [
-              'itemtype'  => 'Location',
-              'label'     => Location::getTypeName(Session::getPluralNumber()),
-              'field'     => 'location'
-           ],
-           [
-              'itemtype'  => 'ITILCategory',
-              'label'     => _n('Ticket category', 'Ticket categories', Session::getPluralNumber()),
-              'field'     => 'itilcategory'
-           ],
-           [
-              'itemtype'  => 'KnowbaseItemCategory',
-              'label'     => _n('Knowledge base category', 'Knowledge base categories', Session::getPluralNumber()),
-              'field'     => 'knowbasecategory'
-           ],
-           [
-              'itemtype'  => 'Netpoint',
-              'label'     => _n('Network outlet', 'Network outlets', Session::getPluralNumber()),
-              'field'     => 'netpoint'
-           ],
-           [
-              'itemtype'  => 'TaskCategory',
-              'label'     => _n('Task category', 'Task categories', Session::getPluralNumber()),
-              'field'     => 'taskcategory'
-           ],
-           [
-              'itemtype'  => 'SpecialStatus',
-              'label'     => __('Special Status'),
-              'field'     => 'status_ticket'
-           ],
-           [
-              'itemtype'  => 'State',
-              'label'     => _n('Status of items', 'Statuses of items', Session::getPluralNumber()),
-              'field'     => 'state'
-           ],
-           [
-              'itemtype'  => 'SolutionTemplate',
-              'label'     => _n('Solution template', 'Solution templates', Session::getPluralNumber()),
-              'field'     => 'solutiontemplate'
-           ],
-           [
-            'itemtype'  => 'ITILFollowupTemplate',
-            'label'     => _n('Followup template', 'Followup templates', Session::getPluralNumber()),
-            'field'     => 'followuptemplate'
-           ],
-           [
-              'itemtype'  => 'Calendar',
-              'label'     => _n('Calendar', 'Calendars', Session::getPluralNumber()),
-              'field'     => 'calendar'
-           ],
-           [
-              'itemtype'  => 'DocumentType',
-              'label'     => DocumentType::getTypeName(1),
-              'field'     => 'typedoc'
-           ],
-           [
-              'itemtype'  => 'Link',
-              'label'     => _n('External link', 'External links', Session::getPluralNumber()),
-              'field'     => 'link'
-           ],
-           [
-              'itemtype'  => 'Notification',
-              'label'     => _n('Notification', 'Notifications', Session::getPluralNumber()),
-              'field'     => 'notification'
-           ],
-           [
-            'itemtype'  => 'NotificationTemplate',
-            'label'     => _n('Notification template', 'Notification templates', Session::getPluralNumber()),
-            'field'     => 'notificationtemplate'
-           ],
-           [
-              'itemtype'  => 'SLM',
-              'label'     => __('SLM'),
-              'field'     => 'slm'
-           ],
-           [
-              'itemtype'  => 'LineOperator',
-              'label'     => _n('Line operator', 'Line operators', Session::getPluralNumber()),
-              'field'     => 'lineoperator'
-           ]
+            [
+                'itemtype'  => 'Config',
+                'label'     => __('General setup'),
+                'field'     => 'config',
+            ],
+            [
+                'rights'  => [
+                    READ    => __('Read'),
+                    UPDATE  => __('Update'),
+                ],
+                'label'  => __('Personalization'),
+                'field'  => 'personalization',
+            ],
+            [
+                'itemtype'  => 'Grid',
+                'label'     => __('Dashboards'),
+                'field'     => 'dashboard',
+                'rights'    => [
+                    READ    => __('Read'),
+                    Ticket::READALL  => __('Read my'),
+                    UPDATE  => __('Update'),
+                ],
+            ],
+            [
+                'itemtype'  => 'DisplayPreference',
+                'label'     => __('Search result display'),
+                'field'     => 'search_config',
+            ],
+            [
+                'itemtype'  => 'Item_Devices',
+                'label'     => _n('Component', 'Components', Session::getPluralNumber()),
+                'field'     => 'device',
+            ],
+            [
+                'rights'    => $dropdown_rights,
+                'label'     => _n('Global dropdown', 'Global dropdowns', Session::getPluralNumber()),
+                'field'     => 'dropdown',
+            ],
+            __('Entity dropdowns'),
+            [
+                'itemtype'  => 'Location',
+                'label'     => Location::getTypeName(Session::getPluralNumber()),
+                'field'     => 'location',
+            ],
+            [
+                'itemtype'  => 'ITILCategory',
+                'label'     => _n('Ticket category', 'Ticket categories', Session::getPluralNumber()),
+                'field'     => 'itilcategory',
+            ],
+            [
+                'itemtype'  => 'KnowbaseItemCategory',
+                'label'     => _n('Knowledge base category', 'Knowledge base categories', Session::getPluralNumber()),
+                'field'     => 'knowbasecategory',
+            ],
+            [
+                'itemtype'  => 'Netpoint',
+                'label'     => _n('Network outlet', 'Network outlets', Session::getPluralNumber()),
+                'field'     => 'netpoint',
+            ],
+            [
+                'itemtype'  => 'TaskCategory',
+                'label'     => _n('Task category', 'Task categories', Session::getPluralNumber()),
+                'field'     => 'taskcategory',
+            ],
+            [
+                'itemtype'  => 'SpecialStatus',
+                'label'     => __('Special Status'),
+                'field'     => 'status_ticket',
+            ],
+            [
+                'itemtype'  => 'State',
+                'label'     => _n('Status of items', 'Statuses of items', Session::getPluralNumber()),
+                'field'     => 'state',
+            ],
+            [
+                'itemtype'  => 'SolutionTemplate',
+                'label'     => _n('Solution template', 'Solution templates', Session::getPluralNumber()),
+                'field'     => 'solutiontemplate',
+            ],
+            [
+                'itemtype'  => 'ITILFollowupTemplate',
+                'label'     => _n('Followup template', 'Followup templates', Session::getPluralNumber()),
+                'field'     => 'followuptemplate',
+            ],
+            [
+                'itemtype'  => 'Calendar',
+                'label'     => _n('Calendar', 'Calendars', Session::getPluralNumber()),
+                'field'     => 'calendar',
+            ],
+            [
+                'itemtype'  => 'DocumentType',
+                'label'     => DocumentType::getTypeName(1),
+                'field'     => 'typedoc',
+            ],
+            [
+                'itemtype'  => 'Link',
+                'label'     => _n('External link', 'External links', Session::getPluralNumber()),
+                'field'     => 'link',
+            ],
+            [
+                'itemtype'  => 'Notification',
+                'label'     => _n('Notification', 'Notifications', Session::getPluralNumber()),
+                'field'     => 'notification',
+            ],
+            [
+                'itemtype'  => 'NotificationTemplate',
+                'label'     => _n('Notification template', 'Notification templates', Session::getPluralNumber()),
+                'field'     => 'notificationtemplate',
+            ],
+            [
+                'itemtype'  => 'SLM',
+                'label'     => __('SLM'),
+                'field'     => 'slm',
+            ],
+            [
+                'itemtype'  => 'LineOperator',
+                'label'     => _n('Line operator', 'Line operators', Session::getPluralNumber()),
+                'field'     => 'lineoperator',
+            ],
         ];
 
         $this->displayRightsChoiceMatrix($rights, [
-           'canedit'       => $canedit,
-           'default_class' => 'tab_bg_2',
-           'title'         => __('Setup')
+            'canedit'       => $canedit,
+            'default_class' => 'tab_bg_2',
+            'title'         => __('Setup'),
         ]);
 
         if (
@@ -2170,8 +2170,8 @@ class Profile extends CommonDBTM
      *
      * @since 9.4.0
      *
-     * @param boolean $openform  open the form (true by default)
-     * @param boolean $closeform close the form (true by default)
+     * @param bool $openform  open the form (true by default)
+     * @param bool $closeform close the form (true by default)
      *
      * @return void
      *
@@ -2192,18 +2192,18 @@ class Profile extends CommonDBTM
         }
 
         $rights = [[
-           'rights'  => [
-              READ    => __('Read'),
-              UPDATE  => __('Update')
-           ],
-           'label'  => __('Personalization'),
-           'field'  => 'personalization'
+            'rights'  => [
+                READ    => __('Read'),
+                UPDATE  => __('Update'),
+            ],
+            'label'  => __('Personalization'),
+            'field'  => 'personalization',
         ]];
 
         $this->displayRightsChoiceMatrix($rights, [
-           'canedit'       => $canedit,
-           'default_class' => 'tab_bg_2',
-           'title'         => __('Setup')
+            'canedit'       => $canedit,
+            'default_class' => 'tab_bg_2',
+            'title'         => __('Setup'),
         ]);
 
         if (
@@ -2227,701 +2227,701 @@ class Profile extends CommonDBTM
         $tab = [];
 
         $tab[] = [
-           'id'                 => 'common',
-           'name'               => __('Characteristics')
+            'id'                 => 'common',
+            'name'               => __('Characteristics'),
         ];
 
         $tab[] = [
-           'id'                 => '1',
-           'table'              => $this->getTable(),
-           'field'              => 'name',
-           'name'               => __('Name'),
-           'datatype'           => 'itemlink',
-           'massiveaction'      => false
+            'id'                 => '1',
+            'table'              => $this->getTable(),
+            'field'              => 'name',
+            'name'               => __('Name'),
+            'datatype'           => 'itemlink',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '2',
-           'table'              => $this->getTable(),
-           'field'              => 'id',
-           'name'               => __('ID'),
-           'massiveaction'      => false,
-           'datatype'           => 'number'
+            'id'                 => '2',
+            'table'              => $this->getTable(),
+            'field'              => 'id',
+            'name'               => __('ID'),
+            'massiveaction'      => false,
+            'datatype'           => 'number',
         ];
 
         $tab[] = [
-           'id'                 => '19',
-           'table'              => $this->getTable(),
-           'field'              => 'date_mod',
-           'name'               => __('Last update'),
-           'datatype'           => 'datetime',
-           'massiveaction'      => false
+            'id'                 => '19',
+            'table'              => $this->getTable(),
+            'field'              => 'date_mod',
+            'name'               => __('Last update'),
+            'datatype'           => 'datetime',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '121',
-           'table'              => $this->getTable(),
-           'field'              => 'date_creation',
-           'name'               => __('Creation date'),
-           'datatype'           => 'datetime',
-           'massiveaction'      => false
+            'id'                 => '121',
+            'table'              => $this->getTable(),
+            'field'              => 'date_creation',
+            'name'               => __('Creation date'),
+            'datatype'           => 'datetime',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '5',
-           'table'              => $this->getTable(),
-           'field'              => 'interface',
-           'name'               => __("Profile's interface"),
-           'massiveaction'      => false,
-           'datatype'           => 'specific',
-           'searchtype'         => ['equals', 'notequals']
+            'id'                 => '5',
+            'table'              => $this->getTable(),
+            'field'              => 'interface',
+            'name'               => __("Profile's interface"),
+            'massiveaction'      => false,
+            'datatype'           => 'specific',
+            'searchtype'         => ['equals', 'notequals'],
         ];
 
         $tab[] = [
-           'id'                 => '3',
-           'table'              => $this->getTable(),
-           'field'              => 'is_default',
-           'name'               => __('Default profile'),
-           'datatype'           => 'bool',
-           'massiveaction'      => false
+            'id'                 => '3',
+            'table'              => $this->getTable(),
+            'field'              => 'is_default',
+            'name'               => __('Default profile'),
+            'datatype'           => 'bool',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '118',
-           'table'              => $this->getTable(),
-           'field'              => 'create_ticket_on_login',
-           'name'               => __('Ticket creation form on login'),
-           'datatype'           => 'bool'
+            'id'                 => '118',
+            'table'              => $this->getTable(),
+            'field'              => 'create_ticket_on_login',
+            'name'               => __('Ticket creation form on login'),
+            'datatype'           => 'bool',
         ];
 
         $tab[] = [
-           'id'                 => '16',
-           'table'              => $this->getTable(),
-           'field'              => 'comment',
-           'name'               => __('Comments'),
-           'datatype'           => 'text'
+            'id'                 => '16',
+            'table'              => $this->getTable(),
+            'field'              => 'comment',
+            'name'               => __('Comments'),
+            'datatype'           => 'text',
         ];
 
         // add objectlock search options
         $tab = array_merge($tab, ObjectLock::rawSearchOptionsToAdd(get_class($this)));
 
         $tab[] = [
-           'id'                 => 'inventory',
-           'name'               => __('Assets')
+            'id'                 => 'inventory',
+            'name'               => __('Assets'),
         ];
 
         $tab[] = [
-           'id'                 => '20',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => _n('Computer', 'Computers', Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'Computer',
-           'rightname'          => 'computer',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'computer'"
-           ]
+            'id'                 => '20',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => _n('Computer', 'Computers', Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'Computer',
+            'rightname'          => 'computer',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'computer'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '21',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => _n('Monitor', 'Monitors', Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'Monitor',
-           'rightname'          => 'monitor',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'monitor'"
-           ]
+            'id'                 => '21',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => _n('Monitor', 'Monitors', Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'Monitor',
+            'rightname'          => 'monitor',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'monitor'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '22',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => _n('Software', 'Software', Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'Software',
-           'rightname'          => 'software',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'software'"
-           ]
+            'id'                 => '22',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => _n('Software', 'Software', Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'Software',
+            'rightname'          => 'software',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'software'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '23',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => _n('Network', 'Networks', Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'Network',
-           'rightname'          => 'networking',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'networking'"
-           ]
+            'id'                 => '23',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => _n('Network', 'Networks', Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'Network',
+            'rightname'          => 'networking',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'networking'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '24',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => _n('Printer', 'Printers', Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'Printer',
-           'rightname'          => 'printer',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'printer'"
-           ]
+            'id'                 => '24',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => _n('Printer', 'Printers', Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'Printer',
+            'rightname'          => 'printer',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'printer'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '25',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => Peripheral::getTypeName(Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'Peripheral',
-           'rightname'          => 'peripheral',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'peripheral'"
-           ]
+            'id'                 => '25',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => Peripheral::getTypeName(Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'Peripheral',
+            'rightname'          => 'peripheral',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'peripheral'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '26',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => _n('Cartridge', 'Cartridges', Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'Cartridge',
-           'rightname'          => 'cartridge',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'cartridge'"
-           ]
+            'id'                 => '26',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => _n('Cartridge', 'Cartridges', Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'Cartridge',
+            'rightname'          => 'cartridge',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'cartridge'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '27',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => _n('Consumable', 'Consumables', Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'Consumable',
-           'rightname'          => 'consumable',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'consumable'"
-           ]
+            'id'                 => '27',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => _n('Consumable', 'Consumables', Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'Consumable',
+            'rightname'          => 'consumable',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'consumable'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '28',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => Phone::getTypeName(Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'Phone',
-           'rightname'          => 'phone',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'phone'"
-           ]
+            'id'                 => '28',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => Phone::getTypeName(Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'Phone',
+            'rightname'          => 'phone',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'phone'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '129',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => __('Internet'),
-           'datatype'           => 'right',
-           'rightclass'         => 'NetworkName',
-           'rightname'          => 'internet',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'internet'"
-           ]
+            'id'                 => '129',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => __('Internet'),
+            'datatype'           => 'right',
+            'rightclass'         => 'NetworkName',
+            'rightname'          => 'internet',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'internet'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => 'management',
-           'name'               => __('Management')
+            'id'                 => 'management',
+            'name'               => __('Management'),
         ];
 
         $tab[] = [
-           'id'                 => '30',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => Contact::getTypeName(1) . " / " . Supplier::getTypeName(1),
-           'datatype'           => 'right',
-           'rightclass'         => 'Contact',
-           'rightname'          => 'contact_entreprise',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'contact_enterprise'"
-           ]
+            'id'                 => '30',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => Contact::getTypeName(1) . " / " . Supplier::getTypeName(1),
+            'datatype'           => 'right',
+            'rightclass'         => 'Contact',
+            'rightname'          => 'contact_entreprise',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'contact_enterprise'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '31',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => Document::getTypeName(Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'Document',
-           'rightname'          => 'document',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'document'"
-           ]
+            'id'                 => '31',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => Document::getTypeName(Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'Document',
+            'rightname'          => 'document',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'document'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '32',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => _n('Contract', 'Contracts', Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'Contract',
-           'rightname'          => 'contract',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'contract'"
-           ]
+            'id'                 => '32',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => _n('Contract', 'Contracts', Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'Contract',
+            'rightname'          => 'contract',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'contract'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '33',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => __('Financial and administratives information'),
-           'datatype'           => 'right',
-           'rightclass'         => 'Infocom',
-           'rightname'          => 'infocom',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'infocom'"
-           ]
+            'id'                 => '33',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => __('Financial and administratives information'),
+            'datatype'           => 'right',
+            'rightclass'         => 'Infocom',
+            'rightname'          => 'infocom',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'infocom'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '101',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => Budget::getTypeName(1),
-           'datatype'           => 'right',
-           'rightclass'         => 'Budget',
-           'rightname'          => 'budget',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'budget'"
-           ]
+            'id'                 => '101',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => Budget::getTypeName(1),
+            'datatype'           => 'right',
+            'rightclass'         => 'Budget',
+            'rightname'          => 'budget',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'budget'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => 'tools',
-           'name'               => __('Tools')
+            'id'                 => 'tools',
+            'name'               => __('Tools'),
         ];
 
         $tab[] = [
-           'id'                 => '34',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => __('Knowledge base'),
-           'datatype'           => 'right',
-           'rightclass'         => 'KnowbaseItem',
-           'rightname'          => 'knowbase',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'knowbase'"
-           ]
+            'id'                 => '34',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => __('Knowledge base'),
+            'datatype'           => 'right',
+            'rightclass'         => 'KnowbaseItem',
+            'rightname'          => 'knowbase',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'knowbase'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '36',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => _n('Reservation', 'Reservations', Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'ReservationItem',
-           'rightname'          => 'reservation',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'reservation'"
-           ]
+            'id'                 => '36',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => _n('Reservation', 'Reservations', Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'ReservationItem',
+            'rightname'          => 'reservation',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'reservation'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '38',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => _n('Report', 'Reports', Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'Report',
-           'rightname'          => 'reports',
-           'nowrite'            => true,
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'reports'"
-           ]
+            'id'                 => '38',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => _n('Report', 'Reports', Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'Report',
+            'rightname'          => 'reports',
+            'nowrite'            => true,
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'reports'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => 'config',
-           'name'               => __('Setup')
+            'id'                 => 'config',
+            'name'               => __('Setup'),
         ];
 
         $tab[] = [
-           'id'                 => '42',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => _n('Dropdown', 'Dropdowns', Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'DropdownTranslation',
-           'rightname'          => 'dropdown',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'dropdown'"
-           ]
+            'id'                 => '42',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => _n('Dropdown', 'Dropdowns', Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'DropdownTranslation',
+            'rightname'          => 'dropdown',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'dropdown'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '44',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => _n('Component', 'Components', Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'Item_Devices',
-           'rightname'          => 'device',
-           'noread'             => true,
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'device'"
-           ]
+            'id'                 => '44',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => _n('Component', 'Components', Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'Item_Devices',
+            'rightname'          => 'device',
+            'noread'             => true,
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'device'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '106',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => _n('Notification', 'Notifications', Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'Notification',
-           'rightname'          => 'notification',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'notification'"
-           ]
+            'id'                 => '106',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => _n('Notification', 'Notifications', Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'Notification',
+            'rightname'          => 'notification',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'notification'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '45',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => DocumentType::getTypeName(1),
-           'datatype'           => 'right',
-           'rightclass'         => 'DocumentType',
-           'rightname'          => 'typedoc',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'typedoc'"
-           ]
+            'id'                 => '45',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => DocumentType::getTypeName(1),
+            'datatype'           => 'right',
+            'rightclass'         => 'DocumentType',
+            'rightname'          => 'typedoc',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'typedoc'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '46',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => _n('External link', 'External links', Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'Link',
-           'rightname'          => 'link',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'link'"
-           ]
+            'id'                 => '46',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => _n('External link', 'External links', Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'Link',
+            'rightname'          => 'link',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'link'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '47',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => __('General setup'),
-           'datatype'           => 'right',
-           'rightclass'         => 'Config',
-           'rightname'          => 'config',
-           'noread'             => true,
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'config'"
-           ]
+            'id'                 => '47',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => __('General setup'),
+            'datatype'           => 'right',
+            'rightclass'         => 'Config',
+            'rightname'          => 'config',
+            'noread'             => true,
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'config'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '109',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => __('Personalization'),
-           'datatype'           => 'right',
-           'rightclass'         => 'Config',
-           'rightname'          => 'personalization',
-           'noread'             => true,
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'personalization'"
-           ]
+            'id'                 => '109',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => __('Personalization'),
+            'datatype'           => 'right',
+            'rightclass'         => 'Config',
+            'rightname'          => 'personalization',
+            'noread'             => true,
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'personalization'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '52',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => __('Search result user display'),
-           'datatype'           => 'right',
-           'rightclass'         => 'DisplayPreference',
-           'rightname'          => 'search_config',
-           'noread'             => true,
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'search_config'"
-           ]
+            'id'                 => '52',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => __('Search result user display'),
+            'datatype'           => 'right',
+            'rightclass'         => 'DisplayPreference',
+            'rightname'          => 'search_config',
+            'noread'             => true,
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'search_config'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '107',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => _n('Calendar', 'Calendars', Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'Calendar',
-           'rightname'          => 'calendar',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'calendar'"
-           ]
+            'id'                 => '107',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => _n('Calendar', 'Calendars', Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'Calendar',
+            'rightname'          => 'calendar',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'calendar'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => 'admin',
-           'name'               => __('Administration')
+            'id'                 => 'admin',
+            'name'               => __('Administration'),
         ];
 
         $tab[] = [
-           'id'                 => '48',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => __('Business rules for tickets'),
-           'datatype'           => 'right',
-           'rightclass'         => 'RuleTicket',
-           'rightname'          => 'rule_ticket',
-           'nowrite'            => true,
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'rule_ticket'"
-           ]
+            'id'                 => '48',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => __('Business rules for tickets'),
+            'datatype'           => 'right',
+            'rightclass'         => 'RuleTicket',
+            'rightname'          => 'rule_ticket',
+            'nowrite'            => true,
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'rule_ticket'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '105',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => __('Rules for assigning a ticket created through a mails receiver'),
-           'datatype'           => 'right',
-           'rightclass'         => 'RuleMailCollector',
-           'rightname'          => 'rule_mailcollector',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'rule_mailcollector'"
-           ]
+            'id'                 => '105',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => __('Rules for assigning a ticket created through a mails receiver'),
+            'datatype'           => 'right',
+            'rightclass'         => 'RuleMailCollector',
+            'rightname'          => 'rule_mailcollector',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'rule_mailcollector'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '49',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => __('Rules for assigning a computer to an entity'),
-           'datatype'           => 'right',
-           'rightclass'         => 'RuleImportComputer',
-           'rightname'          => 'rule_import',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'rule_import'"
-           ]
+            'id'                 => '49',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => __('Rules for assigning a computer to an entity'),
+            'datatype'           => 'right',
+            'rightclass'         => 'RuleImportComputer',
+            'rightname'          => 'rule_import',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'rule_import'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '50',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => __('Authorizations assignment rules'),
-           'datatype'           => 'right',
-           'rightclass'         => 'Rule',
-           'rightname'          => 'rule_ldap',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'rule_ldap'"
-           ]
+            'id'                 => '50',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => __('Authorizations assignment rules'),
+            'datatype'           => 'right',
+            'rightclass'         => 'Rule',
+            'rightname'          => 'rule_ldap',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'rule_ldap'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '51',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => __('Rules for assigning a category to a software'),
-           'datatype'           => 'right',
-           'rightclass'         => 'RuleSoftwareCategory',
-           'rightname'          => 'rule_softwarecategories',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'rule_softwarecategories'"
-           ]
+            'id'                 => '51',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => __('Rules for assigning a category to a software'),
+            'datatype'           => 'right',
+            'rightclass'         => 'RuleSoftwareCategory',
+            'rightname'          => 'rule_softwarecategories',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'rule_softwarecategories'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '90',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => __('Software dictionary'),
-           'datatype'           => 'right',
-           'rightclass'         => 'RuleDictionnarySoftware',
-           'rightname'          => 'rule_dictionnary_software',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'rule_dictionnary_software'"
-           ]
+            'id'                 => '90',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => __('Software dictionary'),
+            'datatype'           => 'right',
+            'rightclass'         => 'RuleDictionnarySoftware',
+            'rightname'          => 'rule_dictionnary_software',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'rule_dictionnary_software'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '91',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => __('Dropdowns dictionary'),
-           'datatype'           => 'right',
-           'rightclass'         => 'RuleDictionnaryDropdown',
-           'rightname'          => 'rule_dictionnary_dropdown',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'rule_dictionnary_dropdown'"
-           ]
+            'id'                 => '91',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => __('Dropdowns dictionary'),
+            'datatype'           => 'right',
+            'rightclass'         => 'RuleDictionnaryDropdown',
+            'rightname'          => 'rule_dictionnary_dropdown',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'rule_dictionnary_dropdown'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '55',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => self::getTypeName(Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'Profile',
-           'rightname'          => 'profile',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'profile'"
-           ]
+            'id'                 => '55',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => self::getTypeName(Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'Profile',
+            'rightname'          => 'profile',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'profile'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '56',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => User::getTypeName(Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'User',
-           'rightname'          => 'user',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'user'"
-           ]
+            'id'                 => '56',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => User::getTypeName(Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'User',
+            'rightname'          => 'user',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'user'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '58',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => Group::getTypeName(Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'Group',
-           'rightname'          => 'group',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'group'"
-           ]
+            'id'                 => '58',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => Group::getTypeName(Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'Group',
+            'rightname'          => 'group',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'group'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '59',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => Entity::getTypeName(Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'Entity',
-           'rightname'          => 'entity',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'entity'"
-           ]
+            'id'                 => '59',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => Entity::getTypeName(Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'Entity',
+            'rightname'          => 'entity',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'entity'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '60',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => __('Transfer'),
-           'datatype'           => 'right',
-           'rightclass'         => 'Transfer',
-           'rightname'          => 'transfer',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'transfer'"
-           ]
+            'id'                 => '60',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => __('Transfer'),
+            'datatype'           => 'right',
+            'rightclass'         => 'Transfer',
+            'rightname'          => 'transfer',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'transfer'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '61',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => _n('Log', 'Logs', Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'Log',
-           'rightname'          => 'logs',
-           'nowrite'            => true,
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'logs'"
-           ]
+            'id'                 => '61',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => _n('Log', 'Logs', Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'Log',
+            'rightname'          => 'logs',
+            'nowrite'            => true,
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'logs'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => 'ticket',
-           'name'               => __('Assistance')
+            'id'                 => 'ticket',
+            'name'               => __('Assistance'),
         ];
 
         $tab[] = [
-           'id'                 => '102',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => __('Create a ticket'),
-           'datatype'           => 'right',
-           'rightclass'         => 'Ticket',
-           'rightname'          => 'ticket',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'ticket'"
-           ]
+            'id'                 => '102',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => __('Create a ticket'),
+            'datatype'           => 'right',
+            'rightclass'         => 'Ticket',
+            'rightname'          => 'ticket',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'ticket'",
+            ],
         ];
 
         $newtab = [
-           'id'                 => '108',
-           'table'              => 'glpi_tickettemplates',
-           'field'              => 'name',
-           'name'               => __('Default ticket template'),
-           'datatype'           => 'dropdown',
+            'id'                 => '108',
+            'table'              => 'glpi_tickettemplates',
+            'field'              => 'name',
+            'name'               => __('Default ticket template'),
+            'datatype'           => 'dropdown',
         ];
         if (Session::isMultiEntitiesMode()) {
             $newtab['condition']     = ['entities_id' => 0, 'is_recursive' => 1];
@@ -2931,256 +2931,256 @@ class Profile extends CommonDBTM
         $tab[] = $newtab;
 
         $tab[] = [
-           'id'                 => '103',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => _n('Ticket template', 'Ticket templates', Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'TicketTemplate',
-           'rightname'          => 'tickettemplate',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'tickettemplate'"
-           ]
+            'id'                 => '103',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => _n('Ticket template', 'Ticket templates', Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'TicketTemplate',
+            'rightname'          => 'tickettemplate',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'tickettemplate'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '79',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => __('Planning'),
-           'datatype'           => 'right',
-           'rightclass'         => 'Planning',
-           'rightname'          => 'planning',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'planning'"
-           ]
+            'id'                 => '79',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => __('Planning'),
+            'datatype'           => 'right',
+            'rightclass'         => 'Planning',
+            'rightname'          => 'planning',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'planning'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '85',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => __('Statistics'),
-           'datatype'           => 'right',
-           'rightclass'         => 'Stat',
-           'rightname'          => 'statistic',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'statistic'"
-           ]
+            'id'                 => '85',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => __('Statistics'),
+            'datatype'           => 'right',
+            'rightclass'         => 'Stat',
+            'rightname'          => 'statistic',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'statistic'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '119',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => _n('Ticket cost', 'Ticket costs', Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'TicketCost',
-           'rightname'          => 'ticketcost',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'ticketcost'"
-           ]
+            'id'                 => '119',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => _n('Ticket cost', 'Ticket costs', Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'TicketCost',
+            'rightname'          => 'ticketcost',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'ticketcost'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '86',
-           'table'              => $this->getTable(),
-           'field'              => 'helpdesk_hardware',
-           'name'               => __('Link with items for the creation of tickets'),
-           'massiveaction'      => false,
-           'datatype'           => 'specific'
+            'id'                 => '86',
+            'table'              => $this->getTable(),
+            'field'              => 'helpdesk_hardware',
+            'name'               => __('Link with items for the creation of tickets'),
+            'massiveaction'      => false,
+            'datatype'           => 'specific',
         ];
 
         $tab[] = [
-           'id'                 => '87',
-           'table'              => $this->getTable(),
-           'field'              => 'helpdesk_item_type',
-           'name'               => __('Associable items to a ticket'),
-           'massiveaction'      => false,
-           'datatype'           => 'specific'
+            'id'                 => '87',
+            'table'              => $this->getTable(),
+            'field'              => 'helpdesk_item_type',
+            'name'               => __('Associable items to a ticket'),
+            'massiveaction'      => false,
+            'datatype'           => 'specific',
         ];
 
         $tab[] = [
-           'id'                 => '88',
-           'table'              => $this->getTable(),
-           'field'              => 'managed_domainrecordtypes',
-           'name'               => __('Managed domain records types'),
-           'massiveaction'      => false,
-           'datatype'           => 'specific'
+            'id'                 => '88',
+            'table'              => $this->getTable(),
+            'field'              => 'managed_domainrecordtypes',
+            'name'               => __('Managed domain records types'),
+            'massiveaction'      => false,
+            'datatype'           => 'specific',
         ];
 
         $tab[] = [
-           'id'                 => '89',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => __('See hardware of my groups'),
-           'datatype'           => 'bool',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'show_group_hardware'"
-           ]
+            'id'                 => '89',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => __('See hardware of my groups'),
+            'datatype'           => 'bool',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'show_group_hardware'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '100',
-           'table'              => $this->getTable(),
-           'field'              => 'ticket_status',
-           'name'               => __('Life cycle of tickets'),
-           'nosearch'           => true,
-           'datatype'           => 'text',
-           'massiveaction'      => false
+            'id'                 => '100',
+            'table'              => $this->getTable(),
+            'field'              => 'ticket_status',
+            'name'               => __('Life cycle of tickets'),
+            'nosearch'           => true,
+            'datatype'           => 'text',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '113',
-           'table'              => $this->getTable(),
-           'field'              => 'accessibility',
-           'name'               => __('Accessibility'),
-           'nosearch'           => true,
-           'datatype'           => 'text',
-           'massiveaction'      => false
+            'id'                 => '113',
+            'table'              => $this->getTable(),
+            'field'              => 'accessibility',
+            'name'               => __('Accessibility'),
+            'nosearch'           => true,
+            'datatype'           => 'text',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '117',
-           'table'              => $this->getTable(),
-           'field'              => 'changefont',
-           'name'               => __('Change font'),
-           'nosearch'           => true,
-           'datatype'           => 'text',
-           'massiveaction'      => false
+            'id'                 => '117',
+            'table'              => $this->getTable(),
+            'field'              => 'changefont',
+            'name'               => __('Change font'),
+            'nosearch'           => true,
+            'datatype'           => 'text',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '122',
-           'table'              => $this->getTable(),
-           'field'              => 'changezoom',
-           'name'               => __('Change zoom'),
-           'nosearch'           => true,
-           'datatype'           => 'number',
-           'massiveaction'      => false
+            'id'                 => '122',
+            'table'              => $this->getTable(),
+            'field'              => 'changezoom',
+            'name'               => __('Change zoom'),
+            'nosearch'           => true,
+            'datatype'           => 'number',
+            'massiveaction'      => false,
         ];
 
 
         $tab[] = [
-           'id'                 => '123',
-           'table'              => $this->getTable(),
-           'field'              => 'useshortcuts',
-           'name'               => __('Use shortcuts'),
-           'nosearch'           => true,
-           'datatype'           => 'bool',
-           'massiveaction'      => false
+            'id'                 => '123',
+            'table'              => $this->getTable(),
+            'field'              => 'useshortcuts',
+            'name'               => __('Use shortcuts'),
+            'nosearch'           => true,
+            'datatype'           => 'bool',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '110',
-           'table'              => $this->getTable(),
-           'field'              => 'problem_status',
-           'name'               => __('Life cycle of problems'),
-           'nosearch'           => true,
-           'datatype'           => 'text',
-           'massiveaction'      => false
+            'id'                 => '110',
+            'table'              => $this->getTable(),
+            'field'              => 'problem_status',
+            'name'               => __('Life cycle of problems'),
+            'nosearch'           => true,
+            'datatype'           => 'text',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '112',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => Problem::getTypeName(Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'Problem',
-           'rightname'          => 'problem',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'problem'"
-           ]
+            'id'                 => '112',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => Problem::getTypeName(Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'Problem',
+            'rightname'          => 'problem',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'problem'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '116',
-           'table'              => $this->getTable(),
-           'field'              => 'change_status',
-           'name'               => __('Life cycle of changes'),
-           'nosearch'           => true,
-           'datatype'           => 'text',
-           'massiveaction'      => false
+            'id'                 => '116',
+            'table'              => $this->getTable(),
+            'field'              => 'change_status',
+            'name'               => __('Life cycle of changes'),
+            'nosearch'           => true,
+            'datatype'           => 'text',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '115',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => _n('Change', 'Changes', Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'Change',
-           'rightname'          => 'change',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'change'"
-           ]
+            'id'                 => '115',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => _n('Change', 'Changes', Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'Change',
+            'rightname'          => 'change',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'change'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => 'other',
-           'name'               => __('Other')
+            'id'                 => 'other',
+            'name'               => __('Other'),
         ];
 
         $tab[] = [
-           'id'                 => '4',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => __('Update password'),
-           'datatype'           => 'bool',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'password_update'"
-           ]
+            'id'                 => '4',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => __('Update password'),
+            'datatype'           => 'bool',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'password_update'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '63',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => _n('Public reminder', 'Public reminders', Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'Reminder',
-           'rightname'          => 'reminder_public',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'reminder_public'"
-           ]
+            'id'                 => '63',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => _n('Public reminder', 'Public reminders', Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'Reminder',
+            'rightname'          => 'reminder_public',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'reminder_public'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '64',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => _n('Public saved search', 'Public saved searches', Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'SavedSearch',
-           'rightname'          => 'bookmark_public',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'bookmark_public'"
-           ]
+            'id'                 => '64',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => _n('Public saved search', 'Public saved searches', Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'SavedSearch',
+            'rightname'          => 'bookmark_public',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'bookmark_public'",
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '120',
-           'table'              => 'glpi_profilerights',
-           'field'              => 'rights',
-           'name'               => _n('Public RSS feed', 'Public RSS feeds', Session::getPluralNumber()),
-           'datatype'           => 'right',
-           'rightclass'         => 'RSSFeed',
-           'rightname'          => 'rssfeed_public',
-           'joinparams'         => [
-              'jointype'           => 'child',
-              'condition'          => "AND `NEWTABLE`.`name`= 'rssfeed_public'"
-           ]
+            'id'                 => '120',
+            'table'              => 'glpi_profilerights',
+            'field'              => 'rights',
+            'name'               => _n('Public RSS feed', 'Public RSS feeds', Session::getPluralNumber()),
+            'datatype'           => 'right',
+            'rightclass'         => 'RSSFeed',
+            'rightname'          => 'rssfeed_public',
+            'joinparams'         => [
+                'jointype'           => 'child',
+                'condition'          => "AND `NEWTABLE`.`name`= 'rssfeed_public'",
+            ],
         ];
 
         return $tab;
@@ -3315,7 +3315,7 @@ class Profile extends CommonDBTM
      *       - display : display or get string (default true)
      *       - rand    : specific rand (default is generated one)
      *
-     * @return integer|string
+     * @return int|string
      *    integer if option display=true (random part of elements id)
      *    string if option display=false (HTML code)
      **/
@@ -3349,9 +3349,9 @@ class Profile extends CommonDBTM
             $name,
             $values,
             [
-              'value'   => $param['value'],
-              'rand'    => $param['rand'],
-              'display' => $param['display']
+                'value'   => $param['value'],
+                'rand'    => $param['rand'],
+                'display' => $param['display'],
             ]
         );
     }
@@ -3380,9 +3380,9 @@ class Profile extends CommonDBTM
         }
 
         $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => self::getUnderActiveProfileRestrictCriteria(),
-           'ORDER'  => 'name'
+            'FROM'   => self::getTable(),
+            'WHERE'  => self::getUnderActiveProfileRestrictCriteria(),
+            'ORDER'  => 'name',
         ]);
 
         //New rule -> get the next free ranking
@@ -3393,9 +3393,9 @@ class Profile extends CommonDBTM
             $p['name'],
             $profiles,
             [
-              'value'               => $p['value'],
-              'rand'                => $p['rand'],
-              'display_emptychoice' => true
+                'value'               => $p['value'],
+                'rand'                => $p['rand'],
+                'display_emptychoice' => true,
             ]
         );
     }
@@ -3404,7 +3404,7 @@ class Profile extends CommonDBTM
     /**
      * Get the default Profile for new user
      *
-     * @return integer profiles_id
+     * @return int profiles_id
      **/
     public static function getDefault()
     {
@@ -3424,8 +3424,8 @@ class Profile extends CommonDBTM
     {
 
         return [
-           'central'  => __('Standard interface'),
-           'helpdesk' => __('Simplified interface')
+            'central'  => __('Standard interface'),
+            'helpdesk' => __('Simplified interface'),
         ];
     }
 
@@ -3454,17 +3454,17 @@ class Profile extends CommonDBTM
 
         if ($rights) {
             return [
-               pow(2, Ticket::HELPDESK_MY_HARDWARE)     => __('My devices'),
-               pow(2, Ticket::HELPDESK_ALL_HARDWARE)    => __('All items')
+                pow(2, Ticket::HELPDESK_MY_HARDWARE)     => __('My devices'),
+                pow(2, Ticket::HELPDESK_ALL_HARDWARE)    => __('All items'),
             ];
         }
 
         return [
-           0                                        => Dropdown::EMPTY_VALUE,
-           pow(2, Ticket::HELPDESK_MY_HARDWARE)     => __('My devices'),
-           pow(2, Ticket::HELPDESK_ALL_HARDWARE)    => __('All items'),
-           pow(2, Ticket::HELPDESK_MY_HARDWARE)
-              + pow(2, Ticket::HELPDESK_ALL_HARDWARE) => __('My devices and all items')
+            0                                        => Dropdown::EMPTY_VALUE,
+            pow(2, Ticket::HELPDESK_MY_HARDWARE)     => __('My devices'),
+            pow(2, Ticket::HELPDESK_ALL_HARDWARE)    => __('All items'),
+            pow(2, Ticket::HELPDESK_MY_HARDWARE)
+               + pow(2, Ticket::HELPDESK_ALL_HARDWARE) => __('My devices and all items'),
         ];
     }
 
@@ -3514,7 +3514,7 @@ class Profile extends CommonDBTM
         global $DB;
 
         $iterator = $DB->request([
-           'FROM'   => DomainRecordType::getTable(),
+            'FROM'   => DomainRecordType::getTable(),
         ]);
 
         $types = [];
@@ -3550,10 +3550,10 @@ class Profile extends CommonDBTM
         $p['multiple'] = true;
         $p['size']     = 3;
         return renderTwigTemplate('macros/input.twig', [
-           'type'    => 'checklist',
-           'name'    => 'helpdesk_item_type',
-           'options'  => $values,
-           'values'  => $p['values'],
+            'type'    => 'checklist',
+            'name'    => 'helpdesk_item_type',
+            'options'  => $values,
+            'values'  => $p['values'],
         ]);
     }
 
@@ -3568,7 +3568,7 @@ class Profile extends CommonDBTM
      * @param $rightvalue integer  value of right to check
      * @param $entity_id  integer  id of the entity
      *
-     * @return boolean
+     * @return bool
      */
     public static function haveUserRight($user_id, $rightname, $rightvalue, $entity_id)
     {
@@ -3576,29 +3576,29 @@ class Profile extends CommonDBTM
 
         $result = $DB->request(
             [
-              'COUNT'      => 'cpt',
-              'FROM'       => 'glpi_profilerights',
-              'INNER JOIN' => [
-                 'glpi_profiles' => [
-                    'FKEY' => [
-                       'glpi_profilerights' => 'profiles_id',
-                       'glpi_profiles'      => 'id',
-                    ]
-                 ],
-                 'glpi_profiles_users' => [
-                    'FKEY' => [
-                       'glpi_profiles_users' => 'profiles_id',
-                       'glpi_profiles'       => 'id',
-                       [
-                          'AND' => ['glpi_profiles_users.users_id' => $user_id],
-                       ],
-                    ]
-                 ],
-              ],
-              'WHERE'      => [
-                 'glpi_profilerights.name'   => $rightname,
-                 'glpi_profilerights.rights' => ['&',  $rightvalue],
-              ] + getEntitiesRestrictCriteria('glpi_profiles_users', '', $entity_id, true),
+                'COUNT'      => 'cpt',
+                'FROM'       => 'glpi_profilerights',
+                'INNER JOIN' => [
+                    'glpi_profiles' => [
+                        'FKEY' => [
+                            'glpi_profilerights' => 'profiles_id',
+                            'glpi_profiles'      => 'id',
+                        ],
+                    ],
+                    'glpi_profiles_users' => [
+                        'FKEY' => [
+                            'glpi_profiles_users' => 'profiles_id',
+                            'glpi_profiles'       => 'id',
+                            [
+                                'AND' => ['glpi_profiles_users.users_id' => $user_id],
+                            ],
+                        ],
+                    ],
+                ],
+                'WHERE'      => [
+                    'glpi_profilerights.name'   => $rightname,
+                    'glpi_profilerights.rights' => ['&',  $rightvalue],
+                ] + getEntitiesRestrictCriteria('glpi_profiles_users', '', $entity_id, true),
             ]
         );
 
@@ -3686,8 +3686,8 @@ class Profile extends CommonDBTM
                 }
 
                 $row = [
-                   'label'   => $info['label'],
-                   'columns' => []
+                    'label'   => $info['label'],
+                    'columns' => [],
                 ];
                 if (!empty($info['row_class'])) {
                     $row['class'] = $info['row_class'];
@@ -3763,10 +3763,10 @@ class Profile extends CommonDBTM
             $columns,
             $rows,
             [
-              'title'                => $param['title'],
-              'row_check_all'        => count($columns) > 1,
-              'col_check_all'        => count($rows) > 1,
-              'rotate_column_titles' => false
+                'title'                => $param['title'],
+                'row_check_all'        => count($columns) > 1,
+                'col_check_all'        => count($rows) > 1,
+                'rotate_column_titles' => false,
             ]
         );
     }
@@ -3844,8 +3844,8 @@ class Profile extends CommonDBTM
             }
             $out                        .= $label . '&nbsp;';
             $cb_options['name']          = $param['field'] . '[' . $element . ']';
-            $cb_options['id']            = Html::cleanId('checkbox_linear_' . $cb_options['name'] .
-               '_' . $param['rand']);
+            $cb_options['id']            = Html::cleanId('checkbox_linear_' . $cb_options['name']
+               . '_' . $param['rand']);
             $cb_options['zero_on_empty'] = $param['zero_on_empty'];
 
             $cb_options['checked']       = $param['check_method'](
@@ -3862,14 +3862,14 @@ class Profile extends CommonDBTM
 
         if ($param['check_all']) {
             $cb_options = [
-               'criterion' => ['tag_for_massive' => $massive_tag],
-               'id'        => Html::cleanId('checkbox_linear_' . $param['rand'])
+                'criterion' => ['tag_for_massive' => $massive_tag],
+                'id'        => Html::cleanId('checkbox_linear_' . $param['rand']),
             ];
             if ($nb_checked > (count($elements) / 2)) {
                 $cb_options['checked'] = true;
             }
-            $out .= "&nbsp;-&nbsp;<i><b>" . __('Select/unselect all') . "</b></i>&nbsp;" .
-               Html::getCheckbox($cb_options);
+            $out .= "&nbsp;-&nbsp;<i><b>" . __('Select/unselect all') . "</b></i>&nbsp;"
+               . Html::getCheckbox($cb_options);
         }
 
         if (!$param['display']) {

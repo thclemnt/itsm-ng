@@ -72,8 +72,8 @@ class Change_Item extends CommonItilObject_Item
         // Avoid duplicate entry
         if (
             countElementsInTable($this->getTable(), ['changes_id' => $input['changes_id'],
-                                                    'itemtype' => $input['itemtype'],
-                                                    'items_id' => $input['items_id']]) > 0
+                'itemtype' => $input['itemtype'],
+                'items_id' => $input['items_id']]) > 0
         ) {
             return false;
         }
@@ -86,7 +86,7 @@ class Change_Item extends CommonItilObject_Item
      *
      * @param $change Change object
      *
-     * @return boolean|void
+     * @return bool|void
     **/
     public static function showForChange(Change $change)
     {
@@ -105,32 +105,32 @@ class Change_Item extends CommonItilObject_Item
 
         if ($canedit) {
             $form = [
-               'action' => Toolbox::getItemTypeFormURL(__CLASS__),
-               'buttons' => [
-                  [
-                     'type' => 'submit',
-                     'name' => 'add',
-                     'value' => _sx('button', 'Add an item'),
-                     'class' => 'btn btn-secondary'
-                  ]
-               ],
-               'content' => [
-                  __('Add an item') => [
-                     'visible' => true,
-                     'inputs' => [
-                        [
-                           'type' => 'hidden',
-                           'name' => 'changes_id',
-                           'value' => $instID
-                        ],
-                        __('Type') => [
-                           'type' => 'select',
-                           'id' => 'dropdown_itemtype',
-                           'name' => 'itemtype',
-                           'values' => [Dropdown::EMPTY_VALUE] + array_unique($change->getAllTypesForHelpdesk()),
-                           'col_lg' => 6,
-                           'hooks' => [
-                              'change' => <<<JS
+                'action' => Toolbox::getItemTypeFormURL(__CLASS__),
+                'buttons' => [
+                    [
+                        'type' => 'submit',
+                        'name' => 'add',
+                        'value' => _sx('button', 'Add an item'),
+                        'class' => 'btn btn-secondary',
+                    ],
+                ],
+                'content' => [
+                    __('Add an item') => [
+                        'visible' => true,
+                        'inputs' => [
+                            [
+                                'type' => 'hidden',
+                                'name' => 'changes_id',
+                                'value' => $instID,
+                            ],
+                            __('Type') => [
+                                'type' => 'select',
+                                'id' => 'dropdown_itemtype',
+                                'name' => 'itemtype',
+                                'values' => [Dropdown::EMPTY_VALUE] + array_unique($change->getAllTypesForHelpdesk()),
+                                'col_lg' => 6,
+                                'hooks' => [
+                                    'change' => <<<JS
                               $.ajax({
                                     method: "POST",
                                     url: "$CFG_GLPI[root_doc]/ajax/getDropdownValue.php",
@@ -155,38 +155,38 @@ class Change_Item extends CommonItilObject_Item
                                     }
                                  });
                            JS,
-                           ]
+                                ],
+                            ],
+                            __('Item') => [
+                                'type' => 'select',
+                                'id' => 'dropdown_items_id',
+                                'name' => 'items_id',
+                                'values' => [],
+                                'col_lg' => 6,
+                            ],
                         ],
-                        __('Item') => [
-                           'type' => 'select',
-                           'id' => 'dropdown_items_id',
-                           'name' => 'items_id',
-                           'values' => [],
-                           'col_lg' => 6,
-                        ],
-                     ]
-                  ]
-               ]
+                    ],
+                ],
             ];
             renderTwigForm($form);
         }
 
         if ($canedit && $number) {
             $massiveactionparams = [
-               'container' => 'tableForProblemItem',
-               'specific_actions' => [
-                  'MassiveAction:purge' => _x('button', 'Delete permanently the relation with selected elements'),
-               ],
-               'display_arrow' => false
+                'container' => 'tableForProblemItem',
+                'specific_actions' => [
+                    'MassiveAction:purge' => _x('button', 'Delete permanently the relation with selected elements'),
+                ],
+                'display_arrow' => false,
             ];
             Html::showMassiveActions($massiveactionparams);
         }
         $fields = [
-           _n('Type', 'Types', 1),
-           Entity::getTypeName(1),
-           __('Name'),
-           __('Serial number'),
-           __('Inventory number'),
+            _n('Type', 'Types', 1),
+            Entity::getTypeName(1),
+            __('Name'),
+            __('Serial number'),
+            __('Inventory number'),
         ];
         $values = [];
         $massive_action = [];
@@ -214,21 +214,21 @@ class Change_Item extends CommonItilObject_Item
                     $typename = $item->getTypeName($nb);
 
                     $values[] = [
-                       (($nb > 1) ? sprintf(__('%1$s: %2$s'), $typename, $nb) : $typename),
-                       Dropdown::getDropdownName("glpi_entities", $data['entity']),
-                       $namelink,
-                       (isset($data["serial"]) ? "" . $data["serial"] . "" : "-"),
-                       (isset($data["otherserial"]) ? "" . $data["otherserial"] . "" : "-"),
+                        (($nb > 1) ? sprintf(__('%1$s: %2$s'), $typename, $nb) : $typename),
+                        Dropdown::getDropdownName("glpi_entities", $data['entity']),
+                        $namelink,
+                        (isset($data["serial"]) ? "" . $data["serial"] . "" : "-"),
+                        (isset($data["otherserial"]) ? "" . $data["otherserial"] . "" : "-"),
                     ];
                     $massive_action[] = sprintf('item[%s][%s]', self::class, $data['linkid']);
                 }
             }
         }
         renderTwigTemplate('table.twig', [
-           'id' => 'tableForProblemItem',
-           'fields' => $fields,
-           'values' => $values,
-           'massive_action' => $massive_action
+            'id' => 'tableForProblemItem',
+            'fields' => $fields,
+            'values' => $values,
+            'massive_action' => $massive_action,
         ]);
     }
 
@@ -252,11 +252,11 @@ class Change_Item extends CommonItilObject_Item
                     if ($_SESSION['glpishow_count_on_tabs']) {
                         $from = 'glpi_changes_' . strtolower($item->getType() . 's');
                         $result = $DB->request([
-                           'COUNT'  => 'cpt',
-                           'FROM'   => $from,
-                           'WHERE'  => [
-                              $item->getForeignKeyField()   => $item->fields['id']
-                           ]
+                            'COUNT'  => 'cpt',
+                            'FROM'   => $from,
+                            'WHERE'  => [
+                                $item->getForeignKeyField()   => $item->fields['id'],
+                            ],
                         ])->next();
                         $nb = $result['cpt'];
                     }

@@ -1,5 +1,8 @@
 <?php
 
+use Glpi\Toolbox\URL;
+use Jumbojett\OpenIDConnectClient;
+
 /**
  * ---------------------------------------------------------------------
  * ITSM-NG
@@ -66,7 +69,7 @@ class Oidc extends CommonDBTM
             $oidc_db["sso_link_users"] = $iterator["sso_link_users"];
         }
 
-        $oidc = new Jumbojett\OpenIDConnectClient(
+        $oidc = new OpenIDConnectClient(
             $oidc_db["Provider"],
             $oidc_db["ClientID"],
             $oidc_db["ClientSecret"],
@@ -78,25 +81,25 @@ class Oidc extends CommonDBTM
             $oidc->setHttpProxy($oidc_db["proxy"]);
         }
         if (
-            isset($oidc_db["cert"]) &&
-            $oidc_db["proxy"] != "" &&
-            file_exists($oidc_db["cert"])
+            isset($oidc_db["cert"])
+            && $oidc_db["proxy"] != ""
+            && file_exists($oidc_db["cert"])
         ) {
             $oidc->setCertPath($oidc_db["cert"]);
         }
-        $isCallback =
-            isset($_GET["code"]) ||
-            isset($_GET["id_token"]) ||
-            isset($_GET["state"]);
+        $isCallback
+            = isset($_GET["code"])
+            || isset($_GET["id_token"])
+            || isset($_GET["state"]);
         if (!$isCallback && isset($_REQUEST["redirect"])) {
             $requestedRedirect = self::sanitizeRedirect($_REQUEST["redirect"]);
             if ($requestedRedirect) {
                 $cookieOptions = [
                     "expires" => time() + 300,
                     "path" => $CFG_GLPI["root_doc"] ?: "/",
-                    "secure" =>
-                        !empty($_SERVER["HTTPS"]) &&
-                        $_SERVER["HTTPS"] !== "off",
+                    "secure"
+                        => !empty($_SERVER["HTTPS"])
+                        && $_SERVER["HTTPS"] !== "off",
                     "httponly" => true,
                     "samesite" => "Lax",
                 ];
@@ -128,12 +131,12 @@ class Oidc extends CommonDBTM
             Html::nullHeader("Login", $CFG_GLPI["root_doc"] . "/index.php");
             echo '<div class="center b">';
             echo __("Missing or wrong fields in open ID connect config");
-            echo '<p><a href="' .
-                $CFG_GLPI["root_doc"] .
-                "/index.php" .
-                '">' .
-                __("Log in again") .
-                "</a></p>";
+            echo '<p><a href="'
+                . $CFG_GLPI["root_doc"]
+                . "/index.php"
+                . '">'
+                . __("Log in again")
+                . "</a></p>";
             echo "<div>" . $e->getMessage() . "</div>";
             echo "</div>";
             Html::nullFooter();
@@ -171,7 +174,7 @@ class Oidc extends CommonDBTM
         if ($auth_username) {
             $iterator = $DB->request([
                 'FROM' => 'glpi_users',
-                'WHERE' => ['name' => $auth_username]
+                'WHERE' => ['name' => $auth_username],
             ]);
 
             foreach ($iterator as $user_data) {
@@ -324,7 +327,7 @@ class Oidc extends CommonDBTM
                     $useremail->add([
                         'users_id'   => $id,
                         'email'      => $email,
-                        'is_dynamic' => 0
+                        'is_dynamic' => 0,
                     ]);
                 }
             }
@@ -569,8 +572,8 @@ class Oidc extends CommonDBTM
             return null;
         }
         if (
-            strpos($decodedValue, "\n") !== false ||
-            strpos($decodedValue, "\r") !== false
+            strpos($decodedValue, "\n") !== false
+            || strpos($decodedValue, "\r") !== false
         ) {
             return null;
         }
@@ -578,8 +581,8 @@ class Oidc extends CommonDBTM
         // Allow ITSM-NG internal relative URLs and legacy object redirect tokens
         // ex: ticket_435
         if (
-            $decodedValue[0] === "/" &&
-            \Glpi\Toolbox\URL::isITSMNGRelativeURL($decodedValue)
+            $decodedValue[0] === "/"
+            && URL::isITSMNGRelativeURL($decodedValue)
         ) {
             return $value;
         }

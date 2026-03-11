@@ -152,86 +152,86 @@ class ComputerVirtualMachine extends CommonDBChild
         }
 
         $form = [
-           'action' => $this->getFormURL(),
-           'buttons' => [
-              'submit' => [
-                 'type' => 'submit',
-                 'name' => self::isNewID($ID) ? 'add' : 'update',
-                 'value' => self::isNewID($ID) ? __('Add') : __('Update'),
-                 'class' => 'btn btn-secondary'
-              ],
-           ],
-           'content' => [
-              [
-                 'visible' => false,
-                 'inputs' => [
-                    $this->isNewId($ID) ? [
-                       'type' => 'hidden',
-                       'name' => 'computers_id',
-                       'value' => $options['computers_id']
-                    ] : [
-                       'type' => 'hidden',
-                       'name' => 'id',
-                       'value' => $ID
-                    ]
-                 ]
-              ],
-              __('New item') . ' - ' . self::getTypeName(1) => [
-                 'visible' => true,
-                 'inputs' => [
-                    Computer::getTypeName() => [
-                       'content' => $comp->getLink(['comments' => true]),
+            'action' => $this->getFormURL(),
+            'buttons' => [
+                'submit' => [
+                    'type' => 'submit',
+                    'name' => self::isNewID($ID) ? 'add' : 'update',
+                    'value' => self::isNewID($ID) ? __('Add') : __('Update'),
+                    'class' => 'btn btn-secondary',
+                ],
+            ],
+            'content' => [
+                [
+                    'visible' => false,
+                    'inputs' => [
+                        $this->isNewId($ID) ? [
+                            'type' => 'hidden',
+                            'name' => 'computers_id',
+                            'value' => $options['computers_id'],
+                        ] : [
+                            'type' => 'hidden',
+                            'name' => 'id',
+                            'value' => $ID,
+                        ],
                     ],
-                    __('Automatic inventory') => Plugin::haveImport() ? [
-                          'content' => $ID && $this->fields['is_dynamic'] ? $autoinventory_information : __('No'),
-                    ] : [],
-                    __('Name') => [
-                       'type' => 'text',
-                       'name' => 'name',
-                       'value' => $this->fields['name'],
+                ],
+                __('New item') . ' - ' . self::getTypeName(1) => [
+                    'visible' => true,
+                    'inputs' => [
+                        Computer::getTypeName() => [
+                            'content' => $comp->getLink(['comments' => true]),
+                        ],
+                        __('Automatic inventory') => Plugin::haveImport() ? [
+                            'content' => $ID && $this->fields['is_dynamic'] ? $autoinventory_information : __('No'),
+                        ] : [],
+                        __('Name') => [
+                            'type' => 'text',
+                            'name' => 'name',
+                            'value' => $this->fields['name'],
+                        ],
+                        __('Comments') => [
+                            'type' => 'textarea',
+                            'name' => 'comment',
+                            'value' => $this->fields['comment'],
+                        ],
+                        VirtualMachineSystem::getTypeName(1) => [
+                            'type' => 'select',
+                            'name' => 'virtualmachinesystems_id',
+                            'values' => getOptionForItems('VirtualMachineSystem'),
+                            'value' => $this->fields['virtualmachinesystems_id'],
+                            'actions' => getItemActionButtons(['info', 'add'], 'VirtualMachineSystem'),
+                        ],
+                        VirtualMachineState::getTypeName(1) => [
+                            'type' => 'select',
+                            'name' => 'virtualmachinestates_id',
+                            'values' => getOptionForItems('VirtualMachineState'),
+                            'value' => $this->fields['virtualmachinestates_id'],
+                            'actions' => getItemActionButtons(['info', 'add'], 'VirtualMachineState'),
+                        ],
+                        __('UUID') => [
+                            'type' => 'text',
+                            'name' => 'uuid',
+                            'value' => $this->fields['uuid'],
+                        ],
+                        __('Machine') => [
+                            'content' => $computerValue,
+                        ],
+                        sprintf(__('%1$s (%2$s)'), _n('Memory', 'Memories', 1), __('Mio')) => [
+                            'type' => 'number',
+                            'name' => 'ram',
+                            'value' => $this->fields['ram'],
+                            'min'    => 0,
+                        ],
+                        _x('quantity', 'Processors number') => [
+                            'type' => 'number',
+                            'name' => 'vcpu',
+                            'value' => $this->fields['vcpu'],
+                            'min'    => 0,
+                        ],
                     ],
-                    __('Comments') => [
-                       'type' => 'textarea',
-                       'name' => 'comment',
-                       'value' => $this->fields['comment'],
-                    ],
-                    VirtualMachineSystem::getTypeName(1) => [
-                       'type' => 'select',
-                       'name' => 'virtualmachinesystems_id',
-                       'values' => getOptionForItems('VirtualMachineSystem'),
-                       'value' => $this->fields['virtualmachinesystems_id'],
-                       'actions' => getItemActionButtons(['info', 'add'], 'VirtualMachineSystem')
-                    ],
-                    VirtualMachineState::getTypeName(1) => [
-                       'type' => 'select',
-                       'name' => 'virtualmachinestates_id',
-                       'values' => getOptionForItems('VirtualMachineState'),
-                       'value' => $this->fields['virtualmachinestates_id'],
-                       'actions' => getItemActionButtons(['info', 'add'], 'VirtualMachineState')
-                    ],
-                    __('UUID') => [
-                       'type' => 'text',
-                       'name' => 'uuid',
-                       'value' => $this->fields['uuid'],
-                    ],
-                    __('Machine') => [
-                       'content' => $computerValue,
-                    ],
-                    sprintf(__('%1$s (%2$s)'), _n('Memory', 'Memories', 1), __('Mio')) => [
-                       'type' => 'number',
-                       'name' => 'ram',
-                       'value' => $this->fields['ram'],
-                       'min'    => 0
-                    ],
-                    _x('quantity', 'Processors number') => [
-                       'type' => 'number',
-                       'name' => 'vcpu',
-                       'value' => $this->fields['vcpu'],
-                       'min'    => 0
-                    ],
-                 ]
-              ]
-           ]
+                ],
+            ],
         ];
         renderTwigForm($form);
 
@@ -261,9 +261,9 @@ class ComputerVirtualMachine extends CommonDBChild
             $hosts = getAllDataFromTable(
                 self::getTable(),
                 [
-                  'RAW' => [
-                     'LOWER(uuid)' => self::getUUIDRestrictCriteria($comp->fields['uuid'])
-                  ]
+                    'RAW' => [
+                        'LOWER(uuid)' => self::getUUIDRestrictCriteria($comp->fields['uuid']),
+                    ],
                 ]
             );
 
@@ -283,12 +283,12 @@ class ComputerVirtualMachine extends CommonDBChild
                     if ($computer->can($host['computers_id'], READ)) {
                         echo "<a href='" . Computer::getFormURLWithID($computer->fields['id']) . "'>";
                         echo $computer->fields['name'] . "</a>";
-                        $tooltip = "<table aria-label='Virtual Machine Informations'><tr><td>" . __('Name') . "</td><td>" . $computer->fields['name'] .
-                                   '</td></tr>';
-                        $tooltip .= "<tr><td>" . __('Serial number') . "</td><td>" . $computer->fields['serial'] .
-                                   '</td></tr>';
-                        $tooltip .= "<tr><td>" . __('Comments') . "</td><td>" . $computer->fields['comment'] .
-                                   '</td></tr></table>';
+                        $tooltip = "<table aria-label='Virtual Machine Informations'><tr><td>" . __('Name') . "</td><td>" . $computer->fields['name']
+                                   . '</td></tr>';
+                        $tooltip .= "<tr><td>" . __('Serial number') . "</td><td>" . $computer->fields['serial']
+                                   . '</td></tr>';
+                        $tooltip .= "<tr><td>" . __('Comments') . "</td><td>" . $computer->fields['comment']
+                                   . '</td></tr></table>';
                         echo "&nbsp; " . Html::showToolTip($tooltip, ['display' => false]);
                     } else {
                         echo $computer->fields['name'];
@@ -314,7 +314,7 @@ class ComputerVirtualMachine extends CommonDBChild
      *
      * @param Computer $comp Computer object
      *
-     * @return void|boolean (display) Returns false if there is a rights error.
+     * @return void|bool (display) Returns false if there is a rights error.
     **/
     public static function showForComputer(Computer $comp)
     {
@@ -327,8 +327,8 @@ class ComputerVirtualMachine extends CommonDBChild
         $canedit = $comp->canEdit($ID);
 
         if ($canedit) {
-            echo "<div class='center firstbloc'>" .
-                   "<a class='btn btn-secondary' href='" . ComputerVirtualMachine::getFormURL() . "?computers_id=$ID'>";
+            echo "<div class='center firstbloc'>"
+                   . "<a class='btn btn-secondary' href='" . ComputerVirtualMachine::getFormURL() . "?computers_id=$ID'>";
             echo __('Add a virtual machine');
             echo "</a></div>\n";
         }
@@ -338,11 +338,11 @@ class ComputerVirtualMachine extends CommonDBChild
         $virtualmachines = getAllDataFromTable(
             self::getTable(),
             [
-              'WHERE'  => [
-                 'computers_id' => $ID,
-                 'is_deleted'   => 0
-              ],
-              'ORDER'  => 'name'
+                'WHERE'  => [
+                    'computers_id' => $ID,
+                    'is_deleted'   => 0,
+                ],
+                'ORDER'  => 'name',
             ]
         );
 
@@ -415,12 +415,12 @@ class ComputerVirtualMachine extends CommonDBChild
                         $url  = "<a href='" . $computer->getFormURLWithID($link_computer) . "'>";
                         $url .= $computer->fields["name"] . "</a>";
 
-                        $tooltip = "<table aria-label ='virtual Machine Information'><tr><td>" . __('Name') . "</td><td>" . $computer->fields['name'] .
-                                   '</td></tr>';
-                        $tooltip .= "<tr><td>" . __('Serial number') . "</td><td>" . $computer->fields['serial'] .
-                                   '</td></tr>';
-                        $tooltip .= "<tr><td>" . __('Comments') . "</td><td>" . $computer->fields['comment'] .
-                                   '</td></tr></table>';
+                        $tooltip = "<table aria-label ='virtual Machine Information'><tr><td>" . __('Name') . "</td><td>" . $computer->fields['name']
+                                   . '</td></tr>';
+                        $tooltip .= "<tr><td>" . __('Serial number') . "</td><td>" . $computer->fields['serial']
+                                   . '</td></tr>';
+                        $tooltip .= "<tr><td>" . __('Comments') . "</td><td>" . $computer->fields['comment']
+                                   . '</td></tr></table>';
 
                         $url .= "&nbsp; " . Html::showToolTip($tooltip, ['display' => false]);
                     } else {
@@ -471,8 +471,8 @@ class ComputerVirtualMachine extends CommonDBChild
         //On unix is flips first block of uuid and on windows flips 3 first blocks...
         $in      = [strtolower((string) $uuid)];
         $regexes = [
-           "/([\w]{2})([\w]{2})([\w]{2})([\w]{2})(.*)/"                                        => "$4$3$2$1$5",
-           "/([\w]{2})([\w]{2})([\w]{2})([\w]{2})-([\w]{2})([\w]{2})-([\w]{2})([\w]{2})(.*)/"  => "$4$3$2$1-$6$5-$8$7$9"
+            "/([\w]{2})([\w]{2})([\w]{2})([\w]{2})(.*)/"                                        => "$4$3$2$1$5",
+            "/([\w]{2})([\w]{2})([\w]{2})([\w]{2})-([\w]{2})([\w]{2})-([\w]{2})([\w]{2})(.*)/"  => "$4$3$2$1-$6$5-$8$7$9",
         ];
         foreach ($regexes as $pattern => $replace) {
             $reverse_uuid = preg_replace($pattern, $replace, (string) $uuid);
@@ -490,7 +490,7 @@ class ComputerVirtualMachine extends CommonDBChild
      *
      * @param array $fields  Array of virtualmachine fields
      *
-     * @return integer|boolean ID of the computer that have this uuid or false otherwise
+     * @return int|bool ID of the computer that have this uuid or false otherwise
     **/
     public static function findVirtualMachine($fields = [])
     {
@@ -501,13 +501,13 @@ class ComputerVirtualMachine extends CommonDBChild
         }
 
         $iterator = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => 'glpi_computers',
-           'WHERE'  => [
-              'RAW' => [
-                 'LOWER(uuid)'  => self::getUUIDRestrictCriteria($fields['uuid'])
-              ]
-           ]
+            'SELECT' => 'id',
+            'FROM'   => 'glpi_computers',
+            'WHERE'  => [
+                'RAW' => [
+                    'LOWER(uuid)'  => self::getUUIDRestrictCriteria($fields['uuid']),
+                ],
+            ],
         ]);
 
         //Virtual machine found, return ID
@@ -532,48 +532,48 @@ class ComputerVirtualMachine extends CommonDBChild
         $tab = [];
 
         $tab[] = [
-           'id'                 => 'common',
-           'name'               => __('Characteristics')
+            'id'                 => 'common',
+            'name'               => __('Characteristics'),
         ];
 
         $tab[] = [
-           'id'                 => '1',
-           'table'              => $this->getTable(),
-           'field'              => 'name',
-           'name'               => __('Name'),
-           'datatype'           => 'itemlink',
-           'massiveaction'      => false,
-           'autocomplete'       => true,
+            'id'                 => '1',
+            'table'              => $this->getTable(),
+            'field'              => 'name',
+            'name'               => __('Name'),
+            'datatype'           => 'itemlink',
+            'massiveaction'      => false,
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '2',
-           'table'              => $this->getTable(),
-           'field'              => 'uuid',
-           'name'               => __('UUID'),
-           'datatype'           => 'string',
-           'massiveaction'      => false,
-           'autocomplete'       => true,
+            'id'                 => '2',
+            'table'              => $this->getTable(),
+            'field'              => 'uuid',
+            'name'               => __('UUID'),
+            'datatype'           => 'string',
+            'massiveaction'      => false,
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '3',
-           'table'              => $this->getTable(),
-           'field'              => 'ram',
-           'name'               => _n('Memory', 'Memories', 1),
-           'datatype'           => 'string',
-           'massiveaction'      => false,
-           'autocomplete'       => true,
+            'id'                 => '3',
+            'table'              => $this->getTable(),
+            'field'              => 'ram',
+            'name'               => _n('Memory', 'Memories', 1),
+            'datatype'           => 'string',
+            'massiveaction'      => false,
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '4',
-           'table'              => $this->getTable(),
-           'field'              => 'vcpu',
-           'name'               => __('processor number'),
-           'datatype'           => 'string',
-           'massiveaction'      => false,
-           'autocomplete'       => true,
+            'id'                 => '4',
+            'table'              => $this->getTable(),
+            'field'              => 'vcpu',
+            'name'               => __('processor number'),
+            'datatype'           => 'string',
+            'massiveaction'      => false,
+            'autocomplete'       => true,
         ];
 
         return $tab;
@@ -585,127 +585,127 @@ class ComputerVirtualMachine extends CommonDBChild
 
         $name = _n('Virtual machine', 'Virtual machines', Session::getPluralNumber());
         $tab[] = [
-           'id'                 => 'virtualmachine',
-           'name'               => $name
+            'id'                 => 'virtualmachine',
+            'name'               => $name,
         ];
 
         $tab[] = [
-           'id'                 => '160',
-           'table'              => self::getTable(),
-           'field'              => 'name',
-           'name'               => __('Name'),
-           'forcegroupby'       => true,
-           'massiveaction'      => false,
-           'datatype'           => 'dropdown',
-           'joinparams'         => [
-              'jointype'           => 'child'
-           ]
+            'id'                 => '160',
+            'table'              => self::getTable(),
+            'field'              => 'name',
+            'name'               => __('Name'),
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
+            'datatype'           => 'dropdown',
+            'joinparams'         => [
+                'jointype'           => 'child',
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '161',
-           'table'              => 'glpi_virtualmachinestates',
-           'field'              => 'name',
-           'name'               => __('State'),
-           'forcegroupby'       => true,
-           'massiveaction'      => false,
-           'datatype'           => 'dropdown',
-           'joinparams'         => [
-              'beforejoin'         => [
-                 'table'              => self::getTable(),
-                 'joinparams'         => [
-                    'jointype'           => 'child'
-                 ]
-              ]
-           ]
+            'id'                 => '161',
+            'table'              => 'glpi_virtualmachinestates',
+            'field'              => 'name',
+            'name'               => __('State'),
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
+            'datatype'           => 'dropdown',
+            'joinparams'         => [
+                'beforejoin'         => [
+                    'table'              => self::getTable(),
+                    'joinparams'         => [
+                        'jointype'           => 'child',
+                    ],
+                ],
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '162',
-           'table'              => 'glpi_virtualmachinesystems',
-           'field'              => 'name',
-           'name'               => VirtualMachineSystem::getTypeName(1),
-           'forcegroupby'       => true,
-           'massiveaction'      => false,
-           'datatype'           => 'dropdown',
-           'joinparams'         => [
-              'beforejoin'         => [
-                 'table'              => self::getTable(),
-                 'joinparams'         => [
-                    'jointype'           => 'child'
-                 ]
-              ]
-           ]
+            'id'                 => '162',
+            'table'              => 'glpi_virtualmachinesystems',
+            'field'              => 'name',
+            'name'               => VirtualMachineSystem::getTypeName(1),
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
+            'datatype'           => 'dropdown',
+            'joinparams'         => [
+                'beforejoin'         => [
+                    'table'              => self::getTable(),
+                    'joinparams'         => [
+                        'jointype'           => 'child',
+                    ],
+                ],
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '163',
-           'table'              => 'glpi_virtualmachinetypes',
-           'field'              => 'name',
-           'name'               => VirtualMachineType::getTypeName(1),
-           'datatype'           => 'dropdown',
-           'forcegroupby'       => true,
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'beforejoin'         => [
-                 'table'              => self::getTable(),
-                 'joinparams'         => [
-                    'jointype'           => 'child'
-                 ]
-              ]
-           ]
+            'id'                 => '163',
+            'table'              => 'glpi_virtualmachinetypes',
+            'field'              => 'name',
+            'name'               => VirtualMachineType::getTypeName(1),
+            'datatype'           => 'dropdown',
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'beforejoin'         => [
+                    'table'              => self::getTable(),
+                    'joinparams'         => [
+                        'jointype'           => 'child',
+                    ],
+                ],
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '164',
-           'table'              => self::getTable(),
-           'field'              => 'vcpu',
-           'name'               => __('processor number'),
-           'datatype'           => 'number',
-           'forcegroupby'       => true,
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'jointype'           => 'child'
-           ]
+            'id'                 => '164',
+            'table'              => self::getTable(),
+            'field'              => 'vcpu',
+            'name'               => __('processor number'),
+            'datatype'           => 'number',
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'jointype'           => 'child',
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '165',
-           'table'              => self::getTable(),
-           'field'              => 'ram',
-           'name'               => _n('Memory', 'Memories', 1),
-           'datatype'           => 'string',
-           'unit'               => 'auto',
-           'forcegroupby'       => true,
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'jointype'           => 'child'
-           ]
+            'id'                 => '165',
+            'table'              => self::getTable(),
+            'field'              => 'ram',
+            'name'               => _n('Memory', 'Memories', 1),
+            'datatype'           => 'string',
+            'unit'               => 'auto',
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'jointype'           => 'child',
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '166',
-           'table'              => self::getTable(),
-           'field'              => 'uuid',
-           'name'               => __('UUID'),
-           'forcegroupby'       => true,
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'jointype'           => 'child'
-           ]
+            'id'                 => '166',
+            'table'              => self::getTable(),
+            'field'              => 'uuid',
+            'name'               => __('UUID'),
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'jointype'           => 'child',
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '179',
-           'table'              => self::getTable(),
-           'field'              => 'comment',
-           'name'               => __('Virtual machine Comment'),
-           'forcegroupby'       => true,
-           'datatype'           => 'string',
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'jointype'           => 'child'
-           ]
+            'id'                 => '179',
+            'table'              => self::getTable(),
+            'field'              => 'comment',
+            'name'               => __('Virtual machine Comment'),
+            'forcegroupby'       => true,
+            'datatype'           => 'string',
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'jointype'           => 'child',
+            ],
         ];
 
         return $tab;

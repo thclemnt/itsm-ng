@@ -41,26 +41,27 @@ use Glpi\Console\AbstractCommand;
 use Glpi\Console\Command\ForceNoPluginsOptionCommandInterface;
 use Migration;
 use Session;
-use Update;
+use Symfony\Component\Console\Helper\QuestionHelper;
 use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Question\ConfirmationQuestion;
+use Update;
 
 class UpdateCommand extends AbstractCommand implements ForceNoPluginsOptionCommandInterface
 {
     /**
      * Error code returned when trying to update from an unstable version.
      *
-     * @var integer
+     * @var int
      */
     public const ERROR_NO_UNSTABLE_UPDATE = 1;
 
     /**
      * Error code returned when security key file is missing.
      *
-     * @var integer
+     * @var int
      */
     public const ERROR_MISSING_SECURITY_KEY_FILE = 2;
 
@@ -169,7 +170,7 @@ class UpdateCommand extends AbstractCommand implements ForceNoPluginsOptionComma
 
         if (!$no_interaction) {
             // Ask for confirmation (unless --no-interaction)
-            /** @var \Symfony\Component\Console\Helper\QuestionHelper $question_helper */
+            /** @var QuestionHelper $question_helper */
             $question_helper = $this->getHelper('question');
             $run = $question_helper->ask(
                 $input,

@@ -43,25 +43,25 @@ class ProjectTeam extends DbTestCase
 
         $project = new \Project();
         $project_id = $project->add([
-           'name' => 'project-team-' . $this->getUniqueString(),
+            'name' => 'project-team-' . $this->getUniqueString(),
         ]);
-        $this->integer((int)$project_id)->isGreaterThan(0);
+        $this->integer((int) $project_id)->isGreaterThan(0);
 
         $user_id = getItemByTypeName('User', 'tech', true);
-        $this->integer((int)$user_id)->isGreaterThan(0);
+        $this->integer((int) $user_id)->isGreaterThan(0);
 
         $relation = new \ProjectTeam();
         $relation_id = $relation->add([
-           'projects_id' => $project_id,
-           'itemtype'    => 'User',
-           'items_id'    => $user_id,
+            'projects_id' => $project_id,
+            'itemtype'    => 'User',
+            'items_id'    => $user_id,
         ]);
-        $this->integer((int)$relation_id)->isGreaterThan(0);
+        $this->integer((int) $relation_id)->isGreaterThan(0);
 
         $team = \ProjectTeam::getTeamFor($project_id);
         $this->array($team)->hasKey('User')->hasKey('Group')->hasKey('Supplier')->hasKey('Contact');
-        $this->integer((int)count($team['User']))->isEqualTo(1);
+        $this->integer((int) count($team['User']))->isEqualTo(1);
         $this->string($team['User'][0]['itemtype'])->isEqualTo('User');
-        $this->integer((int)$team['User'][0]['items_id'])->isEqualTo($user_id);
+        $this->integer((int) $team['User'][0]['items_id'])->isEqualTo($user_id);
     }
 }

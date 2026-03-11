@@ -45,14 +45,14 @@ class Datacenter extends DbTestCase
         $locations_id = getItemByTypeName('Location', '_location01', true);
 
         $datacenter = new \Datacenter();
-        $datacenters_id = (int)$datacenter->add([
+        $datacenters_id = (int) $datacenter->add([
             'name'         => 'dc-' . $this->getUniqueString(),
             'locations_id' => $locations_id,
         ]);
         $this->integer($datacenters_id)->isGreaterThan(0);
 
         $room = new \DCRoom();
-        $dcrooms_id = (int)$room->add([
+        $dcrooms_id = (int) $room->add([
             'name'           => 'room-' . $this->getUniqueString(),
             'datacenters_id' => $datacenters_id,
             'locations_id'   => $locations_id,
@@ -60,10 +60,10 @@ class Datacenter extends DbTestCase
             'vis_rows'       => 2,
         ]);
         $this->integer($dcrooms_id)->isGreaterThan(0);
-        $this->integer((int)countElementsInTable(\DCRoom::getTable(), ['datacenters_id' => $datacenters_id]))->isEqualTo(1);
+        $this->integer((int) countElementsInTable(\DCRoom::getTable(), ['datacenters_id' => $datacenters_id]))->isEqualTo(1);
 
         $rack = new \Rack();
-        $racks_id = (int)$rack->add([
+        $racks_id = (int) $rack->add([
             'name'         => 'rack-' . $this->getUniqueString(),
             'entities_id'  => 0,
             'dcrooms_id'   => $dcrooms_id,
@@ -72,46 +72,46 @@ class Datacenter extends DbTestCase
         ]);
         $this->integer($racks_id)->isGreaterThan(0);
         $this->boolean($rack->getFromDB($racks_id))->isTrue();
-        $this->integer((int)$rack->getField('dcrooms_id'))->isEqualTo($dcrooms_id);
+        $this->integer((int) $rack->getField('dcrooms_id'))->isEqualTo($dcrooms_id);
 
         $enclosure = new \Enclosure();
-        $enclosures_id = (int)$enclosure->add([
+        $enclosures_id = (int) $enclosure->add([
             'name'        => 'enclosure-' . $this->getUniqueString(),
             'entities_id' => 0,
         ]);
         $this->integer($enclosures_id)->isGreaterThan(0);
 
         $computer = new \Computer();
-        $computers_id = (int)$computer->add([
+        $computers_id = (int) $computer->add([
             'name'        => 'rack-comp-' . $this->getUniqueString(),
             'entities_id' => 0,
         ]);
         $this->integer($computers_id)->isGreaterThan(0);
 
         $item_enclosure = new \Item_Enclosure();
-        $item_enclosure_id = (int)$item_enclosure->add([
+        $item_enclosure_id = (int) $item_enclosure->add([
             'enclosures_id' => $enclosures_id,
             'itemtype'      => 'Computer',
             'items_id'      => $computers_id,
             'position'      => 1,
         ]);
         $this->integer($item_enclosure_id)->isGreaterThan(0);
-        $this->integer((int)countElementsInTable(\Item_Enclosure::getTable(), ['enclosures_id' => $enclosures_id]))->isEqualTo(1);
+        $this->integer((int) countElementsInTable(\Item_Enclosure::getTable(), ['enclosures_id' => $enclosures_id]))->isEqualTo(1);
 
         $item_rack = new \Item_Rack();
-        $item_rack_id = (int)$item_rack->add([
+        $item_rack_id = (int) $item_rack->add([
             'racks_id' => $racks_id,
             'position' => 1,
             'itemtype' => 'Computer',
             'items_id' => $computers_id,
         ]);
         $this->integer($item_rack_id)->isGreaterThan(0);
-        $this->integer((int)countElementsInTable(\Item_Rack::getTable(), ['racks_id' => $racks_id]))->isEqualTo(1);
+        $this->integer((int) countElementsInTable(\Item_Rack::getTable(), ['racks_id' => $racks_id]))->isEqualTo(1);
 
         $this->boolean($enclosure->delete(['id' => $enclosures_id], 1))->isTrue();
-        $this->integer((int)countElementsInTable(\Item_Enclosure::getTable(), ['enclosures_id' => $enclosures_id]))->isEqualTo(0);
+        $this->integer((int) countElementsInTable(\Item_Enclosure::getTable(), ['enclosures_id' => $enclosures_id]))->isEqualTo(0);
 
         $this->boolean($rack->delete(['id' => $racks_id], 1))->isTrue();
-        $this->integer((int)countElementsInTable(\Item_Rack::getTable(), ['racks_id' => $racks_id]))->isEqualTo(0);
+        $this->integer((int) countElementsInTable(\Item_Rack::getTable(), ['racks_id' => $racks_id]))->isEqualTo(0);
     }
 }

@@ -78,8 +78,8 @@ if (isset($_POST["add"])) {
     }
     $computer = new Computer();
     $computer->getFromDB($disk->fields['computers_id']);
-    Html::redirect(Toolbox::getItemTypeFormURL('Computer') . '?id=' . $disk->fields['computers_id'] .
-                   ($computer->fields['is_template'] ? "&withtemplate=1" : ""));
+    Html::redirect(Toolbox::getItemTypeFormURL('Computer') . '?id=' . $disk->fields['computers_id']
+                   . ($computer->fields['is_template'] ? "&withtemplate=1" : ""));
 } elseif (isset($_POST["update"])) {
     $disk->check($_POST["id"], UPDATE);
 
@@ -97,6 +97,6 @@ if (isset($_POST["add"])) {
 } else {
     Html::header(Computer::getTypeName(Session::getPluralNumber()), $_SERVER['PHP_SELF'], "assets", "computer");
     $disk->display(['id'           => $_GET["id"],
-                         'computers_id' => $_GET["computers_id"]]);
+        'computers_id' => $_GET["computers_id"]]);
     Html::footer();
 }

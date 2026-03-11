@@ -78,9 +78,9 @@ class Link_Itemtype extends CommonDBChild
         }
 
         $iterator = $DB->request([
-           'FROM'   => 'glpi_links_itemtypes',
-           'WHERE'  => ['links_id' => $links_id],
-           'ORDER'  => 'itemtype'
+            'FROM'   => 'glpi_links_itemtypes',
+            'WHERE'  => ['links_id' => $links_id],
+            'ORDER'  => 'itemtype',
         ]);
         $types  = [];
         $used   = [];
@@ -102,43 +102,43 @@ class Link_Itemtype extends CommonDBChild
             asort($values);
 
             $form = [
-               'action' => Toolbox::getItemTypeFormURL(__CLASS__),
-               'buttons' => [
-                  [
-                     'type'  => 'submit',
-                     'name' => 'add',
-                     'value' => _sx('button', 'Add'),
-                     'class' => 'btn btn-secondary',
-                  ]
-               ],
-               'content' => [
-                  '' => [
-                     'visible' => true,
-                     'inputs' => [
-                        [
-                           'type' => 'hidden',
-                           'name' => 'links_id',
-                           'value' => $links_id,
+                'action' => Toolbox::getItemTypeFormURL(__CLASS__),
+                'buttons' => [
+                    [
+                        'type'  => 'submit',
+                        'name' => 'add',
+                        'value' => _sx('button', 'Add'),
+                        'class' => 'btn btn-secondary',
+                    ],
+                ],
+                'content' => [
+                    '' => [
+                        'visible' => true,
+                        'inputs' => [
+                            [
+                                'type' => 'hidden',
+                                'name' => 'links_id',
+                                'value' => $links_id,
+                            ],
+                            __('Add an item type') => [
+                                'type' => 'select',
+                                'name' => 'itemtype',
+                                'values' => array_merge([Dropdown::EMPTY_VALUE], $values),
+                                'col_lg' => 12,
+                                'col_md' => 12,
+                            ],
                         ],
-                        __('Add an item type') => [
-                           'type' => 'select',
-                           'name' => 'itemtype',
-                           'values' => array_merge([Dropdown::EMPTY_VALUE], $values),
-                           'col_lg' => 12,
-                           'col_md' => 12,
-                        ]
-                     ]
-                  ]
-               ]
+                    ],
+                ],
             ];
             renderTwigForm($form);
         }
 
         if ($canedit && $numrows) {
             $massiveactionparams = [
-               'num_displayed'  => min($_SESSION['glpilist_limit'], $numrows),
-               'container'      => 'tab_associated_itemtypes',
-               'display_arrow'  => false,
+                'num_displayed'  => min($_SESSION['glpilist_limit'], $numrows),
+                'container'      => 'tab_associated_itemtypes',
+                'display_arrow'  => false,
             ];
             Html::showMassiveActions($massiveactionparams);
         }
@@ -154,11 +154,11 @@ class Link_Itemtype extends CommonDBChild
             }
         }
         renderTwigTemplate('table.twig', [
-           'id' => 'tab_associated_itemtypes',
-           'fields' => $fields,
-           'values' => $values,
-           'itemtype' => self::class,
-           'massive_action' => $massiveactionparams,
+            'id' => 'tab_associated_itemtypes',
+            'fields' => $fields,
+            'values' => $values,
+            'itemtype' => self::class,
+            'massive_action' => $massiveactionparams,
         ]);
     }
 
@@ -212,7 +212,7 @@ class Link_Itemtype extends CommonDBChild
         $DB->delete(
             self::getTable(),
             [
-              'itemtype'  => ['LIKE', "%Plugin$itemtype%"]
+                'itemtype'  => ['LIKE', "%Plugin$itemtype%"],
             ]
         );
     }

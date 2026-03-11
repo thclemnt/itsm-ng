@@ -90,26 +90,26 @@ class NetworkPortDialup extends NetworkPortInstantiation
         $entity_restrict = $options['entity_restrict'] ?? 0;
 
         return [
-           $this->getTypeName() => [
-              'visible' => true,
-              'inputs' => [
-                 __('MAC') => [
-                    'type' => 'text',
-                    'name' => 'mac',
-                    'value' => $netport->fields['mac'],
-                 ],
-                 !$oppositePort ? [
-                    'type' => 'hidden',
-                    'name' => 'NetworkPortConnect_networkports_id_1',
-                    'values' => $netport->getID(),
-                 ] : [],
-                 __('Connected to') => !$oppositePort ? [
-                    'type' => 'select',
-                    'id' => 'NetworkPortConnect_itemtype',
-                    'name' => 'NetworkPortConnect_itemtype',
-                    'values' => [Dropdown::EMPTY_VALUE] + $values,
-                    'hooks' => [
-                       'change' => <<<JS
+            $this->getTypeName() => [
+                'visible' => true,
+                'inputs' => [
+                    __('MAC') => [
+                        'type' => 'text',
+                        'name' => 'mac',
+                        'value' => $netport->fields['mac'],
+                    ],
+                    !$oppositePort ? [
+                        'type' => 'hidden',
+                        'name' => 'NetworkPortConnect_networkports_id_1',
+                        'values' => $netport->getID(),
+                    ] : [],
+                    __('Connected to') => !$oppositePort ? [
+                        'type' => 'select',
+                        'id' => 'NetworkPortConnect_itemtype',
+                        'name' => 'NetworkPortConnect_itemtype',
+                        'values' => [Dropdown::EMPTY_VALUE] + $values,
+                        'hooks' => [
+                            'change' => <<<JS
                         $.ajax({
                            url: '{$CFG_GLPI['root_doc']}/ajax/dropdownConnectNetworkPortDeviceType.php',
                            type: 'POST',
@@ -130,14 +130,14 @@ class NetworkPortDialup extends NetworkPortInstantiation
                            }
                         });
                      JS,
-                    ]
-                 ] : [],
-                 __('Itemtype') => !$oppositePort ? [
-                    'type' => 'select',
-                    'id' => 'NetworkPortConnect_items_id',
-                    'name' => 'items',
-                    'hooks' => [
-                       'change' => <<<JS
+                        ],
+                    ] : [],
+                    __('Itemtype') => !$oppositePort ? [
+                        'type' => 'select',
+                        'id' => 'NetworkPortConnect_items_id',
+                        'name' => 'items',
+                        'hooks' => [
+                            'change' => <<<JS
                         $.ajax({
                            url: '{$CFG_GLPI['root_doc']}/ajax/dropdownConnectNetworkPort.php',
                            type: 'POST',
@@ -157,14 +157,14 @@ class NetworkPortDialup extends NetworkPortInstantiation
                            }
                         });
                      JS,
-                    ]
-                 ] : [],
-                 __('Network port') => !$oppositePort ? [
-                    'type' => 'select',
-                    'name' => 'NetworkPortConnect_networkports_id_2',
-                 ] : [],
-              ]
-           ]
+                        ],
+                    ] : [],
+                    __('Network port') => !$oppositePort ? [
+                        'type' => 'select',
+                        'name' => 'NetworkPortConnect_networkports_id_2',
+                    ] : [],
+                ],
+            ],
         ];
 
         echo "<tr class='tab_bg_1'>";

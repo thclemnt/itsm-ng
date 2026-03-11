@@ -66,12 +66,12 @@ if ($isValidItemtype) {
 
     // Message for post-only
     $p = [
-       'itemtype'            => $itemtype,
-       'entity_restrict'     => $_POST['entity_restrict'],
-       'table'               => $table,
-       '_idor_token'         => Session::getNewIDORToken($itemtype, [
-          'entity_restrict' => $_POST['entity_restrict'],
-       ]),
+        'itemtype'            => $itemtype,
+        'entity_restrict'     => $_POST['entity_restrict'],
+        'table'               => $table,
+        '_idor_token'         => Session::getNewIDORToken($itemtype, [
+            'entity_restrict' => $_POST['entity_restrict'],
+        ]),
     ];
 
     if (isset($_POST["used"]) && !empty($_POST["used"])) {

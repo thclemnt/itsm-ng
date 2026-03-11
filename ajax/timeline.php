@@ -54,15 +54,15 @@ if (($_POST['action'] ?? null) === 'change_task_state') {
                           : Planning::DONE;
         $new_label = Planning::getState($new_state);
         echo json_encode([
-           'state'  => $new_state,
-           'label'  => $new_label
+            'state'  => $new_state,
+            'label'  => $new_label,
         ]);
 
         $foreignKey = $parent->getForeignKeyField();
         $task->update([
-           'id'        => intval($_POST['tasks_id']),
-           $foreignKey => intval($_POST[$foreignKey]),
-           'state'     => $new_state
+            'id'        => intval($_POST['tasks_id']),
+            $foreignKey => intval($_POST[$foreignKey]),
+            'state'     => $new_state,
         ]);
     }
 } elseif (($_REQUEST['action'] ?? null) === 'viewsubitem') {
@@ -94,12 +94,12 @@ if (($_POST['action'] ?? null) === 'change_task_state') {
         }
 
         $sol_params = [
-           'item'         => $parent,
-           'kb_id_toload' => $_REQUEST['load_kb_sol']
+            'item'         => $parent,
+            'kb_id_toload' => $_REQUEST['load_kb_sol'],
         ];
 
         $solution = new ITILSolution();
-        $id = isset($_REQUEST['id']) && (int)$_REQUEST['id'] > 0 ? $_REQUEST['id'] : null;
+        $id = isset($_REQUEST['id']) && (int) $_REQUEST['id'] > 0 ? $_REQUEST['id'] : null;
         if ($id) {
             $solution->getFromDB($id);
         }
@@ -109,11 +109,11 @@ if (($_POST['action'] ?? null) === 'change_task_state') {
         $parent->getFromDB($_REQUEST[$parent->getForeignKeyField()]);
 
         $fup_params = [
-           'item'      => $parent
+            'item'      => $parent,
         ];
 
         $fup = new ITILFollowup();
-        $id = isset($_REQUEST['id']) && (int)$_REQUEST['id'] > 0 ? $_REQUEST['id'] : null;
+        $id = isset($_REQUEST['id']) && (int) $_REQUEST['id'] > 0 ? $_REQUEST['id'] : null;
         if ($id) {
             $fup->getFromDB($id);
         }
@@ -122,7 +122,7 @@ if (($_POST['action'] ?? null) === 'change_task_state') {
     } elseif (substr_compare($_REQUEST['type'], 'Validation', -10) === 0) {
         $parent->getFromDB($_REQUEST[$parent->getForeignKeyField()]);
         $validation = new $_REQUEST['type']();
-        $id = isset($_REQUEST['id']) && (int)$_REQUEST['id'] > 0 ? $_REQUEST['id'] : null;
+        $id = isset($_REQUEST['id']) && (int) $_REQUEST['id'] > 0 ? $_REQUEST['id'] : null;
         if ($id) {
             $validation->getFromDB($id);
         }
@@ -136,7 +136,7 @@ if (($_POST['action'] ?? null) === 'change_task_state') {
         $manage_locks($_REQUEST['parenttype'], $parent->getID());
         $foreignKey = $parent->getForeignKeyField();
         $parent::showSubForm($item, $_REQUEST["id"], ['parent' => $parent,
-                                                     $foreignKey => $_REQUEST[$foreignKey]]);
+            $foreignKey => $_REQUEST[$foreignKey]]);
     } else {
         echo __('Access denied');
     }

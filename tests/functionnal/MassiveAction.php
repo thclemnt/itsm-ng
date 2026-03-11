@@ -33,8 +33,8 @@
 
 namespace tests\units;
 
+use atoum\atoum\mock\controller;
 use CommonDBTM;
-use Computer;
 use DbTestCase;
 use Notepad;
 use Session;
@@ -46,52 +46,52 @@ class MassiveAction extends DbTestCase
     protected function actionsProvider()
     {
         return [
-           [
-              'itemtype'     => 'Computer',
-              'items_id'     => '_test_pc01',
-              'allcount'     => 19,
-              'singlecount'  => 12
-           ], [
-              'itemtype'     => 'Monitor',
-              'items_id'     => '_test_monitor_1',
-              'allcount'     => 17,
-              'singlecount'  => 11
-           ], [
-              'itemtype'     => 'SoftwareLicense',
-              'items_id'     => '_test_softlic_1',
-              'allcount'     => 15,
-              'singlecount'  => 9
-           ], [
-              'itemtype'     => 'NetworkEquipment',
-              'items_id'     => '_test_networkequipment_1',
-              'allcount'     => 15,
-              'singlecount'  => 10
-           ], [
-              'itemtype'     => 'Peripheral',
-              'items_id'     => '_test_peripheral_1',
-              'allcount'     => 17,
-              'singlecount'  => 11
-           ], [
-              'itemtype'     => 'Printer',
-              'items_id'     => '_test_printer_all',
-              'allcount'     => 17,
-              'singlecount'  => 11
-           ], [
-              'itemtype'     => 'Phone',
-              'items_id'     => '_test_phone_1',
-              'allcount'     => 17,
-              'singlecount'  => 11
-           ], [
-              'itemtype'     => 'Ticket',
-              'items_id'     => '_ticket01',
-              'allcount'     => 17,
-              'singlecount'  => 12
-           ], [
-              'itemtype'     => 'Profile',
-              'items_id'     => 'Super-Admin',
-              'allcount'     => 2,
-              'singlecount'  => 1
-           ]
+            [
+                'itemtype'     => 'Computer',
+                'items_id'     => '_test_pc01',
+                'allcount'     => 19,
+                'singlecount'  => 12,
+            ], [
+                'itemtype'     => 'Monitor',
+                'items_id'     => '_test_monitor_1',
+                'allcount'     => 17,
+                'singlecount'  => 11,
+            ], [
+                'itemtype'     => 'SoftwareLicense',
+                'items_id'     => '_test_softlic_1',
+                'allcount'     => 15,
+                'singlecount'  => 9,
+            ], [
+                'itemtype'     => 'NetworkEquipment',
+                'items_id'     => '_test_networkequipment_1',
+                'allcount'     => 15,
+                'singlecount'  => 10,
+            ], [
+                'itemtype'     => 'Peripheral',
+                'items_id'     => '_test_peripheral_1',
+                'allcount'     => 17,
+                'singlecount'  => 11,
+            ], [
+                'itemtype'     => 'Printer',
+                'items_id'     => '_test_printer_all',
+                'allcount'     => 17,
+                'singlecount'  => 11,
+            ], [
+                'itemtype'     => 'Phone',
+                'items_id'     => '_test_phone_1',
+                'allcount'     => 17,
+                'singlecount'  => 11,
+            ], [
+                'itemtype'     => 'Ticket',
+                'items_id'     => '_ticket01',
+                'allcount'     => 17,
+                'singlecount'  => 12,
+            ], [
+                'itemtype'     => 'Profile',
+                'items_id'     => 'Super-Admin',
+                'allcount'     => 2,
+                'singlecount'  => 1,
+            ],
         ];
     }
 
@@ -104,12 +104,12 @@ class MassiveAction extends DbTestCase
         $items_id = getItemByTypeName($itemtype, $items_id, true);
         $mact = new \MassiveAction(
             [
-              'item'            => [
-                 $itemtype   => [
-                    $items_id => 1
-                 ]
-              ]
-         ],
+                'item'            => [
+                    $itemtype   => [
+                        $items_id => 1,
+                    ],
+                ],
+            ],
             [],
             'initial'
         );
@@ -122,12 +122,12 @@ class MassiveAction extends DbTestCase
 
         $mact = new \MassiveAction(
             [
-              'item'   => [
-                 $itemtype   => [
-                    $items_id => 1
-                 ]
-              ]
-         ],
+                'item'   => [
+                    $itemtype   => [
+                        $items_id => 1,
+                    ],
+                ],
+            ],
             [],
             'initial',
             $items_id
@@ -152,20 +152,18 @@ class MassiveAction extends DbTestCase
         $ma_ko = 0;
 
         // Shunt constructor
-        $controller = new \atoum\atoum\mock\controller();
-        $controller->__construct = function ($args) {
-        };
+        $controller = new controller();
+        $controller->__construct = function ($args) {};
 
         // Create mock
         $ma = new \mock\MassiveAction([], [], '', false, $controller);
 
         // Mock needed methods
         $ma->getMockController()->getAction = $action_code;
-        $ma->getMockController()->addMessage = function () {
-        };
+        $ma->getMockController()->addMessage = function () {};
         $ma->getMockController()->getInput = $input;
-        $ma->getMockController()->itemDone =
-           function ($item, $id, $res) use (&$ma_ok, &$ma_ko) {
+        $ma->getMockController()->itemDone
+           = function ($item, $id, $res) use (&$ma_ok, &$ma_ko) {
                if ($res == \MassiveAction::ACTION_OK) {
                    $ma_ok++;
                } else {
@@ -184,21 +182,21 @@ class MassiveAction extends DbTestCase
     protected function amendCommentProvider()
     {
         return [
-           [
-              'item'                   => getItemByTypeName("Computer", "_test_pc01"),
-              'itemtype_is_compatible' => true,
-              'has_right'              => true,
-           ],
-           [
-              'item'                   => getItemByTypeName("Ticket", "_ticket01"),
-              'itemtype_is_compatible' => false,
-              'has_right'              => false,
-           ],
-           [
-              'item'                   => getItemByTypeName("Computer", "_test_pc01"),
-              'itemtype_is_compatible' => true,
-              'has_right'              => false,
-           ],
+            [
+                'item'                   => getItemByTypeName("Computer", "_test_pc01"),
+                'itemtype_is_compatible' => true,
+                'has_right'              => true,
+            ],
+            [
+                'item'                   => getItemByTypeName("Ticket", "_ticket01"),
+                'itemtype_is_compatible' => false,
+                'has_right'              => false,
+            ],
+            [
+                'item'                   => getItemByTypeName("Computer", "_test_pc01"),
+                'itemtype_is_compatible' => true,
+                'has_right'              => false,
+            ],
         ];
     }
 
@@ -217,7 +215,7 @@ class MassiveAction extends DbTestCase
         // Set rights if needed
         if ($has_right) {
             $_SESSION['glpiactiveentities'] = [
-               $item->getEntityID()
+                $item->getEntityID(),
             ];
         }
 
@@ -232,8 +230,8 @@ class MassiveAction extends DbTestCase
 
             // If we expect the test to work, set the comment to $base_comment
             $update = $item->update([
-               'id'      => $item->fields['id'],
-               'comment' => $base_comment,
+                'id'      => $item->fields['id'],
+                'comment' => $base_comment,
             ]);
             $this->boolean($update)->isTrue();
         } elseif (!$itemtype_is_compatible) {
@@ -271,14 +269,14 @@ class MassiveAction extends DbTestCase
     protected function addNoteProvider()
     {
         return [
-           [
-              'item'      => getItemByTypeName("Computer", "_test_pc01"),
-              'has_right' => true,
-           ],
-           [
-              'item'      => getItemByTypeName("Ticket", "_ticket01"),
-              'has_right' => false,
-           ],
+            [
+                'item'      => getItemByTypeName("Computer", "_test_pc01"),
+                'has_right' => true,
+            ],
+            [
+                'item'      => getItemByTypeName("Ticket", "_ticket01"),
+                'has_right' => false,
+            ],
         ];
     }
 
@@ -296,9 +294,9 @@ class MassiveAction extends DbTestCase
         $new_note_content = "Test add note";
         $old_session = $_SESSION['glpiactiveprofile'][$item::$rightname] ?? 0;
         $note_search = [
-           'items_id' => $item->fields['id'],
-           'itemtype' => $item->getType(),
-           'content'  => $new_note_content
+            'items_id' => $item->fields['id'],
+            'itemtype' => $item->getType(),
+            'content'  => $new_note_content,
         ];
 
         if ($has_right) {

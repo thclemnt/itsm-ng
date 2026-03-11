@@ -52,23 +52,23 @@ class TaskCategory extends CommonTreeDropdown
         $tab = parent::getAdditionalFields();
 
         $tab[__('As child of')] = [
-           'name'  => 'taskcategories_id',
-           'type'  => 'select',
-           'values' => getOptionForItems('TaskCategory', ['NOT' => ['id' => $this->getID()]]),
-           'value' => $this->fields['taskcategories_id']
+            'name'  => 'taskcategories_id',
+            'type'  => 'select',
+            'values' => getOptionForItems('TaskCategory', ['NOT' => ['id' => $this->getID()]]),
+            'value' => $this->fields['taskcategories_id'],
         ];
 
         $tab[__('Active')] = [
-           'name'  => 'is_active',
-           'type'  => 'checkbox',
-           'value' => $this->fields['is_active']
+            'name'  => 'is_active',
+            'type'  => 'checkbox',
+            'value' => $this->fields['is_active'],
         ];
 
         $tab[KnowbaseItemCategory::getTypeName()] = [
-           'name'  => 'knowbaseitemcategories_id',
-           'type'  => 'select',
-           'values' => getOptionForItems('KnowbaseItemCategory'),
-           'value' => $this->fields['knowbaseitemcategories_id']
+            'name'  => 'knowbaseitemcategories_id',
+            'type'  => 'select',
+            'values' => getOptionForItems('KnowbaseItemCategory'),
+            'value' => $this->fields['knowbaseitemcategories_id'],
         ];
 
         return $tab;
@@ -80,11 +80,11 @@ class TaskCategory extends CommonTreeDropdown
         $tab = parent::rawSearchOptions();
 
         $tab[] = [
-           'id'                 => '8',
-           'table'              => $this->getTable(),
-           'field'              => 'is_active',
-           'name'               => __('Active'),
-           'datatype'           => 'bool'
+            'id'                 => '8',
+            'table'              => $this->getTable(),
+            'field'              => 'is_active',
+            'name'               => __('Active'),
+            'datatype'           => 'bool',
         ];
 
         return $tab;

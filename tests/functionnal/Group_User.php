@@ -40,28 +40,28 @@ class Group_User extends \DbTestCase
     public function testGetGroupUsers()
     {
         $group = new \Group();
-        $gid = (int)$group->add([
-           'name' => 'Test group'
+        $gid = (int) $group->add([
+            'name' => 'Test group',
         ]);
         $this->integer($gid)->isGreaterThan(0);
 
-        $uid1 = (int)getItemByTypeName('User', 'normal', true);
-        $uid2 = (int)getItemByTypeName('User', 'tech', true);
+        $uid1 = (int) getItemByTypeName('User', 'normal', true);
+        $uid2 = (int) getItemByTypeName('User', 'tech', true);
 
         $group_user = $this->newTestedInstance();
         $this->integer(
-            (int)$group_user->add([
-              'groups_id' => $gid,
-              'users_id'  => $uid1
-         ])
+            (int) $group_user->add([
+                'groups_id' => $gid,
+                'users_id'  => $uid1,
+            ])
         );
 
         $this->integer(
-            (int)$group_user->add([
-              'groups_id'    => $gid,
-              'users_id'     => $uid2,
-              'is_manager'   => 1
-         ])
+            (int) $group_user->add([
+                'groups_id'    => $gid,
+                'users_id'     => $uid2,
+                'is_manager'   => 1,
+            ])
         );
 
         $group_users = \Group_User::getGroupUsers($gid);
@@ -69,7 +69,7 @@ class Group_User extends \DbTestCase
 
         $group_users = \Group_User::getGroupUsers($gid, ['is_manager' => 1]);
         $this->array($group_users)->hasSize(1);
-        $this->integer((int)$group_users[0]['id'])->isIdenticalTo($uid2);
+        $this->integer((int) $group_users[0]['id'])->isIdenticalTo($uid2);
 
         //cleanup
         $this->boolean($group->delete(['id' => $gid], true))->isTrue();
@@ -80,33 +80,33 @@ class Group_User extends \DbTestCase
 
     public function testGetUserGroups()
     {
-        $uid = (int)getItemByTypeName('User', 'normal', true);
+        $uid = (int) getItemByTypeName('User', 'normal', true);
 
         $group = new \Group();
-        $gid1 = (int)$group->add([
-           'name' => 'Test group'
+        $gid1 = (int) $group->add([
+            'name' => 'Test group',
         ]);
         $this->integer($gid1)->isGreaterThan(0);
 
-        $gid2 = (int)$group->add([
-           'name' => 'Test group 2'
+        $gid2 = (int) $group->add([
+            'name' => 'Test group 2',
         ]);
         $this->integer($gid2)->isGreaterThan(0);
 
         $group_user = $this->newTestedInstance();
         $this->integer(
-            (int)$group_user->add([
-              'groups_id' => $gid1,
-              'users_id'  => $uid
-         ])
+            (int) $group_user->add([
+                'groups_id' => $gid1,
+                'users_id'  => $uid,
+            ])
         );
 
         $this->integer(
-            (int)$group_user->add([
-              'groups_id'    => $gid2,
-              'users_id'     => $uid,
-              'is_manager'   => 1
-         ])
+            (int) $group_user->add([
+                'groups_id'    => $gid2,
+                'users_id'     => $uid,
+                'is_manager'   => 1,
+            ])
         );
 
         $group_users = \Group_User::getUserGroups($uid);
@@ -114,7 +114,7 @@ class Group_User extends \DbTestCase
 
         $group_users = \Group_User::getUserGroups($uid, ['glpi_groups_users.is_manager' => 1]);
         $this->array($group_users)->hasSize(1);
-        $this->integer((int)$group_users[0]['id'])->isIdenticalTo($gid2);
+        $this->integer((int) $group_users[0]['id'])->isIdenticalTo($gid2);
 
         //cleanup
         $this->boolean($group_user->deleteByCriteria(['users_id' => $uid]))->isTrue();
@@ -133,30 +133,30 @@ class Group_User extends \DbTestCase
 
         //Now, add groups to user
         $group = new \Group();
-        $gid1 = (int)$group->add([
-           'name' => 'Test group'
+        $gid1 = (int) $group->add([
+            'name' => 'Test group',
         ]);
         $this->integer($gid1)->isGreaterThan(0);
 
-        $gid2 = (int)$group->add([
-           'name' => 'Test group 2'
+        $gid2 = (int) $group->add([
+            'name' => 'Test group 2',
         ]);
         $this->integer($gid2)->isGreaterThan(0);
 
         $group_user = $this->newTestedInstance();
         $this->integer(
-            (int)$group_user->add([
-              'groups_id' => $gid1,
-              'users_id'  => $user->getID()
-         ])
+            (int) $group_user->add([
+                'groups_id' => $gid1,
+                'users_id'  => $user->getID(),
+            ])
         );
 
         $this->integer(
-            (int)$group_user->add([
-              'groups_id'    => $gid2,
-              'users_id'     => $user->getID(),
-              'is_manager'   => 1
-         ])
+            (int) $group_user->add([
+                'groups_id'    => $gid2,
+                'users_id'     => $user->getID(),
+                'is_manager'   => 1,
+            ])
         );
 
         $list_items = iterator_to_array($this->testedInstance->getListForItem($user));
@@ -192,21 +192,21 @@ class Group_User extends \DbTestCase
         // Add a group
         $groups_id = $group->add(
             [
-         'name' => __METHOD__,
-         'entities_id' => getItemByTypeName('Entity', '_test_root_entity', true)]
+                'name' => __METHOD__,
+                'entities_id' => getItemByTypeName('Entity', '_test_root_entity', true)]
         );
-        $this->integer((int)$groups_id)->isGreaterThan(0);
+        $this->integer((int) $groups_id)->isGreaterThan(0);
         $this->boolean($group->getFromDB($groups_id))->isTrue();
 
         $group_user = new \Group_User();
         $group_users_id = $group_user->add(
             [
-         'groups_id'  => $groups_id,
-         'users_id'   => getItemByTypeName('User', 'tech', true),
-         'is_dynamic' => 0
-      ]
+                'groups_id'  => $groups_id,
+                'users_id'   => getItemByTypeName('User', 'tech', true),
+                'is_dynamic' => 0,
+            ]
         );
-        $this->integer((int)$group_users_id)->isGreaterThan(0);
+        $this->integer((int) $group_users_id)->isGreaterThan(0);
         $this->boolean($group_user->getFromDB($group_users_id))->isTrue();
         $this->boolean(\Group_User::isUserInGroup(getItemByTypeName('User', 'tech', true), $groups_id))->isTrue();
         $this->boolean(\Group_User::isUserInGroup(getItemByTypeName('User', 'glpi', true), $groups_id))->isFalse();

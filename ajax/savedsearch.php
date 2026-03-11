@@ -92,16 +92,16 @@ if ($_GET['action'] == 'create') {
     if (!isset($_GET['type'])) {
         $_GET['type'] = -1;
     } else {
-        $_GET['type']  = (int)$_GET['type'];
+        $_GET['type']  = (int) $_GET['type'];
     }
 
     $savedsearch->showForm(
         0,
         [
-          'type'      => $_GET['type'],
-          'url'       => $_GET["url"],
-          'itemtype'  => $_GET["itemtype"],
-          'ajax'      => true
+            'type'      => $_GET['type'],
+            'url'       => $_GET["url"],
+            'itemtype'  => $_GET["itemtype"],
+            'ajax'      => true,
         ]
     );
     return;

@@ -157,7 +157,7 @@ class NetworkPort extends CommonDBChild
      *
      * @param string $new_instantiation_type  the name of the new instaniation type
      *
-     * @return boolean false on error, true if the previous instantiation is not available
+     * @return bool false on error, true if the previous instantiation is not available
      *                 (ie.: invalid instantiation type) or the object of the previous instantiation.
     **/
     public function switchInstantiationType($new_instantiation_type)
@@ -224,19 +224,19 @@ class NetworkPort extends CommonDBChild
                     $DB->request(
                         'glpi_networknames',
                         ['itemtype' => 'NetworkPort',
-                                             'items_id' => $this->getID()]
+                            'items_id' => $this->getID()]
                     ) as $dataname
                 ) {
                     foreach (
                         $DB->request(
                             'glpi_ipaddresses',
                             ['itemtype' => 'NetworkName',
-                                                'items_id' => $dataname['id']]
+                                'items_id' => $dataname['id']]
                         ) as $data
                     ) {
                         $ip->update(['id'           => $data['id'],
-                                          'mainitemtype' => $this->fields['itemtype'],
-                                          'mainitems_id' => $this->fields['items_id']]);
+                            'mainitemtype' => $this->fields['itemtype'],
+                            'mainitems_id' => $this->fields['items_id']]);
                     }
                 }
             }
@@ -440,9 +440,9 @@ class NetworkPort extends CommonDBChild
 
         $this->deleteChildrenAndRelationsFromDb(
             [
-              NetworkName::class,
-              NetworkPort_NetworkPort::class,
-              NetworkPort_Vlan::class,
+                NetworkName::class,
+                NetworkPort_NetworkPort::class,
+                NetworkPort_Vlan::class,
             ]
         );
     }
@@ -451,9 +451,9 @@ class NetworkPort extends CommonDBChild
     /**
      * Get port opposite port ID if linked item
      *
-     * @param integer $ID  networking port ID
+     * @param int $ID  networking port ID
      *
-     * @return integer|false  ID of the NetworkPort found, false if not found
+     * @return int|false  ID of the NetworkPort found, false if not found
     **/
     public function getContact($ID)
     {
@@ -484,13 +484,11 @@ class NetworkPort extends CommonDBChild
     /**
      * Delete All connection of the given network port
      *
-     * @param integer $ID ID of the port
+     * @param int $ID ID of the port
      *
-     * @return boolean true on success
+     * @return bool true on success
     **/
-    public function resetConnections($ID)
-    {
-    }
+    public function resetConnections($ID) {}
 
 
     /**
@@ -506,22 +504,22 @@ class NetworkPort extends CommonDBChild
         $options = [];
         $options[__('Global displays')]
            =  ['characteristics' => ['name'    => __('Characteristics'),
-                                               'default' => true],
-                    'internet'        => ['name'    => __('Internet information'),
-                                               'default' => true],
-                    'dynamic_import'  => ['name'    => __('Automatic inventory'),
-                                               'default' => false]];
+               'default' => true],
+               'internet'        => ['name'    => __('Internet information'),
+                   'default' => true],
+               'dynamic_import'  => ['name'    => __('Automatic inventory'),
+                   'default' => false]];
         $options[__('Common options')]
            = NetworkPortInstantiation::getGlobalInstantiationNetworkPortDisplayOptions();
         $options[__('Internet information')]
            = ['names'       => ['name'    => NetworkName::getTypeName(Session::getPluralNumber()),
-                                          'default' => false],
-                   'aliases'     => ['name'    => NetworkAlias::getTypeName(Session::getPluralNumber()),
-                                          'default' => false],
-                   'ipaddresses' => ['name'    => IPAddress::getTypeName(Session::getPluralNumber()),
-                                          'default' => true],
-                   'ipnetworks'  => ['name'    => IPNetwork::getTypeName(Session::getPluralNumber()),
-                                          'default' => true]];
+               'default' => false],
+               'aliases'     => ['name'    => NetworkAlias::getTypeName(Session::getPluralNumber()),
+                   'default' => false],
+               'ipaddresses' => ['name'    => IPAddress::getTypeName(Session::getPluralNumber()),
+                   'default' => true],
+               'ipnetworks'  => ['name'    => IPNetwork::getTypeName(Session::getPluralNumber()),
+                   'default' => true]];
 
         foreach (self::getNetworkPortInstantiations() as $portType) {
             $portTypeName           = $portType::getTypeName(0);
@@ -582,44 +580,44 @@ class NetworkPort extends CommonDBChild
             }
 
             $form = [
-               'action' => $netport->getFormURL(),
-               'method' => 'get',
-               'buttons' => [
-                  [
-                     'type' => 'submit',
-                     'name' => 'add',
-                     'value' => _sx('button', 'Add'),
-                     'class' => 'btn btn-secondary'
-                  ]
-               ],
-               'content' => [
-                  '' => [
-                     'visible' => true,
-                     'inputs' => [
-                        [
-                           'type' => 'hidden',
-                           'name' => 'items_id',
-                           'value' => $item->getID()
+                'action' => $netport->getFormURL(),
+                'method' => 'get',
+                'buttons' => [
+                    [
+                        'type' => 'submit',
+                        'name' => 'add',
+                        'value' => _sx('button', 'Add'),
+                        'class' => 'btn btn-secondary',
+                    ],
+                ],
+                'content' => [
+                    '' => [
+                        'visible' => true,
+                        'inputs' => [
+                            [
+                                'type' => 'hidden',
+                                'name' => 'items_id',
+                                'value' => $item->getID(),
+                            ],
+                            [
+                                'type' => 'hidden',
+                                'name' => 'itemtype',
+                                'value' => $item->getType(),
+                            ],
+                            __('Network port type to be added') => [
+                                'type' => 'select',
+                                'name' => 'instantiation_type',
+                                'values' => $instantiations,
+                                'value' => 'NetworkPortEthernet',
+                            ],
+                            __('Add several ports') => [
+                                'type' => 'checkbox',
+                                'name' => 'several',
+                                'value' => 0,
+                            ],
                         ],
-                        [
-                           'type' => 'hidden',
-                           'name' => 'itemtype',
-                           'value' => $item->getType()
-                        ],
-                        __('Network port type to be added') => [
-                           'type' => 'select',
-                           'name' => 'instantiation_type',
-                           'values' => $instantiations,
-                           'value' => 'NetworkPortEthernet',
-                        ],
-                        __('Add several ports') => [
-                           'type' => 'checkbox',
-                           'name' => 'several',
-                           'value' => 0
-                        ]
-                     ]
-                  ]
-               ]
+                    ],
+                ],
             ];
             renderTwigForm($form);
         }
@@ -635,7 +633,7 @@ class NetworkPort extends CommonDBChild
         $table           = new HTMLTableMain();
         $number_port     = self::countForItem($item);
         $table_options   = ['canedit'         => $canedit,
-                                 'display_options' => &$display_options];
+            'display_options' => &$display_options];
 
         // Make table name and add the correct show/hide parameters
         $table_name  = sprintf(__('%1$s: %2$d'), self::getTypeName($number_port), $number_port);
@@ -660,9 +658,9 @@ class NetworkPort extends CommonDBChild
 
         if ($display_options['internet']) {
             $options = ['names'       => 'NetworkName',
-                             'aliases'     => 'NetworkAlias',
-                             'ipaddresses' => 'IPAddress',
-                             'ipnetworks'  => 'IPNetwork'];
+                'aliases'     => 'NetworkAlias',
+                'ipaddresses' => 'IPAddress',
+                'ipnetworks'  => 'IPNetwork'];
 
             $table_options['dont_display'] = [];
             foreach ($options as $option => $itemtype_for_option) {
@@ -740,21 +738,21 @@ class NetworkPort extends CommonDBChild
                         break;
                 }
                 $criteria = [
-                   'SELECT' => 'networkports_id AS id',
-                   'FROM'   => $search_table,
-                   'WHERE'  => $search_request
+                    'SELECT' => 'networkports_id AS id',
+                    'FROM'   => $search_table,
+                    'WHERE'  => $search_request,
                 ];
             } else {
                 $criteria = [
-                   'SELECT' => 'id',
-                   'FROM'   => 'glpi_networkports',
-                   'WHERE'  => [
-                      'items_id'           => $items_id,
-                      'itemtype'           => $itemtype,
-                      'instantiation_type' => $portType,
-                      'is_deleted'         => 0
-                   ],
-                   'ORDER'  => ['name', 'logical_number']
+                    'SELECT' => 'id',
+                    'FROM'   => 'glpi_networkports',
+                    'WHERE'  => [
+                        'items_id'           => $items_id,
+                        'itemtype'           => $itemtype,
+                        'instantiation_type' => $portType,
+                        'is_deleted'         => 0,
+                    ],
+                    'ORDER'  => ['name', 'logical_number'],
                 ];
             }
 
@@ -873,19 +871,19 @@ class NetworkPort extends CommonDBChild
                 $massiveContainerId = 'mass' . $netport->getType() . $rand;
                 if ($canedit) {
                     Html::showMassiveActions([
-                       'display_arrow' => false,
-                       'container' => $massiveContainerId,
-                       'is_deleted' => 0,
-                       'check_itemtype' => $item->getType(),
-                       'check_items_id' => $item->getID(),
-                       'itemtype' => $netport->getType(),
+                        'display_arrow' => false,
+                        'container' => $massiveContainerId,
+                        'is_deleted' => 0,
+                        'check_itemtype' => $item->getType(),
+                        'check_items_id' => $item->getID(),
+                        'itemtype' => $netport->getType(),
                     ]);
                 }
                 renderTwigTemplate('table.twig', [
-                   'id' => $massiveContainerId,
-                   'fields' => $fields,
-                   'values' => $values,
-                   'massive_action' => $massive_actions,
+                    'id' => $massiveContainerId,
+                    'fields' => $fields,
+                    'values' => $values,
+                    'massive_action' => $massive_actions,
                 ]);
             }
         }
@@ -925,70 +923,70 @@ class NetworkPort extends CommonDBChild
         $instantiation = $this->getInstantiation();
 
         $form = [
-           'action' => $this->getFormURL(),
-           'itemtype' => $this::class,
+            'action' => $this->getFormURL(),
+            'itemtype' => $this::class,
             'content' => [
-              NetworkPort::getTypeName() => [
-                 'visible' => true,
-                 'inputs' => [
-                    $this->isNewID($ID) ? [] : [
-                       'type' => 'hidden',
-                       'name' => 'id',
-                       'value' => $ID
+                NetworkPort::getTypeName() => [
+                    'visible' => true,
+                    'inputs' => [
+                        $this->isNewID($ID) ? [] : [
+                            'type' => 'hidden',
+                            'name' => 'id',
+                            'value' => $ID,
+                        ],
+                        [
+                            'type' => 'hidden',
+                            'name' => 'items_id',
+                            'value' => $this->fields["items_id"],
+                        ],
+                        [
+                            'type' => 'hidden',
+                            'name' => 'itemtype',
+                            'value' => $this->fields["itemtype"],
+                        ],
+                        [
+                            'type' => 'hidden',
+                            'name' => '_create_children',
+                            'value' => 1,
+                        ],
+                        [
+                            'type' => 'hidden',
+                            'name' => 'instantiation_type',
+                            'value' => $this->fields["instantiation_type"],
+                        ],
+                        $type . ' :' => [
+                            'content' => $link,
+                        ],
+                        __('Name') . ' :' => [
+                            'type' => 'text',
+                            'name' => 'name',
+                            'value' => $this->fields["name"],
+                        ],
+                        _n('Port number', 'Port numbers', 1) => (!$options['several']) ? [
+                            'type' => 'number',
+                            'name' => 'logical_number',
+                            'value' => $this->fields["logical_number"],
+                        ] : [],
+                        _n('Port number', 'Port numbers', Session::getPluralNumber()) . ' ' . __('from') . ' :' => ($options['several']) ? [
+                            'type' => 'number',
+                            'name' => 'from_logical_number',
+                            'value' => $this->fields["logical_number"],
+                        ] : [],
+                        _n('Port number', 'Port numbers', Session::getPluralNumber()) . ' ' . __('to') . ' :' => ($options['several']) ? [
+                            'type' => 'number',
+                            'name' => 'to_logical_number',
+                            'value' => $this->fields["logical_number"],
+                        ] : [],
+                        __('Comments') . ' :' => [
+                            'type' => 'textarea',
+                            'name' => 'comment',
+                            'value' => $this->fields["comment"],
+                            'col_lg' => 12,
+                            'col_md' => 12,
+                        ],
                     ],
-                    [
-                       'type' => 'hidden',
-                       'name' => 'items_id',
-                       'value' => $this->fields["items_id"]
-                    ],
-                    [
-                       'type' => 'hidden',
-                       'name' => 'itemtype',
-                       'value' => $this->fields["itemtype"]
-                    ],
-                    [
-                       'type' => 'hidden',
-                       'name' => '_create_children',
-                       'value' => 1
-                    ],
-                    [
-                       'type' => 'hidden',
-                       'name' => 'instantiation_type',
-                       'value' => $this->fields["instantiation_type"]
-                    ],
-                    $type . ' :' => [
-                       'content' => $link
-                    ],
-                    __('Name') . ' :' => [
-                       'type' => 'text',
-                       'name' => 'name',
-                       'value' => $this->fields["name"]
-                    ],
-                    _n('Port number', 'Port numbers', 1) => (!$options['several']) ? [
-                       'type' => 'number',
-                       'name' => 'logical_number',
-                       'value' => $this->fields["logical_number"],
-                    ] : [],
-                    _n('Port number', 'Port numbers', Session::getPluralNumber()) . ' ' . __('from') . ' :' => ($options['several']) ? [
-                       'type' => 'number',
-                       'name' => 'from_logical_number',
-                       'value' => $this->fields["logical_number"],
-                    ] : [],
-                    _n('Port number', 'Port numbers', Session::getPluralNumber()) . ' ' . __('to') . ' :' => ($options['several']) ? [
-                       'type' => 'number',
-                       'name' => 'to_logical_number',
-                       'value' => $this->fields["logical_number"],
-                    ] : [],
-                    __('Comments') . ' :' => [
-                       'type' => 'textarea',
-                       'name' => 'comment',
-                       'value' => $this->fields["comment"],
-                       'col_lg' => 12,
-                       'col_md' => 12,
-                    ]
-                 ]
-              ],
-            ]
+                ],
+            ],
         ];
         if ($instantiation !== false) {
             $form['content'] = array_merge($form['content'], $instantiation->showInstantiationForm($this, $options, $recursiveItems));
@@ -1008,62 +1006,62 @@ class NetworkPort extends CommonDBChild
         $tab = [];
 
         $tab[] = [
-           'id'                 => 'network',
-           'name'               => __('Networking')
+            'id'                 => 'network',
+            'name'               => __('Networking'),
         ];
 
         $joinparams = ['jointype' => 'itemtype_item'];
 
         $tab[] = [
-           'id'                 => '21',
-           'table'              => 'glpi_networkports',
-           'field'              => 'mac',
-           'name'               => __('MAC address'),
-           'datatype'           => 'mac',
-           'forcegroupby'       => true,
-           'massiveaction'      => false,
-           'joinparams'         => $joinparams
+            'id'                 => '21',
+            'table'              => 'glpi_networkports',
+            'field'              => 'mac',
+            'name'               => __('MAC address'),
+            'datatype'           => 'mac',
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
+            'joinparams'         => $joinparams,
         ];
 
         $tab[] = [
-           'id'                 => '87',
-           'table'              => 'glpi_networkports',
-           'field'              => 'instantiation_type',
-           'name'               => __('Network port type'),
-           'datatype'           => 'itemtypename',
-           'itemtype_list'      => 'networkport_instantiations',
-           'massiveaction'      => false,
-           'joinparams'         => $joinparams
+            'id'                 => '87',
+            'table'              => 'glpi_networkports',
+            'field'              => 'instantiation_type',
+            'name'               => __('Network port type'),
+            'datatype'           => 'itemtypename',
+            'itemtype_list'      => 'networkport_instantiations',
+            'massiveaction'      => false,
+            'joinparams'         => $joinparams,
         ];
 
         $networkNameJoin = ['jointype'          => 'itemtype_item',
-                                 'specific_itemtype' => 'NetworkPort',
-                                 'condition'         => 'AND NEWTABLE.`is_deleted` = 0',
-                                 'beforejoin'        => ['table'      => 'glpi_networkports',
-                                                              'joinparams' => $joinparams]];
+            'specific_itemtype' => 'NetworkPort',
+            'condition'         => 'AND NEWTABLE.`is_deleted` = 0',
+            'beforejoin'        => ['table'      => 'glpi_networkports',
+                'joinparams' => $joinparams]];
         NetworkName::rawSearchOptionsToAdd($tab, $networkNameJoin, $itemtype);
 
         $instantjoin = ['jointype'   => 'child',
-                             'beforejoin' => ['table'      => 'glpi_networkports',
-                                                   'joinparams' => $joinparams]];
+            'beforejoin' => ['table'      => 'glpi_networkports',
+                'joinparams' => $joinparams]];
         foreach (self::getNetworkPortInstantiations() as $instantiationType) {
             $instantiationType::getSearchOptionsToAddForInstantiation($tab, $instantjoin);
         }
 
         $netportjoin = [['table'      => 'glpi_networkports',
-                                   'joinparams' => ['jointype' => 'itemtype_item']],
-                             ['table'      => 'glpi_networkports_vlans',
-                                   'joinparams' => ['jointype' => 'child']]];
+            'joinparams' => ['jointype' => 'itemtype_item']],
+            ['table'      => 'glpi_networkports_vlans',
+                'joinparams' => ['jointype' => 'child']]];
 
         $tab[] = [
-           'id'                 => '88',
-           'table'              => 'glpi_vlans',
-           'field'              => 'name',
-           'name'               => Vlan::getTypeName(1),
-           'datatype'           => 'dropdown',
-           'forcegroupby'       => true,
-           'massiveaction'      => false,
-           'joinparams'         => ['beforejoin' => $netportjoin]
+            'id'                 => '88',
+            'table'              => 'glpi_vlans',
+            'field'              => 'name',
+            'name'               => Vlan::getTypeName(1),
+            'datatype'           => 'dropdown',
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
+            'joinparams'         => ['beforejoin' => $netportjoin],
         ];
 
         return $tab;
@@ -1089,92 +1087,92 @@ class NetworkPort extends CommonDBChild
         $tab = [];
 
         $tab[] = [
-           'id'                 => 'common',
-           'name'               => __('Characteristics')
+            'id'                 => 'common',
+            'name'               => __('Characteristics'),
         ];
 
         $tab[] = [
-           'id'                 => '1',
-           'table'              => $this->getTable(),
-           'field'              => 'name',
-           'name'               => __('Name'),
-           'type'               => 'text',
-           'massiveaction'      => false,
-           'datatype'           => 'itemlink',
-           'autocomplete'       => true,
+            'id'                 => '1',
+            'table'              => $this->getTable(),
+            'field'              => 'name',
+            'name'               => __('Name'),
+            'type'               => 'text',
+            'massiveaction'      => false,
+            'datatype'           => 'itemlink',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '2',
-           'table'              => $this->getTable(),
-           'field'              => 'id',
-           'name'               => __('ID'),
-           'massiveaction'      => false,
-           'datatype'           => 'number'
+            'id'                 => '2',
+            'table'              => $this->getTable(),
+            'field'              => 'id',
+            'name'               => __('ID'),
+            'massiveaction'      => false,
+            'datatype'           => 'number',
         ];
 
         $tab[] = [
-           'id'                 => '3',
-           'table'              => $this->getTable(),
-           'field'              => 'logical_number',
-           'name'               => _n('Port number', 'Port numbers', 1),
-           'datatype'           => 'integer',
-           'autocomplete'       => true,
+            'id'                 => '3',
+            'table'              => $this->getTable(),
+            'field'              => 'logical_number',
+            'name'               => _n('Port number', 'Port numbers', 1),
+            'datatype'           => 'integer',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '4',
-           'table'              => $this->getTable(),
-           'field'              => 'mac',
-           'name'               => __('MAC address'),
-           'datatype'           => 'mac',
-           'autocomplete'       => true,
+            'id'                 => '4',
+            'table'              => $this->getTable(),
+            'field'              => 'mac',
+            'name'               => __('MAC address'),
+            'datatype'           => 'mac',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '5',
-           'table'              => $this->getTable(),
-           'field'              => 'instantiation_type',
-           'name'               => __('Network port type'),
-           'datatype'           => 'itemtypename',
-           'itemtype_list'      => 'networkport_instantiations',
-           'massiveaction'      => false
+            'id'                 => '5',
+            'table'              => $this->getTable(),
+            'field'              => 'instantiation_type',
+            'name'               => __('Network port type'),
+            'datatype'           => 'itemtypename',
+            'itemtype_list'      => 'networkport_instantiations',
+            'massiveaction'      => false,
         ];
 
         if ($this->isField('netpoints_id')) {
             $tab[] = [
-               'id'                 => '9',
-               'table'              => 'glpi_netpoints',
-               'field'              => 'name',
-               'name'               => _n('Network outlet', 'Network outlets', 1),
-               'datatype'           => 'dropdown'
+                'id'                 => '9',
+                'table'              => 'glpi_netpoints',
+                'field'              => 'name',
+                'name'               => _n('Network outlet', 'Network outlets', 1),
+                'datatype'           => 'dropdown',
             ];
         }
 
         $tab[] = [
-           'id'                 => '16',
-           'table'              => $this->getTable(),
-           'field'              => 'comment',
-           'name'               => __('Comments'),
-           'datatype'           => 'text'
+            'id'                 => '16',
+            'table'              => $this->getTable(),
+            'field'              => 'comment',
+            'name'               => __('Comments'),
+            'datatype'           => 'text',
         ];
 
         $tab[] = [
-           'id'                 => '20',
-           'table'              => $this->getTable(),
-           'field'              => 'itemtype',
-           'name'               => _n('Type', 'Types', 1),
-           'datatype'           => 'itemtype',
-           'massiveaction'      => false
+            'id'                 => '20',
+            'table'              => $this->getTable(),
+            'field'              => 'itemtype',
+            'name'               => _n('Type', 'Types', 1),
+            'datatype'           => 'itemtype',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '21',
-           'table'              => $this->getTable(),
-           'field'              => 'items_id',
-           'name'               => __('ID'),
-           'datatype'           => 'integer',
-           'massiveaction'      => false
+            'id'                 => '21',
+            'table'              => $this->getTable(),
+            'field'              => 'items_id',
+            'name'               => __('ID'),
+            'datatype'           => 'integer',
+            'massiveaction'      => false,
         ];
 
         return $tab;
@@ -1188,8 +1186,8 @@ class NetworkPort extends CommonDBChild
      * @since 0.84
      *
      * @param string  $itemtype      the type of the item that was clone
-     * @param integer $old_items_id  the id of the item that was clone
-     * @param integer $new_items_id  the id of the item after beeing cloned
+     * @param int $old_items_id  the id of the item that was clone
+     * @param int $new_items_id  the id of the item after beeing cloned
     **/
     public static function cloneItem($itemtype, $old_items_id, $new_items_id)
     {
@@ -1199,11 +1197,11 @@ class NetworkPort extends CommonDBChild
         $np = new self();
         // ADD Ports
         $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'items_id'  => $old_items_id,
-              'itemtype'  => $itemtype
-           ]
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'items_id'  => $old_items_id,
+                'itemtype'  => $itemtype,
+            ],
         ]);
 
         while ($data = $iterator->next()) {
@@ -1235,7 +1233,7 @@ class NetworkPort extends CommonDBChild
                 ) as $vlan
             ) {
                 $input = [$npv::$items_id_1 => $portid,
-                               $npv::$items_id_2 => $vlan['vlans_id']];
+                    $npv::$items_id_2 => $vlan['vlans_id']];
                 if (isset($vlan['tagged'])) {
                     $input['tagged'] = $vlan['tagged'];
                 }
@@ -1300,8 +1298,8 @@ class NetworkPort extends CommonDBChild
         return countElementsInTable(
             'glpi_networkports',
             ['itemtype'   => $item->getType(),
-                                     'items_id'   => $item->getField('id'),
-                                     'is_deleted' => 0 ]
+                'items_id'   => $item->getField('id'),
+                'is_deleted' => 0 ]
         );
     }
 
@@ -1344,9 +1342,9 @@ class NetworkPort extends CommonDBChild
         global $DB;
 
         $iterator = $DB->request([
-           'SELECT' => ['name'],
-           'FROM'   => $this->fields['itemtype']::getTable(),
-           'WHERE'  => ['id' => $this->fields['items_id']]
+            'SELECT' => ['name'],
+            'FROM'   => $this->fields['itemtype']::getTable(),
+            'WHERE'  => ['id' => $this->fields['items_id']],
         ]);
 
         if ($iterator->count()) {

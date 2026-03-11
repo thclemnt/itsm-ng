@@ -54,8 +54,8 @@ function update084to0841()
         // rename new tables if exists ?
         if ($DB->tableExists($new_table)) {
             $migration->dropTable("backup_$new_table");
-            $migration->displayWarning("$new_table table already exists. ".
-                                       "A backup have been done to backup_$new_table.");
+            $migration->displayWarning("$new_table table already exists. "
+                                       . "A backup have been done to backup_$new_table.");
             $backup_tables = true;
             $query         = $migration->renameTable("$new_table", "backup_$new_table");
         }
@@ -69,11 +69,11 @@ function update084to0841()
 
     // Convert html fields from numeric encoding to raw encoding
     $fields_to_clean = ['glpi_knowbaseitems'                    => 'answer',
-                             'glpi_tickets'                          => 'solution',
-                             'glpi_problems'                         => 'solution',
-                             'glpi_reminders'                        => 'text',
-                             'glpi_solutiontemplates'                => 'content',
-                             'glpi_notificationtemplatetranslations' => 'content_text'];
+        'glpi_tickets'                          => 'solution',
+        'glpi_problems'                         => 'solution',
+        'glpi_reminders'                        => 'text',
+        'glpi_solutiontemplates'                => 'content',
+        'glpi_notificationtemplatetranslations' => 'content_text'];
     foreach ($fields_to_clean as $table => $field) {
         foreach ($DB->request($table) as $data) {
             $text  = Toolbox::unclean_html_cross_side_scripting_deep($data[$field]);
@@ -82,7 +82,7 @@ function update084to0841()
             $text  = Toolbox::clean_cross_side_scripting_deep($text);
             $query = "UPDATE `$table`
                    SET `$field` = '$text'
-                   WHERE `id` = '".$data['id']."';";
+                   WHERE `id` = '" . $data['id'] . "';";
             $DB->queryOrDie($query, "0.84.1 fix encoding of html field : $table.$field");
         }
     }
@@ -113,7 +113,7 @@ function update084to0841()
         'delete_problem',
         'char',
         ['after'  => 'edit_all_problem',
-                               'update' => 'edit_all_problem']
+            'update' => 'edit_all_problem']
     );
 
     // ************ Keep it at the end **************
@@ -130,7 +130,7 @@ function update084to0841()
                 while ($data = $DB->fetchAssoc($result)) {
                     $query = "SELECT MAX(`rank`)
                          FROM `glpi_displaypreferences`
-                         WHERE `users_id` = '".$data['users_id']."'
+                         WHERE `users_id` = '" . $data['users_id'] . "'
                                AND `itemtype` = '$type'";
                     $result = $DB->query($query);
                     $rank   = $DB->result($result, 0, 0);
@@ -139,15 +139,15 @@ function update084to0841()
                     foreach ($tab as $newval) {
                         $query = "SELECT *
                             FROM `glpi_displaypreferences`
-                            WHERE `users_id` = '".$data['users_id']."'
+                            WHERE `users_id` = '" . $data['users_id'] . "'
                                   AND `num` = '$newval'
                                   AND `itemtype` = '$type'";
                         if ($result2 = $DB->query($query)) {
                             if ($DB->numrows($result2) == 0) {
                                 $query = "INSERT INTO `glpi_displaypreferences`
                                          (`itemtype` ,`num` ,`rank` ,`users_id`)
-                                  VALUES ('$type', '$newval', '".$rank++."',
-                                          '".$data['users_id']."')";
+                                  VALUES ('$type', '$newval', '" . $rank++ . "',
+                                          '" . $data['users_id'] . "')";
                                 $DB->query($query);
                             }
                         }
@@ -159,7 +159,7 @@ function update084to0841()
                 foreach ($tab as $newval) {
                     $query = "INSERT INTO `glpi_displaypreferences`
                                 (`itemtype` ,`num` ,`rank` ,`users_id`)
-                         VALUES ('$type', '$newval', '".$rank++."', '0')";
+                         VALUES ('$type', '$newval', '" . $rank++ . "', '0')";
                     $DB->query($query);
                 }
             }

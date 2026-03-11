@@ -43,17 +43,17 @@ class Supplier extends DbTestCase
 
         $obj = new \Supplier();
         $id = $obj->add([
-           'name'        => 'supplier-' . $this->getUniqueString(),
-           'entities_id' => 0,
-           'email'       => 'supplier-' . mt_rand(1000, 9999) . '@example.com',
-           'is_active'   => 1,
+            'name'        => 'supplier-' . $this->getUniqueString(),
+            'entities_id' => 0,
+            'email'       => 'supplier-' . mt_rand(1000, 9999) . '@example.com',
+            'is_active'   => 1,
         ]);
-        $this->integer((int)$id)->isGreaterThan(0);
+        $this->integer((int) $id)->isGreaterThan(0);
         $this->boolean($obj->getFromDB($id))->isTrue();
 
         $this->boolean($obj->update([
-           'id'          => $id,
-           'phonenumber' => '0102030405',
+            'id'          => $id,
+            'phonenumber' => '0102030405',
         ]))->isTrue();
         $this->boolean($obj->getFromDB($id))->isTrue();
         $this->string($obj->getField('phonenumber'))->isEqualTo('0102030405');

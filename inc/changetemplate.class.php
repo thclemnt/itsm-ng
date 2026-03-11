@@ -1,5 +1,7 @@
 <?php
 
+use Glpi\Features\Clonable;
+
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
@@ -42,7 +44,7 @@ if (!defined('GLPI_ROOT')) {
 **/
 class ChangeTemplate extends ITILTemplate
 {
-    use Glpi\Features\Clonable;
+    use Clonable;
 
     public $second_level_menu         = "change";
     public $third_level_menu          = "ChangeTemplate";
@@ -55,9 +57,9 @@ class ChangeTemplate extends ITILTemplate
     public function getCloneRelations(): array
     {
         return [
-           ChangeTemplateHiddenField::class,
-           ChangeTemplateMandatoryField::class,
-           ChangeTemplatePredefinedField::class,
+            ChangeTemplateHiddenField::class,
+            ChangeTemplateMandatoryField::class,
+            ChangeTemplatePredefinedField::class,
         ];
     }
 
@@ -65,11 +67,11 @@ class ChangeTemplate extends ITILTemplate
     {
         $change = new Change();
         return [
-           $change->getSearchOptionIDByField('field', 'impactcontent', 'glpi_changes')      => 'impactcontent',
-           $change->getSearchOptionIDByField('field', 'controlistcontent', 'glpi_changes')  => 'controlistcontent',
-           $change->getSearchOptionIDByField('field', 'rolloutplancontent', 'glpi_changes') => 'rolloutplancontent',
-           $change->getSearchOptionIDByField('field', 'backoutplancontent', 'glpi_changes') => 'backoutplancontent',
-           $change->getSearchOptionIDByField('field', 'checklistcontent', 'glpi_changes')   => 'checklistcontent'
+            $change->getSearchOptionIDByField('field', 'impactcontent', 'glpi_changes')      => 'impactcontent',
+            $change->getSearchOptionIDByField('field', 'controlistcontent', 'glpi_changes')  => 'controlistcontent',
+            $change->getSearchOptionIDByField('field', 'rolloutplancontent', 'glpi_changes') => 'rolloutplancontent',
+            $change->getSearchOptionIDByField('field', 'backoutplancontent', 'glpi_changes') => 'backoutplancontent',
+            $change->getSearchOptionIDByField('field', 'checklistcontent', 'glpi_changes')   => 'checklistcontent',
         ];
     }
 }

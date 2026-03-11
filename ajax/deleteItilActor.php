@@ -34,11 +34,11 @@
 include('../inc/includes.php');
 
 if (
-    isset($_POST['linkId']) &&
-    isset($_POST['objectTypeId']) &&
-    isset($_POST['objectId']) &&
-    isset($_POST['ticketId']) &&
-    Session::haveRight('ticket', UPDATE)
+    isset($_POST['linkId'])
+    && isset($_POST['objectTypeId'])
+    && isset($_POST['objectId'])
+    && isset($_POST['ticketId'])
+    && Session::haveRight('ticket', UPDATE)
 ) {
     $ticket = new Ticket();
     $ticket->getFromDB($_POST['ticketId']);
@@ -53,7 +53,7 @@ if (
             $ticketUser->getFromDBByCrit([
                 'tickets_id' => $ticket->getID(),
                 'users_id' => $objectId,
-                'type' => $objectTypeId
+                'type' => $objectTypeId,
             ]);
             $ticketUser->delete(['id' => $ticketUser->getID()]);
             break;
@@ -62,7 +62,7 @@ if (
             $ticketGroup->getFromDBByCrit([
                 'tickets_id' => $ticket->getID(),
                 'groups_id' => $objectId,
-                'type' => $objectTypeId
+                'type' => $objectTypeId,
             ]);
             $ticketGroup->delete(['id' => $ticketGroup->getID()]);
             break;
@@ -71,7 +71,7 @@ if (
             $ticketSupplier->getFromDBByCrit([
                 'tickets_id' => $ticket->getID(),
                 'suppliers_id' => $objectId,
-                'type' => $objectTypeId
+                'type' => $objectTypeId,
             ]);
             $ticketSupplier->delete(['id' => $ticketSupplier->getID()]);
             break;
@@ -91,13 +91,13 @@ if (
     }
     echo json_encode([
         'success' => true,
-        'message' => __('Actor deleted successfully')
+        'message' => __('Actor deleted successfully'),
     ]);
     return;
 } else {
     echo json_encode([
         'success' => false,
-        'message' => __('Error while deleting actor')
+        'message' => __('Error while deleting actor'),
     ]);
     return;
 }

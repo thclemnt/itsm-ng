@@ -93,9 +93,9 @@ switch ($_SERVER['REQUEST_METHOD']) {
                     // Output graph as json
                     header('Content-Type: application/json');
                     echo json_encode([
-                       'graph'  => Impact::makeDataForCytoscape($graph),
-                       'params' => $params,
-                       'readonly' => $readonly,
+                        'graph'  => Impact::makeDataForCytoscape($graph),
+                        'params' => $params,
+                        'readonly' => $readonly,
                     ]);
                 } elseif ($view == "list") {
                     // Output list as HTML
@@ -127,7 +127,7 @@ switch ($_SERVER['REQUEST_METHOD']) {
         $readonly = true;
 
         // Handle context for the starting node
-        $context_em = new \ImpactContext();
+        $context_em = new ImpactContext();
         $context_data = $data['context'];
 
         // Get id and type from node_id (e.g. Computer::4 -> [Computer, 4])
@@ -136,7 +136,7 @@ switch ($_SERVER['REQUEST_METHOD']) {
         // Get impact_item for this node
         $item = new $start_node_details[0]();
         $item->getFromDB($start_node_details[1]);
-        $impact_item = \ImpactItem::findForItem($item);
+        $impact_item = ImpactItem::findForItem($item);
         $start_node_impact_item_id = $impact_item->fields['id'];
         $readonly = !$item->can($item->fields['id'], UPDATE);
 

@@ -40,17 +40,17 @@ class GLPIKey extends \GLPITestCase
     protected function getExpectedKeyPathProvider()
     {
         return [
-           ['0.90.5', null],
-           ['9.3.5', null],
-           ['9.4.0', null],
-           ['9.4.5', null],
-           ['9.4.6', GLPI_CONFIG_DIR . '/glpi.key'],
-           ['9.4.9', GLPI_CONFIG_DIR . '/glpi.key'],
-           ['9.5.0-dev', GLPI_CONFIG_DIR . '/glpicrypt.key'],
-           ['9.5.0', GLPI_CONFIG_DIR . '/glpicrypt.key'],
-           ['9.5.3', GLPI_CONFIG_DIR . '/glpicrypt.key'],
-           ['9.6.1', GLPI_CONFIG_DIR . '/glpicrypt.key'],
-           ['15.3.0', GLPI_CONFIG_DIR . '/glpicrypt.key'],
+            ['0.90.5', null],
+            ['9.3.5', null],
+            ['9.4.0', null],
+            ['9.4.5', null],
+            ['9.4.6', GLPI_CONFIG_DIR . '/glpi.key'],
+            ['9.4.9', GLPI_CONFIG_DIR . '/glpi.key'],
+            ['9.5.0-dev', GLPI_CONFIG_DIR . '/glpicrypt.key'],
+            ['9.5.0', GLPI_CONFIG_DIR . '/glpicrypt.key'],
+            ['9.5.3', GLPI_CONFIG_DIR . '/glpicrypt.key'],
+            ['9.6.1', GLPI_CONFIG_DIR . '/glpicrypt.key'],
+            ['15.3.0', GLPI_CONFIG_DIR . '/glpicrypt.key'],
         ];
     }
 

@@ -76,8 +76,8 @@ class Itil_Project extends CommonDBRelation
                         $nb = countElementsInTable(
                             self::getTable(),
                             [
-                              'itemtype' => $item->getType(),
-                              'items_id' => $item->getID(),
+                                'itemtype' => $item->getType(),
+                                'items_id' => $item->getID(),
                             ]
                         );
                     }
@@ -142,26 +142,26 @@ class Itil_Project extends CommonDBRelation
             $itemTable = $itemtype::getTable();
 
             $iterator = $DB->request([
-               'SELECT'          => [
-                  "$selfTable.id AS linkid",
-                  "$itemTable.*"
-               ],
-               'DISTINCT'        => true,
-               'FROM'            => $selfTable,
-               'LEFT JOIN'       => [
-                  $itemTable => [
-                     'FKEY' => [
-                        $selfTable => 'items_id',
-                        $itemTable => 'id',
-                     ],
-                  ],
-               ],
-               'WHERE'           => [
-                  "{$selfTable}.itemtype"    => $itemtype,
-                  "{$selfTable}.projects_id" => $ID,
-                  'NOT'                      => ["{$itemTable}.id" => null],
-               ],
-               'ORDER'  => "{$itemTable}.name",
+                'SELECT'          => [
+                    "$selfTable.id AS linkid",
+                    "$itemTable.*",
+                ],
+                'DISTINCT'        => true,
+                'FROM'            => $selfTable,
+                'LEFT JOIN'       => [
+                    $itemTable => [
+                        'FKEY' => [
+                            $selfTable => 'items_id',
+                            $itemTable => 'id',
+                        ],
+                    ],
+                ],
+                'WHERE'           => [
+                    "{$selfTable}.itemtype"    => $itemtype,
+                    "{$selfTable}.projects_id" => $ID,
+                    'NOT'                      => ["{$itemTable}.id" => null],
+                ],
+                'ORDER'  => "{$itemTable}.name",
             ]);
 
             $numrows = $iterator->count();
@@ -191,38 +191,38 @@ class Itil_Project extends CommonDBRelation
                 }
 
                 $form = [
-                   'action' => Toolbox::getItemTypeFormURL(__CLASS__),
-                   'buttons' => [
-                      [
-                         'name' => 'add',
-                         'value' => _x('button', 'Add'),
-                         'class' => 'btn btn-secondary',
-                      ]
-                   ],
-                   'content' => [
-                      $label => [
-                         'visible' => true,
-                         'inputs' => [
-                            [
-                               'type' => 'hidden',
-                               'name' => 'itemtype',
-                               'value' => $itemtype,
+                    'action' => Toolbox::getItemTypeFormURL(__CLASS__),
+                    'buttons' => [
+                        [
+                            'name' => 'add',
+                            'value' => _x('button', 'Add'),
+                            'class' => 'btn btn-secondary',
+                        ],
+                    ],
+                    'content' => [
+                        $label => [
+                            'visible' => true,
+                            'inputs' => [
+                                [
+                                    'type' => 'hidden',
+                                    'name' => 'itemtype',
+                                    'value' => $itemtype,
+                                ],
+                                [
+                                    'type' => 'hidden',
+                                    'name' => 'projects_id',
+                                    'value' => $ID,
+                                ],
+                                '' => [
+                                    'type' => 'select',
+                                    'name' => 'items_id',
+                                    'values' => $values,
+                                    'col_lg' => 12,
+                                    'col_md' => 12,
+                                ],
                             ],
-                            [
-                               'type' => 'hidden',
-                               'name' => 'projects_id',
-                               'value' => $ID,
-                            ],
-                            '' => [
-                               'type' => 'select',
-                               'name' => 'items_id',
-                               'values' => $values,
-                               'col_lg' => 12,
-                               'col_md' => 12,
-                            ]
-                         ]
-                      ]
-                   ]
+                        ],
+                    ],
                 ];
                 renderTwigForm($form);
             }
@@ -230,25 +230,25 @@ class Itil_Project extends CommonDBRelation
             $massContainerId = 'tableForitilProject' . $itemtype;
             if ($canedit && $numrows) {
                 $massiveactionparams = [
-                   'container'     => $massContainerId,
-                   'specific_actions' => [
-                      'MassiveAction:purge' => _x('button', 'Delete permanently the relation with selected elements'),
-                   ],
-                   'display_arrow' => false,
+                    'container'     => $massContainerId,
+                    'specific_actions' => [
+                        'MassiveAction:purge' => _x('button', 'Delete permanently the relation with selected elements'),
+                    ],
+                    'display_arrow' => false,
                 ];
                 Html::showMassiveActions($massiveactionparams);
             }
 
             $fields = [
-               __('Status'),
-               _n('Date', 'Dates', 1),
-               __('Last update'),
-               __('Priority'),
-               _n('Requester', 'Requesters', 1),
-               __('Assigned'),
-               __('Category'),
-               __('Title'),
-               __('Planification'),
+                __('Status'),
+                _n('Date', 'Dates', 1),
+                __('Last update'),
+                __('Priority'),
+                _n('Requester', 'Requesters', 1),
+                __('Assigned'),
+                __('Category'),
+                __('Title'),
+                __('Planification'),
             ];
             if ($itemtype == 'Ticket') {
                 $fields[] = _n('Associated element', 'Associated elements', Session::getPluralNumber());
@@ -263,7 +263,7 @@ class Itil_Project extends CommonDBRelation
                 $item = new $itemtype();
                 $item->getFromDB($data['id']);
                 $newValue = [
-                   CommonITILObject::getStatusIcon($data['status']),
+                    CommonITILObject::getStatusIcon($data['status']),
                 ];
                 if ($data['status'] == CommonITILObject::CLOSED) {
                     $newValue[] = sprintf(__('Closed on %s'), Html::convDateTime($data['closedate']));
@@ -288,7 +288,7 @@ class Itil_Project extends CommonDBRelation
                         Html::showToolTip(
                             $userdata["comment"],
                             ['link'    => $userdata["link"],
-                            'display' => false]
+                                'display' => false]
                         )
                     );
                     $actors .= "<br>";
@@ -311,7 +311,7 @@ class Itil_Project extends CommonDBRelation
                             Html::showToolTip(
                                 $userdata["comment"],
                                 ['link'    => $userdata["link"],
-                                                    'display' => false]
+                                    'display' => false]
                             )
                         );
                     }
@@ -350,29 +350,29 @@ class Itil_Project extends CommonDBRelation
 
                 $result = $DB->request(
                     [
-                      'FROM'  => $plan->getTable(),
-                      'WHERE' => [
-                         $item->getForeignKeyField() => $item->fields['id'],
-                      ],
+                        'FROM'  => $plan->getTable(),
+                        'WHERE' => [
+                            $item->getForeignKeyField() => $item->fields['id'],
+                        ],
                     ]
                 );
                 foreach ($result as $plan) {
                     if (isset($plan['begin']) && $plan['begin']) {
                         $items[$plan['id']] = $plan['id'];
                         $planned_infos .= sprintf(
-                            __('From %s') .
-                                                   ($p['output_type'] == Search::HTML_OUTPUT ? '<br>' : ''),
+                            __('From %s')
+                                                   . ($p['output_type'] == Search::HTML_OUTPUT ? '<br>' : ''),
                             Html::convDateTime($plan['begin'])
                         );
                         $planned_infos .= sprintf(
-                            __('To %s') .
-                                                   ($p['output_type'] == Search::HTML_OUTPUT ? '<br>' : ''),
+                            __('To %s')
+                                                   . ($p['output_type'] == Search::HTML_OUTPUT ? '<br>' : ''),
                             Html::convDateTime($plan['end'])
                         );
                         if ($plan['users_id_tech']) {
                             $planned_infos .= sprintf(
-                                __('By %s') .
-                                                       ($p['output_type'] == Search::HTML_OUTPUT ? '<br>' : ''),
+                                __('By %s')
+                                                       . ($p['output_type'] == Search::HTML_OUTPUT ? '<br>' : ''),
                                 getUserName($plan['users_id_tech'])
                             );
                         }
@@ -387,10 +387,10 @@ class Itil_Project extends CommonDBRelation
                 $massive_action[] = sprintf('item[%s][%s]', Itil_Project::class, $data['id']);
             }
             renderTwigTemplate('table.twig', [
-               'id' => $massContainerId,
-               'fields' => $fields,
-               'values' => $values,
-               'massive_action' => $massive_action,
+                'id' => $massContainerId,
+                'fields' => $fields,
+                'values' => $values,
+                'massive_action' => $massive_action,
             ]);
             echo '<div class="spaced">';
             echo '<table class="tab_cadre_fixehov" aria-label="Item Detail">';
@@ -400,9 +400,9 @@ class Itil_Project extends CommonDBRelation
                     $itemtype::showShort(
                         $data['id'],
                         [
-                          'row_num'                => $i,
-                          'type_for_massiveaction' => __CLASS__,
-                          'id_for_massiveaction'   => $data['linkid']
+                            'row_num'                => $i,
+                            'type_for_massiveaction' => __CLASS__,
+                            'id_for_massiveaction'   => $data['linkid'],
                         ]
                     );
                     $i++;
@@ -441,26 +441,26 @@ class Itil_Project extends CommonDBRelation
         $projectTable = Project::getTable();
 
         $iterator = $DB->request([
-           'SELECT'          => [
-              "$selfTable.id AS linkid",
-              "$projectTable.*"
-           ],
-           'DISTINCT'        => true,
-           'FROM'            => $selfTable,
-           'LEFT JOIN'       => [
-              $projectTable => [
-                 'FKEY' => [
-                    $selfTable    => 'projects_id',
-                    $projectTable => 'id',
-                 ],
-              ],
-           ],
-           'WHERE'           => [
-              "{$selfTable}.itemtype" => $itil->getType(),
-              "{$selfTable}.items_id" => $ID,
-              'NOT'                   => ["{$projectTable}.id" => null],
-           ],
-           'ORDER'  => "{$projectTable}.name",
+            'SELECT'          => [
+                "$selfTable.id AS linkid",
+                "$projectTable.*",
+            ],
+            'DISTINCT'        => true,
+            'FROM'            => $selfTable,
+            'LEFT JOIN'       => [
+                $projectTable => [
+                    'FKEY' => [
+                        $selfTable    => 'projects_id',
+                        $projectTable => 'id',
+                    ],
+                ],
+            ],
+            'WHERE'           => [
+                "{$selfTable}.itemtype" => $itil->getType(),
+                "{$selfTable}.items_id" => $ID,
+                'NOT'                   => ["{$projectTable}.id" => null],
+            ],
+            'ORDER'  => "{$projectTable}.name",
         ]);
 
         $numrows = $iterator->count();
@@ -480,38 +480,38 @@ class Itil_Project extends CommonDBRelation
             ))
         ) {
             $form = [
-               'action' => Toolbox::getItemTypeFormURL(__CLASS__),
-               'buttons' => [
-                  [
-                     'name' => 'add',
-                     'value' => _x('button', 'Add'),
-                     'class' => 'btn btn-secondary',
-                  ]
-               ],
-               'content' => [
-                  __('Add a project') => [
-                     'visible' => true,
-                     'inputs' => [
-                        [
-                           'type' => 'hidden',
-                           'name' => 'itemtype',
-                           'value' => $itil->getType(),
+                'action' => Toolbox::getItemTypeFormURL(__CLASS__),
+                'buttons' => [
+                    [
+                        'name' => 'add',
+                        'value' => _x('button', 'Add'),
+                        'class' => 'btn btn-secondary',
+                    ],
+                ],
+                'content' => [
+                    __('Add a project') => [
+                        'visible' => true,
+                        'inputs' => [
+                            [
+                                'type' => 'hidden',
+                                'name' => 'itemtype',
+                                'value' => $itil->getType(),
+                            ],
+                            [
+                                'type' => 'hidden',
+                                'name' => 'items_id',
+                                'value' => $ID,
+                            ],
+                            '' => [
+                                'type' => 'select',
+                                'name' => 'projects_id',
+                                'values' => getOptionForItems(Project::class, [], true, false, $used),
+                                'col_lg' => 12,
+                                'col_md' => 12,
+                            ],
                         ],
-                        [
-                           'type' => 'hidden',
-                           'name' => 'items_id',
-                           'value' => $ID,
-                        ],
-                        '' => [
-                           'type' => 'select',
-                           'name' => 'projects_id',
-                           'values' => getOptionForItems(Project::class, [], true, false, $used),
-                           'col_lg' => 12,
-                           'col_md' => 12,
-                        ]
-                     ]
-                  ]
-               ]
+                    ],
+                ],
             ];
             renderTwigForm($form);
         }
@@ -519,25 +519,25 @@ class Itil_Project extends CommonDBRelation
         $massContainerId = 'TableForProject' . $itil->getType();
         if ($canedit && $numrows) {
             $massiveactionparams = [
-               'container'     => $massContainerId,
-               'specific_actions' => [
-                  'MassiveAction:purge' => _x('button', 'Delete permanently the relation with selected elements'),
-               ],
-               'display_arrow' => false,
-               'is_deleted' => false,
+                'container'     => $massContainerId,
+                'specific_actions' => [
+                    'MassiveAction:purge' => _x('button', 'Delete permanently the relation with selected elements'),
+                ],
+                'display_arrow' => false,
+                'is_deleted' => false,
             ];
             Html::showMassiveActions($massiveactionparams);
         }
         $fields = [
-           __('ID'),
-           __('Status'),
-           __('Date'),
-           __('Last update'),
-           __('Entity'),
-           __('Priority'),
-           __('Manager'),
-           __('Manager Group'),
-           __('Name'),
+            __('ID'),
+            __('Status'),
+            __('Date'),
+            __('Last update'),
+            __('Entity'),
+            __('Priority'),
+            __('Manager'),
+            __('Manager Group'),
+            __('Name'),
         ];
         $values = [];
         $massive_action = [];
@@ -545,24 +545,24 @@ class Itil_Project extends CommonDBRelation
             $project = new Project();
             $project->getFromDB($data['id']);
             $newValue = [
-               $data['id'],
-               Dropdown::getDropdownName('glpi_projectstates', $data["projectstates_id"]),
-               Html::convDateTime($data['date']),
-               Html::convDateTime($data['date_mod']),
-               Dropdown::getDropdownName('glpi_entities', $data['entities_id']),
-               $data['priority'],
-               Dropdown::getDropdownName('glpi_users', $data['users_id']),
-               Dropdown::getDropdownName('glpi_groups', $data['groups_id']),
-               $project->getLink(),
+                $data['id'],
+                Dropdown::getDropdownName('glpi_projectstates', $data["projectstates_id"]),
+                Html::convDateTime($data['date']),
+                Html::convDateTime($data['date_mod']),
+                Dropdown::getDropdownName('glpi_entities', $data['entities_id']),
+                $data['priority'],
+                Dropdown::getDropdownName('glpi_users', $data['users_id']),
+                Dropdown::getDropdownName('glpi_groups', $data['groups_id']),
+                $project->getLink(),
             ];
             $values[] = $newValue;
             $massive_action[] = sprintf('item[%s][%s]', Itil_Project::class, $data['linkid']);
         }
         renderTwigTemplate('table.twig', [
-           'id' => $massContainerId,
-           'fields' => $fields,
-           'values' => $values,
-           'massive_action' => $massive_action,
+            'id' => $massContainerId,
+            'fields' => $fields,
+            'values' => $values,
+            'massive_action' => $massive_action,
         ]);
     }
 
@@ -571,8 +571,8 @@ class Itil_Project extends CommonDBRelation
      *
      * @deprecated 9.5
      *
-     * @param integer $oldid  ID of the item to clone
-     * @param integer $newid  ID of the item cloned
+     * @param int $oldid  ID of the item to clone
+     * @param int $newid  ID of the item cloned
      *
      * @return void
      **/

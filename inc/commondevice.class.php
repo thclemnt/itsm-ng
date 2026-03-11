@@ -158,13 +158,13 @@ abstract class CommonDevice extends CommonDropdown
     {
 
         return [
-           Manufacturer::getTypeName(1) => [
-              'name'  => 'manufacturers_id',
-              'type'  => 'select',
-              'values' => getOptionForItems('Manufacturer'),
-              'value' => $this->fields['manufacturers_id'],
-              'actions' => getItemActionButtons(['info', 'add'], 'Manufacturer')
-           ]
+            Manufacturer::getTypeName(1) => [
+                'name'  => 'manufacturers_id',
+                'type'  => 'select',
+                'values' => getOptionForItems('Manufacturer'),
+                'value' => $this->fields['manufacturers_id'],
+                'actions' => getItemActionButtons(['info', 'add'], 'Manufacturer'),
+            ],
         ];
     }
 
@@ -176,7 +176,7 @@ abstract class CommonDevice extends CommonDropdown
      *
      * @since 0.85
      *
-     * @return boolean
+     * @return bool
     **/
     public function canUnrecurs()
     {
@@ -201,17 +201,17 @@ abstract class CommonDevice extends CommonDropdown
 
         $result = $DB->request(
             [
-              'SELECT'    => [
-                 'itemtype',
-                 new QueryExpression('GROUP_CONCAT(DISTINCT ' . DBmysql::quoteName('items_id') . ') AS ids'),
-              ],
-              'FROM'      => $linktable,
-              'WHERE'     => [
-                 $this->getForeignKeyField() => $ID,
-              ],
-              'GROUPBY'   => [
-                 'itemtype',
-              ]
+                'SELECT'    => [
+                    'itemtype',
+                    new QueryExpression('GROUP_CONCAT(DISTINCT ' . DBmysql::quoteName('items_id') . ') AS ids'),
+                ],
+                'FROM'      => $linktable,
+                'WHERE'     => [
+                    $this->getForeignKeyField() => $ID,
+                ],
+                'GROUPBY'   => [
+                    'itemtype',
+                ],
             ]
         );
 
@@ -223,7 +223,7 @@ abstract class CommonDevice extends CommonDropdown
                     if ($item->isEntityAssign()) {
                         if (
                             countElementsInTable($itemtable, ['id'  => $data["ids"],
-                                                              'NOT' => ['entities_id' => $entities ]]) > 0
+                                'NOT' => ['entities_id' => $entities ]]) > 0
                         ) {
                             return false;
                         }
@@ -240,69 +240,69 @@ abstract class CommonDevice extends CommonDropdown
         $tab = [];
 
         $tab[] = [
-           'id'                 => 'common',
-           'name'               => __('Characteristics')
+            'id'                 => 'common',
+            'name'               => __('Characteristics'),
         ];
 
         $tab[] = [
-           'id'                 => '1',
-           'table'              => $this->getTable(),
-           'field'              => 'designation',
-           'name'               => __('Name'),
-           'datatype'           => 'itemlink',
-           'massiveaction'      => false,
-           'autocomplete'       => true,
+            'id'                 => '1',
+            'table'              => $this->getTable(),
+            'field'              => 'designation',
+            'name'               => __('Name'),
+            'datatype'           => 'itemlink',
+            'massiveaction'      => false,
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '2',
-           'table'              => $this->getTable(),
-           'field'              => 'id',
-           'name'               => __('ID'),
-           'datatype'           => 'number',
-           'massiveaction'      => false
+            'id'                 => '2',
+            'table'              => $this->getTable(),
+            'field'              => 'id',
+            'name'               => __('ID'),
+            'datatype'           => 'number',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '23',
-           'table'              => 'glpi_manufacturers',
-           'field'              => 'name',
-           'name'               => Manufacturer::getTypeName(1),
-           'datatype'           => 'dropdown'
+            'id'                 => '23',
+            'table'              => 'glpi_manufacturers',
+            'field'              => 'name',
+            'name'               => Manufacturer::getTypeName(1),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '16',
-           'table'              => $this->getTable(),
-           'field'              => 'comment',
-           'name'               => __('Comments'),
-           'datatype'           => 'text'
+            'id'                 => '16',
+            'table'              => $this->getTable(),
+            'field'              => 'comment',
+            'name'               => __('Comments'),
+            'datatype'           => 'text',
         ];
 
         $tab[] = [
-           'id'                 => '19',
-           'table'              => $this->getTable(),
-           'field'              => 'date_mod',
-           'name'               => __('Last update'),
-           'datatype'           => 'datetime',
-           'massiveaction'      => false
+            'id'                 => '19',
+            'table'              => $this->getTable(),
+            'field'              => 'date_mod',
+            'name'               => __('Last update'),
+            'datatype'           => 'datetime',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '121',
-           'table'              => $this->getTable(),
-           'field'              => 'date_creation',
-           'name'               => __('Creation date'),
-           'datatype'           => 'datetime',
-           'massiveaction'      => false
+            'id'                 => '121',
+            'table'              => $this->getTable(),
+            'field'              => 'date_creation',
+            'name'               => __('Creation date'),
+            'datatype'           => 'datetime',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '80',
-           'table'              => 'glpi_entities',
-           'field'              => 'completename',
-           'name'               => Entity::getTypeName(1),
-           'datatype'           => 'dropdown'
+            'id'                 => '80',
+            'table'              => 'glpi_entities',
+            'field'              => 'completename',
+            'name'               => Entity::getTypeName(1),
+            'datatype'           => 'dropdown',
         ];
 
         return $tab;
@@ -380,7 +380,7 @@ abstract class CommonDevice extends CommonDropdown
             $column = $base->addHeader('device', $content, $super, $father);
             $column->setItemType(
                 $this_type,
-                isset($options['itemtype_title']) ? $options['itemtype_title'] : ''
+                $options['itemtype_title'] ?? ''
             );
         } else {
             $column = $father;
@@ -423,16 +423,16 @@ abstract class CommonDevice extends CommonDropdown
             $field_name  = 'quantity_' . $this->getType() . '_' . $this->getID();
             $content .= "&nbsp;<span class='fa fa-plus pointer' title='" . __s('Add') . "'
                       onClick=\"" . Html::jsShow($field_name) . "\"
-                      ><span class='sr-only'>" .  __s('Add') . "</span></span>";
+                      ><span class='sr-only'>" . __s('Add') . "</span></span>";
             $content .= "<span id='$field_name' style='display:none'><br>";
             $content .= __('Add') . "&nbsp;";
 
             $content  = [$content,
-                        ['function'   => 'Dropdown::showNumber',
-                         'parameters' => [$field_name, ['value' => 0,
-                                                        'min'   => 0,
-                                                        'max'   => 10]]],
-                        "</span>"];
+                ['function'   => 'Dropdown::showNumber',
+                    'parameters' => [$field_name, ['value' => 0,
+                        'min'   => 0,
+                        'max'   => 10]]],
+                "</span>"];
         }
 
         $linktype = static::getItem_DeviceType();
@@ -456,7 +456,7 @@ abstract class CommonDevice extends CommonDropdown
      *
      * @param $input array of datas
      *
-     * @return integer ID of existing or new Device
+     * @return int ID of existing or new Device
     **/
     public function import(array $input)
     {
@@ -477,8 +477,8 @@ abstract class CommonDevice extends CommonDropdown
 
                     case 'delta':
                         $where[] = [
-                           [$field => ['>', ((int) $input[$field] - (int) $compare[1])]],
-                           [$field => ['<', ((int) $input[$field] + (int) $compare[1])]]
+                            [$field => ['>', ((int) $input[$field] - (int) $compare[1])]],
+                            [$field => ['<', ((int) $input[$field] + (int) $compare[1])]],
                         ];
                         break;
                 }
@@ -486,9 +486,9 @@ abstract class CommonDevice extends CommonDropdown
         }
 
         $iterator = $DB->request([
-           'SELECT' => ['id'],
-           'FROM'   => $this->getTable(),
-           'WHERE'  => $where
+            'SELECT' => ['id'],
+            'FROM'   => $this->getTable(),
+            'WHERE'  => $where,
         ]);
 
         if (count($iterator) > 0) {
@@ -509,7 +509,7 @@ abstract class CommonDevice extends CommonDropdown
     {
 
         return ['designation'      => 'equal',
-                     'manufacturers_id' => 'equal'];
+            'manufacturers_id' => 'equal'];
     }
 
 
@@ -543,7 +543,7 @@ abstract class CommonDevice extends CommonDropdown
             && (is_array($this->input['_registeredID']))
         ) {
             $input = ['itemtype' => $this->getType(),
-                           'items_id' => $this->getID()];
+                'items_id' => $this->getID()];
 
             foreach ($this->input['_registeredID'] as $id => $registered_id) {
                 $id_object     = new RegisteredID();

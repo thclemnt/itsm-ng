@@ -57,63 +57,63 @@ if (
     if ($_POST['instantiation_type'] == 'NetworkPortEthernet') {
         $name_field = 'glpi_netpoints.name AS npname';
         $joins = [
-           'glpi_networkportethernets'   => [
-              'ON'  => [
-                 'glpi_networkportethernets'   => 'id',
-                 'glpi_networkports'           => 'id'
-              ]
-           ],
-           'glpi_netpoints'              => [
-              'ON'  => [
-                 'glpi_networkportethernets'   => 'netpoints_id',
-                 'glpi_netpoints'              => 'id'
-              ]
-           ]
+            'glpi_networkportethernets'   => [
+                'ON'  => [
+                    'glpi_networkportethernets'   => 'id',
+                    'glpi_networkports'           => 'id',
+                ],
+            ],
+            'glpi_netpoints'              => [
+                'ON'  => [
+                    'glpi_networkportethernets'   => 'netpoints_id',
+                    'glpi_netpoints'              => 'id',
+                ],
+            ],
         ];
     }
 
     $criteria = [
-       'SELECT'    => [
-          'glpi_networkports_networkports.id AS wid',
-          'glpi_networkports.id AS did',
-          "$table.name AS cname",
-          'glpi_networkports.name AS nname',
-          $name_field
-       ],
-       'DISTINCT'  => true,
-       'FROM'      => $table,
-       'LEFT JOIN' => [
-          'glpi_networkports'  => [
-             'ON'  => [
-                'glpi_networkports'  => 'items_id',
-                $table               => 'id', [
-                   'AND' => [
-                      'glpi_networkports.items_id'           => $_POST['item'],
-                      'glpi_networkports.itemtype'           => $_POST["itemtype"],
-                      'glpi_networkports.instantiation_type' => $_POST['instantiation_type']
-                   ]
-                ]
-             ]
-          ],
-          'glpi_networkports_networkports' => [
-             'ON'  => [
-                'glpi_networkports_networkports' => 'networkports_id_1',
-                'glpi_networkports'              => 'id', [
-                   'OR'  => [
-                      'glpi_networkports_networkports.networkports_id_2' => new QueryExpression($DB->quoteName('glpi_networkports.id'))
-                   ]
-                ]
-             ]
-          ]
-       ] + $joins,
-       'WHERE'     => [
-          'glpi_networkports_networkports.id' => null,
-          'NOT'                               => ['glpi_networkports.id' => null],
-          'glpi_networkports.id'              => ['<>', $_POST['networkports_id']],
-          "$table.is_deleted"                 => 0,
-          "$table.is_template"                => 0
-       ],
-       'ORDERBY'   => 'glpi_networkports.id'
+        'SELECT'    => [
+            'glpi_networkports_networkports.id AS wid',
+            'glpi_networkports.id AS did',
+            "$table.name AS cname",
+            'glpi_networkports.name AS nname',
+            $name_field,
+        ],
+        'DISTINCT'  => true,
+        'FROM'      => $table,
+        'LEFT JOIN' => [
+            'glpi_networkports'  => [
+                'ON'  => [
+                    'glpi_networkports'  => 'items_id',
+                    $table               => 'id', [
+                        'AND' => [
+                            'glpi_networkports.items_id'           => $_POST['item'],
+                            'glpi_networkports.itemtype'           => $_POST["itemtype"],
+                            'glpi_networkports.instantiation_type' => $_POST['instantiation_type'],
+                        ],
+                    ],
+                ],
+            ],
+            'glpi_networkports_networkports' => [
+                'ON'  => [
+                    'glpi_networkports_networkports' => 'networkports_id_1',
+                    'glpi_networkports'              => 'id', [
+                        'OR'  => [
+                            'glpi_networkports_networkports.networkports_id_2' => new QueryExpression($DB->quoteName('glpi_networkports.id')),
+                        ],
+                    ],
+                ],
+            ],
+        ] + $joins,
+        'WHERE'     => [
+            'glpi_networkports_networkports.id' => null,
+            'NOT'                               => ['glpi_networkports.id' => null],
+            'glpi_networkports.id'              => ['<>', $_POST['networkports_id']],
+            "$table.is_deleted"                 => 0,
+            "$table.is_template"                => 0,
+        ],
+        'ORDERBY'   => 'glpi_networkports.id',
     ];
     $iterator = $DB->request($criteria);
 

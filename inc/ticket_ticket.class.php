@@ -64,31 +64,31 @@ class Ticket_Ticket extends CommonDBRelation
         switch ($ma->getAction()) {
             case 'add':
                 $options = [
-                   self::LINK_TO => __('Linked to'),
-                   self::DUPLICATE_WITH => __('Duplicates'),
-                   self::SON_OF => __('Son of'),
-                   self::PARENT_OF => __('Parent of'),
+                    self::LINK_TO => __('Linked to'),
+                    self::DUPLICATE_WITH => __('Duplicates'),
+                    self::SON_OF => __('Son of'),
+                    self::PARENT_OF => __('Parent of'),
                 ];
 
                 $inputs = [
-                   __('Link') => [
-                      'type' => 'select',
-                      'name' => 'link',
-                      'values' => [Dropdown::EMPTY_VALUE] + $options,
-                      'col_lg' => 6,
-                   ],
-                   sprintf(__('%1$s: %2$s'), Ticket::getTypeName(1), __('ID')) => [
-                      'type' => 'text',
-                      'name' => 'tickets_id_1',
-                      'size' => 10,
-                      'col_lg' => 6,
-                   ]
+                    __('Link') => [
+                        'type' => 'select',
+                        'name' => 'link',
+                        'values' => [Dropdown::EMPTY_VALUE] + $options,
+                        'col_lg' => 6,
+                    ],
+                    sprintf(__('%1$s: %2$s'), Ticket::getTypeName(1), __('ID')) => [
+                        'type' => 'text',
+                        'name' => 'tickets_id_1',
+                        'size' => 10,
+                        'col_lg' => 6,
+                    ],
                 ];
                 echo "<div class='center row'>";
                 foreach ($inputs as $title => $input) {
                     renderTwigTemplate('macros/wrappedInput.twig', [
-                       'title' => $title,
-                       'input' => $input,
+                        'title' => $title,
+                        'input' => $input,
                     ]);
                 };
                 echo "</div>";
@@ -162,13 +162,13 @@ class Ticket_Ticket extends CommonDBRelation
         }
 
         $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'OR'  => [
-                 'tickets_id_1' => $ID,
-                 'tickets_id_2' => $ID
-              ]
-           ]
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'OR'  => [
+                    'tickets_id_1' => $ID,
+                    'tickets_id_2' => $ID,
+                ],
+            ],
         ]);
         $tickets = [];
 
@@ -177,20 +177,20 @@ class Ticket_Ticket extends CommonDBRelation
             if ($data['tickets_id_1'] != $ID) {
                 $ticket->getFromDB($data['tickets_id_1']);
                 $tickets[$data['id']] = [
-                   'link'         => $data['link'],
-                   'url'          => $ticket->getStatusIcon($ticket->fields['status'])
-                      . " <a href=" . Ticket::getFormURLWithID($data['tickets_id_1']) . ">"
-                      . $ticket->fields['name'] . "</a>",
-                   'tickets_id_1' => $data['tickets_id_1'],
-                   'tickets_id'   => $data['tickets_id_1']
+                    'link'         => $data['link'],
+                    'url'          => $ticket->getStatusIcon($ticket->fields['status'])
+                       . " <a href=" . Ticket::getFormURLWithID($data['tickets_id_1']) . ">"
+                       . $ticket->fields['name'] . "</a>",
+                    'tickets_id_1' => $data['tickets_id_1'],
+                    'tickets_id'   => $data['tickets_id_1'],
                 ];
             } else {
                 $ticket->getFromDB($data['tickets_id_2']);
                 $tickets[$data['id']] = [
-                   'link'       => $data['link'],
-                   'url'          => $ticket->getStatusIcon($ticket->fields['status']) . " <a href=" . Ticket::getFormURLWithID($data['tickets_id_2']) . ">"
-                      . $ticket->fields['name'] . "</a>",
-                   'tickets_id' => $data['tickets_id_2']
+                    'link'       => $data['link'],
+                    'url'          => $ticket->getStatusIcon($ticket->fields['status']) . " <a href=" . Ticket::getFormURLWithID($data['tickets_id_2']) . ">"
+                       . $ticket->fields['name'] . "</a>",
+                    'tickets_id' => $data['tickets_id_2'],
                 ];
             }
         }
@@ -228,7 +228,7 @@ class Ticket_Ticket extends CommonDBRelation
                                 'purge',
                                 _x('button', 'Delete permanently'),
                                 ['id'         => $linkid,
-                                                                 'tickets_id' => $ID],
+                                    'tickets_id' => $ID],
                                 'fa-times-circle'
                             );
                         }
@@ -251,7 +251,7 @@ class Ticket_Ticket extends CommonDBRelation
      * Dropdown for links between tickets
      *
      * @param string  $myname select name
-     * @param integer $value  default value (default self::LINK_TO)
+     * @param int $value  default value (default self::LINK_TO)
      *
      * @return void
     **/
@@ -269,8 +269,8 @@ class Ticket_Ticket extends CommonDBRelation
     /**
      * Get Link Name
      *
-     * @param integer $value    Current value
-     * @param boolean $inverted Whether to invert label
+     * @param int $value    Current value
+     * @param bool $inverted Whether to invert label
      *
      * @return string
     **/
@@ -405,41 +405,41 @@ class Ticket_Ticket extends CommonDBRelation
     /**
      * Count number of open children for a parent
      *
-     * @param integer $pid Parent ID
+     * @param int $pid Parent ID
      *
-     * @return integer
+     * @return int
      */
     public function countOpenChildren($pid)
     {
         global $DB;
 
         $result = $DB->request([
-           'COUNT'        => 'cpt',
-           'FROM'         => $this->getTable() . ' AS links',
-           'INNER JOIN'   => [
-              Ticket::getTable() . ' AS tickets' => [
-                 'ON' => [
-                    'links'     => 'tickets_id_1',
-                    'tickets'   => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'        => [
-              'links.link'         => self::SON_OF,
-              'links.tickets_id_2' => $pid,
-              'NOT'                => [
-                 'tickets.status'  => Ticket::getClosedStatusArray() + Ticket::getSolvedStatusArray()
-              ]
-           ]
+            'COUNT'        => 'cpt',
+            'FROM'         => $this->getTable() . ' AS links',
+            'INNER JOIN'   => [
+                Ticket::getTable() . ' AS tickets' => [
+                    'ON' => [
+                        'links'     => 'tickets_id_1',
+                        'tickets'   => 'id',
+                    ],
+                ],
+            ],
+            'WHERE'        => [
+                'links.link'         => self::SON_OF,
+                'links.tickets_id_2' => $pid,
+                'NOT'                => [
+                    'tickets.status'  => Ticket::getClosedStatusArray() + Ticket::getSolvedStatusArray(),
+                ],
+            ],
         ])->next();
-        return (int)$result['cpt'];
+        return (int) $result['cpt'];
     }
 
 
     /**
      * Affect the same solution/status for duplicates tickets.
      *
-     * @param integer           $ID        ID of the ticket id
+     * @param int           $ID        ID of the ticket id
      * @param ITILSolution|null $solution  Ticket's solution
      *
      * @return void
@@ -476,8 +476,8 @@ class Ticket_Ticket extends CommonDBRelation
                 $linked_ticket = new Ticket();
                 $linked_ticket->update(
                     [
-                      'id'     => $data['tickets_id'],
-                      'status' => $ticket->fields['status']
+                        'id'     => $data['tickets_id'],
+                        'status' => $ticket->fields['status'],
                     ]
                 );
             }

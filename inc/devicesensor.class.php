@@ -54,13 +54,13 @@ class DeviceSensor extends CommonDevice
         return array_merge(
             parent::getAdditionalFields(),
             [
-              _n('Type', 'Types', 1) => [
-                 'name'  => 'devicesensortypes_id',
-                 'type'  => 'select',
-                 'values' => getOptionForItems('DeviceSensorType'),
-                 'value' => $this->fields['devicesensortypes_id'],
-                 'actions' => getItemActionButtons(['info', 'add'], 'DeviceSensorType')
-              ]
+                _n('Type', 'Types', 1) => [
+                    'name'  => 'devicesensortypes_id',
+                    'type'  => 'select',
+                    'values' => getOptionForItems('DeviceSensorType'),
+                    'value' => $this->fields['devicesensortypes_id'],
+                    'actions' => getItemActionButtons(['info', 'add'], 'DeviceSensorType'),
+                ],
             ]
         );
     }
@@ -71,10 +71,10 @@ class DeviceSensor extends CommonDevice
         $tab                 = parent::rawSearchOptions();
 
         $tab[] = ['id'       => '12',
-                  'table'    => 'glpi_devicesensortypes',
-                  'field'    => 'name',
-                  'name'     => _n('Type', 'Types', 1),
-                  'datatype' => 'dropdown'];
+            'table'    => 'glpi_devicesensortypes',
+            'field'    => 'name',
+            'name'     => _n('Type', 'Types', 1),
+            'datatype' => 'dropdown'];
 
         return $tab;
     }
@@ -133,8 +133,8 @@ class DeviceSensor extends CommonDevice
     {
 
         return ['designation'          => 'equal',
-                'manufacturers_id'     => 'equal',
-                'devicesensortypes_id' => 'equal',
-                'locations_id'         => 'equal'];
+            'manufacturers_id'     => 'equal',
+            'devicesensortypes_id' => 'equal',
+            'locations_id'         => 'equal'];
     }
 }

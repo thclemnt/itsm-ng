@@ -48,13 +48,13 @@ class Item_DeviceSensor extends DbTestCase
         $deviceSensor = getItemByTypeName('DeviceSensor', '_test_sensor_1');
         $this->object($deviceSensor)->isInstanceOf('\DeviceSensor');
         $in = [
-              'itemtype'           => 'Computer',
-              'items_id'           => $computer->getID(),
-              'devicesensors_id'  => $deviceSensor->getID(),
-              'entities_id'        => 0,
+            'itemtype'           => 'Computer',
+            'items_id'           => $computer->getID(),
+            'devicesensors_id'  => $deviceSensor->getID(),
+            'entities_id'        => 0,
         ];
         $id = $obj->add($in);
-        $this->integer((int)$id)->isGreaterThan(0);
+        $this->integer((int) $id)->isGreaterThan(0);
         $this->boolean($obj->getFromDB($id))->isTrue();
 
         // getField methods
@@ -75,18 +75,18 @@ class Item_DeviceSensor extends DbTestCase
         $deviceSensor = getItemByTypeName('DeviceSensor', '_test_sensor_1');
         $this->object($deviceSensor)->isInstanceOf('\DeviceSensor');
         $id = $obj->add([
-              'itemtype'           => 'Computer',
-              'items_id'           => $computer->getID(),
-              'devicesensors_id'   => $deviceSensor->getID(),
-              'entities_id'        => 0,
+            'itemtype'           => 'Computer',
+            'items_id'           => $computer->getID(),
+            'devicesensors_id'   => $deviceSensor->getID(),
+            'entities_id'        => 0,
         ]);
         $this->integer($id)->isGreaterThan(0);
 
         // Update
         $id = $obj->getID();
         $in = [
-              'id'                       => $id,
-              'serial'                   => $this->getUniqueString(),
+            'id'                       => $id,
+            'serial'                   => $this->getUniqueString(),
         ];
         $this->boolean($obj->update($in))->isTrue();
         $this->boolean($obj->getFromDB($id))->isTrue();
@@ -108,16 +108,16 @@ class Item_DeviceSensor extends DbTestCase
         $deviceSensor = getItemByTypeName('DeviceSensor', '_test_sensor_1');
         $this->object($deviceSensor)->isInstanceOf('\DeviceSensor');
         $id = $obj->add([
-              'itemtype'           => 'Computer',
-              'items_id'           => $computer->getID(),
-              'devicesensors_id'   => $deviceSensor->getID(),
-              'entities_id'        => 0,
+            'itemtype'           => 'Computer',
+            'items_id'           => $computer->getID(),
+            'devicesensors_id'   => $deviceSensor->getID(),
+            'entities_id'        => 0,
         ]);
         $this->integer($id)->isGreaterThan(0);
 
         // Delete
         $in = [
-              'id'                       => $obj->getID(),
+            'id'                       => $obj->getID(),
         ];
         $this->boolean($obj->delete($in))->isTrue();
     }

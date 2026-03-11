@@ -38,47 +38,47 @@ if (!defined('GLPI_ROOT')) {
 }
 
 use Appliance;
-use ApplianceType;
-use ApplianceEnvironment;
 use Appliance_Item;
 use Appliance_Item_Relation;
+use ApplianceEnvironment;
+use ApplianceType;
 use Change_Item;
 use Contract_Item;
 use DB;
 use Document_Item;
 use Domain;
-use Infocom;
-use Location;
-use Network;
-use Toolbox;
 use Glpi\Console\AbstractCommand;
+use Infocom;
 use Item_Problem;
 use Item_Project;
 use Item_Ticket;
 use KnowbaseItem_Item;
+use Location;
 use Log;
+use Network;
 use Profile;
-use Symfony\Component\Console\Helper\QuestionHelper;
+use Symfony\Component\Console\Exception\RuntimeException;
 use Symfony\Component\Console\Helper\ProgressBar;
+use Symfony\Component\Console\Helper\QuestionHelper;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Question\ConfirmationQuestion;
-use Symfony\Component\Console\Input\InputOption;
-use Symfony\Component\Console\Exception\RuntimeException;
+use Toolbox;
 
 class AppliancesPluginToCoreCommand extends AbstractCommand
 {
     /**
      * Error code returned if plugin version or plugin data is invalid.
      *
-     * @var integer
+     * @var int
      */
     public const ERROR_PLUGIN_VERSION_OR_DATA_INVALID = 1;
 
     /**
      * Error code returned if import failed.
      *
-     * @var integer
+     * @var int
      */
     public const ERROR_PLUGIN_IMPORT_FAILED = 2;
 
@@ -88,9 +88,9 @@ class AppliancesPluginToCoreCommand extends AbstractCommand
      * @var array
      */
     public const PLUGIN_RELATION_TYPES = [
-       1 => Location::class,
-       2 => Network::class,
-       3 => Domain::class,
+        1 => Location::class,
+        2 => Network::class,
+        3 => Domain::class,
     ];
 
     /**
@@ -99,31 +99,31 @@ class AppliancesPluginToCoreCommand extends AbstractCommand
      * @var array
      */
     public const PLUGIN_APPLIANCE_TABLES = [
-       "glpi_plugin_appliances_appliances"       => [
-          "id",
-          "entities_id",
-          "is_recursive",
-          "name",
-          "is_deleted",
-          "plugin_appliances_appliancetypes_id",
-          "comment",
-          "locations_id",
-          "plugin_appliances_environments_id",
-          "users_id",
-          "users_id_tech",
-          "groups_id",
-          "groups_id_tech",
-          "relationtype",
-          "date_mod",
-          "states_id",
-          "externalid",
-          "serial",
-          "otherserial"
-       ],
-       "glpi_plugin_appliances_appliancetypes"   => ["id","entities_id","is_recursive","name","comment"],
-       "glpi_plugin_appliances_appliances_items" => ["id", "plugin_appliances_appliances_id","items_id","itemtype"],
-       "glpi_plugin_appliances_environments"     => ["id","name","comment" ],
-       "glpi_plugin_appliances_relations"        => ["id","plugin_appliances_appliances_items_id","relations_id"]
+        "glpi_plugin_appliances_appliances"       => [
+            "id",
+            "entities_id",
+            "is_recursive",
+            "name",
+            "is_deleted",
+            "plugin_appliances_appliancetypes_id",
+            "comment",
+            "locations_id",
+            "plugin_appliances_environments_id",
+            "users_id",
+            "users_id_tech",
+            "groups_id",
+            "groups_id_tech",
+            "relationtype",
+            "date_mod",
+            "states_id",
+            "externalid",
+            "serial",
+            "otherserial",
+        ],
+        "glpi_plugin_appliances_appliancetypes"   => ["id","entities_id","is_recursive","name","comment"],
+        "glpi_plugin_appliances_appliances_items" => ["id", "plugin_appliances_appliances_id","items_id","itemtype"],
+        "glpi_plugin_appliances_environments"     => ["id","name","comment" ],
+        "glpi_plugin_appliances_relations"        => ["id","plugin_appliances_appliances_items_id","relations_id"],
     ];
 
     /**
@@ -162,9 +162,9 @@ class AppliancesPluginToCoreCommand extends AbstractCommand
             // Ask for confirmation (unless --no-interaction)
             $output->writeln(
                 [
-                  __('You are about to launch migration of Appliances plugin data into ITSM-ng core tables.'),
-                  __('Any previous appliance created in core will be lost.'),
-                  __('It is better to make a backup of your existing data before continuing.')
+                    __('You are about to launch migration of Appliances plugin data into ITSM-ng core tables.'),
+                    __('Any previous appliance created in core will be lost.'),
+                    __('It is better to make a backup of your existing data before continuing.'),
                 ]
             );
 
@@ -247,11 +247,11 @@ class AppliancesPluginToCoreCommand extends AbstractCommand
     private function cleanCoreTables()
     {
         $core_tables = [
-           Appliance::getTable(),
-           ApplianceType::getTable(),
-           ApplianceEnvironment::getTable(),
-           Appliance_Item::getTable(),
-           Appliance_Item_Relation::getTable(),
+            Appliance::getTable(),
+            ApplianceType::getTable(),
+            ApplianceEnvironment::getTable(),
+            Appliance_Item::getTable(),
+            Appliance_Item_Relation::getTable(),
         ];
 
         foreach ($core_tables as $table) {
@@ -266,7 +266,7 @@ class AppliancesPluginToCoreCommand extends AbstractCommand
 
         $table  = Infocom::getTable();
         $result = $this->db->delete($table, [
-           'itemtype' => self::CORE_APPLIANCE_ITEMTYPE
+            'itemtype' => self::CORE_APPLIANCE_ITEMTYPE,
         ]);
         if (!$result) {
             throw new RuntimeException(
@@ -345,22 +345,22 @@ class AppliancesPluginToCoreCommand extends AbstractCommand
             OutputInterface::VERBOSITY_NORMAL
         );
         $itemtypes_tables = [
-           Item_Ticket::getTable(),
-           Item_Problem::getTable(),
-           Change_Item::getTable(),
-           Item_Project::getTable(),
-           Log::getTable(),
-           Infocom::getTable(),
-           Document_Item::getTable(),
-           Contract_Item::getTable(),
-           KnowbaseItem_Item::getTable(),
+            Item_Ticket::getTable(),
+            Item_Problem::getTable(),
+            Change_Item::getTable(),
+            Item_Project::getTable(),
+            Log::getTable(),
+            Infocom::getTable(),
+            Document_Item::getTable(),
+            Contract_Item::getTable(),
+            KnowbaseItem_Item::getTable(),
         ];
 
         foreach ($itemtypes_tables as $itemtype_table) {
             $result = $this->db->update($itemtype_table, [
-               'itemtype' => self::CORE_APPLIANCE_ITEMTYPE,
+                'itemtype' => self::CORE_APPLIANCE_ITEMTYPE,
             ], [
-               'itemtype' => self::PLUGIN_APPLIANCE_ITEMTYPE,
+                'itemtype' => self::PLUGIN_APPLIANCE_ITEMTYPE,
             ]);
 
             if (false === $result) {
@@ -394,7 +394,7 @@ class AppliancesPluginToCoreCommand extends AbstractCommand
         );
 
         $iterator = $this->db->request([
-           'FROM' => 'glpi_plugin_appliances_appliances_items'
+            'FROM' => 'glpi_plugin_appliances_appliances_items',
         ]);
 
         if (!count($iterator)) {
@@ -414,10 +414,10 @@ class AppliancesPluginToCoreCommand extends AbstractCommand
             );
 
             $app_fields = Toolbox::sanitize([
-               'id'            => $item['id'],
-               'appliances_id' => $item['plugin_appliances_appliances_id'],
-               'items_id'      => $item['items_id'],
-               'itemtype'      => $item['itemtype']
+                'id'            => $item['id'],
+                'appliances_id' => $item['plugin_appliances_appliances_id'],
+                'items_id'      => $item['items_id'],
+                'itemtype'      => $item['itemtype'],
             ]);
 
             $appi = new Appliance_Item();
@@ -454,7 +454,7 @@ class AppliancesPluginToCoreCommand extends AbstractCommand
         );
 
         $iterator = $this->db->request([
-           'FROM' => 'glpi_plugin_appliances_environments'
+            'FROM' => 'glpi_plugin_appliances_environments',
         ]);
 
         if (!count($iterator)) {
@@ -474,9 +474,9 @@ class AppliancesPluginToCoreCommand extends AbstractCommand
             );
 
             $app_fields = Toolbox::sanitize([
-               'id'      => $env['id'],
-               'name'    => $env['name'],
-               'comment' => $env['comment']
+                'id'      => $env['id'],
+                'name'    => $env['name'],
+                'comment' => $env['comment'],
             ]);
 
             $appe = new ApplianceEnvironment();
@@ -512,7 +512,7 @@ class AppliancesPluginToCoreCommand extends AbstractCommand
             OutputInterface::VERBOSITY_NORMAL
         );
         $iterator = $this->db->request([
-           'FROM' => 'glpi_plugin_appliances_appliances'
+            'FROM' => 'glpi_plugin_appliances_appliances',
         ]);
 
         if (!count($iterator)) {
@@ -532,26 +532,26 @@ class AppliancesPluginToCoreCommand extends AbstractCommand
             );
 
             $app_fields = Toolbox::sanitize([
-               'id'                       => $appliance['id'],
-               'entities_id'              => $appliance['entities_id'],
-               'is_recursive'             => $appliance['is_recursive'],
-               'name'                     => $appliance['name'],
-               'is_deleted'               => $appliance['is_deleted'],
-               'appliancetypes_id'        => $appliance['plugin_appliances_appliancetypes_id'],
-               'comment'                  => $appliance['comment'],
-               'locations_id'             => $appliance['locations_id'],
-               'manufacturers_id'         => '0',
-               'applianceenvironments_id' => $appliance['plugin_appliances_environments_id'],
-               'users_id'                 => $appliance['users_id'],
-               'users_id_tech'            => $appliance['users_id_tech'],
-               'groups_id'                => $appliance['groups_id'],
-               'groups_id_tech'           => $appliance['groups_id_tech'],
-               'date_mod'                 => $appliance['date_mod'],
-               'is_helpdesk_visible'      => $appliance['is_helpdesk_visible'],
-               'states_id'                => $appliance['states_id'],
-               'externalidentifier'       => $appliance['externalid'],
-               'serial'                   => $appliance['serial'],
-               'otherserial'              => $appliance['otherserial']
+                'id'                       => $appliance['id'],
+                'entities_id'              => $appliance['entities_id'],
+                'is_recursive'             => $appliance['is_recursive'],
+                'name'                     => $appliance['name'],
+                'is_deleted'               => $appliance['is_deleted'],
+                'appliancetypes_id'        => $appliance['plugin_appliances_appliancetypes_id'],
+                'comment'                  => $appliance['comment'],
+                'locations_id'             => $appliance['locations_id'],
+                'manufacturers_id'         => '0',
+                'applianceenvironments_id' => $appliance['plugin_appliances_environments_id'],
+                'users_id'                 => $appliance['users_id'],
+                'users_id_tech'            => $appliance['users_id_tech'],
+                'groups_id'                => $appliance['groups_id'],
+                'groups_id_tech'           => $appliance['groups_id_tech'],
+                'date_mod'                 => $appliance['date_mod'],
+                'is_helpdesk_visible'      => $appliance['is_helpdesk_visible'],
+                'states_id'                => $appliance['states_id'],
+                'externalidentifier'       => $appliance['externalid'],
+                'serial'                   => $appliance['serial'],
+                'otherserial'              => $appliance['otherserial'],
             ]);
 
             $app = new Appliance();
@@ -588,7 +588,7 @@ class AppliancesPluginToCoreCommand extends AbstractCommand
         );
 
         $iterator = $this->db->request([
-           'FROM' => 'glpi_plugin_appliances_appliancetypes'
+            'FROM' => 'glpi_plugin_appliances_appliancetypes',
         ]);
 
         if (!count($iterator)) {
@@ -608,12 +608,12 @@ class AppliancesPluginToCoreCommand extends AbstractCommand
             );
 
             $appt_fields = Toolbox::sanitize([
-               'id'                 => $type['id'],
-               'entities_id'        => $type['entities_id'],
-               'is_recursive'       => $type['is_recursive'],
-               'name'               => $type['name'],
-               'comment'            => $type['comment'],
-               'externalidentifier' => $type['externalid']
+                'id'                 => $type['id'],
+                'entities_id'        => $type['entities_id'],
+                'is_recursive'       => $type['is_recursive'],
+                'name'               => $type['name'],
+                'comment'            => $type['comment'],
+                'externalidentifier' => $type['externalid'],
             ]);
 
             $appt = new ApplianceType();
@@ -650,22 +650,22 @@ class AppliancesPluginToCoreCommand extends AbstractCommand
         );
 
         $iterator = $this->db->request([
-           'SELECT'       => ['rel.*', 'app.relationtype'],
-           'FROM'         => 'glpi_plugin_appliances_relations AS rel',
-           'INNER JOIN'   => [
-              'glpi_plugin_appliances_appliances_items AS items' => [
-                 'ON'  => [
-                    'items' => 'id',
-                    'rel'   => 'plugin_appliances_appliances_items_id'
-                 ]
-              ],
-              'glpi_plugin_appliances_appliances AS app' => [
-                 'ON'  => [
-                    'app'   => 'id',
-                    'items' => 'plugin_appliances_appliances_id'
-                 ]
-              ]
-           ]
+            'SELECT'       => ['rel.*', 'app.relationtype'],
+            'FROM'         => 'glpi_plugin_appliances_relations AS rel',
+            'INNER JOIN'   => [
+                'glpi_plugin_appliances_appliances_items AS items' => [
+                    'ON'  => [
+                        'items' => 'id',
+                        'rel'   => 'plugin_appliances_appliances_items_id',
+                    ],
+                ],
+                'glpi_plugin_appliances_appliances AS app' => [
+                    'ON'  => [
+                        'app'   => 'id',
+                        'items' => 'plugin_appliances_appliances_id',
+                    ],
+                ],
+            ],
         ]);
 
         if (!count($iterator)) {
@@ -702,10 +702,10 @@ class AppliancesPluginToCoreCommand extends AbstractCommand
             }
 
             $appr_fields = Toolbox::sanitize([
-               'id'                  => $row['id'],
-               'appliances_items_id' => $row['plugin_appliances_appliances_items_id'],
-               'itemtype'            => $itemtype,
-               'items_id'            => $row['relations_id']
+                'id'                  => $row['id'],
+                'appliances_items_id' => $row['plugin_appliances_appliances_items_id'],
+                'itemtype'            => $itemtype,
+                'items_id'            => $row['relations_id'],
             ]);
 
             $appr = new Appliance_Item_Relation();

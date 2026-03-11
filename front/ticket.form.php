@@ -43,9 +43,9 @@ if (!isset($_GET['id'])) {
 }
 
 $date_fields = [
-   'date',
-   'due_date',
-   'time_to_own'
+    'date',
+    'due_date',
+    'time_to_own',
 ];
 
 foreach ($date_fields as $date_field) {
@@ -76,9 +76,9 @@ if (isset($_POST["add"])) {
     if (isset($_POST['kb_linked_id'])) {
         //if solution should be linked to selected KB entry
         $params = [
-           'knowbaseitems_id' => $_POST['kb_linked_id'],
-           'itemtype'         => $track->getType(),
-           'items_id'         => $track->getID()
+            'knowbaseitems_id' => $_POST['kb_linked_id'],
+            'itemtype'         => $track->getType(),
+            'items_id'         => $track->getID(),
         ];
         $existing = $DB->request(
             'glpi_knowbaseitems_items',
@@ -199,12 +199,12 @@ if (isset($_POST["add"])) {
 } elseif (isset($_POST['addme_observer'])) {
     $track->check($_POST['tickets_id'], READ);
     $input = array_merge(Toolbox::addslashes_deep($track->fields), [
-       'id' => $_POST['tickets_id'],
-       '_itil_observer' => [
-          '_type' => "user",
-          'users_id' => Session::getLoginUserID(),
-          'use_notification' => 1,
-       ]
+        'id' => $_POST['tickets_id'],
+        '_itil_observer' => [
+            '_type' => "user",
+            'users_id' => Session::getLoginUserID(),
+            'use_notification' => 1,
+        ],
     ]);
     $track->update($input);
     Event::log(
@@ -219,12 +219,12 @@ if (isset($_POST["add"])) {
 } elseif (isset($_POST['addme_assign'])) {
     $track->check($_POST['tickets_id'], READ);
     $input = array_merge(Toolbox::addslashes_deep($track->fields), [
-       'id' => $_POST['tickets_id'],
-       '_itil_assign' => [
-          '_type' => "user",
-          'users_id' => Session::getLoginUserID(),
-          'use_notification' => 1,
-       ]
+        'id' => $_POST['tickets_id'],
+        '_itil_assign' => [
+            '_type' => "user",
+            'users_id' => Session::getLoginUserID(),
+            'use_notification' => 1,
+        ],
     ]);
     $track->update($input);
     Event::log(
@@ -237,14 +237,14 @@ if (isset($_POST["add"])) {
     );
     Html::redirect(Ticket::getFormURLWithID($_POST['tickets_id']));
 } elseif (isset($_POST['delete_document'])) {
-    $track->getFromDB((int)$_POST['tickets_id']);
+    $track->getFromDB((int) $_POST['tickets_id']);
     $doc = new Document();
     $doc->getFromDB(intval($_POST['documents_id']));
     if ($doc->can($doc->getID(), UPDATE)) {
         $document_item = new Document_Item();
         $found_document_items = $document_item->find([
-           $track->getAssociatedDocumentsCriteria(),
-           'documents_id' => $doc->getID()
+            $track->getAssociatedDocumentsCriteria(),
+            'documents_id' => $doc->getID(),
         ]);
         foreach ($found_document_items as $item) {
             $document_item->delete(Toolbox::addslashes_deep($item), true);
@@ -271,11 +271,11 @@ if (isset($_GET["id"]) && ($_GET["id"] > 0)) {
     if (isset($_GET['_sol_to_kb'])) {
         Ajax::createIframeModalWindow(
             'savetokb',
-            KnowbaseItem::getFormURL() .
-                                       "?_in_modal=1&item_itemtype=Ticket&item_items_id=" .
-                                       $_GET["id"],
+            KnowbaseItem::getFormURL()
+                                       . "?_in_modal=1&item_itemtype=Ticket&item_items_id="
+                                       . $_GET["id"],
             ['title'         => __('Save solution to the knowledge base'),
-                                            'reloadonclose' => false]
+                'reloadonclose' => false]
         );
         echo Html::scriptBlock('$(function() {' . Html::jsGetElementbyID('savetokb') . ".dialog('open'); });");
     }

@@ -42,11 +42,11 @@ class Update extends \GLPITestCase
         global $DB;
 
         $oldtypes = [
-           'GENERAL_TYPE',
-           'COMPUTER_TYPE',
-           'BUDGET_TYPE',
-           'MOBOARD_DEVICE',
-           'POWER_DEVICE'
+            'GENERAL_TYPE',
+            'COMPUTER_TYPE',
+            'BUDGET_TYPE',
+            'MOBOARD_DEVICE',
+            'POWER_DEVICE',
         ];
 
         foreach ($oldtypes as $oldtype) {
@@ -67,11 +67,11 @@ class Update extends \GLPITestCase
         $update = new \Update($DB);
 
         $expected = [
-           'dbversion' => \ITSM_SCHEMA_VERSION,
-           'language'  => 'en_GB',
-           'version'   => \ITSM_VERSION,
-           'itsmversion' => \ITSM_VERSION,
-           'itsmdbversion' => \ITSM_SCHEMA_VERSION
+            'dbversion' => \ITSM_SCHEMA_VERSION,
+            'language'  => 'en_GB',
+            'version'   => \ITSM_VERSION,
+            'itsmversion' => \ITSM_VERSION,
+            'itsmdbversion' => \ITSM_SCHEMA_VERSION,
         ];
         $this->array($update->getCurrents())->isEqualTo($expected);
     }
@@ -88,13 +88,13 @@ class Update extends \GLPITestCase
         $this->variable(session_status())->isIdenticalTo(PHP_SESSION_ACTIVE);
 
         $this->array($_SESSION)->hasKeys([
-           'glpilanguage',
-           'glpi_currenttime'
+            'glpilanguage',
+            'glpi_currenttime',
         ])->notHasKeys([
-           'glpi_use_mode',
-           'debug_sql',
-           'debug_vars',
-           'use_log_in_files'
+            'glpi_use_mode',
+            'debug_sql',
+            'debug_vars',
+            'use_log_in_files',
         ]);
     }
 

@@ -39,35 +39,33 @@ if (!defined('GLPI_ROOT')) {
 
 use CommonDBTM;
 use DB;
-use DomainType;
 use Domain;
 use Domain_Item;
-use Plugin;
-use Toolbox;
+use DomainType;
 use Glpi\Console\AbstractCommand;
-use Symfony\Component\Console\Helper\QuestionHelper;
+use Plugin;
+use Symfony\Component\Console\Exception\LogicException;
 use Symfony\Component\Console\Helper\ProgressBar;
+use Symfony\Component\Console\Helper\QuestionHelper;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Question\ConfirmationQuestion;
-use Symfony\Component\Console\Input\InputOption;
-use Symfony\Component\Console\Exception\LogicException;
-use Symfony\Component\Console\Exception\RuntimeException;
-use Symfony\Component\Console\Question\ChoiceQuestion;
+use Toolbox;
 
 class DomainsPluginToCoreCommand extends AbstractCommand
 {
     /**
      * Error code returned if plugin version or plugin data is invalid.
      *
-     * @var integer
+     * @var int
      */
     public const ERROR_PLUGIN_VERSION_OR_DATA_INVALID = 1;
 
     /**
      * Error code returned if import failed.
      *
-     * @var integer
+     * @var int
      */
     public const ERROR_PLUGIN_IMPORT_FAILED = 1;
 
@@ -123,8 +121,8 @@ class DomainsPluginToCoreCommand extends AbstractCommand
             // Ask for confirmation (unless --no-interaction)
             $output->writeln(
                 [
-                  __('You are about to launch migration of Domains plugin data into ITSM-NG core tables.'),
-                  __('It is better to make a backup of your existing data before continuing.')
+                    __('You are about to launch migration of Domains plugin data into ITSM-NG core tables.'),
+                    __('It is better to make a backup of your existing data before continuing.'),
                 ]
             );
 
@@ -165,7 +163,7 @@ class DomainsPluginToCoreCommand extends AbstractCommand
      *
      * @throws LogicException
      *
-     * @return boolean
+     * @return bool
      */
     private function checkPlugin()
     {
@@ -190,7 +188,7 @@ class DomainsPluginToCoreCommand extends AbstractCommand
                    );
                 $this->output->writeln(
                     [
-                      '<error>' . $message . '</error>',
+                        '<error>' . $message . '</error>',
                     ],
                     OutputInterface::VERBOSITY_QUIET
                 );
@@ -213,9 +211,9 @@ class DomainsPluginToCoreCommand extends AbstractCommand
             $is_installable = in_array(
                 $plugin->fields['state'],
                 [
-                  Plugin::TOBECLEANED, // Can be in this state if check was done without the plugin dir
-                  Plugin::NOTINSTALLED, // Can be not installed if plugin has been cleaned in plugin list
-                  Plugin::NOTUPDATED, // Plugin 1.8.0 version has never been installed
+                    Plugin::TOBECLEANED, // Can be in this state if check was done without the plugin dir
+                    Plugin::NOTINSTALLED, // Can be not installed if plugin has been cleaned in plugin list
+                    Plugin::NOTUPDATED, // Plugin 1.8.0 version has never been installed
                 ]
             );
             if ($is_installable) {
@@ -262,9 +260,9 @@ class DomainsPluginToCoreCommand extends AbstractCommand
             $is_state_ok   = in_array(
                 $plugin->fields['state'],
                 [
-                  Plugin::ACTIVATED, // Should not be possible as 1.8.0 is not compatible with 9.3
-                  Plugin::TOBECONFIGURED, // Should not be possible as check_config of plugin returns always true
-                  Plugin::NOTACTIVATED,
+                    Plugin::ACTIVATED, // Should not be possible as 1.8.0 is not compatible with 9.3
+                    Plugin::TOBECONFIGURED, // Should not be possible as check_config of plugin returns always true
+                    Plugin::NOTACTIVATED,
                 ]
             );
             if (!$is_state_ok) {
@@ -274,10 +272,10 @@ class DomainsPluginToCoreCommand extends AbstractCommand
         }
 
         $domains_tables = [
-           'glpi_plugin_domains_configs',
-           'glpi_plugin_domains_domains',
-           'glpi_plugin_domains_domains_items',
-           'glpi_plugin_domains_domaintypes',
+            'glpi_plugin_domains_configs',
+            'glpi_plugin_domains_domains',
+            'glpi_plugin_domains_domains_items',
+            'glpi_plugin_domains_domaintypes',
         ];
         $missing_tables = false;
         foreach ($domains_tables as $table) {
@@ -314,7 +312,7 @@ class DomainsPluginToCoreCommand extends AbstractCommand
     /**
      * Migrate domain types
      *
-     * @return boolean
+     * @return bool
      */
     protected function importDomainTypes()
     {
@@ -326,14 +324,14 @@ class DomainsPluginToCoreCommand extends AbstractCommand
         );
 
         $types_iterator = $this->db->request([
-           'FROM'   => 'glpi_plugin_domains_domaintypes',
-           'ORDER'  => 'id ASC'
+            'FROM'   => 'glpi_plugin_domains_domaintypes',
+            'ORDER'  => 'id ASC',
         ]);
 
         $core_types = [];
         $coret_iterator = $this->db->request([
-           'SELECT' => ['id', 'name'],
-           'FROM'   => DomainType::getTable()
+            'SELECT' => ['id', 'name'],
+            'FROM'   => DomainType::getTable(),
         ]);
         while ($row = $coret_iterator->next()) {
             $core_types[$row['name']] = $row['id'];
@@ -366,17 +364,17 @@ class DomainsPluginToCoreCommand extends AbstractCommand
                 );
 
                 $type_input = [
-                   'name'         => $typ['name'],
-                   'entities_id'  => $typ['entities_id'],
-                   'comment'      => $typ['comment'],
+                    'name'         => $typ['name'],
+                    'entities_id'  => $typ['entities_id'],
+                    'comment'      => $typ['comment'],
                 ];
                 $type_input = Toolbox::addslashes_deep($type_input);
 
                 $domaintype = new DomainType();
                 if ($core_type !== null) {
-                    $res = (bool)$domaintype->update($type_input + ['id' => $core_type]);
+                    $res = (bool) $domaintype->update($type_input + ['id' => $core_type]);
                 } else {
-                    $new_tid = (int)$domaintype->add($type_input);
+                    $new_tid = (int) $domaintype->add($type_input);
                     $res = $new_tid > 0;
                     if ($res) {
                         $core_types[$typ['name']] = $new_tid;
@@ -387,9 +385,9 @@ class DomainsPluginToCoreCommand extends AbstractCommand
                     $has_errors = true;
 
                     $message = sprintf(
-                        $core_type === null ?
-                          __('Unable to add domain type %s.') :
-                          __('Unable to update domain type %s.'),
+                        $core_type === null
+                          ? __('Unable to add domain type %s.')
+                          : __('Unable to update domain type %s.'),
                         $typ['name']
                     );
                     $this->outputImportError($message, $progress_bar);
@@ -421,7 +419,7 @@ class DomainsPluginToCoreCommand extends AbstractCommand
      *
      * @throws LogicException
      *
-     * @return boolean
+     * @return bool
      */
     protected function importDomains()
     {
@@ -433,14 +431,14 @@ class DomainsPluginToCoreCommand extends AbstractCommand
         );
 
         $domains_iterator = $this->db->request([
-           'FROM'   => 'glpi_plugin_domains_domains',
-           'ORDER'  => 'id ASC'
+            'FROM'   => 'glpi_plugin_domains_domains',
+            'ORDER'  => 'id ASC',
         ]);
 
         $core_domains = [];
         $cored_iterator = $this->db->request([
-           'SELECT' => ['id', 'name'],
-           'FROM'   => Domain::getTable()
+            'SELECT' => ['id', 'name'],
+            'FROM'   => Domain::getTable(),
         ]);
         while ($row = $cored_iterator->next()) {
             $core_domains[$row['name']] = $row['id'];
@@ -483,28 +481,28 @@ class DomainsPluginToCoreCommand extends AbstractCommand
                 }
                 $types_id = $mapped_type !== null ? $mapped_type->fields['id'] : 0;
                 $domain_input = [
-                   'name'                  => $dom['name'],
-                   'entities_id'           => $dom['entities_id'],
-                   'is_recursive'          => $dom['is_recursive'],
-                   'domaintypes_id'        => $types_id,
-                   'date_creation'         => $dom['date_creation'],
-                   'date_expiration'       => $dom['date_expiration'],
-                   'users_id_tech'         => $dom['users_id_tech'],
-                   'groups_id_tech'        => $dom['groups_id_tech'],
-                   //suppliers_id not present in core
-                   'comment'               => $dom['comment'],
-                   'others'                => $dom['others'],
-                   'is_helpdesk_visible'   => $dom['is_helpdesk_visible'],
-                   'date_mod'              => $dom['date_mod'],
-                   'is_deleted'            => $dom['is_deleted']
+                    'name'                  => $dom['name'],
+                    'entities_id'           => $dom['entities_id'],
+                    'is_recursive'          => $dom['is_recursive'],
+                    'domaintypes_id'        => $types_id,
+                    'date_creation'         => $dom['date_creation'],
+                    'date_expiration'       => $dom['date_expiration'],
+                    'users_id_tech'         => $dom['users_id_tech'],
+                    'groups_id_tech'        => $dom['groups_id_tech'],
+                    //suppliers_id not present in core
+                    'comment'               => $dom['comment'],
+                    'others'                => $dom['others'],
+                    'is_helpdesk_visible'   => $dom['is_helpdesk_visible'],
+                    'date_mod'              => $dom['date_mod'],
+                    'is_deleted'            => $dom['is_deleted'],
                 ];
                 $domain_input = Toolbox::addslashes_deep($domain_input);
 
                 $domain = new Domain();
                 if ($core_dom !== null) {
-                    $res = (bool)$domain->update($domain_input + ['id' => $core_dom]);
+                    $res = (bool) $domain->update($domain_input + ['id' => $core_dom]);
                 } else {
-                    $new_did = (int)$domain->add($domain_input);
+                    $new_did = (int) $domain->add($domain_input);
                     $res = $new_did > 0;
                     if ($res) {
                         $core_domains[$dom['name']] = $new_did;
@@ -515,9 +513,9 @@ class DomainsPluginToCoreCommand extends AbstractCommand
                     $has_errors = true;
 
                     $message = sprintf(
-                        $core_dom === null ?
-                          __('Unable to add domain %s.') :
-                          __('Unable to update domain %s.'),
+                        $core_dom === null
+                          ? __('Unable to add domain %s.')
+                          : __('Unable to update domain %s.'),
                         $dom['name']
                     );
                     $this->outputImportError($message, $progress_bar);
@@ -534,18 +532,18 @@ class DomainsPluginToCoreCommand extends AbstractCommand
                 //handle infocoms
                 $infocom = new \Infocom();
                 $infocom_input = [
-                   'itemtype'     => 'Domain',
-                   'items_id'     => $new_did ?? $core_dom,
-                   'suppliers_id' => $dom['suppliers_id'],
-                   'entities_id'  => $dom['entities_id'],
-                   'is_recursive' => $dom['is_recursive']
+                    'itemtype'     => 'Domain',
+                    'items_id'     => $new_did ?? $core_dom,
+                    'suppliers_id' => $dom['suppliers_id'],
+                    'entities_id'  => $dom['entities_id'],
+                    'is_recursive' => $dom['is_recursive'],
                 ];
                 if ($core_dom === null) {
                     $infocom->add($infocom_input);
                 } else {
                     $found = $infocom->getFromDBByCrit([
-                       'itemtype'  => 'Domain',
-                       'items_id'  => $core_dom
+                        'itemtype'  => 'Domain',
+                        'items_id'  => $core_dom,
                     ]);
                     if ($found) {
                         $infocom_input['id'] = $infocom->fields['id'];
@@ -571,7 +569,7 @@ class DomainsPluginToCoreCommand extends AbstractCommand
     /**
      * Migrate domain items
      *
-     * @return boolean
+     * @return bool
      */
     protected function importDomainItems()
     {
@@ -583,13 +581,13 @@ class DomainsPluginToCoreCommand extends AbstractCommand
         );
 
         $items_iterator = $this->db->request([
-           'FROM'   => 'glpi_plugin_domains_domains_items',
-           'ORDER'  => 'id ASC'
+            'FROM'   => 'glpi_plugin_domains_domains_items',
+            'ORDER'  => 'id ASC',
         ]);
 
         $core_items = [];
         $coreitems_iterator = $this->db->request([
-           'FROM'   => Domain_Item::getTable()
+            'FROM'   => Domain_Item::getTable(),
         ]);
         while ($row = $coreitems_iterator->next()) {
             $core_items[$row['domains_id'] . $row['itemtype'] . $row['items_id']] = $row['id'];
@@ -639,15 +637,15 @@ class DomainsPluginToCoreCommand extends AbstractCommand
                 }
 
                 $item_input = [
-                   'domains_id'            => $domains_id,
-                   'itemtype'              => $itm['itemtype'],
-                   'items_id'              => $itm['items_id'],
-                   'domainrelations_id'    => 0
+                    'domains_id'            => $domains_id,
+                    'itemtype'              => $itm['itemtype'],
+                    'items_id'              => $itm['items_id'],
+                    'domainrelations_id'    => 0,
                 ];
                 $item_input = Toolbox::addslashes_deep($item_input);
 
                 $item = new Domain_Item();
-                $new_iid = (int)$item->add($item_input);
+                $new_iid = (int) $item->add($item_input);
                 $res = $new_iid > 0;
                 if ($res) {
                     $core_items[$domains_id . $itm['itemtype'] . $itm['items_id']] = $new_iid;
@@ -657,9 +655,9 @@ class DomainsPluginToCoreCommand extends AbstractCommand
                     $has_errors = true;
 
                     $message = sprintf(
-                        $core_item === null ?
-                          __('Unable to add domain item %s.') :
-                          __('Unable to update domain item %s.'),
+                        $core_item === null
+                          ? __('Unable to add domain item %s.')
+                          : __('Unable to update domain item %s.'),
                         $domains_id . ' ' . $itm['itemtype'] . ' ' . $itm['items_id']
                     );
                     $this->outputImportError($message, $progress_bar);
@@ -684,9 +682,9 @@ class DomainsPluginToCoreCommand extends AbstractCommand
      * Add an element to mapping.
      *
      * @param string  $old_itemtype
-     * @param integer $old_id
+     * @param int $old_id
      * @param string  $new_itemtype
-     * @param integer $new_id
+     * @param int $new_id
      *
      * @return void
      */
@@ -697,8 +695,8 @@ class DomainsPluginToCoreCommand extends AbstractCommand
             $this->elements_mapping[$old_itemtype] = [];
         }
         $this->elements_mapping[$old_itemtype][$old_id] = [
-           'itemtype' => $new_itemtype,
-           'id'       => $new_id,
+            'itemtype' => $new_itemtype,
+            'id'       => $new_id,
         ];
     }
 
@@ -707,7 +705,7 @@ class DomainsPluginToCoreCommand extends AbstractCommand
      * If item has been migrated to another itemtype, il will return the new item.
      *
      * @param string  $itemtype
-     * @param integer $id
+     * @param int $id
      *
      * @return null|CommonDBTM
      */

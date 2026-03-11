@@ -87,7 +87,7 @@ class ProblemTask extends CommonITILTask
     /**
      * Does current user have right to show the current task?
      *
-     * @return boolean
+     * @return bool
     **/
     public function canViewItem()
     {
@@ -98,7 +98,7 @@ class ProblemTask extends CommonITILTask
     /**
      * Does current user have right to create the current task?
      *
-     * @return boolean
+     * @return bool
     **/
     public function canCreateItem()
     {
@@ -125,7 +125,7 @@ class ProblemTask extends CommonITILTask
     /**
      * Does current user have right to update the current task?
      *
-     * @return boolean
+     * @return bool
     **/
     public function canUpdateItem()
     {
@@ -149,7 +149,7 @@ class ProblemTask extends CommonITILTask
     /**
      * Does current user have right to purge the current task?
      *
-     * @return boolean
+     * @return bool
     **/
     public function canPurgeItem()
     {
@@ -178,9 +178,9 @@ class ProblemTask extends CommonITILTask
      * Display a Planning Item
      *
      * @param array           $val       array of the item to display
-     * @param integer         $who       ID of the user (0 if all)
+     * @param int         $who       ID of the user (0 if all)
      * @param string          $type      position of the item in the time block (in, through, begin or end)
-     * @param integer|boolean $complete  complete display (more details)
+     * @param int|bool $complete  complete display (more details)
      *
      * @return string
      */

@@ -48,7 +48,7 @@ function update150to151()
 
     if (!$DB->fieldExists('glpi_oidc_config', 'proxy') && !$DB->fieldExists('glpi_oidc_config', 'cert')) {
         $query = "ALTER TABLE `glpi_oidc_config` ADD COLUMN (`cert` varchar(255) DEFAULT NULL, `proxy` varchar(255) DEFAULT NULL)";
-        $DB->queryOrDie($query, "erreur lors de la mise a jour de la table de glpi_configs".$DB->error());
+        $DB->queryOrDie($query, "erreur lors de la mise a jour de la table de glpi_configs" . $DB->error());
     }
 
     // ************ Keep it at the end **************

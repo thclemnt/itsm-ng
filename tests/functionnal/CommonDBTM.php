@@ -35,7 +35,6 @@ namespace tests\units;
 
 use DbTestCase;
 use SoftwareVersion;
-use TicketTask;
 
 /* Test for inc/commondbtm.class.php */
 
@@ -50,46 +49,46 @@ class CommonDBTM extends DbTestCase
 
         $ne_id = $networkequipment->add([
             'entities_id' => 0,
-            'name'        => 'switch'
+            'name'        => 'switch',
         ]);
         $this->integer($ne_id)->isGreaterThan(0);
 
         // Add 5 ports
-        $port1 = (int)$networkport->add([
-              'name'         => 'if0/1',
-              'logicial_number' => 1,
-              'items_id' => $ne_id,
-              'itemtype' => 'NetworkEquipment',
-              'entities_id'  => 0,
-           ]);
-        $port2 = (int)$networkport->add([
-              'name'         => 'if0/2',
-              'logicial_number' => 2,
-              'items_id' => $ne_id,
-              'itemtype' => 'NetworkEquipment',
-              'entities_id'  => 0,
-           ]);
-        $port3 = (int)$networkport->add([
-              'name'         => 'if0/3',
-              'logicial_number' => 3,
-              'items_id' => $ne_id,
-              'itemtype' => 'NetworkEquipment',
-              'entities_id'  => 0,
-           ]);
-        $port4 = (int)$networkport->add([
-              'name'         => 'if0/4',
-              'logicial_number' => 4,
-              'items_id' => $ne_id,
-              'itemtype' => 'NetworkEquipment',
-              'entities_id'  => 0,
-           ]);
-        $port5 = (int)$networkport->add([
-              'name'         => 'if0/5',
-              'logicial_number' => 5,
-              'items_id' => $ne_id,
-              'itemtype' => 'NetworkEquipment',
-              'entities_id'  => 0,
-           ]);
+        $port1 = (int) $networkport->add([
+            'name'         => 'if0/1',
+            'logicial_number' => 1,
+            'items_id' => $ne_id,
+            'itemtype' => 'NetworkEquipment',
+            'entities_id'  => 0,
+        ]);
+        $port2 = (int) $networkport->add([
+            'name'         => 'if0/2',
+            'logicial_number' => 2,
+            'items_id' => $ne_id,
+            'itemtype' => 'NetworkEquipment',
+            'entities_id'  => 0,
+        ]);
+        $port3 = (int) $networkport->add([
+            'name'         => 'if0/3',
+            'logicial_number' => 3,
+            'items_id' => $ne_id,
+            'itemtype' => 'NetworkEquipment',
+            'entities_id'  => 0,
+        ]);
+        $port4 = (int) $networkport->add([
+            'name'         => 'if0/4',
+            'logicial_number' => 4,
+            'items_id' => $ne_id,
+            'itemtype' => 'NetworkEquipment',
+            'entities_id'  => 0,
+        ]);
+        $port5 = (int) $networkport->add([
+            'name'         => 'if0/5',
+            'logicial_number' => 5,
+            'items_id' => $ne_id,
+            'itemtype' => 'NetworkEquipment',
+            'entities_id'  => 0,
+        ]);
 
         $this->integer($port1)->isGreaterThan(0);
         $this->integer($port2)->isGreaterThan(0);
@@ -98,22 +97,22 @@ class CommonDBTM extends DbTestCase
         $this->integer($port5)->isGreaterThan(0);
 
         // add an aggregate port use port 3 and 4
-        $aggport = (int)$networkportaggregate->add([
-              'networkports_id' => $port5,
-              'networkports_id_list' => [$port3, $port4],
-           ]);
+        $aggport = (int) $networkportaggregate->add([
+            'networkports_id' => $port5,
+            'networkports_id_list' => [$port3, $port4],
+        ]);
 
         $this->integer($aggport)->isGreaterThan(0);
         // Try update to use 2 and 4
         $this->boolean($networkportaggregate->update([
-              'networkports_id' => $port5,
-              'networkports_id_list' => [$port2, $port4],
+            'networkports_id' => $port5,
+            'networkports_id_list' => [$port2, $port4],
         ]))->isTrue();
 
         // Try update with id not exist, it will return false
         $this->boolean($networkportaggregate->update([
-              'networkports_id' => $port3,
-              'networkports_id_list' => [$port2, $port4],
+            'networkports_id' => $port3,
+            'networkports_id_list' => [$port2, $port4],
         ]))->isFalse();
 
     }
@@ -122,18 +121,18 @@ class CommonDBTM extends DbTestCase
     {
         $instance = new \Computer();
         $instance->getFromDbByRequest([
-           'LEFT JOIN' => [
-              \Entity::getTable() => [
-                 'FKEY' => [
-                    \Entity::getTable() => 'id',
-                    \Computer::getTable() => \Entity::getForeignKeyField()
-                 ]
-              ]
-           ],
-           'WHERE' => ['AND' => [
-              'contact' => 'johndoe'],
-              \Entity::getTable() . '.name' => '_test_root_entity',
-           ]
+            'LEFT JOIN' => [
+                \Entity::getTable() => [
+                    'FKEY' => [
+                        \Entity::getTable() => 'id',
+                        \Computer::getTable() => \Entity::getForeignKeyField(),
+                    ],
+                ],
+            ],
+            'WHERE' => ['AND' => [
+                'contact' => 'johndoe'],
+                \Entity::getTable() . '.name' => '_test_root_entity',
+            ],
         ]);
         // the instance must be populated
         $this->boolean($instance->isNewItem())->isFalse();
@@ -142,7 +141,7 @@ class CommonDBTM extends DbTestCase
         $this->exception(
             function () use ($instance) {
                 $instance->getFromDbByRequest([
-                   'WHERE' => ['contact' => 'johndoe'],
+                    'WHERE' => ['contact' => 'johndoe'],
                 ]);
             }
         )->isInstanceOf(\RuntimeException::class)
@@ -157,8 +156,8 @@ class CommonDBTM extends DbTestCase
     {
         global $DB;
         $result = $DB->request([
-           'FROM'   => \Computer::getTable(),
-           'LIMIT'  => 1
+            'FROM'   => \Computer::getTable(),
+            'LIMIT'  => 1,
         ])->next();
 
         $this->array($result)->hasKeys(['name', 'uuid']);
@@ -175,7 +174,7 @@ class CommonDBTM extends DbTestCase
         $this->integer($comp->getID())->isIdenticalTo(-1);
 
         $this->boolean($comp->getFromDBByCrit(['name' => '_test_pc01']))->isTrue();
-        $this->integer((int)$comp->getID())->isGreaterThan(0);
+        $this->integer((int) $comp->getID())->isGreaterThan(0);
     }
 
     public function testGetEmpty()
@@ -203,11 +202,11 @@ class CommonDBTM extends DbTestCase
     {
 
         return [
-           [\DBConnection::class, ''], // "static protected $notable = true;" case
-           [\Item_Devices::class, ''], // "static protected $notable = true;" case
-           [\Config::class, 'glpi_configs'],
-           [\Computer::class, 'glpi_computers'],
-           [\User::class, 'glpi_users'],
+            [\DBConnection::class, ''], // "static protected $notable = true;" case
+            [\Item_Devices::class, ''], // "static protected $notable = true;" case
+            [\Config::class, 'glpi_configs'],
+            [\Computer::class, 'glpi_computers'],
+            [\User::class, 'glpi_users'],
         ];
     }
 
@@ -265,21 +264,21 @@ class CommonDBTM extends DbTestCase
         global $DB;
 
         //insert case
-        $res = (int)$DB->updateOrInsert(
+        $res = (int) $DB->updateOrInsert(
             \Computer::getTable(),
             [
-              'name'   => 'serial-to-change',
-              'serial' => 'serial-one'
-         ],
+                'name'   => 'serial-to-change',
+                'serial' => 'serial-one',
+            ],
             [
-              'name'   => 'serial-to-change'
-         ]
+                'name'   => 'serial-to-change',
+            ]
         );
         $this->integer($res)->isGreaterThan(0);
 
         $check = $DB->request([
-           'FROM'   => \Computer::getTable(),
-           'WHERE'  => ['name' => 'serial-to-change']
+            'FROM'   => \Computer::getTable(),
+            'WHERE'  => ['name' => 'serial-to-change'],
         ])->next();
         $this->array($check)
            ->string['serial']->isIdenticalTo('serial-one');
@@ -288,24 +287,24 @@ class CommonDBTM extends DbTestCase
         $res = $DB->updateOrInsert(
             \Computer::getTable(),
             [
-              'name'   => 'serial-to-change',
-              'serial' => 'serial-changed'
-         ],
+                'name'   => 'serial-to-change',
+                'serial' => 'serial-changed',
+            ],
             [
-              'name'   => 'serial-to-change'
-         ]
+                'name'   => 'serial-to-change',
+            ]
         );
         $this->boolean($res)->isTrue();
 
         $check = $DB->request([
-           'FROM'   => \Computer::getTable(),
-           'WHERE'  => ['name' => 'serial-to-change']
+            'FROM'   => \Computer::getTable(),
+            'WHERE'  => ['name' => 'serial-to-change'],
         ])->next();
         $this->array($check)
            ->string['serial']->isIdenticalTo('serial-changed');
 
         $this->integer(
-            (int)$DB->insert(
+            (int) $DB->insert(
                 \Computer::getTable(),
                 ['name' => 'serial-to-change']
             )
@@ -317,12 +316,12 @@ class CommonDBTM extends DbTestCase
                 $res = $DB->updateOrInsert(
                     \Computer::getTable(),
                     [
-                      'name'   => 'serial-to-change',
-                      'serial' => 'serial-changed'
-               ],
+                        'name'   => 'serial-to-change',
+                        'serial' => 'serial-changed',
+                    ],
                     [
-                      'name'   => 'serial-to-change'
-               ]
+                        'name'   => 'serial-to-change',
+                    ]
                 );
             }
         )->message->contains('Update would change too many rows!');
@@ -331,12 +330,12 @@ class CommonDBTM extends DbTestCase
         $res = $DB->updateOrInsert(
             \Computer::getTable(),
             [
-              'name'   => 'serial-to-change',
-              'serial' => 'serial-changed'
-         ],
+                'name'   => 'serial-to-change',
+                'serial' => 'serial-changed',
+            ],
             [
-              'name'   => 'serial-to-change'
-         ],
+                'name'   => 'serial-to-change',
+            ],
             false
         );
         $this->boolean($res)->isTrue();
@@ -347,20 +346,20 @@ class CommonDBTM extends DbTestCase
         global $DB;
 
         //insert case
-        $res = (int)$DB->updateOrInsert(
+        $res = (int) $DB->updateOrInsert(
             \Computer::getTable(),
             [
-              'serial' => 'serial-one'
-         ],
+                'serial' => 'serial-one',
+            ],
             [
-              'name'   => 'serial-to-change'
-         ]
+                'name'   => 'serial-to-change',
+            ]
         );
         $this->integer($res)->isGreaterThan(0);
 
         $check = $DB->request([
-           'FROM'   => \Computer::getTable(),
-           'WHERE'  => ['name' => 'serial-to-change']
+            'FROM'   => \Computer::getTable(),
+            'WHERE'  => ['name' => 'serial-to-change'],
         ])->next();
         $this->array($check)
            ->string['serial']->isIdenticalTo('serial-one');
@@ -369,23 +368,23 @@ class CommonDBTM extends DbTestCase
         $res = $DB->updateOrInsert(
             \Computer::getTable(),
             [
-              'serial' => 'serial-changed'
-         ],
+                'serial' => 'serial-changed',
+            ],
             [
-              'name'   => 'serial-to-change'
-         ]
+                'name'   => 'serial-to-change',
+            ]
         );
         $this->boolean($res)->isTrue();
 
         $check = $DB->request([
-           'FROM'   => \Computer::getTable(),
-           'WHERE'  => ['name' => 'serial-to-change']
+            'FROM'   => \Computer::getTable(),
+            'WHERE'  => ['name' => 'serial-to-change'],
         ])->next();
         $this->array($check)
            ->string['serial']->isIdenticalTo('serial-changed');
 
         $this->integer(
-            (int)$DB->insert(
+            (int) $DB->insert(
                 \Computer::getTable(),
                 ['name' => 'serial-to-change']
             )
@@ -397,11 +396,11 @@ class CommonDBTM extends DbTestCase
                 $res = $DB->updateOrInsert(
                     \Computer::getTable(),
                     [
-                      'serial' => 'serial-changed'
-               ],
+                        'serial' => 'serial-changed',
+                    ],
                     [
-                      'name'   => 'serial-to-change'
-               ]
+                        'name'   => 'serial-to-change',
+                    ]
                 );
             }
         )->message->contains('Update would change too many rows!');
@@ -410,11 +409,11 @@ class CommonDBTM extends DbTestCase
         $res = $DB->updateOrInsert(
             \Computer::getTable(),
             [
-              'serial' => 'serial-changed'
-         ],
+                'serial' => 'serial-changed',
+            ],
             [
-              'name'   => 'serial-to-change'
-         ],
+                'name'   => 'serial-to-change',
+            ],
             false
         );
         $this->boolean($res)->isTrue();
@@ -434,30 +433,30 @@ class CommonDBTM extends DbTestCase
 
         $printer = new \Printer();
 
-        $id[0] = (int)$printer->add([
-           'name'         => "Printer 1",
-           'entities_id'  => $ent0,
-           'is_recursive' => 0
+        $id[0] = (int) $printer->add([
+            'name'         => "Printer 1",
+            'entities_id'  => $ent0,
+            'is_recursive' => 0,
         ]);
         $this->integer($id[0])->isGreaterThan(0);
 
-        $id[1] = (int)$printer->add([
-           'name'         => "Printer 2",
-           'entities_id'  => $ent0,
-           'is_recursive' => 1
+        $id[1] = (int) $printer->add([
+            'name'         => "Printer 2",
+            'entities_id'  => $ent0,
+            'is_recursive' => 1,
         ]);
         $this->integer($id[1])->isGreaterThan(0);
 
-        $id[2] = (int)$printer->add([
-           'name'         => "Printer 3",
-           'entities_id'  => $ent1,
-           'is_recursive' => 1
+        $id[2] = (int) $printer->add([
+            'name'         => "Printer 3",
+            'entities_id'  => $ent1,
+            'is_recursive' => 1,
         ]);
         $this->integer($id[2])->isGreaterThan(0);
 
-        $id[3] = (int)$printer->add([
-           'name'         => "Printer 4",
-           'entities_id'  => $ent2
+        $id[3] = (int) $printer->add([
+            'name'         => "Printer 4",
+            'entities_id'  => $ent2,
         ]);
         $this->integer($id[3])->isGreaterThan(0);
 
@@ -540,166 +539,166 @@ class CommonDBTM extends DbTestCase
         // Create some contacts
         $contact = new \Contact();
 
-        $idc[0] = (int)$contact->add([
-           'name'         => "Contact 1",
-           'entities_id'  => $ent0,
-           'is_recursive' => 0
+        $idc[0] = (int) $contact->add([
+            'name'         => "Contact 1",
+            'entities_id'  => $ent0,
+            'is_recursive' => 0,
         ]);
         $this->integer($idc[0])->isGreaterThan(0);
 
-        $idc[1] = (int)$contact->add([
-           'name'         => "Contact 2",
-           'entities_id'  => $ent0,
-           'is_recursive' => 1
+        $idc[1] = (int) $contact->add([
+            'name'         => "Contact 2",
+            'entities_id'  => $ent0,
+            'is_recursive' => 1,
         ]);
         $this->integer($idc[1])->isGreaterThan(0);
 
-        $idc[2] = (int)$contact->add([
-           'name'         => "Contact 3",
-           'entities_id'  => $ent1,
-           'is_recursive' => 1
+        $idc[2] = (int) $contact->add([
+            'name'         => "Contact 3",
+            'entities_id'  => $ent1,
+            'is_recursive' => 1,
         ]);
         $this->integer($idc[2])->isGreaterThan(0);
 
-        $idc[3] = (int)$contact->add([
-           'name'         => "Contact 4",
-           'entities_id'  => $ent2]);
+        $idc[3] = (int) $contact->add([
+            'name'         => "Contact 4",
+            'entities_id'  => $ent2]);
         $this->integer($idc[3])->isGreaterThan(0);
         ;
 
         // Create some suppliers
         $supplier = new \Supplier();
 
-        $ids[0] = (int)$supplier->add([
-           'name'         => "Supplier 1",
-           'entities_id'  => $ent0,
-           'is_recursive' => 0
+        $ids[0] = (int) $supplier->add([
+            'name'         => "Supplier 1",
+            'entities_id'  => $ent0,
+            'is_recursive' => 0,
         ]);
         $this->integer($ids[0])->isGreaterThan(0);
 
-        $ids[1] = (int)$supplier->add([
-           'name'         => "Supplier 2",
-           'entities_id'  => $ent0,
-           'is_recursive' => 1
+        $ids[1] = (int) $supplier->add([
+            'name'         => "Supplier 2",
+            'entities_id'  => $ent0,
+            'is_recursive' => 1,
         ]);
         $this->integer($ids[1])->isGreaterThan(0);
 
-        $ids[2] = (int)$supplier->add([
-           'name'         => "Supplier 3",
-           'entities_id'  => $ent1
+        $ids[2] = (int) $supplier->add([
+            'name'         => "Supplier 3",
+            'entities_id'  => $ent1,
         ]);
         $this->integer($ids[2])->isGreaterThan(0);
 
-        $ids[3] = (int)$supplier->add([
-           'name'         => "Supplier 4",
-           'entities_id'  => $ent2
+        $ids[3] = (int) $supplier->add([
+            'name'         => "Supplier 4",
+            'entities_id'  => $ent2,
         ]);
         $this->integer($ids[3])->isGreaterThan(0);
 
         // Relation
         $rel = new \Contact_Supplier();
         $input = [
-           'contacts_id' =>  $idc[0], // root
-           'suppliers_id' => $ids[0]  //root
+            'contacts_id' =>  $idc[0], // root
+            'suppliers_id' => $ids[0],  //root
         ];
         $this->boolean($rel->can(-1, CREATE, $input))->isTrue();
 
-        $idr[0] = (int)$rel->add($input);
+        $idr[0] = (int) $rel->add($input);
         $this->integer($idr[0])->isGreaterThan(0);
         $this->boolean($rel->can($idr[0], READ))->isTrue();
         $this->boolean($rel->canEdit($idr[0]))->isTrue();
 
         $input = [
-           'contacts_id' =>  $idc[0], // root
-           'suppliers_id' => $ids[1]  // root + rec
+            'contacts_id' =>  $idc[0], // root
+            'suppliers_id' => $ids[1],  // root + rec
         ];
         $this->boolean($rel->can(-1, CREATE, $input))->isTrue();
-        $idr[1] = (int)$rel->add($input);
+        $idr[1] = (int) $rel->add($input);
         $this->integer($idr[1])->isGreaterThan(0);
         $this->boolean($rel->can($idr[1], READ))->isTrue();
         $this->boolean($rel->canEdit($idr[1]))->isTrue();
 
         $input = [
-           'contacts_id' =>  $idc[0], // root
-           'suppliers_id' => $ids[2]  // child 1
+            'contacts_id' =>  $idc[0], // root
+            'suppliers_id' => $ids[2],  // child 1
         ];
         $this->boolean($rel->can(-1, CREATE, $input))->isFalse();
 
         $input = [
-           'contacts_id' =>  $idc[0], // root
-           'suppliers_id' => $ids[3]  // child 2
+            'contacts_id' =>  $idc[0], // root
+            'suppliers_id' => $ids[3],  // child 2
         ];
         $this->boolean($rel->can(-1, CREATE, $input))->isFalse();
 
         $input = [
-           'contacts_id' =>  $idc[1], // root + rec
-           'suppliers_id' => $ids[0]  // root
+            'contacts_id' =>  $idc[1], // root + rec
+            'suppliers_id' => $ids[0],  // root
         ];
         $this->boolean($rel->can(-1, CREATE, $input))->isTrue();
-        $idr[2] = (int)$rel->add($input);
+        $idr[2] = (int) $rel->add($input);
         $this->integer($idr[2])->isGreaterThan(0);
         $this->boolean($rel->can($idr[2], READ))->isTrue();
         $this->boolean($rel->canEdit($idr[2]))->isTrue();
 
         $input = [
-           'contacts_id' =>  $idc[1], // root + rec
-           'suppliers_id' => $ids[1]  // root + rec
+            'contacts_id' =>  $idc[1], // root + rec
+            'suppliers_id' => $ids[1],  // root + rec
         ];
         $this->boolean($rel->can(-1, CREATE, $input))->isTrue();
-        $idr[3] = (int)$rel->add($input);
+        $idr[3] = (int) $rel->add($input);
         $this->integer($idr[3])->isGreaterThan(0);
         $this->boolean($rel->can($idr[3], READ))->isTrue();
         $this->boolean($rel->canEdit($idr[3]))->isTrue();
 
         $input = [
-           'contacts_id' =>  $idc[1], // root + rec
-           'suppliers_id' => $ids[2]  // child 1
+            'contacts_id' =>  $idc[1], // root + rec
+            'suppliers_id' => $ids[2],  // child 1
         ];
         $this->boolean($rel->can(-1, CREATE, $input))->isTrue();
-        $idr[4] = (int)$rel->add($input);
+        $idr[4] = (int) $rel->add($input);
         $this->integer($idr[4])->isGreaterThan(0);
         $this->boolean($rel->can($idr[4], READ))->isTrue();
         $this->boolean($rel->canEdit($idr[4]))->isTrue();
 
         $input = [
-           'contacts_id' =>  $idc[1], // root + rec
-           'suppliers_id' => $ids[3]  // child 2
+            'contacts_id' =>  $idc[1], // root + rec
+            'suppliers_id' => $ids[3],  // child 2
         ];
         $this->boolean($rel->can(-1, CREATE, $input))->isTrue();
-        $idr[5] = (int)$rel->add($input);
+        $idr[5] = (int) $rel->add($input);
         $this->integer($idr[5])->isGreaterThan(0);
         $this->boolean($rel->can($idr[5], READ))->isTrue();
         $this->boolean($rel->canEdit($idr[5]))->isTrue();
 
         $input = [
-           'contacts_id' =>  $idc[2], // Child 1
-           'suppliers_id' => $ids[0]  // root
+            'contacts_id' =>  $idc[2], // Child 1
+            'suppliers_id' => $ids[0],  // root
         ];
         $this->boolean($rel->can(-1, CREATE, $input))->isFalse();
 
         $input = [
-           'contacts_id' =>  $idc[2], // Child 1
-           'suppliers_id' => $ids[1]  // root + rec
+            'contacts_id' =>  $idc[2], // Child 1
+            'suppliers_id' => $ids[1],  // root + rec
         ];
         $this->boolean($rel->can(-1, CREATE, $input))->isTrue();
-        $idr[6] = (int)$rel->add($input);
+        $idr[6] = (int) $rel->add($input);
         $this->integer($idr[6])->isGreaterThan(0);
         $this->boolean($rel->can($idr[6], READ))->isTrue();
         $this->boolean($rel->canEdit($idr[6]))->isTrue();
 
         $input = [
-           'contacts_id' =>  $idc[2], // Child 1
-           'suppliers_id' => $ids[2]  // Child 1
+            'contacts_id' =>  $idc[2], // Child 1
+            'suppliers_id' => $ids[2],  // Child 1
         ];
         $this->boolean($rel->can(-1, CREATE, $input))->isTrue();
-        $idr[7] = (int)$rel->add($input);
+        $idr[7] = (int) $rel->add($input);
         $this->integer($idr[7])->isGreaterThan(0);
         $this->boolean($rel->can($idr[7], READ))->isTrue();
         $this->boolean($rel->canEdit($idr[7]))->isTrue();
 
         $input = [
-           'contacts_id' =>  $idc[2], // Child 1
-           'suppliers_id' => $ids[3]  // Child 2
+            'contacts_id' =>  $idc[2], // Child 1
+            'suppliers_id' => $ids[3],  // Child 2
         ];
         $this->boolean($rel->can(-1, CREATE, $input))->isFalse();
 
@@ -724,51 +723,51 @@ class CommonDBTM extends DbTestCase
         //$this->boolean($rel->canEdit($idr[7]))->isFalse();
 
         $input = [
-           'contacts_id' =>  $idc[0], // root
-           'suppliers_id' => $ids[0]  // root
+            'contacts_id' =>  $idc[0], // root
+            'suppliers_id' => $ids[0],  // root
         ];
         $this->boolean($rel->can(-1, CREATE, $input))->isFalse();
 
         $input = [
-           'contacts_id'  =>  $idc[0],// root
-           'suppliers_id' => $ids[1]  // root + rec
+            'contacts_id'  =>  $idc[0],// root
+            'suppliers_id' => $ids[1],  // root + rec
         ];
         $this->boolean($rel->can(-1, CREATE, $input))->isFalse();
 
         $input = [
-           'contacts_id'  =>  $idc[1],// root + rec
-           'suppliers_id' => $ids[0]  // root
+            'contacts_id'  =>  $idc[1],// root + rec
+            'suppliers_id' => $ids[0],  // root
         ];
         $this->boolean($rel->can(-1, CREATE, $input))->isFalse();
 
         $input = [
-           'contacts_id' =>  $idc[3], // Child 2
-           'suppliers_id' => $ids[0]  // root
+            'contacts_id' =>  $idc[3], // Child 2
+            'suppliers_id' => $ids[0],  // root
         ];
         $this->boolean($rel->can(-1, CREATE, $input))->isFalse();
 
         $input = [
-           'contacts_id'  =>  $idc[3],// Child 2
-           'suppliers_id' => $ids[1]  // root + rec
+            'contacts_id'  =>  $idc[3],// Child 2
+            'suppliers_id' => $ids[1],  // root + rec
         ];
         $this->boolean($rel->can(-1, CREATE, $input))->isTrue();
-        $idr[7] = (int)$rel->add($input);
+        $idr[7] = (int) $rel->add($input);
         $this->integer($idr[7])->isGreaterThan(0);
         $this->boolean($rel->can($idr[7], READ))->isTrue();
         $this->boolean($rel->canEdit($idr[7]))->isTrue();
 
         $input = [
-           'contacts_id' =>  $idc[3], // Child 2
-           'suppliers_id' => $ids[2]  // Child 1
+            'contacts_id' =>  $idc[3], // Child 2
+            'suppliers_id' => $ids[2],  // Child 1
         ];
         $this->boolean($rel->can(-1, CREATE, $input))->isFalse();
 
         $input = [
-           'contacts_id' =>  $idc[3], // Child 2
-           'suppliers_id' => $ids[3]  // Child 2
+            'contacts_id' =>  $idc[3], // Child 2
+            'suppliers_id' => $ids[3],  // Child 2
         ];
         $this->boolean($rel->can(-1, CREATE, $input))->isTrue();
-        $idr[8] = (int)$rel->add($input);
+        $idr[8] = (int) $rel->add($input);
         $this->integer($idr[8])->isGreaterThan(0);
         $this->boolean($rel->can($idr[8], READ))->isTrue();
         $this->boolean($rel->canEdit($idr[8]))->isTrue();
@@ -786,15 +785,15 @@ class CommonDBTM extends DbTestCase
         $ent2 = getItemByTypeName('Entity', '_test_child_2', true);
 
         $entity = new \Entity();
-        $ent3 = (int)$entity->add([
-           'name'         => '_test_child_2_subchild_1',
-           'entities_id'  => $ent2
+        $ent3 = (int) $entity->add([
+            'name'         => '_test_child_2_subchild_1',
+            'entities_id'  => $ent2,
         ]);
         $this->integer($ent3)->isGreaterThan(0);
 
-        $ent4 = (int)$entity->add([
-           'name'         => '_test_child_2_subchild_2',
-           'entities_id'  => $ent2
+        $ent4 = (int) $entity->add([
+            'name'         => '_test_child_2_subchild_2',
+            'entities_id'  => $ent2,
         ]);
         $this->integer($ent4)->isGreaterThan(0);
 
@@ -848,10 +847,10 @@ class CommonDBTM extends DbTestCase
 
         //test with date set
         $computerID = $computer->add(\Toolbox::addslashes_deep([
-           'name'            => 'Computer01 \'',
-           'date_creation'   => '2018-01-01 11:22:33',
-           'date_mod'        => '2018-01-01 22:33:44',
-           'entities_id'     => $ent0
+            'name'            => 'Computer01 \'',
+            'date_creation'   => '2018-01-01 11:22:33',
+            'date_mod'        => '2018-01-01 22:33:44',
+            'entities_id'     => $ent0,
         ]));
         $this->string($computer->fields['name'])->isIdenticalTo("Computer01 '");
 
@@ -866,8 +865,8 @@ class CommonDBTM extends DbTestCase
 
         //test with default date
         $computerID = $computer->add(\Toolbox::addslashes_deep([
-           'name'            => 'Computer01 \'',
-           'entities_id'     => $ent0
+            'name'            => 'Computer01 \'',
+            'entities_id'     => $ent0,
         ]));
         $this->string($computer->fields['name'])->isIdenticalTo("Computer01 '");
 
@@ -892,10 +891,10 @@ class CommonDBTM extends DbTestCase
 
         //test with date set
         $computerID = $computer->add(\Toolbox::addslashes_deep([
-           'name'            => 'Computer01',
-           'date_creation'   => '2018-01-01 11:22:33',
-           'date_mod'        => '2018-01-01 22:33:44',
-           'entities_id'     => $ent0
+            'name'            => 'Computer01',
+            'date_creation'   => '2018-01-01 11:22:33',
+            'date_mod'        => '2018-01-01 22:33:44',
+            'entities_id'     => $ent0,
         ]));
         $this->string($computer->fields['name'])->isIdenticalTo("Computer01");
 
@@ -927,10 +926,10 @@ class CommonDBTM extends DbTestCase
         //add a Compuer with creation and update dates
         $comp = new \Computer();
         $cid = $comp->add([
-           'name'            => 'Computer with timezone',
-           'date_creation'   => '2019-03-04 10:00:00',
-           'date_mod'        => '2019-03-04 10:00:00',
-           'entities_id'     => 0
+            'name'            => 'Computer with timezone',
+            'date_creation'   => '2019-03-04 10:00:00',
+            'date_mod'        => '2019-03-04 10:00:00',
+            'entities_id'     => 0,
         ]);
         $this->integer($cid)->isGreaterThan(0);
 
@@ -953,23 +952,23 @@ class CommonDBTM extends DbTestCase
     {
         $project = new \Project();
         $project_id_1 = $project->add([
-           'name' => 'Project 1',
-           'auto_percent_done' => 1
+            'name' => 'Project 1',
+            'auto_percent_done' => 1,
         ]);
         $this->integer((int) $project_id_1)->isGreaterThan(0);
         $project_id_2 = $project->add([
-           'name' => 'Project 2',
-           'auto_percent_done' => 1,
-           'projects_id' => $project_id_1
+            'name' => 'Project 2',
+            'auto_percent_done' => 1,
+            'projects_id' => $project_id_1,
         ]);
         $this->integer((int) $project_id_2)->isGreaterThan(0);
         $project_id_3 = $project->add([
-           'name' => 'Project 3',
-           'projects_id' => $project_id_2
+            'name' => 'Project 3',
+            'projects_id' => $project_id_2,
         ]);
         $this->integer((int) $project_id_3)->isGreaterThan(0);
         $project_id_4 = $project->add([
-           'name' => 'Project 4',
+            'name' => 'Project 4',
         ]);
         $this->integer((int) $project_id_4)->isGreaterThan(0);
 
@@ -983,29 +982,29 @@ class CommonDBTM extends DbTestCase
     {
 
         return [
-           [
-              'relation_itemtype' => \Infocom::getType(),
-              'config_name'       => 'infocom_types',
-           ],
-           [
-              'relation_itemtype' => \ReservationItem::getType(),
-              'config_name'       => 'reservation_types',
-           ],
-           [
-              'relation_itemtype' => \Contract_Item::getType(),
-              'config_name'       => 'contract_types',
-              'linked_itemtype'   => \Contract::class,
-           ],
-           [
-              'relation_itemtype' => \Document_Item::getType(),
-              'config_name'       => 'document_types',
-              'linked_itemtype'   => \Document::class,
-           ],
-           [
-              'relation_itemtype' => \KnowbaseItem_Item::getType(),
-              'config_name'       => 'kb_types',
-              'linked_itemtype'   => \KnowbaseItem::class,
-           ],
+            [
+                'relation_itemtype' => \Infocom::getType(),
+                'config_name'       => 'infocom_types',
+            ],
+            [
+                'relation_itemtype' => \ReservationItem::getType(),
+                'config_name'       => 'reservation_types',
+            ],
+            [
+                'relation_itemtype' => \Contract_Item::getType(),
+                'config_name'       => 'contract_types',
+                'linked_itemtype'   => \Contract::class,
+            ],
+            [
+                'relation_itemtype' => \Document_Item::getType(),
+                'config_name'       => 'document_types',
+                'linked_itemtype'   => \Document::class,
+            ],
+            [
+                'relation_itemtype' => \KnowbaseItem_Item::getType(),
+                'config_name'       => 'kb_types',
+                'linked_itemtype'   => \KnowbaseItem::class,
+            ],
         ];
     }
 
@@ -1031,9 +1030,9 @@ class CommonDBTM extends DbTestCase
             $linked_item = new $linked_itemtype();
             $linked_item_id = $linked_item->add(
                 [
-                  'name'        => 'Linked item',
-                  'entities_id' => $entity_id,
-            ]
+                    'name'        => 'Linked item',
+                    'entities_id' => $entity_id,
+                ]
             );
             $this->integer($linked_item_id)->isGreaterThan(0);
             $linked_item_input = [$linked_item->getForeignKeyField() => $linked_item_id];
@@ -1042,16 +1041,16 @@ class CommonDBTM extends DbTestCase
         // Create computer for which cleaning will be done.
         $computer_1_id = $computer->add(
             [
-              'name'        => 'Computer 1',
-              'entities_id' => $entity_id,
-         ]
+                'name'        => 'Computer 1',
+                'entities_id' => $entity_id,
+            ]
         );
         $this->integer($computer_1_id)->isGreaterThan(0);
         $relation_item_1_id = $relation_item->add(
             [
-              'itemtype' => $computer->getType(),
-              'items_id' => $computer_1_id,
-         ] + $linked_item_input
+                'itemtype' => $computer->getType(),
+                'items_id' => $computer_1_id,
+            ] + $linked_item_input
         );
         $this->integer($relation_item_1_id)->isGreaterThan(0);
         $this->boolean($relation_item->getFromDB($relation_item_1_id))->isTrue();
@@ -1059,16 +1058,16 @@ class CommonDBTM extends DbTestCase
         // Create witness computer.
         $computer_2_id = $computer->add(
             [
-              'name'        => 'Computer 2',
-              'entities_id' => $entity_id,
-         ]
+                'name'        => 'Computer 2',
+                'entities_id' => $entity_id,
+            ]
         );
         $this->integer($computer_2_id)->isGreaterThan(0);
         $relation_item_2_id = $relation_item->add(
             [
-              'itemtype' => $computer->getType(),
-              'items_id' => $computer_2_id,
-         ] + $linked_item_input
+                'itemtype' => $computer->getType(),
+                'items_id' => $computer_2_id,
+            ] + $linked_item_input
         );
         $this->integer($relation_item_2_id)->isGreaterThan(0);
         $this->boolean($relation_item->getFromDB($relation_item_2_id))->isTrue();
@@ -1096,38 +1095,38 @@ class CommonDBTM extends DbTestCase
         $sv3->fields['entities_id'] = 99999;
 
         return [
-           [
-              // Case 1: no entites field -> no change
-              'data'            => ['test' => "test"],
-              'parent_id'       => 999,
-              'parent_itemtype' => SoftwareVersion::class,
-              'active_entities' => [],
-              'expected'        => ['test' => "test"],
-           ],
-           [
-              // Case 2: entity is allowed -> no change
-              'data'            => $sv1->fields,
-              'parent_id'       => $sv1->fields['softwares_id'],
-              'parent_itemtype' => SoftwareVersion::class,
-              'active_entities' => [$sv1->fields['entities_id']],
-              'expected'        => $sv1->fields,
-           ],
-           [
-              // Case 3: entity is not allowed -> change to parent entity
-              'data'            => $sv2->fields, // SV with modified entity
-              'parent_id'       => $sv2->fields['softwares_id'],
-              'parent_itemtype' => SoftwareVersion::class,
-              'active_entities' => [],
-              'expected'        => $sv1->fields, // SV with correct entity
-           ],
-           [
-              // Case 4: can't load parent -> no change
-              'data'            => $sv3->fields,
-              'parent_id'       => -1,
-              'parent_itemtype' => SoftwareVersion::class,
-              'active_entities' => [],
-              'expected'        => $sv3->fields,
-           ],
+            [
+                // Case 1: no entites field -> no change
+                'data'            => ['test' => "test"],
+                'parent_id'       => 999,
+                'parent_itemtype' => SoftwareVersion::class,
+                'active_entities' => [],
+                'expected'        => ['test' => "test"],
+            ],
+            [
+                // Case 2: entity is allowed -> no change
+                'data'            => $sv1->fields,
+                'parent_id'       => $sv1->fields['softwares_id'],
+                'parent_itemtype' => SoftwareVersion::class,
+                'active_entities' => [$sv1->fields['entities_id']],
+                'expected'        => $sv1->fields,
+            ],
+            [
+                // Case 3: entity is not allowed -> change to parent entity
+                'data'            => $sv2->fields, // SV with modified entity
+                'parent_id'       => $sv2->fields['softwares_id'],
+                'parent_itemtype' => SoftwareVersion::class,
+                'active_entities' => [],
+                'expected'        => $sv1->fields, // SV with correct entity
+            ],
+            [
+                // Case 4: can't load parent -> no change
+                'data'            => $sv3->fields,
+                'parent_id'       => -1,
+                'parent_itemtype' => SoftwareVersion::class,
+                'active_entities' => [],
+                'expected'        => $sv3->fields,
+            ],
         ];
     }
 
@@ -1157,7 +1156,7 @@ class CommonDBTM extends DbTestCase
         // test existing item
         $instance = new $itemtype();
         $instance->getFromDBByRequest([
-           'WHERE' => ['name' => '_test_pc01'],
+            'WHERE' => ['name' => '_test_pc01'],
         ]);
         $this->boolean($instance->isNewItem())->isFalse();
         $output = $itemtype::getById($instance->getID());
@@ -1166,13 +1165,13 @@ class CommonDBTM extends DbTestCase
         // test non-existing item
         $instance = new $itemtype();
         $instance->add([
-           'name' => 'to be deleted',
-           'entities_id' => 0,
+            'name' => 'to be deleted',
+            'entities_id' => 0,
         ]);
         $this->boolean($instance->isNewItem())->isFalse();
         $nonExistingId = $instance->getID();
         $instance->delete([
-           'id' => $nonExistingId,
+            'id' => $nonExistingId,
         ], 1);
         $this->boolean($instance->getFromDB($nonExistingId))->isFalse();
 

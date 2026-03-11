@@ -86,12 +86,12 @@ abstract class ITILTemplateMandatoryField extends ITILTemplateField
         // Try to delete itemtype -> delete items_id
         if ($this->fields['num'] == $itemtype_id) {
             $iterator = $DB->request([
-               'SELECT' => 'id',
-               'FROM'   => $this->getTable(),
-               'WHERE'  => [
-                  static::$items_id => $this->fields[static::$itiltype],
-                  'num'             => $items_id_id
-               ]
+                'SELECT' => 'id',
+                'FROM'   => $this->getTable(),
+                'WHERE'  => [
+                    static::$items_id => $this->fields[static::$itiltype],
+                    'num'             => $items_id_id,
+                ],
             ]);
             if (count($iterator)) {
                 $result = $iterator->next();
@@ -107,8 +107,8 @@ abstract class ITILTemplateMandatoryField extends ITILTemplateField
      *
      * @since 0.83
      *
-     * @param integer $ID                   the template ID
-     * @param boolean $withtypeandcategory  with type and category (true by default)
+     * @param int $ID                   the template ID
+     * @param bool $withtypeandcategory  with type and category (true by default)
      *
      * @return array of mandatory fields
     **/
@@ -117,9 +117,9 @@ abstract class ITILTemplateMandatoryField extends ITILTemplateField
         global $DB;
 
         $iterator = $DB->request([
-           'FROM'   => $this->getTable(),
-           'WHERE'  => [static::$items_id => $ID],
-           'ORDER'  => 'id'
+            'FROM'   => $this->getTable(),
+            'WHERE'  => [static::$items_id => $ID],
+            'ORDER'  => 'id',
         ]);
 
         $tt_class       = static::$itemtype;
@@ -146,7 +146,7 @@ abstract class ITILTemplateMandatoryField extends ITILTemplateField
     public static function getExcludedFields()
     {
         return [
-           175 => 175, // ticket's tasks
+            175 => 175, // ticket's tasks
         ];
     }
 
@@ -156,7 +156,7 @@ abstract class ITILTemplateMandatoryField extends ITILTemplateField
      * @since 0.83
      *
      * @param ITILTemplate $tt           ITIL Template
-     * @param boolean      $withtemplate Template or basic item (default 0)
+     * @param bool      $withtemplate Template or basic item (default 0)
      *
      * @return void
     **/
@@ -178,8 +178,8 @@ abstract class ITILTemplateMandatoryField extends ITILTemplateField
         $rand  = mt_rand();
 
         $iterator = $DB->request([
-           'FROM'   => static::getTable(),
-           'WHERE'  => [static::$items_id => $ID]
+            'FROM'   => static::getTable(),
+            'WHERE'  => [static::$items_id => $ID],
         ]);
 
         $numrows = count($iterator);
@@ -216,8 +216,8 @@ abstract class ITILTemplateMandatoryField extends ITILTemplateField
 
             Dropdown::showFromArray('num', $select_fields, ['used' => $used]);
             echo "</td><td class='center'>";
-            echo "&nbsp;<input type='submit' name='add' value=\"" . _sx('button', 'Add') .
-                           "\" class='submit'>";
+            echo "&nbsp;<input type='submit' name='add' value=\"" . _sx('button', 'Add')
+                           . "\" class='submit'>";
             echo "</td></tr>";
             echo "</table>";
             Html::closeForm();
@@ -228,8 +228,8 @@ abstract class ITILTemplateMandatoryField extends ITILTemplateField
         if ($canedit && $numrows) {
             Html::openMassiveActionsForm('mass' . $ttm->getType() . $rand);
             $massiveactionparams = ['num_displayed' => min($_SESSION['glpilist_limit'], $numrows),
-                                         'container'     => 'mass' . $ttm->getType() . $rand,
-                                         'deprecated'    => true];
+                'container'     => 'mass' . $ttm->getType() . $rand,
+                'deprecated'    => true];
             Html::showMassiveActions($massiveactionparams);
         }
         echo "<table class='tab_cadre_fixehov' aria-label='ITIL Template'>";

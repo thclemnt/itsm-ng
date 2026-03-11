@@ -60,7 +60,7 @@ class ItsmngUploadHandler
             $type .= '/';
         }
         if (!file_exists($type . $extension)) {
-            if (!mkdir($type . $extension, 0777, true)) {
+            if (!mkdir($type . $extension, 0o777, true)) {
                 return false;
             }
         }
@@ -96,8 +96,8 @@ class ItsmngUploadHandler
             return false;
         }
         if ($type == self::PICTURE) {
-            $thumb = $uploadPath . '/' .
-                $uniqid . '_min' . '.' . pathinfo($filename, PATHINFO_EXTENSION);
+            $thumb = $uploadPath . '/'
+                . $uniqid . '_min' . '.' . pathinfo($filename, PATHINFO_EXTENSION);
             Toolbox::resizePicture($uploadfile, $thumb);
         }
         return self::getUploadPath($type, $filename, false) . '/' . $filename;
@@ -111,12 +111,12 @@ class ItsmngUploadHandler
         }
 
         $file = $_FILES[$field];
-        $names = (array)($file['name'] ?? []);
-        $tmp_names = (array)($file['tmp_name'] ?? []);
-        $errors = (array)($file['error'] ?? []);
+        $names = (array) ($file['name'] ?? []);
+        $tmp_names = (array) ($file['tmp_name'] ?? []);
+        $errors = (array) ($file['error'] ?? []);
 
         if (!is_dir(GLPI_UPLOAD_DIR)) {
-            mkdir(GLPI_UPLOAD_DIR, 0777, true);
+            mkdir(GLPI_UPLOAD_DIR, 0o777, true);
         }
 
         $results = [];
@@ -153,8 +153,8 @@ class ItsmngUploadHandler
         $valid_type_iterator = $DB->request([
             'FROM'   => 'glpi_documenttypes',
             'WHERE'  => [
-                'is_uploadable'   => 1
-            ]
+                'is_uploadable'   => 1,
+            ],
         ]);
 
         $valid_ext_patterns = [];

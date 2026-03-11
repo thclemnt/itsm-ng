@@ -64,12 +64,12 @@ if (
     }
     $result = $DB->request(
         [
-          'SELECT' => ['id', $name_field],
-          'FROM'   => $linktype::getTable(),
-          'WHERE'  => [
-             $devicetype::getForeignKeyField() => $_POST['items_id'],
-             'itemtype'                        => '',
-          ]
+            'SELECT' => ['id', $name_field],
+            'FROM'   => $linktype::getTable(),
+            'WHERE'  => [
+                $devicetype::getForeignKeyField() => $_POST['items_id'],
+                'itemtype'                        => '',
+            ],
         ]
     );
     $devices = [];

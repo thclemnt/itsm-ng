@@ -52,13 +52,13 @@ class Netpoint extends CommonDropdown
     {
 
         return [
-           Location::getTypeName(1) => [
-              'name'  => 'locations_id',
-              'type'  => 'select',
-              'values' => getOptionForItems('Location'),
-              'value' => $this->fields['locations_id'],
-              'actions' => getItemActionButtons(['info', 'add'], 'Location')
-           ],
+            Location::getTypeName(1) => [
+                'name'  => 'locations_id',
+                'type'  => 'select',
+                'values' => getOptionForItems('Location'),
+                'value' => $this->fields['locations_id'],
+                'actions' => getItemActionButtons(['info', 'add'], 'Location'),
+            ],
         ];
     }
 
@@ -115,13 +115,13 @@ class Netpoint extends CommonDropdown
      * Print out an HTML "<select>" for a dropdown with preselected value
      *
      * @param string  $myname             the name of the HTML select
-     * @param integer $value              the preselected value we want (default 0)
-     * @param integer $locations_id       default location ID for search (default -1)
-     * @param boolean $display_comment    display the comment near the dropdown (default 1)
-     * @param integer $entity_restrict    Restrict to a defined entity(default -1)
+     * @param int $value              the preselected value we want (default 0)
+     * @param int $locations_id       default location ID for search (default -1)
+     * @param bool $display_comment    display the comment near the dropdown (default 1)
+     * @param int $entity_restrict    Restrict to a defined entity(default -1)
      * @param string  $devtype            (default '')
      *
-     * @return integer random part of elements id
+     * @return int random part of elements id
     **/
     public static function dropdownNetpoint(
         $myname,
@@ -149,10 +149,10 @@ class Netpoint extends CommonDropdown
 
         $field_id = Html::cleanId("dropdown_" . $myname . $rand);
         $param    = ['value'               => $value,
-                          'valuename'           => $name,
-                          'entity_restrict'     => $entity_restrict,
-                          'devtype'             => $devtype,
-                          'locations_id'        => $locations_id];
+            'valuename'           => $name,
+            'entity_restrict'     => $entity_restrict,
+            'devtype'             => $devtype,
+            'locations_id'        => $locations_id];
         echo Html::jsAjaxDropdown(
             $myname,
             $field_id,
@@ -167,18 +167,18 @@ class Netpoint extends CommonDropdown
 
             $item = new self();
             if ($item->canCreate()) {
-                echo "<span class='fa fa-plus pointer' title=\"" . __s('Add') . "\" " .
-                      "onClick=\"" . Html::jsGetElementbyID('netpoint' . $rand) . ".dialog('open');\">" .
-                      "<span class='sr-only'>" . __s('Add') . "</span></span>";
+                echo "<span class='fa fa-plus pointer' title=\"" . __s('Add') . "\" "
+                      . "onClick=\"" . Html::jsGetElementbyID('netpoint' . $rand) . ".dialog('open');\">"
+                      . "<span class='sr-only'>" . __s('Add') . "</span></span>";
                 Ajax::createIframeModalWindow(
                     'netpoint' . $rand,
                     $item->getFormURL()
                 );
             }
             $paramscomment = [
-               'value'       => '__VALUE__',
-               'itemtype'    => Netpoint::getType(),
-               '_idor_token' => Session::getNewIDORToken("Netpoint")
+                'value'       => '__VALUE__',
+                'itemtype'    => Netpoint::getType(),
+                '_idor_token' => Session::getNewIDORToken("Netpoint"),
             ];
             echo Ajax::updateItemOnSelectEvent(
                 $field_id,
@@ -197,7 +197,7 @@ class Netpoint extends CommonDropdown
      *
      * @param $input array of value to import (name, locations_id, entities_id)
      *
-     * @return integer the ID of the new (or -1 if not found)
+     * @return int the ID of the new (or -1 if not found)
     **/
     public function findID(array &$input)
     {
@@ -205,12 +205,12 @@ class Netpoint extends CommonDropdown
 
         if (!empty($input["name"])) {
             $iterator = $DB->request([
-               'SELECT' => 'id',
-               'FROM'   => $this->getTable(),
-               'WHERE'  => [
-                  'name'         => $input['name'],
-                  'locations_id' => $input["locations_id"] ?? 0
-               ] + getEntitiesRestrictCriteria($this->getTable(), $input['entities_id'], $this->maybeRecursive())
+                'SELECT' => 'id',
+                'FROM'   => $this->getTable(),
+                'WHERE'  => [
+                    'name'         => $input['name'],
+                    'locations_id' => $input["locations_id"] ?? 0,
+                ] + getEntitiesRestrictCriteria($this->getTable(), $input['entities_id'], $this->maybeRecursive()),
             ]);
 
             // Check twin :
@@ -326,12 +326,12 @@ class Netpoint extends CommonDropdown
             echo "<td>" . __('Name') . "</td><td>";
             echo "<input type='text' maxlength='100' size='10' name='_before'>&nbsp;";
             Dropdown::showNumber('_from', ['value' => 0,
-                                                'min'   => 0,
-                                                'max'   => 400]);
+                'min'   => 0,
+                'max'   => 400]);
             echo "&nbsp;-->&nbsp;";
             Dropdown::showNumber('_to', ['value' => 0,
-                                              'min'   => 0,
-                                              'max'   => 400]);
+                'min'   => 0,
+                'max'   => 400]);
             echo "&nbsp;<input type='text' maxlength='100' size='10' name='_after'><br>";
             echo "<input type='hidden' name='entities_id' value='" . $_SESSION['glpiactive_entity'] . "'>";
             echo "<input type='hidden' name='locations_id' value='$ID'>";
@@ -364,10 +364,10 @@ class Netpoint extends CommonDropdown
                 $massiveactionparams
                    = ['num_displayed'
                                => min($_SESSION['glpilist_limit'], $number),
-                           'container'
-                               => 'mass' . __CLASS__ . $rand,
-                           'specific_actions'
-                               => ['purge' => _x('button', 'Delete permanently')]];
+                       'container'
+                           => 'mass' . __CLASS__ . $rand,
+                       'specific_actions'
+                           => ['purge' => _x('button', 'Delete permanently')]];
                 Html::showMassiveActions($massiveactionparams);
             }
 
@@ -384,9 +384,9 @@ class Netpoint extends CommonDropdown
             echo "</tr>\n";
 
             $crit = ['locations_id' => $ID,
-                          'ORDER'        => 'name',
-                          'START'        => $start,
-                          'LIMIT'        => $_SESSION['glpilist_limit']];
+                'ORDER'        => 'name',
+                'START'        => $start,
+                'LIMIT'        => $_SESSION['glpilist_limit']];
 
             Session::initNavigateListItems(
                 'Netpoint',

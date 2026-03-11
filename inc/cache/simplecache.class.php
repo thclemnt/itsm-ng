@@ -37,16 +37,16 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
-use Psr\SimpleCache\CacheInterface;
 use Laminas\Cache\Psr\SimpleCache\SimpleCacheDecorator;
 use Laminas\Cache\Storage\StorageInterface;
+use Psr\SimpleCache\CacheInterface;
 
 class SimpleCache extends SimpleCacheDecorator implements CacheInterface
 {
     /**
      * Determines if footprints must be checked.
      *
-     * @var boolean
+     * @var bool
      */
     private $check_footprints;
 

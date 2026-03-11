@@ -73,25 +73,25 @@ function update078to0781()
                         // Non recursive ones
                         $query3 = "UPDATE `glpi_reservationitems`
                            SET `entities_id`=$entID, `is_recursive`=0
-                           WHERE `itemtype`='".$data['itemtype']."'
+                           WHERE `itemtype`='" . $data['itemtype'] . "'
                               AND `items_id` IN (SELECT `id` FROM `$itemtable`
                               WHERE `entities_id`=$entID AND `is_recursive`=0)";
-                        $DB->queryOrDie($query3, "0.78.1 update entities_id and is_recursive=0 in glpi_reservationitems for ".$data['itemtype']);
+                        $DB->queryOrDie($query3, "0.78.1 update entities_id and is_recursive=0 in glpi_reservationitems for " . $data['itemtype']);
 
                         // Recursive ones
                         $query3 = "UPDATE `glpi_reservationitems`
                            SET `entities_id`=$entID, `is_recursive`=1
-                           WHERE `itemtype`='".$data['itemtype']."'
+                           WHERE `itemtype`='" . $data['itemtype'] . "'
                               AND `items_id` IN (SELECT `id` FROM `$itemtable`
                               WHERE `entities_id`=$entID AND `is_recursive`=1)";
-                        $DB->queryOrDie($query3, "0.78.1 update entities_id and is_recursive=1 in glpi_reservationitems for ".$data['itemtype']);
+                        $DB->queryOrDie($query3, "0.78.1 update entities_id and is_recursive=1 in glpi_reservationitems for " . $data['itemtype']);
                     } else {
                         $query3 = "UPDATE `glpi_reservationitems`
                            SET `entities_id`=$entID
-                           WHERE `itemtype`='".$data['itemtype']."'
+                           WHERE `itemtype`='" . $data['itemtype'] . "'
                               AND `items_id` IN (SELECT `id` FROM `$itemtable`
                               WHERE `entities_id`=$entID)";
-                        $DB->queryOrDie($query3, "0.78.1 update entities_id in glpi_reservationitems for ".$data['itemtype']);
+                        $DB->queryOrDie($query3, "0.78.1 update entities_id in glpi_reservationitems for " . $data['itemtype']);
                     }
                 }
             }

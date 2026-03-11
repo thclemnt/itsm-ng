@@ -92,7 +92,7 @@ class Log extends CommonDBTM
                 'glpi_logs',
                 [
                     'itemtype' => $item->getType(),
-                    'items_id' => $items_id
+                    'items_id' => $items_id,
                 ]
             );
         }
@@ -115,7 +115,7 @@ class Log extends CommonDBTM
      * @param $oldvalues    array of old values updated
      * @param $values       array of all values of the item
      *
-     * @return boolean for success (at least 1 log entry added)
+     * @return bool for success (at least 1 log entry added)
     **/
     public static function constructHistory(CommonDBTM $item, $oldvalues, $values)
     {
@@ -124,7 +124,7 @@ class Log extends CommonDBTM
             return false;
         }
         // needed to have  $SEARCHOPTION
-        list($real_type, $real_id) = $item->getLogTypeID();
+        [$real_type, $real_id] = $item->getLogTypeID();
         $searchopt                 = Search::getOptions($real_type);
         if (!is_array($searchopt)) {
             return false;
@@ -172,22 +172,22 @@ class Log extends CommonDBTM
                         // other cases; link field -> get data from dropdown
                         if ($val2["table"] != 'glpi_auth_tables') {
                             $changes = [$id_search_option,
-                                             addslashes(sprintf(
-                                                 __('%1$s (%2$s)'),
-                                                 Dropdown::getDropdownName(
-                                                     $val2["table"],
-                                                     $oldval
-                                                 ),
-                                                 $oldval
-                                             )),
-                                             addslashes(sprintf(
-                                                 __('%1$s (%2$s)'),
-                                                 Dropdown::getDropdownName(
-                                                     $val2["table"],
-                                                     $values[$key]
-                                                 ),
-                                                 $values[$key]
-                                             ))];
+                                addslashes(sprintf(
+                                    __('%1$s (%2$s)'),
+                                    Dropdown::getDropdownName(
+                                        $val2["table"],
+                                        $oldval
+                                    ),
+                                    $oldval
+                                )),
+                                addslashes(sprintf(
+                                    __('%1$s (%2$s)'),
+                                    Dropdown::getDropdownName(
+                                        $val2["table"],
+                                        $values[$key]
+                                    ),
+                                    $values[$key]
+                                ))];
                         }
                     }
                     break;
@@ -210,7 +210,7 @@ class Log extends CommonDBTM
      * @param $itemtype_link   (default '')
      * @param $linked_action   (default '0')
      *
-     * @return boolean success
+     * @return bool success
     **/
     public static function history($items_id, $itemtype, $changes, $itemtype_link = '', $linked_action = '0')
     {
@@ -264,15 +264,15 @@ class Log extends CommonDBTM
         $new_value = $DB->escape($new_value);
 
         $params = [
-           'items_id'          => $items_id,
-           'itemtype'          => $itemtype,
-           'itemtype_link'     => $itemtype_link,
-           'linked_action'     => $linked_action,
-           'user_name'         => addslashes($username),
-           'date_mod'          => $date_mod,
-           'id_search_option'  => $id_search_option,
-           'old_value'         => $old_value,
-           'new_value'         => $new_value
+            'items_id'          => $items_id,
+            'itemtype'          => $itemtype,
+            'itemtype_link'     => $itemtype_link,
+            'linked_action'     => $linked_action,
+            'user_name'         => addslashes($username),
+            'date_mod'          => $date_mod,
+            'id_search_option'  => $id_search_option,
+            'old_value'         => $old_value,
+            'new_value'         => $new_value,
         ];
         $result = $DB->insert(self::getTable(), $params);
 
@@ -310,13 +310,13 @@ class Log extends CommonDBTM
         }
 
         $fields = [
-           'id' => __('ID'),
-           'date_mod' => _n('Date', 'Dates', 1),
-           'user_name' => User::getTypeName(1),
-           'field' => _n('Field', 'Fields', 1),
-           'change' => _x('name', 'Update')
+            'id' => __('ID'),
+            'date_mod' => _n('Date', 'Dates', 1),
+            'user_name' => User::getTypeName(1),
+            'field' => _n('Field', 'Fields', 1),
+            'change' => _x('name', 'Update'),
         ];
-        $filters = isset($_GET['filters']) ? $_GET['filters'] : [];
+        $filters = $_GET['filters'] ?? [];
         $history_url = $CFG_GLPI['root_doc'] . '/ajax/v2/log.php?itemtype=' . urlencode($itemtype)
             . '&items_id=' . urlencode((string) $items_id);
         if (!empty($filters)) {
@@ -324,10 +324,10 @@ class Log extends CommonDBTM
         }
 
         renderTwigTemplate('table.twig', [
-           'id' => 'HistoricalTable',
-           'fields' => $fields,
-           'url' => $history_url,
-           'pageSize' => (int) $_SESSION['glpilist_limit'],
+            'id' => 'HistoricalTable',
+            'fields' => $fields,
+            'url' => $history_url,
+            'pageSize' => (int) $_SESSION['glpilist_limit'],
         ]);
     }
 
@@ -335,8 +335,8 @@ class Log extends CommonDBTM
      * Retrieve last history Data for an item
      *
      * @param CommonDBTM $item       Object instance
-     * @param integer    $start      First line to retrieve (default 0)
-     * @param integer    $limit      Max number of line to retrieve (0 for all) (default 0)
+     * @param int    $start      First line to retrieve (default 0)
+     * @param int    $limit      Max number of line to retrieve (0 for all) (default 0)
      * @param array      $sqlfilters SQL filters applied to history (default [])
      *
      * @return array of localized log entry (TEXT only, no HTML)
@@ -367,17 +367,17 @@ class Log extends CommonDBTM
         }
 
         $query = [
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'items_id'  => $items_id,
-              'itemtype'  => $itemtype
-           ] + $sqlfilters,
-           'ORDER'  => $order_by
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'items_id'  => $items_id,
+                'itemtype'  => $itemtype,
+            ] + $sqlfilters,
+            'ORDER'  => $order_by,
         ];
 
         if ($limit) {
-            $query['START'] = (int)$start;
-            $query['LIMIT'] = (int)$limit;
+            $query['START'] = (int) $start;
+            $query['LIMIT'] = (int) $limit;
         }
 
         $iterator = $DBread->request($query);
@@ -795,14 +795,14 @@ class Log extends CommonDBTM
         $items_id = $item->getField('id');
 
         $iterator = $DB->request([
-           'SELECT'          => 'user_name',
-           'DISTINCT'        => true,
-           'FROM'            => self::getTable(),
-           'WHERE'  => [
-                 'items_id'  => $items_id,
-                 'itemtype'  => $itemtype
-              ],
-           'ORDER'  => 'id DESC'
+            'SELECT'          => 'user_name',
+            'DISTINCT'        => true,
+            'FROM'            => self::getTable(),
+            'WHERE'  => [
+                'items_id'  => $items_id,
+                'itemtype'  => $itemtype,
+            ],
+            'ORDER'  => 'id DESC',
         ]);
 
         $values = [];
@@ -838,14 +838,14 @@ class Log extends CommonDBTM
         $affected_fields = ['linked_action', 'itemtype_link', 'id_search_option'];
 
         $iterator = $DB->request([
-           'SELECT'  => $affected_fields,
-           'FROM'    => self::getTable(),
-           'WHERE'   => [
-                 'items_id'  => $items_id,
-                 'itemtype'  => $itemtype
-              ],
-           'GROUPBY' => $affected_fields,
-           'ORDER'   => 'id DESC'
+            'SELECT'  => $affected_fields,
+            'FROM'    => self::getTable(),
+            'WHERE'   => [
+                'items_id'  => $items_id,
+                'itemtype'  => $itemtype,
+            ],
+            'GROUPBY' => $affected_fields,
+            'ORDER'   => 'id DESC',
         ]);
 
         $values = [];
@@ -874,22 +874,22 @@ class Log extends CommonDBTM
                     case self::HISTORY_LOCK_SUBITEM:
                     case self::HISTORY_UNLOCK_SUBITEM:
                         $linked_action_values = [
-                           self::HISTORY_ADD_DEVICE,
-                           self::HISTORY_DELETE_DEVICE,
-                           self::HISTORY_LOCK_DEVICE,
-                           self::HISTORY_UNLOCK_DEVICE,
-                           self::HISTORY_DISCONNECT_DEVICE,
-                           self::HISTORY_CONNECT_DEVICE,
-                           self::HISTORY_ADD_RELATION,
-                           self::HISTORY_UPDATE_RELATION,
-                           self::HISTORY_DEL_RELATION,
-                           self::HISTORY_LOCK_RELATION,
-                           self::HISTORY_UNLOCK_RELATION,
-                           self::HISTORY_ADD_SUBITEM,
-                           self::HISTORY_UPDATE_SUBITEM,
-                           self::HISTORY_DELETE_SUBITEM,
-                           self::HISTORY_LOCK_SUBITEM,
-                           self::HISTORY_UNLOCK_SUBITEM,
+                            self::HISTORY_ADD_DEVICE,
+                            self::HISTORY_DELETE_DEVICE,
+                            self::HISTORY_LOCK_DEVICE,
+                            self::HISTORY_UNLOCK_DEVICE,
+                            self::HISTORY_DISCONNECT_DEVICE,
+                            self::HISTORY_CONNECT_DEVICE,
+                            self::HISTORY_ADD_RELATION,
+                            self::HISTORY_UPDATE_RELATION,
+                            self::HISTORY_DEL_RELATION,
+                            self::HISTORY_LOCK_RELATION,
+                            self::HISTORY_UNLOCK_RELATION,
+                            self::HISTORY_ADD_SUBITEM,
+                            self::HISTORY_UPDATE_SUBITEM,
+                            self::HISTORY_DELETE_SUBITEM,
+                            self::HISTORY_LOCK_SUBITEM,
+                            self::HISTORY_UNLOCK_SUBITEM,
                         ];
                         $key = 'linked_action::' . implode(',', $linked_action_values) . ';'
                            . 'itemtype_link::' . $data['itemtype_link'] . ';';
@@ -922,8 +922,8 @@ class Log extends CommonDBTM
                     case self::HISTORY_INSTALL_SOFTWARE:
                     case self::HISTORY_UNINSTALL_SOFTWARE:
                         $linked_action_values = [
-                           self::HISTORY_INSTALL_SOFTWARE,
-                           self::HISTORY_UNINSTALL_SOFTWARE,
+                            self::HISTORY_INSTALL_SOFTWARE,
+                            self::HISTORY_UNINSTALL_SOFTWARE,
                         ];
                         $key = 'linked_action::' . implode(',', $linked_action_values) . ';';
 
@@ -932,26 +932,26 @@ class Log extends CommonDBTM
 
                     default:
                         $linked_action_values_to_exclude = [
-                           0, //Exclude lines corresponding to no action.
-                           self::HISTORY_ADD_DEVICE,
-                           self::HISTORY_DELETE_DEVICE,
-                           self::HISTORY_LOCK_DEVICE,
-                           self::HISTORY_UNLOCK_DEVICE,
-                           self::HISTORY_DISCONNECT_DEVICE,
-                           self::HISTORY_CONNECT_DEVICE,
-                           self::HISTORY_ADD_RELATION,
-                           self::HISTORY_UPDATE_RELATION,
-                           self::HISTORY_DEL_RELATION,
-                           self::HISTORY_LOCK_RELATION,
-                           self::HISTORY_UNLOCK_RELATION,
-                           self::HISTORY_ADD_SUBITEM,
-                           self::HISTORY_UPDATE_SUBITEM,
-                           self::HISTORY_DELETE_SUBITEM,
-                           self::HISTORY_LOCK_SUBITEM,
-                           self::HISTORY_UNLOCK_SUBITEM,
-                           self::HISTORY_UPDATE_DEVICE,
-                           self::HISTORY_INSTALL_SOFTWARE,
-                           self::HISTORY_UNINSTALL_SOFTWARE,
+                            0, //Exclude lines corresponding to no action.
+                            self::HISTORY_ADD_DEVICE,
+                            self::HISTORY_DELETE_DEVICE,
+                            self::HISTORY_LOCK_DEVICE,
+                            self::HISTORY_UNLOCK_DEVICE,
+                            self::HISTORY_DISCONNECT_DEVICE,
+                            self::HISTORY_CONNECT_DEVICE,
+                            self::HISTORY_ADD_RELATION,
+                            self::HISTORY_UPDATE_RELATION,
+                            self::HISTORY_DEL_RELATION,
+                            self::HISTORY_LOCK_RELATION,
+                            self::HISTORY_UNLOCK_RELATION,
+                            self::HISTORY_ADD_SUBITEM,
+                            self::HISTORY_UPDATE_SUBITEM,
+                            self::HISTORY_DELETE_SUBITEM,
+                            self::HISTORY_LOCK_SUBITEM,
+                            self::HISTORY_UNLOCK_SUBITEM,
+                            self::HISTORY_UPDATE_DEVICE,
+                            self::HISTORY_INSTALL_SOFTWARE,
+                            self::HISTORY_UNINSTALL_SOFTWARE,
                         ];
 
                         $key = 'linked_action:NOT:' . implode(',', $linked_action_values_to_exclude) . ';';
@@ -1009,14 +1009,14 @@ class Log extends CommonDBTM
         $items_id = $item->getField('id');
 
         $iterator = $DB->request([
-           'SELECT'          => 'linked_action',
-           'DISTINCT'        => true,
-           'FROM'            => self::getTable(),
-           'WHERE'  => [
-                 'items_id'  => $items_id,
-                 'itemtype'  => $itemtype
-              ],
-           'ORDER'           => 'id DESC'
+            'SELECT'          => 'linked_action',
+            'DISTINCT'        => true,
+            'FROM'            => self::getTable(),
+            'WHERE'  => [
+                'items_id'  => $items_id,
+                'itemtype'  => $itemtype,
+            ],
+            'ORDER'           => 'id DESC',
         ]);
 
         $values = [];
@@ -1061,7 +1061,7 @@ class Log extends CommonDBTM
     /**
      * Returns label corresponding to the linked action of a log entry.
      *
-     * @param integer $linked_action  Linked action value of a log entry.
+     * @param int $linked_action  Linked action value of a log entry.
      *
      * @return string
      *
@@ -1219,14 +1219,14 @@ class Log extends CommonDBTM
                 }
             }
             $sql_filters[] = [
-               'OR' => $affected_field_crit
+                'OR' => $affected_field_crit,
             ];
         }
 
         if (isset($filters['date']) && !empty($filters['date'])) {
             $sql_filters[] = [
-               ['date_mod' => ['>=', "{$filters['date']} 00:00:00"]],
-               ['date_mod' => ['<=', "{$filters['date']} 23:59:59"]],
+                ['date_mod' => ['>=', "{$filters['date']} 00:00:00"]],
+                ['date_mod' => ['<=', "{$filters['date']} 23:59:59"]],
             ];
         }
 

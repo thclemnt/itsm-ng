@@ -1,5 +1,7 @@
 <?php
 
+use Glpi\Features\PlanningEvent;
+
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
@@ -41,7 +43,7 @@ if (!defined('GLPI_ROOT')) {
 **/
 class PlanningExternalEventTemplate extends CommonDropdown
 {
-    use Glpi\Features\PlanningEvent {
+    use PlanningEvent {
         prepareInputForAdd as protected prepareInputForAddTrait;
         prepareInputForUpdate as protected prepareInputForUpdateTrait;
         rawSearchOptions as protected trait_rawSearchOptions;
@@ -61,32 +63,32 @@ class PlanningExternalEventTemplate extends CommonDropdown
     public function getAdditionalFields()
     {
         return [
-           [
-              'name'  => 'state',
-              'label' => __('Status'),
-              'type'  => 'planningstate',
-           ], [
-              'name'  => 'planningeventcategories_id',
-              'label' => __('Category'),
-              'type'  => 'dropdownValue',
-              'list'  => true
-           ], [
-              'name'  => 'background',
-              'label' => __('Background event'),
-              'type'  => 'bool'
-           ], [
-              'name'  => 'plan',
-              'label' => _n('Calendar', 'Calendars', 1),
-              'type'  => 'plan',
-           ], [
-              'name'  => 'rrule',
-              'label' => __('Repeat'),
-              'type'  => 'rrule',
-           ], [
-              'name'  => 'text',
-              'label' => __('Description'),
-              'type'  => 'tinymce',
-           ]
+            [
+                'name'  => 'state',
+                'label' => __('Status'),
+                'type'  => 'planningstate',
+            ], [
+                'name'  => 'planningeventcategories_id',
+                'label' => __('Category'),
+                'type'  => 'dropdownValue',
+                'list'  => true,
+            ], [
+                'name'  => 'background',
+                'label' => __('Background event'),
+                'type'  => 'bool',
+            ], [
+                'name'  => 'plan',
+                'label' => _n('Calendar', 'Calendars', 1),
+                'type'  => 'plan',
+            ], [
+                'name'  => 'rrule',
+                'label' => __('Repeat'),
+                'type'  => 'rrule',
+            ], [
+                'name'  => 'text',
+                'label' => __('Description'),
+                'type'  => 'tinymce',
+            ],
         ];
     }
 
@@ -101,10 +103,10 @@ class PlanningExternalEventTemplate extends CommonDropdown
 
             case 'plan':
                 Planning::showAddEventClassicForm([
-                   'duration'       => $this->fields['duration'],
-                   'itemtype'       => self::getType(),
-                   'items_id'       => $this->fields['id'],
-                   '_display_dates' => false,
+                    'duration'       => $this->fields['duration'],
+                    'itemtype'       => self::getType(),
+                    'items_id'       => $this->fields['id'],
+                    '_display_dates' => false,
                 ]);
                 break;
 

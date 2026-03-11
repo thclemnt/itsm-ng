@@ -101,7 +101,7 @@ class SavedSearch_Alert extends CommonDBChild
     /**
      * Print the form
      *
-     * @param integer $ID      integer ID of the item
+     * @param int $ID      integer ID of the item
      * @param array   $options array
      *     - target for the Form
      *     - computers_id ID of the computer for add process
@@ -129,57 +129,57 @@ class SavedSearch_Alert extends CommonDBChild
             if ($data = $search->execute()) {
                 $count = $data['data']['totalcount'];
             }
-        } catch (\RuntimeException $e) {
+        } catch (RuntimeException $e) {
             Toolbox::logError($e);
         }
 
         $form = [
-           'action' => $this->getFormURL(),
-           'itemtype' => self::class,
-           'content' => [
-              self::getTypeName(1) => [
-                 'visible' => 'true',
-                 'inputs' => [
-                    [
-                       'type' => 'hidden',
-                       'name' => 'id',
-                       'value' => $ID,
+            'action' => $this->getFormURL(),
+            'itemtype' => self::class,
+            'content' => [
+                self::getTypeName(1) => [
+                    'visible' => 'true',
+                    'inputs' => [
+                        [
+                            'type' => 'hidden',
+                            'name' => 'id',
+                            'value' => $ID,
+                        ],
+                        ($this->isNewID($ID)) ? [
+                            'type' => 'hidden',
+                            'name' => 'savedsearches_id',
+                            'value' => $options['savedsearches_id'],
+                        ] : [],
+                        SavedSearch::getTypeName(1) => [
+                            'content' => $search->getLink() . $count ?? '',
+                        ],
+                        __('Name') => [
+                            'type' => 'text',
+                            'name' => 'name',
+                            'value' => $this->fields['name'],
+                        ],
+                        __('Operator') => [
+                            'type' => 'select',
+                            'name' => 'operator',
+                            'values' => $this->getOperators(),
+                            'value' => $this->getField('operator'),
+                            'title' => __('Compare number of results the search returns against the specified value with selected operator'),
+                        ],
+                        __('Value') => [
+                            'type' => 'number',
+                            'name' => 'value',
+                            'value' => $this->getField('value'),
+                            'min' => 0,
+                            'required' => '',
+                        ],
+                        __('Active') => [
+                            'type' => 'checkbox',
+                            'name' => 'is_active',
+                            'value' => $this->getField('is_active'),
+                        ],
                     ],
-                    ($this->isNewID($ID)) ? [
-                       'type' => 'hidden',
-                       'name' => 'savedsearches_id',
-                       'value' => $options['savedsearches_id'],
-                    ] : [],
-                    SavedSearch::getTypeName(1) => [
-                       'content' => $search->getLink() . $count ?? '',
-                    ],
-                    __('Name') => [
-                       'type' => 'text',
-                       'name' => 'name',
-                       'value' => $this->fields['name'],
-                    ],
-                    __('Operator') => [
-                       'type' => 'select',
-                       'name' => 'operator',
-                       'values' => $this->getOperators(),
-                       'value' => $this->getField('operator'),
-                       'title' => __('Compare number of results the search returns against the specified value with selected operator')
-                    ],
-                    __('Value') => [
-                       'type' => 'number',
-                       'name' => 'value',
-                       'value' => $this->getField('value'),
-                       'min' => 0,
-                       'required' => ''
-                    ],
-                    __('Active') => [
-                       'type' => 'checkbox',
-                       'name' => 'is_active',
-                       'value' => $this->getField('is_active'),
-                    ],
-                 ]
-              ]
-           ]
+                ],
+            ],
         ];
         renderTwigForm($form, '', $this->fields);
 
@@ -191,7 +191,7 @@ class SavedSearch_Alert extends CommonDBChild
      * Print the searches alerts
      *
      * @param SavedSearch $search       Object instance
-     * @param boolean     $withtemplate Template or basic item (default '')
+     * @param bool     $withtemplate Template or basic item (default '')
      *
      * @return void
     **/
@@ -214,11 +214,11 @@ class SavedSearch_Alert extends CommonDBChild
         echo "<div class='firstbloc'>";
 
         $iterator = $DB->request([
-           'FROM'   => Notification::getTable(),
-           'WHERE'  => [
-              'itemtype'  => self::getType(),
-              'event'     => 'alert' . ($search->getField('is_private') ? '' : '_' . $search->getID())
-           ]
+            'FROM'   => Notification::getTable(),
+            'WHERE'  => [
+                'itemtype'  => self::getType(),
+                'event'     => 'alert' . ($search->getField('is_private') ? '' : '_' . $search->getID()),
+            ],
         ]);
 
         if (!$iterator->numRows()) {
@@ -250,24 +250,24 @@ class SavedSearch_Alert extends CommonDBChild
             $canedit
             && !(!empty($withtemplate) && ($withtemplate == 2))
         ) {
-            echo "<div class='firstbloc'>" .
-                  "<a class='btn btn-secondary' href='" . self::getFormURL() . "?savedsearches_id=$ID&amp;withtemplate=" .
-                     $withtemplate . "'>";
+            echo "<div class='firstbloc'>"
+                  . "<a class='btn btn-secondary' href='" . self::getFormURL() . "?savedsearches_id=$ID&amp;withtemplate="
+                     . $withtemplate . "'>";
             echo __('Add an alert');
             echo "</a></div>\n";
         }
 
         $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['savedsearches_id' => $ID]
+            'FROM'   => self::getTable(),
+            'WHERE'  => ['savedsearches_id' => $ID],
         ]);
 
         echo "<table class='tab_cadre_fixehov' aria-label'Tables for active item'>";
 
         $colspan = 4;
         if ($iterator->numrows()) {
-            echo "<tr class='noHover'><th colspan='$colspan'>" . self::getTypeName($iterator->numrows()) .
-               "</th></tr>";
+            echo "<tr class='noHover'><th colspan='$colspan'>" . self::getTypeName($iterator->numrows())
+               . "</th></tr>";
 
             $header = "<tr><th>" . __('Name') . "</th>";
             $header .= "<th>" . __('Operator') . "</th>";
@@ -299,19 +299,19 @@ class SavedSearch_Alert extends CommonDBChild
     /**
      * Get operators
      *
-     * @param integer $id ID for the operator to retrieve, or null for the full list
+     * @param int $id ID for the operator to retrieve, or null for the full list
      *
      * @return string|array
      */
     public static function getOperators($id = null)
     {
         $ops = [
-           self::OP_LESS     => '<',
-           self::OP_LESSEQ   => '<=',
-           self::OP_EQ       => '=',
-           self::OP_NOT      => '!=',
-           self::OP_GREATEQ  => '>=',
-           self::OP_GREAT    => '>'
+            self::OP_LESS     => '<',
+            self::OP_LESSEQ   => '<=',
+            self::OP_EQ       => '=',
+            self::OP_NOT      => '!=',
+            self::OP_GREATEQ  => '>=',
+            self::OP_GREAT    => '>',
         ];
         return ($id === null ? $ops : $ops[$id]);
     }
@@ -371,8 +371,8 @@ class SavedSearch_Alert extends CommonDBChild
         global $DB;
 
         $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['is_active' => true]
+            'FROM'   => self::getTable(),
+            'WHERE'  => ['is_active' => true],
         ]);
 
         if ($iterator->numrows()) {
@@ -401,8 +401,8 @@ class SavedSearch_Alert extends CommonDBChild
                     }
 
                     $data = $savedsearch->execute(true);
-                    $count = (int)$data['data']['totalcount'];
-                    $value = (int)$row['value'];
+                    $count = (int) $data['data']['totalcount'];
+                    $value = (int) $row['value'];
 
                     $notify = false;
                     $tr_op = null;
@@ -433,7 +433,7 @@ class SavedSearch_Alert extends CommonDBChild
                             $tr_op = __('greater than');
                             break;
                         default:
-                            throw new \RuntimeException("Unknonw operator '{$row['operator']}'");
+                            throw new RuntimeException("Unknonw operator '{$row['operator']}'");
                     }
 
                     //TRANS : %1$s is the name of the saved search,
@@ -460,7 +460,7 @@ class SavedSearch_Alert extends CommonDBChild
                         NotificationEvent::raiseEvent($event, $alert, $data);
                         $task->addVolume(1);
                     }
-                } catch (\Exception $e) {
+                } catch (Exception $e) {
                     self::restoreContext($context);
                     Toolbox::logError($e);
                 }

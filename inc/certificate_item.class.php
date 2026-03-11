@@ -68,7 +68,7 @@ class Certificate_Item extends CommonDBRelation
     {
         $temp = new self();
         $temp->deleteByCriteria(['itemtype' => $item->getType(),
-                                 'items_id' => $item->getField('id')]);
+            'items_id' => $item->getField('id')]);
     }
 
     /**
@@ -140,9 +140,9 @@ class Certificate_Item extends CommonDBRelation
 
         $certificate  = new self();
         $certificates = $certificate->find([
-           'certificates_id' => $certificates_id,
-           'itemtype'        => $itemtype,
-           'items_id'        => $items_id
+            'certificates_id' => $certificates_id,
+            'itemtype'        => $itemtype,
+            'items_id'        => $items_id,
         ]);
         if (count($certificates) != 1) {
             return false;
@@ -164,8 +164,8 @@ class Certificate_Item extends CommonDBRelation
     {
 
         $this->add(['certificates_id' => $values["certificates_id"],
-                    'items_id'        => $values["items_id"],
-                    'itemtype'        => $values["itemtype"]]);
+            'items_id'        => $values["items_id"],
+            'itemtype'        => $values["itemtype"]]);
     }
 
     /**
@@ -173,8 +173,8 @@ class Certificate_Item extends CommonDBRelation
     *
     * @since 9.2
     *
-    * @param integer $certificates_id the certificate ID
-    * @param integer $items_id the item's id
+    * @param int $certificates_id the certificate ID
+    * @param int $items_id the item's id
     * @param string $itemtype the itemtype
     */
     public function deleteItemByCertificatesAndItem($certificates_id, $items_id, $itemtype)
@@ -198,7 +198,7 @@ class Certificate_Item extends CommonDBRelation
      *
      * @param Certificate $certificate Certificate object
      *
-     * @return void|boolean (display) Returns false if there is a rights error.
+     * @return void|bool (display) Returns false if there is a rights error.
      **/
     public static function showForCertificate(Certificate $certificate)
     {
@@ -220,32 +220,32 @@ class Certificate_Item extends CommonDBRelation
                 $options[$itemtype] = $itemtype::getTypeName(1);
             };
             $form = [
-               'action' => Toolbox::getItemTypeFormURL(__CLASS__),
-               'buttons' => [
-                  [
-                     'type' => 'submit',
-                     'name' => 'add',
-                     'value' => _sx('button', 'Add an item'),
-                     'class' => 'btn btn-secondary'
-                  ]
-               ],
-               'content' => [
-                  __('Add an item') => [
-                     'visible' => true,
-                     'inputs' => [
-                        [
-                           'type' => 'hidden',
-                           'name' => 'certificates_id',
-                           'value' => $instID
-                        ],
-                        __('Type') => [
-                           'type' => 'select',
-                           'id' => 'dropdown_itemtype',
-                           'name' => 'itemtype',
-                           'values' => [Dropdown::EMPTY_VALUE] + array_unique($options),
-                           'col_lg' => 6,
-                           'hooks' => [
-                              'change' => <<<JS
+                'action' => Toolbox::getItemTypeFormURL(__CLASS__),
+                'buttons' => [
+                    [
+                        'type' => 'submit',
+                        'name' => 'add',
+                        'value' => _sx('button', 'Add an item'),
+                        'class' => 'btn btn-secondary',
+                    ],
+                ],
+                'content' => [
+                    __('Add an item') => [
+                        'visible' => true,
+                        'inputs' => [
+                            [
+                                'type' => 'hidden',
+                                'name' => 'certificates_id',
+                                'value' => $instID,
+                            ],
+                            __('Type') => [
+                                'type' => 'select',
+                                'id' => 'dropdown_itemtype',
+                                'name' => 'itemtype',
+                                'values' => [Dropdown::EMPTY_VALUE] + array_unique($options),
+                                'col_lg' => 6,
+                                'hooks' => [
+                                    'change' => <<<JS
                               $.ajax({
                                     method: "POST",
                                     url: "$CFG_GLPI[root_doc]/ajax/getDropdownValue.php",
@@ -270,38 +270,38 @@ class Certificate_Item extends CommonDBRelation
                                     }
                                  });
                            JS,
-                           ]
+                                ],
+                            ],
+                            __('Item') => [
+                                'type' => 'select',
+                                'id' => 'dropdown_items_id',
+                                'name' => 'items_id',
+                                'values' => [],
+                                'col_lg' => 6,
+                            ],
                         ],
-                        __('Item') => [
-                           'type' => 'select',
-                           'id' => 'dropdown_items_id',
-                           'name' => 'items_id',
-                           'values' => [],
-                           'col_lg' => 6,
-                        ],
-                     ]
-                  ]
-               ]
+                    ],
+                ],
             ];
             renderTwigForm($form);
         }
 
         if ($canedit && $number) {
             $massiveactionparams = [
-               'container' => 'tableForCertificateItem',
-               'specific_actions' => [
-                  'MassiveAction:purge' => _x('button', 'Delete permanently the relation with selected elements'),
-               ],
-               'display_arrow' => false,
+                'container' => 'tableForCertificateItem',
+                'specific_actions' => [
+                    'MassiveAction:purge' => _x('button', 'Delete permanently the relation with selected elements'),
+                ],
+                'display_arrow' => false,
             ];
             Html::showMassiveActions($massiveactionparams);
         }
         $fields = [
-           _n('Type', 'Types', 1),
-           __('Name'),
-           Entity::getTypeName(1),
-           __('Serial number'),
-           __('Inventory number')
+            _n('Type', 'Types', 1),
+            __('Name'),
+            Entity::getTypeName(1),
+            __('Serial number'),
+            __('Inventory number'),
         ];
         $values = [];
         $massiveactionValues = [];
@@ -371,14 +371,14 @@ class Certificate_Item extends CommonDBRelation
                     $name = "<a href='$link'>$linkname $linkname_extra</a>";
 
                     $newData = [
-                       $item->getTypeName(1),
-                       $name,
-                       isset($data['entity']) ? Dropdown::getDropdownName(
-                           "glpi_entities",
-                           $data['entity']
-                       ) : "-",
-                       isset($data["serial"]) ? "" . $data["serial"] . "" : "-",
-                       isset($data["otherserial"]) ? "" . $data["otherserial"] . "" : "-",
+                        $item->getTypeName(1),
+                        $name,
+                        isset($data['entity']) ? Dropdown::getDropdownName(
+                            "glpi_entities",
+                            $data['entity']
+                        ) : "-",
+                        isset($data["serial"]) ? "" . $data["serial"] . "" : "-",
+                        isset($data["otherserial"]) ? "" . $data["otherserial"] . "" : "-",
                     ];
                     $values[] = $newData;
                     $massiveactionValues[] = sprintf('item[%s][%s]', $itemtype, $data['id']);
@@ -387,10 +387,10 @@ class Certificate_Item extends CommonDBRelation
         }
 
         renderTwigTemplate('table.twig', [
-           'id' => 'tableForCertificateItem',
-           'fields' => $fields,
-           'values' => $values,
-           'massive_action' => $massiveactionValues,
+            'id' => 'tableForCertificateItem',
+            'fields' => $fields,
+            'values' => $values,
+            'massive_action' => $massiveactionValues,
         ]);
     }
 
@@ -454,61 +454,61 @@ class Certificate_Item extends CommonDBRelation
             $nb = countElementsInTable(
                 'glpi_certificates',
                 [
-                                        'is_deleted'  => 0
-                                       ] + $entity_restrict
+                    'is_deleted'  => 0,
+                ] + $entity_restrict
             );
 
             if (Certificate::canView() && (!$nb || ($nb > count($used)))) {
                 $form = [
-                   'action' => Toolbox::getItemTypeFormURL('Certificate_Item'),
-                   'buttons' => [
-                      [
-                         'name' => 'add',
-                         'value' => _x('button', 'Associate'),
-                         'class' => 'btn btn-secondary',
-                      ]
-                   ],
-                   'content' => [
-                      '' => [
-                         'visible' => true,
-                         'inputs' => [
-                            [
-                               'type' => 'hidden',
-                               'name' => 'entities_id',
-                               'value' => $item->fields['entities_id']
+                    'action' => Toolbox::getItemTypeFormURL('Certificate_Item'),
+                    'buttons' => [
+                        [
+                            'name' => 'add',
+                            'value' => _x('button', 'Associate'),
+                            'class' => 'btn btn-secondary',
+                        ],
+                    ],
+                    'content' => [
+                        '' => [
+                            'visible' => true,
+                            'inputs' => [
+                                [
+                                    'type' => 'hidden',
+                                    'name' => 'entities_id',
+                                    'value' => $item->fields['entities_id'],
+                                ],
+                                [
+                                    'type' => 'hidden',
+                                    'name' => 'is_recursive',
+                                    'value' => $item->fields['is_recursive'],
+                                ],
+                                [
+                                    'type' => 'hidden',
+                                    'name' => 'itemtype',
+                                    'value' => $item->getType(),
+                                ],
+                                [
+                                    'type' => 'hidden',
+                                    'name' => 'items_id',
+                                    'value' => $item->fields['id'],
+                                ],
+                                ($item->getType() == 'Ticket') ? [
+                                    'type' => 'hidden',
+                                    'name' => 'tickets_id',
+                                    'value' => $ID,
+                                ] : [],
+                                '' => [
+                                    'type' => 'select',
+                                    'name' => 'certificates_id',
+                                    'itemtype' => Certificate::class,
+                                    'condition' => ['is_deleted' => 0, 'entities_id' => $item->fields['entities_id']],
+                                    'actions' => getItemActionButtons(['info'], Certificate::class),
+                                    'col_lg' => 12,
+                                    'col_md' => 12,
+                                ],
                             ],
-                            [
-                               'type' => 'hidden',
-                               'name' => 'is_recursive',
-                               'value' => $item->fields['is_recursive']
-                            ],
-                            [
-                               'type' => 'hidden',
-                               'name' => 'itemtype',
-                               'value' => $item->getType(),
-                            ],
-                            [
-                               'type' => 'hidden',
-                               'name' => 'items_id',
-                               'value' => $item->fields['id']
-                            ],
-                            ($item->getType() == 'Ticket') ? [
-                               'type' => 'hidden',
-                               'name' => 'tickets_id',
-                               'value' => $ID
-                            ] : [],
-                            '' => [
-                               'type' => 'select',
-                               'name' => 'certificates_id',
-                               'itemtype' => Certificate::class,
-                               'condition' => ['is_deleted' => 0, 'entities_id' => $item->fields['entities_id']],
-                               'actions' => getItemActionButtons(['info'], Certificate::class),
-                               'col_lg' => 12,
-                               'col_md' => 12,
-                            ]
-                         ]
-                      ]
-                   ]
+                        ],
+                    ],
                 ];
                 renderTwigForm($form);
             }
@@ -517,22 +517,22 @@ class Certificate_Item extends CommonDBRelation
         if ($canedit && $number && ($withtemplate < 2)) {
             $massformContainerId = 'tableForCertificateItem';
             $massiveactionparams = [
-               'container' => $massformContainerId,
-               'display_arrow' => false,
-               'specific_actions' => [
-                  'MassiveAction:purge' => _x('button', 'Delete permanently the relation with selected elements'),
-               ],
+                'container' => $massformContainerId,
+                'display_arrow' => false,
+                'specific_actions' => [
+                    'MassiveAction:purge' => _x('button', 'Delete permanently the relation with selected elements'),
+                ],
             ];
             Html::showMassiveActions($massiveactionparams);
         }
         $fields = [
-           __('Name'),
-           _n('Type', 'Types', 1),
-           __('DNS name'),
-           __('DNS suffix'),
-           __('Creation date'),
-           __('Expiration date'),
-           __('Status')
+            __('Name'),
+            _n('Type', 'Types', 1),
+            __('DNS name'),
+            __('DNS suffix'),
+            __('Creation date'),
+            __('Expiration date'),
+            __('Status'),
         ];
         if (Session::isMultiEntitiesMode()) {
             $fields[] = Entity::getTypeName(1);
@@ -549,11 +549,11 @@ class Certificate_Item extends CommonDBRelation
             }
             $used[$certificateID] = $certificateID;
             $newValue = [
-               $link,
-               Dropdown::getDropdownName("glpi_certificatetypes", $data["certificatetypes_id"]),
-               $data["dns_name"],
-               $data["dns_suffix"],
-               Html::convDate($data["date_creation"]),
+                $link,
+                Dropdown::getDropdownName("glpi_certificatetypes", $data["certificatetypes_id"]),
+                $data["dns_name"],
+                $data["dns_suffix"],
+                Html::convDate($data["date_creation"]),
 
             ];
 
@@ -579,10 +579,10 @@ class Certificate_Item extends CommonDBRelation
         }
 
         renderTwigTemplate('table.twig', [
-           'id' => $massformContainerId ?? '',
-           'fields' => $fields,
-           'values' => $values,
-           'massive_action' => $massive_action,
+            'id' => $massformContainerId ?? '',
+            'fields' => $fields,
+            'values' => $values,
+            'massive_action' => $massive_action,
         ]);
     }
 }

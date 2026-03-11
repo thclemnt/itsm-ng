@@ -43,28 +43,28 @@ class Item_Project extends DbTestCase
 
         $project = new \Project();
         $project_id = $project->add([
-           'name' => 'item-project-' . $this->getUniqueString(),
+            'name' => 'item-project-' . $this->getUniqueString(),
         ]);
-        $this->integer((int)$project_id)->isGreaterThan(0);
+        $this->integer((int) $project_id)->isGreaterThan(0);
 
         $computer = getItemByTypeName('Computer', '_test_pc01');
         $this->object($computer)->isInstanceOf('\Computer');
 
         $obj = new \Item_Project();
         $first_id = $obj->add([
-           'projects_id' => $project_id,
-           'itemtype'    => 'Computer',
-           'items_id'    => $computer->getID(),
+            'projects_id' => $project_id,
+            'itemtype'    => 'Computer',
+            'items_id'    => $computer->getID(),
         ]);
-        $this->integer((int)$first_id)->isGreaterThan(0);
+        $this->integer((int) $first_id)->isGreaterThan(0);
 
         $duplicate_id = $obj->add([
-           'projects_id' => $project_id,
-           'itemtype'    => 'Computer',
-           'items_id'    => $computer->getID(),
+            'projects_id' => $project_id,
+            'itemtype'    => 'Computer',
+            'items_id'    => $computer->getID(),
         ]);
-        $this->integer((int)$duplicate_id)->isEqualTo(0);
-        $this->integer((int)countElementsInTable(
+        $this->integer((int) $duplicate_id)->isEqualTo(0);
+        $this->integer((int) countElementsInTable(
             \Item_Project::getTable(),
             [
                 'projects_id' => $project_id,

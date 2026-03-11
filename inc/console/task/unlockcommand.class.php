@@ -41,10 +41,10 @@ use CronTask;
 use Glpi\Console\AbstractCommand;
 use Glpi\Event;
 use QueryExpression;
+use Symfony\Component\Console\Exception\InvalidArgumentException;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Exception\InvalidArgumentException;
 
 class UnlockCommand extends AbstractCommand
 {
@@ -103,24 +103,24 @@ class UnlockCommand extends AbstractCommand
 
         $task_iterator = $this->db->request(
             [
-              'SELECT' => [
-                 'id',
-                 new QueryExpression(
-                     'CONCAT('
-                     . $this->db->quoteName('itemtype')
-                     . ', ' . $this->db->quoteValue('::')
-                     . ', ' . $this->db->quoteName('name')
-                     . ') AS ' . $this->db->quoteName('task')
-                 )
-              ],
-              'FROM'   => CronTask::getTable(),
-              'WHERE'  => [
-                 'state' => CronTask::STATE_RUNNING,
-                 new QueryExpression(
-                     'UNIX_TIMESTAMP(' .  $this->db->quoteName('lastrun') . ') + ' . $delay
-                     . ' <  UNIX_TIMESTAMP(NOW())'
-                 )
-              ]
+                'SELECT' => [
+                    'id',
+                    new QueryExpression(
+                        'CONCAT('
+                        . $this->db->quoteName('itemtype')
+                        . ', ' . $this->db->quoteValue('::')
+                        . ', ' . $this->db->quoteName('name')
+                        . ') AS ' . $this->db->quoteName('task')
+                    ),
+                ],
+                'FROM'   => CronTask::getTable(),
+                'WHERE'  => [
+                    'state' => CronTask::STATE_RUNNING,
+                    new QueryExpression(
+                        'UNIX_TIMESTAMP(' . $this->db->quoteName('lastrun') . ') + ' . $delay
+                        . ' <  UNIX_TIMESTAMP(NOW())'
+                    ),
+                ],
             ]
         );
 
@@ -137,8 +137,8 @@ class UnlockCommand extends AbstractCommand
             }
 
             $input = [
-               'id'    => $task['id'],
-               'state' => CronTask::STATE_WAITING,
+                'id'    => $task['id'],
+                'state' => CronTask::STATE_WAITING,
             ];
             if ($crontask->update($input)) {
                 $unlocked_count++;

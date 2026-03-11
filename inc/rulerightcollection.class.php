@@ -82,8 +82,8 @@ class RuleRightCollection extends RuleCollection
         $actions = $rule->getActions();
         echo "<tr><th colspan='4'>" . __('Rule results') . "</th></tr>";
         echo "<tr class='tab_bg_2'>";
-        echo "<td class='center' colspan='2'>" . _n('Validation', 'Validations', 1) . "</td><td colspan='2'>" .
-             "<span class='b'>" . Dropdown::getYesNo($global_result) . "</span></td>";
+        echo "<td class='center' colspan='2'>" . _n('Validation', 'Validations', 1) . "</td><td colspan='2'>"
+             . "<span class='b'>" . Dropdown::getYesNo($global_result) . "</span></td>";
 
         if (isset($output["_ldap_rules"]["rules_entities"])) {
             echo "<tr class='tab_bg_2'>";
@@ -187,24 +187,24 @@ class RuleRightCollection extends RuleCollection
 
         $params = [];
         $iterator = $DB->request([
-           'SELECT'          => 'value',
-           'DISTINCT'        => true,
-           'FROM'            => 'glpi_rulerightparameters',
-           'LEFT JOIN'       => [
-              'glpi_rulecriterias' => [
-                 'ON' => [
-                    'glpi_rulerightparameters' => 'value',
-                    'glpi_rulecriterias'       => 'criteria'
-                 ]
-              ],
-              'glpi_rules'         => [
-                 'ON' => [
-                    'glpi_rulecriterias' => 'rules_id',
-                    'glpi_rules'         => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'           => ['glpi_rules.sub_type' => 'RuleRight']
+            'SELECT'          => 'value',
+            'DISTINCT'        => true,
+            'FROM'            => 'glpi_rulerightparameters',
+            'LEFT JOIN'       => [
+                'glpi_rulecriterias' => [
+                    'ON' => [
+                        'glpi_rulerightparameters' => 'value',
+                        'glpi_rulecriterias'       => 'criteria',
+                    ],
+                ],
+                'glpi_rules'         => [
+                    'ON' => [
+                        'glpi_rulecriterias' => 'rules_id',
+                        'glpi_rules'         => 'id',
+                    ],
+                ],
+            ],
+            'WHERE'           => ['glpi_rules.sub_type' => 'RuleRight'],
         ]);
 
         while ($param = $iterator->next()) {
@@ -236,10 +236,10 @@ class RuleRightCollection extends RuleCollection
 
         //common parameters
         $rule_parameters = [
-           'TYPE'       => $params["type"] ?? "",
-           'LOGIN'      => $params["login"] ?? "",
-           'MAIL_EMAIL' => $params["email"] ?? $params["mail_email"] ?? "",
-           '_groups_id' => $groups
+            'TYPE'       => $params["type"] ?? "",
+            'LOGIN'      => $params["login"] ?? "",
+            'MAIL_EMAIL' => $params["email"] ?? $params["mail_email"] ?? "",
+            '_groups_id' => $groups,
         ];
 
         //IMAP/POP login method

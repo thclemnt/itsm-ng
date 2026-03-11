@@ -31,7 +31,6 @@
  * ---------------------------------------------------------------------
  */
 
-use function PHPSTORM_META\map;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -126,32 +125,32 @@ class Fieldblacklist extends CommonDropdown
          });
       JS;
         return [
-           _n('Type', 'Types', 1) => [
-              'name'  => 'itemtype',
-              'type'  => 'select',
-              'id'    => 'ItemTypeDropdown',
-              'values' => array_merge([ Dropdown::EMPTY_VALUE ], array_combine($CFG_GLPI['unicity_types'], $CFG_GLPI['unicity_types'])),
-              'value' => isset($this->fields['itemtype']) ? $this->fields['itemtype'] : '',
-              isset($this->fields['itemtype']) ? 'disabled' : '' => '',
-              'hooks' => [
-                 'change' => $loadFields
-              ]
-           ],
-           _n('Field', 'Fields', 1) => [
-              'name'  => 'field',
-              'type'  => 'select',
-              'id' => 'FieldDropdown',
-              'values' => $this->selectCriterias(),
-              'value' => isset($this->fields['field']) ? $this->fields['field'] : '',
-              !isset($this->fields['itemtype']) ? 'disabled' : '',
-              'hooks' => [
-                 'change' => $loadValueInput,
-              ],
-           ],
-           __('Value') => [
-              'content' => '<div id="ValueInput"></div>',
-              'init' => $loadValueInput,
-           ]
+            _n('Type', 'Types', 1) => [
+                'name'  => 'itemtype',
+                'type'  => 'select',
+                'id'    => 'ItemTypeDropdown',
+                'values' => array_merge([ Dropdown::EMPTY_VALUE ], array_combine($CFG_GLPI['unicity_types'], $CFG_GLPI['unicity_types'])),
+                'value' => $this->fields['itemtype'] ?? '',
+                isset($this->fields['itemtype']) ? 'disabled' : '' => '',
+                'hooks' => [
+                    'change' => $loadFields,
+                ],
+            ],
+            _n('Field', 'Fields', 1) => [
+                'name'  => 'field',
+                'type'  => 'select',
+                'id' => 'FieldDropdown',
+                'values' => $this->selectCriterias(),
+                'value' => $this->fields['field'] ?? '',
+                !isset($this->fields['itemtype']) ? 'disabled' : '',
+                'hooks' => [
+                    'change' => $loadValueInput,
+                ],
+            ],
+            __('Value') => [
+                'content' => '<div id="ValueInput"></div>',
+                'init' => $loadValueInput,
+            ],
         ];
     }
 
@@ -166,38 +165,38 @@ class Fieldblacklist extends CommonDropdown
         $tab = parent::rawSearchOptions();
 
         $tab[] = [
-           'id'                 => '4',
-           'table'              => $this->getTable(),
-           'field'              => 'itemtype',
-           'name'               => _n('Type', 'Types', 1),
-           'massiveaction'      => false,
-           'datatype'           => 'itemtypename',
-           'forcegroupby'       => true
+            'id'                 => '4',
+            'table'              => $this->getTable(),
+            'field'              => 'itemtype',
+            'name'               => _n('Type', 'Types', 1),
+            'massiveaction'      => false,
+            'datatype'           => 'itemtypename',
+            'forcegroupby'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '6',
-           'table'              => $this->getTable(),
-           'field'              => 'field',
-           'name'               => _n('Field', 'Fields', 1),
-           'massiveaction'      => false,
-           'datatype'           => 'specific',
-           'additionalfields'   => [
-              '0'                  => 'itemtype'
-           ]
+            'id'                 => '6',
+            'table'              => $this->getTable(),
+            'field'              => 'field',
+            'name'               => _n('Field', 'Fields', 1),
+            'massiveaction'      => false,
+            'datatype'           => 'specific',
+            'additionalfields'   => [
+                '0'                  => 'itemtype',
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '7',
-           'table'              => $this->getTable(),
-           'field'              => 'value',
-           'name'               => __('Value'),
-           'datatype'           => 'specific',
-           'additionalfields'   => [
-              '0'                  => 'itemtype',
-              '1'                  => 'field'
-           ],
-           'massiveaction'      => false
+            'id'                 => '7',
+            'table'              => $this->getTable(),
+            'field'              => 'value',
+            'name'               => __('Value'),
+            'datatype'           => 'specific',
+            'additionalfields'   => [
+                '0'                  => 'itemtype',
+                '1'                  => 'field',
+            ],
+            'massiveaction'      => false,
         ];
 
         return $tab;
@@ -297,7 +296,7 @@ class Fieldblacklist extends CommonDropdown
     /**
      * Display specific fields for FieldUnicity
      *
-     * @param integer $ID     Unused
+     * @param int $ID     Unused
      * @param array   $field  Array of fields
     **/
     public function displaySpecificTypeField($ID, $field = [])
@@ -347,11 +346,11 @@ class Fieldblacklist extends CommonDropdown
                 'itemtype',
                 $options,
                 ['value'               => $this->fields['value'],
-                                                  'display_emptychoice' => true]
+                    'display_emptychoice' => true]
             );
 
             $params = ['itemtype' => '__VALUE__',
-                            'id'       => $this->fields['id']];
+                'id'       => $this->fields['id']];
             Ajax::updateItemOnSelectEvent(
                 "dropdown_itemtype$rand",
                 "span_fields",
@@ -470,13 +469,13 @@ class Fieldblacklist extends CommonDropdown
         global $DB;
 
         $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => 'glpi_fieldblacklists',
-           'WHERE'  => [
-              'itemtype'  => $itemtype,
-              'field'     => $field,
-              'value'     => $value
-           ] + getEntitiesRestrictCriteria('glpi_fieldblacklists', 'entities_id', $entities_id, true)
+            'COUNT'  => 'cpt',
+            'FROM'   => 'glpi_fieldblacklists',
+            'WHERE'  => [
+                'itemtype'  => $itemtype,
+                'field'     => $field,
+                'value'     => $value,
+            ] + getEntitiesRestrictCriteria('glpi_fieldblacklists', 'entities_id', $entities_id, true),
         ])->next();
         return $result['cpt'] > 0;
     }

@@ -122,7 +122,7 @@ class GLPIPDF extends TCPDF
     /**
      * Set total results count
      *
-     * @param integer $count Total number of results
+     * @param int $count Total number of results
      *
      * @return GLPIPDF
      */

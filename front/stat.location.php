@@ -44,7 +44,7 @@ if (empty($_GET["showgraph"])) {
 
 //sanitize dates
 foreach (['date1', 'date2'] as $key) {
-    if (array_key_exists($key, $_GET) && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$_GET[$key]) !== 1) {
+    if (array_key_exists($key, $_GET) && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $_GET[$key]) !== 1) {
         unset($_GET[$key]);
     }
 }
@@ -90,10 +90,10 @@ echo "<input type='hidden' name='itemtype' value='" . $_GET['itemtype'] . "'>";
 
 echo "<table class='tab_cadre_fixe' aria-label='Statistics report filter'><tr class='tab_bg_2'><td rowspan='2' width='30%'>";
 $values = [_n('Dropdown', 'Dropdowns', Session::getPluralNumber()) => ['ComputerType'    => _n('Type', 'Types', 1),
-                                                       'ComputerModel'   => _n('Model', 'Models', 1),
-                                                       'OperatingSystem' => OperatingSystem::getTypeName(1),
-                                                       'Location'        => Location::getTypeName(1)],
-               ];
+    'ComputerModel'   => _n('Model', 'Models', 1),
+    'OperatingSystem' => OperatingSystem::getTypeName(1),
+    'Location'        => Location::getTypeName(1)],
+];
 $devices = Dropdown::getDeviceItemTypes();
 foreach ($devices as $label => $dp) {
     foreach ($dp as $i => $name) {
@@ -138,28 +138,28 @@ if (isset($_GET['submit'])) {
 
         $val = Stat::getItems($_GET['itemtype'], $_GET["date1"], $_GET["date2"], $_GET["dropdown"]);
         $params = ['type'     => $type,
-                        'dropdown' => $_GET["dropdown"],
-                        'date1'    => $_GET["date1"],
-                        'date2'    => $_GET["date2"],
-                        'start'    => $_GET["start"]];
+            'dropdown' => $_GET["dropdown"],
+            'date1'    => $_GET["date1"],
+            'date2'    => $_GET["date2"],
+            'start'    => $_GET["start"]];
     } else {
         //   echo "Device";
         $type  = "device";
 
         $val = Stat::getItems($_GET['itemtype'], $_GET["date1"], $_GET["date2"], $_GET["dropdown"]);
         $params = ['type'     => $type,
-                        'dropdown' => $_GET["dropdown"],
-                        'date1'    => $_GET["date1"],
-                        'date2'    => $_GET["date2"],
-                        'start'    => $_GET["start"]];
+            'dropdown' => $_GET["dropdown"],
+            'date1'    => $_GET["date1"],
+            'date2'    => $_GET["date2"],
+            'start'    => $_GET["start"]];
     }
 
     Html::printPager(
         $_GET['start'],
         count($val),
         $CFG_GLPI['root_doc'] . '/front/stat.location.php',
-        "date1=" . $_GET["date1"] . "&amp;date2=" . $_GET["date2"] .
-                         "&amp;itemtype=" . $_GET['itemtype'] . "&amp;dropdown=" . $_GET["dropdown"],
+        "date1=" . $_GET["date1"] . "&amp;date2=" . $_GET["date2"]
+                         . "&amp;itemtype=" . $_GET['itemtype'] . "&amp;dropdown=" . $_GET["dropdown"],
         'Stat',
         $params
     );

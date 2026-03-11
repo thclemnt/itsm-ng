@@ -76,7 +76,7 @@ trait Kanban
      * Get a list of all items to be included in the 'switch board' dropdown.
      * @since 9.5.0
      * @param bool $active True if only open/active items should be returned.
-     * @param integer $current_id ID of the currently viewed Kanban.
+     * @param int $current_id ID of the currently viewed Kanban.
      *       This is used to ensure the current Kanban is always in the list regardless of if it is active or not.
      * @return array Array of items that can have a Kanban view.
      *       Array format must be item_id => item_name.
@@ -131,7 +131,7 @@ trait Kanban
     /**
      * Check if the current user can move Kanban cards inside the same column.
      * This is usually reserved for managers since the order can relate to priority.
-     * @param integer $ID Item's ID
+     * @param int $ID Item's ID
      * @return bool
      */
     public function canOrderKanbanCard($ID)

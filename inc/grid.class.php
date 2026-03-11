@@ -125,10 +125,10 @@ class Grid extends CommonGLPI
     public function embed(array $params = [])
     {
         $defaults = [
-           'dashboard'    => '',
-           'entities_id'  => 0,
-           'is_recursive' => 0,
-           'token'        => ''
+            'dashboard'    => '',
+            'entities_id'  => 0,
+            'is_recursive' => 0,
+            'token'        => '',
         ];
         $params = array_merge($defaults, $params);
 
@@ -179,10 +179,10 @@ class Grid extends CommonGLPI
     public static function checkToken(array $params = []): bool
     {
         $defaults = [
-           'dashboard'    => '',
-           'entities_id'  => 0,
-           'is_recursive' => 0,
-           'token'        => ''
+            'dashboard'    => '',
+            'entities_id'  => 0,
+            'is_recursive' => 0,
+            'token'        => '',
         ];
         $params = array_merge($defaults, $params);
 
@@ -313,7 +313,7 @@ HTML;
     {
         $menu_itemtypes = [];
         $exclude   = [
-           'Config',
+            'Config',
         ];
 
         $menu = Html::getMenuInfos();
@@ -333,7 +333,7 @@ HTML;
                     return false;
                 }
 
-                $testClass = new \ReflectionClass($itemtype);
+                $testClass = new ReflectionClass($itemtype);
                 return !$testClass->isAbstract();
             });
         }
@@ -344,13 +344,13 @@ HTML;
     public function getRights($interface = 'central')
     {
         return [
-           READ   => __('Read'),
-           UPDATE => __('Update'),
-           CREATE => __('Create'),
-           PURGE  => [
-              'short' => __('Purge'),
-              'long'  => _x('button', 'Delete permanently')
-           ]
+            READ   => __('Read'),
+            UPDATE => __('Update'),
+            CREATE => __('Create'),
+            PURGE  => [
+                'short' => __('Purge'),
+                'long'  => _x('button', 'Delete permanently'),
+            ],
         ];
     }
 

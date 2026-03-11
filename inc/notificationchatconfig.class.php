@@ -4,12 +4,12 @@ class NotificationChatConfig extends CommonDBTM
 {
     public function processPostData($rocketUrl, $chat, $type, $value)
     {
-        $return = $this->add(array(
+        $return = $this->add([
             'hookurl' => $rocketUrl,
             'chat' => $chat,
             'type' => $type,
-            'value' => $value
-        ));
+            'value' => $value,
+        ]);
     }
 
     public function sendRocketNotification($ticketTitle, $ticketId, $entName, $serverName, $hookurl)
@@ -23,10 +23,10 @@ class NotificationChatConfig extends CommonDBTM
         $jsonStructure = '{"alias":"test","text":"%s"}';
         $textStructure = "Entite : **%s** \n Le ticket numéro %s à été créé : **%s** \n Accédez au ticket en [cliquant ici](http://%s/front/ticket.form.php?id=%s)";
 
-        $data = array(
+        $data = [
             'alias' => 'test',
-            'text' => ''
-        );
+            'text' => '',
+        ];
         $data["text"] = sprintf($textStructure, $entName, $ticketId, $ticketTitle, $glpiUrl, $ticketId);
 
         $payload = json_encode($data);
@@ -41,10 +41,10 @@ class NotificationChatConfig extends CommonDBTM
         curl_setopt(
             $ch,
             CURLOPT_HTTPHEADER,
-            array(
+            [
                 'Content-Type: application/json',
-                'Content-Length: ' . strlen($payload)
-            )
+                'Content-Length: ' . strlen($payload),
+            ]
         );
 
         // Submit the POST request
@@ -84,10 +84,10 @@ class NotificationChatConfig extends CommonDBTM
         $jsonStructure = '{"alias":"test","text":"%s"}';
         $textStructure = $entName;
 
-        $data = array(
+        $data = [
             'alias' => 'test',
-            'text' => ''
-        );
+            'text' => '',
+        ];
 
         $data["text"] = $entName;
 
@@ -103,10 +103,10 @@ class NotificationChatConfig extends CommonDBTM
         curl_setopt(
             $ch,
             CURLOPT_HTTPHEADER,
-            array(
+            [
                 'Content-Type: application/json',
-                'Content-Length: ' . strlen($payload)
-            )
+                'Content-Length: ' . strlen($payload),
+            ]
         );
 
         // Submit the POST request

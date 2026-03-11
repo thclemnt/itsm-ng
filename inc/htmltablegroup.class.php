@@ -178,7 +178,7 @@ class HTMLTableGroup extends HTMLTableBase
     /**
      * Display the current group (with headers and rows)
      *
-     * @param integer $totalNumberOfColumn  Total number of columns : to span correctly the title
+     * @param int $totalNumberOfColumn  Total number of columns : to span correctly the title
      * @param array   $params               array of possible options:
      *     'display_super_for_each_group'           display the super header (ie.: big header of the table)
      *                                              before the group specific headers
@@ -206,8 +206,8 @@ class HTMLTableGroup extends HTMLTableBase
                 $p['display_title_for_each_group']
                 && !empty($this->content)
             ) {
-                echo "\t<tbody><tr><th colspan='$totalNumberOfColumn'>" . $this->content .
-                     "</th></tr></tbody>\n";
+                echo "\t<tbody><tr><th colspan='$totalNumberOfColumn'>" . $this->content
+                     . "</th></tr></tbody>\n";
             }
 
             if ($p['display_super_for_each_group']) {
@@ -240,8 +240,8 @@ class HTMLTableGroup extends HTMLTableBase
                 }
                 $currentNumberOfSubRow = $row->getNumberOfSubRows();
                 if (($previousNumberOfSubRows * $currentNumberOfSubRow) > 1) {
-                    echo "\t<tbody><tr class='tab_bg_1'><td colspan='$totalNumberOfColumn'><hr></td></tr>" .
-                         "</tbody>\n";
+                    echo "\t<tbody><tr class='tab_bg_1'><td colspan='$totalNumberOfColumn'><hr></td></tr>"
+                         . "</tbody>\n";
                 }
                 $row->displayRow($this->ordered_headers);
                 $previousNumberOfSubRows = $currentNumberOfSubRow;

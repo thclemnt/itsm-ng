@@ -43,30 +43,30 @@ class Contact_Supplier extends DbTestCase
 
         $supplier = new \Supplier();
         $supplier_id = $supplier->add([
-           'name'        => 'supplier-' . $this->getUniqueString(),
-           'entities_id' => 0,
-           'website'     => 'https://example.com',
-           'address'     => '1 Test street',
-           'town'        => 'Test City',
-           'postcode'    => '12345',
-           'country'     => 'Testland',
+            'name'        => 'supplier-' . $this->getUniqueString(),
+            'entities_id' => 0,
+            'website'     => 'https://example.com',
+            'address'     => '1 Test street',
+            'town'        => 'Test City',
+            'postcode'    => '12345',
+            'country'     => 'Testland',
         ]);
-        $this->integer((int)$supplier_id)->isGreaterThan(0);
+        $this->integer((int) $supplier_id)->isGreaterThan(0);
 
         $contact = new \Contact();
         $contact_id = $contact->add([
-           'name'        => 'contact-' . $this->getUniqueString(),
-           'firstname'   => 'first-' . $this->getUniqueString(),
-           'entities_id' => 0,
+            'name'        => 'contact-' . $this->getUniqueString(),
+            'firstname'   => 'first-' . $this->getUniqueString(),
+            'entities_id' => 0,
         ]);
-        $this->integer((int)$contact_id)->isGreaterThan(0);
+        $this->integer((int) $contact_id)->isGreaterThan(0);
 
         $relation = new \Contact_Supplier();
         $relation_id = $relation->add([
-           'contacts_id'  => $contact_id,
-           'suppliers_id' => $supplier_id,
+            'contacts_id'  => $contact_id,
+            'suppliers_id' => $supplier_id,
         ]);
-        $this->integer((int)$relation_id)->isGreaterThan(0);
+        $this->integer((int) $relation_id)->isGreaterThan(0);
 
         $this->boolean($contact->getFromDB($contact_id))->isTrue();
         $this->string($contact->getWebsite())->isEqualTo('https://example.com');
@@ -75,7 +75,7 @@ class Contact_Supplier extends DbTestCase
         $this->string($address['address'])->isEqualTo('1 Test street');
 
         $this->boolean($relation->delete(['id' => $relation_id]))->isTrue();
-        $this->integer((int)countElementsInTable(
+        $this->integer((int) countElementsInTable(
             \Contact_Supplier::getTable(),
             [
                 'contacts_id'  => $contact_id,

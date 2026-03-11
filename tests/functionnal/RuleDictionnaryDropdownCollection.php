@@ -9,9 +9,9 @@ class RuleDictionnaryDropdownCollection extends DbTestCase
     protected function nonSoftwareCollectionProvider()
     {
         return [
-           ['RuleDictionnaryPrinterCollection', 'RuleDictionnaryPrinter', ['manufacturer' => 'Acme', 'comment' => 'Printer']],
-           ['RuleDictionnaryOperatingSystemCollection', 'RuleDictionnaryOperatingSystem', []],
-           ['RuleDictionnaryNetworkEquipmentModelCollection', 'RuleDictionnaryNetworkEquipmentModel', ['manufacturer' => 'Acme']],
+            ['RuleDictionnaryPrinterCollection', 'RuleDictionnaryPrinter', ['manufacturer' => 'Acme', 'comment' => 'Printer']],
+            ['RuleDictionnaryOperatingSystemCollection', 'RuleDictionnaryOperatingSystem', []],
+            ['RuleDictionnaryNetworkEquipmentModelCollection', 'RuleDictionnaryNetworkEquipmentModel', ['manufacturer' => 'Acme']],
         ];
     }
 
@@ -30,30 +30,30 @@ class RuleDictionnaryDropdownCollection extends DbTestCase
 
         $name = 'dictionnary-' . $this->getUniqueString();
         $target_name = 'mapped-' . $name;
-        $rules_id = (int)$rule->add([
-           'name'        => 'Dictionnary rule ' . $name,
-           'is_active'   => 1,
-           'entities_id' => 0,
-           'sub_type'    => $rule_type,
-           'match'       => \Rule::AND_MATCHING,
-           'condition'   => 0,
-           'description' => '',
+        $rules_id = (int) $rule->add([
+            'name'        => 'Dictionnary rule ' . $name,
+            'is_active'   => 1,
+            'entities_id' => 0,
+            'sub_type'    => $rule_type,
+            'match'       => \Rule::AND_MATCHING,
+            'condition'   => 0,
+            'description' => '',
         ]);
         $this->integer($rules_id)->isGreaterThan(0);
 
-        $criteria_id = (int)$criteria->add([
-           'rules_id'  => $rules_id,
-           'criteria'  => 'name',
-           'condition' => \Rule::PATTERN_IS,
-           'pattern'   => $name,
+        $criteria_id = (int) $criteria->add([
+            'rules_id'  => $rules_id,
+            'criteria'  => 'name',
+            'condition' => \Rule::PATTERN_IS,
+            'pattern'   => $name,
         ]);
         $this->integer($criteria_id)->isGreaterThan(0);
 
-        $action_id = (int)$action->add([
-           'rules_id'    => $rules_id,
-           'action_type' => 'assign',
-           'field'       => 'name',
-           'value'       => $target_name,
+        $action_id = (int) $action->add([
+            'rules_id'    => $rules_id,
+            'action_type' => 'assign',
+            'field'       => 'name',
+            'value'       => $target_name,
         ]);
         $this->integer($action_id)->isGreaterThan(0);
 
@@ -63,8 +63,8 @@ class RuleDictionnaryDropdownCollection extends DbTestCase
         $input = array_merge(['name' => $name], $extra_input);
         $result = $collection->processAllRules($input);
         $this->array($result)->isIdenticalTo([
-           'name'    => $target_name,
-           '_ruleid' => (string)$rules_id,
+            'name'    => $target_name,
+            '_ruleid' => (string) $rules_id,
         ]);
     }
 }

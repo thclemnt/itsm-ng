@@ -36,8 +36,8 @@ include('../inc/includes.php');
 Session::checkRight("planning", READ);
 
 $users_id = null;
-$groups_id = (isset($_GET["gID"]) ? (int)$_GET['uID'] : 0);
-$limititemtype = (isset($_GET['limititemtype']) ? $_GET['limititemtype'] : '');
+$groups_id = (isset($_GET["gID"]) ? (int) $_GET['uID'] : 0);
+$limititemtype = ($_GET['limititemtype'] ?? '');
 
 if (!isset($_GET["uID"])) {
     if (
@@ -49,7 +49,7 @@ if (!isset($_GET["uID"])) {
         $users_id = 0;
     }
 } else {
-    $users_id = (int)$_GET['uID'];
+    $users_id = (int) $_GET['uID'];
 }
 
 $user = new User();

@@ -55,21 +55,21 @@ class Holiday extends CommonDropdown
     {
 
         return [
-           __('Start') => [
-              'name'  => 'begin_date',
-              'type'  => 'date',
-              'value' => $this->fields['begin_date']
-           ],
-           __('End') => [
-              'name'  => 'end_date',
-              'type'  => 'date',
-              'value' => $this->fields['end_date']
-           ],
-           __('Recurrent') => [
-              'name'  => 'is_perpetual',
-              'type'  => 'checkbox',
-              'value' => $this->fields['is_perpetual']
-           ]
+            __('Start') => [
+                'name'  => 'begin_date',
+                'type'  => 'date',
+                'value' => $this->fields['begin_date'],
+            ],
+            __('End') => [
+                'name'  => 'end_date',
+                'type'  => 'date',
+                'value' => $this->fields['end_date'],
+            ],
+            __('Recurrent') => [
+                'name'  => 'is_perpetual',
+                'type'  => 'checkbox',
+                'value' => $this->fields['is_perpetual'],
+            ],
         ];
     }
 
@@ -79,27 +79,27 @@ class Holiday extends CommonDropdown
         $tab = parent::rawSearchOptions();
 
         $tab[] = [
-           'id'                 => '11',
-           'table'              => $this->getTable(),
-           'field'              => 'begin_date',
-           'name'               => __('Start'),
-           'datatype'           => 'date'
+            'id'                 => '11',
+            'table'              => $this->getTable(),
+            'field'              => 'begin_date',
+            'name'               => __('Start'),
+            'datatype'           => 'date',
         ];
 
         $tab[] = [
-           'id'                 => '12',
-           'table'              => $this->getTable(),
-           'field'              => 'end_date',
-           'name'               => __('End'),
-           'datatype'           => 'date'
+            'id'                 => '12',
+            'table'              => $this->getTable(),
+            'field'              => 'end_date',
+            'name'               => __('End'),
+            'datatype'           => 'date',
         ];
 
         $tab[] = [
-           'id'                 => '13',
-           'table'              => $this->getTable(),
-           'field'              => 'is_perpetual',
-           'name'               => __('Recurrent'),
-           'datatype'           => 'bool'
+            'id'                 => '13',
+            'table'              => $this->getTable(),
+            'field'              => 'is_perpetual',
+            'name'               => __('Recurrent'),
+            'datatype'           => 'bool',
         ];
 
         return $tab;

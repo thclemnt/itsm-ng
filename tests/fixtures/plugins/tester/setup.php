@@ -34,14 +34,14 @@
 function plugin_version_tester()
 {
     return [
-       'name'           => 'tester',
-       'version'        => '1.0.0',
-       'author'         => 'GLPI Test suite',
-       'license'        => 'GPL v2+',
-       'requirements'   => [
-          'glpi' => [
-             'min' => '9.5.0',
-          ]
-       ]
+        'name'           => 'tester',
+        'version'        => '1.0.0',
+        'author'         => 'GLPI Test suite',
+        'license'        => 'GPL v2+',
+        'requirements'   => [
+            'glpi' => [
+                'min' => '9.5.0',
+            ],
+        ],
     ];
 }

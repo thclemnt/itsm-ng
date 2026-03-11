@@ -39,64 +39,64 @@ function update0722to0723()
     global $DB;
 
     //TRANS: %s is the number of new version
-    echo "<h3>".sprintf(__('Update to %s'), '0.72.3')."</h3>";
+    echo "<h3>" . sprintf(__('Update to %s'), '0.72.3') . "</h3>";
     displayMigrationMessage("0723"); // Start
 
     //// Correct search.constant numbers : problem in previous update
     $updates = [];
     // serial / otherserial
     $updates[] = ['type'  => STATE_TYPE,
-                       'from'  => 9,
-                       'to'    => 6];
+        'from'  => 9,
+        'to'    => 6];
 
     $updates[] = ['type'  => STATE_TYPE,
-                       'from'  => 8,
-                       'to'    => 5];
+        'from'  => 8,
+        'to'    => 5];
 
     foreach ($updates as $data) {
         $query = "UPDATE `glpi_display`
-                SET `num` = ".$data['to']."
-                WHERE `num` = ".$data['from']."
-                     AND `type` = '".$data['type']."'";
+                SET `num` = " . $data['to'] . "
+                WHERE `num` = " . $data['from'] . "
+                     AND `type` = '" . $data['type'] . "'";
         $DB->queryOrDie($query, "0.72.3 reorder search.constant");
     }
 
     $LINK_ID_TABLE = [1  => "glpi_computers",
-                           2  => "glpi_networking",
-                           3  => "glpi_printers",
-                           4  => "glpi_monitors",
-                           5  => "glpi_peripherals",
-                           6  => "glpi_software",
-                           7  => "glpi_contacts",
-                           8  => "glpi_enterprises",
-                           9  => "glpi_infocoms",
-                           10 => "glpi_contracts",
-                           11 => "glpi_cartridges_type",
-                           12 => "glpi_type_docs",
-                           13 => "glpi_docs",
-                           14 => "glpi_kbitems",
-                           15 => "glpi_users",
-                           16 => "glpi_tracking",
-                           17 => "glpi_consumables_type",
-                           18 => "glpi_consumables",
-                           19 => "glpi_cartridges",
-                           20 => "glpi_softwarelicenses",
-                           21 => "glpi_links",
-                           23 => "glpi_phones",
-                           25 => "glpi_reminder",
-                           27 => "glpi_groups",
-                           28 => "glpi_entities",
-                           29 => "glpi_reservation_item",
-                           32 => "glpi_ocs_config",
-                           33 => "glpi_registry",
-                           34 => "glpi_profiles",
-                           35 => "glpi_mailgate",
-                           36 => "glpi_rules_descriptions",
-                           37 => "glpi_transfers",
-                           39 => "glpi_softwareversions",
-                           41 => "glpi_computerdisks",
-                           42 => "glpi_networking_ports",
-                           43 => "glpi_followups"];
+        2  => "glpi_networking",
+        3  => "glpi_printers",
+        4  => "glpi_monitors",
+        5  => "glpi_peripherals",
+        6  => "glpi_software",
+        7  => "glpi_contacts",
+        8  => "glpi_enterprises",
+        9  => "glpi_infocoms",
+        10 => "glpi_contracts",
+        11 => "glpi_cartridges_type",
+        12 => "glpi_type_docs",
+        13 => "glpi_docs",
+        14 => "glpi_kbitems",
+        15 => "glpi_users",
+        16 => "glpi_tracking",
+        17 => "glpi_consumables_type",
+        18 => "glpi_consumables",
+        19 => "glpi_cartridges",
+        20 => "glpi_softwarelicenses",
+        21 => "glpi_links",
+        23 => "glpi_phones",
+        25 => "glpi_reminder",
+        27 => "glpi_groups",
+        28 => "glpi_entities",
+        29 => "glpi_reservation_item",
+        32 => "glpi_ocs_config",
+        33 => "glpi_registry",
+        34 => "glpi_profiles",
+        35 => "glpi_mailgate",
+        36 => "glpi_rules_descriptions",
+        37 => "glpi_transfers",
+        39 => "glpi_softwareversions",
+        41 => "glpi_computerdisks",
+        42 => "glpi_networking_ports",
+        43 => "glpi_followups"];
 
     $query = "SELECT DISTINCT `device_type`
              FROM `glpi_doc_device`";
@@ -108,7 +108,7 @@ function update0722to0723()
 
                     $query2 = "DELETE
                           FROM `glpi_doc_device`
-                          WHERE `device_type` = ".$data['device_type']."
+                          WHERE `device_type` = " . $data['device_type'] . "
                                 AND `FK_device` NOT IN (SELECT `ID`
                                                         FROM `$table`)";
                     $DB->queryOrDie($query2, "0.72.3 clean doc_device table");

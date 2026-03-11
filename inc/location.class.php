@@ -52,67 +52,67 @@ class Location extends CommonTreeDropdown
     {
 
         return [
-           __('As child of') => [
-              'name'  => $this->getForeignKeyField(),
-              'type'  => 'select',
-              'values'  => getOptionForItems('Location', ['NOT' => ['id' => $this->getID()]]),
-              'value' => $this->fields[$this->getForeignKeyField()],
-           ],
-           __('Address') => [
-              'name'   => 'address',
-              'type'   => 'text',
-              'value' => $this->fields['address'],
-           ],
-           __('Postal code') => [
-              'name'   => 'postcode',
-              'type'   => 'text',
-              'value' => $this->fields['postcode'],
-           ],
-           __('Town') => [
-              'name'   => 'town',
-              'type'   => 'text',
-              'value' => $this->fields['town'],
-           ],
-           _x('location', 'State') => [
-              'name'   => 'state',
-              'type'   => 'text',
-              'value' => $this->fields['state'],
-           ],
-           __('Country') => [
-              'name'   => 'country',
-              'type'   => 'text',
-              'value' => $this->fields['country'],
-           ],
-           __('Building number') => [
-              'name'  => 'building',
-              'type'  => 'text',
-              'value' => $this->fields['building'],
-           ],
-           __('Room number') => [
-              'name'  => 'room',
-              'type'  => 'text',
-              'value' => $this->fields['room'],
-           ],
-           // __('Location on map') => [
-           //    'name'   => 'setlocation',
-           //    'type'   => 'setlocation',
-           //    'list'   => false
-           // ],
-           __('Latitude') => [
-              'name'  => 'latitude',
-              'type'  => 'text',
-              'value' => $this->fields['latitude'],
-           ],
-           __('Longitude') => [
-              'name'  => 'longitude',
-              'type'  => 'text',
-              'value' => $this->fields['longitude'],
-           ],
-           __('Altitude') => [
-              'name'  => 'altitude',
-              'type'  => 'text',
-              'value' => $this->fields['altitude'],
-           ]
+            __('As child of') => [
+                'name'  => $this->getForeignKeyField(),
+                'type'  => 'select',
+                'values'  => getOptionForItems('Location', ['NOT' => ['id' => $this->getID()]]),
+                'value' => $this->fields[$this->getForeignKeyField()],
+            ],
+            __('Address') => [
+                'name'   => 'address',
+                'type'   => 'text',
+                'value' => $this->fields['address'],
+            ],
+            __('Postal code') => [
+                'name'   => 'postcode',
+                'type'   => 'text',
+                'value' => $this->fields['postcode'],
+            ],
+            __('Town') => [
+                'name'   => 'town',
+                'type'   => 'text',
+                'value' => $this->fields['town'],
+            ],
+            _x('location', 'State') => [
+                'name'   => 'state',
+                'type'   => 'text',
+                'value' => $this->fields['state'],
+            ],
+            __('Country') => [
+                'name'   => 'country',
+                'type'   => 'text',
+                'value' => $this->fields['country'],
+            ],
+            __('Building number') => [
+                'name'  => 'building',
+                'type'  => 'text',
+                'value' => $this->fields['building'],
+            ],
+            __('Room number') => [
+                'name'  => 'room',
+                'type'  => 'text',
+                'value' => $this->fields['room'],
+            ],
+            // __('Location on map') => [
+            //    'name'   => 'setlocation',
+            //    'type'   => 'setlocation',
+            //    'list'   => false
+            // ],
+            __('Latitude') => [
+                'name'  => 'latitude',
+                'type'  => 'text',
+                'value' => $this->fields['latitude'],
+            ],
+            __('Longitude') => [
+                'name'  => 'longitude',
+                'type'  => 'text',
+                'value' => $this->fields['longitude'],
+            ],
+            __('Altitude') => [
+                'name'  => 'altitude',
+                'type'  => 'text',
+                'value' => $this->fields['altitude'],
+            ],
         ];
     }
 
@@ -128,101 +128,101 @@ class Location extends CommonTreeDropdown
         $tab = [];
 
         $tab[] = [
-           'id'                 => '3',
-           'table'              => 'glpi_locations',
-           'field'              => 'completename',
-           'name'               => Location::getTypeName(1),
-           'datatype'           => 'dropdown'
+            'id'                 => '3',
+            'table'              => 'glpi_locations',
+            'field'              => 'completename',
+            'name'               => Location::getTypeName(1),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '101',
-           'table'              => 'glpi_locations',
-           'field'              => 'address',
-           'name'               => __('Address'),
-           'massiveaction'      => false,
-           'datatype'           => 'string'
+            'id'                 => '101',
+            'table'              => 'glpi_locations',
+            'field'              => 'address',
+            'name'               => __('Address'),
+            'massiveaction'      => false,
+            'datatype'           => 'string',
         ];
 
         $tab[] = [
-           'id'                 => '102',
-           'table'              => 'glpi_locations',
-           'field'              => 'postcode',
-           'name'               => __('Postal code'),
-           'massiveaction'      => false,
-           'datatype'           => 'string'
+            'id'                 => '102',
+            'table'              => 'glpi_locations',
+            'field'              => 'postcode',
+            'name'               => __('Postal code'),
+            'massiveaction'      => false,
+            'datatype'           => 'string',
         ];
 
         $tab[] = [
-           'id'                 => '103',
-           'table'              => 'glpi_locations',
-           'field'              => 'town',
-           'name'               => __('Town'),
-           'massiveaction'      => false,
-           'datatype'           => 'string'
+            'id'                 => '103',
+            'table'              => 'glpi_locations',
+            'field'              => 'town',
+            'name'               => __('Town'),
+            'massiveaction'      => false,
+            'datatype'           => 'string',
         ];
 
         $tab[] = [
-           'id'                 => '104',
-           'table'              => 'glpi_locations',
-           'field'              => 'state',
-           'name'               => _x('location', 'State'),
-           'massiveaction'      => false,
-           'datatype'           => 'string'
+            'id'                 => '104',
+            'table'              => 'glpi_locations',
+            'field'              => 'state',
+            'name'               => _x('location', 'State'),
+            'massiveaction'      => false,
+            'datatype'           => 'string',
         ];
 
         $tab[] = [
-           'id'                 => '105',
-           'table'              => 'glpi_locations',
-           'field'              => 'country',
-           'name'               => __('Country'),
-           'massiveaction'      => false,
-           'datatype'           => 'string'
+            'id'                 => '105',
+            'table'              => 'glpi_locations',
+            'field'              => 'country',
+            'name'               => __('Country'),
+            'massiveaction'      => false,
+            'datatype'           => 'string',
         ];
 
         $tab[] = [
-           'id'                 => '91',
-           'table'              => 'glpi_locations',
-           'field'              => 'building',
-           'name'               => __('Building number'),
-           'massiveaction'      => false,
-           'datatype'           => 'string'
+            'id'                 => '91',
+            'table'              => 'glpi_locations',
+            'field'              => 'building',
+            'name'               => __('Building number'),
+            'massiveaction'      => false,
+            'datatype'           => 'string',
         ];
 
         $tab[] = [
-           'id'                 => '92',
-           'table'              => 'glpi_locations',
-           'field'              => 'room',
-           'name'               => __('Room number'),
-           'massiveaction'      => false,
-           'datatype'           => 'string'
+            'id'                 => '92',
+            'table'              => 'glpi_locations',
+            'field'              => 'room',
+            'name'               => __('Room number'),
+            'massiveaction'      => false,
+            'datatype'           => 'string',
         ];
 
         $tab[] = [
-           'id'                 => '93',
-           'table'              => 'glpi_locations',
-           'field'              => 'comment',
-           'name'               => __('Location comments'),
-           'massiveaction'      => false,
-           'datatype'           => 'text'
+            'id'                 => '93',
+            'table'              => 'glpi_locations',
+            'field'              => 'comment',
+            'name'               => __('Location comments'),
+            'massiveaction'      => false,
+            'datatype'           => 'text',
         ];
 
         $tab[] = [
-           'id'                 => '998',
-           'table'              => 'glpi_locations',
-           'field'              => 'latitude',
-           'name'               => __('Latitude'),
-           'massiveaction'      => false,
-           'datatype'           => 'text'
+            'id'                 => '998',
+            'table'              => 'glpi_locations',
+            'field'              => 'latitude',
+            'name'               => __('Latitude'),
+            'massiveaction'      => false,
+            'datatype'           => 'text',
         ];
 
         $tab[] = [
-           'id'                 => '999',
-           'table'              => 'glpi_locations',
-           'field'              => 'longitude',
-           'name'               => __('Longitude'),
-           'massiveaction'      => false,
-           'datatype'           => 'text'
+            'id'                 => '999',
+            'table'              => 'glpi_locations',
+            'field'              => 'longitude',
+            'name'               => __('Longitude'),
+            'massiveaction'      => false,
+            'datatype'           => 'text',
         ];
 
         return $tab;
@@ -233,123 +233,123 @@ class Location extends CommonTreeDropdown
         $tab = parent::rawSearchOptions();
 
         $tab[] = [
-           'id'                 => '11',
-           'table'              => 'glpi_locations',
-           'field'              => 'building',
-           'name'               => __('Building number'),
-           'datatype'           => 'text',
-           'autocomplete'       => true,
+            'id'                 => '11',
+            'table'              => 'glpi_locations',
+            'field'              => 'building',
+            'name'               => __('Building number'),
+            'datatype'           => 'text',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '12',
-           'table'              => 'glpi_locations',
-           'field'              => 'room',
-           'name'               => __('Room number'),
-           'datatype'           => 'text',
-           'autocomplete'       => true,
+            'id'                 => '12',
+            'table'              => 'glpi_locations',
+            'field'              => 'room',
+            'name'               => __('Room number'),
+            'datatype'           => 'text',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '15',
-           'table'              => 'glpi_locations',
-           'field'              => 'address',
-           'name'               => __('Address'),
-           'massiveaction'      => false,
-           'datatype'           => 'string'
+            'id'                 => '15',
+            'table'              => 'glpi_locations',
+            'field'              => 'address',
+            'name'               => __('Address'),
+            'massiveaction'      => false,
+            'datatype'           => 'string',
         ];
 
         $tab[] = [
-           'id'                 => '17',
-           'table'              => 'glpi_locations',
-           'field'              => 'postcode',
-           'name'               => __('Postal code'),
-           'massiveaction'      => true,
-           'datatype'           => 'string'
+            'id'                 => '17',
+            'table'              => 'glpi_locations',
+            'field'              => 'postcode',
+            'name'               => __('Postal code'),
+            'massiveaction'      => true,
+            'datatype'           => 'string',
         ];
 
         $tab[] = [
-           'id'                 => '18',
-           'table'              => 'glpi_locations',
-           'field'              => 'town',
-           'name'               => __('Town'),
-           'massiveaction'      => true,
-           'datatype'           => 'string'
+            'id'                 => '18',
+            'table'              => 'glpi_locations',
+            'field'              => 'town',
+            'name'               => __('Town'),
+            'massiveaction'      => true,
+            'datatype'           => 'string',
         ];
 
         $tab[] = [
-           'id'                 => '21',
-           'table'              => 'glpi_locations',
-           'field'              => 'latitude',
-           'name'               => __('Latitude'),
-           'massiveaction'      => false,
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '21',
+            'table'              => 'glpi_locations',
+            'field'              => 'latitude',
+            'name'               => __('Latitude'),
+            'massiveaction'      => false,
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '20',
-           'table'              => 'glpi_locations',
-           'field'              => 'longitude',
-           'name'               => __('Longitude'),
-           'massiveaction'      => false,
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '20',
+            'table'              => 'glpi_locations',
+            'field'              => 'longitude',
+            'name'               => __('Longitude'),
+            'massiveaction'      => false,
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '22',
-           'table'              => 'glpi_locations',
-           'field'              => 'altitude',
-           'name'               => __('Altitude'),
-           'massiveaction'      => false,
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '22',
+            'table'              => 'glpi_locations',
+            'field'              => 'altitude',
+            'name'               => __('Altitude'),
+            'massiveaction'      => false,
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '101',
-           'table'              => 'glpi_locations',
-           'field'              => 'address',
-           'name'               => __('Address'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '101',
+            'table'              => 'glpi_locations',
+            'field'              => 'address',
+            'name'               => __('Address'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '102',
-           'table'              => 'glpi_locations',
-           'field'              => 'postcode',
-           'name'               => __('Postal code'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '102',
+            'table'              => 'glpi_locations',
+            'field'              => 'postcode',
+            'name'               => __('Postal code'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '103',
-           'table'              => 'glpi_locations',
-           'field'              => 'town',
-           'name'               => __('Town'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '103',
+            'table'              => 'glpi_locations',
+            'field'              => 'town',
+            'name'               => __('Town'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '104',
-           'table'              => 'glpi_locations',
-           'field'              => 'state',
-           'name'               => _x('location', 'State'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '104',
+            'table'              => 'glpi_locations',
+            'field'              => 'state',
+            'name'               => _x('location', 'State'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '105',
-           'table'              => 'glpi_locations',
-           'field'              => 'country',
-           'name'               => __('Country'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '105',
+            'table'              => 'glpi_locations',
+            'field'              => 'country',
+            'name'               => __('Country'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         return $tab;
@@ -442,14 +442,14 @@ class Location extends CommonTreeDropdown
             }
             $table = getTableForItemType($itemtype);
             $itemtype_criteria = [
-               'SELECT' => [
-                  "$table.id",
-                  new \QueryExpression($DB->quoteValue($itemtype) . ' AS ' . $DB->quoteName('type')),
-               ],
-               'FROM'   => $table,
-               'WHERE'  => [
-                  "$table.locations_id"   => $locations_id,
-               ] + getEntitiesRestrictCriteria($table, 'entities_id')
+                'SELECT' => [
+                    "$table.id",
+                    new QueryExpression($DB->quoteValue($itemtype) . ' AS ' . $DB->quoteName('type')),
+                ],
+                'FROM'   => $table,
+                'WHERE'  => [
+                    "$table.locations_id"   => $locations_id,
+                ] + getEntitiesRestrictCriteria($table, 'entities_id'),
             ];
             if ($item->maybeDeleted()) {
                 $itemtype_criteria['WHERE']['is_deleted'] = 0;
@@ -460,7 +460,7 @@ class Location extends CommonTreeDropdown
         if (count($queries) === 1) {
             $criteria = $queries[0];
         } elseif (count($queries) > 1) {
-            $criteria = ['FROM' => new \QueryUnion($queries)];
+            $criteria = ['FROM' => new QueryUnion($queries)];
         }
 
         $filter_options = [0 => Dropdown::EMPTY_VALUE];
@@ -481,7 +481,7 @@ class Location extends CommonTreeDropdown
         echo "<div class='d-flex flex-nowrap align-items-center w-100'>";
         echo "<select class='form-select form-select-sm' name='criterion' id='location_items_criterion_$rand'>";
         foreach ($filter_options as $value => $label) {
-            $selected = (string)$current_itemtype == (string)$value ? ' selected="selected"' : '';
+            $selected = (string) $current_itemtype == (string) $value ? ' selected="selected"' : '';
             echo "<option value=\"$value\"$selected>$label</option>";
         }
         echo "</select>";
@@ -527,11 +527,11 @@ JS;
 
         $iterator = $DB->request($criteria);
         $fields = [
-           'type' => _n('Type', 'Types', 1),
-           'entity' => Entity::getTypeName(1),
-           'name' => __('Name'),
-           'serial' => __('Serial number'),
-           'inventory' => __('Inventory number'),
+            'type' => _n('Type', 'Types', 1),
+            'entity' => Entity::getTypeName(1),
+            'name' => __('Name'),
+            'serial' => __('Serial number'),
+            'inventory' => __('Inventory number'),
         ];
         $values = [];
         while ($data = $iterator->next()) {
@@ -540,27 +540,27 @@ JS;
                 continue;
             }
             $values[] = [
-               'type' => $item->getTypeName(),
-               'entity' => Dropdown::getDropdownName(
-                   'glpi_entities',
-                   $item->getEntityID()
-               ),
-               'name' => $item->getLink(),
-               'serial' => (isset($item->fields['serial']) && $item->fields['serial'] !== '')
-                   ? $item->fields['serial']
-                   : '-',
-               'inventory' => (isset($item->fields['otherserial']) && $item->fields['otherserial'] !== '')
-                   ? $item->fields['otherserial']
-                   : '-',
+                'type' => $item->getTypeName(),
+                'entity' => Dropdown::getDropdownName(
+                    'glpi_entities',
+                    $item->getEntityID()
+                ),
+                'name' => $item->getLink(),
+                'serial' => (isset($item->fields['serial']) && $item->fields['serial'] !== '')
+                    ? $item->fields['serial']
+                    : '-',
+                'inventory' => (isset($item->fields['otherserial']) && $item->fields['otherserial'] !== '')
+                    ? $item->fields['otherserial']
+                    : '-',
             ];
         }
 
         if (count($values)) {
             echo "<div class='spaced'>";
             renderTwigTemplate('table.twig', [
-               'fields' => $fields,
-               'values' => $values,
-               'pageSize' => $_SESSION['glpilist_limit'],
+                'fields' => $fields,
+                'values' => $values,
+                'pageSize' => $_SESSION['glpilist_limit'],
             ]);
             echo "</div>";
         } else {
@@ -575,7 +575,7 @@ JS;
                 $this->showMap();
                 break;
             default:
-                throw new \RuntimeException("Unknown {$field['type']}");
+                throw new RuntimeException("Unknown {$field['type']}");
         }
     }
 

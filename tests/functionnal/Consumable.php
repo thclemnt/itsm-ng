@@ -33,6 +33,8 @@
 
 namespace tests\units;
 
+use atoum\atoum\mock\controller;
+
 /* Test for inc/consumable.class.php */
 
 class Consumable extends \DbTestCase
@@ -42,14 +44,12 @@ class Consumable extends \DbTestCase
         $ok = 0;
         $ko = 0;
 
-        $controller = new \atoum\atoum\mock\controller();
-        $controller->__construct = function ($args) {
-        };
+        $controller = new controller();
+        $controller->__construct = function ($args) {};
 
         $ma = new \mock\MassiveAction([], [], '', false, $controller);
         $ma->getMockController()->getAction = $action;
-        $ma->getMockController()->addMessage = function () {
-        };
+        $ma->getMockController()->addMessage = function () {};
         $ma->getMockController()->getInput = $input;
         $ma->getMockController()->itemDone = function ($itemtype, $id, $res) use (&$ok, &$ko) {
             if ($res == \MassiveAction::ACTION_OK) {
@@ -74,33 +74,33 @@ class Consumable extends \DbTestCase
         $consumable = new \Consumable();
 
         $consumable_item = new \ConsumableItem();
-        $cu_id = (int)$consumable_item->add([
-           'name' => 'Test consumable item'
+        $cu_id = (int) $consumable_item->add([
+            'name' => 'Test consumable item',
         ]);
         $this->integer($cu_id)->isGreaterThan(0);
 
         $group = new \Group();
-        $gid1 = (int)$group->add([
-           'name' => 'Test group 1'
+        $gid1 = (int) $group->add([
+            'name' => 'Test group 1',
         ]);
         $this->integer($gid1)->isGreaterThan(0);
-        $gid2 = (int)$group->add([
-           'name' => 'Test group 2'
+        $gid2 = (int) $group->add([
+            'name' => 'Test group 2',
         ]);
         $this->integer($gid2)->isGreaterThan(0);
 
         $user = new \User();
-        $uid = (int)$user->add([
-           'name'    => 'User group',
-           'picture' => ''
+        $uid = (int) $user->add([
+            'name'    => 'User group',
+            'picture' => '',
         ]);
         $this->integer($uid)->isGreaterThan(0);
 
         $c_ids = [];
         for ($i = 0; $i < 20; $i++) {
-            $c_id = (int)$consumable->add([
-               'name'               => 'Test consumable',
-               'consumableitems_id' => $cu_id,
+            $c_id = (int) $consumable->add([
+                'name'               => 'Test consumable',
+                'consumableitems_id' => $cu_id,
             ]);
             $this->integer($c_id)->isGreaterThan(0);
 
@@ -141,7 +141,7 @@ class Consumable extends \DbTestCase
                     'consumableitems_id' => $cu_id,
                     'itemtype'           => 'Group',
                     'items_id'           => $gid1,
-                 ]
+                ]
             )
         )->isEqualTo(0);
 
@@ -156,7 +156,7 @@ class Consumable extends \DbTestCase
                     'consumableitems_id' => $cu_id,
                     'itemtype'           => 'Group',
                     'items_id'           => $gid2,
-                 ]
+                ]
             )
         )->isEqualTo(0);
         $this->integer(
@@ -166,7 +166,7 @@ class Consumable extends \DbTestCase
                     'consumableitems_id' => $cu_id,
                     'itemtype'           => 'Group',
                     'items_id'           => $gid1,
-                 ]
+                ]
             )
         )->isEqualTo(5);
 
@@ -181,7 +181,7 @@ class Consumable extends \DbTestCase
                     'consumableitems_id' => $cu_id,
                     'itemtype'           => 'User',
                     'items_id'           => $uid,
-                 ]
+                ]
             )
         )->isEqualTo(0);
     }
@@ -192,28 +192,28 @@ class Consumable extends \DbTestCase
 
         $consumable_item = new \ConsumableItem();
         $cu_id = (int) $consumable_item->add([
-           'name' => 'Test consumable item'
+            'name' => 'Test consumable item',
         ]);
         $this->integer($cu_id)->isGreaterThan(0);
 
         $infocom = new \Infocom();
         $infocom_id = (int) $infocom->add([
-           'itemtype'  => \ConsumableItem::getType(),
-           'items_id'  => $cu_id,
-           'buy_date'  => '2020-10-21',
-           'value'     => '500'
+            'itemtype'  => \ConsumableItem::getType(),
+            'items_id'  => $cu_id,
+            'buy_date'  => '2020-10-21',
+            'value'     => '500',
         ]);
         $this->integer($infocom_id)->isGreaterThan(0);
 
         $consumable_id = $consumable->add([
-           'consumableitems_id' => $cu_id
+            'consumableitems_id' => $cu_id,
         ]);
         $this->integer($consumable_id)->isGreaterThan(0);
 
         $infocom2 = new \Infocom();
         $infocom2_id = (int) $infocom2->getFromDBByCrit([
-           'itemtype'  => \Consumable::getType(),
-           'items_id'  => $consumable_id
+            'itemtype'  => \Consumable::getType(),
+            'items_id'  => $consumable_id,
         ]);
         $this->integer($infocom2_id)->isGreaterThan(0);
         $this->string($infocom2->fields['buy_date'])->isEqualTo($infocom->fields['buy_date']);
@@ -229,7 +229,7 @@ class Consumable extends \DbTestCase
 
         try {
             $consumable_item = new \ConsumableItem();
-            $consumableitems_id = (int)$consumable_item->add([
+            $consumableitems_id = (int) $consumable_item->add([
                 'name' => 'Massive consumable item ' . $this->getUniqueString(),
             ]);
             $this->integer($consumableitems_id)->isGreaterThan(0);
@@ -237,7 +237,7 @@ class Consumable extends \DbTestCase
             $consumable = new \Consumable();
             $consumable_ids = [];
             foreach ([1, 2] as $i) {
-                $id = (int)$consumable->add([
+                $id = (int) $consumable->add([
                     'name'               => 'Massive consumable ' . $i,
                     'consumableitems_id' => $consumableitems_id,
                 ]);
@@ -246,7 +246,7 @@ class Consumable extends \DbTestCase
             }
 
             $user = new \User();
-            $users_id = (int)$user->add([
+            $users_id = (int) $user->add([
                 'name'    => 'massive-consumable-user-' . $this->getUniqueString(),
                 'picture' => '',
             ]);
@@ -267,7 +267,7 @@ class Consumable extends \DbTestCase
             foreach ($consumable_ids as $id) {
                 $this->boolean($consumable->getFromDB($id))->isTrue();
                 $this->string($consumable->fields['itemtype'])->isEqualTo('User');
-                $this->integer((int)$consumable->fields['items_id'])->isEqualTo($users_id);
+                $this->integer((int) $consumable->fields['items_id'])->isEqualTo($users_id);
                 $this->string($consumable->fields['date_out'])->matches('#^\d{4}-\d{2}-\d{2}$#');
             }
 

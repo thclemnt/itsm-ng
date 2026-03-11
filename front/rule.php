@@ -54,7 +54,7 @@ foreach ($CFG_GLPI["rulecollections_types"] as $rulecollectionclass) {
         }
         $ruleClassName = $rulecollection->getRuleClassName();
         $links[] = ['url'   => $ruleClassName::getSearchURL(),
-                    'title' => $title];
+            'title' => $title];
     }
 }
 
@@ -63,12 +63,12 @@ if (
     && Session::isMultiEntitiesMode()
 ) {
     $links[] = ['url'   => $CFG_GLPI['root_doc'] . "/front/transfer.php",
-                'title' => __('Transfer')];
+        'title' => __('Transfer')];
 }
 
 if (Session::haveRight("config", READ)) {
     $links[] = ['url'   => $CFG_GLPI['root_doc'] . "/front/blacklist.php",
-                'title' => _n('Blacklist', 'Blacklists', Session::getPluralNumber())];
+        'title' => _n('Blacklist', 'Blacklists', Session::getPluralNumber())];
 }
 
 ?>

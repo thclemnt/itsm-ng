@@ -67,8 +67,8 @@ class IPNetwork_Vlan extends CommonDBRelation
     {
 
         $this->getFromDBByCrit([
-           'ipnetworks_id'   => $portID,
-           'vlans_id'        => $vlanID
+            'ipnetworks_id'   => $portID,
+            'vlans_id'        => $vlanID,
         ]);
 
         return $this->delete($this->fields);
@@ -83,7 +83,7 @@ class IPNetwork_Vlan extends CommonDBRelation
     {
 
         $input = ['ipnetworks_id' => $port,
-                       'vlans_id'      => $vlan];
+            'vlans_id'      => $vlan];
 
         return $this->add($input);
     }
@@ -105,20 +105,20 @@ class IPNetwork_Vlan extends CommonDBRelation
         $rand    = mt_rand();
 
         $iterator = $DB->request([
-           'SELECT'    => [
-              self::getTable() . '.id AS assocID',
-              'glpi_vlans.*'
-           ],
-           'FROM'      => self::getTable(),
-           'LEFT JOIN' => [
-              'glpi_vlans'   => [
-                 'ON' => [
-                    self::getTable()  => 'vlans_id',
-                    'glpi_vlans'      => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => ['ipnetworks_id' => $ID]
+            'SELECT'    => [
+                self::getTable() . '.id AS assocID',
+                'glpi_vlans.*',
+            ],
+            'FROM'      => self::getTable(),
+            'LEFT JOIN' => [
+                'glpi_vlans'   => [
+                    'ON' => [
+                        self::getTable()  => 'vlans_id',
+                        'glpi_vlans'      => 'id',
+                    ],
+                ],
+            ],
+            'WHERE'     => ['ipnetworks_id' => $ID],
         ]);
 
         $vlans  = [];
@@ -138,8 +138,8 @@ class IPNetwork_Vlan extends CommonDBRelation
             echo "<tr class='tab_bg_1'><td class='center'>";
             echo "<input type='hidden' name='ipnetworks_id' value='$ID'>";
             Vlan::dropdown(['used' => $used]);
-            echo "&nbsp;<input type='submit' name='add' value='" . _sx('button', 'Associate') .
-                         "' class='submit'>";
+            echo "&nbsp;<input type='submit' name='add' value='" . _sx('button', 'Associate')
+                         . "' class='submit'>";
             echo "</td></tr>\n";
 
             echo "</table>\n";
@@ -151,7 +151,7 @@ class IPNetwork_Vlan extends CommonDBRelation
         if ($canedit && $number) {
             Html::openMassiveActionsForm('mass' . __CLASS__ . $rand);
             $massiveactionparams = ['num_displayed' => min($_SESSION['glpilist_limit'], $number),
-                                         'container'     => 'mass' . __CLASS__ . $rand];
+                'container'     => 'mass' . __CLASS__ . $rand];
             Html::showMassiveActions($massiveactionparams);
         }
         echo "<table class='tab_cadre_fixehov' aria-label='editable entity table'>";
@@ -185,8 +185,8 @@ class IPNetwork_Vlan extends CommonDBRelation
                 $name = sprintf(__('%1$s (%2$s)'), $name, $data["id"]);
             }
             echo "<td class='center b'>
-               <a href='" . $CFG_GLPI["root_doc"] . "/front/vlan.form.php?id=" . $data["id"] . "'>" . $name .
-                 "</a>";
+               <a href='" . $CFG_GLPI["root_doc"] . "/front/vlan.form.php?id=" . $data["id"] . "'>" . $name
+                 . "</a>";
             echo "</td>";
             echo "<td class='center'>" . Dropdown::getDropdownName("glpi_entities", $data["entities_id"]);
             echo "<td class='numeric'>" . $data["tag"] . "</td>";
@@ -214,9 +214,9 @@ class IPNetwork_Vlan extends CommonDBRelation
 
         $vlans = [];
         $iterator = $DB->request([
-           'SELECT' => 'vlans_id',
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['ipnetworks_id' => $portID]
+            'SELECT' => 'vlans_id',
+            'FROM'   => self::getTable(),
+            'WHERE'  => ['ipnetworks_id' => $portID],
         ]);
         while ($data = $iterator->next()) {
             $vlans[$data['vlans_id']] = $data['vlans_id'];

@@ -44,12 +44,12 @@ class DocumentCategory extends CommonTreeDropdown
     {
 
         return [
-           __('As child of') => [
-              'name'  => $this->getForeignKeyField(),
-              'type'  => 'select',
-              'values'  => getOptionForItems('DocumentCategory', ['NOT' => ['id' => $this->getID()]]),
-              'value' => $this->fields[$this->getForeignKeyField()],
-           ]
+            __('As child of') => [
+                'name'  => $this->getForeignKeyField(),
+                'type'  => 'select',
+                'values'  => getOptionForItems('DocumentCategory', ['NOT' => ['id' => $this->getID()]]),
+                'value' => $this->fields[$this->getForeignKeyField()],
+            ],
         ];
     }
 
@@ -65,12 +65,12 @@ class DocumentCategory extends CommonTreeDropdown
         parent::cleanRelationData();
 
         if ($this->isUsedAsDefaultCategoryForTickets()) {
-            $newval = (isset($this->input['_replace_by']) ? $this->input['_replace_by'] : 0);
+            $newval = ($this->input['_replace_by'] ?? 0);
 
             Config::setConfigurationValues(
                 'core',
                 [
-                  'documentcategories_id_forticket' => $newval,
+                    'documentcategories_id_forticket' => $newval,
                 ]
             );
         }
@@ -91,7 +91,7 @@ class DocumentCategory extends CommonTreeDropdown
     /**
      * Check if category is used as default for tickets documents.
      *
-     * @return boolean
+     * @return bool
      */
     private function isUsedAsDefaultCategoryForTickets()
     {

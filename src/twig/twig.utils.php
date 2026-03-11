@@ -5,34 +5,34 @@ function expandSelect(&$select, $fields = [])
     global $CFG_GLPI;
 
     if (isset($select["itemtype"]) && !isset($select["values"])) {
-        $restrict =
-            $select["condition"]["entities_id"] ??
-            ($fields["entities_id"] ??
-                (Session::getActiveEntity() == 0
+        $restrict
+            = $select["condition"]["entities_id"]
+            ?? ($fields["entities_id"]
+                ?? (Session::getActiveEntity() == 0
                     ? -1
                     : Session::getActiveEntity()));
-        $recursive =
-            $select["condition"]["is_recursive"] ??
-            ($fields["is_recursive"] ?? Session::getIsActiveEntityRecursive());
+        $recursive
+            = $select["condition"]["is_recursive"]
+            ?? ($fields["is_recursive"] ?? Session::getIsActiveEntityRecursive());
         if (isset($select["condition"]["entities_id"])) {
             unset($select["condition"]["entities_id"]);
         }
         if (isset($select["condition"]["is_recursive"])) {
             unset($select["condition"]["is_recursive"]);
         }
-        $select["values"] =
-            ($select["display_emptychoice"] ?? true
+        $select["values"]
+            = ($select["display_emptychoice"] ?? true
                 ? [DROPDOWN::EMPTY_VALUE]
-                : []) +
-            getItemByEntity(
+                : [])
+            + getItemByEntity(
                 $select["itemtype"],
                 $restrict,
                 $select["condition"] ?? [],
                 $select["used"] ?? [],
             );
         if (
-            isset($select["value"]) &&
-            !in_array($select["value"], $select["values"])
+            isset($select["value"])
+            && !in_array($select["value"], $select["values"])
         ) {
             $item = new ($select["itemtype"])();
             $item->getFromDB($select["value"]);
@@ -76,20 +76,20 @@ function expandForm($form, $fields = [], $template = null)
                 $shouldHide = false;
 
                 if (
-                    isset($input["name"]) &&
-                    isset($template) &&
-                    $template->isHiddenField($input["name"])
+                    isset($input["name"])
+                    && isset($template)
+                    && $template->isHiddenField($input["name"])
                 ) {
                     $shouldHide = true;
                 }
 
                 if (
-                    strpos(strtolower((string) $inputKey), "sla") !== false &&
-                    (strpos(strtolower((string) $inputKey), "time") !== false ||
-                        strpos(strtolower((string) $inputKey), "own") !== false ||
-                        strpos(strtolower((string) $inputKey), "resolve") !== false ||
-                        strpos(strtolower((string) $inputKey), "tto") !== false ||
-                        strpos(strtolower((string) $inputKey), "ttr") !== false)
+                    strpos(strtolower((string) $inputKey), "sla") !== false
+                    && (strpos(strtolower((string) $inputKey), "time") !== false
+                        || strpos(strtolower((string) $inputKey), "own") !== false
+                        || strpos(strtolower((string) $inputKey), "resolve") !== false
+                        || strpos(strtolower((string) $inputKey), "tto") !== false
+                        || strpos(strtolower((string) $inputKey), "ttr") !== false)
                 ) {
                     $shouldHide = true;
                 }
@@ -110,10 +110,10 @@ function expandForm($form, $fields = [], $template = null)
     }
     if (!isset($form["buttons"]) && isset($form["itemtype"])) {
         $item = new ($form["itemtype"])();
-        $isNew =
-            !isset($fields["id"]) ||
-            intval($fields["id"]) <= 0 ||
-            (isset($fields["withtemplate"]) && $fields["withtemplate"] == 2);
+        $isNew
+            = !isset($fields["id"])
+            || intval($fields["id"]) <= 0
+            || (isset($fields["withtemplate"]) && $fields["withtemplate"] == 2);
         $isDeleted = isset($fields["is_deleted"]) && $fields["is_deleted"];
 
         $form["buttons"] = [
@@ -163,9 +163,9 @@ function getItemByEntity($itemtype, $entity, $conditions = [], $used = [])
 {
     $cond = $conditions;
     if (isset($conditions["entities_id"])) {
-        $cond =
-            $conditions +
-            getEntitiesRestrictCriteria(
+        $cond
+            = $conditions
+            + getEntitiesRestrictCriteria(
                 $itemtype::getTable(),
                 "entities_id",
                 $entity,
@@ -192,8 +192,8 @@ function getItemByEntity($itemtype, $entity, $conditions = [], $used = [])
                 $options[$value["text"]] = [];
             }
             foreach ($value["children"] as $childValue) {
-                $options[$value["text"]][$childValue["id"]] =
-                    $childValue["text"];
+                $options[$value["text"]][$childValue["id"]]
+                    = $childValue["text"];
             }
         } else {
             $options[$value["id"]] = $value["text"];
@@ -211,17 +211,17 @@ function getOptionForItems(
 ) {
     $entity_restrict = false;
     if (
-        isset($conditions["entities_id"]) &&
-        isset($conditions["is_recursive"])
+        isset($conditions["entities_id"])
+        && isset($conditions["is_recursive"])
     ) {
-        $entity_restrict =
-            "[" .
-            '"entities_id": ' .
-            $conditions["entities_id"] .
-            "," .
-            '"is_recursive": ' .
-            $conditions["is_recursive"] .
-            "]";
+        $entity_restrict
+            = "["
+            . '"entities_id": '
+            . $conditions["entities_id"]
+            . ","
+            . '"is_recursive": '
+            . $conditions["is_recursive"]
+            . "]";
     }
     $values = Dropdown::getDropdownValue(
         [
@@ -243,8 +243,8 @@ function getOptionForItems(
         if (isset($value["children"])) {
             $options[$value["text"]] = [];
             foreach ($value["children"] as $childValue) {
-                $options[$value["text"]][$childValue["id"]] =
-                    $childValue["text"];
+                $options[$value["text"]][$childValue["id"]]
+                    = $childValue["text"];
             }
         } else {
             $options[$value["id"]] = $value["text"];
@@ -270,14 +270,14 @@ function getLinkedDocumentsForItem($itemType, $items_id)
     $document = new Document();
     while ($val = $iterator->next()) {
         $document->getFromDB($val["documents_id"]);
-        $options[$val["id"]] =
-            "<a href=" .
-            $document->getFormURLWithID($val["documents_id"]) .
-            ">" .
-            $document->fields["filename"] .
-            " (" .
-            filesize(GLPI_DOC_DIR . "/" . $document->fields["filepath"]) .
-            "B)</a>";
+        $options[$val["id"]]
+            = "<a href="
+            . $document->getFormURLWithID($val["documents_id"])
+            . ">"
+            . $document->fields["filename"]
+            . " ("
+            . filesize(GLPI_DOC_DIR . "/" . $document->fields["filepath"])
+            . "B)</a>";
     }
 
     return $options;
@@ -386,17 +386,17 @@ function renderTwigForm(
         );
     }
     if (
-        isset($_SESSION["glpiactiveentities"]) &&
-        count($_SESSION["glpiactiveentities"]) >= 1 &&
-        isset($fields["entities_id"]) &&
-        !isset($fields["noEntity"])
+        isset($_SESSION["glpiactiveentities"])
+        && count($_SESSION["glpiactiveentities"]) >= 1
+        && isset($fields["entities_id"])
+        && !isset($fields["noEntity"])
     ) {
         $entity_name = Dropdown::getDropdownName(
             "glpi_entities",
             $fields["entities_id"],
         );
-        $form["content"] =
-            [
+        $form["content"]
+            = [
                 Entity::getTypeName() => [
                     "visible" => true,
                     "inputs" => [
@@ -413,9 +413,9 @@ function renderTwigForm(
                         __("Recursive") => [
                             "type" => "checkbox",
                             "name" => "is_recursive",
-                            "value" =>
-                                $fields["is_recursive"] ??
-                                Session::getIsActiveEntityRecursive(),
+                            "value"
+                                => $fields["is_recursive"]
+                                ?? Session::getIsActiveEntityRecursive(),
                         ],
                     ],
                 ],
@@ -501,26 +501,26 @@ function renderTwigPage(
         ];
     }
     if (
-        isset($sector) &&
-        isset($menu[$sector]) &&
-        isset($menu[$sector]["content"][$item])
+        isset($sector)
+        && isset($menu[$sector])
+        && isset($menu[$sector]["content"][$item])
     ) {
         $breadcrumb_items[] = [
             "title" => $menu[$sector]["content"][$item]["title"],
-            "href" =>
-                $CFG_GLPI["root_doc"] .
-                $menu[$sector]["content"][$item]["page"],
+            "href"
+                => $CFG_GLPI["root_doc"]
+                . $menu[$sector]["content"][$item]["page"],
         ];
     }
 
     ob_start();
     Html::showProfileSelecter(
-        $CFG_GLPI["root_doc"] .
-            "/front/" .
-            (Session::getCurrentInterface() == "central"
+        $CFG_GLPI["root_doc"]
+            . "/front/"
+            . (Session::getCurrentInterface() == "central"
                 ? "central"
-                : "helpdesk.public") .
-            ".php",
+                : "helpdesk.public")
+            . ".php",
     );
     $profileSelect = ob_get_clean();
 

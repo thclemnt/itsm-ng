@@ -115,8 +115,8 @@ class NotificationTemplateTranslation extends CommonDBChild
         $rand = mt_rand();
         Ajax::createIframeModalWindow(
             "tags" . $rand,
-            $CFG_GLPI['root_doc'] . "/front/notification.tags.php?sub_type=" .
-            addslashes((string) $template->getField('itemtype'))
+            $CFG_GLPI['root_doc'] . "/front/notification.tags.php?sub_type="
+            . addslashes((string) $template->getField('itemtype'))
         );
 
         $form = [
@@ -126,8 +126,8 @@ class NotificationTemplateTranslation extends CommonDBChild
                     'type' => 'submit',
                     'name' => $this->isNewID($ID) ? 'add' : 'update',
                     'value' => $this->isNewID($ID) ? __('Add') : __('Update'),
-                    'class' => 'btn btn-secondary'
-                ]
+                    'class' => 'btn btn-secondary',
+                ],
             ],
             'content' => [
                 $this->getTypeName() => [
@@ -136,19 +136,19 @@ class NotificationTemplateTranslation extends CommonDBChild
                         $this->isNewID($ID) ? [] : [
                             'type' => 'hidden',
                             'name' => 'id',
-                            'value' => $ID
+                            'value' => $ID,
                         ],
                         [
                             'type' => 'hidden',
                             'name' => 'notificationtemplates_id',
-                            'value' => $notificationtemplates_id
+                            'value' => $notificationtemplates_id,
                         ],
                         NotificationTemplate::getTypeName() => [
-                            'content' => "<a href='" . Toolbox::getItemTypeFormURL('NotificationTemplate') .
-                                "?id=" . $notificationtemplates_id . "'>" . $template->getField('name') . "</a>" .
-                                "<a class='btn btn-sm btn-outline-info' href='#' onClick=\"" .
-                                Html::jsGetElementbyID("tags" . $rand) . ".dialog('open'); return false;\">" .
-                                __('Show list of available tags') . "</a>",
+                            'content' => "<a href='" . Toolbox::getItemTypeFormURL('NotificationTemplate')
+                                . "?id=" . $notificationtemplates_id . "'>" . $template->getField('name') . "</a>"
+                                . "<a class='btn btn-sm btn-outline-info' href='#' onClick=\""
+                                . Html::jsGetElementbyID("tags" . $rand) . ".dialog('open'); return false;\">"
+                                . __('Show list of available tags') . "</a>",
                             'col_lg' => 12,
                             'col_md' => 12,
                         ],
@@ -182,9 +182,9 @@ class NotificationTemplateTranslation extends CommonDBChild
                             'col_lg' => 12,
                             'col_md' => 12,
                         ],
-                    ]
-                ]
-            ]
+                    ],
+                ],
+            ],
         ];
         renderTwigForm($form);
 
@@ -205,8 +205,8 @@ class NotificationTemplateTranslation extends CommonDBChild
 
         $massiveActionId = 'TableFor' . self::class;
         if ($canedit) {
-            $url = Toolbox::getItemTypeFormURL('NotificationTemplateTranslation') .
-                "?notificationtemplates_id=" . $nID;
+            $url = Toolbox::getItemTypeFormURL('NotificationTemplateTranslation')
+                . "?notificationtemplates_id=" . $nID;
             $title = __('Add a new translation');
             echo <<<HTML
             <div class='center'>
@@ -235,8 +235,8 @@ class NotificationTemplateTranslation extends CommonDBChild
             $link = '';
             if ($this->getFromDB($data['id'])) {
                 Session::addToNavigateListItems('NotificationTemplateTranslation', $data['id']);
-                $link .= "<a href='" . Toolbox::getItemTypeFormURL('NotificationTemplateTranslation') .
-                    "?id=" . $data['id'] . "&amp;notificationtemplates_id=" . $nID . "'>";
+                $link .= "<a href='" . Toolbox::getItemTypeFormURL('NotificationTemplateTranslation')
+                    . "?id=" . $data['id'] . "&amp;notificationtemplates_id=" . $nID . "'>";
 
                 if ($data['language'] != '') {
                     $link .= $CFG_GLPI['languages'][$data['language']][0];
@@ -298,7 +298,7 @@ class NotificationTemplateTranslation extends CommonDBChild
 
         $tab[] = [
             'id' => 'common',
-            'name' => __('Characteristics')
+            'name' => __('Characteristics'),
         ];
 
         $tab[] = [
@@ -307,7 +307,7 @@ class NotificationTemplateTranslation extends CommonDBChild
             'field' => 'language',
             'name' => __('Language'),
             'datatype' => 'language',
-            'massiveaction' => false
+            'massiveaction' => false,
         ];
 
         $tab[] = [
@@ -327,7 +327,7 @@ class NotificationTemplateTranslation extends CommonDBChild
             'name' => __('Email HTML body'),
             'datatype' => 'text',
             'htmltext' => 'true',
-            'massiveaction' => false
+            'massiveaction' => false,
         ];
 
         $tab[] = [
@@ -336,7 +336,7 @@ class NotificationTemplateTranslation extends CommonDBChild
             'field' => 'content_text',
             'name' => __('Email text body'),
             'datatype' => 'text',
-            'massiveaction' => false
+            'massiveaction' => false,
         ];
 
         return $tab;
@@ -352,7 +352,7 @@ class NotificationTemplateTranslation extends CommonDBChild
         $used_languages = getAllDataFromTable(
             'glpi_notificationtemplatetranslations',
             [
-                'notificationtemplates_id' => $language_id
+                'notificationtemplates_id' => $language_id,
             ]
         );
         $used = [];
@@ -412,17 +412,17 @@ class NotificationTemplateTranslation extends CommonDBChild
                 $allowed_values = '';
             }
 
-            echo "<tr class='tab_bg_1'><td>" . $tag . "</td>" .
-                "<td>";
+            echo "<tr class='tab_bg_1'><td>" . $tag . "</td>"
+                . "<td>";
             if ($values['type'] == NotificationTarget::TAG_LANGUAGE) {
                 printf(__('%1$s: %2$s'), __('Label'), $values['label']);
             } else {
                 echo $values['label'];
             }
-            echo "</td><td>" . $event . "</td>" .
-                "<td>" . $action . "</td>" .
-                "<td>" . $allowed_values . "</td>" .
-                "</tr>";
+            echo "</td><td>" . $event . "</td>"
+                . "<td>" . $action . "</td>"
+                . "<td>" . $allowed_values . "</td>"
+                . "</tr>";
         }
         echo "</table></div>";
     }
@@ -491,7 +491,7 @@ class NotificationTemplateTranslation extends CommonDBChild
             'Problem',
             'Project',
             'Ticket',
-            'User'
+            'User',
         ];
 
         if (!in_array($itemtype, $oktypes)) {
@@ -509,14 +509,14 @@ class NotificationTemplateTranslation extends CommonDBChild
         echo "<tr class='tab_bg_2'><td>" . $item->getTypeName(1) . "&nbsp;";
         $item->dropdown([
             'value' => $id,
-            'on_change' => 'reloadTab("' . $key . '="+this.value)'
+            'on_change' => 'reloadTab("' . $key . '="+this.value)',
         ]);
         echo "</td><td>" . NotificationEvent::getTypeName(1) . "&nbsp;";
         NotificationEvent::dropdownEvents(
             $item->getType(),
             [
                 'value' => $event,
-                'on_change' => 'reloadTab("' . $key . '_event="+this.value)'
+                'on_change' => 'reloadTab("' . $key . '_event="+this.value)',
             ]
         );
         echo "</td>";
@@ -535,7 +535,7 @@ class NotificationTemplateTranslation extends CommonDBChild
                 'end',
                 'notice',
                 'periodicity',
-                'periodicitynotice'
+                'periodicitynotice',
             ];
             if (in_array($event, $multi)) {
                 // Won't work for Cardridge and Consumable
@@ -545,7 +545,7 @@ class NotificationTemplateTranslation extends CommonDBChild
             $target = NotificationTarget::getInstance($item, $event, $options);
             $infos = [
                 'language' => $_SESSION['glpilanguage'],
-                'additionnaloption' => ['usertype' => NotificationTarget::GLPI_USER]
+                'additionnaloption' => ['usertype' => NotificationTarget::GLPI_USER],
             ];
 
             $template->resetComputedTemplates();

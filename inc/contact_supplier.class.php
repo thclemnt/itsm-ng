@@ -137,8 +137,8 @@ class Contact_Supplier extends CommonDBRelation
             echo "<tr class='tab_bg_2'><td class='center'>";
             echo "<input type='hidden' name='contacts_id' value='$instID'>";
             Supplier::dropdown(['used'        => $used,
-                                     'entity'      => $contact->fields["entities_id"],
-                                     'entity_sons' => $contact->fields["is_recursive"]]);
+                'entity'      => $contact->fields["entities_id"],
+                'entity_sons' => $contact->fields["is_recursive"]]);
             echo "</td><td class='center'>";
             echo "<input type='submit' name='add' value=\"" . _sx('button', 'Add') . "\" class='submit'>";
             echo "</td></tr>";
@@ -152,7 +152,7 @@ class Contact_Supplier extends CommonDBRelation
         if ($canedit && $number) {
             Html::openMassiveActionsForm('mass' . __CLASS__ . $rand);
             $massiveactionparams = ['num_displayed' => min($_SESSION['glpilist_limit'], $number),
-                                         'container'     => 'mass' . __CLASS__ . $rand];
+                'container'     => 'mass' . __CLASS__ . $rand];
             Html::showMassiveActions($massiveactionparams);
         }
         echo "<table class='tab_cadre_fixehov' aria-label='supplier Table'>";
@@ -206,8 +206,8 @@ class Contact_Supplier extends CommonDBRelation
                     echo "<td>" . Html::getMassiveActionCheckBox(__CLASS__, $assocID) . "</td>";
                 }
                 echo "<td class='center'>";
-                echo "<a href='" . Supplier::getFormURLWithID($data["id"]) . "'>" .
-                       Dropdown::getDropdownName("glpi_suppliers", $data["id"]) . "</a></td>";
+                echo "<a href='" . Supplier::getFormURLWithID($data["id"]) . "'>"
+                       . Dropdown::getDropdownName("glpi_suppliers", $data["id"]) . "</a></td>";
                 echo "<td class='center'>" . Dropdown::getDropdownName("glpi_entities", $data["entity"]);
                 echo "</td>";
                 echo "<td class='center'>" . Dropdown::getDropdownName("glpi_suppliertypes", $data["suppliertypes_id"]);
@@ -258,81 +258,81 @@ class Contact_Supplier extends CommonDBRelation
 
         if ($canedit) {
             $form = [
-               'action' => Toolbox::getItemTypeFormURL(__CLASS__),
-               'buttons' => [
-                  [
-                     'type' => 'submit',
-                     'name' => 'add',
-                     'value' => _sx('button', 'Add'),
-                     'class' => 'btn btn-secondary'
-                  ]
-               ],
-               'content' => [
-                  __('Add a contact') => [
-                     'visible' => true,
-                     'inputs' => [
-                        [
-                           'type' => 'hidden',
-                           'name' => 'suppliers_id',
-                           'value' => $instID
+                'action' => Toolbox::getItemTypeFormURL(__CLASS__),
+                'buttons' => [
+                    [
+                        'type' => 'submit',
+                        'name' => 'add',
+                        'value' => _sx('button', 'Add'),
+                        'class' => 'btn btn-secondary',
+                    ],
+                ],
+                'content' => [
+                    __('Add a contact') => [
+                        'visible' => true,
+                        'inputs' => [
+                            [
+                                'type' => 'hidden',
+                                'name' => 'suppliers_id',
+                                'value' => $instID,
+                            ],
+                            '' => [
+                                'type' => 'select',
+                                'name' => 'contacts_id',
+                                'values' => $options,
+                                'actions' => getItemActionButtons(['info'], 'Contact'),
+                                'col_lg' => 12,
+                                'col_md' => 12,
+                            ],
                         ],
-                        '' => [
-                           'type' => 'select',
-                           'name' => 'contacts_id',
-                           'values' => $options,
-                           'actions' => getItemActionButtons(['info'], 'Contact'),
-                           'col_lg' => 12,
-                           'col_md' => 12,
-                        ]
-                     ]
-                  ]
-               ]
+                    ],
+                ],
             ];
             renderTwigForm($form);
         }
 
         if ($canedit && $number) {
             $massiveactionparams = [
-               'num_displayed' => min($_SESSION['glpilist_limit'], $number),
-               'container'     => 'tableForContactSupplier',
-               'is_deleted'    => false,
-               'display_arrow' => false,
+                'num_displayed' => min($_SESSION['glpilist_limit'], $number),
+                'container'     => 'tableForContactSupplier',
+                'is_deleted'    => false,
+                'display_arrow' => false,
             ];
             Html::showMassiveActions($massiveactionparams);
         }
         $fields = [
-           __('Name'),
-           Entity::getTypeName(1),
-           Phone::getTypeName(1),
-           __('Phone 2'),
-           __('Mobile phone'),
-           __('Fax'),
-           _n('Email', 'Emails', 1),
-           _n('Type', 'Types', 1)
+            __('Name'),
+            Entity::getTypeName(1),
+            Phone::getTypeName(1),
+            __('Phone 2'),
+            __('Mobile phone'),
+            __('Fax'),
+            _n('Email', 'Emails', 1),
+            _n('Type', 'Types', 1),
         ];
 
         $values = [];
         $massiveactionValues = [];
         foreach ($contacts as $data) {
             $values[] = [
-               '<a href="' . Contact::getFormURLWithID($data["id"]) . '">' .
-                           sprintf(__('%1$s %2$s'), $data["name"], $data["firstname"]) . '</a>',
-               Dropdown::getDropdownName("glpi_entities", $data["entity"]),
-               $data["phone"],
-               $data["phone2"],
-               $data["mobile"],
-               $data["fax"],
-               "<a href='mailto:" . $data["email"] . "'>" . $data["email"] . "</a>",
-               Dropdown::getDropdownName("glpi_contacttypes", $data["contacttypes_id"])
+                '<a href="' . Contact::getFormURLWithID($data["id"]) . '">'
+                            . sprintf(__('%1$s %2$s'), $data["name"], $data["firstname"]) . '</a>',
+                Dropdown::getDropdownName("glpi_entities", $data["entity"]),
+                $data["phone"],
+                $data["phone2"],
+                $data["mobile"],
+                $data["fax"],
+                "<a href='mailto:" . $data["email"] . "'>" . $data["email"] . "</a>",
+                Dropdown::getDropdownName("glpi_contacttypes", $data["contacttypes_id"]),
             ];
             $massiveactionValues[] = sprintf('item[%s][%s]', __CLASS__, $data['linkid']);
         }
 
         renderTwigTemplate('table.twig', [
-           'id' => 'tableForContactSupplier',
-           'fields' => $fields,
-           'values' => $values,
-           'massive_action' => $massiveactionValues,
+            'id' => 'tableForContactSupplier',
+            'fields' => $fields,
+            'values' => $values,
+            'massive_action' => $massiveactionValues,
         ]);
     }
 }

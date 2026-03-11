@@ -145,7 +145,7 @@ class Accessibility extends CommonDBTM
             170 => '170%',
             180 => '180%',
             190 => '190%',
-            200 => '200%'
+            200 => '200%',
         ];
 
         echo "<td width='40%'>";
@@ -159,7 +159,7 @@ class Accessibility extends CommonDBTM
             ""                  => "Default",
             "OpenDyslexic"      => "Open Dyslexic Regular",
             "OpenDyslexicAlta"  => "Open Dyslexic Alta",
-            "Tiresias Infofont" => "Tiresias Infofont"
+            "Tiresias Infofont" => "Tiresias Infofont",
         ];
 
         echo "<td width='40%'>";
@@ -186,7 +186,7 @@ class Accessibility extends CommonDBTM
 
             foreach (get_declared_classes() as $class) {
                 if (is_subclass_of($class, "CommonGLPI")) {
-                    $tabs = array($class => $class::getTypeName());
+                    $tabs = [$class => $class::getTypeName()];
                     $classes = array_merge($classes, $tabs);
                 }
             }
@@ -221,8 +221,8 @@ class Accessibility extends CommonDBTM
 
             unset($currentShortcut["DCRoom"]);
             unset($currentShortcut["update"]);
-            $all_shotcuts = array();
-            $all_classes = array();
+            $all_shotcuts = [];
+            $all_classes = [];
 
             if (!is_null($currentShortcut)) {
                 foreach ($currentShortcut as $name => $shortcut) {

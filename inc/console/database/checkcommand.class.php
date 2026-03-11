@@ -38,16 +38,16 @@ if (!defined('GLPI_ROOT')) {
 }
 
 use Glpi\Console\AbstractCommand;
+use SebastianBergmann\Diff\Differ;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
-use SebastianBergmann\Diff\Differ;
 
 class CheckCommand extends AbstractCommand
 {
     /**
      * Error code returned when failed to read empty SQL file.
      *
-     * @var integer
+     * @var int
      */
     public const ERROR_UNABLE_TO_READ_EMPTYSQL = 1;
 

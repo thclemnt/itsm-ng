@@ -46,7 +46,7 @@ abstract class CommonDBVisible extends CommonDBTM
      * @since 0.83
      * @since 9.2 moved from each class to parent class
      *
-     * @return boolean
+     * @return bool
     **/
     public function haveVisibilityAccess()
     {
@@ -123,7 +123,7 @@ abstract class CommonDBVisible extends CommonDBTM
      * @since 0.83
      * @since 9.2 moved from each class to parent class
      *
-     * @return integer
+     * @return int
      */
     public function countVisibilities()
     {
@@ -154,35 +154,35 @@ abstract class CommonDBVisible extends CommonDBTM
 
         if ($canedit) {
             $form = [
-               'action' => static::getFormURL(),
-               'buttons' => [[
-                  'type' => 'submit',
-                  'name' => 'addvisibility',
-                  'value' => __('Add'),
-                  'class' => 'btn btn-secondary'
-               ]],
-               'content' => [
-                  __('Add a target') => [
-                     'visible' => true,
-                     'inputs' => [
-                        [
-                           'type' => 'hidden',
-                           'name' => $fk,
-                           'value' => $ID
-                        ],
-                        __('Type') => [
-                           'type' => 'select',
-                           'name' => '_type',
-                           'id' => 'selectForType' . $rand,
-                           'values' => [ Dropdown::EMPTY_VALUE,
-                              'Entity' => 'Entity',
-                              'Group' => 'Group',
-                              'Profile' => 'Profile',
-                              'User' => 'User'
-                           ],
-                           'col_lg' => 6,
-                           'hooks' => [
-                              'change' => <<<JS
+                'action' => static::getFormURL(),
+                'buttons' => [[
+                    'type' => 'submit',
+                    'name' => 'addvisibility',
+                    'value' => __('Add'),
+                    'class' => 'btn btn-secondary',
+                ]],
+                'content' => [
+                    __('Add a target') => [
+                        'visible' => true,
+                        'inputs' => [
+                            [
+                                'type' => 'hidden',
+                                'name' => $fk,
+                                'value' => $ID,
+                            ],
+                            __('Type') => [
+                                'type' => 'select',
+                                'name' => '_type',
+                                'id' => 'selectForType' . $rand,
+                                'values' => [ Dropdown::EMPTY_VALUE,
+                                    'Entity' => 'Entity',
+                                    'Group' => 'Group',
+                                    'Profile' => 'Profile',
+                                    'User' => 'User',
+                                ],
+                                'col_lg' => 6,
+                                'hooks' => [
+                                    'change' => <<<JS
                            var type = jQuery(this).val();
                            // empty value -> disable all
                            // entity -> enable entity and checkbox, disable others
@@ -226,43 +226,43 @@ abstract class CommonDBVisible extends CommonDBTM
                               }
                            });
                            JS,
-                           ]
+                                ],
+                            ],
+                            __('Target') => [
+                                'type' => 'select',
+                                'id' => "selectForTarget$rand",
+                                'col_lg' => 6,
+                                'disabled' => '',
+                            ],
+                            __('Entity') => [
+                                'type' => 'select',
+                                'id' => "selectForEntity$rand",
+                                'name' => 'entities_id',
+                                'values' => getOptionForItems(Entity::class),
+                                'value' => Session::getActiveEntity(),
+                                'disabled' => '',
+                                'col_lg' => 6,
+                            ],
+                            __('Child entities') => [
+                                'type' => 'checkbox',
+                                'name' => 'is_recursive',
+                                'id' => "checkboxForChildEntities$rand",
+                                'disabled' => '',
+                                'col_lg' => 6,
+                            ],
                         ],
-                        __('Target') => [
-                           'type' => 'select',
-                           'id' => "selectForTarget$rand",
-                           'col_lg' => 6,
-                           'disabled' => '',
-                        ],
-                        __('Entity') => [
-                           'type' => 'select',
-                           'id' => "selectForEntity$rand",
-                           'name' => 'entities_id',
-                           'values' => getOptionForItems(Entity::class),
-                           'value' => Session::getActiveEntity(),
-                           'disabled' => '',
-                           'col_lg' => 6,
-                        ],
-                        __('Child entities') => [
-                           'type' => 'checkbox',
-                           'name' => 'is_recursive',
-                           'id' => "checkboxForChildEntities$rand",
-                           'disabled' => '',
-                           'col_lg' => 6,
-                        ],
-                     ]
-                  ]
-               ]
+                    ],
+                ],
             ];
             renderTwigForm($form);
         }
         $massContainerId = 'mass' . __CLASS__ . $rand;
         if ($canedit && $nb) {
             $massiveactionparams = [
-               'num_displayed' => min($_SESSION['glpilist_limit'], $nb),
-               'container' => $massContainerId,
-               'specific_actions' => ['delete' => _x('button', 'Delete permanently')],
-               'display_arrow' => false,
+                'num_displayed' => min($_SESSION['glpilist_limit'], $nb),
+                'container' => $massContainerId,
+                'specific_actions' => ['delete' => _x('button', 'Delete permanently')],
+                'display_arrow' => false,
             ];
 
             if ($this->fields['users_id'] != Session::getLoginUserID()) {
@@ -272,8 +272,8 @@ abstract class CommonDBVisible extends CommonDBTM
             Html::showMassiveActions($massiveactionparams);
         }
         $fields = [
-           _n('Type', 'Types', 1),
-           _n('Recipient', 'Recipients', Session::getPluralNumber()),
+            _n('Type', 'Types', 1),
+            _n('Recipient', 'Recipients', Session::getPluralNumber()),
         ];
         $values = [];
         $massive_action = [];
@@ -282,8 +282,8 @@ abstract class CommonDBVisible extends CommonDBTM
             foreach ($this->users as $val) {
                 foreach ($val as $data) {
                     $values[] = [
-                       User::getTypeName(1),
-                       getUserName($data['users_id']),
+                        User::getTypeName(1),
+                        getUserName($data['users_id']),
                     ];
                     $massive_action[] = sprintf('item[%s][%s]', Reminder_User::class, $data['id']);
                 }
@@ -318,8 +318,8 @@ abstract class CommonDBVisible extends CommonDBTM
                         }
                     }
                     $values[] = [
-                       Group::getTypeName(1),
-                       $entname,
+                        Group::getTypeName(1),
+                        $entname,
                     ];
                     $massive_action[] = sprintf('item[%s][%s]', 'Group_' . $this->getType(), $data['id']);
                 }
@@ -340,8 +340,8 @@ abstract class CommonDBVisible extends CommonDBTM
                         );
                     }
                     $values[] = [
-                       Entity::getTypeName(1),
-                       $entname,
+                        Entity::getTypeName(1),
+                        $entname,
                     ];
                     $massive_action[] = sprintf('item[%s][%s]', 'Entity_' . $this->getType(), $data['id']);
                 }
@@ -372,18 +372,18 @@ abstract class CommonDBVisible extends CommonDBTM
                         }
                     }
                     $values[] = [
-                       Profile::getTypeName(1),
-                       $entname,
+                        Profile::getTypeName(1),
+                        $entname,
                     ];
                     $massive_action[] = sprintf('item[%s][%s]', 'Profile_' . $this->getType(), $data['id']);
                 }
             }
         }
         renderTwigTemplate('table.twig', [
-           'id' => $massContainerId,
-           'fields' => $fields,
-           'values' => $values,
-           'massive_action' => $massive_action,
+            'id' => $massContainerId,
+            'fields' => $fields,
+            'values' => $values,
+            'massive_action' => $massive_action,
         ]);
         return true;
     }
@@ -396,8 +396,8 @@ abstract class CommonDBVisible extends CommonDBTM
     protected function getShowVisibilityDropdownParams()
     {
         return [
-           'type'  => '__VALUE__',
-           'right' => strtolower($this::getType()) . '_public'
+            'type'  => '__VALUE__',
+            'right' => strtolower($this::getType()) . '_public',
         ];
     }
 }

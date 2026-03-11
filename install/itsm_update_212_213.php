@@ -45,12 +45,12 @@ function update212to213(): bool
 
     $default_assigns = [
         'followup' => 16384,
-        'task'     => 16384
+        'task'     => 16384,
     ];
 
     $profiles = $DB->request([
         'SELECT' => ['id', 'name'],
-        'FROM'   => 'glpi_profiles'
+        'FROM'   => 'glpi_profiles',
     ]);
 
     foreach ($profiles as $profile) {
@@ -62,8 +62,8 @@ function update212to213(): bool
                 'FROM'   => $rights_table,
                 'WHERE'  => [
                     'profiles_id' => $profile['id'],
-                    'name'       => $rightname
-                ]
+                    'name'       => $rightname,
+                ],
             ]);
 
             if ($row = $current_rights->next()) {
@@ -71,11 +71,11 @@ function update212to213(): bool
                 $DB->update(
                     $rights_table,
                     [
-                        'rights' => $new_rights
+                        'rights' => $new_rights,
                     ],
                     [
                         'profiles_id' => $profile['id'],
-                        'name'       => $rightname
+                        'name'       => $rightname,
                     ]
                 );
             }

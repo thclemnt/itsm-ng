@@ -112,9 +112,9 @@ abstract class CommonItilObject_Item extends CommonDBRelation
         global $CFG_GLPI;
 
         $params = [static::$items_id_1 => 0,
-                        'used'       => [],
-                        'multiple'   => 0,
-                        'rand'       => mt_rand()];
+            'used'       => [],
+            'multiple'   => 0,
+            'rand'       => mt_rand()];
 
         foreach ($options as $key => $val) {
             $params[$key] = $val;
@@ -148,15 +148,15 @@ abstract class CommonItilObject_Item extends CommonDBRelation
                 $used = json_encode($params['used']);
                 $inputs = [
                     [
-                       'type' => 'select',
-                       'id' => "dropdown_itemtype$rand",
-                       'name' => 'itemtype',
-                       'noLib' => true,
-                       'values' => [($params[static::$items_id_1] > 0) ? Dropdown::EMPTY_VALUE : __('General')] + $types,
-                       'col_lg' => 12,
-                       'col_md' => 12,
-                       'hooks' => [
-                          'change' => <<<JS
+                        'type' => 'select',
+                        'id' => "dropdown_itemtype$rand",
+                        'name' => 'itemtype',
+                        'noLib' => true,
+                        'values' => [($params[static::$items_id_1] > 0) ? Dropdown::EMPTY_VALUE : __('General')] + $types,
+                        'col_lg' => 12,
+                        'col_md' => 12,
+                        'hooks' => [
+                            'change' => <<<JS
                           const val = this.value;
                           $.ajax({
                              url: "{$CFG_GLPI['root_doc']}/ajax/dropdownTrackingDeviceType.php",
@@ -201,17 +201,17 @@ abstract class CommonItilObject_Item extends CommonDBRelation
                              }
                           });
                           JS,
-                       ]
+                        ],
                     ],
                     [
-                       'type' => 'select',
-                       'id' => "dropdown_add_items_id$rand",
-                       'name' => 'items_id',
-                       'noLib' => true,
-                       'col_lg' => 12,
-                       'col_md' => 12,
-                    ]
-                 ];
+                        'type' => 'select',
+                        'id' => "dropdown_add_items_id$rand",
+                        'name' => 'items_id',
+                        'noLib' => true,
+                        'col_lg' => 12,
+                        'col_md' => 12,
+                    ],
+                ];
                 foreach ($inputs as $input) {
                     renderTwigTemplate('macros/wrappedInput.twig', ['title' => '', 'input' => $input]);
                 }

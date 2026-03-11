@@ -49,11 +49,11 @@ class Item_Disk extends DbTestCase
         $this->object($computer)->isInstanceOf('\Computer');
 
         $this->integer(
-            $id = (int)$obj->add([
-              'itemtype'     => $computer->getType(),
-              'items_id'     => $computer->fields['id'],
-              'mountpoint'   => '/'
-         ])
+            $id = (int) $obj->add([
+                'itemtype'     => $computer->getType(),
+                'items_id'     => $computer->fields['id'],
+                'mountpoint'   => '/',
+            ])
         )->isGreaterThan(0);
         $this->boolean($obj->getFromDB($id))->isTrue();
         $this->string($obj->fields['mountpoint'])->isIdenticalTo('/');
@@ -71,18 +71,18 @@ class Item_Disk extends DbTestCase
         $this->object($computer)->isInstanceOf('\Computer');
 
         $this->integer(
-            $id = (int)$obj->add([
-              'itemtype'     => $computer->getType(),
-              'items_id'     => $computer->fields['id'],
-              'mountpoint'   => '/'
-         ])
+            $id = (int) $obj->add([
+                'itemtype'     => $computer->getType(),
+                'items_id'     => $computer->fields['id'],
+                'mountpoint'   => '/',
+            ])
         )->isGreaterThan(0);
         $this->boolean($obj->getFromDB($id))->isTrue();
         $this->string($obj->fields['mountpoint'])->isIdenticalTo('/');
 
         $this->boolean($obj->update([
-           'id'           => $id,
-           'mountpoint'   => '/mnt'
+            'id'           => $id,
+            'mountpoint'   => '/mnt',
         ]))->isTrue();
         $this->boolean($obj->getFromDB($id))->isTrue();
         $this->string($obj->fields['mountpoint'])->isIdenticalTo('/mnt');
@@ -100,19 +100,19 @@ class Item_Disk extends DbTestCase
         $this->object($computer)->isInstanceOf('\Computer');
 
         $this->integer(
-            $id = (int)$obj->add([
-              'itemtype'     => $computer->getType(),
-              'items_id'     => $computer->fields['id'],
-              'mountpoint'   => '/'
-         ])
+            $id = (int) $obj->add([
+                'itemtype'     => $computer->getType(),
+                'items_id'     => $computer->fields['id'],
+                'mountpoint'   => '/',
+            ])
         )->isGreaterThan(0);
         $this->boolean($obj->getFromDB($id))->isTrue();
         $this->string($obj->fields['mountpoint'])->isIdenticalTo('/');
 
         $this->boolean(
-            (bool)$obj->delete([
-              'id'  => $id
-         ])
+            (bool) $obj->delete([
+                'id'  => $id,
+            ])
         )->isTrue();
         $this->boolean($obj->getFromDB($id))->isFalse();
     }

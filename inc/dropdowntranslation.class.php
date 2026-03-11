@@ -206,7 +206,7 @@ class DropdownTranslation extends CommonDBChild
      * @param field
      * @param language
      *
-     * @return integer the number of translations for this field
+     * @return int the number of translations for this field
     **/
     public static function getNumberOfTranslations($itemtype, $items_id, $field, $language)
     {
@@ -214,9 +214,9 @@ class DropdownTranslation extends CommonDBChild
         return countElementsInTable(
             getTableForItemType(__CLASS__),
             ['itemtype' => $itemtype,
-                                     'items_id' => $items_id,
-                                     'field'    => $field,
-                                     'language' => $language]
+                'items_id' => $items_id,
+                'field'    => $field,
+                'language' => $language]
         );
     }
 
@@ -226,7 +226,7 @@ class DropdownTranslation extends CommonDBChild
      *
      * @param item
      *
-     * @return integer the number of translations for this item
+     * @return int the number of translations for this item
     **/
     public static function getNumberOfTranslationsForItem($item)
     {
@@ -234,8 +234,8 @@ class DropdownTranslation extends CommonDBChild
         return countElementsInTable(
             getTableForItemType(__CLASS__),
             ['itemtype' => $item->getType(),
-                                     'items_id' => $item->getID(),
-                                     'NOT'      => ['field' => 'completename' ]]
+                'items_id' => $item->getID(),
+                'NOT'      => ['field' => 'completename' ]]
         );
     }
 
@@ -340,11 +340,11 @@ class DropdownTranslation extends CommonDBChild
             }
 
             $iterator = $DB->request([
-               'SELECT' => ['id'],
-               'FROM'   => $item->getTable(),
-               'WHERE'  => [
-                  $foreignKey => $item->getID()
-               ]
+                'SELECT' => ['id'],
+                'FROM'   => $item->getTable(),
+                'WHERE'  => [
+                    $foreignKey => $item->getID(),
+                ],
             ]);
 
             while ($tmp = $iterator->next()) {
@@ -376,9 +376,9 @@ class DropdownTranslation extends CommonDBChild
             echo "<script type='text/javascript' >\n";
             echo "function addTranslation" . $item->getType() . $item->getID() . "$rand() {\n";
             $params = ['type'                       => __CLASS__,
-                            'parenttype'                 => get_class($item),
-                            $item->getForeignKeyField()  => $item->getID(),
-                            'id'                         => -1];
+                'parenttype'                 => get_class($item),
+                $item->getForeignKeyField()  => $item->getID(),
+                'id'                         => -1];
             Ajax::updateItemJsCode(
                 "viewtranslation" . $item->getType() . $item->getID() . "$rand",
                 $CFG_GLPI["root_doc"] . "/ajax/viewsubitem.php",
@@ -386,20 +386,20 @@ class DropdownTranslation extends CommonDBChild
             );
             echo "};";
             echo "</script>\n";
-            echo "<div class='center'>" .
-                 "<a class='vsubmit' href='javascript:addTranslation" .
-                   $item->getType() . $item->getID() . "$rand();'>" . __('Add a new translation') .
-                 "</a></div><br>";
+            echo "<div class='center'>"
+                 . "<a class='vsubmit' href='javascript:addTranslation"
+                   . $item->getType() . $item->getID() . "$rand();'>" . __('Add a new translation')
+                 . "</a></div><br>";
         }
 
         $iterator = $DB->request([
-           'FROM'   => getTableForItemType(__CLASS__),
-           'WHERE'  => [
-              'itemtype'  => $item->getType(),
-              'items_id'  => $item->getID(),
-              'field'     => ['<>', 'completename']
-           ],
-           'ORDER'  => ['language ASC']
+            'FROM'   => getTableForItemType(__CLASS__),
+            'WHERE'  => [
+                'itemtype'  => $item->getType(),
+                'items_id'  => $item->getID(),
+                'field'     => ['<>', 'completename'],
+            ],
+            'ORDER'  => ['language ASC'],
         ]);
         if (count($iterator)) {
             if ($canedit) {
@@ -436,9 +436,9 @@ class DropdownTranslation extends CommonDBChild
                     echo "\n<script type='text/javascript' >\n";
                     echo "function viewEditTranslation" . $data['itemtype'] . $data['id'] . "$rand() {\n";
                     $params = ['type'                     => __CLASS__,
-                                   'parenttype'                => get_class($item),
-                                   $item->getForeignKeyField() => $item->getID(),
-                                   'id'                        => $data["id"]];
+                        'parenttype'                => get_class($item),
+                        $item->getForeignKeyField() => $item->getID(),
+                        'id'                        => $data["id"]];
                     Ajax::updateItemJsCode(
                         "viewtranslation" . $item->getType() . $item->getID() . "$rand",
                         $CFG_GLPI["root_doc"] . "/ajax/viewsubitem.php",
@@ -471,7 +471,7 @@ class DropdownTranslation extends CommonDBChild
     /**
      * Display translation form
      *
-     * @param integer $ID       field (default -1)
+     * @param int $ID       field (default -1)
      * @param array   $options
      */
     public function showForm($ID = -1, $options = [])
@@ -504,11 +504,11 @@ class DropdownTranslation extends CommonDBChild
             $rand   = Dropdown::showLanguages(
                 "language",
                 ['display_none' => false,
-                                                    'value'        => $_SESSION['glpilanguage']]
+                    'value'        => $_SESSION['glpilanguage']]
             );
             $params = ['language' => '__VALUE__',
-                            'itemtype' => get_class($item),
-                            'items_id' => $item->getID()];
+                'itemtype' => get_class($item),
+                'items_id' => $item->getID()];
             Ajax::updateItemOnSelectEvent(
                 "dropdown_language$rand",
                 "span_fields",
@@ -546,7 +546,7 @@ class DropdownTranslation extends CommonDBChild
      * @param string     $language  language to look for translations (default '')
      * @param string     $value     field which must be selected by default (default '')
      *
-     * @return integer the dropdown's random identifier
+     * @return int the dropdown's random identifier
     **/
     public static function dropdownFields(CommonDBTM $item, $language = '', $value = '')
     {
@@ -569,13 +569,13 @@ class DropdownTranslation extends CommonDBChild
         $used = [];
         if (!empty($options)) {
             $iterator = $DB->request([
-               'SELECT' => 'field',
-               'FROM'   => self::getTable(),
-               'WHERE'  => [
-                  'itemtype'  => $item->getType(),
-                  'items_id'  => $item->getID(),
-                  'language'  => $language
-               ]
+                'SELECT' => 'field',
+                'FROM'   => self::getTable(),
+                'WHERE'  => [
+                    'itemtype'  => $item->getType(),
+                    'items_id'  => $item->getID(),
+                    'language'  => $language,
+                ],
             ]);
             if (count($iterator) > 0) {
                 while ($data = $iterator->next()) {
@@ -585,14 +585,14 @@ class DropdownTranslation extends CommonDBChild
         }
         //$used = array();
         return Dropdown::showFromArray('field', $options, ['value' => $value,
-                                                           'used'  => $used]);
+            'used'  => $used]);
     }
 
 
     /**
      * Get translated value for a field in a particular language
      *
-     * @param integer $ID        dropdown item's id
+     * @param int $ID        dropdown item's id
      * @param string  $itemtype  dropdown itemtype
      * @param string  $field     the field to look for (default 'name')
      * @param string  $language  get translation for this language
@@ -622,14 +622,14 @@ class DropdownTranslation extends CommonDBChild
             //There's at least one translation for this itemtype
             if (self::hasItemtypeATranslation($itemtype)) {
                 $iterator = $DB->request([
-                   'SELECT' => ['value'],
-                   'FROM'   => self::getTable(),
-                   'WHERE'  => [
-                      'itemtype'  => $itemtype,
-                      'items_id'  => $ID,
-                      'field'     => $field,
-                      'language'  => $language
-                   ]
+                    'SELECT' => ['value'],
+                    'FROM'   => self::getTable(),
+                    'WHERE'  => [
+                        'itemtype'  => $itemtype,
+                        'items_id'  => $ID,
+                        'field'     => $field,
+                        'language'  => $language,
+                    ],
                 ]);
                 //The field is already translated in this language
                 if (count($iterator)) {
@@ -639,9 +639,9 @@ class DropdownTranslation extends CommonDBChild
             }
             //Get the value coming from the dropdown table
             $iterator = $DB->request([
-               'SELECT' => $field,
-               'FROM'   => getTableForItemType($itemtype),
-               'WHERE'  => ['id' => $ID]
+                'SELECT' => $field,
+                'FROM'   => getTableForItemType($itemtype),
+                'WHERE'  => ['id' => $ID],
             ]);
             if (count($iterator)) {
                 $current = $iterator->next();
@@ -656,26 +656,26 @@ class DropdownTranslation extends CommonDBChild
     /**
      * Get the id of a translated string
      *
-     * @param integer $ID          item id
+     * @param int $ID          item id
      * @param string  $itemtype    item type
      * @param string  $field       the field for which the translation is needed
      * @param string  $language    the target language
      *
-     * @return integer the row id or 0 if not translation found
+     * @return int the row id or 0 if not translation found
     **/
     public static function getTranslationID($ID, $itemtype, $field, $language)
     {
         global $DB;
 
         $iterator = $DB->request([
-           'SELECT' => ['id'],
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'itemtype'  => $itemtype,
-              'items_id'  => $ID,
-              'language'  => $language,
-              'field'     => $field
-           ]
+            'SELECT' => ['id'],
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'itemtype'  => $itemtype,
+                'items_id'  => $ID,
+                'language'  => $language,
+                'field'     => $field,
+            ],
         ]);
         if (count($iterator)) {
             $current = $iterator->next();
@@ -692,7 +692,7 @@ class DropdownTranslation extends CommonDBChild
      *
      * @param CommonGLPI $item the item to check
      *
-     * @return boolean true if item can be translated, false otherwise
+     * @return bool true if item can be translated, false otherwise
     **/
     public static function canBeTranslated(CommonGLPI $item)
     {
@@ -730,11 +730,11 @@ class DropdownTranslation extends CommonDBChild
         global $DB;
 
         $iterator = $DB->request([
-           'SELECT' => ['id'],
-           'FROM'   => getTableForItemType($itemtype),
-           'WHERE'  => [
-              $field   => Toolbox::addslashes_deep($value)
-           ]
+            'SELECT' => ['id'],
+            'FROM'   => getTableForItemType($itemtype),
+            'WHERE'  => [
+                $field   => Toolbox::addslashes_deep($value),
+            ],
         ]);
         if (count($iterator) > 0) {
             $current = $iterator->next();
@@ -753,7 +753,7 @@ class DropdownTranslation extends CommonDBChild
      * Get translations for an item
      *
      * @param string  $itemtype  itemtype
-     * @param integer $items_id  item ID
+     * @param int $items_id  item ID
      * @param string  $field     the field for which the translation is needed
      *
      * @return string the value translated if a translation is available, or the same value if not
@@ -763,12 +763,12 @@ class DropdownTranslation extends CommonDBChild
         global $DB;
 
         $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'itemtype'  => $itemtype,
-              'items_id'  => $items_id,
-              'field'     => $field
-           ]
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'itemtype'  => $itemtype,
+                'items_id'  => $items_id,
+                'field'     => $field,
+            ],
         ]);
         $data = [];
         while ($tmp = $iterator->next()) {
@@ -781,7 +781,7 @@ class DropdownTranslation extends CommonDBChild
      * Regenerate all completename translations for an item
      *
      * @param string  $itemtype    itemtype
-     * @param integer $items_id    item ID
+     * @param int $items_id    item ID
      *
      * @return string the value translated if a translation is available, or the same value if not
     **/
@@ -798,7 +798,7 @@ class DropdownTranslation extends CommonDBChild
      *
      * @param string $itemtype itemtype to check
      *
-     * @return boolean true if there's at least one translation, otherwise false
+     * @return bool true if there's at least one translation, otherwise false
     **/
     public static function hasItemtypeATranslation($itemtype)
     {
@@ -820,13 +820,13 @@ class DropdownTranslation extends CommonDBChild
         $tab = [];
         if (self::isDropdownTranslationActive()) {
             $iterator = $DB->request([
-               'SELECT'          => [
-                  'itemtype',
-                  'field'
-               ],
-               'DISTINCT'        => true,
-               'FROM'            => self::getTable(),
-               'WHERE'           => ['language' => $language]
+                'SELECT'          => [
+                    'itemtype',
+                    'field',
+                ],
+                'DISTINCT'        => true,
+                'FROM'            => self::getTable(),
+                'WHERE'           => ['language' => $language],
             ]);
             while ($data = $iterator->next()) {
                 $tab[$data['itemtype']][$data['field']] = $data['field'];

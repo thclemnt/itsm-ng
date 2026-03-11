@@ -54,43 +54,43 @@ class DeviceControl extends CommonDevice
         return array_merge(
             parent::getAdditionalFields(),
             [
-              __('RAID') => [
-                 'name'  => 'is_raid',
-                 'type'  => 'checkbox',
-                 'value' => $this->fields['is_raid']
-              ],
-              __('Interface') => [
-                 'name'  => 'interfacetypes_id',
-                 'type'  => 'select',
-                 'values' => getOptionForItems('InterfaceType'),
-                 'value' => $this->fields['interfacetypes_id'],
-                 'actions' => getItemActionButtons(['info', 'add'], 'InterfaceType'),
-                 'col_lg' => 6,
-              ],
-              _n('Model', 'Models', 1) => [
-                 'name'  => 'devicecontrolmodels_id',
-                 'type'  => 'select',
-                 'values' => getOptionForItems('DeviceControlModel'),
-                 'value' => $this->fields['devicecontrolmodels_id'],
-                 'actions' => getItemActionButtons(['info', 'add'], 'DeviceControlModel'),
-                 'col_lg' => 6,
-              ],
-              RegisteredID::getTypeName(Session::getPluralNumber()) => [
-                 'name'  => 'none',
-                 'type'  => 'multiSelect',
-                 'inputs' => [
-                    [
-                       'name' => 'current_registeredID_type',
-                       'type' => 'select',
-                       'values' => array_merge([ Dropdown::EMPTY_VALUE ], RegisteredID::getRegisteredIDTypes()),
+                __('RAID') => [
+                    'name'  => 'is_raid',
+                    'type'  => 'checkbox',
+                    'value' => $this->fields['is_raid'],
+                ],
+                __('Interface') => [
+                    'name'  => 'interfacetypes_id',
+                    'type'  => 'select',
+                    'values' => getOptionForItems('InterfaceType'),
+                    'value' => $this->fields['interfacetypes_id'],
+                    'actions' => getItemActionButtons(['info', 'add'], 'InterfaceType'),
+                    'col_lg' => 6,
+                ],
+                _n('Model', 'Models', 1) => [
+                    'name'  => 'devicecontrolmodels_id',
+                    'type'  => 'select',
+                    'values' => getOptionForItems('DeviceControlModel'),
+                    'value' => $this->fields['devicecontrolmodels_id'],
+                    'actions' => getItemActionButtons(['info', 'add'], 'DeviceControlModel'),
+                    'col_lg' => 6,
+                ],
+                RegisteredID::getTypeName(Session::getPluralNumber()) => [
+                    'name'  => 'none',
+                    'type'  => 'multiSelect',
+                    'inputs' => [
+                        [
+                            'name' => 'current_registeredID_type',
+                            'type' => 'select',
+                            'values' => array_merge([ Dropdown::EMPTY_VALUE ], RegisteredID::getRegisteredIDTypes()),
+                        ],
+                        [
+                            'name' => 'current_registeredID',
+                            'type' => 'text',
+                            'size' => 30,
+                        ],
                     ],
-                    [
-                       'name' => 'current_registeredID',
-                       'type' => 'text',
-                       'size' => 30,
-                    ],
-                 ],
-                 'getInputAdd' => <<<JS
+                    'getInputAdd' => <<<JS
                   function () {
                      if (!$('input[name="current_registeredID"]').val()) {
                         return;
@@ -103,14 +103,14 @@ class DeviceControl extends CommonDevice
                      return {values, title};
                   }
                JS,
-                 'values' => getOptionsWithNameForItem(
-                     'RegisteredID',
-                     ['itemtype' => $this::class, 'items_id' => $this->getID()],
-                     ['_registeredID_type' => 'device_type', '_registeredID' => 'name']
-                 ),
-                 'col_lg' => 12,
-                 'col_md' => 12,
-              ],
+                    'values' => getOptionsWithNameForItem(
+                        'RegisteredID',
+                        ['itemtype' => $this::class, 'items_id' => $this->getID()],
+                        ['_registeredID_type' => 'device_type', '_registeredID' => 'name']
+                    ),
+                    'col_lg' => 12,
+                    'col_md' => 12,
+                ],
             ]
         );
     }
@@ -121,27 +121,27 @@ class DeviceControl extends CommonDevice
         $tab = parent::rawSearchOptions();
 
         $tab[] = [
-           'id'                 => '12',
-           'table'              => $this->getTable(),
-           'field'              => 'is_raid',
-           'name'               => __('RAID'),
-           'datatype'           => 'bool'
+            'id'                 => '12',
+            'table'              => $this->getTable(),
+            'field'              => 'is_raid',
+            'name'               => __('RAID'),
+            'datatype'           => 'bool',
         ];
 
         $tab[] = [
-           'id'                 => '14',
-           'table'              => 'glpi_interfacetypes',
-           'field'              => 'name',
-           'name'               => __('Interface'),
-           'datatype'           => 'dropdown'
+            'id'                 => '14',
+            'table'              => 'glpi_interfacetypes',
+            'field'              => 'name',
+            'name'               => __('Interface'),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '15',
-           'table'              => 'glpi_devicecontrolmodels',
-           'field'              => 'name',
-           'name'               => _n('Model', 'Models', 1),
-           'datatype'           => 'dropdown'
+            'id'                 => '15',
+            'table'              => 'glpi_devicecontrolmodels',
+            'field'              => 'name',
+            'name'               => _n('Model', 'Models', 1),
+            'datatype'           => 'dropdown',
         ];
 
         return $tab;

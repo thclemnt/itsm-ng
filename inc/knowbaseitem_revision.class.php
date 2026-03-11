@@ -55,13 +55,13 @@ class KnowbaseItem_Revision extends CommonDBTM
             $where = [];
             if ($item->getType() == KnowbaseItem::getType()) {
                 $where = [
-                   'knowbaseitems_id' => $item->getID(),
-                   'language'         => ''
+                    'knowbaseitems_id' => $item->getID(),
+                    'language'         => '',
                 ];
             } else {
                 $where = [
-                   'knowbaseitems_id' => $item->fields['knowbaseitems_id'],
-                   'language'         => $item->fields['language']
+                    'knowbaseitems_id' => $item->fields['knowbaseitems_id'],
+                    'language'         => $item->fields['language'],
                 ];
             }
 
@@ -100,13 +100,13 @@ class KnowbaseItem_Revision extends CommonDBTM
         // Total Number of revisions
         if ($item->getType() == KnowbaseItem::getType()) {
             $where = [
-               'knowbaseitems_id' => $item->getID(),
-               'language'         => ''
+                'knowbaseitems_id' => $item->getID(),
+                'language'         => '',
             ];
         } else {
             $where = [
-               'knowbaseitems_id' => $item->fields['knowbaseitems_id'],
-               'language'         => $item->fields['language']
+                'knowbaseitems_id' => $item->fields['knowbaseitems_id'],
+                'language'         => $item->fields['language'],
             ];
         }
 
@@ -130,13 +130,13 @@ class KnowbaseItem_Revision extends CommonDBTM
         Html::printAjaxPager(self::getTypeName(1), $start, $number);
         // Output events
         echo "<div class='center'>";
-        echo "<input type='button' name='compare' value='" . _sx('button', 'Compare selected revisions') .
-               "' class='submit compare'>";
+        echo "<input type='button' name='compare' value='" . _sx('button', 'Compare selected revisions')
+               . "' class='submit compare'>";
         echo "<table class='tab_cadre_fixehov' aria-label='Revisions'>";
         $header = '<tr>';
         $header .= "<th title='" . _sn('Revision', 'Revisions', 1) . "'>#</th>";
         $header .= "<th>&nbsp;</th>";
-        $header .= "<th>" . __('Author')  . "</th>";
+        $header .= "<th>" . __('Author') . "</th>";
         $header .= "<th>" . __('Creation date') . "</th>";
         $header .= "<th></th></tr>";
         echo $header;
@@ -146,13 +146,13 @@ class KnowbaseItem_Revision extends CommonDBTM
 
         //current contents
         echo "<tr class='tab_bg_2'>";
-        echo "<td>(" . __('cur')  . ")</td>" .
-                "<td><input type='radio' name='oldid' value='0' style='visibility:hidden'/>" .
-                "<input type='radio' name='diff' value='0' checked='checked'/></td>" .
-                "<td>" . $user->getLink() . "</td>" .
-                "<td class='tab_date'>" . $item->fields['date_mod'] . "</td>" .
-                "<td></td>" .
-                "</tr>";
+        echo "<td>(" . __('cur') . ")</td>"
+                . "<td><input type='radio' name='oldid' value='0' style='visibility:hidden'/>"
+                . "<input type='radio' name='diff' value='0' checked='checked'/></td>"
+                . "<td>" . $user->getLink() . "</td>"
+                . "<td class='tab_date'>" . $item->fields['date_mod'] . "</td>"
+                . "<td></td>"
+                . "</tr>";
 
         $revisions = $DB->request(
             'glpi_knowbaseitems_revisions',
@@ -166,8 +166,8 @@ class KnowbaseItem_Revision extends CommonDBTM
             $hasRevUser = $user->getFromDB($revision['users_id']);
 
             echo "<tr class='tab_bg_2'>";
-            echo "<td>" . $revision['revision']  . "</td>" .
-                    "<td><input type='radio' name='oldid' value='{$revision['id']}'";
+            echo "<td>" . $revision['revision'] . "</td>"
+                    . "<td><input type='radio' name='oldid' value='{$revision['id']}'";
 
             if ($is_checked) {
                 echo " checked='checked'";
@@ -176,8 +176,8 @@ class KnowbaseItem_Revision extends CommonDBTM
 
             echo "/> <input type='radio' name='diff' value='{$revision['id']}'/></td>";
 
-            echo "<td>" . ($hasRevUser ? $user->getLink() : __('Unknown user')) . "</td>" .
-                "<td class='tab_date'>" . $revision['date_creation'] . "</td>";
+            echo "<td>" . ($hasRevUser ? $user->getLink() : __('Unknown user')) . "</td>"
+                . "<td class='tab_date'>" . $revision['date_creation'] . "</td>";
 
             $form = null;
             if ($item->getType() == KnowbaseItem::getType()) {
@@ -186,10 +186,10 @@ class KnowbaseItem_Revision extends CommonDBTM
                 $form = KnowbaseItemTranslation::getFormURLWithID($revision['knowbaseitems_id']);
             }
 
-            echo "<td><a href='#' data-rev='" . $revision['revision']  . "'
-                    data-revid='" . $revision['id']  . "' class='show'>" . __('show') . "</a>
-                 - <a href='$form&to_rev={$revision['id']}' class='restore'>" .
-                       __('restore')  . "</a></td>";
+            echo "<td><a href='#' data-rev='" . $revision['revision'] . "'
+                    data-revid='" . $revision['id'] . "' class='show'>" . __('show') . "</a>
+                 - <a href='$form&to_rev={$revision['id']}' class='restore'>"
+                       . __('restore') . "</a></td>";
             echo "</tr>";
         }
 
@@ -198,7 +198,7 @@ class KnowbaseItem_Revision extends CommonDBTM
             $(function() {
                $('.restore').on('click', function(e) {
                   lastClickedElement = e.target;
-                  return window.confirm('" . __s('Do you want to restore the selected revision?')  . "');
+                  return window.confirm('" . __s('Do you want to restore the selected revision?') . "');
                });
 
                $('.show').on('click', function(e) {
@@ -226,8 +226,8 @@ class KnowbaseItem_Revision extends CommonDBTM
                            modal: true
                         });
                      },
-                     error: function() { " .
-                          Html::jsAlertCallback(__('Contact your ITSM-NG admin!'), __('Unable to load revision!')) . "
+                     error: function() { "
+                          . Html::jsAlertCallback(__('Contact your ITSM-NG admin!'), __('Unable to load revision!')) . "
                      }
                   });
                });
@@ -252,9 +252,9 @@ class KnowbaseItem_Revision extends CommonDBTM
                         }
                         var title = '" . __s('Compare revisions old and diff') . "'.replace(/old/, _oldid).replace(/diff/, _diffid);
                         var html_compare = '<div title=\"' + title + '\" id=\"compare_view\"><table class=\"tab_cadre_fixehov\" aria-label='Revision'>';
-                        html_compare += '<tr><th></th><th>" . __s('Original') . "</th><th>" . __s('Changed') . "</th><th>" . __('Differences')  . "</th></tr>';
+                        html_compare += '<tr><th></th><th>" . __s('Original') . "</th><th>" . __s('Changed') . "</th><th>" . __('Differences') . "</th></tr>';
                         html_compare += '<tr><th>" . __s('Subject') . "</th><td class=\"original\">' + data['old']['name'] + '</td><td class=\"changed\">' + data['diff']['name'] + '</td><td class=\"diff\"></td></tr>';
-                        html_compare += '<tr><th>" . __s('Content')  . "</th><td class=\"original\">' + data['old']['answer'] + '</td><td class=\"changed\">' + data['diff']['answer'] + '</td><td class=\"diff\"></td></tr>';
+                        html_compare += '<tr><th>" . __s('Content') . "</th><td class=\"original\">' + data['old']['answer'] + '</td><td class=\"changed\">' + data['diff']['answer'] + '</td><td class=\"diff\"></td></tr>';
                         html_compare += '</table></div>';
                         $(html_compare).appendTo('body').dialog({
                            height: 'auto',
@@ -263,8 +263,8 @@ class KnowbaseItem_Revision extends CommonDBTM
                         });
                         $('#compare_view tr').prettyTextDiff();
                      },
-                     error: function() { " .
-                          Html::jsAlertCallback(__('Contact your ITSM-NG admin!'), __('Unable to load requested comparison!')) . "
+                     error: function() { "
+                          . Html::jsAlertCallback(__('Contact your ITSM-NG admin!'), __('Unable to load requested comparison!')) . "
                      }
                   });
                });
@@ -296,7 +296,7 @@ class KnowbaseItem_Revision extends CommonDBTM
      *
      * @param KnowbaseItem $item Knowledge base item
      *
-     * @return boolean
+     * @return bool
      */
     public function createNew(KnowbaseItem $item)
     {
@@ -318,7 +318,7 @@ class KnowbaseItem_Revision extends CommonDBTM
      *
      * @param KnowbaseItemTranslation $item Knowledge base item translation
      *
-     * @return boolean
+     * @return bool
      */
     public function createNewTranslated(KnowbaseItemTranslation $item)
     {
@@ -339,19 +339,19 @@ class KnowbaseItem_Revision extends CommonDBTM
     /**
      * Get new revision number for item
      *
-     * @return integer
+     * @return int
      */
     private function getNewRevision()
     {
         global $DB;
 
         $result = $DB->request([
-           'SELECT' => ['MAX' => 'revision AS revision'],
-           'FROM'   => 'glpi_knowbaseitems_revisions',
-           'WHERE'  => [
-              'knowbaseitems_id'   => $this->fields['knowbaseitems_id'],
-              'language'           => $this->fields['language']
-           ]
+            'SELECT' => ['MAX' => 'revision AS revision'],
+            'FROM'   => 'glpi_knowbaseitems_revisions',
+            'WHERE'  => [
+                'knowbaseitems_id'   => $this->fields['knowbaseitems_id'],
+                'language'           => $this->fields['language'],
+            ],
         ])->next();
 
         $rev = $result['revision'];

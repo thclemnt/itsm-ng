@@ -104,19 +104,19 @@ class Document_Item extends DbTestCase
 
         $document = new \Document();
         $this->integer(
-            (int)$document->add([
-              'name'   => 'Test document to link'
-         ])
+            (int) $document->add([
+                'name'   => 'Test document to link',
+            ])
         )->isGreaterThan(0);
         $input['documents_id'] = $document->getID();
 
         $expected = [
-           'itemtype'     => 'Computer',
-           'items_id'     => $cid,
-           'documents_id' => $document->getID(),
-           'users_id'     => false,
-           'entities_id'  => 0,
-           'is_recursive' => 0
+            'itemtype'     => 'Computer',
+            'items_id'     => $cid,
+            'documents_id' => $document->getID(),
+            'users_id'     => false,
+            'entities_id'  => 0,
+            'is_recursive' => 0,
         ];
 
         $this->array(
@@ -128,43 +128,43 @@ class Document_Item extends DbTestCase
     public function testGetDistinctTypesParams()
     {
         $expected = [
-           'SELECT'          => 'itemtype',
-           'DISTINCT'        => true,
-           'FROM'            => 'glpi_documents_items',
-           'WHERE'           => [
-              'OR'  => [
-                 'glpi_documents_items.documents_id'  => 1,
-                 [
-                    'glpi_documents_items.itemtype'  => 'Document',
-                    'glpi_documents_items.items_id'  => 1
-                 ]
-              ]
-           ],
-           'ORDER'           => 'itemtype'
+            'SELECT'          => 'itemtype',
+            'DISTINCT'        => true,
+            'FROM'            => 'glpi_documents_items',
+            'WHERE'           => [
+                'OR'  => [
+                    'glpi_documents_items.documents_id'  => 1,
+                    [
+                        'glpi_documents_items.itemtype'  => 'Document',
+                        'glpi_documents_items.items_id'  => 1,
+                    ],
+                ],
+            ],
+            'ORDER'           => 'itemtype',
         ];
         $this->array(\Document_Item::getDistinctTypesParams(1))->isIdenticalTo($expected);
 
         $extra_where = ['date_mod' => ['>', '2000-01-01']];
         $expected = [
-           'SELECT'          => 'itemtype',
-           'DISTINCT'        => true,
-           'FROM'            => 'glpi_documents_items',
-           'WHERE'           => [
-              'OR'  => [
-                 'glpi_documents_items.documents_id'  => 1,
-                 [
-                    'glpi_documents_items.itemtype'  => 'Document',
-                    'glpi_documents_items.items_id'  => 1
-                 ]
-              ],
-              [
-                 'date_mod'  => [
-                    '>',
-                    '2000-01-01'
-                 ]
-              ]
-           ],
-           'ORDER'           => 'itemtype'
+            'SELECT'          => 'itemtype',
+            'DISTINCT'        => true,
+            'FROM'            => 'glpi_documents_items',
+            'WHERE'           => [
+                'OR'  => [
+                    'glpi_documents_items.documents_id'  => 1,
+                    [
+                        'glpi_documents_items.itemtype'  => 'Document',
+                        'glpi_documents_items.items_id'  => 1,
+                    ],
+                ],
+                [
+                    'date_mod'  => [
+                        '>',
+                        '2000-01-01',
+                    ],
+                ],
+            ],
+            'ORDER'           => 'itemtype',
         ];
         $this->array(\Document_Item::getDistinctTypesParams(1, $extra_where))->isIdenticalTo($expected);
     }
@@ -176,9 +176,9 @@ class Document_Item extends DbTestCase
 
         $ticket = new \Ticket();
         $tickets_id = $ticket->add([
-           'name' => '',
-           'content' => 'Test modification date not updated from Document_Item',
-           'date_mod' => '2020-01-01'
+            'name' => '',
+            'content' => 'Test modification date not updated from Document_Item',
+            'date_mod' => '2020-01-01',
         ]);
 
         $this->integer($tickets_id)->isGreaterThan(0);
@@ -188,23 +188,23 @@ class Document_Item extends DbTestCase
         // Document and Document_Item
         $doc = new \Document();
         $this->integer(
-            (int)$doc->add([
-              'users_id'     => $uid,
-              'tickets_id'   => $tickets_id,
-              'name'         => 'A simple document object'
-         ])
+            (int) $doc->add([
+                'users_id'     => $uid,
+                'tickets_id'   => $tickets_id,
+                'name'         => 'A simple document object',
+            ])
         )->isGreaterThan(0);
 
         //do not change ticket modification date
         $doc_item = new \Document_Item();
         $this->integer(
-            (int)$doc_item->add([
-              'users_id'      => $uid,
-              'items_id'      => $tickets_id,
-              'itemtype'      => 'Ticket',
-              'documents_id'  => $doc->getID(),
-              '_do_update_ticket' => false
-         ])
+            (int) $doc_item->add([
+                'users_id'      => $uid,
+                'items_id'      => $tickets_id,
+                'itemtype'      => 'Ticket',
+                'documents_id'  => $doc->getID(),
+                '_do_update_ticket' => false,
+            ])
         )->isGreaterThan(0);
 
         $this->boolean($ticket->getFromDB($tickets_id))->isTrue();
@@ -214,21 +214,21 @@ class Document_Item extends DbTestCase
         $_SESSION["glpi_currenttime"] = '2021-01-01 00:00:01';
         $doc = new \Document();
         $this->integer(
-            (int)$doc->add([
-              'users_id'     => $uid,
-              'tickets_id'   => $tickets_id,
-              'name'         => 'A simple document object'
-         ])
+            (int) $doc->add([
+                'users_id'     => $uid,
+                'tickets_id'   => $tickets_id,
+                'name'         => 'A simple document object',
+            ])
         )->isGreaterThan(0);
 
         $doc_item = new \Document_Item();
         $this->integer(
-            (int)$doc_item->add([
-              'users_id'      => $uid,
-              'items_id'      => $tickets_id,
-              'itemtype'      => 'Ticket',
-              'documents_id'  => $doc->getID(),
-         ])
+            (int) $doc_item->add([
+                'users_id'      => $uid,
+                'items_id'      => $tickets_id,
+                'itemtype'      => 'Ticket',
+                'documents_id'  => $doc->getID(),
+            ])
         )->isGreaterThan(0);
 
         $this->boolean($ticket->getFromDB($tickets_id))->isTrue();

@@ -80,7 +80,7 @@ class Update extends CommonGLPI
 
         if (isCommandLine()) {
             // Init debug variable
-            $_SESSION = ['glpilanguage' => (isset($this->args['lang']) ? $this->args['lang'] : 'en_GB')];
+            $_SESSION = ['glpilanguage' => ($this->args['lang'] ?? 'en_GB')];
             $_SESSION["glpi_currenttime"] = date("Y-m-d H:i:s");
         }
     }
@@ -98,16 +98,16 @@ class Update extends CommonGLPI
         if (!$DB->tableExists('glpi_config') && !$DB->tableExists('glpi_configs')) {
             //very, very old version!
             $currents = [
-               'version'   => '0.1',
-               'dbversion' => '0.1',
-               'language'  => 'en_GB'
+                'version'   => '0.1',
+                'dbversion' => '0.1',
+                'language'  => 'en_GB',
             ];
         } elseif (!$DB->tableExists("glpi_configs")) {
             // < 0.78
             // Get current version
             $result = $DB->request([
-               'SELECT' => ['version', 'language'],
-               'FROM'   => 'glpi_config'
+                'SELECT' => ['version', 'language'],
+                'FROM'   => 'glpi_config',
             ])->next();
 
             $currents['version']    = trim((string) $result['version']);
@@ -117,8 +117,8 @@ class Update extends CommonGLPI
             // < 0.85
             // Get current version and language
             $result = $DB->request([
-               'SELECT' => ['version', 'language'],
-               'FROM'   => 'glpi_configs'
+                'SELECT' => ['version', 'language'],
+                'FROM'   => 'glpi_configs',
             ])->next();
 
             $currents['version']    = trim((string) $result['version']);
@@ -167,7 +167,7 @@ class Update extends CommonGLPI
     {
         if ($current_version === null) {
             if ($this->version === null) {
-                throw new \RuntimeException('Cannot process updates without any version specified!');
+                throw new RuntimeException('Cannot process updates without any version specified!');
             }
             $current_version = $this->version;
         }
@@ -680,22 +680,22 @@ class Update extends CommonGLPI
 
         // Update version number and default langage and new version_founded ---- LEAVE AT THE END
         Config::setConfigurationValues('core', ['version'             => ITSM_VERSION,
-                                                'dbversion'           => ITSM_SCHEMA_VERSION,
-                                                'itsmversion'         => ITSM_VERSION,
-                                                'itsmdbversion'       => ITSM_SCHEMA_VERSION,
-                                                'language'            => $this->language,
-                                                'founded_new_version' => '']);
+            'dbversion'           => ITSM_SCHEMA_VERSION,
+            'itsmversion'         => ITSM_VERSION,
+            'itsmdbversion'       => ITSM_SCHEMA_VERSION,
+            'language'            => $this->language,
+            'founded_new_version' => '']);
 
         if (defined('GLPI_SYSTEM_CRON')) {
             // Downstream packages may provide a good system cron
             $DB->updateOrDie(
                 'glpi_crontasks',
                 [
-                  'mode'   => 2
+                    'mode'   => 2,
                 ],
                 [
-                  'name'      => ['!=', 'watcher'],
-                  'allowmode' => ['&', 2]
+                    'name'      => ['!=', 'watcher'],
+                    'allowmode' => ['&', 2],
                 ]
             );
         }

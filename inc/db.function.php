@@ -56,7 +56,7 @@ function getForeignKeyFieldForTable($table)
  *
  * @param $field string field name
  *
- * @return boolean
+ * @return bool
 **/
 function isForeignKeyField($field)
 {
@@ -139,7 +139,7 @@ function getTableForItemType($itemtype)
  *
  * @param $itemtype   string   itemtype
  *
- * @return CommonDBTM|boolean itemtype object or false if class does not exists
+ * @return CommonDBTM|bool itemtype object or false if class does not exists
 **/
 function getItemForItemtype($itemtype)
 {
@@ -224,9 +224,9 @@ function countElementsInTableForMyEntities($table, $condition = [])
  * Count the number of elements in a table for a specific entity
  *
  * @param string  $table     table name
- * @param integer $entity    the entity ID
+ * @param int $entity    the entity ID
  * @param string  $condition additional condition (default [])
- * @param boolean $recursive Whether to recurse or not. If true, will be conditionned on item recursivity
+ * @param bool $recursive Whether to recurse or not. If true, will be conditionned on item recursivity
  *
  * @return int nb of elements in table
 **/
@@ -243,7 +243,7 @@ function countElementsInTableForEntity($table, $entity, $condition = [], $recurs
  *
  * @param string  $table     table name
  * @param array   $condition condition to use (default [])
- * @param boolean $usecache  Use cache (false by default)
+ * @param bool $usecache  Use cache (false by default)
  * @param string  $order     result order (default '')
  *
  * @return array containing all the datas
@@ -262,7 +262,7 @@ function getAllDatasFromTable($table, $condition = [], $usecache = false, $order
  *
  * @param string  $table    table name
  * @param array   $criteria condition to use (default [])
- * @param boolean $usecache Use cache (false by default)
+ * @param bool $usecache Use cache (false by default)
  * @param string  $order    result order (default '')
  *
  * @return array containing all the datas
@@ -397,7 +397,7 @@ function getTreeForItem($table, $IDf)
  * Construct a tree from a list structure
  *
  * @param array   $list the list
- * @param integer $root root of the tree
+ * @param int $root root of the tree
  *
  * @return array list of items in the tree
 **/
@@ -412,7 +412,7 @@ function contructTreeFromList($list, $root)
  * Construct a list from a tree structure
  *
  * @param array   $tree   the tree
- * @param integer $parent root of the tree (default =0)
+ * @param int $parent root of the tree (default =0)
  *
  * @return array list of items in the tree
 **/
@@ -497,7 +497,7 @@ function getUserName($ID, $link = 0)
  * @param $table  string  table of the index
  * @param $field  string  name of the index
  *
- * @return boolean : index exists ?
+ * @return bool : index exists ?
 **/
 function isIndex($table, $field)
 {
@@ -511,9 +511,9 @@ function isIndex($table, $field)
  *
  * @param string  $objectName  autoname template
  * @param string  $field       field to autoname
- * @param boolean $isTemplate  true if create an object from a template
+ * @param bool $isTemplate  true if create an object from a template
  * @param string  $itemtype    item type
- * @param integer $entities_id limit generation to an entity (default -1)
+ * @param int $entities_id limit generation to an entity (default -1)
  *
  * @return string new auto string
  */
@@ -614,9 +614,9 @@ function getDbRelations()
  * @param string  $field            field where apply the limit (id != entities_id) (default '')
  * @param mixed   $value            entity to restrict (if not set use $_SESSION['glpiactiveentities_string']).
  *                                  single item or array (default '')
- * @param boolean $is_recursive     need to use recursive process to find item
+ * @param bool $is_recursive     need to use recursive process to find item
  *                                  (field need to be named recursive) (false by default)
- * @param boolean $complete_request need to use a complete request and not a simple one
+ * @param bool $complete_request need to use a complete request and not a simple one
  *                                  when have acces to all entities (used for reminders)
  *                                  (false by default)
  *
@@ -652,9 +652,9 @@ function getEntitiesRestrictRequest(
  * @param string $field             field where apply the limit (id != entities_id) (default '')
  * @param mixed $value              entity to restrict (if not set use $_SESSION['glpiactiveentities']).
  *                                  single item or array (default '')
- * @param boolean $is_recursive     need to use recursive process to find item
+ * @param bool $is_recursive     need to use recursive process to find item
  *                                  (field need to be named recursive) (false by default, set to auto to automatic detection)
- * @param boolean $complete_request need to use a complete request and not a simple one
+ * @param bool $complete_request need to use a complete request and not a simple one
  *                                  when have acces to all entities (used for reminders)
  *                                  (false by default)
  *

@@ -123,77 +123,77 @@ class ProjectCost extends CommonDBChild
         $tab = [];
 
         $tab[] = [
-           'id'                 => 'common',
-           'name'               => __('Characteristics')
+            'id'                 => 'common',
+            'name'               => __('Characteristics'),
         ];
 
         $tab[] = [
-           'id'                 => '1',
-           'table'              => $this->getTable(),
-           'field'              => 'name',
-           'name'               => __('Title'),
-           'searchtype'         => 'contains',
-           'datatype'           => 'itemlink',
-           'massiveaction'      => false,
-           'autocomplete'       => true,
+            'id'                 => '1',
+            'table'              => $this->getTable(),
+            'field'              => 'name',
+            'name'               => __('Title'),
+            'searchtype'         => 'contains',
+            'datatype'           => 'itemlink',
+            'massiveaction'      => false,
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '2',
-           'table'              => $this->getTable(),
-           'field'              => 'id',
-           'name'               => __('ID'),
-           'massiveaction'      => false,
-           'datatype'           => 'number'
+            'id'                 => '2',
+            'table'              => $this->getTable(),
+            'field'              => 'id',
+            'name'               => __('ID'),
+            'massiveaction'      => false,
+            'datatype'           => 'number',
         ];
 
         $tab[] = [
-           'id'                 => '16',
-           'table'              => $this->getTable(),
-           'field'              => 'comment',
-           'name'               => __('Comments'),
-           'datatype'           => 'text'
+            'id'                 => '16',
+            'table'              => $this->getTable(),
+            'field'              => 'comment',
+            'name'               => __('Comments'),
+            'datatype'           => 'text',
         ];
 
         $tab[] = [
-           'id'                 => '12',
-           'table'              => $this->getTable(),
-           'field'              => 'begin_date',
-           'name'               => __('Begin date'),
-           'datatype'           => 'datetime'
+            'id'                 => '12',
+            'table'              => $this->getTable(),
+            'field'              => 'begin_date',
+            'name'               => __('Begin date'),
+            'datatype'           => 'datetime',
         ];
 
         $tab[] = [
-           'id'                 => '10',
-           'table'              => $this->getTable(),
-           'field'              => 'end_date',
-           'name'               => __('End date'),
-           'datatype'           => 'datetime'
+            'id'                 => '10',
+            'table'              => $this->getTable(),
+            'field'              => 'end_date',
+            'name'               => __('End date'),
+            'datatype'           => 'datetime',
         ];
 
         $tab[] = [
-           'id'                 => '14',
-           'table'              => $this->getTable(),
-           'field'              => 'cost',
-           'name'               => _n('Cost', 'Costs', 1),
-           'datatype'           => 'decimal'
+            'id'                 => '14',
+            'table'              => $this->getTable(),
+            'field'              => 'cost',
+            'name'               => _n('Cost', 'Costs', 1),
+            'datatype'           => 'decimal',
         ];
 
         $tab[] = [
-           'id'                 => '18',
-           'table'              => 'glpi_budgets',
-           'field'              => 'name',
-           'name'               => Budget::getTypeName(1),
-           'datatype'           => 'dropdown'
+            'id'                 => '18',
+            'table'              => 'glpi_budgets',
+            'field'              => 'name',
+            'name'               => Budget::getTypeName(1),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '80',
-           'table'              => 'glpi_entities',
-           'field'              => 'completename',
-           'name'               => Entity::getTypeName(1),
-           'massiveaction'      => false,
-           'datatype'           => 'dropdown'
+            'id'                 => '80',
+            'table'              => 'glpi_entities',
+            'field'              => 'completename',
+            'name'               => Entity::getTypeName(1),
+            'massiveaction'      => false,
+            'datatype'           => 'dropdown',
         ];
 
         return $tab;
@@ -215,8 +215,8 @@ class ProjectCost extends CommonDBChild
 
         Toolbox::deprecated('Use clone');
         $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['projects_id' => $oldid]
+            'FROM'   => self::getTable(),
+            'WHERE'  => ['projects_id' => $oldid],
         ]);
         while ($data = $iterator->next()) {
             $cd                   = new self();
@@ -269,9 +269,9 @@ class ProjectCost extends CommonDBChild
         global $DB;
 
         $iterator = $DB->request([
-           'FROM'   => $this->getTable(),
-           'WHERE'  => ['projects_id' => $projects_id],
-           'ORDER'  => ['end_date DESC', 'id DESC']
+            'FROM'   => $this->getTable(),
+            'WHERE'  => ['projects_id' => $projects_id],
+            'ORDER'  => ['end_date DESC', 'id DESC'],
         ]);
 
         if (count($iterator)) {
@@ -300,65 +300,65 @@ class ProjectCost extends CommonDBChild
         }
 
         $form = [
-           'action' => $this->getFormURL(),
-           'buttons' => [
-              [
-                 'name'  => $ID > 0 ? 'update' : 'add',
-                 'type'  => 'submit',
-                 'value' => $ID > 0 ? __('Update') : __('Add'),
-                 'class' => 'btn btn-secondary',
-              ],
-           ],
-           'content' => [
-              $this->getTypeName() => [
-                 'visible' => true,
-                 'inputs' => [
-                    $ID > 0 ?
-                    [
-                       'type' => 'hidden',
-                       'name' => 'id',
-                       'value' => $ID
-                    ] : [],
-                    [
-                       'type' => 'hidden',
-                       'name' => 'projects_id',
-                       'value' => $this->fields['projects_id']
+            'action' => $this->getFormURL(),
+            'buttons' => [
+                [
+                    'name'  => $ID > 0 ? 'update' : 'add',
+                    'type'  => 'submit',
+                    'value' => $ID > 0 ? __('Update') : __('Add'),
+                    'class' => 'btn btn-secondary',
+                ],
+            ],
+            'content' => [
+                $this->getTypeName() => [
+                    'visible' => true,
+                    'inputs' => [
+                        $ID > 0
+                        ? [
+                            'type' => 'hidden',
+                            'name' => 'id',
+                            'value' => $ID,
+                        ] : [],
+                        [
+                            'type' => 'hidden',
+                            'name' => 'projects_id',
+                            'value' => $this->fields['projects_id'],
+                        ],
+                        __('Name') => [
+                            'type' => 'text',
+                            'name' => 'name',
+                            'value' => $this->fields['name'],
+                        ],
+                        _n('Cost', 'Costs', 1) => [
+                            'type' => 'number',
+                            'name' => 'cost',
+                            'step' => '0.01',
+                            'value' => Html::formatNumber($this->fields["cost"], true),
+                        ],
+                        __('Begin date') => [
+                            'type' => 'date',
+                            'name' => 'begin_date',
+                            'value' => $this->fields['begin_date'],
+                        ],
+                        __('End date') => [
+                            'type' => 'date',
+                            'name' => 'end_date',
+                            'value' => $this->fields['end_date'],
+                        ],
+                        Budget::getTypeName(1) => [
+                            'type' => 'select',
+                            'name' => 'budgets_id',
+                            'value' => $this->fields["budgets_id"],
+                            'itemtype' => Budget::class,
+                        ],
+                        __('Comments') => [
+                            'type' => 'textarea',
+                            'name' => 'comment',
+                            'value' => $this->fields["comment"],
+                        ],
                     ],
-                    __('Name') => [
-                       'type' => 'text',
-                       'name' => 'name',
-                       'value' => $this->fields['name'],
-                    ],
-                    _n('Cost', 'Costs', 1) => [
-                       'type' => 'number',
-                       'name' => 'cost',
-                       'step' => '0.01',
-                       'value' => Html::formatNumber($this->fields["cost"], true),
-                    ],
-                    __('Begin date') => [
-                       'type' => 'date',
-                       'name' => 'begin_date',
-                       'value' => $this->fields['begin_date'],
-                    ],
-                    __('End date') => [
-                       'type' => 'date',
-                       'name' => 'end_date',
-                       'value' => $this->fields['end_date'],
-                    ],
-                    Budget::getTypeName(1) => [
-                       'type' => 'select',
-                       'name' => 'budgets_id',
-                       'value' => $this->fields["budgets_id"],
-                       'itemtype' => Budget::class,
-                    ],
-                    __('Comments') => [
-                       'type' => 'textarea',
-                       'name' => 'comment',
-                       'value' => $this->fields["comment"],
-                    ],
-                 ]
-              ]
-           ]
+                ],
+            ],
         ];
         renderTwigForm($form);
 
@@ -391,9 +391,9 @@ class ProjectCost extends CommonDBChild
         echo "<div class='center'>";
 
         $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['projects_id' => $ID],
-           'ORDER'  => ['begin_date']
+            'FROM'   => self::getTable(),
+            'WHERE'  => ['projects_id' => $ID],
+            'ORDER'  => ['begin_date'],
         ]);
 
         $rand   = mt_rand();
@@ -403,9 +403,9 @@ class ProjectCost extends CommonDBChild
             echo "<script type='text/javascript' >\n";
             echo "function viewAddCost" . $ID . "_$rand() {\n";
             $params = ['type'         => __CLASS__,
-                            'parenttype'   => 'Project',
-                            'projects_id' => $ID,
-                            'id'           => -1];
+                'parenttype'   => 'Project',
+                'projects_id' => $ID,
+                'id'           => -1];
             Ajax::updateItemJsCode(
                 "viewcost" . $ID . "_$rand",
                 $CFG_GLPI["root_doc"] . "/ajax/viewsubitem.php",
@@ -413,14 +413,14 @@ class ProjectCost extends CommonDBChild
             );
             echo "};";
             echo "</script>\n";
-            echo "<div class='center firstbloc'>" .
-                  "<a class='vsubmit' href='javascript:viewAddCost" . $ID . "_$rand();'>";
+            echo "<div class='center firstbloc'>"
+                  . "<a class='vsubmit' href='javascript:viewAddCost" . $ID . "_$rand();'>";
             echo __('Add a new cost') . "</a></div>\n";
         }
         $total = 0;
         echo "<table class='tab_cadre_fixehov' aria-label='Date'>";
-        echo "<tr class='noHover'><th colspan='5'>" . self::getTypeName(count($iterator)) .
-              "</th></tr>";
+        echo "<tr class='noHover'><th colspan='5'>" . self::getTypeName(count($iterator))
+              . "</th></tr>";
 
         if (count($iterator)) {
             echo "<tr><th>" . __('Name') . "</th>";
@@ -442,10 +442,10 @@ class ProjectCost extends CommonDBChild
             );
 
             while ($data = $iterator->next()) {
-                echo "<tr class='tab_bg_2' " .
-                      ($canedit
-                         ? "style='cursor:pointer' onClick=\"viewEditCost" . $data['projects_id'] . "_" .
-                         $data['id'] . "_$rand();\"" : '') . ">";
+                echo "<tr class='tab_bg_2' "
+                      . ($canedit
+                         ? "style='cursor:pointer' onClick=\"viewEditCost" . $data['projects_id'] . "_"
+                         . $data['id'] . "_$rand();\"" : '') . ">";
                 $name = (empty($data['name']) ? sprintf(
                     __('%1$s (%2$s)'),
                     $data['name'],
@@ -462,9 +462,9 @@ class ProjectCost extends CommonDBChild
                     echo "\n<script type='text/javascript' >\n";
                     echo "function viewEditCost" . $data['projects_id'] . "_" . $data["id"] . "_$rand() {\n";
                     $params = ['type'         => __CLASS__,
-                                      'parenttype'   => 'Project',
-                                      'projects_id' => $data["projects_id"],
-                                      'id'           => $data["id"]];
+                        'parenttype'   => 'Project',
+                        'projects_id' => $data["projects_id"],
+                        'id'           => $data["id"]];
                     Ajax::updateItemJsCode(
                         "viewcost" . $ID . "_$rand",
                         $CFG_GLPI["root_doc"] . "/ajax/viewsubitem.php",

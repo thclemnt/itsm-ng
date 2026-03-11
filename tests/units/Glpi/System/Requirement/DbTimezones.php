@@ -33,13 +33,15 @@
 
 namespace tests\units\Glpi\System\Requirement;
 
+use mock\DB;
+
 class DbTimezones extends \GLPITestCase
 {
     public function testCheckWithAvailableTimezones()
     {
 
         $this->mockGenerator->orphanize('__construct');
-        $db = new \mock\DB();
+        $db = new DB();
         $this->calling($db)->areTimezonesAvailable = true;
 
         $this->newTestedInstance($db);
@@ -52,7 +54,7 @@ class DbTimezones extends \GLPITestCase
     {
 
         $this->mockGenerator->orphanize('__construct');
-        $db = new \mock\DB();
+        $db = new DB();
         $this->calling($db)->areTimezonesAvailable = false;
 
         $this->newTestedInstance($db);

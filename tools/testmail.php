@@ -40,7 +40,7 @@ if (isset($_SERVER['argc'])) {
     for ($i = 1; $i < $_SERVER['argc']; $i++) {
         $it           = explode("=", $_SERVER['argv'][$i], 2);
         $it[0]        = preg_replace('/^--/', '', $it[0]);
-        $_GET[$it[0]] = (isset($it[1]) ? $it[1] : true);
+        $_GET[$it[0]] = ($it[1] ?? true);
     }
 }
 $NEEDED_ITEMS = ["mailgate", "mailing"];
@@ -87,9 +87,9 @@ if ($enc) {
 }
 
 $mmail->Subject = "ITSM-NG test mail" . ($enc ? " ($enc)" : '');
-$mmail->Body = "<html><body><h3>ITSM-NG test mail</h3><p>Encoding = <span class='b'>$enc</span></p>" .
-             "<p>Date = <span class='b'>$dat</span></p><p>Secret = <span class='b'>$secret</span>" .
-             "</p></body></html>";
+$mmail->Body = "<html><body><h3>ITSM-NG test mail</h3><p>Encoding = <span class='b'>$enc</span></p>"
+             . "<p>Date = <span class='b'>$dat</span></p><p>Secret = <span class='b'>$secret</span>"
+             . "</p></body></html>";
 $mmail->AltBody = "ITSM-NG test mail\nEncoding : $enc\nDate : $dat\nSecret=$secret";
 
 $mmail->AddAddress($dest, "");

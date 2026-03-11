@@ -58,9 +58,9 @@ function update080to0801()
                 // Skip first
                 $query = "SELECT `id`
                       FROM `glpi_groups_tickets`
-                      WHERE `tickets_id` = '".$data['tickets_id']."'
-                            AND `type` = '".$data['type']."'
-                            AND `groups_id` = '".$data['groups_id']."'
+                      WHERE `tickets_id` = '" . $data['tickets_id'] . "'
+                            AND `type` = '" . $data['type'] . "'
+                            AND `groups_id` = '" . $data['groups_id'] . "'
                       ORDER BY `id` DESC
                       LIMIT 1,99999";
                 if ($result2 = $DB->query($query)) {
@@ -68,7 +68,7 @@ function update080to0801()
                         while ($data2 = $DB->fetchArray($result2)) {
                             $query = "DELETE
                                FROM `glpi_groups_tickets`
-                               WHERE `id` ='".$data2['id']."'";
+                               WHERE `id` ='" . $data2['id'] . "'";
                             $DB->queryOrDie($query, "0.80.1 clean to update glpi_groups_tickets");
                         }
                     }
@@ -96,10 +96,10 @@ function update080to0801()
                 // Skip first
                 $query = "SELECT `id`
                       FROM `glpi_tickets_users`
-                      WHERE `tickets_id` = '".$data['tickets_id']."'
-                            AND `type` = '".$data['type']."'
-                            AND `users_id` = '".$data['users_id']."'
-                            AND `alternative_email` = '".$data['alternative_email']."'
+                      WHERE `tickets_id` = '" . $data['tickets_id'] . "'
+                            AND `type` = '" . $data['type'] . "'
+                            AND `users_id` = '" . $data['users_id'] . "'
+                            AND `alternative_email` = '" . $data['alternative_email'] . "'
                       ORDER BY `id` DESC
                       LIMIT 1,99999";
                 if ($result2 = $DB->query($query)) {
@@ -107,7 +107,7 @@ function update080to0801()
                         while ($data2 = $DB->fetchArray($result2)) {
                             $query = "DELETE
                                FROM `glpi_tickets_users`
-                               WHERE `id` ='".$data2['id']."'";
+                               WHERE `id` ='" . $data2['id'] . "'";
                             $DB->queryOrDie($query, "0.80.1 clean to update glpi_tickets_users");
                         }
                     }

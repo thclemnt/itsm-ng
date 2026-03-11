@@ -40,12 +40,13 @@ if (!defined('GLPI_ROOT')) {
 use Auth;
 use Plugin;
 use Session;
-use User;
 use Symfony\Component\Console\Exception\InvalidArgumentException;
+use Symfony\Component\Console\Helper\QuestionHelper;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Question\Question;
+use User;
 
 class InstallCommand extends AbstractPluginCommand
 {
@@ -91,7 +92,7 @@ class InstallCommand extends AbstractPluginCommand
         parent::interact($input, $output);
 
         if (null === $input->getOption('username')) {
-            /** @var \Symfony\Component\Console\Helper\QuestionHelper $question_helper */
+            /** @var QuestionHelper $question_helper */
             $question_helper = $this->getHelper('question');
             $value = $question_helper->ask(
                 $input,
@@ -260,9 +261,9 @@ class InstallCommand extends AbstractPluginCommand
         $is_already_known = $plugin->getFromDBByCrit(['directory' => $directory]);
 
         $installed_states = [
-           Plugin::ACTIVATED,
-           Plugin::TOBECONFIGURED,
-           Plugin::NOTACTIVATED,
+            Plugin::ACTIVATED,
+            Plugin::TOBECONFIGURED,
+            Plugin::NOTACTIVATED,
         ];
         return $is_already_known && in_array($plugin->fields['state'], $installed_states);
     }
@@ -271,9 +272,9 @@ class InstallCommand extends AbstractPluginCommand
      * Check if install method can be run for given plugin.
      *
      * @param string  $directory
-     * @param boolean $allow_reinstall
+     * @param bool $allow_reinstall
      *
-     * @return boolean
+     * @return bool
      */
     private function canRunInstallMethod($directory, $allow_reinstall)
     {
@@ -337,8 +338,8 @@ class InstallCommand extends AbstractPluginCommand
         if (!$requirements_met) {
             $this->output->writeln(
                 [
-                  '<error>' . sprintf(__('Plugin "%s" requirements not met.'), $directory) . '</error>',
-                  '<error>' . $ob_contents . '</error>',
+                    '<error>' . sprintf(__('Plugin "%s" requirements not met.'), $directory) . '</error>',
+                    '<error>' . $ob_contents . '</error>',
                 ],
                 OutputInterface::VERBOSITY_QUIET
             );
@@ -363,7 +364,7 @@ class InstallCommand extends AbstractPluginCommand
         $params = [];
         foreach ($input_params as $input_param) {
             $parts = explode('=', (string) $input_param);
-            $params[$parts[0]] = isset($parts[1]) ? $parts[1] : true;
+            $params[$parts[0]] = $parts[1] ?? true;
         }
 
         return $params;

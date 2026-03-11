@@ -160,7 +160,7 @@ class QueuedChat extends CommonDBTM
                     'notificationtemplates_id' => $input['notificationtemplates_id'],
 
 
-                ]
+                ],
             ];
             $iterator = $DB->request($criteria);
             while ($data = $iterator->next()) {
@@ -178,7 +178,7 @@ class QueuedChat extends CommonDBTM
 
         $tab[] = [
             'id'                 => 'common',
-            'name'               => __('Characteristics')
+            'name'               => __('Characteristics'),
         ];
         $tab[] = [
             'id'                 => '1',
@@ -186,7 +186,7 @@ class QueuedChat extends CommonDBTM
             'field'              => 'completName',
             'name'               => __('Subject'),
             'datatype'           => 'itemlink',
-            'massiveaction'      => false
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
@@ -195,7 +195,7 @@ class QueuedChat extends CommonDBTM
             'field'              => 'id',
             'name'               => __('ID'),
             'massiveaction'      => false,
-            'datatype'           => 'number'
+            'datatype'           => 'number',
         ];
 
         $tab[] = [
@@ -204,7 +204,7 @@ class QueuedChat extends CommonDBTM
             'field'              => 'create_time',
             'name'               => __('Creation date'),
             'datatype'           => 'datetime',
-            'massiveaction'      => false
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
@@ -213,7 +213,7 @@ class QueuedChat extends CommonDBTM
             'field'              => 'send_time',
             'name'               => __('Expected send date'),
             'datatype'           => 'datetime',
-            'massiveaction'      => false
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
@@ -222,7 +222,7 @@ class QueuedChat extends CommonDBTM
             'field'              => 'sent_time',
             'name'               => __('Send date'),
             'datatype'           => 'datetime',
-            'massiveaction'      => false
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
@@ -231,7 +231,7 @@ class QueuedChat extends CommonDBTM
             'field'              => 'sent_try',
             'name'               => __('Number of tries of sent'),
             'datatype'           => 'integer',
-            'massiveaction'      => false
+            'massiveaction'      => false,
         ];
         $tab[] = [
             'id'                 => '20',
@@ -239,7 +239,7 @@ class QueuedChat extends CommonDBTM
             'field'              => 'itemtype',
             'name'               => _n('Type', 'Types', 1),
             'datatype'           => 'itemtype',
-            'massiveaction'      => false
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
@@ -248,7 +248,7 @@ class QueuedChat extends CommonDBTM
             'field'              => 'items_id',
             'name'               => __('Associated item ID'),
             'massiveaction'      => false,
-            'datatype'           => 'integer'
+            'datatype'           => 'integer',
         ];
 
         $tab[] = [
@@ -257,7 +257,7 @@ class QueuedChat extends CommonDBTM
             'field'              => 'entName',
             'name'               => __('Entity name'),
             'massiveaction'      => false,
-            'datatype'           => 'text'
+            'datatype'           => 'text',
         ];
 
         $tab[] = [
@@ -266,7 +266,7 @@ class QueuedChat extends CommonDBTM
             'field'              => 'serverName',
             'name'               => __('Server name'),
             'massiveaction'      => false,
-            'datatype'           => 'string'
+            'datatype'           => 'string',
         ];
 
         $tab[] = [
@@ -275,7 +275,7 @@ class QueuedChat extends CommonDBTM
             'field'              => 'hookurl',
             'name'               => __('URl Hook'),
             'massiveaction'      => false,
-            'datatype'           => 'itemtype'
+            'datatype'           => 'itemtype',
         ];
 
         $tab[] = [
@@ -287,8 +287,8 @@ class QueuedChat extends CommonDBTM
             'datatype'           => 'specific',
             'searchtype'         => [
                 0 => 'equals',
-                1 => 'notequals'
-            ]
+                1 => 'notequals',
+            ],
         ];
         return $tab;
     }
@@ -344,9 +344,9 @@ class QueuedChat extends CommonDBTM
     /**
      * Send chat in queue
      *
-     * @param integer $ID Id
+     * @param int $ID Id
      *
-     * @return boolean
+     * @return bool
      */
     public function sendById($ID)
     {
@@ -378,13 +378,13 @@ class QueuedChat extends CommonDBTM
             case 'queuedchat':
                 return [
                     'description' => __('Send chat in queue'),
-                    'parameter'   => __('Maximum chat to send at once')
+                    'parameter'   => __('Maximum chat to send at once'),
                 ];
 
             case 'queuedchatclean':
                 return [
                     'description' => __('Clean chat queue'),
-                    'parameter'   => __('Days to keep sent chat')
+                    'parameter'   => __('Days to keep sent chat'),
                 ];
         }
         return [];
@@ -396,7 +396,7 @@ class QueuedChat extends CommonDBTM
      * Get pending chat in queue
      *
      * @param string  $send_time   Maximum sent_time
-     * @param integer $limit       Query limit clause
+     * @param int $limit       Query limit clause
      * @param array   $limit_modes Modes to limit to
      * @param array   $extra_where Extra params to add to the where clause
      *
@@ -419,7 +419,7 @@ class QueuedChat extends CommonDBTM
             ] +  $extra_where,
             'ORDER'  => 'send_time ASC',
             'START'  => 0,
-            'LIMIT'  => $limit
+            'LIMIT'  => $limit,
         ];
 
         $pendings = [];
@@ -460,7 +460,7 @@ class QueuedChat extends CommonDBTM
      *
      * @param CommonDBTM $task for log (default NULL)
      *
-     * @return integer either 0 or 1
+     * @return int either 0 or 1
      **/
     public static function cronQueuedChat($task = null)
     {
@@ -502,7 +502,7 @@ class QueuedChat extends CommonDBTM
      *
      * @param CommonDBTM $task for log (default NULL)
      *
-     * @return integer either 0 or 1
+     * @return int either 0 or 1
      **/
     public static function cronQueuedChatClean($task = null)
     {
@@ -518,7 +518,7 @@ class QueuedChat extends CommonDBTM
                 self::getTable(),
                 [
                     'is_deleted'   => 1,
-                    new \QueryExpression('(UNIX_TIMESTAMP(' . $DB->quoteName('send_time') . ') < ' . $DB->quoteValue($send_time) . ')')
+                    new QueryExpression('(UNIX_TIMESTAMP(' . $DB->quoteName('send_time') . ') < ' . $DB->quoteValue($send_time) . ')'),
                 ]
             );
             $vol = $DB->affectedRows();
@@ -534,7 +534,7 @@ class QueuedChat extends CommonDBTM
      * Force sending all chat in queue for a specific item
      *
      * @param string  $itemtype item type
-     * @param integer $items_id id of the item
+     * @param int $items_id id of the item
      *
      * @return void
      **/
@@ -550,7 +550,7 @@ class QueuedChat extends CommonDBTM
                 null,
                 [
                     'itemtype'  => $itemtype,
-                    'items_id'  => $items_id
+                    'items_id'  => $items_id,
                 ]
             );
 
@@ -564,7 +564,7 @@ class QueuedChat extends CommonDBTM
     /**
      * Print the queued chat form
      *
-     * @param integer $ID      ID of the item
+     * @param int $ID      ID of the item
      * @param array   $options Options
      *
      * @return true if displayed  false if item not found or not right to display

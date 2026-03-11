@@ -43,23 +43,23 @@ class ProjectState extends DbTestCase
 
         $project_state = new \ProjectState();
         $id = $project_state->add([
-           'name'        => 'Project state test',
-           'color'       => '#123456',
-           'is_finished' => 1,
+            'name'        => 'Project state test',
+            'color'       => '#123456',
+            'is_finished' => 1,
         ]);
-        $this->integer((int)$id)->isGreaterThan(0);
+        $this->integer((int) $id)->isGreaterThan(0);
         $this->boolean($project_state->getFromDB($id))->isTrue();
         $this->string($project_state->getField('color'))->isEqualTo('#123456');
-        $this->integer((int)$project_state->getField('is_finished'))->isEqualTo(1);
+        $this->integer((int) $project_state->getField('is_finished'))->isEqualTo(1);
 
         $this->boolean($project_state->update([
-           'id'          => $id,
-           'color'       => '#abcdef',
-           'is_finished' => 0,
+            'id'          => $id,
+            'color'       => '#abcdef',
+            'is_finished' => 0,
         ]))->isTrue();
         $this->boolean($project_state->getFromDB($id))->isTrue();
         $this->string($project_state->getField('color'))->isEqualTo('#abcdef');
-        $this->integer((int)$project_state->getField('is_finished'))->isEqualTo(0);
+        $this->integer((int) $project_state->getField('is_finished'))->isEqualTo(0);
 
         $this->boolean($project_state->delete(['id' => $id]))->isTrue();
     }

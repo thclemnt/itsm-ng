@@ -69,7 +69,7 @@ abstract class ITILTemplatePredefinedField extends ITILTemplateField
     {
         // Normalize document dropdown submission (Document::dropdown uses peer_documents_id)
         if (!isset($input['value']) && isset($input['peer_documents_id']) && $input['peer_documents_id'] !== '') {
-            $input['value'] = (int)$input['peer_documents_id'];
+            $input['value'] = (int) $input['peer_documents_id'];
             $input['field'] = 'documents_id';
             unset($input['peer_documents_id']);
             unset($input['_rubdoc']);
@@ -103,12 +103,12 @@ abstract class ITILTemplatePredefinedField extends ITILTemplateField
         // Try to delete itemtype -> delete items_id
         if ($this->fields['num'] == $itemtype_id) {
             $iterator = $DB->request([
-               'SELECT' => 'id',
-               'FROM'   => $this->getTable(),
-               'WHERE'  => [
-                  static::$items_id => $this->fields[static::$items_id],
-                  'num'             => $items_id_id
-               ]
+                'SELECT' => 'id',
+                'FROM'   => $this->getTable(),
+                'WHERE'  => [
+                    static::$items_id => $this->fields[static::$items_id],
+                    'num'             => $items_id_id,
+                ],
             ]);
 
             if (count($iterator)) {
@@ -154,8 +154,8 @@ abstract class ITILTemplatePredefinedField extends ITILTemplateField
      *
      * @since 0.83
      *
-     * @param integer $ID                   the template ID
-     * @param boolean $withtypeandcategory  with type and category (false by default)
+     * @param int $ID                   the template ID
+     * @param bool $withtypeandcategory  with type and category (false by default)
      *
      * @return array of predefined fields
     **/
@@ -164,9 +164,9 @@ abstract class ITILTemplatePredefinedField extends ITILTemplateField
         global $DB;
 
         $iterator = $DB->request([
-           'FROM'   => $this->getTable(),
-           'WHERE'  => [static::$items_id => $ID],
-           'ORDER'  => 'id'
+            'FROM'   => $this->getTable(),
+            'WHERE'  => [static::$items_id => $ID],
+            'ORDER'  => 'id',
         ]);
 
         $tt_class       = static::$itemtype;
@@ -213,13 +213,13 @@ abstract class ITILTemplatePredefinedField extends ITILTemplateField
                 $itemstable = 'glpi_items_tickets';
                 break;
             default:
-                throw new \RuntimeException('Unknown ITIL type ' . $itil_class);
+                throw new RuntimeException('Unknown ITIL type ' . $itil_class);
         }
 
         $fields = [
-           $itil_object->getSearchOptionIDByField('field', 'name', 'glpi_documents'),
-           $itil_object->getSearchOptionIDByField('field', 'items_id', $itemstable),
-           $itil_object->getSearchOptionIDByField('field', 'name', 'glpi_tasktemplates')
+            $itil_object->getSearchOptionIDByField('field', 'name', 'glpi_documents'),
+            $itil_object->getSearchOptionIDByField('field', 'items_id', $itemstable),
+            $itil_object->getSearchOptionIDByField('field', 'name', 'glpi_tasktemplates'),
         ];
 
         return $fields;
@@ -235,7 +235,7 @@ abstract class ITILTemplatePredefinedField extends ITILTemplateField
     public static function getExcludedFields()
     {
         return [
-           -2 => -2, // validation request
+            -2 => -2, // validation request
         ];
     }
 
@@ -246,7 +246,7 @@ abstract class ITILTemplatePredefinedField extends ITILTemplateField
      * @since 0.83
      *
      * @param ITILTemplate $tt            ITIL Template
-     * @param boolean      $withtemplate  Template or basic item (default 0)
+     * @param bool      $withtemplate  Template or basic item (default 0)
      *
      * @return void
     **/
@@ -271,15 +271,15 @@ abstract class ITILTemplatePredefinedField extends ITILTemplateField
         $rand          = mt_rand();
 
         $iterator = $DB->request([
-           'FROM'   => static::getTable(),
-           'WHERE'  => [static::$items_id => $ID],
-           'ORDER'  => 'id'
+            'FROM'   => static::getTable(),
+            'WHERE'  => [static::$items_id => $ID],
+            'ORDER'  => 'id',
         ]);
 
         $display_options = [
-           'relative_dates' => true,
-           'comments'       => true,
-           'html'           => true
+            'relative_dates' => true,
+            'comments'       => true,
+            'html'           => true,
         ];
 
         $predeffields = [];
@@ -314,25 +314,25 @@ abstract class ITILTemplatePredefinedField extends ITILTemplateField
 
             echo "<div class='col-md-6 col-sm-12'>";
             $rand_dp  = Dropdown::showFromArray('num', $display_fields, [
-               'used'  => $used,
-                    'toadd' => null
+                'used'  => $used,
+                'toadd' => null,
             ]);
             echo "</div>";
 
             echo "<div class='col-md-6 col-sm-12'>";
             $paramsmassaction = [
-               'id_field'   => '__VALUE__',
-               'itemtype'   => static::$itiltype,
-               'inline'     => true,
-               'submitname' => _sx('button', 'Add'),
-               'options'    => [
-                  'relative_dates'     => 1,
-                  'with_time'          => 1,
-                  'with_days'          => 0,
-                  'with_specific_date' => 0,
-                  'itemlink_as_string' => 1,
-                  'entity'             => $tt->getEntityID()
-               ]
+                'id_field'   => '__VALUE__',
+                'itemtype'   => static::$itiltype,
+                'inline'     => true,
+                'submitname' => _sx('button', 'Add'),
+                'options'    => [
+                    'relative_dates'     => 1,
+                    'with_time'          => 1,
+                    'with_days'          => 0,
+                    'with_specific_date' => 0,
+                    'itemlink_as_string' => 1,
+                    'entity'             => $tt->getEntityID(),
+                ],
             ];
 
             Ajax::updateItemOnSelectEvent(
@@ -353,8 +353,8 @@ abstract class ITILTemplatePredefinedField extends ITILTemplateField
 
         echo "<div class='spaced'>";
         $table_fields = [
-           'name'           => __('Name'),
-           'display_value'  => __('Value')
+            'name'           => __('Name'),
+            'display_value'  => __('Value'),
         ];
 
         $table_values = [];
@@ -367,16 +367,16 @@ abstract class ITILTemplatePredefinedField extends ITILTemplateField
             }
 
             $display_datas = [
-               $searchOption[$data['num']]['field'] => $data['value']
+                $searchOption[$data['num']]['field'] => $data['value'],
             ];
 
             $row = [
-               'name'          => $fields[$data['num']],
-               'display_value' => $itil_object->getValueToDisplay(
-                   $searchOption[$data['num']],
-                   $display_datas,
-                   $display_options
-               )
+                'name'          => $fields[$data['num']],
+                'display_value' => $itil_object->getValueToDisplay(
+                    $searchOption[$data['num']],
+                    $display_datas,
+                    $display_options
+                ),
             ];
 
             if ($canedit) {
@@ -392,17 +392,17 @@ abstract class ITILTemplatePredefinedField extends ITILTemplateField
 
         if ($canedit && $numrows) {
             $massiveactionparams = [
-               'num_displayed' => min($_SESSION['glpilist_limit'], $numrows),
-               'container'     => $table_id,
-               'display_arrow' => false,
+                'num_displayed' => min($_SESSION['glpilist_limit'], $numrows),
+                'container'     => $table_id,
+                'display_arrow' => false,
             ];
             Html::showMassiveActions($massiveactionparams);
         }
 
         $table_params = [
-           'id'     => $table_id,
-           'fields' => $table_fields,
-           'values' => $table_values,
+            'id'     => $table_id,
+            'fields' => $table_fields,
+            'values' => $table_values,
         ];
 
         if ($canedit && $numrows) {

@@ -42,7 +42,7 @@ Html::header_nocache();
 Session::checkLoginUser();
 
 if (!isset($_POST['revid'])) {
-    throw new \RuntimeException('Required argument missing!');
+    throw new RuntimeException('Required argument missing!');
 }
 
 $revid = $_POST['revid'];
@@ -50,8 +50,8 @@ $revid = $_POST['revid'];
 $revision = new KnowbaseItem_Revision();
 $revision->getFromDB($revid);
 $rev = [
-   'name'   => $revision->fields['name'],
-   'answer' => html_entity_decode($revision->fields['answer'])
+    'name'   => $revision->fields['name'],
+    'answer' => html_entity_decode($revision->fields['answer']),
 ];
 
 echo json_encode($rev);

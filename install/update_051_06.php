@@ -143,37 +143,37 @@ function update051to06()
 
         $query = "INSERT INTO `glpi_dropdown_contract_type`
                        (`name`)
-                VALUES ('".__('Loan')."')";
+                VALUES ('" . __('Loan') . "')";
         $DB->queryOrDie($query, "0.6 add entries to dropdown_contract_type");
 
         $query = "INSERT INTO `glpi_dropdown_contract_type`
                        (`name`)
-                VALUES ('".__('Renting')."')";
+                VALUES ('" . __('Renting') . "')";
         $DB->queryOrDie($query, "0.6 add entries to dropdown_contract_type");
 
         $query = "INSERT INTO `glpi_dropdown_contract_type`
                        (`name`)
-                VALUES ('".__('Leasing')."')";
+                VALUES ('" . __('Leasing') . "')";
         $DB->queryOrDie($query, "0.6 add entries to dropdown_contract_type");
 
         $query = "INSERT INTO `glpi_dropdown_contract_type`
                        (`name`)
-                VALUES ('".__('Insurance')."')";
+                VALUES ('" . __('Insurance') . "')";
         $DB->queryOrDie($query, "0.6 add entries to dropdown_contract_type");
 
         $query = "INSERT INTO `glpi_dropdown_contract_type`
                        (`name`)
-                VALUES ('".__('Hardware support')."')";
+                VALUES ('" . __('Hardware support') . "')";
         $DB->queryOrDie($query, "0.6 add entries to dropdown_contract_type");
 
         $query = "INSERT INTO `glpi_dropdown_contract_type`
                        (`name`)
-                VALUES ('".__('Software support')."')";
+                VALUES ('" . __('Software support') . "')";
         $DB->queryOrDie($query, "0.6 add entries to dropdown_contract_type");
 
         $query = "INSERT INTO `glpi_dropdown_contract_type`
                        (`name`)
-                VALUES ('".__('Service provided')."')";
+                VALUES ('" . __('Service provided') . "')";
         $DB->queryOrDie($query, "0.6 add entries to dropdown_contract_type");
     }
 
@@ -215,7 +215,7 @@ function update051to06()
             foreach ($authors as $ID => $val) {
                 if (isset($users[$val])) {
                     $query = "UPDATE `glpi_tracking`
-                         SET `author` = '".$users[$val]."'
+                         SET `author` = '" . $users[$val] . "'
                          WHERE `ID` = '$ID'";
                     $DB->query($query);
                 }
@@ -242,8 +242,8 @@ function update051to06()
             foreach ($assign as $ID => $val) {
                 if (isset($users[$val])) {
                     $query = "UPDATE `glpi_tracking`
-                         SET `assign` = '".$users[$val]."',
-                             `assign_type` = '".USER_TYPE."'
+                         SET `assign` = '" . $users[$val] . "',
+                             `assign_type` = '" . USER_TYPE . "'
                          WHERE `ID` = '$ID'";
                     $DB->query($query);
                 }
@@ -270,7 +270,7 @@ function update051to06()
             foreach ($authors as $ID => $val) {
                 if (isset($users[$val])) {
                     $query = "UPDATE `glpi_followups`
-                         SET `author` = '".$users[$val]."'
+                         SET `author` = '" . $users[$val] . "'
                          WHERE `ID` = '$ID'";
                     $DB->query($query);
                 }
@@ -286,17 +286,17 @@ function update051to06()
         // Update Enterprise Tracking
         $query  = "SELECT `computer`, `ID`
                  FROM `glpi_tracking`
-                 WHERE `device_type` = '".ENTERPRISE_TYPE."'";
+                 WHERE `device_type` = '" . ENTERPRISE_TYPE . "'";
         $result = $DB->query($query);
 
         if ($DB->numrows($result) > 0) {
             while ($line = $DB->fetchArray($result)) {
                 $query = "UPDATE `glpi_tracking`
-                      SET `assign` = '".$line["computer"]."',
-                          `assign_type` = '".ENTERPRISE_TYPE."',
+                      SET `assign` = '" . $line["computer"] . "',
+                          `assign_type` = '" . ENTERPRISE_TYPE . "',
                           `device_type` = '0',
                           `computer` = '0'
-                      WHERE `ID` = '".$line["ID"]."'";
+                      WHERE `ID` = '" . $line["ID"] . "'";
                 $DB->query($query);
             }
         }
@@ -351,9 +351,9 @@ function update051to06()
         if ($DB->numrows($result) > 0) {
             while ($data = $DB->fetchArray($result)) {
                 $query2 = "UPDATE `glpi_users`
-                       SET `language` = '".$data['language']."',
-                            `tracking_order` = '".$data['tracking_order']."'
-                       WHERE `name` = '".$data['username']."'";
+                       SET `language` = '" . $data['language'] . "',
+                            `tracking_order` = '" . $data['tracking_order'] . "'
+                       WHERE `name` = '" . $data['username'] . "'";
                 $DB->queryOrDie($query2, "0.6 move pref to users");
             }
         }
@@ -414,8 +414,8 @@ function update051to06()
         if ($DB->numrows($result) > 0) {
             while ($data = $DB->fetchArray($result)) {
                 $query2 = "UPDATE `glpi_device_ram`
-                       SET `new_type` = '".$val[$data['type']]."'
-                       WHERE `ID` = '".$data['ID']."'";
+                       SET `new_type` = '" . $val[$data['type']] . "'
+                       WHERE `ID` = '" . $data['ID'] . "'";
                 $DB->query($query2);
             }
         }
@@ -605,7 +605,7 @@ function update051to06()
             while ($data = $DB->fetchArray($result)) {
                 $query = "INSERT INTO `glpi_type_computers`
                              (`ID`, `name`)
-                      VALUES ('".$data['ID']."', '".addslashes($data['name'])."')";
+                      VALUES ('" . $data['ID'] . "', '" . addslashes($data['name']) . "')";
                 $DB->queryOrDie($query, "0.6 insert value in glpi_type_computers");
             }
         }

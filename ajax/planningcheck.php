@@ -53,9 +53,9 @@ if (isset($_POST['users_id']) && ($_POST['users_id'] > 0)) {
     echo "</a>";
     Ajax::createIframeModalWindow(
         'planningcheck' . $rand,
-        $CFG_GLPI["root_doc"] .
-                                        "/front/planning.php?checkavailability=checkavailability" .
-                                        "&itemtype=User&users_id=" . $_POST['users_id'],
+        $CFG_GLPI["root_doc"]
+                                        . "/front/planning.php?checkavailability=checkavailability"
+                                        . "&itemtype=User&users_id=" . $_POST['users_id'],
         ['title'  => __('Availability')]
     );
 }

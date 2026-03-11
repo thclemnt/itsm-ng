@@ -42,10 +42,10 @@ if (!$item = getItemForItemtype($_GET['itemtype'])) {
 }
 
 foreach (['date1', 'date2'] as $key) {
-    if (array_key_exists($key, $_GET) && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$_GET[$key]) !== 1) {
+    if (array_key_exists($key, $_GET) && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $_GET[$key]) !== 1) {
         unset($_GET[$key]);
     }
-    if (array_key_exists($key, $_POST) && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$_POST[$key]) !== 1) {
+    if (array_key_exists($key, $_POST) && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $_POST[$key]) !== 1) {
         unset($_POST[$key]);
     }
 }
@@ -132,7 +132,7 @@ switch ($_GET["type"]) {
         break;
 
     case "itilcategories_tree":
-        $parent = (isset($_GET['champ']) ? $_GET['champ'] : 0);
+        $parent = ($_GET['champ'] ?? 0);
         // nobreak;
 
         // no break
@@ -154,7 +154,7 @@ switch ($_GET["type"]) {
         break;
 
     case 'locations_tree':
-        $parent = (isset($_GET['champ']) ? $_GET['champ'] : 0);
+        $parent = ($_GET['champ'] ?? 0);
         // nobreak;
 
         // no break
@@ -184,7 +184,7 @@ switch ($_GET["type"]) {
 
     case 'group_tree':
     case 'groups_tree_assign':
-        $parent = (isset($_GET['champ']) ? $_GET['champ'] : 0);
+        $parent = ($_GET['champ'] ?? 0);
         // nobreak;
 
         // no break
@@ -297,8 +297,8 @@ switch ($_GET["type"]) {
                 'SELECT' => ['designation'],
                 'FROM'   => $device_table,
                 'WHERE'  => [
-                    'id' => $_GET['id']
-                ]
+                    'id' => $_GET['id'],
+                ],
             ]);
             $current = $iterator->next();
 
@@ -353,8 +353,8 @@ echo "<div class='center'>";
 echo "<table class='tab_cadre'>";
 echo "<tr><td>";
 if ($prev > 0) {
-    echo "<a href=\"" . $_SERVER['PHP_SELF'] . "?$cleantarget&amp;date1=" . $_POST["date1"] . "&amp;date2=" .
-        $_POST["date2"] . "&amp;id=$prev\">
+    echo "<a href=\"" . $_SERVER['PHP_SELF'] . "?$cleantarget&amp;date1=" . $_POST["date1"] . "&amp;date2="
+        . $_POST["date2"] . "&amp;id=$prev\">
         <img src='" . $CFG_GLPI["root_doc"] . "/pics/left.png' alt=\"" . __s('Previous') . "\"
         title=\"" . __s('Previous') . "\"></a>";
 }
@@ -363,8 +363,8 @@ echo "</td>";
 echo "<td width='400' class='center b'>$title</td>";
 echo "<td>";
 if ($next > 0) {
-    echo "<a href=\"" . $_SERVER['PHP_SELF'] . "?$cleantarget&amp;date1=" . $_POST["date1"] . "&amp;date2=" .
-        $_POST["date2"] . "&amp;id=$next\">
+    echo "<a href=\"" . $_SERVER['PHP_SELF'] . "?$cleantarget&amp;date1=" . $_POST["date1"] . "&amp;date2="
+        . $_POST["date2"] . "&amp;id=$next\">
         <img src='" . $CFG_GLPI["root_doc"] . "/pics/right.png' alt=\"" . __s('Next') . "\"
         title=\"" . __s('Next') . "\"></a>";
 }
@@ -440,17 +440,17 @@ if (isset($_POST['submit'])) {
         [
             [
                 'name' => _nx('ticket', 'Opened', 'Opened', Session::getPluralNumber()),
-                'data' => $values['total']
+                'data' => $values['total'],
             ], [
                 'name' => _nx('ticket', 'Solved', 'Solved', Session::getPluralNumber()),
-                'data' => $values['solved']
+                'data' => $values['solved'],
             ], [
                 'name' => __('Late'),
-                'data' => $values['late']
+                'data' => $values['late'],
             ], [
                 'name' => __('Closed'),
-                'data' => $values['closed']
-            ]
+                'data' => $values['closed'],
+            ],
         ]
     );
 
@@ -501,14 +501,14 @@ if (isset($_POST['submit'])) {
     $series = [
         [
             'name' => __('Closure'),
-            'data' => $values['avgsolved']
+            'data' => $values['avgsolved'],
         ], [
             'name' => __('Resolution'),
-            'data' => $values['avgclosed']
+            'data' => $values['avgclosed'],
         ], [
             'name' => __('Real duration'),
-            'data' => $values['avgactiontime']
-        ]
+            'data' => $values['avgactiontime'],
+        ],
     ];
 
     if ($_GET['itemtype'] == 'Ticket') {
@@ -529,12 +529,12 @@ if (isset($_POST['submit'])) {
 
         $series[] = [
             'name' => __('Take into account'),
-            'data' => $values['avgtaketime']
+            'data' => $values['avgtaketime'],
         ];
     }
 
     $stat->displayLineGraph(
-        __('Average time') . " - " .  _n('Hour', 'Hours', Session::getPluralNumber()),
+        __('Average time') . " - " . _n('Hour', 'Hours', Session::getPluralNumber()),
         array_keys($values['avgsolved']),
         $series
     );
@@ -563,16 +563,16 @@ if (isset($_POST['submit'])) {
         );
 
         $stat->displayLineGraph(
-            __('Satisfaction survey') . " - " .  __('Tickets'),
+            __('Satisfaction survey') . " - " . __('Tickets'),
             array_keys($values['opensatisfaction']),
             [
                 [
                     'name' => _nx('survey', 'Opened', 'Opened', Session::getPluralNumber()),
-                    'data' => $values['opensatisfaction']
+                    'data' => $values['opensatisfaction'],
                 ], [
                     'name' => _nx('survey', 'Answered', 'Answered', Session::getPluralNumber()),
-                    'data' => $values['answersatisfaction']
-                ]
+                    'data' => $values['answersatisfaction'],
+                ],
             ]
         );
 
@@ -593,8 +593,8 @@ if (isset($_POST['submit'])) {
             [
                 [
                     'name' => __('Satisfaction'),
-                    'data' => $values['avgsatisfaction']
-                ]
+                    'data' => $values['avgsatisfaction'],
+                ],
             ]
         );
     }

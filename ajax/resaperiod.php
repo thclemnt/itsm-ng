@@ -49,32 +49,32 @@ if (isset($_POST['type']) && isset($_POST['end'])) {
     switch ($_POST['type']) {
         case 'day':
             renderTwigTemplate('macros/wrappedInput.twig', [
-               'title' => __('End date') . ' (' . __('Repetition') . ')',
-               'input' => [
-                   'type'  => 'datetime-local',
-                   'name'  => 'periodicity[end]',
-                   'value' => $_POST['end'],
-                   'min'   => date('Y-m-d H:00:00'),
-                   'max'   => date('Y-m-d H:00:00', strtotime('+1 day')),
-                   'col_lg' => 12,
-                   'col_md' => 12,
-               ]
+                'title' => __('End date') . ' (' . __('Repetition') . ')',
+                'input' => [
+                    'type'  => 'datetime-local',
+                    'name'  => 'periodicity[end]',
+                    'value' => $_POST['end'],
+                    'min'   => date('Y-m-d H:00:00'),
+                    'max'   => date('Y-m-d H:00:00', strtotime('+1 day')),
+                    'col_lg' => 12,
+                    'col_md' => 12,
+                ],
             ]);
             echo "</td></tr>";
             break;
 
         case 'week':
             renderTwigTemplate('macros/wrappedInput.twig', [
-               'title' => __('End date') . ' (' . __('Repetition') . ')',
-               'input' => [
-                   'type'  => 'datetime-local',
-                   'name'  => 'periodicity[end]',
-                   'value' => $_POST['end'],
-                   'min'   => date('Y-m-d H:00:00'),
-                   'max'   => date('Y-m-d H:00:00', strtotime('+1 day')),
-                   'col_lg' => 12,
-                   'col_md' => 12,
-               ]
+                'title' => __('End date') . ' (' . __('Repetition') . ')',
+                'input' => [
+                    'type'  => 'datetime-local',
+                    'name'  => 'periodicity[end]',
+                    'value' => $_POST['end'],
+                    'min'   => date('Y-m-d H:00:00'),
+                    'max'   => date('Y-m-d H:00:00', strtotime('+1 day')),
+                    'col_lg' => 12,
+                    'col_md' => 12,
+                ],
             ]);
             $days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
             foreach ($days as $day) {
@@ -90,28 +90,28 @@ if (isset($_POST['type']) && isset($_POST['end'])) {
 
         case 'month':
             $values = ['date' => __('Each month, same date'),
-                            'day'  => __('Each month, same day of week')];
+                'day'  => __('Each month, same day of week')];
             renderTwigTemplate('macros/wrappedInput.twig', [
-               'title' => __('Type'),
-               'input' => [
-                   'type'  => 'select',
-                   'name'  => 'periodicity[subtype]',
-                   'values' => $values,
-                   'col_lg' => 12,
-                   'col_md' => 12,
-               ]
+                'title' => __('Type'),
+                'input' => [
+                    'type'  => 'select',
+                    'name'  => 'periodicity[subtype]',
+                    'values' => $values,
+                    'col_lg' => 12,
+                    'col_md' => 12,
+                ],
             ]);
             renderTwigTemplate('macros/wrappedInput.twig', [
-               'title' => __('End date') . ' (' . __('Repetition') . ')',
-               'input' => [
-                   'type'  => 'datetime-local',
-                   'name'  => 'periodicity[end]',
-                   'value' => $_POST['end'],
-                   'min'   => date('Y-m-d H:00:00'),
-                   'max'   => date('Y-m-d H:00:00', strtotime('+1 day')),
-                   'col_lg' => 12,
-                   'col_md' => 12,
-               ]
+                'title' => __('End date') . ' (' . __('Repetition') . ')',
+                'input' => [
+                    'type'  => 'datetime-local',
+                    'name'  => 'periodicity[end]',
+                    'value' => $_POST['end'],
+                    'min'   => date('Y-m-d H:00:00'),
+                    'max'   => date('Y-m-d H:00:00', strtotime('+1 day')),
+                    'col_lg' => 12,
+                    'col_md' => 12,
+                ],
             ]);
     }
     echo '</table>';

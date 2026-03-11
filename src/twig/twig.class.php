@@ -4,6 +4,7 @@ use Twig\Environment;
 use Twig\Extension\DebugExtension;
 use Twig\Extra\String\StringExtension;
 use Twig\Loader\FilesystemLoader;
+use Twig\Markup;
 use Twig\TwigFilter;
 
 // Basic configuration to use TWIG
@@ -37,7 +38,7 @@ class Twig
             ob_start();
             dump($variable);
             $output =  ob_get_clean();
-            return new \Twig\Markup($output, 'UTF-8');
+            return new Markup($output, 'UTF-8');
         }));
 
         $twig->addFilter(new TwigFilter('transd', function ($string, $domain) {

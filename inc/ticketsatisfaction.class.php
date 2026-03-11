@@ -73,7 +73,7 @@ class TicketSatisfaction extends CommonDBTM
     /**
      * Is the current user have right to update the current satisfaction
      *
-     * @return boolean
+     * @return bool
     **/
     public function canUpdateItem()
     {
@@ -118,8 +118,8 @@ class TicketSatisfaction extends CommonDBTM
         // for external inquest => link
         if ($this->fields["type"] == 2) {
             $url = Entity::generateLinkSatisfaction($ticket);
-            echo "<div class='center spaced'>" .
-                 "<a href='$url'>" . __('External survey') . "</a><br>($url)</div>";
+            echo "<div class='center spaced'>"
+                 . "<a href='$url'>" . __('External survey') . "</a><br>($url)</div>";
         } else { // for internal inquest => form
             $this->showFormHeader($options);
 
@@ -135,8 +135,8 @@ class TicketSatisfaction extends CommonDBTM
             echo "<select aria-label='Satisfaction' id='satisfaction_data' name='satisfaction'>";
 
             for ($i = 0; $i <= 5; $i++) {
-                echo "<option value='$i' " . (($i == $this->fields["satisfaction"]) ? 'selected' : '') .
-                      ">$i</option>";
+                echo "<option value='$i' " . (($i == $this->fields["satisfaction"]) ? 'selected' : '')
+                      . ">$i</option>";
             }
             echo "</select>";
             echo "<div class='rateit' id='stars'></div>";
@@ -295,7 +295,7 @@ class TicketSatisfaction extends CommonDBTM
             case 'type':
                 $options['value'] = $values[$field];
                 $typeinquest = [1 => __('Internal survey'),
-                                     2 => __('External survey')];
+                    2 => __('External survey')];
                 return Dropdown::showFromArray($name, $typeinquest, $options);
         }
         return parent::getSpecificValueToSelect($field, $name, $values, $options);

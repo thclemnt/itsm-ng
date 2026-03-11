@@ -1,5 +1,7 @@
 <?php
 
+use Laminas\I18n\Translator\TextDomain;
+
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
@@ -58,16 +60,16 @@ global $CFG_GLPI, $TRANSLATE;
 // Prevent JS error for plugins that does not provide any translation files
 $default_response = json_encode(
     [
-      '' => [
-         'language'     => $CFG_GLPI['languages'][$_SESSION['glpilanguage']][1],
-         'plural-forms' => 'nplurals=2; plural=(n != 1);',
-      ],
+        '' => [
+            'language'     => $CFG_GLPI['languages'][$_SESSION['glpilanguage']][1],
+            'plural-forms' => 'nplurals=2; plural=(n != 1);',
+        ],
     ]
 );
 
 // Get messages from translator component
 $messages = $TRANSLATE->getAllMessages($_GET['domain']);
-if (!($messages instanceof \Laminas\I18n\Translator\TextDomain)) {
+if (!($messages instanceof TextDomain)) {
     // No TextDomain found means that there is no translations for given domain.
     // It is mostly related to plugins that does not provide any translations.
     exit($default_response);

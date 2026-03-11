@@ -52,8 +52,8 @@ class PhpVersion extends \GLPITestCase
         $this->array($this->testedInstance->getValidationMessages())
            ->isEqualTo(
                [
-                 'You must install at least PHP 20.7.'
-            ]
+                   'You must install at least PHP 20.7.',
+               ]
            );
     }
 }

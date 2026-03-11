@@ -51,8 +51,8 @@ class PlanningCsv extends CommonGLPI
     private $filename = 'planning.csv';
 
     /**
-     * @param integer $who          user ID
-     * @param integer $whogroup     group ID
+     * @param int $who          user ID
+     * @param int $whogroup     group ID
      * @param string $limititemtype itemtype only display this itemtype (default '')
     **/
 
@@ -62,12 +62,12 @@ class PlanningCsv extends CommonGLPI
         $this->groups_id     = $whogroup;
         $this->limititemtype = $limititemtype;
         $this->titles        = [
-           __('Actor'),
-           __('Title'),
-           __('Item type'),
-           __('Item id'),
-           __('Begin date'),
-           __('End date')
+            __('Actor'),
+            __('Title'),
+            __('Item type'),
+            __('Item id'),
+            __('Begin date'),
+            __('End date'),
         ];
     }
 
@@ -87,10 +87,10 @@ class PlanningCsv extends CommonGLPI
         $begin  = date("Y-m-d H:i:s", $begin);
         $end    = date("Y-m-d H:i:s", $end);
         $params = [
-           'who'       => $this->users_id,
-           'whogroup'  => $this->groups_id,
-           'begin'     => $begin,
-           'end'       => $end
+            'who'       => $this->users_id,
+            'whogroup'  => $this->groups_id,
+            'begin'     => $begin,
+            'end'       => $end,
         ];
 
         if (empty($this->limititemtype)) {
@@ -116,12 +116,12 @@ class PlanningCsv extends CommonGLPI
 
                 //(acteur;titre item;id item;date-heure début,date-heure fin;catégorie)
                 $this->lines[] = [
-                   'actor'     => $user->getFriendlyName(),
-                   'title'     => $val['name'],
-                   'itemtype'  => $itemtype->getTypeName(1),
-                   'items_id'  => $val[$itemtype->getForeignKeyField()],
-                   'begindate' => $dateBegin->format('Y-m-d H:i:s'),
-                   'enddate'   => $dateEnd->format('Y-m-d H:i:s')
+                    'actor'     => $user->getFriendlyName(),
+                    'title'     => $val['name'],
+                    'itemtype'  => $itemtype->getTypeName(1),
+                    'items_id'  => $val[$itemtype->getForeignKeyField()],
+                    'begindate' => $dateBegin->format('Y-m-d H:i:s'),
+                    'enddate'   => $dateEnd->format('Y-m-d H:i:s'),
                 ];
             }
         }
@@ -130,7 +130,7 @@ class PlanningCsv extends CommonGLPI
     /**
      * Outputs CSV export
      *
-     * @param boolean $text Outputs text only, without headers
+     * @param bool $text Outputs text only, without headers
      */
     public function output($text = false)
     {

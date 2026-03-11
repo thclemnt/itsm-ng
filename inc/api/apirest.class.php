@@ -52,7 +52,7 @@ class APIRest extends API
 
     /**
      *
-     * @param integer $nb Unused value
+     * @param int $nb Unused value
      *
      * @return string
      *
@@ -73,7 +73,7 @@ class APIRest extends API
         foreach (array_keys($_FILES) as $filename) {
             $upload_result
                = ItsmngUploadHandler::uploadFiles(['name'           => $filename,
-                                                 'print_response' => false]);
+                   'print_response' => false]);
             foreach ($upload_result as $uresult) {
                 $this->parameters['input']->_filename[] = $uresult[0]->name;
                 $this->parameters['input']->_prefix_filename[] = $uresult[0]->prefix;
@@ -131,7 +131,7 @@ class APIRest extends API
 
         // retrieve param who permit session writing
         if (isset($this->parameters['session_write'])) {
-            $this->session_write = (bool)$this->parameters['session_write'];
+            $this->session_write = (bool) $this->parameters['session_write'];
         }
 
         // inline documentation (api/)
@@ -269,8 +269,8 @@ class APIRest extends API
                         $additionalheaders['link'] = "";
                         foreach ($response as $created_item) {
                             if ($created_item['id']) {
-                                $additionalheaders['link'] .= self::$api_url . "/$itemtype/" .
-                                                             $created_item['id'] . ",";
+                                $additionalheaders['link'] .= self::$api_url . "/$itemtype/"
+                                                             . $created_item['id'] . ",";
                             }
                         }
                         // remove last comma
@@ -314,13 +314,13 @@ class APIRest extends API
     /**
      * Retrieve and check itemtype from $this->url_elements
      *
-     * @param integer $index      we'll find itemtype in this index of $this->url_elements
+     * @param int $index      we'll find itemtype in this index of $this->url_elements
      *                            (default o)
-     * @param boolean $recursive  can we go depper or we trigger an http error if we fail to find itemtype?
+     * @param bool $recursive  can we go depper or we trigger an http error if we fail to find itemtype?
      *                            (default true)
-     * @param boolean $all_assets if we can have allasset virtual type (default false)
+     * @param bool $all_assets if we can have allasset virtual type (default false)
      *
-     * @return boolean
+     * @return bool
      */
     private function getItemtype($index = 0, $recursive = true, $all_assets = false)
     {
@@ -375,7 +375,7 @@ class APIRest extends API
      * Retrieve in url_element the current id. If we have a multiple id (ex /Ticket/1/TicketFollwup/2),
      * it always find the second
      *
-     * @return integer|boolean id of current itemtype (or false if not found)
+     * @return int|bool id of current itemtype (or false if not found)
      */
     private function getId()
     {
@@ -399,7 +399,7 @@ class APIRest extends API
     /**
      * Construct this->parameters from query string and http body
      *
-     * @param boolean $is_inline_doc Is the current request asks to display inline documentation
+     * @param bool $is_inline_doc Is the current request asks to display inline documentation
      *  This will remove the default behavior who set content-type to application/json
      *
      * @return void

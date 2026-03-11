@@ -29,9 +29,9 @@ if (isset($_GET["noCAS"])) {
 if (!isset($_GET["noAUTO"])) {
     Auth::redirectIfAuthenticated();
 }
-Auth::checkAlternateAuthSystems(true, isset($_GET["redirect"]) ? $_GET["redirect"] : "");
+Auth::checkAlternateAuthSystems(true, $_GET["redirect"] ?? "");
 // Appel CSS
-$theme = isset($_SESSION['glpipalette']) ? $_SESSION['glpipalette'] : 'itsmng';
+$theme = $_SESSION['glpipalette'] ?? 'itsmng';
 
 $entity = new Entity(); // Custom CSS for root entity
 $entity->getFromDB('0');
@@ -50,14 +50,14 @@ $javascript = [
     Html::script("public/lib/base.js"),
     Html::script("public/lib/fuzzy.js"),
     Html::script('js/common.js'),
-    Html::getCoreVariablesForJavascript() // CFG
+    Html::getCoreVariablesForJavascript(), // CFG
 
 ];
 
 //get header data, raw in TWIG
 $header_data = [
     "javacript" => $javascript,
-    "css" => $css
+    "css" => $css,
 ];
 // Initialize Twig variables
 $twig_vars = [];
@@ -112,8 +112,8 @@ if (GLPI_DEMO_MODE) {
     $twig_vars["languages"] = Language::showLanguages('language', [
         'display_emptychoice'   => true,
         'emptylabel'            => __('Default (from user profile)'),
-        'width'                 => '100%'
-     ]);
+        'width'                 => '100%',
+    ]);
     $twig_vars["current_language"] = $_SESSION["glpilanguage"];
 }
 
@@ -136,9 +136,9 @@ if (
     && countElementsInTable(
         'glpi_notifications',
         [
-         'itemtype'  => 'User',
-         'event'     => 'passwordforget',
-         'is_active' => 1
+            'itemtype'  => 'User',
+            'event'     => 'passwordforget',
+            'is_active' => 1,
         ]
     )
 ) {
@@ -169,5 +169,5 @@ if (!GLPI_DEMO_MODE) {
 
 renderTwigTemplate('index.twig', [
     "root_doc" => $CFG_GLPI['root_doc'],
-    'header_data' => $header_data
+    'header_data' => $header_data,
 ] + $twig_vars);

@@ -91,7 +91,7 @@ class Plugin extends CommonDBTM
     /**
      * Plugin init state.
      *
-     * @var boolean
+     * @var bool
      */
     private static $plugins_init = false;
 
@@ -148,7 +148,7 @@ class Plugin extends CommonDBTM
         $classic     = "<i class='$cl_icon pointer' title='$cl_title'></i><span class='sr-only'>$cl_title</span>";
 
         return [
-           $classic     => Plugin::getSearchURL(false),
+            $classic     => Plugin::getSearchURL(false),
         ];
     }
 
@@ -158,7 +158,7 @@ class Plugin extends CommonDBTM
      *
      * @param string $dir directory of the plugin
      *
-     * @return boolean
+     * @return bool
     **/
     public function getFromDBbyDir($dir)
     {
@@ -169,7 +169,7 @@ class Plugin extends CommonDBTM
     /**
      * Init plugins list.
      *
-     * @param boolean $load_plugins     Whether to load active/configurable plugins or not.
+     * @param bool $load_plugins     Whether to load active/configurable plugins or not.
      * @param array $excluded_plugins   List of plugins to exclude
      *
      * @return void
@@ -206,7 +206,7 @@ class Plugin extends CommonDBTM
 
                 Plugin::load($plugin['directory']);
 
-                if ((int)$plugin['state'] === self::ACTIVATED) {
+                if ((int) $plugin['state'] === self::ACTIVATED) {
                     self::$activated_plugins[] = $plugin['directory'];
                 }
             }
@@ -221,7 +221,7 @@ class Plugin extends CommonDBTM
      * launching plugin_init_NAME function  after checking compatibility
      *
      * @param string  $plugin_key        System name (Plugin directory)
-     * @param boolean $withhook   Load hook functions (false by default)
+     * @param bool $withhook   Load hook functions (false by default)
      *
      * @return void
     **/
@@ -381,7 +381,7 @@ class Plugin extends CommonDBTM
     /**
      * Check plugins states and detect new plugins.
      *
-     * @param boolean $scan_inactive_and_new_plugins
+     * @param bool $scan_inactive_and_new_plugins
      * @param array $excluded_plugins   List of plugins to exclude
      *
      * @return void
@@ -485,8 +485,8 @@ class Plugin extends CommonDBTM
                 array_merge(
                     $informations,
                     [
-                      'state'     => self::NOTINSTALLED,
-                      'directory' => $plugin_key,
+                        'state'     => self::NOTINSTALLED,
+                        'directory' => $plugin_key,
                     ]
                 )
             );
@@ -527,20 +527,20 @@ class Plugin extends CommonDBTM
         }
 
         // Check if configuration state changed
-        if (in_array((int)$plugin->fields['state'], [self::ACTIVATED, self::TOBECONFIGURED, self::NOTACTIVATED], true)) {
+        if (in_array((int) $plugin->fields['state'], [self::ACTIVATED, self::TOBECONFIGURED, self::NOTACTIVATED], true)) {
             $function = 'plugin_' . $plugin_key . '_check_config';
             $is_config_ok = !function_exists($function) || $function();
 
-            if ((int)$plugin->fields['state'] === self::TOBECONFIGURED && $is_config_ok) {
+            if ((int) $plugin->fields['state'] === self::TOBECONFIGURED && $is_config_ok) {
                 // Remove TOBECONFIGURED state if configuration is OK now
                 $this->update(
                     [
-                      'id'    => $plugin->fields['id'],
-                      'state' => self::NOTACTIVATED
+                        'id'    => $plugin->fields['id'],
+                        'state' => self::NOTACTIVATED,
                     ]
                 );
                 return;
-            } elseif ((int)$plugin->fields['state'] !== self::TOBECONFIGURED && !$is_config_ok) {
+            } elseif ((int) $plugin->fields['state'] !== self::TOBECONFIGURED && !$is_config_ok) {
                 // Add TOBECONFIGURED state if configuration is required
                 trigger_error(
                     sprintf(
@@ -551,15 +551,15 @@ class Plugin extends CommonDBTM
                 );
                 $this->update(
                     [
-                      'id'    => $plugin->fields['id'],
-                      'state' => self::TOBECONFIGURED
+                        'id'    => $plugin->fields['id'],
+                        'state' => self::TOBECONFIGURED,
                     ]
                 );
                 return;
             }
         }
 
-        if (self::ACTIVATED !== (int)$plugin->fields['state']) {
+        if (self::ACTIVATED !== (int) $plugin->fields['state']) {
             // Plugin is not activated, nothing to do
             return;
         }
@@ -624,8 +624,8 @@ class Plugin extends CommonDBTM
             if (array_key_exists('oldname', $informations) && $informations['oldname'] === $oldname) {
                 // Return informations if oldname specified in parsed directory matches passed value
                 return [
-                   'directory'    => $plugin_directory->getFilename(),
-                   'informations' => $informations,
+                    'directory'    => $plugin_directory->getFilename(),
+                    'informations' => $informations,
                 ];
             }
         }
@@ -646,7 +646,7 @@ class Plugin extends CommonDBTM
         global $DB;
 
         $query = [
-           'FROM'   => $this->getTable()
+            'FROM'   => $this->getTable(),
         ];
 
         if (count($fields) > 0) {
@@ -665,7 +665,7 @@ class Plugin extends CommonDBTM
     /**
      * Uninstall a plugin
      *
-     * @param integer $ID ID of the plugin (The `id` field, not directory)
+     * @param int $ID ID of the plugin (The `id` field, not directory)
     **/
     public function uninstall($ID)
     {
@@ -691,8 +691,8 @@ class Plugin extends CommonDBTM
             }
 
             $this->update([
-               'id'      => $ID,
-               'state'   => self::NOTINSTALLED,
+                'id'      => $ID,
+                'state'   => self::NOTINSTALLED,
             ]);
             $this->unload($this->fields['directory']);
             self::doHook('post_plugin_uninstall', $this->fields['directory']);
@@ -714,7 +714,7 @@ class Plugin extends CommonDBTM
     /**
      * Install a plugin
      *
-     * @param integer $ID      ID of the plugin (The `id` field, not directory)
+     * @param int $ID      ID of the plugin (The `id` field, not directory)
      * @param array   $params  Additional params to pass to install hook.
      *
      * @return void
@@ -747,7 +747,7 @@ class Plugin extends CommonDBTM
                     $is_config_ok = !function_exists($check_function) || $check_function();
                     if ($is_config_ok) {
                         $this->update(['id'    => $ID,
-                                            'state' => self::NOTACTIVATED]);
+                            'state' => self::NOTACTIVATED]);
                         $message = sprintf(__('Plugin %1$s has been installed!'), $this->fields['name']);
                         $message .= '<br/><br/>' . str_replace(
                             '%activate_link',
@@ -763,7 +763,7 @@ class Plugin extends CommonDBTM
                         );
                     } else {
                         $this->update(['id'    => $ID,
-                                            'state' => self::TOBECONFIGURED]);
+                            'state' => self::TOBECONFIGURED]);
                         $message = sprintf(__('Plugin %1$s has been installed and must be configured!'), $this->fields['name']);
                     }
                     self::doHook('post_plugin_install', $this->fields['directory']);
@@ -787,9 +787,9 @@ class Plugin extends CommonDBTM
     /**
      * activate a plugin
      *
-     * @param integer $ID ID of the plugin (The `id` field, not directory)
+     * @param int $ID ID of the plugin (The `id` field, not directory)
      *
-     * @return boolean about success
+     * @return bool about success
     **/
     public function activate($ID)
     {
@@ -837,7 +837,7 @@ class Plugin extends CommonDBTM
             $function = 'plugin_' . $this->fields['directory'] . '_check_config';
             if (!function_exists($function) || $function()) {
                 $this->update(['id'    => $ID,
-                               'state' => self::ACTIVATED]);
+                    'state' => self::ACTIVATED]);
 
                 // Initialize session for the plugin
                 if (
@@ -891,17 +891,17 @@ class Plugin extends CommonDBTM
     /**
      * Unactivate a plugin
      *
-     * @param integer $ID ID of the plugin (The `id` field, not directory)
+     * @param int $ID ID of the plugin (The `id` field, not directory)
      *
-     * @return boolean
+     * @return bool
     **/
     public function unactivate($ID)
     {
 
         if ($this->getFromDB($ID)) {
             $this->update([
-               'id'    => $ID,
-               'state' => self::NOTACTIVATED
+                'id'    => $ID,
+                'state' => self::NOTACTIVATED,
             ]);
             $this->unload($this->fields['directory']);
             self::doHook('post_plugin_disable', $this->fields['directory']);
@@ -941,10 +941,10 @@ class Plugin extends CommonDBTM
         $DB->update(
             $this->getTable(),
             [
-              'state' => self::NOTACTIVATED
+                'state' => self::NOTACTIVATED,
             ],
             [
-              'state' => self::ACTIVATED
+                'state' => self::ACTIVATED,
             ]
         );
 
@@ -987,7 +987,7 @@ class Plugin extends CommonDBTM
      *
      * @param string $directory  Plugin directory
      *
-     * @return boolean
+     * @return bool
      */
     public function isActivated($directory)
     {
@@ -1013,7 +1013,7 @@ class Plugin extends CommonDBTM
      *
      * @param string $directory  Plugin directory
      *
-     * @return boolean
+     * @return bool
      */
     public function isUpdatable($directory)
     {
@@ -1039,7 +1039,7 @@ class Plugin extends CommonDBTM
      *
      * @param string $directory  Plugin directory
      *
-     * @return boolean
+     * @return bool
      */
     public function isLoadable($directory)
     {
@@ -1052,7 +1052,7 @@ class Plugin extends CommonDBTM
      *
      * @param string $directory  Plugin directory
      *
-     * @return boolean
+     * @return bool
      */
     public function isInstalled($directory)
     {
@@ -1086,50 +1086,50 @@ class Plugin extends CommonDBTM
         global $DB;
 
         $typetoname = [0  => "",// For tickets
-                            1  => "Computer",
-                            2  => "NetworkEquipment",
-                            3  => "Printer",
-                            4  => "Monitor",
-                            5  => "Peripheral",
-                            6  => "Software",
-                            7  => "Contact",
-                            8  => "Supplier",
-                            9  => "Infocom",
-                            10 => "Contract",
-                            11 => "CartridgeItem",
-                            12 => "DocumentType",
-                            13 => "Document",
-                            14 => "KnowbaseItem",
-                            15 => "User",
-                            16 => "Ticket",
-                            17 => "ConsumableItem",
-                            18 => "Consumable",
-                            19 => "Cartridge",
-                            20 => "SoftwareLicense",
-                            21 => "Link",
-                            22 => "State",
-                            23 => "Phone",
-                            24 => "Device",
-                            25 => "Reminder",
-                            26 => "Stat",
-                            27 => "Group",
-                            28 => "Entity",
-                            29 => "ReservationItem",
-                            30 => "AuthMail",
-                            31 => "AuthLDAP",
-                            32 => "OcsServer",
-                            33 => "RegistryKey",
-                            34 => "Profile",
-                            35 => "MailCollector",
-                            36 => "Rule",
-                            37 => "Transfer",
-                            38 => "SavedSearch",
-                            39 => "SoftwareVersion",
-                            40 => "Plugin",
-                            41 => "Item_Disk",
-                            42 => "NetworkPort",
-                            43 => "TicketFollowup",
-                            44 => "Budget"];
+            1  => "Computer",
+            2  => "NetworkEquipment",
+            3  => "Printer",
+            4  => "Monitor",
+            5  => "Peripheral",
+            6  => "Software",
+            7  => "Contact",
+            8  => "Supplier",
+            9  => "Infocom",
+            10 => "Contract",
+            11 => "CartridgeItem",
+            12 => "DocumentType",
+            13 => "Document",
+            14 => "KnowbaseItem",
+            15 => "User",
+            16 => "Ticket",
+            17 => "ConsumableItem",
+            18 => "Consumable",
+            19 => "Cartridge",
+            20 => "SoftwareLicense",
+            21 => "Link",
+            22 => "State",
+            23 => "Phone",
+            24 => "Device",
+            25 => "Reminder",
+            26 => "Stat",
+            27 => "Group",
+            28 => "Entity",
+            29 => "ReservationItem",
+            30 => "AuthMail",
+            31 => "AuthLDAP",
+            32 => "OcsServer",
+            33 => "RegistryKey",
+            34 => "Profile",
+            35 => "MailCollector",
+            36 => "Rule",
+            37 => "Transfer",
+            38 => "SavedSearch",
+            39 => "SoftwareVersion",
+            40 => "Plugin",
+            41 => "Item_Disk",
+            42 => "NetworkPort",
+            43 => "TicketFollowup",
+            44 => "Budget"];
 
         // Filter tables that does not exists or does not contains an itemtype field.
         // This kind of case exist when current method is called from plugins that based their
@@ -1151,10 +1151,10 @@ class Plugin extends CommonDBTM
                 $DB->updateOrDie(
                     $table,
                     [
-                      'itemtype'  => $name,
+                        'itemtype'  => $name,
                     ],
                     [
-                      'itemtype'  => $num
+                        'itemtype'  => $num,
                     ],
                     "update itemtype of table $table for $name"
                 );
@@ -1178,67 +1178,67 @@ class Plugin extends CommonDBTM
                 foreach ($entities as $entID => $val) {
                     if ($do_recursive) {
                         // Non recursive ones
-                        $sub_query = new \QuerySubQuery([
-                           'SELECT' => 'id',
-                           'FROM'   => $itemtable,
-                           'WHERE'  => [
-                              'entities_id'  => $entID,
-                              'is_recursive' => 0
-                           ]
+                        $sub_query = new QuerySubQuery([
+                            'SELECT' => 'id',
+                            'FROM'   => $itemtable,
+                            'WHERE'  => [
+                                'entities_id'  => $entID,
+                                'is_recursive' => 0,
+                            ],
                         ]);
 
                         $DB->updateOrDie(
                             'glpi_infocoms',
                             [
-                              'entities_id'  => $entID,
-                              'is_recursive' => 0
+                                'entities_id'  => $entID,
+                                'is_recursive' => 0,
                             ],
                             [
-                              'itemtype'  => $name,
-                              'items_id'  => $sub_query
+                                'itemtype'  => $name,
+                                'items_id'  => $sub_query,
                             ],
                             "update entities_id and is_recursive=0 in glpi_infocoms for $name"
                         );
 
                         // Recursive ones
-                        $sub_query = new \QuerySubQuery([
-                           'SELECT' => 'id',
-                           'FROM'   => $itemtable,
-                           'WHERE'  => [
-                              'entities_id'  => $entID,
-                              'is_recursive' => 1
-                           ]
+                        $sub_query = new QuerySubQuery([
+                            'SELECT' => 'id',
+                            'FROM'   => $itemtable,
+                            'WHERE'  => [
+                                'entities_id'  => $entID,
+                                'is_recursive' => 1,
+                            ],
                         ]);
 
                         $DB->updateOrDie(
                             'glpi_infocoms',
                             [
-                              'entities_id'  => $entID,
-                              'is_recursive' => 1
+                                'entities_id'  => $entID,
+                                'is_recursive' => 1,
                             ],
                             [
-                              'itemtype'  => $name,
-                              'items_id'  => $sub_query
+                                'itemtype'  => $name,
+                                'items_id'  => $sub_query,
                             ],
                             "update entities_id and is_recursive=1 in glpi_infocoms for $name"
                         );
                     } else {
-                        $sub_query = new \QuerySubQuery([
-                           'SELECT' => 'id',
-                           'FROM'   => $itemtable,
-                           'WHERE'  => [
-                              'entities_id'  => $entID,
-                           ]
+                        $sub_query = new QuerySubQuery([
+                            'SELECT' => 'id',
+                            'FROM'   => $itemtable,
+                            'WHERE'  => [
+                                'entities_id'  => $entID,
+                            ],
                         ]);
 
                         $DB->updateOrDie(
                             'glpi_infocoms',
                             [
-                              'entities_id'  => $entID
+                                'entities_id'  => $entID,
                             ],
                             [
-                              'itemtype'  => $name,
-                              'items_id'  => $sub_query
+                                'itemtype'  => $name,
+                                'items_id'  => $sub_query,
                             ],
                             "update entities_id in glpi_infocoms for $name"
                         );
@@ -1252,10 +1252,10 @@ class Plugin extends CommonDBTM
                 $DB->updateOrDie(
                     $table,
                     [
-                      'itemtype' => $name
+                        'itemtype' => $name,
                     ],
                     [
-                      'itemtype' => $num
+                        'itemtype' => $num,
                     ],
                     "update itemtype of table $table for $name"
                 );
@@ -1265,7 +1265,7 @@ class Plugin extends CommonDBTM
 
 
     /**
-     * @param integer $width
+     * @param int $width
     **/
     public function showSystemInformations($width)
     {
@@ -1281,10 +1281,10 @@ class Plugin extends CommonDBTM
             $name = Html::clean($plugin['name']);
             $version = Html::clean($plugin['version']);
 
-            $msg  = substr(str_pad((string) $plugin['directory'], 30), 0, 20) .
-                    " Name: " . Toolbox::substr(str_pad($name, 40), 0, 30) .
-                    " Version: " . str_pad($version, 10) .
-                    " State: ";
+            $msg  = substr(str_pad((string) $plugin['directory'], 30), 0, 20)
+                    . " Name: " . Toolbox::substr(str_pad($name, 40), 0, 30)
+                    . " Version: " . str_pad($version, 10)
+                    . " State: ";
 
             $state = $plug->isLoadable($plugin['directory']) ? $plugin['state'] : self::TOBECLEANED;
             $msg .= self::getState($state);
@@ -1317,14 +1317,14 @@ class Plugin extends CommonDBTM
         $all_types[] = 'networkport_instantiations';
 
         $mapping = [
-           'doc_types'       => 'document_types',
-           'helpdesk_types'  => 'ticket_types',
-           'netport_types'   => 'networkport_types'
+            'doc_types'       => 'document_types',
+            'helpdesk_types'  => 'ticket_types',
+            'netport_types'   => 'networkport_types',
         ];
 
         foreach ($mapping as $orig => $fixed) {
             if (isset($attrib[$orig])) {
-                \Toolbox::deprecated(
+                Toolbox::deprecated(
                     sprintf(
                         '%1$s type is deprecated, use %2$s instead.',
                         $orig,
@@ -1532,7 +1532,7 @@ class Plugin extends CommonDBTM
             $res = [];
         }
         if (isset($info)) {
-            return (isset($res[$info]) ? $res[$info] : '');
+            return ($res[$info] ?? '');
         }
         return $res;
     }
@@ -1658,14 +1658,14 @@ class Plugin extends CommonDBTM
                 $tmp = $function($itemtype);
                 foreach ($tmp as $opt) {
                     if (!isset($opt['id'])) {
-                        throw new \Exception($itemtype . ': invalid search option! ' . print_r($opt, true));
+                        throw new Exception($itemtype . ': invalid search option! ' . print_r($opt, true));
                     }
                     $optid = $opt['id'];
                     unset($opt['id']);
 
                     if (isset($options[$optid])) {
-                        $message = "Duplicate key $optid ({$options[$optid]['name']}/{$opt['name']}) in " .
-                           $itemtype . " searchOptions!";
+                        $message = "Duplicate key $optid ({$options[$optid]['name']}/{$opt['name']}) in "
+                           . $itemtype . " searchOptions!";
                         Toolbox::logError($message);
                     }
 
@@ -1682,7 +1682,7 @@ class Plugin extends CommonDBTM
     /**
      * Check if there is a plugin enabled that supports importing items
      *
-     * @return boolean
+     * @return bool
      *
      * @since 0.84
     **/
@@ -1777,7 +1777,7 @@ class Plugin extends CommonDBTM
                 );
                 break;
             default:
-                throw new \RuntimeException("messageMissing type $type is unknown!");
+                throw new RuntimeException("messageMissing type $type is unknown!");
         }
     }
 
@@ -1788,7 +1788,7 @@ class Plugin extends CommonDBTM
      *
      * @param string $name System name (Plugin directory)
      *
-     * @return boolean
+     * @return bool
      */
     public function checkVersions($name)
     {
@@ -1834,7 +1834,7 @@ class Plugin extends CommonDBTM
      *                     - max: maximal supported version
      *                     One of min or max is required.
      *
-     * @return boolean
+     * @return bool
      */
     public function checkGlpiVersion($infos)
     {
@@ -1855,8 +1855,8 @@ class Plugin extends CommonDBTM
         if (!$compat) {
             echo Plugin::messageIncompatible(
                 'core',
-                (isset($infos['min']) ? $infos['min'] : null),
-                (isset($infos['max']) ? $infos['max'] : null)
+                ($infos['min'] ?? null),
+                ($infos['max'] ?? null)
             );
         }
 
@@ -1873,7 +1873,7 @@ class Plugin extends CommonDBTM
      *                     - max: maximal supported version.
      *                     One of min or max is required.
      *
-     * @return boolean
+     * @return bool
      */
     public function checkPhpVersion($infos)
     {
@@ -1892,8 +1892,8 @@ class Plugin extends CommonDBTM
         if (!$compat) {
             echo Plugin::messageIncompatible(
                 'php',
-                (isset($infos['min']) ? $infos['min'] : null),
-                (isset($infos['max']) ? $infos['max'] : null)
+                ($infos['min'] ?? null),
+                ($infos['max'] ?? null)
             );
         }
 
@@ -1908,7 +1908,7 @@ class Plugin extends CommonDBTM
      *
      * @param array $exts Extensions lists/config @see Config::checkExtensions()
      *
-     * @return boolean
+     * @return bool
      */
     public function checkPhpExtensions($exts)
     {
@@ -1930,7 +1930,7 @@ class Plugin extends CommonDBTM
      *
      * @param array $params Expected parameters to be setup
      *
-     * @return boolean
+     * @return bool
      */
     public function checkGlpiParameters($params)
     {
@@ -1955,7 +1955,7 @@ class Plugin extends CommonDBTM
      *
      * @param array $params Expected parameters to be setup
      *
-     * @return boolean
+     * @return bool
      */
     public function checkPhpParameters($params)
     {
@@ -1978,7 +1978,7 @@ class Plugin extends CommonDBTM
      *
      * @param array $plugins Expected plugins
      *
-     * @return boolean
+     * @return bool
      */
     public function checkGlpiPlugins($plugins)
     {
@@ -2050,7 +2050,7 @@ class Plugin extends CommonDBTM
      *
      * @since 9.3
      *
-     * @param  integer $state see this class constants (ex self::ANEW, self::ACTIVATED)
+     * @param  int $state see this class constants (ex self::ANEW, self::ACTIVATED)
      * @return string  the label
      */
     public static function getState($state = 0)
@@ -2085,7 +2085,7 @@ class Plugin extends CommonDBTM
      *
      * @since 9.5
      *
-     * @param  integer $state see this class constants (ex self::ANEW, self::ACTIVATED)
+     * @param  int $state see this class constants (ex self::ANEW, self::ACTIVATED)
      * @return string  the key
      */
     public static function getStateKey(int $state = 0): string
@@ -2132,7 +2132,7 @@ class Plugin extends CommonDBTM
      *
      * @param string $plugin_key  System name (Plugin directory)
      *
-     * @return boolean
+     * @return bool
      */
     public static function isPluginLoaded($plugin_key)
     {
@@ -2149,7 +2149,7 @@ class Plugin extends CommonDBTM
      *
      * @param string $plugin_key  System name (Plugin directory)
      *
-     * @return boolean
+     * @return bool
      */
     public static function isPluginActive($plugin_key)
     {
@@ -2163,7 +2163,7 @@ class Plugin extends CommonDBTM
      * @since 9.3.2
      * @deprecated 9.5.0
      *
-     * @param integer $id   Plugin id
+     * @param int $id   Plugin id
      * @param string  $name Plugin name
      *
      * @return void
@@ -2182,7 +2182,7 @@ class Plugin extends CommonDBTM
      * @since 9.3.2
      * @deprecated 9.5.0
      *
-     * @param integer $id Plugin id
+     * @param int $id Plugin id
      *
      * @return void
      */
@@ -2201,7 +2201,7 @@ class Plugin extends CommonDBTM
      * @since 9.3.2
      * @deprecated 9.5.0
      *
-     * @param integer $name System name (Plugin directory)
+     * @param int $name System name (Plugin directory)
      *
      * @return void
      */
@@ -2218,84 +2218,84 @@ class Plugin extends CommonDBTM
         $tab = [];
 
         $tab[] = [
-           'id'                 => 'common',
-           'name'               => __('Characteristics')
+            'id'                 => 'common',
+            'name'               => __('Characteristics'),
         ];
 
         $tab[] = [
-           'id'                 => '1',
-           'table'              => $this->getTable(),
-           'field'              => 'name',
-           'name'               => __('Name'),
-           'datatype'           => 'specific',
-           'massiveaction'      => false, // implicit key==1
-           'additionalfields'   => ['state', 'directory'],
+            'id'                 => '1',
+            'table'              => $this->getTable(),
+            'field'              => 'name',
+            'name'               => __('Name'),
+            'datatype'           => 'specific',
+            'massiveaction'      => false, // implicit key==1
+            'additionalfields'   => ['state', 'directory'],
         ];
 
         $tab[] = [
-           'id'                 => '2',
-           'table'              => $this->getTable(),
-           'field'              => 'directory',
-           'name'               => __('Directory'),
-           'massiveaction'      => false,
-           'nosearch'           => true,
-           'noremove'           => true
+            'id'                 => '2',
+            'table'              => $this->getTable(),
+            'field'              => 'directory',
+            'name'               => __('Directory'),
+            'massiveaction'      => false,
+            'nosearch'           => true,
+            'noremove'           => true,
         ];
 
         $tab[] = [
-           'id'                 => '3',
-           'table'              => $this->getTable(),
-           'field'              => 'version',
-           'name'               => _n('Version', 'Versions', 1),
-           'datatype'           => 'specific',
-           'massiveaction'      => false
+            'id'                 => '3',
+            'table'              => $this->getTable(),
+            'field'              => 'version',
+            'name'               => _n('Version', 'Versions', 1),
+            'datatype'           => 'specific',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '4',
-           'table'              => $this->getTable(),
-           'field'              => 'license',
-           'name'               => SoftwareLicense::getTypeName(1),
-           'datatype'           => 'specific',
-           'massiveaction'      => false
+            'id'                 => '4',
+            'table'              => $this->getTable(),
+            'field'              => 'license',
+            'name'               => SoftwareLicense::getTypeName(1),
+            'datatype'           => 'specific',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '5',
-           'table'              => $this->getTable(),
-           'field'              => 'state',
-           'name'               => __('Status'),
-           'searchtype'         => 'equals',
-           'noremove'           => true,
-           'additionalfields'   => ['directory'],
+            'id'                 => '5',
+            'table'              => $this->getTable(),
+            'field'              => 'state',
+            'name'               => __('Status'),
+            'searchtype'         => 'equals',
+            'noremove'           => true,
+            'additionalfields'   => ['directory'],
         ];
 
         $tab[] = [
-           'id'                 => '6',
-           'table'              => $this->getTable(),
-           'field'              => 'author',
-           'name'               => __('Authors'),
-           'datatype'           => 'specific',
+            'id'                 => '6',
+            'table'              => $this->getTable(),
+            'field'              => 'author',
+            'name'               => __('Authors'),
+            'datatype'           => 'specific',
         ];
 
         $tab[] = [
-           'id'                 => '7',
-           'table'              => $this->getTable(),
-           'field'              => 'homepage',
-           'name'               => __('Website'),
-           'datatype'           => 'specific'
+            'id'                 => '7',
+            'table'              => $this->getTable(),
+            'field'              => 'homepage',
+            'name'               => __('Website'),
+            'datatype'           => 'specific',
         ];
 
         $tab[] = [
-           'id'                 => '8',
-           'table'              => $this->getTable(),
-           'field'              => 'id',
-           'name'               => __('Actions'),
-           'massiveaction'      => false,
-           'nosearch'           => true,
-           'datatype'           => 'specific',
-           'noremove'           => true,
-           'additionalfields'   => ['directory']
+            'id'                 => '8',
+            'table'              => $this->getTable(),
+            'field'              => 'id',
+            'name'               => __('Actions'),
+            'massiveaction'      => false,
+            'nosearch'           => true,
+            'datatype'           => 'specific',
+            'noremove'           => true,
+            'additionalfields'   => ['directory'],
         ];
 
         return $tab;
@@ -2319,7 +2319,7 @@ class Plugin extends CommonDBTM
                 $plugin->getFromDB($ID);
 
                 $directory = $plugin->fields['directory'];
-                $state = (int)$plugin->fields['state'];
+                $state = (int) $plugin->fields['state'];
 
                 if ($plugin->isLoadable($directory)) {
                     self::load($directory, true);
@@ -2518,13 +2518,13 @@ class Plugin extends CommonDBTM
         switch ($field) {
             case 'state':
                 $tab = [
-                   self::ANEW           => _x('status', 'New'),
-                   self::ACTIVATED      => _x('plugin', 'Enabled'),
-                   self::NOTINSTALLED   => _x('plugin', 'Not installed'),
-                   self::NOTUPDATED     => __('To update'),
-                   self::TOBECONFIGURED => _x('plugin', 'Installed / not configured'),
-                   self::NOTACTIVATED   => _x('plugin', 'Installed / not activated'),
-                   self::TOBECLEANED    => __('Error / to clean')
+                    self::ANEW           => _x('status', 'New'),
+                    self::ACTIVATED      => _x('plugin', 'Enabled'),
+                    self::NOTINSTALLED   => _x('plugin', 'Not installed'),
+                    self::NOTUPDATED     => __('To update'),
+                    self::TOBECONFIGURED => _x('plugin', 'Installed / not configured'),
+                    self::NOTACTIVATED   => _x('plugin', 'Installed / not activated'),
+                    self::TOBECLEANED    => __('Error / to clean'),
                 ];
                 $options['value'] = $values[$field];
                 return Dropdown::showFromArray($name, $tab, $options);

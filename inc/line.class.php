@@ -104,8 +104,8 @@ class Line extends CommonDBTM
                     'type' => 'submit',
                     'name' => 'delete',
                     'value' => __('Put in trashbin'),
-                    'class' => 'btn btn-secondary'
-                ]
+                    'class' => 'btn btn-secondary',
+                ],
             ],
             'content' => [
                 __('Line') => [
@@ -114,7 +114,7 @@ class Line extends CommonDBTM
                         $this->isNewID($ID) ? [] : [
                             'type' => 'hidden',
                             'name' => 'id',
-                            'value' => $ID
+                            'value' => $ID,
                         ],
                         __('Name') => [
                             'name' => 'name',
@@ -172,16 +172,16 @@ class Line extends CommonDBTM
                         __('Caller name') => [
                             'name' => 'caller_name',
                             'type' => 'text',
-                            'value' => $this->fields['caller_name'] ?? ''
+                            'value' => $this->fields['caller_name'] ?? '',
                         ],
                         __('Comment') => [
                             'name' => 'comment',
                             'type' => 'textarea',
-                            'value' => $this->fields['comment'] ?? ''
+                            'value' => $this->fields['comment'] ?? '',
                         ],
-                    ]
-                ]
-            ]
+                    ],
+                ],
+            ],
         ];
         renderTwigForm($form);
 
@@ -201,7 +201,7 @@ class Line extends CommonDBTM
             'field'              => 'id',
             'name'               => __('ID'),
             'massiveaction'      => false,
-            'datatype'           => 'number'
+            'datatype'           => 'number',
         ];
 
         $tab[] = [
@@ -217,7 +217,7 @@ class Line extends CommonDBTM
             'table'              => $this->getTable(),
             'field'              => 'comment',
             'name'               => __('Comments'),
-            'datatype'           => 'text'
+            'datatype'           => 'text',
         ];
 
         $tab[] = [
@@ -226,7 +226,7 @@ class Line extends CommonDBTM
             'field'              => 'date_mod',
             'name'               => __('Last update'),
             'datatype'           => 'datetime',
-            'massiveaction'      => false
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
@@ -235,7 +235,7 @@ class Line extends CommonDBTM
             'field'              => 'completename',
             'name'               => __('Status'),
             'datatype'           => 'dropdown',
-            'condition'          => ['is_visible_line' => 1]
+            'condition'          => ['is_visible_line' => 1],
         ];
 
         $tab[] = [
@@ -244,7 +244,7 @@ class Line extends CommonDBTM
             'field'              => 'name',
             'name'               => User::getTypeName(1),
             'datatype'           => 'dropdown',
-            'right'              => 'all'
+            'right'              => 'all',
         ];
 
         $tab[] = [
@@ -253,7 +253,7 @@ class Line extends CommonDBTM
             'field'              => 'completename',
             'name'               => Group::getTypeName(1),
             'condition'          => ['is_itemgroup' => 1],
-            'datatype'           => 'dropdown'
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
@@ -262,7 +262,7 @@ class Line extends CommonDBTM
             'field'              => 'completename',
             'name'               => Entity::getTypeName(1),
             'massiveaction'      => false,
-            'datatype'           => 'dropdown'
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
@@ -271,7 +271,7 @@ class Line extends CommonDBTM
             'field'              => 'date_creation',
             'name'               => __('Creation date'),
             'datatype'           => 'datetime',
-            'massiveaction'      => false
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
@@ -280,7 +280,7 @@ class Line extends CommonDBTM
             'field'              => 'name',
             'name'               => LineOperator::getTypeName(1),
             'massiveaction'      => true,
-            'datatype'           => 'dropdown'
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [

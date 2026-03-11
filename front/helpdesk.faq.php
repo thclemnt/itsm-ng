@@ -44,7 +44,7 @@ Html::requireJs('jstree');
 $_SESSION["glpilanguage"] = $_SESSION['glpilanguage'] ?? $CFG_GLPI['language'];
 // Anonymous FAQ
 Html::header(__('FAQ'), [
-   __('FAQ') => $CFG_GLPI['root_doc'] . '/front/helpdesk.faq.php'
+    __('FAQ') => $CFG_GLPI['root_doc'] . '/front/helpdesk.faq.php',
 ]);
 
 if (isset($_GET["id"])) {

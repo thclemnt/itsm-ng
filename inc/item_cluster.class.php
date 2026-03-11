@@ -95,10 +95,10 @@ class Item_Cluster extends CommonDBRelation
         $canedit = $cluster->canEdit($ID);
 
         $items = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'clusters_id' => $ID
-           ]
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'clusters_id' => $ID,
+            ],
         ]);
 
         Session::initNavigateListItems(
@@ -119,8 +119,8 @@ class Item_Cluster extends CommonDBRelation
                 '_add_fromitem',
                 __('Add new item to this cluster...'),
                 [
-                  'cluster'   => $ID,
-                  'position'  => 1
+                    'cluster'   => $ID,
+                    'position'  => 1,
                 ]
             );
             echo "</div>";
@@ -135,8 +135,8 @@ class Item_Cluster extends CommonDBRelation
             if ($canedit) {
                 Html::openMassiveActionsForm('mass' . __CLASS__ . $rand);
                 $massiveactionparams = [
-                   'num_displayed'   => min($_SESSION['glpilist_limit'], count($items)),
-                   'container'       => 'mass' . __CLASS__ . $rand
+                    'num_displayed'   => min($_SESSION['glpilist_limit'], count($items)),
+                    'container'       => 'mass' . __CLASS__ . $rand,
                 ];
                 Html::showMassiveActions($massiveactionparams);
             }
@@ -184,7 +184,7 @@ class Item_Cluster extends CommonDBRelation
         //get all used items
         $used = [];
         $iterator = $DB->request([
-           'FROM'   => $this->getTable()
+            'FROM'   => $this->getTable(),
         ]);
         while ($row = $iterator->next()) {
             $used [$row['itemtype']][] = $row['items_id'];
@@ -236,44 +236,44 @@ class Item_Cluster extends CommonDBRelation
         }
 
         $form = [
-          'action' => $this->getFormURL(),
-          'itemtype' => $this::class,
-          'content' => [
-            $this->getTypeName() => [
-              'visible' => true,
-              'inputs' => [
-                $this->isNewID($ID) ? [] : [
-                  'type' => 'hidden',
-                  'name' => 'id',
-                  'value' => $ID
+            'action' => $this->getFormURL(),
+            'itemtype' => $this::class,
+            'content' => [
+                $this->getTypeName() => [
+                    'visible' => true,
+                    'inputs' => [
+                        $this->isNewID($ID) ? [] : [
+                            'type' => 'hidden',
+                            'name' => 'id',
+                            'value' => $ID,
+                        ],
+                        __('Item type') => [
+                            'type' => 'select',
+                            'id' => 'dropdown_itemtype',
+                            'name' => 'itemtype',
+                            'value' => $this->fields["itemtype"] ?? $options['itemtype'] ?? '',
+                            'values' => $itemtypesValues,
+                            'hooks' => [
+                                'change' => $loadItemDropdownScript,
+                            ],
+                            'init' => $loadItemDropdownScript,
+                        ],
+                        __('Item') => [
+                            'type' => 'select',
+                            'id' => 'dropdown_items_id',
+                            'name' => 'items_id',
+                            'value' => $this->fields["items_id"] ?? $options['items_id'] ?? 0,
+                        ],
+                        Cluster::getTypeName(1) => [
+                            'type' => 'select',
+                            'id' => 'dropdown_clusters_id',
+                            'itemtype' => Cluster::class,
+                            'name' => 'clusters_id',
+                            'value' => $this->fields["clusters_id"] ?? $options['clusters_id'] ?? 0,
+                        ],
+                    ],
                 ],
-                __('Item type') => [
-                  'type' => 'select',
-                  'id' => 'dropdown_itemtype',
-                  'name' => 'itemtype',
-                  'value' => $this->fields["itemtype"] ?? $options['itemtype'] ?? '',
-                  'values' => $itemtypesValues,
-                  'hooks' => [
-                      'change' => $loadItemDropdownScript
-                  ],
-                  'init' => $loadItemDropdownScript
-                ],
-                __('Item') => [
-                  'type' => 'select',
-                  'id' => 'dropdown_items_id',
-                  'name' => 'items_id',
-                  'value' => $this->fields["items_id"] ?? $options['items_id'] ?? 0,
-                ],
-                Cluster::getTypeName(1) => [
-                  'type' => 'select',
-                  'id' => 'dropdown_clusters_id',
-                  'itemtype' => Cluster::class,
-                  'name' => 'clusters_id',
-                  'value' => $this->fields["clusters_id"] ?? $options['clusters_id'] ?? 0,
-                ],
-              ]
-            ]
-          ]
+            ],
         ];
         renderTwigForm($form, '', $this->fields);
     }

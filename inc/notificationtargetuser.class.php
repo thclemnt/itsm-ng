@@ -41,8 +41,8 @@ class NotificationTargetUser extends NotificationTarget
     public function getEvents()
     {
         return [
-           'passwordexpires' => __('Password expires'),
-           'passwordforget'  => __('Forgotten password?'),
+            'passwordexpires' => __('Password expires'),
+            'passwordforget'  => __('Forgotten password?'),
         ];
     }
 
@@ -78,9 +78,9 @@ class NotificationTargetUser extends NotificationTarget
                         // Send to user without any check on profile / entity
                         // Do not set users_id
                         $data = ['name'     => $this->obj->getName(),
-                                      'email'    => $this->obj->getDefaultEmail(),
-                                      'language' => $this->obj->getField('language'),
-                                      'usertype' => $usertype];
+                            'email'    => $this->obj->getDefaultEmail(),
+                            'language' => $this->obj->getField('language'),
+                            'usertype' => $usertype];
                         $this->addToRecipientsList($data);
                 }
         }
@@ -106,7 +106,7 @@ class NotificationTargetUser extends NotificationTarget
                 );
 
                 $this->data['##user.account.lock.date##']  = null;
-                $lock_delay = (int)$CFG_GLPI['password_expiration_lock_delay'];
+                $lock_delay = (int) $CFG_GLPI['password_expiration_lock_delay'];
                 if (-1 !== $lock_delay) {
                     $this->data['##user.account.lock.date##'] = Html::convDateTime(
                         date(
@@ -148,18 +148,18 @@ class NotificationTargetUser extends NotificationTarget
 
         // Common value tags
         $tags = [
-           'user.name'      => __('Login'),
-           'user.realname'  => __('Name'),
-           'user.firstname' => __('First name'),
-           'user.action'    => _n('Event', 'Events', 1),
+            'user.name'      => __('Login'),
+            'user.realname'  => __('Name'),
+            'user.firstname' => __('First name'),
+            'user.action'    => _n('Event', 'Events', 1),
         ];
 
         foreach ($tags as $tag => $label) {
             $this->addTagToList(
                 [
-                  'tag'    => $tag,
-                  'label'  => $label,
-                  'value'  => true,
+                    'tag'    => $tag,
+                    'label'  => $label,
+                    'value'  => true,
                 ]
             );
         }
@@ -187,26 +187,26 @@ class NotificationTargetUser extends NotificationTarget
         switch ($event) {
             case 'passwordexpires':
                 $values_tags = [
-                   'user.account.lock.date'        => __('Account lock date if password is not changed'),
-                   'user.password.expiration.date' => __('Password expiration date'),
-                   'user.password.has_expired'     => __('Password has expired'),
-                   'user.password.update.url'      => __('URL'),
+                    'user.account.lock.date'        => __('Account lock date if password is not changed'),
+                    'user.password.expiration.date' => __('Password expiration date'),
+                    'user.password.has_expired'     => __('Password has expired'),
+                    'user.password.update.url'      => __('URL'),
                 ];
                 $lang_tags = [
-                   'password.expires_soon.information' => __('We inform you that your password will expire soon.'),
-                   'password.has_expired.information'  => __('We inform you that your password has expired.'),
-                   'password.update.link'              => __('To update your password, please follow this link:'),
+                    'password.expires_soon.information' => __('We inform you that your password will expire soon.'),
+                    'password.has_expired.information'  => __('We inform you that your password has expired.'),
+                    'password.update.link'              => __('To update your password, please follow this link:'),
                 ];
                 break;
             case 'passwordforget':
                 $values_tags = [
-                   'user.token'             => __('Token'),
-                   'user.passwordforgeturl' => __('URL'),
+                    'user.token'             => __('Token'),
+                    'user.passwordforgeturl' => __('URL'),
                 ];
 
                 $lang_tags = [
-                   'passwordforget.information' => __('You have been made a request to reset your account password.'),
-                   'passwordforget.link'        => __('Just follow this link (you have one day):'),
+                    'passwordforget.information' => __('You have been made a request to reset your account password.'),
+                    'passwordforget.link'        => __('Just follow this link (you have one day):'),
                 ];
                 break;
         }
@@ -214,10 +214,10 @@ class NotificationTargetUser extends NotificationTarget
         foreach ($values_tags as $tag => $label) {
             $this->addTagToList(
                 [
-                  'tag'    => $tag,
-                  'label'  => $label,
-                  'value'  => true,
-                  'events' => [$event],
+                    'tag'    => $tag,
+                    'label'  => $label,
+                    'value'  => true,
+                    'events' => [$event],
                 ]
             );
         }
@@ -225,11 +225,11 @@ class NotificationTargetUser extends NotificationTarget
         foreach ($lang_tags as $tag => $label) {
             $this->addTagToList(
                 [
-                  'tag'    => $tag,
-                  'label'  => $label,
-                  'value'  => false,
-                  'lang'   => true,
-                  'events' => [$event],
+                    'tag'    => $tag,
+                    'label'  => $label,
+                    'value'  => false,
+                    'lang'   => true,
+                    'events' => [$event],
                 ]
             );
         }

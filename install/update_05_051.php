@@ -68,12 +68,12 @@ function update05to051()
 
         $query = "INSERT INTO `glpi_dropdown_contact_type`
                        (`name`)
-                VALUES ('".__('Technician')."')";
+                VALUES ('" . __('Technician') . "')";
         $DB->queryOrDie($query, "0.51 add entries to dropdown_contact_type");
 
         $query = "INSERT INTO `glpi_dropdown_contact_type`
                        (`name`)
-                VALUES ('".__('Commercial')."')";
+                VALUES ('" . __('Commercial') . "')";
         $DB->queryOrDie($query, "0.51 add entries to dropdown_contact_type");
     }
 

@@ -65,7 +65,7 @@ class Calendar_Holiday extends CommonDBRelation
      *
      * @param $calendar Calendar object
      *
-     * @return void|boolean (HTML display) False if there is a rights error.
+     * @return void|bool (HTML display) False if there is a rights error.
      */
     public static function showForCalendar(Calendar $calendar)
     {
@@ -81,24 +81,24 @@ class Calendar_Holiday extends CommonDBRelation
         $rand    = mt_rand();
 
         $iterator = $DB->request([
-           'SELECT' => [
-              'glpi_calendars_holidays.id AS linkid',
-              'glpi_holidays.*'
-           ],
-           'DISTINCT'        => true,
-           'FROM'            => 'glpi_calendars_holidays',
-           'LEFT JOIN'       => [
-              'glpi_holidays'   => [
-                 'ON' => [
-                    'glpi_calendars_holidays'  => 'holidays_id',
-                    'glpi_holidays'            => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'           => [
-              'glpi_calendars_holidays.calendars_id' => $ID
-           ],
-           'ORDERBY'         => 'glpi_holidays.name'
+            'SELECT' => [
+                'glpi_calendars_holidays.id AS linkid',
+                'glpi_holidays.*',
+            ],
+            'DISTINCT'        => true,
+            'FROM'            => 'glpi_calendars_holidays',
+            'LEFT JOIN'       => [
+                'glpi_holidays'   => [
+                    'ON' => [
+                        'glpi_calendars_holidays'  => 'holidays_id',
+                        'glpi_holidays'            => 'id',
+                    ],
+                ],
+            ],
+            'WHERE'           => [
+                'glpi_calendars_holidays.calendars_id' => $ID,
+            ],
+            'ORDERBY'         => 'glpi_holidays.name',
         ]);
 
         $numrows = count($iterator);
@@ -111,34 +111,34 @@ class Calendar_Holiday extends CommonDBRelation
 
         if ($canedit) {
             $form = [
-               'action' => Toolbox::getItemTypeFormURL(__CLASS__),
-               'buttons' => [
-                  [
-                     'name' => 'add',
-                     'value' => _sx('button', 'Add'),
-                     'class' => 'btn btn-secondary'
-                  ]
-               ],
-               'content' => [
-                  __('Add a close time') => [
-                     'visible' => true,
-                     'inputs' => [
-                        [
-                           'type' => 'hidden',
-                           'name' => 'calendars_id',
-                           'value' => $ID
+                'action' => Toolbox::getItemTypeFormURL(__CLASS__),
+                'buttons' => [
+                    [
+                        'name' => 'add',
+                        'value' => _sx('button', 'Add'),
+                        'class' => 'btn btn-secondary',
+                    ],
+                ],
+                'content' => [
+                    __('Add a close time') => [
+                        'visible' => true,
+                        'inputs' => [
+                            [
+                                'type' => 'hidden',
+                                'name' => 'calendars_id',
+                                'value' => $ID,
+                            ],
+                            Holiday::getTypeName() => [
+                                'type' => 'select',
+                                'name' => 'holidays_id',
+                                'itemtype' => Holiday::class,
+                                'used' => $used,
+                                'col_lg' => 12,
+                                'col_md' => 12,
+                            ],
                         ],
-                        Holiday::getTypeName() => [
-                           'type' => 'select',
-                           'name' => 'holidays_id',
-                           'itemtype' => Holiday::class,
-                           'used' => $used,
-                           'col_lg' => 12,
-                           'col_md' => 12,
-                        ]
-                     ]
-                  ]
-               ]
+                    ],
+                ],
             ];
             renderTwigForm($form);
         }
@@ -147,38 +147,38 @@ class Calendar_Holiday extends CommonDBRelation
         $massActionContainerId = 'mass' . __CLASS__ . $rand;
         if ($canedit && $numrows) {
             $massiveactionparams = [
-               'num_displayed' => min($_SESSION['glpilist_limit'], $numrows),
-               'container'     => $massActionContainerId,
-               'specific_actions' => [
-                  'MassiveAction:purge' => _x('button', 'Delete permanently the relation with selected elements'),
-               ],
-               'display_arrow' => false,
+                'num_displayed' => min($_SESSION['glpilist_limit'], $numrows),
+                'container'     => $massActionContainerId,
+                'specific_actions' => [
+                    'MassiveAction:purge' => _x('button', 'Delete permanently the relation with selected elements'),
+                ],
+                'display_arrow' => false,
             ];
             Html::showMassiveActions($massiveactionparams);
         }
         $fields = [
-           __('Name'),
-           __('Start'),
-           __('End'),
-           __('Recurrent'),
+            __('Name'),
+            __('Start'),
+            __('End'),
+            __('Recurrent'),
         ];
         $values = [];
         $massive_action = [];
         foreach ($holidays as $data) {
             $values[] = [
-               '<a href="' . Toolbox::getItemTypeFormURL('Holiday') . "?id=" . $data['id'] . '">' . $data["name"] . '</a>',
-               Html::convDate($data["begin_date"]),
-               Html::convDate($data["end_date"]),
-               Dropdown::getYesNo($data["is_perpetual"]),
+                '<a href="' . Toolbox::getItemTypeFormURL('Holiday') . "?id=" . $data['id'] . '">' . $data["name"] . '</a>',
+                Html::convDate($data["begin_date"]),
+                Html::convDate($data["end_date"]),
+                Dropdown::getYesNo($data["is_perpetual"]),
             ];
             $massive_action[] = sprintf('item[%s][%s]', __CLASS__, $data['linkid']);
         }
 
         renderTwigTemplate('table.twig', [
-           'id' => $massActionContainerId,
-           'fields' => $fields,
-           'values' => $values,
-           'massive_action' => $massive_action,
+            'id' => $massActionContainerId,
+            'fields' => $fields,
+            'values' => $values,
+            'massive_action' => $massive_action,
         ]);
     }
 
@@ -187,8 +187,8 @@ class Calendar_Holiday extends CommonDBRelation
      *
      * @deprecated 9.5
      *
-     * @param integer $oldid The ID of the calendar to copy from.
-     * @param integer $newid The ID of the calendar to copy to.
+     * @param int $oldid The ID of the calendar to copy from.
+     * @param int $newid The ID of the calendar to copy to.
     **/
     public static function cloneCalendar($oldid, $newid)
     {
@@ -197,10 +197,10 @@ class Calendar_Holiday extends CommonDBRelation
         Toolbox::deprecated('Use clone');
         $result = $DB->request(
             [
-              'FROM'   => self::getTable(),
-              'WHERE'  => [
-                 'calendars_id' => $oldid,
-              ]
+                'FROM'   => self::getTable(),
+                'WHERE'  => [
+                    'calendars_id' => $oldid,
+                ],
             ]
         );
 

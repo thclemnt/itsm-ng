@@ -41,7 +41,7 @@ define('NS_PLUG', 'GlpiPlugin\\');
 /**
  * Is the script launch in Command line?
  *
- * @return boolean
+ * @return bool
  */
 function isCommandLine()
 {
@@ -51,7 +51,7 @@ function isCommandLine()
 /**
  * Is the script launched From API?
  *
- * @return boolean
+ * @return bool
  */
 function isAPI()
 {
@@ -59,16 +59,16 @@ function isAPI()
 
     $called_url = (!empty($_SERVER['HTTPS'] ?? "") && ($_SERVER['HTTPS'] ?? "") !== 'off'
        ? 'https'
-       : 'http') .
-       '://' . ($_SERVER['HTTP_HOST'] ?? "") .
-       ($_SERVER['REQUEST_URI'] ?? "");
+       : 'http')
+       . '://' . ($_SERVER['HTTP_HOST'] ?? "")
+       . ($_SERVER['REQUEST_URI'] ?? "");
 
     $base_api_url = $CFG_GLPI['url_base_api'] ?? ""; // $CFG_GLPI may be not defined if DB is not available
     if (!empty($base_api_url) && strpos($called_url, (string) $base_api_url) !== false) {
         return true;
     }
 
-    $script = isset($_SERVER['SCRIPT_FILENAME']) ? $_SERVER['SCRIPT_FILENAME'] : '';
+    $script = $_SERVER['SCRIPT_FILENAME'] ?? '';
     if (strpos((string) $script, 'apirest.php') !== false) {
         return true;
     }
@@ -85,7 +85,7 @@ function isAPI()
  *
  * @param string $classname Class name to analyze
  *
- * @return boolean|array False or an array containing plugin name and class name
+ * @return bool|array False or an array containing plugin name and class name
  */
 function isPluginItemType($classname)
 {
@@ -174,7 +174,7 @@ function _sx($ctx, $str, $domain = 'glpi')
  *
  * @param string  $sing   in singular
  * @param string  $plural in plural
- * @param integer $nb     to select singular or plural
+ * @param int $nb     to select singular or plural
  * @param string  $domain domain used (default is glpi, may be plugin name)
  *
  * @return string translated string
@@ -202,7 +202,7 @@ function _n($sing, $plural, $nb, $domain = 'glpi')
  *
  * @param string  $sing   in singular
  * @param string  $plural in plural
- * @param integer $nb     to select singular or plural
+ * @param int $nb     to select singular or plural
  * @param string  $domain domain used (default is glpi, may be plugin name)
  *
  * @return string protected string (with htmlentities)
@@ -247,7 +247,7 @@ function _x($ctx, $str, $domain = 'glpi')
  * @param string  $ctx    context
  * @param string  $sing   in singular
  * @param string  $plural in plural
- * @param integer $nb     to select singular or plural
+ * @param int $nb     to select singular or plural
  * @param string  $domain domain used (default is glpi, may be plugin name)
  *
  * @return string
@@ -277,14 +277,14 @@ function _nx($ctx, $sing, $plural, $nb, $domain = 'glpi')
  *
  * @param string $classname : class to load
  *
- * @return void|boolean
+ * @return void|bool
  */
 function glpi_autoload($classname)
 {
     global $DEBUG_AUTOLOAD;
     static $notfound = [
-       'xStates'    => true,
-       'xAllAssets' => true,
+        'xStates'    => true,
+        'xAllAssets' => true,
     ];
     // empty classname or non concerted plugin or classname containing dot (leaving GLPI main treee)
     if (empty($classname) || is_numeric($classname) || (strpos($classname, '.') !== false)) {

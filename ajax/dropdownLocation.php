@@ -40,7 +40,7 @@ if (
     !isset($_REQUEST['itemtype'])
     && !is_subclass_of($_REQUEST['itemtype'], 'CommonDBTM')
 ) {
-    throw new \RuntimeException('Required argument missing or incorrect!');
+    throw new RuntimeException('Required argument missing or incorrect!');
 }
 
 $item = new $_REQUEST['itemtype']();
@@ -63,11 +63,11 @@ if (isset($_REQUEST['is_recursive'])) {
 
 global $DB;
 $request = [
-   'SELECT' => ['id', 'name'],
-   'FROM'   => Location::getTable(),
-   'WHERE'  => [
-      'entities_id'  => $entities_id,
-   ],
+    'SELECT' => ['id', 'name'],
+    'FROM'   => Location::getTable(),
+    'WHERE'  => [
+        'entities_id'  => $entities_id,
+    ],
 ];
 if ($locations_id != 0) {
     $request['WHERE']['id'] = $locations_id;

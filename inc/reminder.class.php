@@ -37,8 +37,8 @@ if (!defined('GLPI_ROOT')) {
 
 use Glpi\CalDAV\Contracts\CalDAVCompatibleItemInterface;
 use Glpi\CalDAV\Traits\VobjectConverterTrait;
+use Glpi\Features\PlanningEvent;
 use Sabre\VObject\Component\VCalendar;
-use Sabre\VObject\Component\VJournal;
 use Sabre\VObject\Component\VTodo;
 
 /**
@@ -48,7 +48,7 @@ class Reminder extends CommonDBVisible implements
     CalDAVCompatibleItemInterface,
     ExtraVisibilityCriteria
 {
-    use Glpi\Features\PlanningEvent {
+    use PlanningEvent {
         post_getEmpty as trait_post_getEmpty;
     }
     use VobjectConverterTrait;
@@ -179,13 +179,13 @@ class Reminder extends CommonDBVisible implements
 
         $this->deleteChildrenAndRelationsFromDb(
             [
-              Entity_Reminder::class,
-              Group_Reminder::class,
-              PlanningRecall::class,
-              Profile_Reminder::class,
-              Reminder_User::class,
-              VObject::class,
-              ReminderTranslation::class,
+                Entity_Reminder::class,
+                Group_Reminder::class,
+                PlanningRecall::class,
+                Profile_Reminder::class,
+                Reminder_User::class,
+                VObject::class,
+                ReminderTranslation::class,
             ]
         );
     }
@@ -216,7 +216,7 @@ class Reminder extends CommonDBVisible implements
         unset($criteria['WHERE']);
         $criteria['FROM'] = self::getTable();
 
-        $it = new \DBmysqlIterator(null);
+        $it = new DBmysqlIterator(null);
         $it->buildQuery($criteria);
         $sql = $it->getSql();
         $sql = trim(str_replace(
@@ -241,7 +241,7 @@ class Reminder extends CommonDBVisible implements
         unset($criteria['LEFT JOIN']);
         $criteria['FROM'] = self::getTable();
 
-        $it = new \DBmysqlIterator(null);
+        $it = new DBmysqlIterator(null);
         $it->buildQuery($criteria);
         $sql = $it->getSql();
         $sql = preg_replace('/.*WHERE /', '', $sql);
@@ -254,7 +254,7 @@ class Reminder extends CommonDBVisible implements
      *
      * @since 9.4
      *
-     * @param boolean $forceall force all joins (false by default)
+     * @param bool $forceall force all joins (false by default)
      *
      * @return array
      */
@@ -262,7 +262,7 @@ class Reminder extends CommonDBVisible implements
     {
         if (!Session::haveRight(self::$rightname, READ)) {
             return [
-               'WHERE' => ['glpi_reminders.users_id' => Session::getLoginUserID()],
+                'WHERE' => ['glpi_reminders.users_id' => Session::getLoginUserID()],
             ];
         }
 
@@ -271,20 +271,20 @@ class Reminder extends CommonDBVisible implements
 
         // Users
         $join['glpi_reminders_users'] = [
-           'FKEY' => [
-              'glpi_reminders_users'  => 'reminders_id',
-              'glpi_reminders'        => 'id'
-           ]
+            'FKEY' => [
+                'glpi_reminders_users'  => 'reminders_id',
+                'glpi_reminders'        => 'id',
+            ],
         ];
 
         if (Session::getLoginUserID()) {
             $where['OR'] = [
-                  'glpi_reminders.users_id'        => Session::getLoginUserID(),
-                  'glpi_reminders_users.users_id'  => Session::getLoginUserID(),
+                'glpi_reminders.users_id'        => Session::getLoginUserID(),
+                'glpi_reminders_users.users_id'  => Session::getLoginUserID(),
             ];
         } else {
             $where = [
-               0
+                0,
             ];
         }
 
@@ -294,10 +294,10 @@ class Reminder extends CommonDBVisible implements
             || (isset($_SESSION["glpigroups"]) && count($_SESSION["glpigroups"]))
         ) {
             $join['glpi_groups_reminders'] = [
-               'FKEY' => [
-                  'glpi_groups_reminders' => 'reminders_id',
-                  'glpi_reminders'        => 'id'
-               ]
+                'FKEY' => [
+                    'glpi_groups_reminders' => 'reminders_id',
+                    'glpi_reminders'        => 'id',
+                ],
             ];
 
             $or = ['glpi_groups_reminders.entities_id' => ['<', 0]];
@@ -306,10 +306,10 @@ class Reminder extends CommonDBVisible implements
                 $or = $or + $restrict;
             }
             $where['OR'][] = [
-               'glpi_groups_reminders.groups_id' => count($_SESSION["glpigroups"])
-                                                         ? $_SESSION["glpigroups"]
-                                                         : [-1],
-               'OR' => $or
+                'glpi_groups_reminders.groups_id' => count($_SESSION["glpigroups"])
+                                                          ? $_SESSION["glpigroups"]
+                                                          : [-1],
+                'OR' => $or,
             ];
         }
 
@@ -320,10 +320,10 @@ class Reminder extends CommonDBVisible implements
                 && isset($_SESSION["glpiactiveprofile"]['id']))
         ) {
             $join['glpi_profiles_reminders'] = [
-               'FKEY' => [
-                  'glpi_profiles_reminders'  => 'reminders_id',
-                  'glpi_reminders'           => 'id'
-               ]
+                'FKEY' => [
+                    'glpi_profiles_reminders'  => 'reminders_id',
+                    'glpi_reminders'           => 'id',
+                ],
             ];
 
             $or = ['glpi_profiles_reminders.entities_id' => ['<', 0]];
@@ -332,8 +332,8 @@ class Reminder extends CommonDBVisible implements
                 $or = $or + $restrict;
             }
             $where['OR'][] = [
-               'glpi_profiles_reminders.profiles_id' => $_SESSION["glpiactiveprofile"]['id'],
-               'OR' => $or
+                'glpi_profiles_reminders.profiles_id' => $_SESSION["glpiactiveprofile"]['id'],
+                'OR' => $or,
             ];
         }
 
@@ -343,10 +343,10 @@ class Reminder extends CommonDBVisible implements
             || (isset($_SESSION["glpiactiveentities"]) && count($_SESSION["glpiactiveentities"]))
         ) {
             $join['glpi_entities_reminders'] = [
-               'FKEY' => [
-                  'glpi_entities_reminders'  => 'reminders_id',
-                  'glpi_reminders'           => 'id'
-               ]
+                'FKEY' => [
+                    'glpi_entities_reminders'  => 'reminders_id',
+                    'glpi_reminders'           => 'id',
+                ],
             ];
         }
         if (isset($_SESSION["glpiactiveentities"]) && count($_SESSION["glpiactiveentities"])) {
@@ -357,8 +357,8 @@ class Reminder extends CommonDBVisible implements
         }
 
         $criteria = [
-           'LEFT JOIN' => $join,
-           'WHERE'     => $where
+            'LEFT JOIN' => $join,
+            'WHERE'     => $where,
         ];
 
         return $criteria;
@@ -370,108 +370,108 @@ class Reminder extends CommonDBVisible implements
         $tab = [];
 
         $tab[] = [
-           'id'                 => 'common',
-           'name'               => __('Characteristics')
+            'id'                 => 'common',
+            'name'               => __('Characteristics'),
         ];
 
         $tab[] = [
-           'id'                 => '1',
-           'table'              => $this->getTable(),
-           'field'              => 'name',
-           'name'               => __('Title'),
-           'datatype'           => 'itemlink',
-           'massiveaction'      => false,
-           'forcegroupby'       => true,
-           'autocomplete'       => true,
+            'id'                 => '1',
+            'table'              => $this->getTable(),
+            'field'              => 'name',
+            'name'               => __('Title'),
+            'datatype'           => 'itemlink',
+            'massiveaction'      => false,
+            'forcegroupby'       => true,
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '2',
-           'table'              => 'glpi_users',
-           'field'              => 'name',
-           'name'               => __('Writer'),
-           'datatype'           => 'dropdown',
-           'massiveaction'      => false,
-           'right'              => 'all'
+            'id'                 => '2',
+            'table'              => 'glpi_users',
+            'field'              => 'name',
+            'name'               => __('Writer'),
+            'datatype'           => 'dropdown',
+            'massiveaction'      => false,
+            'right'              => 'all',
         ];
 
         $tab[] = [
-           'id'                 => '3',
-           'table'              => $this->getTable(),
-           'field'              => 'state',
-           'name'               => __('Status'),
-           'datatype'           => 'specific',
-           'massiveaction'      => false,
-           'searchtype'         => ['equals', 'notequals']
+            'id'                 => '3',
+            'table'              => $this->getTable(),
+            'field'              => 'state',
+            'name'               => __('Status'),
+            'datatype'           => 'specific',
+            'massiveaction'      => false,
+            'searchtype'         => ['equals', 'notequals'],
         ];
 
         $tab[] = [
-           'id'                 => '4',
-           'table'              => $this->getTable(),
-           'field'              => 'text',
-           'name'               => __('Description'),
-           'massiveaction'      => false,
-           'datatype'           => 'text',
-           'htmltext'           => true
+            'id'                 => '4',
+            'table'              => $this->getTable(),
+            'field'              => 'text',
+            'name'               => __('Description'),
+            'massiveaction'      => false,
+            'datatype'           => 'text',
+            'htmltext'           => true,
         ];
 
         $tab[] = [
-           'id'                 => '5',
-           'table'              => $this->getTable(),
-           'field'              => 'begin_view_date',
-           'name'               => __('Visibility start date'),
-           'datatype'           => 'datetime'
+            'id'                 => '5',
+            'table'              => $this->getTable(),
+            'field'              => 'begin_view_date',
+            'name'               => __('Visibility start date'),
+            'datatype'           => 'datetime',
         ];
 
         $tab[] = [
-           'id'                 => '6',
-           'table'              => $this->getTable(),
-           'field'              => 'end_view_date',
-           'name'               => __('Visibility end date'),
-           'datatype'           => 'datetime'
+            'id'                 => '6',
+            'table'              => $this->getTable(),
+            'field'              => 'end_view_date',
+            'name'               => __('Visibility end date'),
+            'datatype'           => 'datetime',
         ];
 
         $tab[] = [
-           'id'                 => '7',
-           'table'              => $this->getTable(),
-           'field'              => 'is_planned',
-           'name'               => __('Planning'),
-           'datatype'           => 'bool',
-           'massiveaction'      => false
+            'id'                 => '7',
+            'table'              => $this->getTable(),
+            'field'              => 'is_planned',
+            'name'               => __('Planning'),
+            'datatype'           => 'bool',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '8',
-           'table'              => $this->getTable(),
-           'field'              => 'begin',
-           'name'               => __('Planning start date'),
-           'datatype'           => 'datetime'
+            'id'                 => '8',
+            'table'              => $this->getTable(),
+            'field'              => 'begin',
+            'name'               => __('Planning start date'),
+            'datatype'           => 'datetime',
         ];
 
         $tab[] = [
-           'id'                 => '9',
-           'table'              => $this->getTable(),
-           'field'              => 'end',
-           'name'               => __('Planning end date'),
-           'datatype'           => 'datetime'
+            'id'                 => '9',
+            'table'              => $this->getTable(),
+            'field'              => 'end',
+            'name'               => __('Planning end date'),
+            'datatype'           => 'datetime',
         ];
 
         $tab[] = [
-           'id'                 => '19',
-           'table'              => $this->getTable(),
-           'field'              => 'date_mod',
-           'name'               => __('Last update'),
-           'datatype'           => 'datetime',
-           'massiveaction'      => false
+            'id'                 => '19',
+            'table'              => $this->getTable(),
+            'field'              => 'date_mod',
+            'name'               => __('Last update'),
+            'datatype'           => 'datetime',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '121',
-           'table'              => $this->getTable(),
-           'field'              => 'date_creation',
-           'name'               => __('Creation date'),
-           'datatype'           => 'datetime',
-           'massiveaction'      => false
+            'id'                 => '121',
+            'table'              => $this->getTable(),
+            'field'              => 'date_creation',
+            'name'               => __('Creation date'),
+            'datatype'           => 'datetime',
+            'massiveaction'      => false,
         ];
 
         // add objectlock search options
@@ -608,89 +608,89 @@ class Reminder extends CommonDBVisible implements
 
         $rand = mt_rand();
         $form = [
-           'action' => Toolbox::getItemTypeFormURL('reminder'),
-           'itemtype' => self::class,
-           'content' => [
-              __('New item') . " - " . __('Note') => [
-                 'visible' => true,
-                 'inputs' => [
-                    $this->isNewID($ID) ? [] : [
-                       'type' => 'hidden',
-                       'name' => 'id',
-                       'value' => $ID,
+            'action' => Toolbox::getItemTypeFormURL('reminder'),
+            'itemtype' => self::class,
+            'content' => [
+                __('New item') . " - " . __('Note') => [
+                    'visible' => true,
+                    'inputs' => [
+                        $this->isNewID($ID) ? [] : [
+                            'type' => 'hidden',
+                            'name' => 'id',
+                            'value' => $ID,
+                        ],
+                        (isset($options['from_planning_edit_ajax']) && $options['from_planning_edit_ajax']) ? [
+                            'type' => 'hidden',
+                            'name' => 'from_planning_edit_ajax',
+                            'value' => 1,
+                        ] : [],
+                        __('Title') => [
+                            'name' => 'name',
+                            'type' => 'text',
+                            'value' => $this->fields['name'] ?? '',
+                        ],
+                        __('Status') => [
+                            'name' => 'state',
+                            'type' => 'select',
+                            'values' => [
+                                '0' => __('Information'),
+                                '1' => __('To do'),
+                                '2' => __('Done'),
+                            ],
+                            'value' => $this->fields['state'],
+                        ],
+                        __('Description') => [
+                            'name' => 'text',
+                            'type' => 'richtextarea',
+                            'value' => $this->fields['text'] ?? '',
+                            'col_lg' => 12,
+                            'col_md' => 12,
+                        ],
                     ],
-                    (isset($options['from_planning_edit_ajax']) && $options['from_planning_edit_ajax']) ? [
-                       'type' => 'hidden',
-                       'name' => 'from_planning_edit_ajax',
-                       'value' => 1,
-                    ] : [],
-                    __('Title') => [
-                       'name' => 'name',
-                       'type' => 'text',
-                       'value' => $this->fields['name'] ?? '',
+                ],
+                __('Visibility') => (!isset($options['from_planning_ajax'])) ? [
+                    'visible' => true,
+                    'inputs' => [
+                        __('Begin') => [
+                            'id' => 'visibilityBeginDate',
+                            'name' => 'begin_view_date',
+                            'type' => 'datetime-local',
+                            'value' => str_replace(' ', 'T', $this->fields['begin_view_date'] ?? ''),
+                            'step' => 1,
+                            'col_lg' => 6,
+                        ],
+                        __('End') => [
+                            'id' => 'visibilityEndDate',
+                            'name' => 'end_view_date',
+                            'type' => 'datetime-local',
+                            'value' => str_replace(' ', 'T', $this->fields['end_view_date'] ?? ''),
+                            'step' => 1,
+                            'col_lg' => 6,
+                        ],
                     ],
-                    __('Status') => [
-                       'name' => 'state',
-                       'type' => 'select',
-                       'values' => [
-                          '0' => __('Information'),
-                          '1' => __('To do'),
-                          '2' => __('Done'),
-                       ],
-                       'value' => $this->fields['state']
-                    ],
-                    __('Description') => [
-                       'name' => 'text',
-                       'type' => 'richtextarea',
-                       'value' => $this->fields['text'] ?? '',
-                       'col_lg' => 12,
-                       'col_md' => 12,
-                    ],
-                 ]
-              ],
-              __('Visibility') => (!isset($options['from_planning_ajax'])) ? [
-                 'visible' => true,
-                 'inputs' => [
-                    __('Begin') => [
-                       'id' => 'visibilityBeginDate',
-                       'name' => 'begin_view_date',
-                       'type' => 'datetime-local',
-                       'value' => str_replace(' ', 'T', $this->fields['begin_view_date'] ?? ''),
-                       'step' => 1,
-                       'col_lg' => 6,
-                    ],
-                    __('End') => [
-                       'id' => 'visibilityEndDate',
-                       'name' => 'end_view_date',
-                       'type' => 'datetime-local',
-                       'value' => str_replace(' ', 'T', $this->fields['end_view_date'] ?? ''),
-                       'step' => 1,
-                       'col_lg' => 6,
-                    ],
-                 ]
-              ] : [],
-              _n('Calendar', 'Calendars', 1) => [
-                 'visible' => true,
-                 'inputs' => [
-                    '' => [
-                      'content' => (function () use ($rand) {
-                          $planLabel = !$this->fields['is_planned'] ? __('Add to planning') : sprintf(
-                              __('from %1$s to %2$s'),
-                              Html::convDateTime($this->fields['begin']),
-                              Html::convDateTime($this->fields['end'])
-                          );
-                          return <<<HTML
+                ] : [],
+                _n('Calendar', 'Calendars', 1) => [
+                    'visible' => true,
+                    'inputs' => [
+                        '' => [
+                            'content' => (function () use ($rand) {
+                                $planLabel = !$this->fields['is_planned'] ? __('Add to planning') : sprintf(
+                                    __('from %1$s to %2$s'),
+                                    Html::convDateTime($this->fields['begin']),
+                                    Html::convDateTime($this->fields['end'])
+                                );
+                                return <<<HTML
                            <div id="plan{$rand}" onClick="showPlanUpdate{$rand}()">
                               <span class="btn">$planLabel</span>
                            </div>
                         HTML;
-                      })(),
-                      'col_lg' => 12,
-                      'col_md' => 12,
+                            })(),
+                            'col_lg' => 12,
+                            'col_md' => 12,
+                        ],
                     ],
-                 ],
-              ]
-           ]
+                ],
+            ],
         ];
         $userId = Session::getLoginUserID();
         echo Html::scriptBlock(
@@ -746,10 +746,10 @@ class Reminder extends CommonDBVisible implements
             $img      = "rdv_public.png";
         }
 
-        $html .= "<img src='" . $CFG_GLPI["root_doc"] . "/pics/" . $img . "' alt='' title=\"" .
-               self::getTypeName(1) . "\">&nbsp;";
-        $html .= "<a id='reminder_" . $val["reminders_id"] . $rand . "' href='" .
-               Reminder::getFormURLWithID($val["reminders_id"]) . "'>";
+        $html .= "<img src='" . $CFG_GLPI["root_doc"] . "/pics/" . $img . "' alt='' title=\""
+               . self::getTypeName(1) . "\">&nbsp;";
+        $html .= "<a id='reminder_" . $val["reminders_id"] . $rand . "' href='"
+               . Reminder::getFormURLWithID($val["reminders_id"]) . "'>";
 
         $html .= $users_id;
         $html .= "</a>";
@@ -766,8 +766,8 @@ class Reminder extends CommonDBVisible implements
                 $recall = "<br><span class='b'>" . sprintf(
                     __('Recall on %s'),
                     Html::convDateTime($pr->fields['when'])
-                ) .
-                          "<span>";
+                )
+                          . "<span>";
             }
         }
         $text = $val['text'];
@@ -782,7 +782,7 @@ class Reminder extends CommonDBVisible implements
                 "<span class='b'>" . Planning::getState($val["state"]) . "</span><br>
                                    " . $text . $recall,
                 ['applyto' => "reminder_" . $val["reminders_id"] . $rand,
-                                            'display' => false]
+                    'display' => false]
             );
         }
         return $html;
@@ -805,17 +805,17 @@ class Reminder extends CommonDBVisible implements
         $now      = date('Y-m-d H:i:s');
 
         $visibility_criteria = [
-           [
-              'OR' => [
-                 ['glpi_reminders.begin_view_date' => null],
-                 ['glpi_reminders.begin_view_date' => ['<', $now]]
-              ]
-           ], [
-              'OR' => [
-                 ['glpi_reminders.end_view_date'   => null],
-                 ['glpi_reminders.end_view_date'   => ['>', $now]]
-              ]
-           ]
+            [
+                'OR' => [
+                    ['glpi_reminders.begin_view_date' => null],
+                    ['glpi_reminders.begin_view_date' => ['<', $now]],
+                ],
+            ], [
+                'OR' => [
+                    ['glpi_reminders.end_view_date'   => null],
+                    ['glpi_reminders.end_view_date'   => ['>', $now]],
+                ],
+            ],
         ];
 
         if ($personal) {
@@ -825,22 +825,22 @@ class Reminder extends CommonDBVisible implements
             }
 
             $criteria = [
-               'SELECT' => ['glpi_reminders.*'],
-               'FROM'   => 'glpi_reminders',
-               'WHERE'  => array_merge([
-                  'glpi_reminders.users_id'  => $users_id,
-                  [
-                     'OR'        => [
-                        'end'          => ['>=', $today],
-                        'is_planned'   => 0
-                     ]
-                  ]
-               ], $visibility_criteria),
-               'ORDER'  => 'glpi_reminders.name'
+                'SELECT' => ['glpi_reminders.*'],
+                'FROM'   => 'glpi_reminders',
+                'WHERE'  => array_merge([
+                    'glpi_reminders.users_id'  => $users_id,
+                    [
+                        'OR'        => [
+                            'end'          => ['>=', $today],
+                            'is_planned'   => 0,
+                        ],
+                    ],
+                ], $visibility_criteria),
+                'ORDER'  => 'glpi_reminders.name',
             ];
 
-            $titre = "<a href='" . $CFG_GLPI["root_doc"] . "/front/reminder.php'>" .
-                       _n('Personal reminder', 'Personal reminders', Session::getPluralNumber()) . "</a>";
+            $titre = "<a href='" . $CFG_GLPI["root_doc"] . "/front/reminder.php'>"
+                       . _n('Personal reminder', 'Personal reminders', Session::getPluralNumber()) . "</a>";
         } else {
             // Show public reminders / not mines : need to have access to public reminders
             if (!self::canView()) {
@@ -849,11 +849,11 @@ class Reminder extends CommonDBVisible implements
 
             $criteria = array_merge_recursive(
                 [
-                  'SELECT'          => ['glpi_reminders.*'],
-                  'DISTINCT'        => true,
-                  'FROM'            => 'glpi_reminders',
-                  'WHERE'           => $visibility_criteria,
-                  'ORDERBY'         => 'name'
+                    'SELECT'          => ['glpi_reminders.*'],
+                    'DISTINCT'        => true,
+                    'FROM'            => 'glpi_reminders',
+                    'WHERE'           => $visibility_criteria,
+                    'ORDERBY'         => 'name',
                 ],
                 self::getVisibilityCriteria()
             );
@@ -864,8 +864,8 @@ class Reminder extends CommonDBVisible implements
             }
 
             if (Session::getCurrentInterface() != 'helpdesk') {
-                $titre = "<a href=\"" . $CFG_GLPI["root_doc"] . "/front/reminder.php\">" .
-                           _n('Public reminder', 'Public reminders', Session::getPluralNumber()) . "</a>";
+                $titre = "<a href=\"" . $CFG_GLPI["root_doc"] . "/front/reminder.php\">"
+                           . _n('Public reminder', 'Public reminders', Session::getPluralNumber()) . "</a>";
             } else {
                 $titre = _n('Public reminder', 'Public reminders', Session::getPluralNumber());
             }
@@ -873,14 +873,14 @@ class Reminder extends CommonDBVisible implements
 
         if (ReminderTranslation::isReminderTranslationActive()) {
             $criteria['LEFT JOIN']['glpi_remindertranslations'] = [
-               'ON'  => [
-                  'glpi_reminders'             => 'id',
-                  'glpi_remindertranslations'  => 'reminders_id', [
-                  'AND'                            => [
-                     'glpi_remindertranslations.language' => $_SESSION['glpilanguage']
-                     ]
-                  ]
-               ]
+                'ON'  => [
+                    'glpi_reminders'             => 'id',
+                    'glpi_remindertranslations'  => 'reminders_id', [
+                        'AND'                            => [
+                            'glpi_remindertranslations.language' => $_SESSION['glpilanguage'],
+                        ],
+                    ],
+                ],
             ];
             $criteria['SELECT'][] = "glpi_remindertranslations.name AS transname";
             $criteria['SELECT'][] = "glpi_remindertranslations.text AS transtext";
@@ -915,8 +915,8 @@ class Reminder extends CommonDBVisible implements
                     $name = $data['transname'];
                 }
                 $link = "<a id='content_reminder_" . $data["id"] . $rand . "'
-                      href='" . Reminder::getFormURLWithID($data["id"]) . "'>" .
-                        $name . "</a>";
+                      href='" . Reminder::getFormURLWithID($data["id"]) . "'>"
+                        . $name . "</a>";
                 $text = $data["text"];
                 if (isset($data['transtext']) && !empty($data['transtext'])) {
                     $text = $data['transtext'];
@@ -924,15 +924,15 @@ class Reminder extends CommonDBVisible implements
                 $tooltip = Html::showToolTip(
                     Toolbox::unclean_html_cross_side_scripting_deep($text),
                     ['applyto' => "content_reminder_" . $data["id"] . $rand,
-                                              'display' => false]
+                        'display' => false]
                 );
                 printf(__('%1$s %2$s'), $link, $tooltip);
 
                 if ($data["is_planned"]) {
                     $tab      = explode(" ", $data["begin"] ?? '');
                     $date_url = $tab[0];
-                    echo "<a href='" . $CFG_GLPI["root_doc"] . "/front/planning.php?date=" . $date_url .
-                          "&amp;type=day' class='pointer floatright' title=\"" . sprintf(
+                    echo "<a href='" . $CFG_GLPI["root_doc"] . "/front/planning.php?date=" . $date_url
+                          . "&amp;type=day' class='pointer floatright' title=\"" . sprintf(
                               __s('From %1$s to %2$s'),
                               Html::convDateTime($data["begin"]),
                               Html::convDateTime($data["end"])
@@ -969,19 +969,19 @@ class Reminder extends CommonDBVisible implements
 
         return self::getItemsAsVCalendars(
             [
-              'DISTINCT'  => true,
-              'FROM'      => self::getTable(),
-              'LEFT JOIN' => [
-                 Group_Reminder::getTable() => [
-                    'ON' => [
-                       Group_Reminder::getTable() => 'reminders_id',
-                       self::getTable()           => 'id',
+                'DISTINCT'  => true,
+                'FROM'      => self::getTable(),
+                'LEFT JOIN' => [
+                    Group_Reminder::getTable() => [
+                        'ON' => [
+                            Group_Reminder::getTable() => 'reminders_id',
+                            self::getTable()           => 'id',
+                        ],
                     ],
-                 ]
-              ],
-              'WHERE'     => [
-                 Group_Reminder::getTableField('groups_id') => $groups_id,
-              ],
+                ],
+                'WHERE'     => [
+                    Group_Reminder::getTableField('groups_id') => $groups_id,
+                ],
             ]
         );
     }
@@ -991,10 +991,10 @@ class Reminder extends CommonDBVisible implements
 
         return self::getItemsAsVCalendars(
             [
-              'FROM'  => self::getTable(),
-              'WHERE' => [
-                 self::getTableField('users_id') => $users_id,
-              ],
+                'FROM'  => self::getTable(),
+                'WHERE' => [
+                    self::getTableField('users_id') => $users_id,
+                ],
             ]
         );
     }
@@ -1004,7 +1004,7 @@ class Reminder extends CommonDBVisible implements
      *
      * @param array $query
      *
-     * @return \Sabre\VObject\Component\VCalendar[]
+     * @return VCalendar[]
      */
     private static function getItemsAsVCalendars(array $query)
     {
@@ -1064,7 +1064,7 @@ class Reminder extends CommonDBVisible implements
 
         if ($vcomp instanceof VTodo && !array_key_exists('state', $input)) {
             // Force default state to TODO or reminder will be considered as VEVENT
-            $input['state'] = \Planning::TODO;
+            $input['state'] = Planning::TODO;
         }
 
         return $input;
@@ -1074,9 +1074,9 @@ class Reminder extends CommonDBVisible implements
     /**
      * Clean old reminders from database
      *
-     * @param integer $max_age maximum age in days
+     * @param int $max_age maximum age in days
      *
-     * @return integer number of deleted reminders
+     * @return int number of deleted reminders
      */
     public static function cleanOld($max_age)
     {
@@ -1097,17 +1097,17 @@ class Reminder extends CommonDBVisible implements
                 'OR' => [
                     // Reminders with expired end_view_date
                     [
-                        'end_view_date' => ['<', new QueryExpression('DATE_SUB(NOW(), INTERVAL ' . (int)$max_age . ' DAY)')],
-                        'end_view_date' => ['!=', null]
+                        'end_view_date' => ['<', new QueryExpression('DATE_SUB(NOW(), INTERVAL ' . (int) $max_age . ' DAY)')],
+                        'end_view_date' => ['!=', null],
                     ],
                     // Planned reminders with expired planning date and no visibility end date
                     [
                         'is_planned' => 1,
-                        'end' => ['<', new QueryExpression('DATE_SUB(NOW(), INTERVAL ' . (int)$max_age . ' DAY)')],
-                        'end_view_date' => null
-                    ]
-                ]
-            ]
+                        'end' => ['<', new QueryExpression('DATE_SUB(NOW(), INTERVAL ' . (int) $max_age . ' DAY)')],
+                        'end_view_date' => null,
+                    ],
+                ],
+            ],
         ]);
 
         foreach ($iterator as $data) {
@@ -1125,13 +1125,13 @@ class Reminder extends CommonDBVisible implements
      *
      * @param CronTask $task for log and volume tracking
      *
-     * @return integer 0 : nothing to do, 1 : action completed, -1 : error
+     * @return int 0 : nothing to do, 1 : action completed, -1 : error
      */
     public static function cronPurgeReminder(CronTask $task)
     {
         global $DB;
 
-        $max_age = (int)$task->fields['param'];
+        $max_age = (int) $task->fields['param'];
         if ($max_age <= 0) {
             $task->log('Reminder purging is disabled (param = 0)');
             return 0;
@@ -1176,7 +1176,7 @@ class Reminder extends CommonDBVisible implements
         switch ($name) {
             case 'purgereminder':
                 return ['description' => __('Purge expired reminders'),
-                             'parameter'   => __('Retention period for expired reminders (in days, 0 to disable)')];
+                    'parameter'   => __('Retention period for expired reminders (in days, 0 to disable)')];
         }
         return [];
     }

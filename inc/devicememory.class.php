@@ -52,32 +52,32 @@ class DeviceMemory extends CommonDevice
         return array_merge(
             parent::getAdditionalFields(),
             [
-              __('Size by default') => [
-                 'name'  => 'size_default',
-                 'type'  => 'number',
-                 'value' => $this->fields['size_default'],
-                 'after'  => __('Mio')
-              ],
-              __('Frequency') => [
-                 'name'  => 'frequence',
-                 'type'  => 'number',
-                 'after'  => __('MHz'),
-                 'value' => $this->fields['frequence'],
-              ],
-              _n('Type', 'Types', 1) => [
-                 'name'  => 'devicememorytypes_id',
-                 'type'  => 'select',
-                 'values' => getOptionForItems('DeviceMemoryType'),
-                 'value' => $this->fields['devicememorytypes_id'],
-                 'actions' => getItemActionButtons(['info', 'add'], 'DeviceMemoryType')
-              ],
-              _n('Model', 'Models', 1) => [
-                 'name'  => 'devicememorymodels_id',
-                 'type'  => 'select',
-                 'values' => getOptionForItems('DeviceMemoryModel'),
-                 'value' => $this->fields['devicememorymodels_id'],
-                 'actions' => getItemActionButtons(['info', 'add'], 'DeviceMemoryModel')
-              ]
+                __('Size by default') => [
+                    'name'  => 'size_default',
+                    'type'  => 'number',
+                    'value' => $this->fields['size_default'],
+                    'after'  => __('Mio'),
+                ],
+                __('Frequency') => [
+                    'name'  => 'frequence',
+                    'type'  => 'number',
+                    'after'  => __('MHz'),
+                    'value' => $this->fields['frequence'],
+                ],
+                _n('Type', 'Types', 1) => [
+                    'name'  => 'devicememorytypes_id',
+                    'type'  => 'select',
+                    'values' => getOptionForItems('DeviceMemoryType'),
+                    'value' => $this->fields['devicememorytypes_id'],
+                    'actions' => getItemActionButtons(['info', 'add'], 'DeviceMemoryType'),
+                ],
+                _n('Model', 'Models', 1) => [
+                    'name'  => 'devicememorymodels_id',
+                    'type'  => 'select',
+                    'values' => getOptionForItems('DeviceMemoryModel'),
+                    'value' => $this->fields['devicememorymodels_id'],
+                    'actions' => getItemActionButtons(['info', 'add'], 'DeviceMemoryModel'),
+                ],
             ]
         );
     }
@@ -88,37 +88,37 @@ class DeviceMemory extends CommonDevice
         $tab = parent::rawSearchOptions();
 
         $tab[] = [
-           'id'                 => '11',
-           'table'              => $this->getTable(),
-           'field'              => 'size_default',
-           'name'               => __('Size by default'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '11',
+            'table'              => $this->getTable(),
+            'field'              => 'size_default',
+            'name'               => __('Size by default'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '12',
-           'table'              => $this->getTable(),
-           'field'              => 'frequence',
-           'name'               => __('Frequency'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '12',
+            'table'              => $this->getTable(),
+            'field'              => 'frequence',
+            'name'               => __('Frequency'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '13',
-           'table'              => 'glpi_devicememorytypes',
-           'field'              => 'name',
-           'name'               => _n('Type', 'Types', 1),
-           'datatype'           => 'dropdown'
+            'id'                 => '13',
+            'table'              => 'glpi_devicememorytypes',
+            'field'              => 'name',
+            'name'               => _n('Type', 'Types', 1),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '14',
-           'table'              => 'glpi_devicememorymodels',
-           'field'              => 'name',
-           'name'               => _n('Model', 'Models', 1),
-           'datatype'           => 'dropdown'
+            'id'                 => '14',
+            'table'              => 'glpi_devicememorymodels',
+            'field'              => 'name',
+            'name'               => _n('Model', 'Models', 1),
+            'datatype'           => 'dropdown',
         ];
 
         return $tab;
@@ -222,9 +222,9 @@ class DeviceMemory extends CommonDevice
     {
 
         return ['designation'          => 'equal',
-                     'devicememorytypes_id' => 'equal',
-                     'manufacturers_id'     => 'equal',
-                     'frequence'            => 'delta:10'];
+            'devicememorytypes_id' => 'equal',
+            'manufacturers_id'     => 'equal',
+            'frequence'            => 'delta:10'];
     }
 
     public static function rawSearchOptionsToAdd($class, $main_joinparams)
@@ -234,39 +234,39 @@ class DeviceMemory extends CommonDevice
         $tab = [];
 
         $tab[] = [
-           'id'                 => '110',
-           'table'              => 'glpi_devicememories',
-           'field'              => 'designation',
-           'name'               => DeviceMemoryType::getTypeName(1),
-           'forcegroupby'       => true,
-           'usehaving'          => true,
-           'massiveaction'      => false,
-           'datatype'           => 'string',
-           'joinparams'         => [
-              'beforejoin'         => [
-                 'table'              => 'glpi_items_devicememories',
-                 'joinparams'         => $main_joinparams
-              ]
-           ]
+            'id'                 => '110',
+            'table'              => 'glpi_devicememories',
+            'field'              => 'designation',
+            'name'               => DeviceMemoryType::getTypeName(1),
+            'forcegroupby'       => true,
+            'usehaving'          => true,
+            'massiveaction'      => false,
+            'datatype'           => 'string',
+            'joinparams'         => [
+                'beforejoin'         => [
+                    'table'              => 'glpi_items_devicememories',
+                    'joinparams'         => $main_joinparams,
+                ],
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '111',
-           'table'              => 'glpi_items_devicememories',
-           'field'              => 'size',
-           'unit'               => 'auto',
-           'name'               => _n('Memory', 'Memories', 1),
-           'forcegroupby'       => true,
-           'usehaving'          => true,
-           'datatype'           => 'number',
-           'width'              => 100,
-           'massiveaction'      => false,
-           'joinparams'         => $main_joinparams,
-           'computation'        =>
-              '(SUM(' . $DB->quoteName('TABLE.size') . ') / COUNT(' .
-              $DB->quoteName('TABLE.id') . '))
+            'id'                 => '111',
+            'table'              => 'glpi_items_devicememories',
+            'field'              => 'size',
+            'unit'               => 'auto',
+            'name'               => _n('Memory', 'Memories', 1),
+            'forcegroupby'       => true,
+            'usehaving'          => true,
+            'datatype'           => 'number',
+            'width'              => 100,
+            'massiveaction'      => false,
+            'joinparams'         => $main_joinparams,
+            'computation'
+               => '(SUM(' . $DB->quoteName('TABLE.size') . ') / COUNT('
+               . $DB->quoteName('TABLE.id') . '))
             * COUNT(DISTINCT ' . $DB->quoteName('TABLE.id') . ')',
-           'nometa'             => true, // cannot GROUP_CONCAT a SUM
+            'nometa'             => true, // cannot GROUP_CONCAT a SUM
         ];
 
         return $tab;

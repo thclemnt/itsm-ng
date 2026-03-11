@@ -126,14 +126,14 @@ class CronTask extends CommonDBTM
      * @param string $itemtype  itemtype of the crontask
      * @param string $name      name of the task
      *
-     * @return boolean true if succeed else false
+     * @return bool true if succeed else false
      **/
     public function getFromDBbyName($itemtype, $name)
     {
 
         return $this->getFromDBByCrit([
             $this->getTable() . '.name' => $name,
-            $this->getTable() . '.itemtype' => $itemtype
+            $this->getTable() . '.itemtype' => $itemtype,
         ]);
     }
 
@@ -141,7 +141,7 @@ class CronTask extends CommonDBTM
     /**
      * Give a task state
      *
-     * @return integer 0 : task is enabled
+     * @return int 0 : task is enabled
      *    if disable : 1: by config, 2: by system lock, 3: by plugin
      **/
     public function isDisabled()
@@ -184,7 +184,7 @@ class CronTask extends CommonDBTM
         $iterator = $DB->request([
             'SELECT' => 'itemtype',
             'DISTINCT' => true,
-            'FROM' => 'glpi_crontasks'
+            'FROM' => 'glpi_crontasks',
         ]);
         while ($data = $iterator->next()) {
             $types[] = $data['itemtype'];
@@ -195,7 +195,7 @@ class CronTask extends CommonDBTM
     /**
      * Signal handler callback
      *
-     * @param integer $signo Signal number
+     * @param int $signo Signal number
      * @since 9.1
      */
     public function signal($signo)
@@ -281,11 +281,11 @@ class CronTask extends CommonDBTM
             $this->getTable(),
             [
                 'state' => self::STATE_RUNNING,
-                'lastrun' => new \QueryExpression('DATE_FORMAT(NOW(),\'%Y-%m-%d %H:%i:00\')')
+                'lastrun' => new QueryExpression('DATE_FORMAT(NOW(),\'%Y-%m-%d %H:%i:00\')'),
             ],
             [
                 'id' => $this->fields['id'],
-                'NOT' => ['state' => self::STATE_RUNNING]
+                'NOT' => ['state' => self::STATE_RUNNING],
             ]
         );
 
@@ -308,7 +308,7 @@ class CronTask extends CommonDBTM
                 'crontasklogs_id' => 0,
                 'state' => CronTaskLog::STATE_START,
                 'volume' => 0,
-                'elapsed' => 0
+                'elapsed' => 0,
             ]);
             return true;
         }
@@ -362,11 +362,11 @@ class CronTask extends CommonDBTM
         $result = $DB->update(
             $this->getTable(),
             [
-                'state' => $this->fields['state']
+                'state' => $this->fields['state'],
             ],
             [
                 'id' => $this->fields['id'],
-                'state' => self::STATE_RUNNING
+                'state' => self::STATE_RUNNING,
             ]
         );
 
@@ -398,7 +398,7 @@ class CronTask extends CommonDBTM
                 'crontasklogs_id' => $this->startlog,
                 'state' => $log_state,
                 'volume' => $this->volume,
-                'elapsed' => (microtime(true) - $this->timer)
+                'elapsed' => (microtime(true) - $this->timer),
             ]);
             return true;
         }
@@ -426,7 +426,7 @@ class CronTask extends CommonDBTM
             'crontasklogs_id' => $this->startlog,
             'state' => CronTaskLog::STATE_RUN,
             'volume' => $this->volume,
-            'elapsed' => (microtime(true) - $this->timer)
+            'elapsed' => (microtime(true) - $this->timer),
         ]);
     }
 
@@ -434,11 +434,11 @@ class CronTask extends CommonDBTM
     /**
      * read the first task which need to be run by cron
      *
-     * @param integer $mode >0 retrieve task configured for this mode
+     * @param int $mode >0 retrieve task configured for this mode
      *                      <0 retrieve task allowed for this mode (force, no time check)
      * @param string $name  one specify action
      *
-     * @return boolean false if no task to run
+     * @return bool false if no task to run
      **/
     public function getNeedToRun($mode = 0, $name = '')
     {
@@ -450,21 +450,21 @@ class CronTask extends CommonDBTM
             // Core crontasks
             [
                 ['NOT' => ['itemtype' => ['LIKE', 'Plugin%']]],
-                ['NOT' => ['itemtype' => ['LIKE', addslashes('GlpiPlugin\\\\') . '%']]]
-            ]
+                ['NOT' => ['itemtype' => ['LIKE', addslashes('GlpiPlugin\\\\') . '%']]],
+            ],
         ];
         foreach (Plugin::getPlugins() as $plug) {
             // Activated plugin tasks
             $itemtype_orwhere[] = [
                 'OR' => [
                     ['itemtype' => ['LIKE', sprintf('Plugin%s', $plug) . '%']],
-                    ['itemtype' => ['LIKE', addslashes(sprintf('GlpiPlugin\\\\%s\\\\', $plug)) . '%']]
-                ]
+                    ['itemtype' => ['LIKE', addslashes(sprintf('GlpiPlugin\\\\%s\\\\', $plug)) . '%']],
+                ],
             ];
         }
 
         $WHERE = [
-            ['OR' => $itemtype_orwhere]
+            ['OR' => $itemtype_orwhere],
         ];
 
         if ($name) {
@@ -504,40 +504,40 @@ class CronTask extends CommonDBTM
                         'AND' => [
                             ['hourmin' => ['<', new QueryExpression($DB->quoteName('hourmax'))]],
                             'hourmin' => ['<=', $hour_criteria],
-                            'hourmax' => ['>', $hour_criteria]
-                        ]
+                            'hourmax' => ['>', $hour_criteria],
+                        ],
                     ],
                     [
                         'AND' => [
                             'hourmin' => ['>', new QueryExpression($DB->quoteName('hourmax'))],
                             'OR' => [
                                 'hourmin' => ['<=', $hour_criteria],
-                                'hourmax' => ['>', $hour_criteria]
-                            ]
-                        ]
-                    ]
-                ]
+                                'hourmax' => ['>', $hour_criteria],
+                            ],
+                        ],
+                    ],
+                ],
             ];
             $WHERE[] = [
                 'OR' => [
                     'lastrun' => null,
-                    new \QueryExpression('unix_timestamp(' . $DB->quoteName('lastrun') . ') + ' . $DB->quoteName('frequency') . ' <= unix_timestamp(now())')
-                ]
+                    new QueryExpression('unix_timestamp(' . $DB->quoteName('lastrun') . ') + ' . $DB->quoteName('frequency') . ' <= unix_timestamp(now())'),
+                ],
             ];
         }
 
         $iterator = $DB->request([
             'SELECT' => [
                 '*',
-                new \QueryExpression("LOCATE('Plugin', " . $DB->quoteName('itemtype') . ") AS ISPLUGIN")
+                new QueryExpression("LOCATE('Plugin', " . $DB->quoteName('itemtype') . ") AS ISPLUGIN"),
             ],
             'FROM' => $this->getTable(),
             'WHERE' => $WHERE,
             // Core task before plugins
             'ORDER' => [
                 'ISPLUGIN',
-                new \QueryExpression('unix_timestamp(' . $DB->quoteName('lastrun') . ')+' . $DB->quoteName('frequency') . '')
-            ]
+                new QueryExpression('unix_timestamp(' . $DB->quoteName('lastrun') . ')+' . $DB->quoteName('frequency') . ''),
+            ],
         ]);
 
         if (count($iterator)) {
@@ -585,7 +585,7 @@ class CronTask extends CommonDBTM
                     'state' => [CronTaskLog::STATE_STOP, CronTaskLog::STATE_ERROR],
                 ],
                 'ORDER' => 'id DESC',
-                'LIMIT' => $threshold * 2
+                'LIMIT' => $threshold * 2,
             ]
         );
 
@@ -660,12 +660,12 @@ class CronTask extends CommonDBTM
     /**
      * Print the contact form
      *
-     * @param integer $ID
+     * @param int $ID
      * @param array   $options
      *     - target filename : where to go when done.
      *     - withtemplate boolean : template or basic item
      *
-     * @return boolean
+     * @return bool
      **/
     public function showForm($ID, $options = [])
     {
@@ -696,25 +696,25 @@ class CronTask extends CommonDBTM
                     'type' => 'submit',
                     'name' => $this->isNewID($ID) ? 'add' : 'update',
                     'value' => $this->isNewID($ID) ? __('Add') : __('Update'),
-                    'class' => 'btn btn-secondary'
-                ]
+                    'class' => 'btn btn-secondary',
+                ],
             ],
             'content' => [
                 $this->getMenuName() => [
                     'visible' => true,
                     'inputs' => [
                         __('Name') => [
-                            'content' => $isplug ?
-                                sprintf(__('%1$s - %2$s'), $isplug["plugin"], $this->fields["name"]) :
-                                $this->fields["name"]
+                            'content' => $isplug
+                                ? sprintf(__('%1$s - %2$s'), $isplug["plugin"], $this->fields["name"])
+                                : $this->fields["name"],
                         ],
                         __('Description') => [
-                            'content' => $this->getDescription($ID)
+                            'content' => $this->getDescription($ID),
                         ],
                         __('Comments') => [
                             'type' => 'textarea',
                             'name' => 'comment',
-                            'value' => $this->fields["comment"]
+                            'value' => $this->fields["comment"],
                         ],
                         __('Run frequency') => [
                             'type' => 'select',
@@ -723,45 +723,45 @@ class CronTask extends CommonDBTM
                             'value' => $this->fields["frequency"],
                         ],
                         __('Status') => $this->fields['state'] == self::STATE_RUNNING ? [
-                            'content' => $this->getStateName(self::STATE_RUNNING)
+                            'content' => $this->getStateName(self::STATE_RUNNING),
                         ] : [
                             'type' => 'select',
                             'name' => 'state',
                             'values' => [
                                 self::STATE_DISABLE => __('Disabled'),
-                                self::STATE_WAITING => __('Scheduled')
+                                self::STATE_WAITING => __('Scheduled'),
                             ],
-                            'value' => $this->fields["state"]
+                            'value' => $this->fields["state"],
                         ],
                         __('System lock') => (is_file(GLPI_CRON_DIR . '/' . $this->fields["name"] . '.lock')
                             || is_file(GLPI_CRON_DIR . '/all.lock')) ? [
-                            'content' => __('System lock')
-                        ] : [],
+                                'content' => __('System lock'),
+                            ] : [],
                         __('Plugin lock') => $isplug && !$plug->isActivated($isplug["plugin"]) ? [
-                            'content' => __('Disabled plugin')
+                            'content' => __('Disabled plugin'),
                         ] : [],
                         __('Run mode') => [
                             'type' => 'select',
                             'name' => 'mode',
                             'values' => [
                                 self::MODE_INTERNAL => self::getModeName(self::MODE_INTERNAL),
-                                self::MODE_EXTERNAL => self::getModeName(self::MODE_EXTERNAL)
+                                self::MODE_EXTERNAL => self::getModeName(self::MODE_EXTERNAL),
                             ],
-                            'value' => $this->fields["mode"]
+                            'value' => $this->fields["mode"],
                         ],
                         __('Min run period') => [
                             'type' => 'number',
                             'name' => 'hourmin',
                             'min' => 0,
                             'max' => 24,
-                            'value' => $this->fields["hourmin"]
+                            'value' => $this->fields["hourmin"],
                         ],
                         __('Max run period') => [
                             'type' => 'number',
                             'name' => 'hourmax',
                             'min' => 0,
                             'max' => 24,
-                            'value' => $this->fields["hourmax"]
+                            'value' => $this->fields["hourmax"],
                         ],
                         __('Number of days this action logs are stored') => [
                             'type' => 'number',
@@ -770,50 +770,50 @@ class CronTask extends CommonDBTM
                             'max' => 360,
                             'step' => 10,
                             'after' => '(0 => ' . __('Infinite') . ')',
-                            'value' => $this->fields["logs_lifetime"]
+                            'value' => $this->fields["logs_lifetime"],
                         ],
                         __('Last run') => [
-                            'content' => empty($this->fields['lastrun']) ? __('Never') :
-                                Html::convDateTime($this->fields['lastrun']) . "&nbsp;" . Html::showSimpleForm(
+                            'content' => empty($this->fields['lastrun']) ? __('Never')
+                                : Html::convDateTime($this->fields['lastrun']) . "&nbsp;" . Html::showSimpleForm(
                                     static::getFormURL(),
                                     'resetdate',
                                     __('Blank'),
                                     ['id' => $ID],
                                     'fa-times-circle'
-                                )
+                                ),
                         ],
                         $label => empty($label) ? [] : [
                             'type' => 'number',
                             'name' => 'param',
                             'min' => 0,
                             'max' => 400,
-                            'value' => $this->fields["param"]
+                            'value' => $this->fields["param"],
                         ],
                         __('Next run') => [
-                            'content' => $this->fields['state'] != self::STATE_WAITING ?
-                                $this->getStateName($this->fields['state']) : (
-                                    empty($this->fields['lastrun']) ?
-                                    __('As soon as possible') : $this->getNextRunTime()
-                                )
+                            'content' => $this->fields['state'] != self::STATE_WAITING
+                                ? $this->getStateName($this->fields['state']) : (
+                                    empty($this->fields['lastrun'])
+                                    ? __('As soon as possible') : $this->getNextRunTime()
+                                ),
                         ],
                         __('Maintenance mode') => [
-                            'content' => isset($CFG_GLPI['maintenance_mode']) && $CFG_GLPI['maintenance_mode'] ?
-                                __('enabled') : (
+                            'content' => isset($CFG_GLPI['maintenance_mode']) && $CFG_GLPI['maintenance_mode']
+                                ? __('enabled') : (
                                     $launch ? Html::getSimpleForm(
                                         static::getFormURL(),
                                         ['execute' => $this->fields['name']],
                                         __('Execute')
                                     ) : __('disabled')
-                                )
+                                ),
                         ],
                         !$this->isNewID($ID) ? [
                             'type' => 'hidden',
                             'name' => 'id',
-                            'value' => $ID
+                            'value' => $ID,
                         ] : [],
-                    ]
-                ]
-            ]
+                    ],
+                ],
+            ],
         ];
         renderTwigForm($form);
 
@@ -832,7 +832,7 @@ class CronTask extends CommonDBTM
         }
         return $this->update([
             'id' => $this->fields['id'],
-            'lastrun' => 'NULL'
+            'lastrun' => 'NULL',
         ]);
     }
 
@@ -848,7 +848,7 @@ class CronTask extends CommonDBTM
         }
         return $this->update([
             'id' => $this->fields['id'],
-            'state' => self::STATE_WAITING
+            'state' => self::STATE_WAITING,
         ]);
     }
 
@@ -935,10 +935,10 @@ class CronTask extends CommonDBTM
      * Dropdown of state
      *
      * @param string  $name     select name
-     * @param integer $value    default value
-     * @param boolean $display  display or get string
+     * @param int $value    default value
+     * @param bool $display  display or get string
      *
-     * @return string|integer HTML output, or random part of dropdown ID.
+     * @return string|int HTML output, or random part of dropdown ID.
      **/
     public static function dropdownState($name, $value = 0, $display = true)
     {
@@ -947,11 +947,11 @@ class CronTask extends CommonDBTM
             $name,
             [
                 self::STATE_DISABLE => __('Disabled'),
-                self::STATE_WAITING => __('Scheduled')
+                self::STATE_WAITING => __('Scheduled'),
             ],
             [
                 'value' => $value,
-                'display' => $display
+                'display' => $display,
             ]
         );
     }
@@ -1017,11 +1017,11 @@ class CronTask extends CommonDBTM
     /**
      * Launch the need cron tasks
      *
-     * @param integer $mode   (internal/external, <0 to force)
-     * @param integer $max    number of task to launch
+     * @param int $mode   (internal/external, <0 to force)
+     * @param int $max    number of task to launch
      * @param string  $name   name of task to run
      *
-     * @return string|boolean the name of last task launched, or false if execution not available
+     * @return string|bool the name of last task launched, or false if execution not available
      **/
     public static function launch($mode, $max = 1, $name = '')
     {
@@ -1084,7 +1084,7 @@ class CronTask extends CommonDBTM
                                 );
                                 try {
                                     $retcode = call_user_func($function, $crontask);
-                                } catch (\Throwable $e) {
+                                } catch (Throwable $e) {
                                     global $GLPI;
                                     $GLPI->getErrorHandler()->handleException($e);
                                     Toolbox::logInFile(
@@ -1134,7 +1134,7 @@ class CronTask extends CommonDBTM
                         $msgcron = sprintf(__('%1$s: %2$s'), $msgprefix, __('Nothing to launch'));
                         Toolbox::logInFile('cron', $msgcron . "\n");
                     }
-                } catch (\Throwable $e) {
+                } catch (Throwable $e) {
                     global $GLPI;
                     $GLPI->getErrorHandler()->handleException($e);
                     Toolbox::logInFile(
@@ -1173,11 +1173,11 @@ class CronTask extends CommonDBTM
      *
      * @param string  $itemtype  itemtype of the plugin object
      * @param string  $name      task name
-     * @param integer $frequency execution frequency
+     * @param int $frequency execution frequency
      * @param array   $options   optional options
      *       (state, mode, allowmode, hourmin, hourmax, logs_lifetime, param, comment)
      *
-     * @return boolean
+     * @return bool
      **/
     public static function register($itemtype, $name, $frequency, $options = [])
     {
@@ -1199,7 +1199,7 @@ class CronTask extends CommonDBTM
             'itemtype' => $itemtype,
             'name' => $name,
             'allowmode' => self::MODE_INTERNAL | self::MODE_EXTERNAL,
-            'frequency' => $frequency
+            'frequency' => $frequency,
         ];
 
         foreach (
@@ -1211,7 +1211,7 @@ class CronTask extends CommonDBTM
                 'logs_lifetime',
                 'mode',
                 'param',
-                'state'
+                'state',
             ] as $key
         ) {
             if (isset($options[$key])) {
@@ -1252,9 +1252,9 @@ class CronTask extends CommonDBTM
             'WHERE' => [
                 'OR' => [
                     ['itemtype' => ['LIKE', sprintf('Plugin%s', $plugin) . '%']],
-                    ['itemtype' => ['LIKE', addslashes(sprintf('GlpiPlugin\\\\%s\\\\', $plugin)) . '%']]
-                ]
-            ]
+                    ['itemtype' => ['LIKE', addslashes(sprintf('GlpiPlugin\\\\%s\\\\', $plugin)) . '%']],
+                ],
+            ],
         ]);
 
         while ($data = $iterator->next()) {
@@ -1284,21 +1284,21 @@ class CronTask extends CommonDBTM
             'glpi_crontasklogs',
             [
                 'crontasks_id' => $this->fields['id'],
-                'state' => CronTaskLog::STATE_START
+                'state' => CronTaskLog::STATE_START,
             ]
         );
         $nbstop = countElementsInTable(
             'glpi_crontasklogs',
             [
                 'crontasks_id' => $this->fields['id'],
-                'state' => CronTaskLog::STATE_STOP
+                'state' => CronTaskLog::STATE_STOP,
             ]
         );
         $nberror = countElementsInTable(
             'glpi_crontasklogs',
             [
                 'crontasks_id' => $this->fields['id'],
-                'state' => CronTaskLog::STATE_ERROR
+                'state' => CronTaskLog::STATE_ERROR,
             ]
         );
 
@@ -1324,26 +1324,26 @@ class CronTask extends CommonDBTM
                     'MIN' => [
                         'date AS datemin',
                         'elapsed AS elapsedmin',
-                        'volume AS volmin'
+                        'volume AS volmin',
                     ],
                     'MAX' => [
                         'elapsed AS elapsedmax',
-                        'volume AS volmax'
+                        'volume AS volmax',
                     ],
                     'SUM' => [
                         'elapsed AS elapsedtot',
-                        'volume AS voltot'
+                        'volume AS voltot',
                     ],
                     'AVG' => [
                         'elapsed AS elapsedavg',
-                        'volume AS volavg'
-                    ]
+                        'volume AS volavg',
+                    ],
                 ],
                 'FROM' => CronTaskLog::getTable(),
                 'WHERE' => [
                     'crontasks_id' => $this->fields['id'],
-                    'state' => CronTaskLog::STATE_STOP
-                ]
+                    'state' => CronTaskLog::STATE_STOP,
+                ],
             ])->next();
 
             echo "<tr class='tab_bg_1'><td>" . __('Start date') . "</td>";
@@ -1394,8 +1394,8 @@ class CronTask extends CommonDBTM
                 echo "<td class='right b'>" . sprintf(
                     _n('%s item', '%s items', $data['volavg']),
                     number_format($data['volavg'], 2)
-                ) .
-                    "</td></tr>";
+                )
+                    . "</td></tr>";
 
                 echo "<tr class='tab_bg_1'><td>" . __('Total count') . "</td>";
                 echo "<td class='right'>" . sprintf(
@@ -1463,7 +1463,7 @@ class CronTask extends CommonDBTM
             ],
             'ORDER' => 'id DESC',
             'START' => (int) $start,
-            'LIMIT' => (int) $_SESSION['glpilist_limit']
+            'LIMIT' => (int) $_SESSION['glpilist_limit'],
         ]);
 
         if (count($iterator)) {
@@ -1478,9 +1478,9 @@ class CronTask extends CommonDBTM
 
             while ($data = $iterator->next()) {
                 echo "<tr class='tab_bg_2'>";
-                echo "<td><a href='javascript:reloadTab(\"crontasklogs_id=" .
-                    $data['crontasklogs_id'] . "\");'>" . Html::convDateTime($data['date']) .
-                    "</a></td>";
+                echo "<td><a href='javascript:reloadTab(\"crontasklogs_id="
+                    . $data['crontasklogs_id'] . "\");'>" . Html::convDateTime($data['date'])
+                    . "</a></td>";
                 echo "<td class='right'>" . sprintf(
                     _n(
                         '%s second',
@@ -1488,8 +1488,8 @@ class CronTask extends CommonDBTM
                         intval($data['elapsed'])
                     ),
                     number_format($data['elapsed'], 3)
-                ) .
-                    "&nbsp;&nbsp;&nbsp;</td>";
+                )
+                    . "&nbsp;&nbsp;&nbsp;</td>";
                 echo "<td class='numeric'>" . $data['volume'] . "</td>";
                 // Use gettext to display
                 echo "<td>" . __($data['content']) . "</td>";
@@ -1518,18 +1518,18 @@ class CronTask extends CommonDBTM
         global $DB;
 
         echo "<br><div class='center'>";
-        echo "<p><a href='javascript:reloadTab(\"crontasklogs_id=0\");'>" . __('Last run list') . "</a>" .
-            "</p>";
+        echo "<p><a href='javascript:reloadTab(\"crontasklogs_id=0\");'>" . __('Last run list') . "</a>"
+            . "</p>";
 
         $iterator = $DB->request([
             'FROM' => 'glpi_crontasklogs',
             'WHERE' => [
                 'OR' => [
                     'id' => $logid,
-                    'crontasklogs_id' => $logid
-                ]
+                    'crontasklogs_id' => $logid,
+                ],
             ],
-            'ORDER' => 'id ASC'
+            'ORDER' => 'id ASC',
         ]);
 
         if (count($iterator)) {
@@ -1583,8 +1583,8 @@ class CronTask extends CommonDBTM
                         intval($data['elapsed'])
                     ),
                     number_format($data['elapsed'], 3)
-                ) .
-                    "&nbsp;&nbsp;</td>";
+                )
+                    . "&nbsp;&nbsp;</td>";
                 echo "<td class='numeric'>" . $data['volume'] . "</td>";
 
                 echo "<td>" . $content . "</td>";
@@ -1704,7 +1704,7 @@ class CronTask extends CommonDBTM
 
         $tab[] = [
             'id' => 'common',
-            'name' => __('Characteristics')
+            'name' => __('Characteristics'),
         ];
 
         $tab[] = [
@@ -1713,7 +1713,7 @@ class CronTask extends CommonDBTM
             'field' => 'name',
             'name' => __('Name'),
             'datatype' => 'itemlink',
-            'massiveaction' => false
+            'massiveaction' => false,
         ];
 
         $tab[] = [
@@ -1722,7 +1722,7 @@ class CronTask extends CommonDBTM
             'field' => 'id',
             'name' => __('ID'),
             'massiveaction' => false,
-            'datatype' => 'number'
+            'datatype' => 'number',
         ];
 
         $tab[] = [
@@ -1734,7 +1734,7 @@ class CronTask extends CommonDBTM
             'nosort' => true,
             'massiveaction' => false,
             'datatype' => 'text',
-            'computation' => $DB->quoteName('TABLE.id') // Virtual data
+            'computation' => $DB->quoteName('TABLE.id'), // Virtual data
         ];
 
         $tab[] = [
@@ -1743,7 +1743,7 @@ class CronTask extends CommonDBTM
             'field' => 'state',
             'name' => __('Status'),
             'searchtype' => ['equals', 'notequals'],
-            'datatype' => 'specific'
+            'datatype' => 'specific',
         ];
 
         $tab[] = [
@@ -1752,7 +1752,7 @@ class CronTask extends CommonDBTM
             'field' => 'mode',
             'name' => __('Run mode'),
             'datatype' => 'specific',
-            'searchtype' => ['equals', 'notequals']
+            'searchtype' => ['equals', 'notequals'],
         ];
 
         $tab[] = [
@@ -1761,7 +1761,7 @@ class CronTask extends CommonDBTM
             'field' => 'frequency',
             'name' => __('Run frequency'),
             'datatype' => 'timestamp',
-            'massiveaction' => false
+            'massiveaction' => false,
         ];
 
         $tab[] = [
@@ -1770,7 +1770,7 @@ class CronTask extends CommonDBTM
             'field' => 'lastrun',
             'name' => __('Last run'),
             'datatype' => 'datetime',
-            'massiveaction' => false
+            'massiveaction' => false,
         ];
 
         $tab[] = [
@@ -1780,7 +1780,7 @@ class CronTask extends CommonDBTM
             'name' => __('Item type'),
             'massiveaction' => false,
             'datatype' => 'itemtypename',
-            'types' => self::getUsedItemtypes()
+            'types' => self::getUsedItemtypes(),
         ];
 
         $tab[] = [
@@ -1788,7 +1788,7 @@ class CronTask extends CommonDBTM
             'table' => $this->getTable(),
             'field' => 'comment',
             'name' => __('Comments'),
-            'datatype' => 'text'
+            'datatype' => 'text',
         ];
 
         $tab[] = [
@@ -1798,7 +1798,7 @@ class CronTask extends CommonDBTM
             'name' => __('Begin hour of run period'),
             'datatype' => 'integer',
             'min' => 0,
-            'max' => 24
+            'max' => 24,
         ];
 
         $tab[] = [
@@ -1808,7 +1808,7 @@ class CronTask extends CommonDBTM
             'name' => __('End hour of run period'),
             'datatype' => 'integer',
             'min' => 0,
-            'max' => 24
+            'max' => 24,
         ];
 
         $tab[] = [
@@ -1821,8 +1821,8 @@ class CronTask extends CommonDBTM
             'max' => 360,
             'step' => 10,
             'toadd' => [
-                '0' => 'Infinite'
-            ]
+                '0' => 'Infinite',
+            ],
         ];
 
         $tab[] = [
@@ -1831,7 +1831,7 @@ class CronTask extends CommonDBTM
             'field' => 'date_mod',
             'name' => __('Last update'),
             'datatype' => 'datetime',
-            'massiveaction' => false
+            'massiveaction' => false,
         ];
 
         $tab[] = [
@@ -1840,7 +1840,7 @@ class CronTask extends CommonDBTM
             'field' => 'date_creation',
             'name' => __('Creation date'),
             'datatype' => 'datetime',
-            'massiveaction' => false
+            'massiveaction' => false,
         ];
 
         return $tab;
@@ -1852,7 +1852,7 @@ class CronTask extends CommonDBTM
      *
      * @param CronTask $task for log
      *
-     * @return integer
+     * @return int
      **/
     public static function cronSession(CronTask $task)
     {
@@ -1898,7 +1898,7 @@ class CronTask extends CommonDBTM
      *
      * @param CronTask $task for log
      *
-     * @return integer
+     * @return int
      **/
     public static function cronCircularlogs(CronTask $task)
     {
@@ -1966,7 +1966,7 @@ class CronTask extends CommonDBTM
      *
      * @param CronTask $task for log
      *
-     * @return integer
+     * @return int
      **/
     public static function cronGraph(CronTask $task)
     {
@@ -2007,7 +2007,7 @@ class CronTask extends CommonDBTM
      *
      * @param CronTask $task for log
      *
-     * @return integer
+     * @return int
      **/
     public static function cronTemp(CronTask $task)
     {
@@ -2070,7 +2070,7 @@ class CronTask extends CommonDBTM
      *
      * @param CronTask $task
      *
-     * @return integer
+     * @return int
      **/
     public static function cronLogs($task)
     {
@@ -2097,7 +2097,7 @@ class CronTask extends CommonDBTM
      *
      * @param CronTask $task for log
      *
-     * @return integer
+     * @return int
      **/
     public static function cronWatcher($task)
     {
@@ -2109,10 +2109,10 @@ class CronTask extends CommonDBTM
             'WHERE' => [
                 'state' => self::STATE_RUNNING,
                 'OR' => [
-                    new \QueryExpression('unix_timestamp(' . $DB->quoteName('lastrun') . ') + 2 * ' . $DB->quoteName('frequency') . ' < unix_timestamp(now())'),
-                    new \QueryExpression('unix_timestamp(' . $DB->quoteName('lastrun') . ') + 2 * ' . HOUR_TIMESTAMP . ' < unix_timestamp(now())')
-                ]
-            ]
+                    new QueryExpression('unix_timestamp(' . $DB->quoteName('lastrun') . ') + 2 * ' . $DB->quoteName('frequency') . ' < unix_timestamp(now())'),
+                    new QueryExpression('unix_timestamp(' . $DB->quoteName('lastrun') . ') + 2 * ' . HOUR_TIMESTAMP . ' < unix_timestamp(now())'),
+                ],
+            ],
         ]);
         $crontasks = [];
         while ($data = $iterator->next()) {
@@ -2145,7 +2145,7 @@ class CronTask extends CommonDBTM
             'checkupdate' => ['description' => __('Check for new updates')],
             'logs' => [
                 'description' => __('Clean old logs'),
-                'parameter' => __('System logs retention period (in days, 0 for infinite)')
+                'parameter' => __('System logs retention period (in days, 0 for infinite)'),
             ],
             'session' => ['description' => __('Clean expired sessions')],
             'graph' => ['description' => __('Clean generated graphics')],
@@ -2153,11 +2153,11 @@ class CronTask extends CommonDBTM
             'watcher' => ['description' => __('Monitoring of automatic actions')],
             'circularlogs' => [
                 'description' => __("Archives log files and deletes aging ones"),
-                'parameter' => __("Number of days to keep archived logs")
+                'parameter' => __("Number of days to keep archived logs"),
             ],
             'purgereminder' => [
                 'description' => __("Purge expired reminders"),
-                'parameter' => __("Retention period for expired reminders (in days, 0 to disable)")
+                'parameter' => __("Retention period for expired reminders (in days, 0 to disable)"),
             ],
             default => null,
         };
@@ -2168,9 +2168,9 @@ class CronTask extends CommonDBTM
      * Dropdown for frequency (interval between 2 actions)
      *
      * @param string  $name   select name
-     * @param integer $value  default value (default 0)
+     * @param int $value  default value (default 0)
      *
-     * @return string|integer HTML output, or random part of dropdown ID.
+     * @return string|int HTML output, or random part of dropdown ID.
      **/
     public function getFrequencies()
     {
@@ -2205,7 +2205,7 @@ class CronTask extends CommonDBTM
     /**
      * Call cron without time check
      *
-     * @return boolean : true if launched
+     * @return bool : true if launched
      **/
     public static function callCronForce()
     {

@@ -1,5 +1,7 @@
 <?php
 
+use Glpi\CalDAV\Server;
+
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
@@ -43,6 +45,6 @@ include_once(GLPI_ROOT . '/inc/includes.php');
 
 global $CFG_GLPI;
 
-$server = new Glpi\CalDAV\Server();
+$server = new Server();
 $server->setBaseUri($CFG_GLPI['root_doc'] . '/caldav.php');
 $server->start();

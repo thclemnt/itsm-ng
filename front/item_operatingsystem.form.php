@@ -35,7 +35,7 @@ include('../inc/includes.php');
 
 Session::checkCentralAccess();
 
-$ios = new \Item_OperatingSystem();
+$ios = new Item_OperatingSystem();
 
 if (isset($_POST['update'])) {
     $ios->check($_POST['id'], UPDATE);
@@ -70,8 +70,8 @@ if (isset($_GET['id'])) {
     $params['id'] = $_GET['id'];
 } else {
     $params = [
-       'itemtype'  => $_GET['itemtype'],
-       'items_id'  => $_GET['items_id']
+        'itemtype'  => $_GET['itemtype'],
+        'items_id'  => $_GET['items_id'],
     ];
 }
 

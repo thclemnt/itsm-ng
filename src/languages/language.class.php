@@ -66,7 +66,7 @@ class Language
 
         $regions = [
             'europe' => [],
-            'others' => []
+            'others' => [],
         ];
 
         $european_languages_code = [

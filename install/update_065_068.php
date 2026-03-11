@@ -97,7 +97,7 @@ function update065to068()
         $DB->queryOrDie($query, "0.68 add profiles");
 
         $helpdesk_link_type = [COMPUTER_TYPE, MONITOR_TYPE, NETWORKING_TYPE, PERIPHERAL_TYPE,
-                                    PHONE_TYPE,PRINTER_TYPE];
+            PHONE_TYPE,PRINTER_TYPE];
         $checksum = 0;
         foreach ($helpdesk_link_type as $val) {
             $checksum += pow(2, $val);
@@ -151,9 +151,9 @@ function update065to068()
     }
 
     $profiles = ["post-only"    => 1,
-                      "normal"       => 2,
-                      "admin"        => 3,
-                      "super-admin"  => 4];
+        "normal"       => 2,
+        "admin"        => 3,
+        "super-admin"  => 4];
 
     if (!$DB->tableExists("glpi_users_profiles")) {
         $query = "CREATE TABLE `glpi_users_profiles` (
@@ -174,7 +174,7 @@ function update065to068()
             while ($data = $DB->fetchArray($result)) {
                 $query2 = "INSERT INTO `glpi_users_profiles`
                               (`FK_users`, `FK_profiles`)
-                       VALUES ('".$data['ID']."', '".$profiles[$data['type']]."')";
+                       VALUES ('" . $data['ID'] . "', '" . $profiles[$data['type']] . "')";
                 $DB->queryOrDie($query2, "0.68 insert new users_profiles");
             }
         }
@@ -209,183 +209,183 @@ function update065to068()
             if ($data["mailing_resa_all_admin"]) {
                 $query2 = "INSERT INTO `glpi_mailing`
                               (`type`, `FK_item`, `item_type`)
-                       VALUES ('resa', '".$profiles["admin"]."', '".Notification::PROFILE_TYPE."')";
+                       VALUES ('resa', '" . $profiles["admin"] . "', '" . Notification::PROFILE_TYPE . "')";
                 $DB->queryOrDie($query2, "0.68 populate mailing resa all admin");
             }
 
             if ($data["mailing_resa_user"]) {
                 $query2 = "INSERT INTO `glpi_mailing`
                               (`type`, `FK_item`, `item_type`)
-                       VALUES ('resa', '".Notification::AUTHOR."', '".Notification::USER_TYPE."')";
+                       VALUES ('resa', '" . Notification::AUTHOR . "', '" . Notification::USER_TYPE . "')";
                 $DB->queryOrDie($query2, "0.68 populate mailing resa all admin");
             }
 
             if ($data["mailing_resa_admin"]) {
                 $query2 = "INSERT INTO `glpi_mailing`
                               (`type`, `FK_item`, `item_type`)
-                       VALUES ('resa', '".Notification::GLOBAL_ADMINISTRATOR."',
-                               '".Notification::USER_TYPE."')";
+                       VALUES ('resa', '" . Notification::GLOBAL_ADMINISTRATOR . "',
+                               '" . Notification::USER_TYPE . "')";
                 $DB->queryOrDie($query2, "0.68 populate mailing resa all admin");
             }
 
             if ($data["mailing_new_all_admin"]) {
                 $query2 = "INSERT INTO `glpi_mailing`
                               (`type`, `FK_item`, `item_type`)
-                       VALUES ('new', '".$profiles["admin"]."', '".Notification::PROFILE_TYPE."')";
+                       VALUES ('new', '" . $profiles["admin"] . "', '" . Notification::PROFILE_TYPE . "')";
                 $DB->queryOrDie($query2, "0.68 populate mailing new all admin");
             }
 
             if ($data["mailing_update_all_admin"]) {
                 $query2 = "INSERT INTO `glpi_mailing`
                               (`type`, `FK_item`, `item_type`)
-                       VALUES ('update', '".$profiles["admin"]."', '".Notification::PROFILE_TYPE."')";
+                       VALUES ('update', '" . $profiles["admin"] . "', '" . Notification::PROFILE_TYPE . "')";
                 $DB->queryOrDie($query2, "0.68 populate mailing update all admin");
             }
 
             if ($data["mailing_followup_all_admin"]) {
                 $query2 = "INSERT INTO `glpi_mailing`
                               (`type`, `FK_item`, `item_type`)
-                       VALUES ('followup', '".$profiles["admin"]."',
-                               '".Notification::PROFILE_TYPE."')";
+                       VALUES ('followup', '" . $profiles["admin"] . "',
+                               '" . Notification::PROFILE_TYPE . "')";
                 $DB->queryOrDie($query2, "0.68 populate mailing followup all admin");
             }
 
             if ($data["mailing_finish_all_admin"]) {
                 $query2 = "INSERT INTO `glpi_mailing`
                               (`type`, `FK_item`, `item_type`)
-                       VALUES ('finish', '".$profiles["admin"]."', '".Notification::PROFILE_TYPE."')";
+                       VALUES ('finish', '" . $profiles["admin"] . "', '" . Notification::PROFILE_TYPE . "')";
                 $DB->queryOrDie($query2, "0.68 populate mailing finish all admin");
             }
 
             if ($data["mailing_new_all_normal"]) {
                 $query2 = "INSERT INTO `glpi_mailing`
                               (`type`, `FK_item`, `item_type`)
-                       VALUES ('new', '".$profiles["normal"]."', '".Notification::PROFILE_TYPE."')";
+                       VALUES ('new', '" . $profiles["normal"] . "', '" . Notification::PROFILE_TYPE . "')";
                 $DB->queryOrDie($query2, "0.68 populate mailing new all normal");
             }
 
             if ($data["mailing_update_all_normal"]) {
                 $query2 = "INSERT INTO `glpi_mailing`
                               (`type`, `FK_item`, `item_type`)
-                       VALUES ('update', '".$profiles["normal"]."',
-                               '".Notification::PROFILE_TYPE."')";
+                       VALUES ('update', '" . $profiles["normal"] . "',
+                               '" . Notification::PROFILE_TYPE . "')";
                 $DB->queryOrDie($query2, "0.68 populate mailing update all normal");
             }
 
             if ($data["mailing_followup_all_normal"]) {
                 $query2 = "INSERT INTO `glpi_mailing`
                               (`type`, `FK_item`, `item_type`)
-                       VALUES ('followup', '".$profiles["normal"]."',
-                               '".Notification::PROFILE_TYPE."')";
+                       VALUES ('followup', '" . $profiles["normal"] . "',
+                               '" . Notification::PROFILE_TYPE . "')";
                 $DB->queryOrDie($query2, "0.68 populate mailing followup all normal");
             }
 
             if ($data["mailing_finish_all_normal"]) {
                 $query2 = "INSERT INTO `glpi_mailing`
                               (`type`, `FK_item`, `item_type`)
-                       VALUES ('finish', '".$profiles["normal"]."',
-                               '".Notification::PROFILE_TYPE."')";
+                       VALUES ('finish', '" . $profiles["normal"] . "',
+                               '" . Notification::PROFILE_TYPE . "')";
                 $DB->queryOrDie($query2, "0.68 populate mailing finish all normal");
             }
 
             if ($data["mailing_new_admin"]) {
                 $query2 = "INSERT INTO `glpi_mailing`
                               (`type`, `FK_item`, `item_type`)
-                       VALUES ('new', '".Notification::GLOBAL_ADMINISTRATOR."',
-                               '".Notification::USER_TYPE."')";
+                       VALUES ('new', '" . Notification::GLOBAL_ADMINISTRATOR . "',
+                               '" . Notification::USER_TYPE . "')";
                 $DB->queryOrDie($query2, "0.68 populate mailing new admin");
             }
 
             if ($data["mailing_update_admin"]) {
                 $query2 = "INSERT INTO `glpi_mailing`
                               (`type`, `FK_item`, `item_type`)
-                       VALUES ('update', '".Notification::GLOBAL_ADMINISTRATOR."',
-                               '".Notification::USER_TYPE."')";
+                       VALUES ('update', '" . Notification::GLOBAL_ADMINISTRATOR . "',
+                               '" . Notification::USER_TYPE . "')";
                 $DB->queryOrDie($query2, "0.68 populate mailing update admin");
             }
 
             if ($data["mailing_followup_admin"]) {
                 $query2 = "INSERT INTO `glpi_mailing`
                               (`type`, `FK_item`, `item_type`)
-                       VALUES ('followup', '".Notification::GLOBAL_ADMINISTRATOR."',
-                               '".Notification::USER_TYPE."')";
+                       VALUES ('followup', '" . Notification::GLOBAL_ADMINISTRATOR . "',
+                               '" . Notification::USER_TYPE . "')";
                 $DB->queryOrDie($query2, "0.68 populate mailing followup admin");
             }
 
             if ($data["mailing_finish_admin"]) {
                 $query2 = "INSERT INTO `glpi_mailing`
                               (`type`, `FK_item`, `item_type`)
-                       VALUES ('finish', '".Notification::GLOBAL_ADMINISTRATOR."',
-                               '".Notification::USER_TYPE."')";
+                       VALUES ('finish', '" . Notification::GLOBAL_ADMINISTRATOR . "',
+                               '" . Notification::USER_TYPE . "')";
                 $DB->queryOrDie($query2, "0.68 populate mailing finish admin");
             }
 
             if ($data["mailing_new_attrib"]) {
                 $query2 = "INSERT INTO `glpi_mailing`
                               (`type`, `FK_item`, `item_type`)
-                       VALUES ('new', '".Notification::ASSIGN_TECH."',
-                               '".Notification::USER_TYPE."')";
+                       VALUES ('new', '" . Notification::ASSIGN_TECH . "',
+                               '" . Notification::USER_TYPE . "')";
                 $DB->queryOrDie($query2, "0.68 populate mailing new attrib");
             }
 
             if ($data["mailing_update_attrib"]) {
                 $query2 = "INSERT INTO `glpi_mailing`
                               (`type`, `FK_item`, `item_type`)
-                       VALUES ('update', '".Notification::ASSIGN_TECH."',
-                               '".Notification::USER_TYPE."')";
+                       VALUES ('update', '" . Notification::ASSIGN_TECH . "',
+                               '" . Notification::USER_TYPE . "')";
                 $DB->queryOrDie($query2, "0.68 populate mailing update attrib");
             }
 
             if ($data["mailing_followup_attrib"]) {
                 $query2 = "INSERT INTO `glpi_mailing`
                               (`type`, `FK_item`, `item_type`)
-                       VALUES ('followup', '".Notification::ASSIGN_TECH."',
-                               '".Notification::USER_TYPE."')";
+                       VALUES ('followup', '" . Notification::ASSIGN_TECH . "',
+                               '" . Notification::USER_TYPE . "')";
                 $DB->queryOrDie($query2, "0.68 populate mailing followup attrib");
             }
 
             if ($data["mailing_finish_attrib"]) {
                 $query2 = "INSERT INTO `glpi_mailing`
                               (`type`, `FK_item`, `item_type`)
-                       VALUES ('finish', '".Notification::ASSIGN_TECH."',
-                               '".Notification::USER_TYPE."')";
+                       VALUES ('finish', '" . Notification::ASSIGN_TECH . "',
+                               '" . Notification::USER_TYPE . "')";
                 $DB->queryOrDie($query2, "0.68 populate mailing finish attrib");
             }
 
             if ($data["mailing_attrib_attrib"]) {
                 $query2 = "INSERT INTO `glpi_mailing`
                               (`type`, `FK_item`, `item_type`)
-                       VALUES ('update', '".Notification::OLD_TECH_IN_CHARGE."',
-                               '".Notification::USER_TYPE."')";
+                       VALUES ('update', '" . Notification::OLD_TECH_IN_CHARGE . "',
+                               '" . Notification::USER_TYPE . "')";
                 $DB->queryOrDie($query2, "0.68 populate mailing finish attrib");
             }
 
             if ($data["mailing_new_user"]) {
                 $query2 = "INSERT INTO `glpi_mailing`
                               (`type`, `FK_item`, `item_type`)
-                       VALUES ('new', '".Notification::AUTHOR."', '".Notification::USER_TYPE."')";
+                       VALUES ('new', '" . Notification::AUTHOR . "', '" . Notification::USER_TYPE . "')";
                 $DB->queryOrDie($query2, "0.68 populate mailing new user");
             }
 
             if ($data["mailing_update_user"]) {
                 $query2 = "INSERT INTO `glpi_mailing`
                               (`type`, `FK_item`, `item_type`)
-                       VALUES ('update', '".Notification::AUTHOR."', '".Notification::USER_TYPE."')";
+                       VALUES ('update', '" . Notification::AUTHOR . "', '" . Notification::USER_TYPE . "')";
                 $DB->queryOrDie($query2, "0.68 populate mailing update user");
             }
 
             if ($data["mailing_followup_user"]) {
                 $query2 = "INSERT INTO `glpi_mailing`
                               (`type`, `FK_item`, `item_type`)
-                       VALUES ('followup', '".Notification::AUTHOR."',
-                               '".Notification::USER_TYPE."')";
+                       VALUES ('followup', '" . Notification::AUTHOR . "',
+                               '" . Notification::USER_TYPE . "')";
                 $DB->queryOrDie($query2, "0.68 populate mailing followup user");
             }
 
             if ($data["mailing_finish_user"]) {
                 $query2 = "INSERT INTO `glpi_mailing`
                               (`type`, `FK_item`, `item_type`)
-                       VALUES ('finish', '".Notification::AUTHOR."', '".Notification::USER_TYPE."')";
+                       VALUES ('finish', '" . Notification::AUTHOR . "', '" . Notification::USER_TYPE . "')";
                 $DB->queryOrDie($query2, "0.68 populate mailing finish user");
             }
         }
@@ -429,8 +429,8 @@ function update065to068()
             if ($DB->numrows($result) > 0) {
                 while ($line = $DB->fetchArray($result)) {
                     $query = "UPDATE `glpi_kbitems`
-                         SET `answer` = '".addslashes(rembo($line["answer"]))."'
-                         WHERE `ID` = '".$line["ID"]."'";
+                         SET `answer` = '" . addslashes(rembo($line["answer"])) . "'
+                         WHERE `ID` = '" . $line["ID"] . "'";
                     $DB->queryOrDie($query, "0.68 convert knowbase to xhtml");
                 }
                 $DB->freeResult($result);
@@ -474,16 +474,16 @@ function update065to068()
     }
 
     $map_lang = ["french"       => "fr_FR",
-                      "english"      => "en_GB",
-                      "deutsch"      => "de_DE",
-                      "italian"      => "it_IT",
-                      "castillano"   => "es_ES",
-                      "portugese"    => "pt_PT",
-                      "dutch"        => "nl_NL",
-                      "hungarian"    => "hu_HU",
-                      "polish"       => "po_PO",
-                      "rumanian"     => "ro_RO",
-                      "russian"      => "ru_RU"];
+        "english"      => "en_GB",
+        "deutsch"      => "de_DE",
+        "italian"      => "it_IT",
+        "castillano"   => "es_ES",
+        "portugese"    => "pt_PT",
+        "dutch"        => "nl_NL",
+        "hungarian"    => "hu_HU",
+        "polish"       => "po_PO",
+        "rumanian"     => "ro_RO",
+        "russian"      => "ru_RU"];
 
     foreach ($map_lang as $old => $new) {
         $query = "UPDATE `glpi_users`
@@ -500,7 +500,7 @@ function update065to068()
 
     if (isset($map_lang[$def_lang])) {
         $query = "UPDATE `glpi_config`
-                SET `default_language` = '".$map_lang[$def_lang]."'
+                SET `default_language` = '" . $map_lang[$def_lang] . "'
                 WHERE `ID` = '1'";
         $DB->queryOrDie($query, "0.68 update default_language in config");
     }
@@ -660,7 +660,7 @@ function update065to068()
 
     // Link user and group to hardware
     $new_link = ["computers", "monitors", "networking", "peripherals", "phones", "printers",
-                      "software"];
+        "software"];
 
     foreach ($new_link as $table) {
         if (!$DB->fieldExists("glpi_$table", "FK_users", false)) {
@@ -682,8 +682,8 @@ function update065to068()
                 if ($DB->numrows($result2) > 0) {
                     while ($data = $DB->fetchAssoc($result2)) {
                         $query3 = "UPDATE `glpi_$table`
-                             SET `FK_users` = '".$data["USER"]."'
-                             WHERE `ID` = '".$data["ID"]."'";
+                             SET `FK_users` = '" . $data["USER"] . "'
+                             WHERE `ID` = '" . $data["ID"] . "'";
                         $DB->query($query3);
                     }
                 }
@@ -701,8 +701,8 @@ function update065to068()
                 if ($DB->numrows($result2) > 0) {
                     while ($data = $DB->fetchAssoc($result2)) {
                         $query3 = "UPDATE `glpi_$table`
-                             SET `FK_users` = '".$data["USER"]."'
-                             WHERE `ID` = '".$data["ID"]."'";
+                             SET `FK_users` = '" . $data["USER"] . "'
+                             WHERE `ID` = '" . $data["ID"] . "'";
                         $DB->query($query3);
                     }
                 }
@@ -733,7 +733,7 @@ function update065to068()
 
         $query = "INSERT INTO `glpi_display`
                        (`type`, `num`, `rank`, `FK_users`)
-                VALUES ('".GROUP_TYPE."', '16', '1', '0')";
+                VALUES ('" . GROUP_TYPE . "', '16', '1', '0')";
         $DB->queryOrDie($query, "0.68 add groups search config");
     }
 
@@ -873,8 +873,8 @@ function update065to068()
 
     // Update contract periodicity and facturation
     $values = ["4" => "6",
-                    "5" => "12",
-                    "6" => "24"];
+        "5" => "12",
+        "6" => "24"];
 
     foreach ($values as $key => $val) {
         $query = "UPDATE `glpi_contracts`
@@ -955,30 +955,30 @@ function rembo($string)
     if (strpos($string, '[code]') !== false
         && strpos($string, '[/code]') !== false) {
 
-        list($inside, $outside) = split_text($string, '[code]', '[/code]');
+        [$inside, $outside] = split_text($string, '[code]', '[/code]');
         $outside                = array_map('trim', $outside);
         $string                 = implode('<">', $outside);
     }
 
     $pattern = ['#\[b\](.*?)\[/b\]#s',
-                     '#\[i\](.*?)\[/i\]#s',
-                     '#\[u\](.*?)\[/u\]#s',
-                     '#\[s\](.*?)\[/s\]#s',
-                     '#\[c\](.*?)\[/c\]#s',
-                     '#\[g\](.*?)\[/g\]#s',
-                     '#\[email\](.*?)\[/email\]#',
-                     '#\[email=(.*?)\](.*?)\[/email\]#',
-                     '#\[color=([a-zA-Z]*|\#?[0-9a-fA-F]{6})](.*?)\[/color\]#s'];
+        '#\[i\](.*?)\[/i\]#s',
+        '#\[u\](.*?)\[/u\]#s',
+        '#\[s\](.*?)\[/s\]#s',
+        '#\[c\](.*?)\[/c\]#s',
+        '#\[g\](.*?)\[/g\]#s',
+        '#\[email\](.*?)\[/email\]#',
+        '#\[email=(.*?)\](.*?)\[/email\]#',
+        '#\[color=([a-zA-Z]*|\#?[0-9a-fA-F]{6})](.*?)\[/color\]#s'];
 
     $replace = ['<span class="b">$1</span>',
-                     '<em>$1</em>',
-                     '<span class="souligne">$1</span>',
-                     '<span class="barre">$1</span>',
-                     '<div class="center">$1</div>',
-                     '<big>$1</big>',
-                     '<a href="mailto:$1">$1</a>',
-                     '<a href="mailto:$1">$2</a>',
-                     '<span style="color: $1">$2</span>'];
+        '<em>$1</em>',
+        '<span class="souligne">$1</span>',
+        '<span class="barre">$1</span>',
+        '<div class="center">$1</div>',
+        '<big>$1</big>',
+        '<a href="mailto:$1">$1</a>',
+        '<a href="mailto:$1">$2</a>',
+        '<span style="color: $1">$2</span>'];
 
     // This thing takes a while! :)
     $string = preg_replace($pattern, $replace, $string);
@@ -994,9 +994,9 @@ function rembo($string)
         for ($i = 0; $i < $num_tokens; ++$i) {
             $string .= $outside[$i];
             if (isset($inside[$i])) {
-                $string .= '<br><br><div class="spaced"><table class="code center" aria-label="Count"><tr>' .
-                           '<td class="punquote"><span class="b">Code:</span><br><br><pre>'.
-                           trim($inside[$i]).'</pre></td></tr></table></div>';
+                $string .= '<br><br><div class="spaced"><table class="code center" aria-label="Count"><tr>'
+                           . '<td class="punquote"><span class="b">Code:</span><br><br><pre>'
+                           . trim($inside[$i]) . '</pre></td></tr></table></div>';
             }
         }
     }

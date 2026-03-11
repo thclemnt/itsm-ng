@@ -34,7 +34,7 @@
 include('../inc/includes.php');
 
 Session::checkSeveralRightsOr(['rule_dictionnary_dropdown' => READ,
-                                    'rule_dictionnary_software' => READ]);
+    'rule_dictionnary_software' => READ]);
 
 Html::header(__('Administration'), $_SERVER['PHP_SELF'], "admin", "dictionnary", -1);
 

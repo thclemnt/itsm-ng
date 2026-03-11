@@ -65,14 +65,14 @@ class ProcessSoftwareCategoryRulesCommand extends AbstractCommand
     {
 
         $query = [
-           'SELECT' => [
-              'id',
-           ],
-           'FROM'   => \Software::getTable(),
+            'SELECT' => [
+                'id',
+            ],
+            'FROM'   => \Software::getTable(),
         ];
         if (!$input->getOption('all')) {
             $query['WHERE'] = [
-               'softwarecategories_id' => 0
+                'softwarecategories_id' => 0,
             ];
         }
 
@@ -113,8 +113,8 @@ class ProcessSoftwareCategoryRulesCommand extends AbstractCommand
                 [],
                 $software->fields,
                 [
-                  'name'             => $software->fields['name'],
-                  'manufacturers_id' => $software->fields['manufacturers_id'],
+                    'name'             => $software->fields['name'],
+                    'manufacturers_id' => $software->fields['manufacturers_id'],
                 ]
             );
 

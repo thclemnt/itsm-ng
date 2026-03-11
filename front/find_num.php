@@ -51,7 +51,7 @@ echo Html::scss('css/styles');
 if (isset($_SESSION['glpihighcontrast_css']) && $_SESSION['glpihighcontrast_css']) {
     echo Html::scss('css/highcontrast');
 }
-$theme = isset($_SESSION['glpipalette']) ? $_SESSION['glpipalette'] : 'itsmng';
+$theme = $_SESSION['glpipalette'] ?? 'itsmng';
 echo Html::scss('css/palettes/' . $theme);
 echo Html::script($CFG_GLPI["root_doc"] . '/script.js');
 ?>
@@ -75,8 +75,8 @@ echo "<p class='b'>" . __('Search the ID of your hardware') . "</p>";
 echo " <form name='form1' aria-label='Hardware ' method='post' action='" . $_SERVER['PHP_SELF'] . "'>";
 
 echo "<table class='tab_cadre_fixe' aria-label='Search form>";
-echo "<tr><th height='29'>" . __('Enter the first letters (user, item name, serial or asset number)') .
-     "</th></tr>";
+echo "<tr><th height='29'>" . __('Enter the first letters (user, item name, serial or asset number)')
+     . "</th></tr>";
 echo "<tr><td class='tab_bg_1 center'>";
 echo "<input name='NomContact' type='text' id='NomContact' >";
 echo "<input type='hidden' name='send' value='1'>"; // bug IE ! La validation par enter ne fonctionne pas sans cette ligne  incroyable mais vrai !
@@ -97,25 +97,25 @@ if (isset($_POST["send"])) {
     echo " </tr>";
 
     $types = ['Computer'         => Computer::getTypeName(1),
-                   'NetworkEquipment' => NetworkEquipment::getTypeName(1),
-                   'Printer'          => Printer::getTypeName(1),
-                   'Monitor'          => Monitor::getTypeName(1),
-                   'Peripheral'       => Peripheral::getTypeName(1)];
+        'NetworkEquipment' => NetworkEquipment::getTypeName(1),
+        'Printer'          => Printer::getTypeName(1),
+        'Monitor'          => Monitor::getTypeName(1),
+        'Peripheral'       => Peripheral::getTypeName(1)];
     foreach ($types as $type => $label) {
         $iterator = $DB->request([
-           'SELECT' => ['name', 'id', 'contact', 'serial', 'otherserial'],
-           'FROM'   => getTableForItemType($type),
-           'WHERE'  => [
-              'is_template'  => 0,
-              'is_deleted'   => 0,
-              'OR'           => [
-                 'contact'      => ['LIKE', '%' . $_POST['NomContact'] . '%'],
-                 'name'         => ['LIKE', '%' . $_POST['NomContact'] . '%'],
-                 'serial'       => ['LIKE', '%' . $_POST['NomContact'] . '%'],
-                 'otherserial'  => ['LIKE', '%' . $_POST['NomContact'] . '%'],
-              ]
-           ],
-           'ORDER'           => ['name']
+            'SELECT' => ['name', 'id', 'contact', 'serial', 'otherserial'],
+            'FROM'   => getTableForItemType($type),
+            'WHERE'  => [
+                'is_template'  => 0,
+                'is_deleted'   => 0,
+                'OR'           => [
+                    'contact'      => ['LIKE', '%' . $_POST['NomContact'] . '%'],
+                    'name'         => ['LIKE', '%' . $_POST['NomContact'] . '%'],
+                    'serial'       => ['LIKE', '%' . $_POST['NomContact'] . '%'],
+                    'otherserial'  => ['LIKE', '%' . $_POST['NomContact'] . '%'],
+                ],
+            ],
+            'ORDER'           => ['name'],
         ]);
 
         while ($ligne = $iterator->next()) {
@@ -137,14 +137,14 @@ if (isset($_POST["send"])) {
     }
 
     $iterator = $DB->request([
-       'SELECT' => ['name', 'id'],
-       'FROM'   => 'glpi_softwares',
-       'WHERE'  => [
-          'is_template'  => 0,
-          'is_deleted'   => 0,
-          'name'         => ['LIKE', "%{$_POST['NomContact']}%"]
-       ],
-       'ORDER'  => ['name']
+        'SELECT' => ['name', 'id'],
+        'FROM'   => 'glpi_softwares',
+        'WHERE'  => [
+            'is_template'  => 0,
+            'is_deleted'   => 0,
+            'name'         => ['LIKE', "%{$_POST['NomContact']}%"],
+        ],
+        'ORDER'  => ['name'],
     ]);
 
     while ($ligne = $iterator->next()) {

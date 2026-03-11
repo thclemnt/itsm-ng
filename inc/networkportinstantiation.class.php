@@ -85,14 +85,14 @@ class NetworkPortInstantiation extends CommonDBChild
     {
 
         return [
-           '' => [
-              'visible' => true,
-              'inputs' => [
-                 '' => [
-                    'content' => __('No options available for this port type.')
-                 ]
-              ]
-           ]
+            '' => [
+                'visible' => true,
+                'inputs' => [
+                    '' => [
+                        'content' => __('No options available for this port type.'),
+                    ],
+                ],
+            ],
         ];
     }
 
@@ -139,13 +139,13 @@ class NetworkPortInstantiation extends CommonDBChild
     public static function getGlobalInstantiationNetworkPortDisplayOptions()
     {
         return ['mac'           => ['name'    => __('MAC'),
-                                              'default' => true],
-                     'vlans'         => ['name'    => Vlan::getTypeName(1),
-                                              'default' => false],
-                     'virtual_ports' => ['name'    => __('Virtual ports'),
-                                              'default' => false],
-                     'port_opposite' => ['name'    => __('Opposite link'),
-                                              'default' => false]];
+            'default' => true],
+            'vlans'         => ['name'    => Vlan::getTypeName(1),
+                'default' => false],
+            'virtual_ports' => ['name'    => __('Virtual ports'),
+                'default' => false],
+            'port_opposite' => ['name'    => __('Opposite link'),
+                'default' => false]];
     }
 
 
@@ -245,7 +245,7 @@ class NetworkPortInstantiation extends CommonDBChild
     ) {
 
         $connect_cell_value = [['function'   => [__CLASS__, 'showConnection'],
-                                          'parameters' => [clone $netport]]];
+            'parameters' => [clone $netport]]];
 
         $oppositePort = NetworkPort_NetworkPort::getOpposite($netport);
         if ($oppositePort !== false) {
@@ -318,21 +318,21 @@ class NetworkPortInstantiation extends CommonDBChild
             $virtual_header = $row->getHeaderByName('Instantiation', 'VirtualPorts');
 
             $iterator = $DB->request([
-               'FROM' => new \QueryUnion(
-                   [
-                     [
-                        'SELECT' => 'networkports_id',
-                        'FROM'   => 'glpi_networkportaliases',
-                        'WHERE'  => ['networkports_id_alias' => $netport->getID()]
-                     ], [
-                        'SELECT' => 'networkports_id',
-                        'FROM'   => 'glpi_networkportaggregates',
-                        'WHERE'  => ['networkports_id_list' => ['LIKE', '%"' . $netport->getID() . '"%']]
-                     ]
-                   ],
-                   false,
-                   'networkports'
-               )
+                'FROM' => new QueryUnion(
+                    [
+                        [
+                            'SELECT' => 'networkports_id',
+                            'FROM'   => 'glpi_networkportaliases',
+                            'WHERE'  => ['networkports_id_alias' => $netport->getID()],
+                        ], [
+                            'SELECT' => 'networkports_id',
+                            'FROM'   => 'glpi_networkportaggregates',
+                            'WHERE'  => ['networkports_id_list' => ['LIKE', '%"' . $netport->getID() . '"%']],
+                        ],
+                    ],
+                    false,
+                    'networkports'
+                ),
             ]);
 
             if (count($iterator)) {
@@ -398,7 +398,7 @@ class NetworkPortInstantiation extends CommonDBChild
      * Get all NetworkPort and NetworkEquipments that have a specific MAC address
      *
      * @param string  $mac              address to search
-     * @param boolean $wildcard_search  true if we search with wildcard (false by default)
+     * @param bool $wildcard_search  true if we search with wildcard (false by default)
      *
      * @return array  each value of the array (corresponding to one NetworkPort) is an array of the
      *                items from the master item to the NetworkPort
@@ -425,9 +425,9 @@ class NetworkPortInstantiation extends CommonDBChild
             $netport = new $netporttype();
 
             $iterator = $DB->request([
-               'SELECT' => 'id',
-               'FROM'   => $netport->getTable(),
-               'WHERE'  => ['mac' => $relation]
+                'SELECT' => 'id',
+                'FROM'   => $netport->getTable(),
+                'WHERE'  => ['mac' => $relation],
             ]);
 
             while ($element = $iterator->next()) {
@@ -452,7 +452,7 @@ class NetworkPortInstantiation extends CommonDBChild
      * Get an Object ID by its MAC address (only if one result is found in the entity)
      *
      * @param string  $value   the mac address
-     * @param integer $entity  the entity to look for
+     * @param int $entity  the entity to look for
      *
      * @return array containing the object ID
      *         or an empty array is no value of serverals ID where found
@@ -480,7 +480,7 @@ class NetworkPortInstantiation extends CommonDBChild
                 foreach ($items as $item) {
                     if ($item->getEntityID() == $entity) {
                         $result = ["id"       => $item->getID(),
-                                        "itemtype" => $item->getType()];
+                            "itemtype" => $item->getType()];
                         unset($macs_with_items);
                         return $result;
                     }
@@ -530,23 +530,23 @@ class NetworkPortInstantiation extends CommonDBChild
             ) {
                 // Query each link to network cards
                 $criteria = [
-                   'SELECT'    => [
-                      'link.id AS link_id',
-                      'device.designation AS name'
-                   ],
-                   'FROM'      => 'glpi_devicenetworkcards AS device',
-                   'INNER JOIN' => [
-                      'glpi_items_devicenetworkcards AS link'   => [
-                         'ON' => [
-                            'link'   => 'devicenetworkcards_id',
-                            'device' => 'id'
-                         ]
-                      ]
-                   ],
-                   'WHERE'     => [
-                      'link.items_id'   => $lastItem->getID(),
-                      'link.itemtype'   => $lastItem->getType()
-                   ]
+                    'SELECT'    => [
+                        'link.id AS link_id',
+                        'device.designation AS name',
+                    ],
+                    'FROM'      => 'glpi_devicenetworkcards AS device',
+                    'INNER JOIN' => [
+                        'glpi_items_devicenetworkcards AS link'   => [
+                            'ON' => [
+                                'link'   => 'devicenetworkcards_id',
+                                'device' => 'id',
+                            ],
+                        ],
+                    ],
+                    'WHERE'     => [
+                        'link.items_id'   => $lastItem->getID(),
+                        'link.itemtype'   => $lastItem->getType(),
+                    ],
                 ];
 
                 // $deviceFields contains the list of fields to update
@@ -600,8 +600,8 @@ class NetworkPortInstantiation extends CommonDBChild
                 if (count($deviceNames) > 0) {
                     $options = ['value'
                                       => $this->fields['items_devicenetworkcards_id'],
-                                     'on_change'
-                                      => 'updateNetworkPortForm(this.options[this.selectedIndex].value)'];
+                        'on_change'
+                         => 'updateNetworkPortForm(this.options[this.selectedIndex].value)'];
                     Dropdown::showFromArray('items_devicenetworkcards_id', $deviceNames, $options);
                 } else {
                     echo __('No network card available');
@@ -756,18 +756,18 @@ class NetworkPortInstantiation extends CommonDBChild
         foreach ($netport_types as $netport_type) {
             $instantiationTable = getTableForItemType($netport_type);
             $iterator = $DB->request([
-               'SELECT' => [
-                  'port.id',
-                  'port.name',
-                  'port.mac'
-               ],
-               'FROM'   => 'glpi_networkports AS port',
-               'WHERE'  => [
-                  'items_id'           => $lastItem->getID(),
-                  'itemtype'           => $lastItem->getType(),
-                  'instantiation_type' => $netport_type
-               ],
-               'ORDER'  => ['logical_number', 'name']
+                'SELECT' => [
+                    'port.id',
+                    'port.name',
+                    'port.mac',
+                ],
+                'FROM'   => 'glpi_networkports AS port',
+                'WHERE'  => [
+                    'items_id'           => $lastItem->getID(),
+                    'itemtype'           => $lastItem->getType(),
+                    'instantiation_type' => $netport_type,
+                ],
+                'ORDER'  => ['logical_number', 'name'],
             ]);
 
             if (count($iterator)) {
@@ -845,16 +845,14 @@ class NetworkPortInstantiation extends CommonDBChild
      * @param $tab          array
      * @param $joinparams   array
      **/
-    public static function getSearchOptionsToAddForInstantiation(array &$tab, array $joinparams)
-    {
-    }
+    public static function getSearchOptionsToAddForInstantiation(array &$tab, array $joinparams) {}
 
 
     /**
      * Display a connection of a networking port
      *
      * @param NetworkPort $netport  to be displayed
-     * @param boolean     $edit     permit to edit ? (false by default)
+     * @param bool     $edit     permit to edit ? (false by default)
     **/
     public static function showConnection($netport, $edit = false)
     {
@@ -937,8 +935,8 @@ class NetworkPortInstantiation extends CommonDBChild
                         self::dropdownConnect(
                             $ID,
                             ['name'        => 'NetworkPortConnect_networkports_id_2',
-                                                    'entity'      => $device1->fields["entities_id"],
-                                                    'entity_sons' => $device1->isRecursive()]
+                                'entity'      => $device1->fields["entities_id"],
+                                'entity_sons' => $device1->isRecursive()]
                         );
                     } else {
                         echo "<a href=\"" . $netport->getFormURLWithID($ID) . "\">" . _x('button', 'Connect') . "</a>";
@@ -954,7 +952,7 @@ class NetworkPortInstantiation extends CommonDBChild
     /**
      * Make a select box for  connected port
      *
-     * @param integer $ID        ID of the current port to connect
+     * @param int $ID        ID of the current port to connect
      * @param array   $options   array of possible options:
      *    - name : string / name of the select (default is networkports_id)
      *    - comments : boolean / is the comments displayed near the dropdown (default true)
@@ -963,7 +961,7 @@ class NetworkPortInstantiation extends CommonDBChild
      *    - entity_sons : boolean / if entity restrict specified auto select its sons
      *                   only available if entity is a single value not an array (default false)
      *
-     * @return integer random part of elements id
+     * @return int random part of elements id
     **/
     public static function dropdownConnect($ID, $options = [])
     {
@@ -993,17 +991,17 @@ class NetworkPortInstantiation extends CommonDBChild
         $rand = Dropdown::showItemTypes('NetworkPortConnect_itemtype', $CFG_GLPI["networkport_types"]);
 
         $params = ['itemtype'           => '__VALUE__',
-                        'entity_restrict'    => $p['entity'],
-                        'networkports_id'    => $ID,
-                        'comments'           => $p['comments'],
-                        'myname'             => $p['name'],
-                        'instantiation_type' => get_called_class()];
+            'entity_restrict'    => $p['entity'],
+            'networkports_id'    => $ID,
+            'comments'           => $p['comments'],
+            'myname'             => $p['name'],
+            'instantiation_type' => get_called_class()];
 
         Ajax::updateItemOnSelectEvent(
             "dropdown_NetworkPortConnect_itemtype$rand",
             "show_" . $p['name'] . "$rand",
-            $CFG_GLPI["root_doc"] .
-                                         "/ajax/dropdownConnectNetworkPortDeviceType.php",
+            $CFG_GLPI["root_doc"]
+                                         . "/ajax/dropdownConnectNetworkPortDeviceType.php",
             $params
         );
 

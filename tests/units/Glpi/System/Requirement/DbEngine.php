@@ -33,26 +33,28 @@
 
 namespace tests\units\Glpi\System\Requirement;
 
+use mock\DB;
+
 class DbEngine extends \GLPITestCase
 {
     protected function versionProvider()
     {
         return [
-           [
-              'version'   => '5.6.46-log',
-              'validated' => true,
-              'messages'  => ['Database version seems correct (5.6.46) - Perfect!']
-           ],
-           [
-              'version'   => '10.4.8-MariaDB-1:10.4.8+maria~bionic',
-              'validated' => true,
-              'messages'  => ['Database version seems correct (10.4.8) - Perfect!']
-           ],
-           [
-              'version'   => '5.5.38-0ubuntu0.14.04.1',
-              'validated' => false,
-              'messages'  => ['Your database engine version seems too old: 5.5.38.']
-           ],
+            [
+                'version'   => '5.6.46-log',
+                'validated' => true,
+                'messages'  => ['Database version seems correct (5.6.46) - Perfect!'],
+            ],
+            [
+                'version'   => '10.4.8-MariaDB-1:10.4.8+maria~bionic',
+                'validated' => true,
+                'messages'  => ['Database version seems correct (10.4.8) - Perfect!'],
+            ],
+            [
+                'version'   => '5.5.38-0ubuntu0.14.04.1',
+                'validated' => false,
+                'messages'  => ['Your database engine version seems too old: 5.5.38.'],
+            ],
         ];
     }
 
@@ -63,7 +65,7 @@ class DbEngine extends \GLPITestCase
     {
 
         $this->mockGenerator->orphanize('__construct');
-        $db = new \mock\DB();
+        $db = new DB();
         $this->calling($db)->getVersion = $version;
 
         $this->newTestedInstance($db);

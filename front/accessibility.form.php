@@ -48,7 +48,7 @@ if (isset($_POST["update"])) {
         $shortcuts[$K] = $V;
     }
 
-    $shortcuts = str_ireplace(array( '\'', '"', '\\'), '', $shortcuts);
+    $shortcuts = str_ireplace([ '\'', '"', '\\'], '', $shortcuts);
     $_POST["access_custom_shortcuts"] = json_encode($shortcuts);
     $user->update($_POST);
 

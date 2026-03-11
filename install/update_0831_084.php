@@ -49,21 +49,21 @@ function update0831to084()
 
     // Add the internet field and copy rights from networking
     $migration->addField('glpi_profiles', 'internet', 'char', ['after'  => 'networking',
-                                                                    'update' => '`networking`']);
+        'update' => '`networking`']);
 
     $backup_tables = false;
     $newtables     = ['glpi_contractcosts',
-                           'glpi_entities_rssfeeds', 'glpi_groups_rssfeeds',
-                           'glpi_problems_suppliers', 'glpi_profiles_rssfeeds',
-                           'glpi_rssfeeds_users', 'glpi_rssfeeds',
-                           'glpi_suppliers_tickets', 'glpi_ticketcosts'];
+        'glpi_entities_rssfeeds', 'glpi_groups_rssfeeds',
+        'glpi_problems_suppliers', 'glpi_profiles_rssfeeds',
+        'glpi_rssfeeds_users', 'glpi_rssfeeds',
+        'glpi_suppliers_tickets', 'glpi_ticketcosts'];
 
     foreach ($newtables as $new_table) {
         // rename new tables if exists ?
         if ($DB->tableExists($new_table)) {
             $migration->dropTable("backup_$new_table");
-            $migration->displayWarning("$new_table table already exists. ".
-                                       "A backup have been done to backup_$new_table.");
+            $migration->displayWarning("$new_table table already exists. "
+                                       . "A backup have been done to backup_$new_table.");
             $backup_tables = true;
             $query         = $migration->renameTable("$new_table", "backup_$new_table");
         }
@@ -99,7 +99,7 @@ function update0831to084()
         'ajax_buffertime_load',
         'integer',
         ['value' => 0,
-                               'after' => 'ajax_min_textsearch_load']
+            'after' => 'ajax_min_textsearch_load']
     );
 
     // Clean display prefs
@@ -113,8 +113,8 @@ function update0831to084()
     foreach ($DB->request("glpi_bookmarks", "`itemtype` = 'States'") as $data) {
         $query = str_replace('itemtype=States', 'itemtype=AllAssets', $data['query']);
         $query = "UPDATE `glpi_bookmarks`
-                SET query = '".addslashes($query)."'
-                WHERE `id` = '".$data['id']."'";
+                SET query = '" . addslashes($query) . "'
+                WHERE `id` = '" . $data['id'] . "'";
         $DB->query($query);
     }
     $query = "UPDATE `glpi_bookmarks`
@@ -136,13 +136,13 @@ function update0831to084()
     }
 
     $lang_to_update = ['ca_CA' => 'ca_ES',
-                            'dk_DK' => 'da_DK',
-                            'ee_ET' => 'et_EE',
-                            'el_EL' => 'el_GR',
-                            'he_HE' => 'he_IL',
-                            'no_NB' => 'nb_NO',
-                            'no_NN' => 'nn_NO',
-                            'ua_UA' => 'uk_UA',];
+        'dk_DK' => 'da_DK',
+        'ee_ET' => 'et_EE',
+        'el_EL' => 'el_GR',
+        'he_HE' => 'he_IL',
+        'no_NB' => 'nb_NO',
+        'no_NN' => 'nn_NO',
+        'ua_UA' => 'uk_UA',];
     foreach ($lang_to_update as $old => $new) {
         $query = "UPDATE `glpi_configs`
                SET `language` = '$new'
@@ -158,17 +158,17 @@ function update0831to084()
     $migration->displayMessage(sprintf(__('Data migration - %s'), 'tickets and problems status'));
 
     $status  = ['new'           => CommonITILObject::INCOMING,
-                     'assign'        => CommonITILObject::ASSIGNED,
-                     'plan'          => CommonITILObject::PLANNED,
-                     'waiting'       => CommonITILObject::WAITING,
-                     'solved'        => CommonITILObject::SOLVED,
-                     'closed'        => CommonITILObject::CLOSED,
-                     'accepted'      => CommonITILObject::ACCEPTED,
-                     'observe'       => CommonITILObject::OBSERVED,
-                     'evaluation'    => CommonITILObject::EVALUATION,
-                     'approbation'   => CommonITILObject::APPROVAL,
-                     'test'          => CommonITILObject::TEST,
-                     'qualification' => CommonITILObject::QUALIFICATION];
+        'assign'        => CommonITILObject::ASSIGNED,
+        'plan'          => CommonITILObject::PLANNED,
+        'waiting'       => CommonITILObject::WAITING,
+        'solved'        => CommonITILObject::SOLVED,
+        'closed'        => CommonITILObject::CLOSED,
+        'accepted'      => CommonITILObject::ACCEPTED,
+        'observe'       => CommonITILObject::OBSERVED,
+        'evaluation'    => CommonITILObject::EVALUATION,
+        'approbation'   => CommonITILObject::APPROVAL,
+        'test'          => CommonITILObject::TEST,
+        'qualification' => CommonITILObject::QUALIFICATION];
     foreach (['glpi_tickets', 'glpi_problems'] as $table) {
         // Migrate datas
         foreach ($status as $old => $new) {
@@ -211,10 +211,10 @@ function update0831to084()
                     $html    = str_replace("problem.storestatus=$old", "problem.storestatus=$new", $html);
                 }
                 $query = "UPDATE `glpi_notificationtemplatetranslations`
-                      SET `subject` = '".addslashes($subject)."',
-                          `content_text` = '".addslashes($text)."',
-                          `content_html` = '".addslashes($html)."'
-                      WHERE `id` = ".$data['id']."";
+                      SET `subject` = '" . addslashes($subject) . "',
+                          `content_text` = '" . addslashes($text) . "',
+                          `content_html` = '" . addslashes($html) . "'
+                      WHERE `id` = " . $data['id'] . "";
                 $DB->queryOrDie($query, "0.84 fix tags usage for storestatus");
             }
         }
@@ -229,7 +229,7 @@ function update0831to084()
         // Get rules
         $query = "SELECT GROUP_CONCAT(`id`)
                 FROM `glpi_rules`
-                WHERE `sub_type` = '".$ruletype."'
+                WHERE `sub_type` = '" . $ruletype . "'
                 GROUP BY `sub_type`";
         if ($result = $DB->query($query)) {
             if ($DB->numrows($result) > 0) {
@@ -264,8 +264,8 @@ function update0831to084()
                 }
 
                 $query  = "UPDATE `glpi_profiles`
-                       SET `$field` = '".addslashes(exportArrayToDB($newtab))."'
-                       WHERE `id` = '".$data['id']."'";
+                       SET `$field` = '" . addslashes(exportArrayToDB($newtab)) . "'
+                       WHERE `id` = '" . $data['id'] . "'";
                 $DB->queryOrDie($query, "0.84 migrate $field of glpi_profiles");
             }
         }
@@ -284,8 +284,8 @@ function update0831to084()
             // Create root entity
             $query = "INSERT INTO `glpi_entities`
                           (`id`, `name`, `completename`, `entities_id`, `level`)
-                   VALUES (0,'".addslashes(__('Root entity'))."',
-                           '".addslashes(__('Root entity'))."', '-1', '1');";
+                   VALUES (0,'" . addslashes(__('Root entity')) . "',
+                           '" . addslashes(__('Root entity')) . "', '-1', '1');";
 
             $DB->queryOrDie($query, '0.84 insert root entity into glpi_entities');
         }
@@ -395,18 +395,18 @@ function update0831to084()
         $migration->migrationOneTable('glpi_entities');
 
         $fields = ['address', 'postcode', 'town', 'state', 'country', 'website',
-                        'phonenumber', 'fax', 'email', 'admin_email', 'admin_email_name',
-                        'admin_reply', 'admin_reply_name', 'notification_subject_tag',
-                        'notepad', 'ldap_dn', 'tag', 'authldaps_id', 'mail_domain',
-                        'entity_ldapfilter', 'mailing_signature', 'cartridges_alert_repeat',
-                        'consumables_alert_repeat', 'use_licenses_alert', 'use_contracts_alert',
-                        'use_infocoms_alert', 'use_reservations_alert', 'autoclose_delay',
-                        'notclosed_delay', 'calendars_id', 'auto_assign_mode', 'tickettype',
-                        'max_closedate', 'inquest_config', 'inquest_rate', 'inquest_delay',
-                        'inquest_URL', 'autofill_warranty_date', 'autofill_use_date',
-                        'autofill_buy_date', 'autofill_delivery_date', 'autofill_order_date',
-                        'tickettemplates_id', 'entities_id_software', 'default_contract_alert',
-                        'default_infocom_alert', 'default_alarm_threshold'];
+            'phonenumber', 'fax', 'email', 'admin_email', 'admin_email_name',
+            'admin_reply', 'admin_reply_name', 'notification_subject_tag',
+            'notepad', 'ldap_dn', 'tag', 'authldaps_id', 'mail_domain',
+            'entity_ldapfilter', 'mailing_signature', 'cartridges_alert_repeat',
+            'consumables_alert_repeat', 'use_licenses_alert', 'use_contracts_alert',
+            'use_infocoms_alert', 'use_reservations_alert', 'autoclose_delay',
+            'notclosed_delay', 'calendars_id', 'auto_assign_mode', 'tickettype',
+            'max_closedate', 'inquest_config', 'inquest_rate', 'inquest_delay',
+            'inquest_URL', 'autofill_warranty_date', 'autofill_use_date',
+            'autofill_buy_date', 'autofill_delivery_date', 'autofill_order_date',
+            'tickettemplates_id', 'entities_id_software', 'default_contract_alert',
+            'default_infocom_alert', 'default_alarm_threshold'];
         $entity = new Entity();
         foreach ($DB->request('glpi_entitydatas') as $data) {
             if ($entity->getFromDB($data['entities_id'])) {
@@ -415,16 +415,16 @@ function update0831to084()
                     if (is_null($data[$field])) {
                         $update_fields[] = "`$field` = NULL";
                     } else {
-                        $update_fields[] = "`$field` = '".addslashes($data[$field])."'";
+                        $update_fields[] = "`$field` = '" . addslashes($data[$field]) . "'";
                     }
                 }
 
                 $query  = "UPDATE `glpi_entities`
-                       SET ".implode(',', $update_fields)."
-                       WHERE `id` = '".$data['entities_id']."'";
+                       SET " . implode(',', $update_fields) . "
+                       WHERE `id` = '" . $data['entities_id'] . "'";
                 $DB->queryOrDie($query, "0.84 transfer datas from glpi_entitydatas to glpi_entities");
             } else {
-                $migration->displayMessage('Entity ID '.$data['entities_id'].' does not exist');
+                $migration->displayMessage('Entity ID ' . $data['entities_id'] . ' does not exist');
             }
 
         }
@@ -474,7 +474,7 @@ function update0831to084()
     if (countElementsInTable(
         'glpi_notifications',
         ['itemtype' => 'Ticket',
-                              'event'    => 'validation_answer']
+            'event'    => 'validation_answer']
     ) == 0) {
         // No notifications duplicate all
 
@@ -487,21 +487,21 @@ function update0831to084()
                           (`name`, `entities_id`, `itemtype`, `event`, `mode`,
                           `notificationtemplates_id`, `comment`, `is_recursive`, `is_active`,
                           `date_mod`)
-                   VALUES ('".addslashes($notif['name'])." Answer',
-                           '".$notif['entities_id']."', 'Ticket',
-                           'validation_answer', '".$notif['mode']."',
-                           '".$notif['notificationtemplates_id']."',
-                           '".addslashes($notif['comment'])."', '".$notif['is_recursive']."',
-                           '".$notif['is_active']."', NOW());";
+                   VALUES ('" . addslashes($notif['name']) . " Answer',
+                           '" . $notif['entities_id'] . "', 'Ticket',
+                           'validation_answer', '" . $notif['mode'] . "',
+                           '" . $notif['notificationtemplates_id'] . "',
+                           '" . addslashes($notif['comment']) . "', '" . $notif['is_recursive'] . "',
+                           '" . $notif['is_active'] . "', NOW());";
             $DB->queryOrDie($query, "0.84 insert validation_answer notification");
             $newID  = $DB->insertId();
             $query2 = "SELECT *
                     FROM `glpi_notificationtargets`
-                    WHERE `notifications_id` = '".$notif['id']."'";
+                    WHERE `notifications_id` = '" . $notif['id'] . "'";
             foreach ($DB->request($query2) as $target) {
                 $query = "INSERT INTO `glpi_notificationtargets`
                              (`notifications_id`, `type`, `items_id`)
-                      VALUES ($newID, '".$target['type']."', '".$target['items_id']."')";
+                      VALUES ($newID, '" . $target['type'] . "', '" . $target['items_id'] . "')";
                 $DB->queryOrDie($query, "0.84 insert targets for validation_answer notification");
             }
         }
@@ -513,7 +513,7 @@ function update0831to084()
     ));
 
     $from_to = ['end'    => 'periodicity',
-                     'notice' => 'periodicitynotice'];
+        'notice' => 'periodicitynotice'];
     foreach ($from_to as $from => $to) {
         // Check if notifications already exists
         if (countElementsInTable(
@@ -531,21 +531,21 @@ function update0831to084()
                              (`name`, `entities_id`, `itemtype`, `event`, `mode`,
                               `notificationtemplates_id`, `comment`, `is_recursive`, `is_active`,
                               `date_mod`)
-                      VALUES ('".addslashes($notif['name'])." Periodicity',
-                              '".$notif['entities_id']."', 'Contract', '$to', '".$notif['mode']."',
-                              '".$notif['notificationtemplates_id']."',
-                              '".addslashes($notif['comment'])."', '".$notif['is_recursive']."',
-                              '".$notif['is_active']."', NOW());";
-                $DB->queryOrDie($query, "0.84 insert contract ".$to." notification");
+                      VALUES ('" . addslashes($notif['name']) . " Periodicity',
+                              '" . $notif['entities_id'] . "', 'Contract', '$to', '" . $notif['mode'] . "',
+                              '" . $notif['notificationtemplates_id'] . "',
+                              '" . addslashes($notif['comment']) . "', '" . $notif['is_recursive'] . "',
+                              '" . $notif['is_active'] . "', NOW());";
+                $DB->queryOrDie($query, "0.84 insert contract " . $to . " notification");
                 $newID  = $DB->insertId();
                 $query2 = "SELECT *
                        FROM `glpi_notificationtargets`
-                       WHERE `notifications_id` = '".$notif['id']."'";
+                       WHERE `notifications_id` = '" . $notif['id'] . "'";
                 foreach ($DB->request($query2) as $target) {
                     $query = "INSERT INTO `glpi_notificationtargets`
                                 (`notifications_id`, `type`, `items_id`)
-                         VALUES ('".$newID."', '".$target['type']."', '".$target['items_id']."')";
-                    $DB->queryOrDie($query, "0.84 insert targets for ??ontract ".$to." notification");
+                         VALUES ('" . $newID . "', '" . $target['type'] . "', '" . $target['items_id'] . "')";
+                    $DB->queryOrDie($query, "0.84 insert targets for ??ontract " . $to . " notification");
                 }
             }
         }
@@ -586,12 +586,12 @@ function update0831to084()
             $end_to_add   = "NULL";
 
             if (!is_null($data['begin_date'])) {
-                $begin_to_add = "'".$data['begin_date']."'";
+                $begin_to_add = "'" . $data['begin_date'] . "'";
 
                 if ($data['duration']) {
-                    $end_to_add = "'".date("Y-m-d", strtotime($data['begin_date']. "+".$data['duration']." month"))."'";
+                    $end_to_add = "'" . date("Y-m-d", strtotime($data['begin_date'] . "+" . $data['duration'] . " month")) . "'";
                 } else {
-                    $end_to_add = "'".$data['begin_date']."'";
+                    $end_to_add = "'" . $data['begin_date'] . "'";
                 }
 
             }
@@ -599,9 +599,9 @@ function update0831to084()
                           (`contracts_id`, `name`, `begin_date`, `end_date`,
                            `cost`,  `entities_id`,
                            `is_recursive`)
-                   VALUES ('".$data['id']."', 'Cost', $begin_to_add, $end_to_add,
-                           '".$data['cost']."', '".$data['entities_id']."',
-                           '".$data['is_recursive']."')";
+                   VALUES ('" . $data['id'] . "', 'Cost', $begin_to_add, $end_to_add,
+                           '" . $data['cost'] . "', '" . $data['entities_id'] . "',
+                           '" . $data['is_recursive'] . "')";
             $DB->queryOrDie($query, '0.84 move contracts costs');
         }
         $migration->dropField('glpi_contracts', 'cost');
@@ -640,12 +640,12 @@ function update0831to084()
             $end_to_add   = "NULL";
 
             if (!is_null($data['date'])) {
-                $begin_to_add = "'".$data['date']."'";
+                $begin_to_add = "'" . $data['date'] . "'";
 
                 if (!is_null($data['solvedate'])) {
-                    $end_to_add = "'".$data['solvedate']."'";
+                    $end_to_add = "'" . $data['solvedate'] . "'";
                 } else {
-                    $end_to_add = "'".$data['date']."'";
+                    $end_to_add = "'" . $data['date'] . "'";
                 }
 
             }
@@ -654,10 +654,10 @@ function update0831to084()
                            `cost_time`,`cost_fixed`,
                            `cost_material`, `entities_id`,
                            `actiontime`)
-                   VALUES ('".$data['id']."', 'Cost', $begin_to_add, $end_to_add,
-                           '".$data['cost_time']."','".$data['cost_fixed']."',
-                           '".$data['cost_material']."', '".$data['entities_id']."',
-                           '".$data['actiontime']."')";
+                   VALUES ('" . $data['id'] . "', 'Cost', $begin_to_add, $end_to_add,
+                           '" . $data['cost_time'] . "','" . $data['cost_fixed'] . "',
+                           '" . $data['cost_material'] . "', '" . $data['entities_id'] . "',
+                           '" . $data['actiontime'] . "')";
             $DB->queryOrDie($query, '0.84 move tickets costs');
         }
         $migration->dropField('glpi_tickets', 'cost_time');
@@ -670,7 +670,7 @@ function update0831to084()
         "ticketcost",
         "char",
         ['update'    => "'w'",
-                               'condition' => " WHERE `update_ticket` = 1"]
+            'condition' => " WHERE `update_ticket` = 1"]
     );
     // Set default to r as before
     $query = "UPDATE `glpi_profiles`
@@ -826,7 +826,7 @@ function update0831to084()
 
             $query = "INSERT INTO `glpi_notificationtargets`
                           (`id`, `notifications_id`, `type`, `items_id`)
-                   VALUES (NULL, $notifid, ".Notification::USER_TYPE.", ".Notification::AUTHOR.");";
+                   VALUES (NULL, $notifid, " . Notification::USER_TYPE . ", " . Notification::AUTHOR . ");";
             $DB->queryOrDie($query, "0.84 add planning recall notification target");
         }
     }
@@ -858,7 +858,7 @@ function update0831to084()
         'default_consumables_alarm_threshold',
         "integer",
         ['value'  => -2,
-                               'update' => 'default_cartridges_alarm_threshold']
+            'update' => 'default_cartridges_alarm_threshold']
     );
     $migration->migrationOneTable('glpi_entities');
     // move -1 to Entity::CONFIG_NEVER
@@ -876,27 +876,27 @@ function update0831to084()
         'send_contracts_alert_before_delay',
         "integer",
         ['value'     => -2,
-                               'after'     => 'use_contracts_alert',
-                               'update'    => '0', // No delay for root entity
-                               'condition' => 'WHERE `id`=0']
+            'after'     => 'use_contracts_alert',
+            'update'    => '0', // No delay for root entity
+            'condition' => 'WHERE `id`=0']
     );
     $migration->addField(
         "glpi_entities",
         'send_infocoms_alert_before_delay',
         "integer",
         ['value'     => -2,
-                               'after'     => 'use_infocoms_alert',
-                               'update'    => '0', // No delay for root entity
-                               'condition' => 'WHERE `id`=0']
+            'after'     => 'use_infocoms_alert',
+            'update'    => '0', // No delay for root entity
+            'condition' => 'WHERE `id`=0']
     );
     $migration->addField(
         "glpi_entities",
         'send_licenses_alert_before_delay',
         "integer",
         ['value'     => -2,
-                               'after'     => 'use_licenses_alert',
-                               'update'    => '0', // No delay for root entity
-                               'condition' => 'WHERE `id`=0']
+            'after'     => 'use_licenses_alert',
+            'update'    => '0', // No delay for root entity
+            'condition' => 'WHERE `id`=0']
     );
 
     $migration->addField("glpi_configs", "notification_to_myself", "bool", ['value' => 1]);
@@ -1016,8 +1016,8 @@ function update0831to084()
 
     // Clean observer as recipient of satisfaction survey
     $query = "DELETE FROM `glpi_notificationtargets`
-             WHERE `glpi_notificationtargets`.`type` = '".Notification::USER_TYPE."'
-                   AND `glpi_notificationtargets`.`items_id` = '".Notification::OBSERVER."'
+             WHERE `glpi_notificationtargets`.`type` = '" . Notification::USER_TYPE . "'
+                   AND `glpi_notificationtargets`.`items_id` = '" . Notification::OBSERVER . "'
                    AND `notifications_id` IN (SELECT `glpi_notifications`.`id`
                                               FROM `glpi_notifications`
                                               WHERE `glpi_notifications`.`itemtype` = 'Ticket'
@@ -1027,8 +1027,8 @@ function update0831to084()
 
     // Clean user as recipient of item not unique
     $query = "DELETE FROM `glpi_notificationtargets`
-             WHERE `glpi_notificationtargets`.`type` = '".Notification::USER_TYPE."'
-                   AND `glpi_notificationtargets`.`items_id` = '".Notification::USER."'
+             WHERE `glpi_notificationtargets`.`type` = '" . Notification::USER_TYPE . "'
+                   AND `glpi_notificationtargets`.`items_id` = '" . Notification::USER . "'
                    AND `notifications_id` IN (SELECT `glpi_notifications`.`id`
                                               FROM `glpi_notifications`
                                               WHERE `glpi_notifications`.`itemtype` = 'FieldUnicity'
@@ -1052,15 +1052,15 @@ function update0831to084()
         $ADDTODISPLAYPREF['Blacklist'] = [12,11];
 
         $toinsert = [Blacklist::IP  => ['empty IP'  => '',
-                                                  'localhost' => '127.0.0.1',
-                                                  'zero IP'   => '0.0.0.0'],
-                          Blacklist::MAC => ['empty MAC' => '']];
+            'localhost' => '127.0.0.1',
+            'zero IP'   => '0.0.0.0'],
+            Blacklist::MAC => ['empty MAC' => '']];
         foreach ($toinsert as $type => $datas) {
             if (count($datas)) {
                 foreach ($datas as $name => $value) {
                     $query = "INSERT INTO `glpi_blacklists`
                                 (`type`,`name`,`value`)
-                         VALUES ('$type','".addslashes($name)."','".addslashes($value)."')";
+                         VALUES ('$type','" . addslashes($name) . "','" . addslashes($value) . "')";
                     $DB->queryOrDie($query, "0.84 insert datas to glpi_blacklists");
                 }
             }
@@ -1114,7 +1114,7 @@ function update0831to084()
             //Update config
             if ($DB->numrows($result) > 0) {
                 $query = "UPDATE `glpi_configs`
-                      SET `ssovariables_id` = '".$DB->result($result, 0, "id")."'";
+                      SET `ssovariables_id` = '" . $DB->result($result, 0, "id") . "'";
                 $DB->queryOrDie($query, "0.84 update glpi_configs");
             }
             //Drop old field
@@ -1255,7 +1255,7 @@ function update0831to084()
                               (`name`, `entities_id`, `itemtype`, `event`, `mode`,
                                `notificationtemplates_id`, `comment`, `is_recursive`, `is_active`,
                                `date_mod`)
-                       VALUES ('".$notif_names[$type]."', 0, 'Ticket', '$type', 'mail',
+                       VALUES ('" . $notif_names[$type] . "', 0, 'Ticket', '$type', 'mail',
                                $notid, '', 1, 1, NOW())";
                 $DB->queryOrDie($query, "0.83 add problem $type notification");
                 $notifid = $DB->insertId();
@@ -1263,7 +1263,7 @@ function update0831to084()
                 foreach ($targets as $target) {
                     $query = "INSERT INTO `glpi_notificationtargets`
                                 (`id`, `notifications_id`, `type`, `items_id`)
-                         VALUES (NULL, $notifid, ".Notification::USER_TYPE.", $target);";
+                         VALUES (NULL, $notifid, " . Notification::USER_TYPE . ", $target);";
                     $DB->queryOrDie($query, "0.83 add problem $type notification target");
                 }
             }
@@ -1287,8 +1287,8 @@ function update0831to084()
         foreach ($DB->request('glpi_problems', "`suppliers_id_assign` > 0") as $data) {
             $query = "INSERT INTO `glpi_problems_suppliers`
                           (`suppliers_id`, `type`, `problems_id`)
-                   VALUES ('".$data['suppliers_id_assign']."', '".CommonITILActor::ASSIGN."',
-                           '".$data['id']."')";
+                   VALUES ('" . $data['suppliers_id_assign'] . "', '" . CommonITILActor::ASSIGN . "',
+                           '" . $data['id'] . "')";
             $DB->query($query);
         }
         $migration->dropField('glpi_problems', 'suppliers_id_assign');
@@ -1310,8 +1310,8 @@ function update0831to084()
         foreach ($DB->request('glpi_tickets', "`suppliers_id_assign` > 0") as $data) {
             $query = "INSERT INTO `glpi_suppliers_tickets`
                           (`suppliers_id`, `type`, `tickets_id`)
-                   VALUES ('".$data['suppliers_id_assign']."', '".CommonITILActor::ASSIGN."',
-                           '".$data['id']."')";
+                   VALUES ('" . $data['suppliers_id_assign'] . "', '" . CommonITILActor::ASSIGN . "',
+                           '" . $data['id'] . "')";
             $DB->query($query);
         }
         $migration->dropField('glpi_tickets', 'suppliers_id_assign');
@@ -1333,7 +1333,7 @@ function update0831to084()
         // Get rules
         $query = "SELECT GROUP_CONCAT(`id`)
                 FROM `glpi_rules`
-                WHERE `sub_type` = '".$ruletype."'
+                WHERE `sub_type` = '" . $ruletype . "'
                 GROUP BY `sub_type`";
         if ($result = $DB->query($query)) {
             if ($DB->numrows($result) > 0) {
@@ -1377,8 +1377,8 @@ function update0831to084()
             while ($data = $DB->fetchAssoc($result)) {
                 // Update manufacturer
                 $query = "UPDATE `glpi_ruleactions`
-                      SET `value` = '".$data['newvalue']."'
-                      WHERE `id` = ". $data['id'];
+                      SET `value` = '" . $data['newvalue'] . "'
+                      WHERE `id` = " . $data['id'];
 
                 $DB->queryOrDie($query, "0.84 update value of manufacturer for rules actions");
             }
@@ -1391,17 +1391,17 @@ function update0831to084()
     $migration->addField('glpi_ticketrecurrents', 'end_date', 'datetime');
 
     $migration->migrationOneTable('glpi_ticketrecurrents');
-    foreach ($DB->request('glpi_ticketrecurrents', "`periodicity` >= ".MONTH_TIMESTAMP) as $data) {
+    foreach ($DB->request('glpi_ticketrecurrents', "`periodicity` >= " . MONTH_TIMESTAMP) as $data) {
         $periodicity = $data['periodicity'];
         if (is_numeric($periodicity)) {
             if ($periodicity >= 365 * DAY_TIMESTAMP) {
-                $periodicity = round($periodicity / (365 * DAY_TIMESTAMP)).'YEAR';
+                $periodicity = round($periodicity / (365 * DAY_TIMESTAMP)) . 'YEAR';
             } else {
-                $periodicity = round($periodicity / (MONTH_TIMESTAMP)).'MONTH';
+                $periodicity = round($periodicity / (MONTH_TIMESTAMP)) . 'MONTH';
             }
             $query = "UPDATE `glpi_ticketrecurrents`
                    SET `periodicity` = '$periodicity'
-                   WHERE `id` = '".$data['id']."'";
+                   WHERE `id` = '" . $data['id'] . "'";
             $DB->query($query);
         }
     }
@@ -1428,38 +1428,38 @@ function update0831to084()
 
     $migration->createRule(
         ['sub_type'      => 'RuleTicket',
-                                 'entities_id'   => 0,
-                                 'is_recursive'  => 1,
-                                 'is_active'     => 0,
-                                 'match'         => 'AND',
-                                 'name'          => 'Ticket location from item'],
+            'entities_id'   => 0,
+            'is_recursive'  => 1,
+            'is_active'     => 0,
+            'match'         => 'AND',
+            'name'          => 'Ticket location from item'],
         [['criteria'   => 'locations_id',
-                                       'condition'  => Rule::PATTERN_DOES_NOT_EXISTS,
-                                       'pattern'    => 1],
-                                 ['criteria'   => 'items_locations',
-                                       'condition'  => Rule::PATTERN_EXISTS,
-                                       'pattern'    => 1]],
+            'condition'  => Rule::PATTERN_DOES_NOT_EXISTS,
+            'pattern'    => 1],
+            ['criteria'   => 'items_locations',
+                'condition'  => Rule::PATTERN_EXISTS,
+                'pattern'    => 1]],
         [['field'        => 'locations_id',
-                                       'action_type'  => 'fromitem',
-                                       'value'        => 1]]
+            'action_type'  => 'fromitem',
+            'value'        => 1]]
     );
 
     $migration->createRule(
         ['sub_type'      => 'RuleTicket',
-                                 'entities_id'   => 0,
-                                 'is_recursive'  => 1,
-                                 'is_active'     => 0,
-                                 'match'         => 'AND',
-                                 'name'          => 'Ticket location from user'],
+            'entities_id'   => 0,
+            'is_recursive'  => 1,
+            'is_active'     => 0,
+            'match'         => 'AND',
+            'name'          => 'Ticket location from user'],
         [['criteria'   => 'locations_id',
-                                       'condition'  => Rule::PATTERN_DOES_NOT_EXISTS,
-                                       'pattern'    => 1],
-                                 ['criteria'   => 'users_locations',
-                                       'condition'  => Rule::PATTERN_EXISTS,
-                                       'pattern'    => 1]],
+            'condition'  => Rule::PATTERN_DOES_NOT_EXISTS,
+            'pattern'    => 1],
+            ['criteria'   => 'users_locations',
+                'condition'  => Rule::PATTERN_EXISTS,
+                'pattern'    => 1]],
         [['field'        => 'locations_id',
-                                       'action_type'  => 'fromuser',
-                                       'value'        => 1]]
+            'action_type'  => 'fromuser',
+            'value'        => 1]]
     );
 
     // Change begin_date id for budget
@@ -1503,22 +1503,22 @@ function update0831to084()
     $migration->migrationOneTable('glpi_computers_softwareversions');
 
     $types = ['glpi_computers_items', 'glpi_computervirtualmachines',
-                   'glpi_computers_softwareversions', 'glpi_computerdisks', 'glpi_networkports',
-                   'glpi_computers_softwarelicenses', 'glpi_networknames', 'glpi_ipaddresses'];
+        'glpi_computers_softwareversions', 'glpi_computerdisks', 'glpi_networkports',
+        'glpi_computers_softwarelicenses', 'glpi_networknames', 'glpi_ipaddresses'];
 
     $devices = [
-       'Item_DeviceMotherboard',
-       'Item_DeviceProcessor',
-       'Item_DeviceMemory',
-       'Item_DeviceHardDrive',
-       'Item_DeviceNetworkCard',
-       'Item_DeviceDrive',
-       'Item_DeviceControl',
-       'Item_DeviceGraphicCard',
-       'Item_DeviceSoundCard',
-       'Item_DevicePci',
-       'Item_DeviceCase',
-       'Item_DevicePowerSupply'
+        'Item_DeviceMotherboard',
+        'Item_DeviceProcessor',
+        'Item_DeviceMemory',
+        'Item_DeviceHardDrive',
+        'Item_DeviceNetworkCard',
+        'Item_DeviceDrive',
+        'Item_DeviceControl',
+        'Item_DeviceGraphicCard',
+        'Item_DeviceSoundCard',
+        'Item_DevicePci',
+        'Item_DeviceCase',
+        'Item_DevicePowerSupply',
     ];
 
     foreach ($devices as $type) {
@@ -1542,8 +1542,8 @@ function update0831to084()
 
     //Add field is_dynamic
     $types = array_merge($types, ['glpi_printers', 'glpi_phones', 'glpi_peripherals',
-                                       'glpi_networkequipments', 'glpi_networkports',
-                                       'glpi_monitors', 'glpi_networknames', 'glpi_ipaddresses']);
+        'glpi_networkequipments', 'glpi_networkports',
+        'glpi_monitors', 'glpi_networknames', 'glpi_ipaddresses']);
     foreach ($types as $table) {
         if ($migration->addField($table, 'is_dynamic', 'bool')) {
             $migration->migrationOneTable($table);
@@ -1586,7 +1586,7 @@ function update0831to084()
         'rssfeed_public',
         'char',
         ['update' => 'reminder_public',
-                                       'after'  => 'reminder_public']
+            'after'  => 'reminder_public']
     );
 
     // add ticket templates
@@ -1617,14 +1617,14 @@ function update0831to084()
 
     // Add keys for serial, otherserial and uuid
     $newindexes = ['serial'      => ['glpi_computers', 'glpi_items_deviceharddrives',
-                                               'glpi_items_devicememories',
-                                               'glpi_items_deviceprocessors', 'glpi_monitors',
-                                               'glpi_networkequipments', 'glpi_peripherals',
-                                               'glpi_phones', 'glpi_printers'],
-                        'otherserial' => ['glpi_computers', 'glpi_monitors',
-                                               'glpi_networkequipments', 'glpi_peripherals',
-                                               'glpi_phones', 'glpi_printers'],
-                        'uuid'        => ['glpi_computers', 'glpi_computervirtualmachines']];
+        'glpi_items_devicememories',
+        'glpi_items_deviceprocessors', 'glpi_monitors',
+        'glpi_networkequipments', 'glpi_peripherals',
+        'glpi_phones', 'glpi_printers'],
+        'otherserial' => ['glpi_computers', 'glpi_monitors',
+            'glpi_networkequipments', 'glpi_peripherals',
+            'glpi_phones', 'glpi_printers'],
+        'uuid'        => ['glpi_computers', 'glpi_computervirtualmachines']];
     foreach ($newindexes as $field => $tables) {
         foreach ($tables as $table) {
             $migration->addKey($table, $field);
@@ -1670,14 +1670,14 @@ function update0831to084()
     $DB->queryOrDie($query, "0.84 clean glpi_items_problems");
 
     $toclean = ['Computer', 'Monitor', 'NetworkEquipment',
-                     'Peripheral', 'Phone', 'Printer', 'Software'];
+        'Peripheral', 'Phone', 'Printer', 'Software'];
     foreach ($toclean as $type) {
         $query = "DELETE
                FROM `glpi_items_problems`
                WHERE `glpi_items_problems`.`itemtype` = '$type'
                      AND `glpi_items_problems`.`items_id`
-                        NOT IN (SELECT `".getTableForItemType($type)."`.`id`
-                              FROM `".getTableForItemType($type)."`)";
+                        NOT IN (SELECT `" . getTableForItemType($type) . "`.`id`
+                              FROM `" . getTableForItemType($type) . "`)";
         $DB->queryOrDie($query, "0.84 clean glpi_items_problems");
     }
     // ************ Keep it at the end **************
@@ -1694,7 +1694,7 @@ function update0831to084()
                 while ($data = $DB->fetchAssoc($result)) {
                     $query = "SELECT MAX(`rank`)
                          FROM `glpi_displaypreferences`
-                         WHERE `users_id` = '".$data['users_id']."'
+                         WHERE `users_id` = '" . $data['users_id'] . "'
                                AND `itemtype` = '$type'";
                     $result = $DB->query($query);
                     $rank   = $DB->result($result, 0, 0);
@@ -1703,15 +1703,15 @@ function update0831to084()
                     foreach ($tab as $newval) {
                         $query = "SELECT *
                             FROM `glpi_displaypreferences`
-                            WHERE `users_id` = '".$data['users_id']."'
+                            WHERE `users_id` = '" . $data['users_id'] . "'
                                   AND `num` = '$newval'
                                   AND `itemtype` = '$type'";
                         if ($result2 = $DB->query($query)) {
                             if ($DB->numrows($result2) == 0) {
                                 $query = "INSERT INTO `glpi_displaypreferences`
                                          (`itemtype` ,`num` ,`rank` ,`users_id`)
-                                  VALUES ('$type', '$newval', '".$rank++."',
-                                          '".$data['users_id']."')";
+                                  VALUES ('$type', '$newval', '" . $rank++ . "',
+                                          '" . $data['users_id'] . "')";
                                 $DB->query($query);
                             }
                         }
@@ -1723,7 +1723,7 @@ function update0831to084()
                 foreach ($tab as $newval) {
                     $query = "INSERT INTO `glpi_displaypreferences`
                                 (`itemtype` ,`num` ,`rank` ,`users_id`)
-                         VALUES ('$type', '$newval', '".$rank++."', '0')";
+                         VALUES ('$type', '$newval', '" . $rank++ . "', '0')";
                     $DB->query($query);
                 }
             }
@@ -1749,7 +1749,7 @@ function logNetworkPortError($origin, $id, $itemtype, $items_id, $error)
     global $migration;
 
     $migration->log(
-        $origin." - NetworkPort[".$id."]=".$itemtype."[".$items_id ."]: ".$error,
+        $origin . " - NetworkPort[" . $id . "]=" . $itemtype . "[" . $items_id . "]: " . $error,
         true
     );
 }
@@ -1793,7 +1793,7 @@ function createNetworkNameFromItem(
         }
 
     } else {
-        $name     = "migration-".str_replace('.', '-', $computerName);
+        $name     = "migration-" . str_replace('.', '-', $computerName);
         $domainID = 0;
     }
 
@@ -1801,17 +1801,17 @@ function createNetworkNameFromItem(
     if ($IPaddress->setAddressFromString($IP)) {
 
         $input = ['name'         => $name,
-                       'fqdns_id'     => $domainID,
-                       'entities_id'  => $entities_id,
-                       'items_id'     => $items_id,
-                       'itemtype'     => $itemtype];
+            'fqdns_id'     => $domainID,
+            'entities_id'  => $entities_id,
+            'items_id'     => $items_id,
+            'itemtype'     => $itemtype];
 
         $networknames_id = $migration->insertInTable('glpi_networknames', $input);
 
         $input = $IPaddress->setArrayFromAddress(
             ['entities_id'   => $entities_id,
-                                                       'itemtype'      => 'NetworkName',
-                                                       'items_id'      => $networknames_id],
+                'itemtype'      => 'NetworkName',
+                'items_id'      => $networknames_id],
             "version",
             "name",
             "binary"
@@ -1861,7 +1861,7 @@ function updateNetworkPortInstantiation($port, $fields, $setNetworkCard)
               WHERE `origin_glpi_networkports`.`id`
                                      IN (SELECT `id`
                                          FROM `glpi_networkports`
-                                         WHERE `instantiation_type` = '".$port->getType()."')";
+                                         WHERE `instantiation_type` = '" . $port->getType() . "')";
     foreach ($DB->request($query) as $portInformation) {
         $input = ['networkports_id' => $portInformation['id']];
         if ($manage_netinterface) {
@@ -1886,9 +1886,9 @@ function updateNetworkPortInstantiation($port, $fields, $setNetworkCard)
                           device.`designation` AS name
                    FROM `glpi_devicenetworkcards` as device,
                         `glpi_computers_devicenetworkcards` as link
-                   WHERE link.`computers_id` = ".$portInformation['items_id']."
+                   WHERE link.`computers_id` = " . $portInformation['items_id'] . "
                          AND device.`id` = link.`devicenetworkcards_id`
-                         AND link.`specificity` = '".$portInformation['mac']."'";
+                         AND link.`specificity` = '" . $portInformation['mac'] . "'";
             $result = $DB->query($query);
 
             if ($DB->numrows($result) > 0) {
@@ -1916,7 +1916,7 @@ function addNetworkPortMigrationError($networkports_id, $motive)
 
     if (countElementsInTable("glpi_networkportmigrations", ['id' => $networkports_id]) == 0) {
         $query = "INSERT INTO `glpi_networkportmigrations`
-                       (SELECT *" . str_repeat(', 0', count(NetworkPortMigration::getMotives())) ."
+                       (SELECT *" . str_repeat(', 0', count(NetworkPortMigration::getMotives())) . "
                         FROM `origin_glpi_networkports`
                         WHERE `id` = '$networkports_id')";
         $DB->queryOrDie($query, "0.84 error on copy of network port during migration");
@@ -1957,7 +1957,7 @@ function updateNetworkFramework(&$ADDTODISPLAYPREF)
 
     $originTables = [];
     foreach (['glpi_networkports', 'glpi_networkequipments'] as $table) {
-        $originTables[$table] = 'origin_'.$table;
+        $originTables[$table] = 'origin_' . $table;
     }
 
     if (!$DB->tableExists('origin_glpi_networkequipments')) {
@@ -1982,19 +1982,19 @@ function updateNetworkFramework(&$ADDTODISPLAYPREF)
         foreach ($originTables as $table => $originTable) {
             if (!$DB->tableExists($originTable) && $DB->tableExists($table)) {
                 $migration->copyTable($table, $originTable);
-                $migration->displayWarning("To be safe, we are working on $originTable. ".
-                                           "It is a copy of $table", false);
+                $migration->displayWarning("To be safe, we are working on $originTable. "
+                                           . "It is a copy of $table", false);
             }
         }
     }
 
     // Remove all tables created by any previous migration
     $new_network_ports = ['glpi_fqdns', 'glpi_ipaddresses', 'glpi_ipaddresses_ipnetworks',
-                               'glpi_ipnetworks', 'glpi_networkaliases', 'glpi_networknames',
-                               'glpi_networkportaggregates', 'glpi_networkportdialups',
-                               'glpi_networkportethernets', 'glpi_networkportlocals',
-                               'glpi_networkportmigrations', 'glpi_networkportwifis',
-                               'glpi_wifinetworks'];
+        'glpi_ipnetworks', 'glpi_networkaliases', 'glpi_networknames',
+        'glpi_networkportaggregates', 'glpi_networkportdialups',
+        'glpi_networkportethernets', 'glpi_networkportlocals',
+        'glpi_networkportmigrations', 'glpi_networkportwifis',
+        'glpi_wifinetworks'];
 
     foreach ($new_network_ports as $table) {
         $migration->dropTable($table);
@@ -2042,9 +2042,9 @@ function updateNetworkFramework(&$ADDTODISPLAYPREF)
                 $migration->insertInTable(
                     $fqdn->getTable(),
                     ['entities_id' => 0,
-                                                'name'        => $domainName,
-                                                'fqdn'        => $domainName,
-                                                'comment'     => $domain['comment']]
+                        'name'        => $domainName,
+                        'fqdn'        => $domainName,
+                        'comment'     => $domain['comment']]
                 );
             }
         }
@@ -2165,16 +2165,16 @@ function updateNetworkFramework(&$ADDTODISPLAYPREF)
             }
 
             $networkDefinition = "$address/$netmask";
-            $networkName       = $networkDefinition . (empty($gateway) ? "" : " - ".$gateway);
+            $networkName       = $networkDefinition . (empty($gateway) ? "" : " - " . $gateway);
 
             $input             = ['entities_id'   => $entities_id,
-                                       'name'          => $networkName,
-                                       'network'       => $networkDefinition,
-                                       'gateway'       => $gateway,
-                                       'ipnetworks_id' => 0,
-                                       'addressable'   => 1,
-                                       'completename'  => $networkName,
-                                       'level'         => 1];
+                'name'          => $networkName,
+                'network'       => $networkDefinition,
+                'gateway'       => $gateway,
+                'ipnetworks_id' => 0,
+                'addressable'   => 1,
+                'completename'  => $networkName,
+                'level'         => 1];
 
             $preparedInput = $network->prepareInput($input);
 
@@ -2203,7 +2203,7 @@ function updateNetworkFramework(&$ADDTODISPLAYPREF)
             } elseif (isset($preparedInput['error'])) {
                 $query = "SELECT id, items_id, itemtype
                       FROM origin_glpi_networkports
-                      WHERE INET_NTOA(INET_ATON(`ip`)&INET_ATON(`netmask`)) = '".$entry['address']."'
+                      WHERE INET_NTOA(INET_ATON(`ip`)&INET_ATON(`netmask`)) = '" . $entry['address'] . "'
                             AND `netmask` = '$netmask'
                             AND `gateway` = '$gateway'
                             AND `entities_id` = '$entities_id'";
@@ -2327,7 +2327,7 @@ function updateNetworkFramework(&$ADDTODISPLAYPREF)
         'instantiation_type',
         'string',
         ['after'  => 'name',
-                               'update' => "'NetworkPortEthernet'"]
+            'update' => "'NetworkPortEthernet'"]
     );
 
     $migration->displayMessage(sprintf(__('Data migration - %s'), "glpi_networkports"));
@@ -2371,7 +2371,7 @@ function updateNetworkFramework(&$ADDTODISPLAYPREF)
                    SET `instantiation_type` = '$instantiation_type'
                    WHERE `id` IN (SELECT `id`
                                   FROM `origin_glpi_networkports`
-                                  WHERE `networkinterfaces_id` = '".$entry['id']."')";
+                                  WHERE `networkinterfaces_id` = '" . $entry['id'] . "')";
             $DB->queryOrDie($query, "0.84 update instantiation_type field of glpi_networkports");
             // Clear $instantiation_type for next check inside the loop
             unset($instantiation_type);
@@ -2379,7 +2379,7 @@ function updateNetworkFramework(&$ADDTODISPLAYPREF)
     }
 
     foreach (['ip', 'gateway', 'netmask', 'netpoints_id', 'networkinterfaces_id',
-                   'subnet'] as $field) {
+        'subnet'] as $field) {
         $migration->dropField('glpi_networkports', $field);
     }
 
@@ -2520,9 +2520,9 @@ function updateNetworkFramework(&$ADDTODISPLAYPREF)
                 WHERE `mac` != ''
                       OR `ip` != ''";
         $port_input = ['itemtype'           => 'NetworkEquipment',
-                            'logical_number'     => '0',
-                            'name'               => 'management',
-                            'instantiation_type' => 'NetworkPortAggregate'];
+            'logical_number'     => '0',
+            'name'               => 'management',
+            'instantiation_type' => 'NetworkPortAggregate'];
         foreach ($DB->request($query) as $equipment) {
 
             $networkequipments_id       = $equipment['id'];
@@ -2531,8 +2531,8 @@ function updateNetworkFramework(&$ADDTODISPLAYPREF)
                    FROM `origin_glpi_networkports`
                    WHERE `itemtype` = 'NetworkEquipment'
                          AND `items_id` = '$networkequipments_id'
-                         AND (`ip` = '".$equipment['ip']."'
-                              OR `mac` = '".$equipment['mac']."')";
+                         AND (`ip` = '" . $equipment['ip'] . "'
+                              OR `mac` = '" . $equipment['mac'] . "')";
 
             $both = [];
             $mac  = [];
@@ -2608,11 +2608,11 @@ function updateNetworkFramework(&$ADDTODISPLAYPREF)
 
     $migration->addField('glpi_networkports_vlans', 'tagged', 'bool', ['value' => '0']);
     $migration->addField('glpi_vlans', 'entities_id', 'integer', ['value' => '0',
-                                                                       'after' => 'id']);
+        'after' => 'id']);
     $migration->addKey('glpi_vlans', 'entities_id');
     $migration->addField('glpi_vlans', 'is_recursive', 'bool', ['value' => '0',
-                                                                     'after' => 'entities_id',
-                                                                     'update' => '1']);
+        'after' => 'entities_id',
+        'update' => '1']);
     $migration->addKey('glpi_vlans', 'tag');
 
     $migration->displayMessage(sprintf(
@@ -2642,7 +2642,7 @@ function updateNetworkFramework(&$ADDTODISPLAYPREF)
                 while ($link = $DB->fetchAssoc($ipaddress_result)) {
                     $query = "INSERT INTO `glpi_ipaddresses_ipnetworks`
                                 (`ipaddresses_id`, `ipnetworks_id`)
-                         VALUES ('".$link['id']."', '$ipnetworks_id')";
+                         VALUES ('" . $link['id'] . "', '$ipnetworks_id')";
                     $DB->query($query);
                     unset($query);
                 }
@@ -2686,26 +2686,26 @@ function migrateComputerDevice(
 ) {
     global $DB, $migration;
 
-    $table        = getTableForItemType('Item_'.$deviceType);
+    $table        = getTableForItemType('Item_' . $deviceType);
     $device_table = getTableForItemType($deviceType);
-    $migration->renameTable(getTableForItemType('Computer_'.$deviceType), $table);
+    $migration->renameTable(getTableForItemType('Computer_' . $deviceType), $table);
 
     $migration->changeField($table, 'computers_id', 'items_id', 'integer', ['value' => 0]);
     $migration->addField($table, 'itemtype', 'string', ['after'  => 'items_id',
-                                                             'update' => "'Computer'"]);
+        'update' => "'Computer'"]);
 
     if (!empty($new_specif) && !empty($new_specif_type)) {
         $migration->changeField($table, 'specificity', $new_specif, $new_specif_type);
         $migration->changeField(
             $device_table,
             'specif_default',
-            $new_specif.'_default',
+            $new_specif . '_default',
             $new_specif_type
         );
 
         // Update the log ...
         $query = "UPDATE `glpi_logs`
-                SET `itemtype_link` = 'Item_".$deviceType."#".$new_specif."'
+                SET `itemtype_link` = 'Item_" . $deviceType . "#" . $new_specif . "'
                 WHERE `itemtype_link` = '$deviceType'";
         $DB->queryOrDie($query, "0.84 adapt glpi_logs to new item_devices");
     }

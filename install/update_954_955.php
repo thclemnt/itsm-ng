@@ -48,21 +48,21 @@ function update954to955()
 
     /* Add `DEFAULT CURRENT_TIMESTAMP` to some date fields */
     $tables = [
-       'glpi_alerts',
-       'glpi_crontasklogs',
-       'glpi_notimportedemails',
+        'glpi_alerts',
+        'glpi_crontasklogs',
+        'glpi_notimportedemails',
     ];
     foreach ($tables as $table) {
         $type_result = $DB->request(
             [
-              'SELECT'       => ['data_type as DATA_TYPE'],
-              'FROM'         => 'information_schema.columns',
-              'WHERE'       => [
-                 'table_schema' => $DB->dbdefault,
-                 'table_name'   => $table,
-                 'column_name'  => 'date',
-              ],
-         ]
+                'SELECT'       => ['data_type as DATA_TYPE'],
+                'FROM'         => 'information_schema.columns',
+                'WHERE'       => [
+                    'table_schema' => $DB->dbdefault,
+                    'table_name'   => $table,
+                    'column_name'  => 'date',
+                ],
+            ]
         );
         $type = $type_result->next()['DATA_TYPE'];
         $migration->changeField($table, 'date', 'date', $type . ' NOT NULL DEFAULT CURRENT_TIMESTAMP');

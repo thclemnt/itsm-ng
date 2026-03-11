@@ -63,27 +63,27 @@ class OlaLevel_Ticket extends CommonDBTM
         global $DB;
 
         $iterator = $DB->request([
-           'SELECT'       => [static::getTable() . '.id'],
-           'FROM'         => static::getTable(),
-           'LEFT JOIN'   => [
-              'glpi_olalevels'  => [
-                 'FKEY'   => [
-                    static::getTable()   => 'olalevels_id',
-                    'glpi_olalevels'     => 'id'
-                 ]
-              ],
-              'glpi_olas'       => [
-                 'FKEY'   => [
-                    'glpi_olalevels'     => 'olas_id',
-                    'glpi_olas'          => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'        => [
-              static::getTable() . '.tickets_id'  => $ID,
-              'glpi_olas.type'                    => $olaType
-           ],
-           'LIMIT'        => 1
+            'SELECT'       => [static::getTable() . '.id'],
+            'FROM'         => static::getTable(),
+            'LEFT JOIN'   => [
+                'glpi_olalevels'  => [
+                    'FKEY'   => [
+                        static::getTable()   => 'olalevels_id',
+                        'glpi_olalevels'     => 'id',
+                    ],
+                ],
+                'glpi_olas'       => [
+                    'FKEY'   => [
+                        'glpi_olalevels'     => 'olas_id',
+                        'glpi_olas'          => 'id',
+                    ],
+                ],
+            ],
+            'WHERE'        => [
+                static::getTable() . '.tickets_id'  => $ID,
+                'glpi_olas.type'                    => $olaType,
+            ],
+            'LIMIT'        => 1,
         ]);
         if (count($iterator) == 1) {
             $row = $iterator->next();
@@ -108,26 +108,26 @@ class OlaLevel_Ticket extends CommonDBTM
         global $DB;
 
         $iterator = $DB->request([
-           'SELECT'    => 'glpi_olalevels_tickets.id',
-           'FROM'      => 'glpi_olalevels_tickets',
-           'LEFT JOIN' => [
-              'glpi_olalevels'  => [
-                 'ON' => [
-                    'glpi_olalevels_tickets'   => 'olalevels_id',
-                    'glpi_olalevels'           => 'id'
-                 ]
-              ],
-              'glpi_olas'       => [
-                 'ON' => [
-                    'glpi_olalevels'  => 'olas_id',
-                    'glpi_olas'       => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_olalevels_tickets.tickets_id' => $tickets_id,
-              'glpi_olas.type'                    => $olaType
-           ]
+            'SELECT'    => 'glpi_olalevels_tickets.id',
+            'FROM'      => 'glpi_olalevels_tickets',
+            'LEFT JOIN' => [
+                'glpi_olalevels'  => [
+                    'ON' => [
+                        'glpi_olalevels_tickets'   => 'olalevels_id',
+                        'glpi_olalevels'           => 'id',
+                    ],
+                ],
+                'glpi_olas'       => [
+                    'ON' => [
+                        'glpi_olalevels'  => 'olas_id',
+                        'glpi_olas'       => 'id',
+                    ],
+                ],
+            ],
+            'WHERE'     => [
+                'glpi_olalevels_tickets.tickets_id' => $tickets_id,
+                'glpi_olas.type'                    => $olaType,
+            ],
         ]);
 
         while ($data = $iterator->next()) {
@@ -159,7 +159,7 @@ class OlaLevel_Ticket extends CommonDBTM
      *
      * @param $task : CronTask object
      *
-     * @return integer (0 : nothing done - 1 : done)
+     * @return int (0 : nothing done - 1 : done)
     **/
     public static function cronOlaTicket(CronTask $task)
     {
@@ -168,28 +168,28 @@ class OlaLevel_Ticket extends CommonDBTM
         $tot = 0;
 
         $iterator = $DB->request([
-           'SELECT'    => [
-              'glpi_olalevels_tickets.*',
-              'glpi_olas.type AS type'
-           ],
-           'FROM'      => 'glpi_olalevels_tickets',
-           'LEFT JOIN' => [
-              'glpi_olalevels'  => [
-                 'ON' => [
-                    'glpi_olalevels_tickets'   => 'olalevels_id',
-                    'glpi_olalevels'           => 'id'
-                 ]
-              ],
-              'glpi_olas'       => [
-                 'ON' => [
-                    'glpi_olalevels'  => 'olas_id',
-                    'glpi_olas'       => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_olalevels_tickets.date' => ['<', new \QueryExpression('NOW()')]
-           ]
+            'SELECT'    => [
+                'glpi_olalevels_tickets.*',
+                'glpi_olas.type AS type',
+            ],
+            'FROM'      => 'glpi_olalevels_tickets',
+            'LEFT JOIN' => [
+                'glpi_olalevels'  => [
+                    'ON' => [
+                        'glpi_olalevels_tickets'   => 'olalevels_id',
+                        'glpi_olalevels'           => 'id',
+                    ],
+                ],
+                'glpi_olas'       => [
+                    'ON' => [
+                        'glpi_olalevels'  => 'olas_id',
+                        'glpi_olas'       => 'id',
+                    ],
+                ],
+            ],
+            'WHERE'     => [
+                'glpi_olalevels_tickets.date' => ['<', new QueryExpression('NOW()')],
+            ],
         ]);
 
         while ($data = $iterator->next()) {
@@ -251,7 +251,7 @@ class OlaLevel_Ticket extends CommonDBTM
             $olalevel = new OlaLevel();
             $ola      = new OLA();
             // Check if ola datas are OK
-            list($dateField, $olaField) = OLA::getFieldNames($olaType);
+            [$dateField, $olaField] = OLA::getFieldNames($olaType);
             if (($ticket->fields[$olaField] > 0)) {
                 if ($ticket->fields['status'] == CommonITILObject::CLOSED) {
                     // Drop line when status is closed
@@ -264,8 +264,8 @@ class OlaLevel_Ticket extends CommonDBTM
                     ) {
                         // If status = solved : keep the line in case of solution not validated
                         $input = [
-                           'id'           => $ticket->getID(),
-                           '_auto_update' => true,
+                            'id'           => $ticket->getID(),
+                            '_auto_update' => true,
                         ];
 
                         if (
@@ -325,27 +325,27 @@ class OlaLevel_Ticket extends CommonDBTM
         global $DB;
 
         $criteria = [
-           'SELECT'    => 'glpi_olalevels_tickets.*',
-           'FROM'      => 'glpi_olalevels_tickets',
-           'LEFT JOIN' => [
-              'glpi_olalevels'  => [
-                 'ON' => [
-                    'glpi_olalevels_tickets'   => 'olalevels_id',
-                    'glpi_olalevels'           => 'id'
-                 ]
-              ],
-              'glpi_olas'       => [
-                 'ON' => [
-                    'glpi_olalevels'  => 'olas_id',
-                    'glpi_olas'       => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_olalevels_tickets.date'       => ['<', new \QueryExpression('NOW()')],
-              'glpi_olalevels_tickets.tickets_id' => $tickets_id,
-              'glpi_olas.type'                    => $olaType
-           ]
+            'SELECT'    => 'glpi_olalevels_tickets.*',
+            'FROM'      => 'glpi_olalevels_tickets',
+            'LEFT JOIN' => [
+                'glpi_olalevels'  => [
+                    'ON' => [
+                        'glpi_olalevels_tickets'   => 'olalevels_id',
+                        'glpi_olalevels'           => 'id',
+                    ],
+                ],
+                'glpi_olas'       => [
+                    'ON' => [
+                        'glpi_olalevels'  => 'olas_id',
+                        'glpi_olas'       => 'id',
+                    ],
+                ],
+            ],
+            'WHERE'     => [
+                'glpi_olalevels_tickets.date'       => ['<', new QueryExpression('NOW()')],
+                'glpi_olalevels_tickets.tickets_id' => $tickets_id,
+                'glpi_olas.type'                    => $olaType,
+            ],
         ];
 
         $number = 0;

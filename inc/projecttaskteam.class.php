@@ -142,8 +142,8 @@ class ProjectTaskTeam extends CommonDBRelation
         }
 
         $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['projecttasks_id' => $tasks_id]
+            'FROM'   => self::getTable(),
+            'WHERE'  => ['projecttasks_id' => $tasks_id],
         ]);
 
         while ($data = $iterator->next()) {
@@ -197,9 +197,9 @@ class ProjectTaskTeam extends CommonDBRelation
                 break;
             case Group::getType():
                 $group_iterator = $DB->request([
-                   'SELECT' => 'users_id',
-                   'FROM'   => Group_User::getTable(),
-                   'WHERE'  => ['groups_id' => $input['items_id']]
+                    'SELECT' => 'users_id',
+                    'FROM'   => Group_User::getTable(),
+                    'WHERE'  => ['groups_id' => $input['items_id']],
                 ]);
                 while ($row = $group_iterator->next()) {
                     Planning::checkAlreadyPlanned(
@@ -214,7 +214,7 @@ class ProjectTaskTeam extends CommonDBRelation
                 //only Users can be checked for planning conflicts
                 break;
             default:
-                throw new \RuntimeException($input['itemtype'] . " is not (yet?) handled.");
+                throw new RuntimeException($input['itemtype'] . " is not (yet?) handled.");
         }
 
         return $input;

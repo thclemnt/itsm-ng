@@ -34,6 +34,7 @@
 namespace tests\units;
 
 use DbTestCase;
+use mock\NotificationMailingSetting;
 
 require_once __DIR__ . '/../NotificationSettingInstance.php';
 
@@ -59,7 +60,7 @@ class NotificationSettingInstance extends DbTestCase
 
     public function testDisplayTabContentForItem()
     {
-        $instance = new \mock\NotificationMailingSetting();
+        $instance = new NotificationMailingSetting();
         $this->boolean(\NotificationSetting::displayTabContentForItem($instance))->isTrue();
     }
 

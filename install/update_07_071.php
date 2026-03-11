@@ -57,26 +57,26 @@ function update07to071()
     }
 
     $cache_tables = ["glpi_rule_cache_manufacturer",
-                          "glpi_rule_cache_model_computer",
-                          "glpi_rule_cache_model_monitor",
-                          "glpi_rule_cache_model_printer",
-                          "glpi_rule_cache_model_peripheral",
-                          "glpi_rule_cache_model_phone",
-                          "glpi_rule_cache_model_networking",
-                          "glpi_rule_cache_type_computer",
-                          "glpi_rule_cache_type_monitor",
-                          "glpi_rule_cache_type_printer",
-                          "glpi_rule_cache_type_peripheral",
-                          "glpi_rule_cache_type_phone",
-                          "glpi_rule_cache_type_networking",
-                          "glpi_rule_cache_software",
-                          "glpi_rule_cache_os",
-                          "glpi_rule_cache_os_sp",
-                          "glpi_rule_cache_os_version"];
+        "glpi_rule_cache_model_computer",
+        "glpi_rule_cache_model_monitor",
+        "glpi_rule_cache_model_printer",
+        "glpi_rule_cache_model_peripheral",
+        "glpi_rule_cache_model_phone",
+        "glpi_rule_cache_model_networking",
+        "glpi_rule_cache_type_computer",
+        "glpi_rule_cache_type_monitor",
+        "glpi_rule_cache_type_printer",
+        "glpi_rule_cache_type_peripheral",
+        "glpi_rule_cache_type_phone",
+        "glpi_rule_cache_type_networking",
+        "glpi_rule_cache_software",
+        "glpi_rule_cache_os",
+        "glpi_rule_cache_os_sp",
+        "glpi_rule_cache_os_version"];
 
     foreach ($cache_tables as $cache_table) {
         if (!$DB->tableExists($cache_table)) {
-            $query = "CREATE TABLE `".$cache_table."` (
+            $query = "CREATE TABLE `" . $cache_table . "` (
                      `ID` INT( 11 ) NOT NULL auto_increment ,
                      `old_value` VARCHAR( 255 ) NULL default NULL ,
                      `rule_id` INT( 11 ) NOT NULL DEFAULT '0',
@@ -85,7 +85,7 @@ function update07to071()
                      KEY `rule_id` (`rule_id`),
                      KEY `old_value` (`old_value`)
                    ) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci";
-            $DB->queryOrDie($query, "0.71 add table ".$cache_table."");
+            $DB->queryOrDie($query, "0.71 add table " . $cache_table . "");
         }
     }
 
@@ -109,17 +109,17 @@ function update07to071()
     }
 
     $model_cache_tables = ["glpi_rule_cache_model_computer",
-                                "glpi_rule_cache_model_monitor",
-                                "glpi_rule_cache_model_printer",
-                                "glpi_rule_cache_model_peripheral",
-                                "glpi_rule_cache_model_phone",
-                                "glpi_rule_cache_model_networking"];
+        "glpi_rule_cache_model_monitor",
+        "glpi_rule_cache_model_printer",
+        "glpi_rule_cache_model_peripheral",
+        "glpi_rule_cache_model_phone",
+        "glpi_rule_cache_model_networking"];
 
     foreach ($model_cache_tables as $model_cache_table) {
         if (!$DB->fieldExists($model_cache_table, "manufacturer", false)) {
-            $query = "ALTER TABLE `".$model_cache_table."`
+            $query = "ALTER TABLE `" . $model_cache_table . "`
                    ADD `manufacturer` VARCHAR( 255 ) DEFAULT NULL ";
-            $DB->queryOrDie($query, "0.71 add manufacturer in ".$model_cache_table." if not present");
+            $DB->queryOrDie($query, "0.71 add manufacturer in " . $model_cache_table . " if not present");
         }
     }
 
@@ -277,7 +277,7 @@ function update07to071()
         $cat_id = $DB->result($result, 0, "ID");
 
         $DB->query("UPDATE `glpi_config`
-                  SET `category_on_software_delete` = '".$cat_id."'");
+                  SET `category_on_software_delete` = '" . $cat_id . "'");
     }
 
     $query = "DELETE
@@ -492,7 +492,7 @@ function update07to071()
 
     if (!$DB->fieldExists("glpi_config", "mailgate_filesize_max", false)) {
         $query = "ALTER TABLE `glpi_config`
-                ADD `mailgate_filesize_max` int(11) NOT NULL DEFAULT ".(2 * 1024 * 1024)."
+                ADD `mailgate_filesize_max` int(11) NOT NULL DEFAULT " . (2 * 1024 * 1024) . "
                                             AFTER `ticket_category_mandatory`";
         $DB->queryOrDie($query, "0.71 add mailgate_filesize_max to glpi_config");
     }

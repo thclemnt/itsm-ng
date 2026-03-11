@@ -47,64 +47,64 @@ class Knowbase extends DbTestCase
 
         $cat_1_id = $kbcat->add(
             [
-              'name' => 'cat 1',
-              'knowbaseitemcategories_id' => 0,
-              'level' => 1,
-         ]
+                'name' => 'cat 1',
+                'knowbaseitemcategories_id' => 0,
+                'level' => 1,
+            ]
         );
         $this->integer($cat_1_id)->isGreaterThan(0);
 
         $cat_1_1_id = $kbcat->add(
             [
-              'name' => 'cat 1.1',
-              'knowbaseitemcategories_id' => $cat_1_id,
-              'level' => 2,
-         ]
+                'name' => 'cat 1.1',
+                'knowbaseitemcategories_id' => $cat_1_id,
+                'level' => 2,
+            ]
         );
         $this->integer($cat_1_1_id)->isGreaterThan(0);
 
         $cat_1_1_1_id = $kbcat->add(
             [
-              'name' => 'cat 1.1.1',
-              'knowbaseitemcategories_id' => $cat_1_1_id,
-              'level' => 3,
-         ]
+                'name' => 'cat 1.1.1',
+                'knowbaseitemcategories_id' => $cat_1_1_id,
+                'level' => 3,
+            ]
         );
         $this->integer($cat_1_1_1_id)->isGreaterThan(0);
 
         $cat_1_1_2_id = $kbcat->add(
             [
-              'name' => 'cat 1.1.2',
-              'knowbaseitemcategories_id' => $cat_1_1_id,
-              'level' => 3,
-         ]
+                'name' => 'cat 1.1.2',
+                'knowbaseitemcategories_id' => $cat_1_1_id,
+                'level' => 3,
+            ]
         );
         $this->integer($cat_1_1_2_id)->isGreaterThan(0);
 
         $cat_1_2_id = $kbcat->add(
             [
-              'name' => 'cat 1.2',
-              'knowbaseitemcategories_id' => $cat_1_id,
-              'level' => 2,
-         ]
+                'name' => 'cat 1.2',
+                'knowbaseitemcategories_id' => $cat_1_id,
+                'level' => 2,
+            ]
         );
         $this->integer($cat_1_2_id)->isGreaterThan(0);
 
         $cat_1_2_1_id = $kbcat->add(
             [
-              'name' => 'cat 1.2.1',
-              'knowbaseitemcategories_id' => $cat_1_2_id,
-              'level' => 3,
-         ]
+                'name' => 'cat 1.2.1',
+                'knowbaseitemcategories_id' => $cat_1_2_id,
+                'level' => 3,
+            ]
         );
         $this->integer($cat_1_2_1_id)->isGreaterThan(0);
 
         $cat_1_3_id = $kbcat->add(
             [
-              'name' => 'cat 1.3',
-              'knowbaseitemcategories_id' => $cat_1_id,
-              'level' => 2,
-         ]
+                'name' => 'cat 1.3',
+                'knowbaseitemcategories_id' => $cat_1_id,
+                'level' => 2,
+            ]
         );
         $this->integer($cat_1_3_id)->isGreaterThan(0);
 
@@ -113,10 +113,10 @@ class Knowbase extends DbTestCase
 
         // Expected root category item for normal user
         $expected_root_cat = [
-           'id' => '0',
-           'parent' => '#',
-           'text' => 'Root category <strong title="This category contains articles">(2)</strong>',
-           'a_attr' => ['data-id' => '0']
+            'id' => '0',
+            'parent' => '#',
+            'text' => 'Root category <strong title="This category contains articles">(2)</strong>',
+            'a_attr' => ['data-id' => '0'],
         ];
 
         $tree = \Knowbase::getJstreeCategoryList();
@@ -126,19 +126,19 @@ class Knowbase extends DbTestCase
         $kbitem = new \KnowbaseItem();
         $kbitem_id = $kbitem->add(
             [
-              'knowbaseitemcategories_id' => $cat_1_1_2_id,
-              'users_id' => \Session::getLoginUserID(),
-         ]
+                'knowbaseitemcategories_id' => $cat_1_1_2_id,
+                'users_id' => \Session::getLoginUserID(),
+            ]
         );
         $this->integer($kbitem_id)->isGreaterThan(0);
 
         $kbitem_target = new \Entity_KnowbaseItem();
         $kbitem_target_id = $kbitem_target->add(
             [
-              'knowbaseitems_id' => $kbitem_id,
-              'entities_id' => 0,
-              'is_recursive' => 1,
-         ]
+                'knowbaseitems_id' => $kbitem_id,
+                'entities_id' => 0,
+                'is_recursive' => 1,
+            ]
         );
         $this->integer($kbitem_target_id)->isGreaterThan(0);
 
@@ -146,54 +146,54 @@ class Knowbase extends DbTestCase
         $tree = \Knowbase::getJstreeCategoryList();
         $this->array($tree)->isEqualTo(
             [
-              [
-                 'id' => "$cat_1_1_2_id",
-                 'parent' => "$cat_1_1_id",
-                 'text' => 'cat 1.1.2 <strong title="This category contains articles">(1)</strong>',
-                 'a_attr' => ['data-id' => "$cat_1_1_2_id"]
-              ],
-              [
-                 'id' => "$cat_1_1_id",
-                 'parent' => "$cat_1_id",
-                 'text' => 'cat 1.1',
-                 'a_attr' => ['data-id' => "$cat_1_1_id"]
-              ],
-              [
-                 'id' => "$cat_1_id",
-                 'parent' => '0',
-                 'text' => 'cat 1',
-                 'a_attr' => ['data-id' => "$cat_1_id"]
-              ],
-              $expected_root_cat
-         ]
+                [
+                    'id' => "$cat_1_1_2_id",
+                    'parent' => "$cat_1_1_id",
+                    'text' => 'cat 1.1.2 <strong title="This category contains articles">(1)</strong>',
+                    'a_attr' => ['data-id' => "$cat_1_1_2_id"],
+                ],
+                [
+                    'id' => "$cat_1_1_id",
+                    'parent' => "$cat_1_id",
+                    'text' => 'cat 1.1',
+                    'a_attr' => ['data-id' => "$cat_1_1_id"],
+                ],
+                [
+                    'id' => "$cat_1_id",
+                    'parent' => '0',
+                    'text' => 'cat 1',
+                    'a_attr' => ['data-id' => "$cat_1_id"],
+                ],
+                $expected_root_cat,
+            ]
         );
 
         // Add a FAQ item
         $kbitem = new \KnowbaseItem();
         $kbitem_id = $kbitem->add(
             [
-              'knowbaseitemcategories_id' => $cat_1_2_1_id,
-              'is_faq' => 1,
-         ]
+                'knowbaseitemcategories_id' => $cat_1_2_1_id,
+                'is_faq' => 1,
+            ]
         );
         $this->integer($kbitem_id)->isGreaterThan(0);
 
         $kbitem_target = new \Entity_KnowbaseItem();
         $kbitem_target_id = $kbitem_target->add(
             [
-              'knowbaseitems_id' => $kbitem_id,
-              'entities_id' => 0,
-              'is_recursive' => 1,
-         ]
+                'knowbaseitems_id' => $kbitem_id,
+                'entities_id' => 0,
+                'is_recursive' => 1,
+            ]
         );
         $this->integer($kbitem_target_id)->isGreaterThan(0);
 
         // Expected root category item for anonymous user
         $expected_root_cat = [
-           'id' => '0',
-           'parent' => '#',
-           'text' => 'Root category',
-           'a_attr' => ['data-id' => '0']
+            'id' => '0',
+            'parent' => '#',
+            'text' => 'Root category',
+            'a_attr' => ['data-id' => '0'],
         ];
 
         // Check that tree contains root only (FAQ is not public) for anonymous user
@@ -215,26 +215,26 @@ class Knowbase extends DbTestCase
         $this->array($tree_with_no_public_faq)->isEqualTo([$expected_root_cat]);
         $this->array($tree_with_public_faq)->isEqualTo(
             [
-              [
-                 'id' => "$cat_1_2_1_id",
-                 'parent' => "$cat_1_2_id",
-                 'text' => 'cat 1.2.1 <strong title="This category contains articles">(1)</strong>',
-                 'a_attr' => ['data-id' => "$cat_1_2_1_id"]
-              ],
-              [
-                 'id' => "$cat_1_2_id",
-                 'parent' => "$cat_1_id",
-                 'text' => 'cat 1.2',
-                 'a_attr' => ['data-id' => "$cat_1_2_id"]
-              ],
-              [
-                 'id' => "$cat_1_id",
-                 'parent' => '0',
-                 'text' => 'cat 1',
-                 'a_attr' => ['data-id' => "$cat_1_id"]
-              ],
-              $expected_root_cat
-         ]
+                [
+                    'id' => "$cat_1_2_1_id",
+                    'parent' => "$cat_1_2_id",
+                    'text' => 'cat 1.2.1 <strong title="This category contains articles">(1)</strong>',
+                    'a_attr' => ['data-id' => "$cat_1_2_1_id"],
+                ],
+                [
+                    'id' => "$cat_1_2_id",
+                    'parent' => "$cat_1_id",
+                    'text' => 'cat 1.2',
+                    'a_attr' => ['data-id' => "$cat_1_2_id"],
+                ],
+                [
+                    'id' => "$cat_1_id",
+                    'parent' => '0',
+                    'text' => 'cat 1',
+                    'a_attr' => ['data-id' => "$cat_1_id"],
+                ],
+                $expected_root_cat,
+            ]
         );
     }
 }

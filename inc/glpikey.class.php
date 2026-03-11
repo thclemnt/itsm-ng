@@ -60,8 +60,8 @@ class GLPIKey
      * @var array
      */
     protected $fields = [
-       'glpi_mailcollectors.passwd',
-       'glpi_authldaps.rootdn_passwd'
+        'glpi_mailcollectors.passwd',
+        'glpi_authldaps.rootdn_passwd',
     ];
 
     /**
@@ -71,10 +71,10 @@ class GLPIKey
      * @var array
      */
     protected $configs = [
-       'core'   => [
-          'proxy_passwd',
-          'smtp_passwd',
-       ]
+        'core'   => [
+            'proxy_passwd',
+            'smtp_passwd',
+        ],
     ];
 
     public function __construct()
@@ -122,7 +122,7 @@ class GLPIKey
     public function get()
     {
         if (!file_exists($this->keyfile)) {
-            throw new \RuntimeException('You must create a security key, see itsmng:security:change_key command.');
+            throw new RuntimeException('You must create a security key, see itsmng:security:change_key command.');
         }
         //load key from existing config file
         $key = file_get_contents($this->keyfile);
@@ -148,7 +148,7 @@ class GLPIKey
     /**
      * Generate GLPI security key used for decryptable passwords
      * and update values in DB if necessary.
-     * @return boolean
+     * @return bool
      */
     public function generate()
     {
@@ -160,14 +160,14 @@ class GLPIKey
         if ($DB instanceof DBmysql) {
             try {
                 $sodium_key = $this->get();
-            } catch (\RuntimeException $e) {
+            } catch (RuntimeException $e) {
                 $sodium_key = null;
                 $old_key = $this->getLegacyKey();
             }
         }
 
         $key = sodium_crypto_aead_chacha20poly1305_ietf_keygen();
-        $success = (bool)file_put_contents($this->keyfile, $key);
+        $success = (bool) file_put_contents($this->keyfile, $key);
         if (!$success) {
             return false;
         }
@@ -251,16 +251,16 @@ class GLPIKey
         $success = true;
 
         foreach ($this->getFields() as $field) {
-            list($table, $column) = explode('.', (string) $field);
+            [$table, $column] = explode('.', (string) $field);
 
             $iterator = $DB->request([
-               'SELECT' => ['id', $column],
-               'FROM'   => $table,
-               ['NOT' => [$column => null]],
+                'SELECT' => ['id', $column],
+                'FROM'   => $table,
+                ['NOT' => [$column => null]],
             ]);
 
             while ($success && $row = $iterator->next()) {
-                $value = (string)$row[$column];
+                $value = (string) $row[$column];
                 if ($old_key === false) {
                     $pass = Toolbox::sodiumEncrypt(Toolbox::sodiumDecrypt($value, $sodium_key));
                 } else {
@@ -283,7 +283,7 @@ class GLPIKey
      * @param string       $sodium_key Current key
      * @param string|false $old_key    Old key, if any
      *
-     * @return boolean
+     * @return bool
      */
     protected function migrateConfigsInDb($sodium_key, $old_key = false)
     {
@@ -293,16 +293,16 @@ class GLPIKey
 
         foreach ($this->getConfigs() as $context => $names) {
             $iterator = $DB->request([
-               'FROM'   => Config::getTable(),
-               'WHERE'  => [
-                  'context'   => $context,
-                  'name'      => $names,
-                  ['NOT' => ['value' => null]],
-               ]
+                'FROM'   => Config::getTable(),
+                'WHERE'  => [
+                    'context'   => $context,
+                    'name'      => $names,
+                    ['NOT' => ['value' => null]],
+                ],
             ]);
 
             while ($success && $row = $iterator->next()) {
-                $value = (string)$row['value'];
+                $value = (string) $row['value'];
                 if ($old_key === false) {
                     $pass = Toolbox::sodiumEncrypt(Toolbox::sodiumDecrypt($value, $sodium_key));
                 } else {

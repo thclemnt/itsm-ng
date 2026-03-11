@@ -46,26 +46,26 @@ class Item_DeviceMemory extends DbTestCase
 
         $device = new \DeviceMemory();
         $device_id = $device->add([
-           'designation' => 'memory-' . $this->getUniqueString(),
+            'designation' => 'memory-' . $this->getUniqueString(),
         ]);
-        $this->integer((int)$device_id)->isGreaterThan(0);
+        $this->integer((int) $device_id)->isGreaterThan(0);
 
         $obj = new \Item_DeviceMemory();
         $id = $obj->add([
-           'itemtype'          => 'Computer',
-           'items_id'          => $computer->getID(),
-           'devicememories_id' => $device_id,
-           'entities_id'       => 0,
-           'size'              => 4096,
+            'itemtype'          => 'Computer',
+            'items_id'          => $computer->getID(),
+            'devicememories_id' => $device_id,
+            'entities_id'       => 0,
+            'size'              => 4096,
         ]);
-        $this->integer((int)$id)->isGreaterThan(0);
+        $this->integer((int) $id)->isGreaterThan(0);
         $this->boolean($obj->getFromDB($id))->isTrue();
-        $this->integer((int)$obj->getField('size'))->isEqualTo(4096);
+        $this->integer((int) $obj->getField('size'))->isEqualTo(4096);
 
         $this->boolean(
             $obj->update([
-               'id'      => $id,
-               'serial'  => $this->getUniqueString(),
+                'id'      => $id,
+                'serial'  => $this->getUniqueString(),
             ])
         )->isTrue();
         $this->boolean($obj->getFromDB($id))->isTrue();

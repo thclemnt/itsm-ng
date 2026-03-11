@@ -53,73 +53,73 @@ class RuleRight extends Rule
     public function showNewRuleForm($ID)
     {
         $form = [
-           'action' => Toolbox::getItemTypeFormURL('Entity'),
-           'buttons' => [
-              [
-                 'name'  => 'execute',
-                 'value' => __('Add'),
-                 'class' => 'btn btn-secondary',
-              ]
-           ],
-           'content' => [
-              $this->getTitle() => [
-                 'visible' => true,
-                 'inputs' => [
-                    __('Name') => [
-                       'type'  => 'text',
-                       'name'  => 'name',
-                       'value' => '',
-                       'size'  => 33
+            'action' => Toolbox::getItemTypeFormURL('Entity'),
+            'buttons' => [
+                [
+                    'name'  => 'execute',
+                    'value' => __('Add'),
+                    'class' => 'btn btn-secondary',
+                ],
+            ],
+            'content' => [
+                $this->getTitle() => [
+                    'visible' => true,
+                    'inputs' => [
+                        __('Name') => [
+                            'type'  => 'text',
+                            'name'  => 'name',
+                            'value' => '',
+                            'size'  => 33,
+                        ],
+                        __('Description') => [
+                            'type'  => 'text',
+                            'name'  => 'description',
+                            'value' => '',
+                            'size'  => 33,
+                        ],
+                        __('Logical operator') => [
+                            'type'    => 'select',
+                            'name'    => 'match',
+                            'value'   => self::AND_MATCHING,
+                            'values' => [
+                                self::AND_MATCHING => __('and'),
+                                self::OR_MATCHING  => __('or'),
+                            ],
+                        ],
+                        __('Profile') => [
+                            'type'  => 'select',
+                            'name'  => 'profiles_id',
+                            'value' => '',
+                            'values' => getOptionForItems(Profile::class),
+                        ],
+                        __('Recursive') => [
+                            'type'  => 'checkbox',
+                            'name'  => 'is_recursive',
+                            'value' => 0,
+                        ],
+                        [
+                            'type'  => 'hidden',
+                            'name'  => 'sub_type',
+                            'value' => get_class($this),
+                        ],
+                        [
+                            'type'  => 'hidden',
+                            'name'  => 'entities_id',
+                            'value' => '-1',
+                        ],
+                        [
+                            'type'  => 'hidden',
+                            'name'  => 'affectentity',
+                            'value' => $ID,
+                        ],
+                        [
+                            'type'  => 'hidden',
+                            'name'  => '_method',
+                            'value' => 'AddRule',
+                        ],
                     ],
-                    __('Description') => [
-                       'type'  => 'text',
-                       'name'  => 'description',
-                       'value' => '',
-                       'size'  => 33
-                    ],
-                    __('Logical operator') => [
-                       'type'    => 'select',
-                       'name'    => 'match',
-                       'value'   => self::AND_MATCHING,
-                       'values' => [
-                          self::AND_MATCHING => __('and'),
-                          self::OR_MATCHING  => __('or')
-                       ]
-                    ],
-                    __('Profile') => [
-                       'type'  => 'select',
-                       'name'  => 'profiles_id',
-                       'value' => '',
-                       'values' => getOptionForItems(Profile::class),
-                    ],
-                    __('Recursive') => [
-                       'type'  => 'checkbox',
-                       'name'  => 'is_recursive',
-                       'value' => 0
-                    ],
-                    [
-                       'type'  => 'hidden',
-                       'name'  => 'sub_type',
-                       'value' => get_class($this)
-                    ],
-                    [
-                       'type'  => 'hidden',
-                       'name'  => 'entities_id',
-                       'value' => '-1'
-                    ],
-                    [
-                       'type'  => 'hidden',
-                       'name'  => 'affectentity',
-                       'value' => $ID
-                    ],
-                    [
-                       'type'  => 'hidden',
-                       'name'  => '_method',
-                       'value' => 'AddRule'
-                    ],
-                 ]
-              ]
-           ]
+                ],
+            ],
         ];
         renderTwigForm($form);
     }
@@ -245,7 +245,7 @@ class RuleRight extends Rule
                 if ($right != '') {
                     foreach ($entity as $entID) {
                         $output["_ldap_rules"]["rules_entities_rights"][] = [$entID, $right,
-                                                                                  $is_recursive];
+                            $is_recursive];
                     }
                 } else {
                     foreach ($entity as $entID) {
@@ -333,38 +333,38 @@ class RuleRight extends Rule
         global $DB;
         if ($criteria['field'] == 'type') {
             $methods = [
-               \Auth::DB_GLPI => __('Authentication on ITSM-NG database'),
+                Auth::DB_GLPI => __('Authentication on ITSM-NG database'),
             ];
 
             $result = $DB->request([
-               'FROM'   => 'glpi_authldaps',
-               'COUNT'  => 'cpt',
-               'WHERE'  => [
-                  'is_active' => 1
-               ]
+                'FROM'   => 'glpi_authldaps',
+                'COUNT'  => 'cpt',
+                'WHERE'  => [
+                    'is_active' => 1,
+                ],
             ])->next();
 
             if ($result['cpt'] > 0) {
-                $methods[\Auth::LDAP]     = __('Authentication on a LDAP directory');
-                $methods[\Auth::EXTERNAL] = __('External authentications');
+                $methods[Auth::LDAP]     = __('Authentication on a LDAP directory');
+                $methods[Auth::EXTERNAL] = __('External authentications');
             }
 
             $result = $DB->request([
-               'FROM'   => 'glpi_authmails',
-               'COUNT'  => 'cpt',
-               'WHERE'  => [
-                  'is_active' => 1
-               ]
+                'FROM'   => 'glpi_authmails',
+                'COUNT'  => 'cpt',
+                'WHERE'  => [
+                    'is_active' => 1,
+                ],
             ])->next();
 
             if ($result['cpt'] > 0) {
-                $methods[\Auth::MAIL] = __('Authentication on mail server');
+                $methods[Auth::MAIL] = __('Authentication on mail server');
             }
             renderTwigTemplate('macros/input.twig', [
-               'name' => $name,
-               'type' => 'select',
-               'values' => $methods,
-               'value' => $value,
+                'name' => $name,
+                'type' => 'select',
+                'values' => $methods,
+                'value' => $value,
             ]);
             return true;
         }
@@ -469,7 +469,7 @@ class RuleRight extends Rule
                     'value',
                     $timezones,
                     [
-                      'display_emptychoice' => true
+                        'display_emptychoice' => true,
                     ]
                 );
                 return true;

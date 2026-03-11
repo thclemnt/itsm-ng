@@ -70,8 +70,8 @@ class Item_Project extends CommonDBRelation
         // Avoid duplicate entry
         if (
             countElementsInTable($this->getTable(), ['projects_id' => $input['projects_id'],
-                                                     'itemtype'    => $input['itemtype'],
-                                                     'items_id'    => $input['items_id']]) > 0
+                'itemtype'    => $input['itemtype'],
+                'items_id'    => $input['items_id']]) > 0
         ) {
             return false;
         }
@@ -109,32 +109,32 @@ class Item_Project extends CommonDBRelation
             };
 
             $form = [
-               'action' => Toolbox::getItemTypeFormURL(__CLASS__),
-               'buttons' => [
-                  [
-                     'type' => 'submit',
-                     'name' => 'add',
-                     'value' => _sx('button', 'Add an item'),
-                     'class' => 'btn btn-secondary'
-                  ]
-               ],
-               'content' => [
-                  __('Add an item') => [
-                     'visible' => true,
-                     'inputs' => [
-                        [
-                           'type' => 'hidden',
-                           'name' => 'projects_id',
-                           'value' => $instID
-                        ],
-                        __('Type') => [
-                           'type' => 'select',
-                           'id' => 'dropdown_itemtypeForProject',
-                           'name' => 'itemtype',
-                           'values' => [Dropdown::EMPTY_VALUE] + array_unique($options),
-                           'col_lg' => 6,
-                           'hooks' => [
-                              'change' => <<<JS
+                'action' => Toolbox::getItemTypeFormURL(__CLASS__),
+                'buttons' => [
+                    [
+                        'type' => 'submit',
+                        'name' => 'add',
+                        'value' => _sx('button', 'Add an item'),
+                        'class' => 'btn btn-secondary',
+                    ],
+                ],
+                'content' => [
+                    __('Add an item') => [
+                        'visible' => true,
+                        'inputs' => [
+                            [
+                                'type' => 'hidden',
+                                'name' => 'projects_id',
+                                'value' => $instID,
+                            ],
+                            __('Type') => [
+                                'type' => 'select',
+                                'id' => 'dropdown_itemtypeForProject',
+                                'name' => 'itemtype',
+                                'values' => [Dropdown::EMPTY_VALUE] + array_unique($options),
+                                'col_lg' => 6,
+                                'hooks' => [
+                                    'change' => <<<JS
                               $.ajax({
                                     method: "POST",
                                     url: "$CFG_GLPI[root_doc]/ajax/getDropdownValue.php",
@@ -159,39 +159,39 @@ class Item_Project extends CommonDBRelation
                                     }
                                  });
                            JS,
-                           ]
+                                ],
+                            ],
+                            __('Item') => [
+                                'type' => 'select',
+                                'id' => 'dropdown_items_idForProject',
+                                'name' => 'items_id',
+                                'values' => [],
+                                'col_lg' => 6,
+                            ],
                         ],
-                        __('Item') => [
-                           'type' => 'select',
-                           'id' => 'dropdown_items_idForProject',
-                           'name' => 'items_id',
-                           'values' => [],
-                           'col_lg' => 6,
-                        ],
-                     ]
-                  ]
-               ]
+                    ],
+                ],
             ];
             renderTwigForm($form);
         }
 
         if ($canedit && $number) {
             $massiveactionparams = [
-               'container' => 'tableForProjectItem',
-               'specific_actions' => [
-                  'MassiveAction:purge' => _x('button', 'Delete permanently the relation with selected elements'),
-               ],
-               'display_arrow' => false,
+                'container' => 'tableForProjectItem',
+                'specific_actions' => [
+                    'MassiveAction:purge' => _x('button', 'Delete permanently the relation with selected elements'),
+                ],
+                'display_arrow' => false,
             ];
             Html::showMassiveActions($massiveactionparams);
         }
 
         $fields = [
-           _n('Type', 'Types', 1),
-           Entity::getTypeName(1),
-           __('Name'),
-           __('Serial number'),
-           __('Inventory number'),
+            _n('Type', 'Types', 1),
+            Entity::getTypeName(1),
+            __('Name'),
+            __('Serial number'),
+            __('Inventory number'),
         ];
         $values = [];
         $massiveactionValues = [];
@@ -217,21 +217,21 @@ class Item_Project extends CommonDBRelation
                     $namelink = "<a href=\"" . $link . "\">" . $name . "</a>";
 
                     $values[] = [
-                       $item->getTypeName(),
-                       Dropdown::getDropdownName("glpi_entities", $data['entity']),
-                       $namelink,
-                       (isset($data["serial"]) ? "" . $data["serial"] . "" : "-"),
-                       (isset($data["otherserial"]) ? "" . $data["otherserial"] . "" : "-"),
+                        $item->getTypeName(),
+                        Dropdown::getDropdownName("glpi_entities", $data['entity']),
+                        $namelink,
+                        (isset($data["serial"]) ? "" . $data["serial"] . "" : "-"),
+                        (isset($data["otherserial"]) ? "" . $data["otherserial"] . "" : "-"),
                     ];
                     $massiveactionValues[] = sprintf('item[%s][%s]', self::class, $data['linkid']);
                 }
             }
         }
         renderTwigTemplate('table.twig', [
-           'id' => 'tableForProjectItem',
-           'fields' => $fields,
-           'values' => $values,
-           'massive_action' => $massiveactionValues,
+            'id' => 'tableForProjectItem',
+            'fields' => $fields,
+            'values' => $values,
+            'massive_action' => $massiveactionValues,
         ]);
     }
 

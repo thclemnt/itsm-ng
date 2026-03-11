@@ -72,14 +72,14 @@ class BlacklistedMailContent extends CommonDropdown
     {
 
         return [
-           __('Content') => [
-              'name'  => 'content',
-              'type'  => 'textarea',
-              'value' => $this->fields['content'],
-              'rows'  => 10,
-              'col_lg' => 12,
-              'col_md' => 12,
-           ]
+            __('Content') => [
+                'name'  => 'content',
+                'type'  => 'textarea',
+                'value' => $this->fields['content'],
+                'rows'  => 10,
+                'col_lg' => 12,
+                'col_md' => 12,
+            ],
         ];
     }
 
@@ -89,12 +89,12 @@ class BlacklistedMailContent extends CommonDropdown
         $tab = parent::rawSearchOptions();
 
         $tab[] = [
-           'id'                 => '11',
-           'table'              => $this->getTable(),
-           'field'              => 'content',
-           'name'               => __('Content'),
-           'datatype'           => 'text',
-           'massiveaction'      => false
+            'id'                 => '11',
+            'table'              => $this->getTable(),
+            'field'              => 'content',
+            'name'               => __('Content'),
+            'datatype'           => 'text',
+            'massiveaction'      => false,
         ];
 
         return $tab;

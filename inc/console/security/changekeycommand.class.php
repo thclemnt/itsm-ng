@@ -38,17 +38,17 @@ if (!defined('GLPI_ROOT')) {
 }
 
 use Glpi\Console\AbstractCommand;
+use GLPIKey;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Question\ConfirmationQuestion;
-use GLPIKey;
 
 class ChangekeyCommand extends AbstractCommand
 {
     /**
      * Error code returned when unable to renew key.
      *
-     * @var integer
+     * @var int
      */
     public const ERROR_UNABLE_TO_RENEW_KEY = 1;
 

@@ -60,7 +60,7 @@ if (!isset($_GET["withtemplate"])) {
 }
 
 if (isset($_GET['id']) && !empty($_GET['id'])) {
-    $_GET['id'] = (int)$_GET['id'];
+    $_GET['id'] = (int) $_GET['id'];
 }
 
 if ($item = getItemForItemtype($_UGET['_itemtype'])) {

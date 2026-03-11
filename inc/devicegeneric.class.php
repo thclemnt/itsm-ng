@@ -52,13 +52,13 @@ class DeviceGeneric extends CommonDevice
         return array_merge(
             parent::getAdditionalFields(),
             [
-              _n('Type', 'Types', 1) => [
-                 'name'  => 'devicegenerictypes_id',
-                 'type'  => 'select',
-                 'values' => getOptionForItems('DeviceGenericType'),
-                 'value' => $this->fields['devicegenerictypes_id'],
-                 'actions' => getItemActionButtons(['add', 'info'], 'DeviceGenericType')
-              ]
+                _n('Type', 'Types', 1) => [
+                    'name'  => 'devicegenerictypes_id',
+                    'type'  => 'select',
+                    'values' => getOptionForItems('DeviceGenericType'),
+                    'value' => $this->fields['devicegenerictypes_id'],
+                    'actions' => getItemActionButtons(['add', 'info'], 'DeviceGenericType'),
+                ],
             ]
         );
     }
@@ -69,11 +69,11 @@ class DeviceGeneric extends CommonDevice
         $tab                 = parent::rawSearchOptions();
 
         $tab[] = [
-           'id'                 => '12',
-           'table'              => 'glpi_devicegenerictypes',
-           'field'              => 'name',
-           'name'               => _n('Type', 'Types', 1),
-           'datatype'           => 'dropdown'
+            'id'                 => '12',
+            'table'              => 'glpi_devicegenerictypes',
+            'field'              => 'name',
+            'name'               => _n('Type', 'Types', 1),
+            'datatype'           => 'dropdown',
         ];
 
         return $tab;
@@ -134,9 +134,9 @@ class DeviceGeneric extends CommonDevice
     {
 
         return ['designation'       => 'equal',
-                     'manufacturers_id'  => 'equal',
-                     'devicecasetypes_id' => 'equal',
-                     'locations_id'      => 'equal',
-                     ];
+            'manufacturers_id'  => 'equal',
+            'devicecasetypes_id' => 'equal',
+            'locations_id'      => 'equal',
+        ];
     }
 }

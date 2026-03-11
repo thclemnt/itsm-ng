@@ -33,14 +33,14 @@
 
 namespace Glpi\Dashboard;
 
-use Mexitek\PHPColors\Color;
-use ScssPhp\ScssPhp\Compiler;
-use Michelf\MarkdownExtra;
 use CommonGLPI;
-use Toolbox;
-use Plugin;
 use Html;
+use Mexitek\PHPColors\Color;
+use Michelf\MarkdownExtra;
+use Plugin;
+use ScssPhp\ScssPhp\Compiler;
 use Search;
+use Toolbox;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -66,166 +66,166 @@ class Widget extends CommonGLPI
         global $CFG_GLPI;
 
         $types = [
-           'pie' => [
-              'label'    => __("Pie"),
-              'function' => 'Glpi\\Dashboard\\Widget::pie',
-              'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/pie.png',
-              'gradient' => true,
-              'limit'    => true,
-              'width'    => 3,
-              'height'   => 3,
-           ],
-           'donut' => [
-              'label'    => __("Donut"),
-              'function' => 'Glpi\\Dashboard\\Widget::donut',
-              'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/donut.png',
-              'gradient' => true,
-              'limit'    => true,
-              'width'    => 3,
-              'height'   => 3,
-           ],
-           'halfpie' => [
-              'label'    => __("Half pie"),
-              'function' => 'Glpi\\Dashboard\\Widget::halfPie',
-              'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/halfpie.png',
-              'gradient' => true,
-              'limit'    => true,
-              'width'    => 3,
-              'height'   => 2,
-           ],
-           'halfdonut' => [
-              'label'    => __("Half donut"),
-              'function' => 'Glpi\\Dashboard\\Widget::halfDonut',
-              'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/halfdonut.png',
-              'gradient' => true,
-              'limit'    => true,
-              'width'    => 3,
-              'height'   => 2,
-           ],
-           'bar' => [
-              'label'    => __("Bars"),
-              'function' => 'Glpi\\Dashboard\\Widget::simpleBar',
-              'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/bar.png',
-              'gradient' => true,
-              'limit'    => true,
-              'pointlbl' => true,
-              'width'    => 4,
-              'height'   => 3,
-           ],
-           'line' => [
-              'label'    => \Line::getTypeName(1),
-              'function' => 'Glpi\\Dashboard\\Widget::simpleLine',
-              'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/line.png',
-              'limit'    => true,
-              'pointlbl' => true,
-              'width'    => 4,
-              'height'   => 3,
-           ],
-           'lines' => [
-              'label'    => __("Multiple lines"),
-              'function' => 'Glpi\\Dashboard\\Widget::multipleLines',
-              'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/line.png',
-              'gradient' => true,
-              'limit'    => true,
-              'pointlbl' => true,
-              'width'    => 4,
-              'height'   => 3,
-           ],
-           'area' => [
-              'label'    => __("Area"),
-              'function' => 'Glpi\\Dashboard\\Widget::simpleArea',
-              'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/area.png',
-              'limit'    => true,
-              'pointlbl' => true,
-              'width'    => 4,
-              'height'   => 3,
-           ],
-           'areas' => [
-              'label'    => __("Multiple areas"),
-              'function' => 'Glpi\\Dashboard\\Widget::multipleAreas',
-              'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/area.png',
-              'gradient' => true,
-              'limit'    => true,
-              'pointlbl' => true,
-              'width'    => 5,
-              'height'   => 3,
-           ],
-           'bars' => [
-              'label'    => __("Multiple bars"),
-              'function' => 'Glpi\\Dashboard\\Widget::multipleBars',
-              'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/bar.png',
-              'gradient' => true,
-              'limit'    => true,
-              'pointlbl' => true,
-              'width'    => 5,
-              'height'   => 3,
-           ],
-           'stackedbars' => [
-              'label'    => __("Stacked bars"),
-              'function' => 'Glpi\\Dashboard\\Widget::StackedBars',
-              'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/stacked.png',
-              'gradient' => true,
-              'limit'    => true,
-              'pointlbl' => true,
-              'width'    => 4,
-              'height'   => 3,
-           ],
-           'hbar' => [
-              'label'    => __("Horizontal bars"),
-              'function' => 'Glpi\\Dashboard\\Widget::simpleHbar',
-              'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/hbar.png',
-              'gradient' => true,
-              'limit'    => true,
-              'pointlbl' => true,
-              'width'    => 3,
-              'height'   => 4,
-           ],
-           'bigNumber' => [
-              'label'    => __("Big number"),
-              'function' => 'Glpi\\Dashboard\\Widget::bigNumber',
-              'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/bignumber.png',
-           ],
-           'multipleNumber' => [
-              'label'    => __("Multiple numbers"),
-              'function' => 'Glpi\\Dashboard\\Widget::multipleNumber',
-              'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/multiplenumbers.png',
-              'limit'    => true,
-              'gradient' => true,
-              'width'    => 3,
-              'height'   => 3,
-           ],
-           'markdown' => [
-              'label'    => __("Editable markdown"),
-              'function' => 'Glpi\\Dashboard\\Widget::markdown',
-              'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/markdown.png',
-              'width'    => 4,
-              'height'   => 4,
-           ],
-           'searchShowList' => [
-              'label'    => __("Search result"),
-              'function' => 'Glpi\\Dashboard\\Widget::searchShowList',
-              'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/table.png',
-              'limit'    => true,
-              'width'    => 5,
-              'height'   => 4,
-           ],
-           'summaryNumbers' => [
-              'label'    => __("Summary numbers"),
-              'function' => 'Glpi\\Dashboard\\Widget::summaryNumber',
-              'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/summarynumber.png',
-              'limit'    => true,
-              'gradient' => true,
-              'width'    => 4,
-              'height'   => 2,
-           ],
-           'articleList' => [
-              'label'    => __("List of articles"),
-              'function' => 'Glpi\\Dashboard\\Widget::articleList',
-              'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/articles.png',
-              'limit'    => true,
-              'width'    => 3,
-              'height'   => 4,
-           ],
+            'pie' => [
+                'label'    => __("Pie"),
+                'function' => 'Glpi\\Dashboard\\Widget::pie',
+                'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/pie.png',
+                'gradient' => true,
+                'limit'    => true,
+                'width'    => 3,
+                'height'   => 3,
+            ],
+            'donut' => [
+                'label'    => __("Donut"),
+                'function' => 'Glpi\\Dashboard\\Widget::donut',
+                'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/donut.png',
+                'gradient' => true,
+                'limit'    => true,
+                'width'    => 3,
+                'height'   => 3,
+            ],
+            'halfpie' => [
+                'label'    => __("Half pie"),
+                'function' => 'Glpi\\Dashboard\\Widget::halfPie',
+                'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/halfpie.png',
+                'gradient' => true,
+                'limit'    => true,
+                'width'    => 3,
+                'height'   => 2,
+            ],
+            'halfdonut' => [
+                'label'    => __("Half donut"),
+                'function' => 'Glpi\\Dashboard\\Widget::halfDonut',
+                'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/halfdonut.png',
+                'gradient' => true,
+                'limit'    => true,
+                'width'    => 3,
+                'height'   => 2,
+            ],
+            'bar' => [
+                'label'    => __("Bars"),
+                'function' => 'Glpi\\Dashboard\\Widget::simpleBar',
+                'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/bar.png',
+                'gradient' => true,
+                'limit'    => true,
+                'pointlbl' => true,
+                'width'    => 4,
+                'height'   => 3,
+            ],
+            'line' => [
+                'label'    => \Line::getTypeName(1),
+                'function' => 'Glpi\\Dashboard\\Widget::simpleLine',
+                'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/line.png',
+                'limit'    => true,
+                'pointlbl' => true,
+                'width'    => 4,
+                'height'   => 3,
+            ],
+            'lines' => [
+                'label'    => __("Multiple lines"),
+                'function' => 'Glpi\\Dashboard\\Widget::multipleLines',
+                'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/line.png',
+                'gradient' => true,
+                'limit'    => true,
+                'pointlbl' => true,
+                'width'    => 4,
+                'height'   => 3,
+            ],
+            'area' => [
+                'label'    => __("Area"),
+                'function' => 'Glpi\\Dashboard\\Widget::simpleArea',
+                'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/area.png',
+                'limit'    => true,
+                'pointlbl' => true,
+                'width'    => 4,
+                'height'   => 3,
+            ],
+            'areas' => [
+                'label'    => __("Multiple areas"),
+                'function' => 'Glpi\\Dashboard\\Widget::multipleAreas',
+                'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/area.png',
+                'gradient' => true,
+                'limit'    => true,
+                'pointlbl' => true,
+                'width'    => 5,
+                'height'   => 3,
+            ],
+            'bars' => [
+                'label'    => __("Multiple bars"),
+                'function' => 'Glpi\\Dashboard\\Widget::multipleBars',
+                'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/bar.png',
+                'gradient' => true,
+                'limit'    => true,
+                'pointlbl' => true,
+                'width'    => 5,
+                'height'   => 3,
+            ],
+            'stackedbars' => [
+                'label'    => __("Stacked bars"),
+                'function' => 'Glpi\\Dashboard\\Widget::StackedBars',
+                'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/stacked.png',
+                'gradient' => true,
+                'limit'    => true,
+                'pointlbl' => true,
+                'width'    => 4,
+                'height'   => 3,
+            ],
+            'hbar' => [
+                'label'    => __("Horizontal bars"),
+                'function' => 'Glpi\\Dashboard\\Widget::simpleHbar',
+                'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/hbar.png',
+                'gradient' => true,
+                'limit'    => true,
+                'pointlbl' => true,
+                'width'    => 3,
+                'height'   => 4,
+            ],
+            'bigNumber' => [
+                'label'    => __("Big number"),
+                'function' => 'Glpi\\Dashboard\\Widget::bigNumber',
+                'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/bignumber.png',
+            ],
+            'multipleNumber' => [
+                'label'    => __("Multiple numbers"),
+                'function' => 'Glpi\\Dashboard\\Widget::multipleNumber',
+                'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/multiplenumbers.png',
+                'limit'    => true,
+                'gradient' => true,
+                'width'    => 3,
+                'height'   => 3,
+            ],
+            'markdown' => [
+                'label'    => __("Editable markdown"),
+                'function' => 'Glpi\\Dashboard\\Widget::markdown',
+                'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/markdown.png',
+                'width'    => 4,
+                'height'   => 4,
+            ],
+            'searchShowList' => [
+                'label'    => __("Search result"),
+                'function' => 'Glpi\\Dashboard\\Widget::searchShowList',
+                'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/table.png',
+                'limit'    => true,
+                'width'    => 5,
+                'height'   => 4,
+            ],
+            'summaryNumbers' => [
+                'label'    => __("Summary numbers"),
+                'function' => 'Glpi\\Dashboard\\Widget::summaryNumber',
+                'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/summarynumber.png',
+                'limit'    => true,
+                'gradient' => true,
+                'width'    => 4,
+                'height'   => 2,
+            ],
+            'articleList' => [
+                'label'    => __("List of articles"),
+                'function' => 'Glpi\\Dashboard\\Widget::articleList',
+                'image'    => $CFG_GLPI['root_doc'] . '/pics/charts/articles.png',
+                'limit'    => true,
+                'width'    => 3,
+                'height'   => 4,
+            ],
         ];
 
         $more_types = Plugin::doHookFunction("dashboard_types");
@@ -255,14 +255,14 @@ class Widget extends CommonGLPI
     public static function bigNumber(array $params = []): string
     {
         $default = [
-           'number'  => 0,
-           'url'     => '',
-           'label'   => '',
-           'alt'     => '',
-           'color'   => '',
-           'icon'    => '',
-           'id'      => 'bn_' . mt_rand(),
-           'filters' => [],
+            'number'  => 0,
+            'url'     => '',
+            'label'   => '',
+            'alt'     => '',
+            'color'   => '',
+            'icon'    => '',
+            'id'      => 'bn_' . mt_rand(),
+            'filters' => [],
         ];
         $p = array_merge($default, $params);
 
@@ -334,23 +334,23 @@ HTML;
     public static function multipleNumber(array $params = []): string
     {
         $default = [
-           'data'         => [],
-           'label'        => '',
-           'alt'          => '',
-           'color'        => '',
-           'icon'         => '',
-           'limit'        => 99999,
-           'use_gradient' => false,
-           'class'        => "multiple-numbers",
-           'filters'      => [],
-           'rand'         => mt_rand(),
+            'data'         => [],
+            'label'        => '',
+            'alt'          => '',
+            'color'        => '',
+            'icon'         => '',
+            'limit'        => 99999,
+            'use_gradient' => false,
+            'class'        => "multiple-numbers",
+            'filters'      => [],
+            'rand'         => mt_rand(),
         ];
         $p = array_merge($default, $params);
         $default_entry = [
-           'url'    => '',
-           'icon'   => '',
-           'label'  => '',
-           'number' => '',
+            'url'    => '',
+            'icon'   => '',
+            'label'  => '',
+            'number' => '',
         ];
 
         $nb_lines = min($p['limit'], count($p['data']));
@@ -473,24 +473,24 @@ HTML;
     public static function pie(array $params = []): string
     {
         $default = [
-           'data'         => [],
-           'label'        => '',
-           'alt'          => '',
-           'color'        => '',
-           'icon'         => '',
-           'donut'        => false,
-           'half'         => false,
-           'use_gradient' => false,
-           'limit'        => 99999,
-           'filters'      => [],
-           'rand'         => mt_rand(),
+            'data'         => [],
+            'label'        => '',
+            'alt'          => '',
+            'color'        => '',
+            'icon'         => '',
+            'donut'        => false,
+            'half'         => false,
+            'use_gradient' => false,
+            'limit'        => 99999,
+            'filters'      => [],
+            'rand'         => mt_rand(),
         ];
         $p = array_merge($default, $params);
         $default_entry = [
-           'url'    => '',
-           'icon'   => '',
-           'label'  => '',
-           'number' => '',
+            'url'    => '',
+            'icon'   => '',
+            'label'  => '',
+            'number' => '',
         ];
 
         $nb_slices = min($p['limit'], count($p['data']));
@@ -553,9 +553,9 @@ HTML;
 
             $labels[] = $entry['label'];
             $series[] = [
-               'meta'  => $entry['label'],
-               'value' => $entry['number'],
-               'url'   => $entry['url'],
+                'meta'  => $entry['label'],
+                'value' => $entry['number'],
+                'url'   => $entry['url'],
             ];
         }
         $total_txt = Toolbox::shortenNumber($total, 1, false);
@@ -704,7 +704,7 @@ HTML;
          });
       });
 JAVASCRIPT;
-        $js = \Html::scriptBlock($js);
+        $js = Html::scriptBlock($js);
 
         return $html . $js;
     }
@@ -719,7 +719,7 @@ JAVASCRIPT;
     public static function donut(array $params = []): string
     {
         return self::pie(array_merge($params, [
-           'donut' => true,
+            'donut' => true,
         ]));
     }
 
@@ -733,7 +733,7 @@ JAVASCRIPT;
     public static function halfDonut(array $params = []): string
     {
         return self::donut(array_merge($params, [
-           'half' => true,
+            'half' => true,
         ]));
     }
 
@@ -746,7 +746,7 @@ JAVASCRIPT;
     public static function halfPie(array $params = []): string
     {
         return self::pie(array_merge($params, [
-           'half' => true,
+            'half' => true,
         ]));
     }
 
@@ -760,21 +760,21 @@ JAVASCRIPT;
     public static function simpleBar(array $params = []): string
     {
         $default = [
-           'data'        => [],
-           'label'       => '',
-           'alt'         => '',
-           'color'       => '',
-           'icon'        => '',
-           'horizontal'  => false,
-           'distributed' => true,
-           'rand'        => mt_rand(),
+            'data'        => [],
+            'label'       => '',
+            'alt'         => '',
+            'color'       => '',
+            'icon'        => '',
+            'horizontal'  => false,
+            'distributed' => true,
+            'rand'        => mt_rand(),
         ];
         $params = array_merge($default, $params);
         $default_entry = [
-           'url'    => '',
-           'icon'   => '',
-           'label'  => '',
-           'number' => '',
+            'url'    => '',
+            'icon'   => '',
+            'label'  => '',
+            'number' => '',
         ];
 
         $labels = [];
@@ -789,9 +789,9 @@ JAVASCRIPT;
 
             $labels[] = $entry['label'];
             $series[] = [
-               'meta'  => $entry['label'],
-               'value' => $entry['number'],
-               'url'   => $entry['url'],
+                'meta'  => $entry['label'],
+                'value' => $entry['number'],
+                'url'   => $entry['url'],
             ];
         }
 
@@ -813,7 +813,7 @@ JAVASCRIPT;
     public static function simpleHbar(array $params = []): string
     {
         return self::simpleBar(array_merge($params, [
-           'horizontal' => true,
+            'horizontal' => true,
         ]));
     }
 
@@ -836,8 +836,8 @@ JAVASCRIPT;
     {
         return self::getBarsGraph(
             array_merge($params, [
-              'legend'   => true,
-              'multiple' => true,
+                'legend'   => true,
+                'multiple' => true,
             ]),
             $params['data']['labels'],
             $params['data']['series']
@@ -854,7 +854,7 @@ JAVASCRIPT;
     public static function StackedBars(array $params = []): string
     {
         return self::multipleBars(array_merge($params, [
-           'stacked' => true,
+            'stacked' => true,
         ]));
     }
 
@@ -892,20 +892,20 @@ JAVASCRIPT;
     ): string {
 
         $defaults = [
-           'label'        => '',
-           'alt'          => '',
-           'color'        => '',
-           'icon'         => '',
-           'legend'       => false,
-           'multiple'     => false,
-           'stacked'      => false,
-           'horizontal'   => false,
-           'distributed'  => false,
-           'use_gradient' => false,
-           'point_labels' => false,
-           'limit'        => 99999,
-           'filters'      => [],
-           'rand'         => mt_rand(),
+            'label'        => '',
+            'alt'          => '',
+            'color'        => '',
+            'icon'         => '',
+            'legend'       => false,
+            'multiple'     => false,
+            'stacked'      => false,
+            'horizontal'   => false,
+            'distributed'  => false,
+            'use_gradient' => false,
+            'point_labels' => false,
+            'limit'        => 99999,
+            'filters'      => [],
+            'rand'         => mt_rand(),
         ];
         $p = array_merge($defaults, $params);
 
@@ -1197,7 +1197,7 @@ HTML;
          });
       });
 JAVASCRIPT;
-        $js = \Html::scriptBlock($js);
+        $js = Html::scriptBlock($js);
 
         return $html . $js;
     }
@@ -1212,10 +1212,10 @@ JAVASCRIPT;
     public static function simpleLine(array $params = []): string
     {
         $default_entry = [
-           'url'    => '',
-           'icon'   => '',
-           'label'  => '',
-           'number' => '',
+            'url'    => '',
+            'icon'   => '',
+            'label'  => '',
+            'number' => '',
         ];
 
         $labels = [];
@@ -1225,9 +1225,9 @@ JAVASCRIPT;
 
             $labels[] = $entry['label'];
             $series[] = [
-               'meta'  => $entry['label'],
-               'value' => $entry['number'],
-               'url'   => $entry['url'],
+                'meta'  => $entry['label'],
+                'value' => $entry['number'],
+                'url'   => $entry['url'],
             ];
         }
 
@@ -1247,7 +1247,7 @@ JAVASCRIPT;
     public static function simpleArea(array $params = []): string
     {
         return self::simpleLine(array_merge($params, [
-           'area' => true,
+            'area' => true,
         ]));
     }
 
@@ -1262,8 +1262,8 @@ JAVASCRIPT;
     {
         return self::getLinesGraph(
             array_merge($params, [
-              'legend'   => true,
-              'multiple' => true,
+                'legend'   => true,
+                'multiple' => true,
             ]),
             $params['data']['labels'],
             $params['data']['series']
@@ -1280,7 +1280,7 @@ JAVASCRIPT;
     public static function multipleAreas(array $params = []): string
     {
         return self::multipleLines(array_merge($params, [
-           'area' => true,
+            'area' => true,
         ]));
     }
 
@@ -1316,19 +1316,19 @@ JAVASCRIPT;
     ): string {
 
         $defaults = [
-           'data'         => [],
-           'label'        => '',
-           'alt'          => '',
-           'color'        => '',
-           'icon'         => '',
-           'area'         => false,
-           'legend'       => false,
-           'multiple'     => false,
-           'use_gradient' => false,
-           'point_labels' => false,
-           'limit'        => 99999,
-           'filters'      => [],
-           'rand'         => mt_rand(),
+            'data'         => [],
+            'label'        => '',
+            'alt'          => '',
+            'color'        => '',
+            'icon'         => '',
+            'area'         => false,
+            'legend'       => false,
+            'multiple'     => false,
+            'use_gradient' => false,
+            'point_labels' => false,
+            'limit'        => 99999,
+            'filters'      => [],
+            'rand'         => mt_rand(),
         ];
         $p = array_merge($defaults, $params);
 
@@ -1527,14 +1527,14 @@ JAVASCRIPT;
     public static function markdown(array $params = []): string
     {
         $default = [
-           'color'             => '',
-           'markdown_content'  => '',
+            'color'             => '',
+            'markdown_content'  => '',
         ];
         $p = array_merge($default, $params);
 
         // fix auto-escaping
         if (isset($p['markdown_content'])) {
-            $p['markdown_content'] = \Html::cleanPostForTextArea($p['markdown_content']);
+            $p['markdown_content'] = Html::cleanPostForTextArea($p['markdown_content']);
         }
 
         $ph           = __("Type markdown text here");
@@ -1586,16 +1586,16 @@ HTML;
     public static function searchShowList(array $params = []): string
     {
         $default = [
-           'url'        => '',
-           'label'      => '',
-           'alt'        => '',
-           'color'      => '',
-           'icon'       => '',
-           's_criteria' => '',
-           'itemtype'   => '',
-           'limit'      => $_SESSION['glpilist_limit'],
-           'rand'       => mt_rand(),
-           'filters'      => [],
+            'url'        => '',
+            'label'      => '',
+            'alt'        => '',
+            'color'      => '',
+            'icon'       => '',
+            's_criteria' => '',
+            'itemtype'   => '',
+            'limit'      => $_SESSION['glpilist_limit'],
+            'rand'       => mt_rand(),
+            'filters'      => [],
         ];
         $p = array_merge($default, $params);
 
@@ -1616,20 +1616,20 @@ HTML;
         // prepare search data
         $_GET['_in_modal'] = true;
         $params = [
-           'criteria' => $p['s_criteria'],
-           'reset'    => 'reset',
+            'criteria' => $p['s_criteria'],
+            'reset'    => 'reset',
         ];
 
         ob_start();
         $params = Search::manageParams($p['itemtype'], $params);
         // remove parts of search list
         $params = array_merge($params, [
-           'showmassiveactions' => false,
-           'dont_flush'         => true,
-           'show_pager'         => false,
-           'show_footer'        => false,
-           'no_sort'            => true,
-           'list_limit'         => $p['limit']
+            'showmassiveactions' => false,
+            'dont_flush'         => true,
+            'show_pager'         => false,
+            'show_footer'        => false,
+            'no_sort'            => true,
+            'list_limit'         => $p['limit'],
         ]);
         Search::showList($p['itemtype'], $params);
         $search_result = ob_get_clean();
@@ -1661,23 +1661,23 @@ HTML;
     public static function articleList(array $params): string
     {
         $default = [
-           'data'         => [],
-           'label'        => '',
-           'alt'          => '',
-           'url'          => '',
-           'color'        => '',
-           'icon'         => '',
-           'limit'        => 99999,
-           'class'        => "articles-list",
-           'rand'         => mt_rand(),
-           'filters'      => [],
+            'data'         => [],
+            'label'        => '',
+            'alt'          => '',
+            'url'          => '',
+            'color'        => '',
+            'icon'         => '',
+            'limit'        => 99999,
+            'class'        => "articles-list",
+            'rand'         => mt_rand(),
+            'filters'      => [],
         ];
         $p = array_merge($default, $params);
         $default_entry = [
-           'url'    => '',
-           'icon'   => '',
-           'label'  => '',
-           'number' => '',
+            'url'    => '',
+            'icon'   => '',
+            'label'  => '',
+            'number' => '',
         ];
 
         $nb_lines = min($p['limit'], count($p['data']));
@@ -1707,8 +1707,8 @@ HTML;
 
             $content_size = strlen((string) $entry['content']);
             $content = strlen((string) $entry['content'])
-               ? Toolbox::getHtmlToDisplay($entry['content']) .
-                 (
+               ? Toolbox::getHtmlToDisplay($entry['content'])
+                 . (
                      $content_size > 300
                ? "<p class='read_more'><span class='read_more_button'>...</span></p>"
                : ""
@@ -1782,7 +1782,7 @@ HTML;
          });
       });
 JAVASCRIPT;
-        $js = \Html::scriptBlock($js);
+        $js = Html::scriptBlock($js);
 
         return $html . $js;
     }
@@ -1806,15 +1806,15 @@ JAVASCRIPT;
     ) {
         if ($nb_series == 0) {
             return [
-               'names'  => [],
-               'colors' => [],
+                'names'  => [],
+                'colors' => [],
             ];
         }
 
         if ($nb_series == 1) {
             return [
-               'names'  => ['a'],
-               'colors' => [Toolbox::getFgColor($bgcolor)],
+                'names'  => ['a'],
+                'colors' => [Toolbox::getFgColor($bgcolor)],
             ];
         }
 
@@ -1852,8 +1852,8 @@ JAVASCRIPT;
         }
 
         return [
-           'names'  => $names,
-           'colors' => $colors,
+            'names'  => $names,
+            'colors' => $colors,
         ];
     }
 

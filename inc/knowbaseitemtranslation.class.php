@@ -197,9 +197,9 @@ class KnowbaseItemTranslation extends CommonDBChild
             echo "<script type='text/javascript' >\n";
             echo "function addTranslation" . $item->getID() . "$rand() {\n";
             $params = ['type'             => __CLASS__,
-                            'parenttype'       => get_class($item),
-                            'knowbaseitems_id' => $item->fields['id'],
-                            'id'               => -1];
+                'parenttype'       => get_class($item),
+                'knowbaseitems_id' => $item->fields['id'],
+                'id'               => -1];
             Ajax::updateItemJsCode(
                 "viewtranslation" . $item->getID() . "$rand",
                 $CFG_GLPI["root_doc"] . "/ajax/viewsubitem.php",
@@ -208,9 +208,9 @@ class KnowbaseItemTranslation extends CommonDBChild
             echo "};";
             echo "</script>\n";
 
-            echo "<div class='center'>" .
-                 "<a class='vsubmit' href='javascript:addTranslation" . $item->getID() . "$rand();'>" .
-                 __('Add a new translation') . "</a></div><br>";
+            echo "<div class='center'>"
+                 . "<a class='vsubmit' href='javascript:addTranslation" . $item->getID() . "$rand();'>"
+                 . __('Add a new translation') . "</a></div><br>";
         }
 
         $obj   = new self();
@@ -274,7 +274,7 @@ class KnowbaseItemTranslation extends CommonDBChild
     /**
      * Display translation form
      *
-     * @param integer $ID
+     * @param int $ID
      * @param array   $options
      */
     public function showForm($ID = -1, $options = [])
@@ -303,8 +303,8 @@ class KnowbaseItemTranslation extends CommonDBChild
             Dropdown::showLanguages(
                 "language",
                 ['display_none' => false,
-                                          'value'        => $_SESSION['glpilanguage'],
-                                          'used'         => self::getAlreadyTranslatedForItem($item)]
+                    'value'        => $_SESSION['glpilanguage'],
+                    'used'         => self::getAlreadyTranslatedForItem($item)]
             );
         }
         echo "</td><td colspan='2'>&nbsp;</td></tr>";
@@ -339,8 +339,8 @@ class KnowbaseItemTranslation extends CommonDBChild
     {
         $obj   = new self();
         $found = $obj->find([
-           'knowbaseitems_id'   => $item->getID(),
-           'language'           => $_SESSION['glpilanguage']
+            'knowbaseitems_id'   => $item->getID(),
+            'language'           => $_SESSION['glpilanguage'],
         ]);
 
         if (
@@ -389,7 +389,7 @@ class KnowbaseItemTranslation extends CommonDBChild
      *
      * @param KnowbaseItem $item
      *
-     * @return integer  the number of translations for this item
+     * @return int  the number of translations for this item
     **/
     public static function getNumberOfTranslationsForItem($item)
     {
@@ -415,8 +415,8 @@ class KnowbaseItemTranslation extends CommonDBChild
         $tab = [];
 
         $iterator = $DB->request([
-           'FROM'   => getTableForItemType(__CLASS__),
-           'WHERE'  => ['knowbaseitems_id' => $item->getID()]
+            'FROM'   => getTableForItemType(__CLASS__),
+            'WHERE'  => ['knowbaseitems_id' => $item->getID()],
         ]);
 
         while ($data = $iterator->next()) {
@@ -436,9 +436,9 @@ class KnowbaseItemTranslation extends CommonDBChild
     /**
      * Reverts item translation contents to specified revision
      *
-     * @param integer $revid Revision ID
+     * @param int $revid Revision ID
      *
-     * @return boolean
+     * @return bool
      */
     public function revertTo($revid)
     {
@@ -446,9 +446,9 @@ class KnowbaseItemTranslation extends CommonDBChild
         $revision->getFromDB($revid);
 
         $values = [
-           'id'     => $this->getID(),
-           'name'   => $revision->fields['name'],
-           'answer' => $revision->fields['answer']
+            'id'     => $this->getID(),
+            'name'   => $revision->fields['name'],
+            'answer' => $revision->fields['answer'],
         ];
 
         if ($this->update($values)) {

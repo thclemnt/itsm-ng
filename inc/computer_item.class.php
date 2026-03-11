@@ -76,8 +76,8 @@ class Computer_Item extends CommonDBRelation
         return countElementsInTable(
             'glpi_computers_items',
             ['computers_id' => $comp->getField('id'),
-                                     'itemtype'     => $item->getType(),
-                                     'items_id'     => $item->getField('id')]
+                'itemtype'     => $item->getType(),
+                'items_id'     => $item->getField('id')]
         );
     }
 
@@ -246,8 +246,8 @@ class Computer_Item extends CommonDBRelation
         $specificities = self::getRelationMassiveActionsSpecificities();
 
         if (in_array($itemtype, $specificities['itemtypes'])) {
-            $actions[$action_prefix . 'add']    = "<i class='ma-icon fas fa-plug' aria-hidden='true'></i>" .
-                                                _x('button', 'Connect');
+            $actions[$action_prefix . 'add']    = "<i class='ma-icon fas fa-plug' aria-hidden='true'></i>"
+                                                . _x('button', 'Connect');
             $actions[$action_prefix . 'remove'] = _x('button', 'Disconnect');
         }
         parent::getMassiveActionsForItemtype($actions, $itemtype, $is_deleted, $checkitem);
@@ -279,7 +279,7 @@ class Computer_Item extends CommonDBRelation
     *
     * @param $item    CommonDBTM object: the Monitor/Phone/Peripheral/Printer
     *
-    * @return boolean : action succeeded
+    * @return bool : action succeeded
     */
     public function disconnectForItem(CommonDBTM $item)
     {
@@ -287,12 +287,12 @@ class Computer_Item extends CommonDBRelation
 
         if ($item->getField('id')) {
             $iterator = $DB->request([
-               'SELECT' => ['id'],
-               'FROM'   => $this->getTable(),
-               'WHERE'  => [
-                  'itemtype'  => $item->getType(),
-                  'items_id'  => $item->getID()
-               ]
+                'SELECT' => ['id'],
+                'FROM'   => $this->getTable(),
+                'WHERE'  => [
+                    'itemtype'  => $item->getType(),
+                    'items_id'  => $item->getID(),
+                ],
             ]);
 
             if (count($iterator) > 0) {
@@ -314,7 +314,7 @@ class Computer_Item extends CommonDBRelation
      * Print the form for computers or templates connections to printers, screens or peripherals
      *
      * @param Computer $comp         Computer object
-     * @param boolean  $withtemplate Template or basic item (default 0)
+     * @param bool  $withtemplate Template or basic item (default 0)
      *
      * @return void
     **/
@@ -356,48 +356,48 @@ class Computer_Item extends CommonDBRelation
                 }
             }
             $form = [
-               'action' => Toolbox::getItemTypeFormURL(__CLASS__),
-               'buttons' => [
-                  [
-                     'type'  => 'submit',
-                     'name'  => 'add',
-                     'value' => _sx('button', 'Connect'),
-                     'class' => 'btn btn-secondary',
-                  ]
-                  ],
-                  'content' => [
-                     __('Connect an item') => [
+                'action' => Toolbox::getItemTypeFormURL(__CLASS__),
+                'buttons' => [
+                    [
+                        'type'  => 'submit',
+                        'name'  => 'add',
+                        'value' => _sx('button', 'Connect'),
+                        'class' => 'btn btn-secondary',
+                    ],
+                ],
+                'content' => [
+                    __('Connect an item') => [
                         'visible' => true,
                         'inputs' => [
-                           [
-                              'type'  => 'hidden',
-                              'name'  => 'computers_id',
-                              'value' => $comp->fields['id'],
-                           ],
-                           [
-                              'type'  => 'hidden',
-                              'name'  => 'itemtype',
-                              'value' => $comp::class,
-                           ],
-                           [
-                              'type'  => 'hidden',
-                              'name'  => 'items_id',
-                              'value' => $comp->getID(),
-                           ],
-                           !empty($withtemplate) ? [
-                              'type'  => 'hidden',
-                              'name'  => '_no_history',
-                              'value' => '1',
-                           ] : [],
-                           __('Device type') => [
-                              'type' => 'select',
-                              'name' => 'itemtype',
-                              'id' => 'ItemTypeConnectDropdown',
-                              'values' => array_merge([ Dropdown::EMPTY_VALUE ], $valuesForDropdown),
-                              'value' => '',
-                              'col_lg' => 6,
-                              'hooks' => [
-                                 'change' => <<<JS
+                            [
+                                'type'  => 'hidden',
+                                'name'  => 'computers_id',
+                                'value' => $comp->fields['id'],
+                            ],
+                            [
+                                'type'  => 'hidden',
+                                'name'  => 'itemtype',
+                                'value' => $comp::class,
+                            ],
+                            [
+                                'type'  => 'hidden',
+                                'name'  => 'items_id',
+                                'value' => $comp->getID(),
+                            ],
+                            !empty($withtemplate) ? [
+                                'type'  => 'hidden',
+                                'name'  => '_no_history',
+                                'value' => '1',
+                            ] : [],
+                            __('Device type') => [
+                                'type' => 'select',
+                                'name' => 'itemtype',
+                                'id' => 'ItemTypeConnectDropdown',
+                                'values' => array_merge([ Dropdown::EMPTY_VALUE ], $valuesForDropdown),
+                                'value' => '',
+                                'col_lg' => 6,
+                                'hooks' => [
+                                    'change' => <<<JS
                                  $('select[name="items_id"]').empty();
                                  if ($('select[name="itemtype"]').val() == 0) {
                                     $('select[name="items_id"]').prop('disabled', true);
@@ -433,20 +433,20 @@ class Computer_Item extends CommonDBRelation
                                     }
                                  });
                               JS,
-                              ]
-                           ],
-                           __('Device') => [
-                              'type' => 'select',
-                              'id' => 'ItemConnectDropdown',
-                              'name' => 'items_id',
-                              'values' => [],
-                              'value' => '',
-                              'col_lg' => 6,
-                              'disabled' => true,
-                           ],
+                                ],
+                            ],
+                            __('Device') => [
+                                'type' => 'select',
+                                'id' => 'ItemConnectDropdown',
+                                'name' => 'items_id',
+                                'values' => [],
+                                'value' => '',
+                                'col_lg' => 6,
+                                'disabled' => true,
+                            ],
                         ],
-                     ]
-                  ]
+                    ],
+                ],
             ];
             renderTwigForm($form);
         }
@@ -454,22 +454,22 @@ class Computer_Item extends CommonDBRelation
         if ($number) {
             if ($canedit) {
                 $massiveactionparams                   = [
-                   'container' => "ComputerConnectionTable",
-                   'display_arrow' => false,
-                   'specific_actions' => [
-                      'purge' => __('Disconnect'),
-                   ],
-                   'is_deleted' => false,
+                    'container' => "ComputerConnectionTable",
+                    'display_arrow' => false,
+                    'specific_actions' => [
+                        'purge' => __('Disconnect'),
+                    ],
+                    'is_deleted' => false,
                 ];
 
                 Html::showMassiveActions($massiveactionparams);
             }
             $fields = [
-               _n('Type', 'Types', 1),
-               __('Name'),
-               Entity::getTypeName(1),
-               __('Serial number'),
-               __('Inventory number'),
+                _n('Type', 'Types', 1),
+                __('Name'),
+                Entity::getTypeName(1),
+                __('Serial number'),
+                __('Inventory number'),
             ];
             $values = [];
             $massiveActionValues = [];
@@ -481,21 +481,21 @@ class Computer_Item extends CommonDBRelation
                 $link = $data['assoc_itemtype']::getFormURLWithID($data["id"]);
                 $massiveActionValues[$data['id']] = 'item[Computer_Item][' . $data['linkid'] . ']';
                 $values[$data['id']] = [
-                   $data['assoc_itemtype']::getTypeName(1),
-                   "<a href=\"" . $link . "\">" . $linkname . "</a>",
-                   Dropdown::getDropdownName("glpi_entities", $data['entities_id']),
-                   (isset($data["serial"]) ? "" . $data["serial"] . "" : "-"),
-                   (isset($data["otherserial"]) ? "" . $data["otherserial"] . "" : "-"),
+                    $data['assoc_itemtype']::getTypeName(1),
+                    "<a href=\"" . $link . "\">" . $linkname . "</a>",
+                    Dropdown::getDropdownName("glpi_entities", $data['entities_id']),
+                    (isset($data["serial"]) ? "" . $data["serial"] . "" : "-"),
+                    (isset($data["otherserial"]) ? "" . $data["otherserial"] . "" : "-"),
                 ];
                 if (Plugin::haveImport()) {
                     $values[$data['id']][6] = Dropdown::getYesNo($data[static::getTable() . '_is_dynamic']);
                 }
             }
             $twig_vars = [
-               'id' => 'ComputerConnectionTable',
-               'fields' => $fields,
-               'values' => $values,
-               'massive_action' => $massiveActionValues,
+                'id' => 'ComputerConnectionTable',
+                'fields' => $fields,
+                'values' => $values,
+                'massive_action' => $massiveActionValues,
             ];
             if (Plugin::haveImport()) {
                 $twig_vars['fields'][] = __('Automatic inventory');
@@ -535,13 +535,13 @@ class Computer_Item extends CommonDBRelation
         $dynamic = [];
         $result = $DB->request(
             [
-              'SELECT' => ['id', 'computers_id', 'is_dynamic'],
-              'FROM'   => self::getTable(),
-              'WHERE'  => [
-                 'itemtype'   => $item->getType(),
-                 'items_id'   => $ID,
-                 'is_deleted' => 0,
-              ]
+                'SELECT' => ['id', 'computers_id', 'is_dynamic'],
+                'FROM'   => self::getTable(),
+                'WHERE'  => [
+                    'itemtype'   => $item->getType(),
+                    'items_id'   => $ID,
+                    'is_deleted' => 0,
+                ],
             ]
         );
         foreach ($result as $data) {
@@ -556,39 +556,39 @@ class Computer_Item extends CommonDBRelation
             && !(!empty($withtemplate) && ($withtemplate == 2))
         ) {
             $form = [
-               'action' => Toolbox::getItemTypeFormURL(__CLASS__),
-               'buttons' => [
-                   [
-                       'type'  => 'submit',
-                       'name'  => 'add',
-                       'value' => _sx('button', 'Connect'),
-                       'class' => 'btn btn-secondary',
-                   ]
-               ],
-               'content' => [
-                   '' => [
-                       'visible' => true,
-                       'inputs' => [
-                           Computer::getTypeName() => [
-                               'type' => 'select',
-                               'name' => 'computers_id',
-                               'values' => getItemByEntity(Computer::class, $item->fields['entities_id']),
-                               'col_lg' => 12,
-                               'col_md' => 12,
-                           ],
-                           [
-                               'type'  => 'hidden',
-                               'name'  => 'itemtype',
-                               'value' => $item->getType(),
-                           ],
-                           [
-                               'type'  => 'hidden',
-                               'name'  => 'items_id',
-                               'value' => $ID,
-                           ],
-                       ]
-                   ]
-               ],
+                'action' => Toolbox::getItemTypeFormURL(__CLASS__),
+                'buttons' => [
+                    [
+                        'type'  => 'submit',
+                        'name'  => 'add',
+                        'value' => _sx('button', 'Connect'),
+                        'class' => 'btn btn-secondary',
+                    ],
+                ],
+                'content' => [
+                    '' => [
+                        'visible' => true,
+                        'inputs' => [
+                            Computer::getTypeName() => [
+                                'type' => 'select',
+                                'name' => 'computers_id',
+                                'values' => getItemByEntity(Computer::class, $item->fields['entities_id']),
+                                'col_lg' => 12,
+                                'col_md' => 12,
+                            ],
+                            [
+                                'type'  => 'hidden',
+                                'name'  => 'itemtype',
+                                'value' => $item->getType(),
+                            ],
+                            [
+                                'type'  => 'hidden',
+                                'name'  => 'items_id',
+                                'value' => $ID,
+                            ],
+                        ],
+                    ],
+                ],
             ];
             renderTwigForm($form);
         }
@@ -597,10 +597,10 @@ class Computer_Item extends CommonDBRelation
         $massActionId = 'mass' . __CLASS__ . $rand;
         if ($canedit && $number) {
             $massiveactionparams = [
-               'num_displayed' => min($_SESSION['glpilist_limit'], $number),
-               'specific_actions' => ['purge' => _x('button', 'Disconnect')],
-               'container' => 'mass' . __CLASS__ . $rand,
-               'display_arrow' => false,
+                'num_displayed' => min($_SESSION['glpilist_limit'], $number),
+                'specific_actions' => ['purge' => _x('button', 'Disconnect')],
+                'container' => 'mass' . __CLASS__ . $rand,
+                'display_arrow' => false,
             ];
             Html::showMassiveActions($massiveactionparams);
         }
@@ -609,7 +609,7 @@ class Computer_Item extends CommonDBRelation
                 'name' => __('Name'),
                 'entity' => Entity::getTypeName(1),
                 'serial' => __('Serial number'),
-               'otherserial' =>  __('Inventory number'),
+                'otherserial' =>  __('Inventory number'),
             ];
             if (Plugin::haveImport()) {
                 $fields['inventory'] = __('Automatic inventory');
@@ -635,10 +635,10 @@ class Computer_Item extends CommonDBRelation
                 $values[$key] = $newValue;
             }
             renderTwigTemplate('table.twig', [
-               'id' => $massActionId,
-               'fields' => $fields,
-               'values' => $values,
-               'massive_action' => $massiveActionValues,
+                'id' => $massActionId,
+                'fields' => $fields,
+                'values' => $values,
+                'massive_action' => $massiveActionValues,
             ]);
         } else {
             echo "<tr><td class='tab_bg_1 b'><i>" . __('Not connected') . "</i>";
@@ -659,17 +659,17 @@ class Computer_Item extends CommonDBRelation
         // Update item to unit management :
         if ($item->getField('is_global')) {
             $input = ['id'        => $item->fields['id'],
-                           'is_global' => 0];
+                'is_global' => 0];
             $item->update($input);
 
             // Get connect_wire for this connection
             $iterator = $DB->request([
-               'SELECT' => ['id'],
-               'FROM'   => self::getTable(),
-               'WHERE'  => [
-                  'items_id'  => $item->getID(),
-                  'itemtype'  => $item->getType()
-               ]
+                'SELECT' => ['id'],
+                'FROM'   => self::getTable(),
+                'WHERE'  => [
+                    'items_id'  => $item->getID(),
+                    'itemtype'  => $item->getType(),
+                ],
             ]);
 
             $first = true;
@@ -683,7 +683,7 @@ class Computer_Item extends CommonDBRelation
                     unset($temp->fields['id']);
                     if ($newID = $temp->add($temp->fields)) {
                         $conn->update(['id'       => $data['id'],
-                                       'items_id' => $newID]);
+                            'items_id' => $newID]);
                     }
                 }
             }
@@ -698,11 +698,11 @@ class Computer_Item extends CommonDBRelation
     *
     * @param string            $fromtype        from where the connection is
     * @param string            $myname          select name
-    * @param integer|integer[] $entity_restrict Restrict to a defined entity (default = -1)
-    * @param boolean           $onlyglobal      display only global devices (used for templates) (default 0)
-    * @param integer[]         $used            Already used items ID: not to display in dropdown
+    * @param int|int[] $entity_restrict Restrict to a defined entity (default = -1)
+    * @param bool           $onlyglobal      display only global devices (used for templates) (default 0)
+    * @param int[]         $used            Already used items ID: not to display in dropdown
     *
-    * @return integer Random generated number used for select box ID (select box HTML is printed)
+    * @return int Random generated number used for select box ID (select box HTML is printed)
     */
     public static function dropdownAllConnect(
         $fromtype,
@@ -722,12 +722,12 @@ class Computer_Item extends CommonDBRelation
         $rand = Dropdown::showItemType($CFG_GLPI['directconnect_types'], $options);
         if ($rand) {
             $params = ['itemtype'        => '__VALUE__',
-                            'fromtype'        => $fromtype,
-                            'value'           => 0,
-                            'myname'          => $myname,
-                            'onlyglobal'      => $onlyglobal,
-                            'entity_restrict' => $entity_restrict,
-                            'used'            => $used];
+                'fromtype'        => $fromtype,
+                'value'           => 0,
+                'myname'          => $myname,
+                'onlyglobal'      => $onlyglobal,
+                'entity_restrict' => $entity_restrict,
+                'used'            => $used];
 
             if ($onlyglobal) {
                 $params['condition'] = ['is_global' => 1];
@@ -751,11 +751,11 @@ class Computer_Item extends CommonDBRelation
     * @param string            $itemtype        type to connect
     * @param string            $fromtype        from where the connection is
     * @param string            $myname          select name
-    * @param integer|integer[] $entity_restrict Restrict to a defined entity (default = -1)
-    * @param boolean           $onlyglobal      display only global devices (used for templates) (default 0)
-    * @param integer[]         $used            Already used items ID: not to display in dropdown
+    * @param int|int[] $entity_restrict Restrict to a defined entity (default = -1)
+    * @param bool           $onlyglobal      display only global devices (used for templates) (default 0)
+    * @param int[]         $used            Already used items ID: not to display in dropdown
     *
-    * @return integer Random generated number used for select box ID (select box HTML is printed)
+    * @return int Random generated number used for select box ID (select box HTML is printed)
     */
     public static function dropdownConnect(
         $itemtype,
@@ -771,14 +771,14 @@ class Computer_Item extends CommonDBRelation
 
         $field_id = Html::cleanId("dropdown_" . $myname . $rand);
         $param    = [
-           'entity_restrict' => $entity_restrict,
-           'fromtype'        => $fromtype,
-           'itemtype'        => $itemtype,
-           'onlyglobal'      => $onlyglobal,
-           'used'            => $used,
-           '_idor_token'     => Session::getNewIDORToken($itemtype, [
-              'entity_restrict' => $entity_restrict,
-           ]),
+            'entity_restrict' => $entity_restrict,
+            'fromtype'        => $fromtype,
+            'itemtype'        => $itemtype,
+            'onlyglobal'      => $onlyglobal,
+            'used'            => $used,
+            '_idor_token'     => Session::getNewIDORToken($itemtype, [
+                'entity_restrict' => $entity_restrict,
+            ]),
         ];
 
         echo Html::jsAjaxDropdown(
@@ -860,8 +860,8 @@ class Computer_Item extends CommonDBRelation
      * @deprecated 9.5
      * @since 0.84
      *
-     * @param integer $oldid ID of the item to clone
-     * @param integer $newid ID of the item cloned
+     * @param int $oldid ID of the item to clone
+     * @param int $newid ID of the item cloned
     **/
     public static function cloneComputer($oldid, $newid)
     {
@@ -869,15 +869,15 @@ class Computer_Item extends CommonDBRelation
 
         Toolbox::deprecated('Use clone');
         $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['computers_id' => $oldid]
+            'FROM'   => self::getTable(),
+            'WHERE'  => ['computers_id' => $oldid],
         ]);
 
         while ($data = $iterator->next()) {
             $conn = new Computer_Item();
             $conn->add(['computers_id' => $newid,
-                        'itemtype'     => $data["itemtype"],
-                        'items_id'     => $data["items_id"]]);
+                'itemtype'     => $data["itemtype"],
+                'items_id'     => $data["items_id"]]);
         }
     }
 
@@ -889,8 +889,8 @@ class Computer_Item extends CommonDBRelation
      * @since 0.83.3
      *
      * @param string  $itemtype type of the item to clone
-     * @param integer $oldid    ID of the item to clone
-     * @param integer $newid    ID of the item cloned
+     * @param int $oldid    ID of the item to clone
+     * @param int $newid    ID of the item cloned
     **/
     public static function cloneItem($itemtype, $oldid, $newid)
     {
@@ -898,18 +898,18 @@ class Computer_Item extends CommonDBRelation
 
         Toolbox::deprecated('Use clone');
         $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'itemtype'  => $itemtype,
-              'items_id'  => $oldid
-           ]
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'itemtype'  => $itemtype,
+                'items_id'  => $oldid,
+            ],
         ]);
 
         while ($data = $iterator->next()) {
             $conn = new self();
             $conn->add(['computers_id' => $data["computers_id"],
-                        'itemtype'     => $data["itemtype"],
-                        'items_id'     => $newid]);
+                'itemtype'     => $data["itemtype"],
+                'items_id'     => $newid]);
         }
     }
 
@@ -918,9 +918,9 @@ class Computer_Item extends CommonDBRelation
      * @since 9.1.7
      *
      * @param CommonDBTM $item     item linked to the computer to check
-     * @param integer[]  $entities entities to check
+     * @param int[]  $entities entities to check
      *
-     * @return boolean
+     * @return bool
     **/
     public static function canUnrecursSpecif(CommonDBTM $item, $entities)
     {
@@ -929,15 +929,15 @@ class Computer_Item extends CommonDBRelation
         if ($item instanceof Computer) {
             // RELATION : items -> computers
             $iterator = $DB->request([
-               'SELECT' => [
-                  'itemtype',
-                  new \QueryExpression('GROUP_CONCAT(DISTINCT ' . $DB->quoteName('items_id') . ') AS ids'),
-               ],
-               'FROM' => self::getTable(),
-               'WHERE' => [
-                  'computers_id' => $item->fields['id']
-               ],
-               'GROUP' => 'itemtype'
+                'SELECT' => [
+                    'itemtype',
+                    new QueryExpression('GROUP_CONCAT(DISTINCT ' . $DB->quoteName('items_id') . ') AS ids'),
+                ],
+                'FROM' => self::getTable(),
+                'WHERE' => [
+                    'computers_id' => $item->fields['id'],
+                ],
+                'GROUP' => 'itemtype',
             ]);
 
             while ($data = $iterator->next()) {
@@ -948,8 +948,8 @@ class Computer_Item extends CommonDBRelation
                     countElementsInTable(
                         $data['itemtype']::getTable(),
                         [
-                         'id' => $data['ids'],
-                         'NOT' => ['entities_id' => $entities]
+                            'id' => $data['ids'],
+                            'NOT' => ['entities_id' => $entities],
                         ]
                     ) > 0
                 ) {
@@ -959,17 +959,17 @@ class Computer_Item extends CommonDBRelation
         } else {
             // RELATION : computers -> items
             $iterator = $DB->request([
-               'SELECT' => [
-                  'itemtype',
-                  new \QueryExpression('GROUP_CONCAT(DISTINCT ' . $DB->quoteName('items_id') . ') AS ids'),
-                  'computers_id'
-               ],
-               'FROM' => self::getTable(),
-               'WHERE' => [
-                  'itemtype' => $item->getType(),
-                  'items_id' => $item->fields['id']
-               ],
-               'GROUP' => 'itemtype'
+                'SELECT' => [
+                    'itemtype',
+                    new QueryExpression('GROUP_CONCAT(DISTINCT ' . $DB->quoteName('items_id') . ') AS ids'),
+                    'computers_id',
+                ],
+                'FROM' => self::getTable(),
+                'WHERE' => [
+                    'itemtype' => $item->getType(),
+                    'items_id' => $item->fields['id'],
+                ],
+                'GROUP' => 'itemtype',
             ]);
 
             while ($data = $iterator->next()) {
@@ -977,7 +977,7 @@ class Computer_Item extends CommonDBRelation
                     countElementsInTable(
                         "glpi_computers",
                         ['id' => $data["computers_id"],
-                         'NOT' => ['entities_id' => $entities]]
+                            'NOT' => ['entities_id' => $entities]]
                     ) > 0
                 ) {
                     return false;

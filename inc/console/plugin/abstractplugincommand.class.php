@@ -40,6 +40,7 @@ if (!defined('GLPI_ROOT')) {
 use Glpi\Console\AbstractCommand;
 use Glpi\Console\Command\ForceNoPluginsOptionCommandInterface;
 use Symfony\Component\Console\Exception\InvalidArgumentException;
+use Symfony\Component\Console\Helper\QuestionHelper;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -97,7 +98,7 @@ abstract class AbstractPluginCommand extends AbstractCommand implements ForceNoP
             );
 
             if (!empty($choices)) {
-                /** @var \Symfony\Component\Console\Helper\QuestionHelper $question_helper */
+                /** @var QuestionHelper $question_helper */
                 $question_helper = $this->getHelper('question');
                 $question = new ChoiceQuestion(
                     $this->getDirectoryChoiceQuestion(),

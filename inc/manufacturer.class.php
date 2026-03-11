@@ -63,22 +63,22 @@ class Manufacturer extends CommonDropdown
     {
 
         return [
-           RegisteredID::getTypeName(Session::getPluralNumber()) => [
-              'name'  => 'none',
-              'type'  => 'multiSelect',
-              'inputs' => [
-                 [
-                    'name' => 'current_registeredID_type',
-                    'type' => 'select',
-                    'values' => array_merge([ Dropdown::EMPTY_VALUE ], RegisteredID::getRegisteredIDTypes()),
-                 ],
-                 [
-                    'name' => 'current_registeredID',
-                    'type' => 'text',
-                    'size' => 30,
-                 ],
-              ],
-              'getInputAdd' => <<<JS
+            RegisteredID::getTypeName(Session::getPluralNumber()) => [
+                'name'  => 'none',
+                'type'  => 'multiSelect',
+                'inputs' => [
+                    [
+                        'name' => 'current_registeredID_type',
+                        'type' => 'select',
+                        'values' => array_merge([ Dropdown::EMPTY_VALUE ], RegisteredID::getRegisteredIDTypes()),
+                    ],
+                    [
+                        'name' => 'current_registeredID',
+                        'type' => 'text',
+                        'size' => 30,
+                    ],
+                ],
+                'getInputAdd' => <<<JS
                function () {
                   if (!$('input[name="current_registeredID"]').val()) {
                      return;
@@ -91,14 +91,14 @@ class Manufacturer extends CommonDropdown
                   return {values, title};
                }
             JS,
-              'values' => getOptionsWithNameForItem(
-                  'RegisteredID',
-                  ['itemtype' => $this::class, 'items_id' => $this->getID()],
-                  ['_registeredID_type' => 'device_type', '_registeredID' => 'name']
-              ),
-              'col_lg' => 12,
-              'col_md' => 12,
-           ],
+                'values' => getOptionsWithNameForItem(
+                    'RegisteredID',
+                    ['itemtype' => $this::class, 'items_id' => $this->getID()],
+                    ['_registeredID_type' => 'device_type', '_registeredID' => 'name']
+                ),
+                'col_lg' => 12,
+                'col_md' => 12,
+            ],
         ];
     }
 
@@ -114,7 +114,7 @@ class Manufacturer extends CommonDropdown
             && (is_array($this->input['_registeredID']))
         ) {
             $input = ['itemtype' => $this->getType(),
-                           'items_id' => $this->getID()];
+                'items_id' => $this->getID()];
 
             foreach ($this->input['_registeredID'] as $id => $registered_id) {
                 $id_object     = new RegisteredID();

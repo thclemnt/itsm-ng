@@ -43,7 +43,7 @@ if (!defined('GLPI_ROOT')) {
  *
  * @since 0.85
 **/
-#[\AllowDynamicProperties]
+#[AllowDynamicProperties]
 class MassiveAction
 {
     public const CLASS_ACTION_SEPARATOR  = ':';
@@ -66,7 +66,7 @@ class MassiveAction
      * @param array   $POST    something like $_POST
      * @param array   $GET     something like $_GET
      * @param string  $stage   the current stage
-     * @param boolean $single  Get actions for a single item
+     * @param bool $single  Get actions for a single item
     **/
     public function __construct(array $POST, array $GET, $stage, $single = false)
     {
@@ -220,16 +220,16 @@ class MassiveAction
                         }
 
                         $remove_from_post = ['items', 'action', 'action_name', 'processor',
-                                                  'massiveaction', 'is_deleted', 'initial_items'];
+                            'massiveaction', 'is_deleted', 'initial_items'];
 
                         $this->identifier  = mt_rand();
                         $this->done        = [];
                         $this->nb_done     = 0;
                         $this->action_name = $POST['action_name'];
                         $this->results     = ['ok'      => 0,
-                                                   'ko'      => 0,
-                                                   'noright' => 0,
-                                                   'messages' => []];
+                            'ko'      => 0,
+                            'noright' => 0,
+                            'messages' => []];
                         foreach ($POST['items'] as $itemtype => $ids) {
                             $this->nb_items += count($ids);
                         }
@@ -419,7 +419,7 @@ class MassiveAction
             $this->hidden_fields_defined = true;
 
             $common_fields = ['action', 'processor', 'is_deleted', 'initial_items',
-                                   'item_itemtype', 'item_items_id', 'items', 'action_name'];
+                'item_itemtype', 'item_items_id', 'items', 'action_name'];
 
             if (!empty($this->POST['massive_action_fields'])) {
                 $common_fields = array_merge($common_fields, $this->POST['massive_action_fields']);
@@ -440,9 +440,9 @@ class MassiveAction
      * window), then display a dropdown to select the itemtype.
      * This is only usefull in case of itemtype specific massive actions (update, ...)
      *
-     * @param boolean $display_selector  can we display the itemtype selector ?
+     * @param bool $display_selector  can we display the itemtype selector ?
      *
-     * @return string|boolean  the itemtype or false if we cannot define it (and we cannot display the selector)
+     * @return string|bool  the itemtype or false if we cannot define it (and we cannot display the selector)
     **/
     public function getItemtype($display_selector)
     {
@@ -496,8 +496,8 @@ class MassiveAction
             && Session::isMultiEntitiesMode()
         ) {
             $actions[__CLASS__ . self::CLASS_ACTION_SEPARATOR . 'add_transfer_list']
-                     = "<i class='ma-icon fas fa-level-up-alt' aria-hidden='true'></i>" .
-                       _x('button', 'Add to transfer list');
+                     = "<i class='ma-icon fas fa-level-up-alt' aria-hidden='true'></i>"
+                       . _x('button', 'Add to transfer list');
         }
     }
 
@@ -506,13 +506,13 @@ class MassiveAction
      * Get the standard massive actions
      *
      * @param string|CommonDBTM $item        the item for which we want the massive actions
-     * @param boolean           $is_deleted  massive action for deleted items ?   (default 0)
+     * @param bool           $is_deleted  massive action for deleted items ?   (default 0)
      * @param CommonDBTM        $checkitem   link item to check right             (default NULL)
-     * @param integer|boolean   $single      Get actions for a single item
+     * @param int|bool   $single      Get actions for a single item
      *
      * @return array|bool of massive actions or false if $item is not valid
     **/
-    public static function getAllMassiveActions($item, $is_deleted = 0, CommonDBTM|null $checkitem = null, $single = false)
+    public static function getAllMassiveActions($item, $is_deleted = 0, ?CommonDBTM $checkitem = null, $single = false)
     {
         global $PLUGIN_HOOKS;
 
@@ -895,8 +895,8 @@ class MassiveAction
                 }
 
                 if (!isset($ma->POST['common_options'])) {
-                    echo "<div class='center'><img src='" . $CFG_GLPI["root_doc"] . "/pics/warning.png' alt='" .
-                                   __s('Warning') . "'><br><br>";
+                    echo "<div class='center'><img src='" . $CFG_GLPI["root_doc"] . "/pics/warning.png' alt='"
+                                   . __s('Warning') . "'><br><br>";
                     echo "<span class='b'>" . __('Implementation error !') . "</span><br>";
                     echo "</div>";
                     exit();
@@ -922,7 +922,7 @@ class MassiveAction
 
                     if (Infocom::canApplyOn($itemtype)) {
                         Session::checkSeveralRightsOr([$itemtype  => UPDATE,
-                                                            "infocom"  => UPDATE]);
+                            "infocom"  => UPDATE]);
                     } else {
                         $item->checkGlobal(UPDATE);
                     }
@@ -954,7 +954,7 @@ class MassiveAction
                         $plug['plugin'],
                         'MassiveActionsFieldsDisplay',
                         ['itemtype' => $item->getType(),
-                                                           'options'  => $item->search]
+                            'options'  => $item->search]
                     );
                 }
 
@@ -1000,15 +1000,15 @@ class MassiveAction
 
             case 'clone':
                 renderTwigTemplate('macros/wrappedInput.twig', [
-                   'title' => __('How many copies do you want to create ?'),
-                   'input' => [
-                      'type' => 'number',
-                      'name' => 'nb_copy',
-                      'value' => 1,
-                      'min' => 1,
-                      'col_lg' => 12,
-                      'col_md' => 12,
-                   ]
+                    'title' => __('How many copies do you want to create ?'),
+                    'input' => [
+                        'type' => 'number',
+                        'name' => 'nb_copy',
+                        'value' => 1,
+                        'min' => 1,
+                        'col_lg' => 12,
+                        'col_md' => 12,
+                    ],
                 ]);
                 echo "<br>\n";
 
@@ -1033,34 +1033,34 @@ class MassiveAction
 
             case 'amend_comment':
                 renderTwigTemplate('macros/wrappedInput.twig', [
-                   'title' => __("Amendment to insert"),
-                   'input' => [
-                      'type' => 'textarea',
-                      'name' => 'amendment',
-                      'col_lg' => 12,
-                      'col_md' => 12,
-                   ]
+                    'title' => __("Amendment to insert"),
+                    'input' => [
+                        'type' => 'textarea',
+                        'name' => 'amendment',
+                        'col_lg' => 12,
+                        'col_md' => 12,
+                    ],
                 ]);
                 echo Html::submit(__('Update'), [
-                   'name' => 'massiveaction',
-                   'class' => 'btn btn-secondary'
+                    'name' => 'massiveaction',
+                    'class' => 'btn btn-secondary',
                 ]);
 
                 return true;
 
             case 'add_note':
                 renderTwigTemplate('macros/wrappedInput.twig', [
-                   'title' => __("New Note"),
-                   'input' => [
-                      'type' => 'textarea',
-                      'name' => 'add_note',
-                      'col_lg' => 12,
-                      'col_md' => 12,
-                   ]
+                    'title' => __("New Note"),
+                    'input' => [
+                        'type' => 'textarea',
+                        'name' => 'add_note',
+                        'col_lg' => 12,
+                        'col_md' => 12,
+                    ],
                 ]);
                 echo Html::submit(_sx('button', 'Add'), [
-                   'name' => 'massiveaction',
-                   'class' => 'btn btn-secondary'
+                    'name' => 'massiveaction',
+                    'class' => 'btn btn-secondary',
                 ]);
 
                 return true;
@@ -1087,7 +1087,7 @@ class MassiveAction
         if ($this->display_progress_bars) {
             if (!isset($this->progress_bar_displayed)) {
                 Html::progressBar('main_' . $this->identifier, ['create'  => true,
-                                                                   'message' => $this->action_name]);
+                    'message' => $this->action_name]);
                 $this->progress_bar_displayed         = true;
                 $this->fields_to_remove_when_reload[] = 'progress_bar_displayed';
                 if (count($this->items) > 1) {
@@ -1108,7 +1108,7 @@ class MassiveAction
                     Html::progressBar(
                         'itemtype_' . $this->identifier,
                         ['message' => $itemtype::getTypeName(Session::getPluralNumber()),
-                                            'percent' => $percent]
+                            'percent' => $percent]
                     );
                 }
             }
@@ -1295,8 +1295,8 @@ class MassiveAction
                                         ))
                                 ) {
                                     $input2 = [
-                                       'items_id'  => $key,
-                                       'itemtype'  => $item->getType()
+                                        'items_id'  => $key,
+                                        'itemtype'  => $item->getType(),
                                     ];
 
                                     if ($ic->can(-1, CREATE, $input2)) {
@@ -1312,7 +1312,7 @@ class MassiveAction
                                         unset($ic->fields);
                                         if (
                                             $ic->update(['id'            => $id,
-                                                              $input["field"] => $input[$input["field"]]])
+                                                $input["field"] => $input[$input["field"]]])
                                         ) {
                                             $ma->itemDone($item->getType(), $key, MassiveAction::ACTION_OK);
                                         } else {
@@ -1379,7 +1379,7 @@ class MassiveAction
                                 ) {
                                     if (
                                         $item->update(['id'            => $key,
-                                                            $input["field"] => $input[$input["field"]]])
+                                            $input["field"] => $input[$input["field"]]])
                                     ) {
                                         $ma->itemDone($item->getType(), $key, MassiveAction::ACTION_OK);
                                     } else {
@@ -1472,8 +1472,8 @@ class MassiveAction
 
                     // Update the comment
                     $success = $item->update([
-                       'id'      => $id,
-                       'comment' => $comment
+                        'id'      => $id,
+                        'comment' => $comment,
                     ]);
 
                     if (!$success) {
@@ -1500,11 +1500,11 @@ class MassiveAction
 
                 foreach ($ids as $id) {
                     $success = $em->add([
-                       'itemtype'             => $item::getType(),
-                       'items_id'             => $id,
-                       'content'              => $content,
-                       'users_id'             => Session::getLoginUserID(),
-                       'users_id_lastupdater' => Session::getLoginUserID(),
+                        'itemtype'             => $item::getType(),
+                        'items_id'             => $id,
+                        'content'              => $content,
+                        'users_id'             => Session::getLoginUserID(),
+                        'users_id_lastupdater' => Session::getLoginUserID(),
                     ]);
 
                     if (!$success) {
@@ -1552,8 +1552,8 @@ class MassiveAction
      * Update the progress if necessary.
      *
      * @param string  $itemtype    the type of the item that has been done
-     * @param integer $id          id or array of ids of the item(s) that have been done.
-     * @param integer $result
+     * @param int $id          id or array of ids of the item(s) that have been done.
+     * @param int $result
      *                self::NO_ACTION      in case of no specific action (used internally for older actions)
      *                MassiveAction::ACTION_OK      everything is OK for the action
      *                MassiveAction::ACTION_KO      something went wrong for the action

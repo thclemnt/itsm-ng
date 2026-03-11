@@ -48,41 +48,41 @@ class RequestType extends CommonDropdown
     {
 
         return [
-           __('Active') => [
-              'name'  => 'is_active',
-              'type'  => 'checkbox',
-              'value' => $this->fields['is_active']
-           ],
-           __('Default for tickets') => [
-              'name'  => 'is_helpdesk_default',
-              'type'  => 'checkbox',
-              'value' => $this->fields['is_helpdesk_default']
-           ],
-           __('Default for followups') => [
-              'name'  => 'is_followup_default',
-              'type'  => 'checkbox',
-              'value' => $this->fields['is_followup_default']
-           ],
-           __('Default for mail recipients') => [
-              'name'  => 'is_mail_default',
-              'type'  => 'checkbox',
-              'value' => $this->fields['is_mail_default']
-           ],
-           __('Default for followup mail recipients') => [
-              'name'  => 'is_mailfollowup_default',
-              'type'  => 'checkbox',
-              'value' => $this->fields['is_mailfollowup_default']
-           ],
-           __('Request source visible for tickets') => [
-              'name'  => 'is_ticketheader',
-              'type'  => 'checkbox',
-              'value' => $this->fields['is_ticketheader']
-           ],
-           __('Request source visible for followups') => [
-              'name'  => 'is_itilfollowup',
-              'type'  => 'checkbox',
-              'value' => $this->fields['is_itilfollowup']
-           ],
+            __('Active') => [
+                'name'  => 'is_active',
+                'type'  => 'checkbox',
+                'value' => $this->fields['is_active'],
+            ],
+            __('Default for tickets') => [
+                'name'  => 'is_helpdesk_default',
+                'type'  => 'checkbox',
+                'value' => $this->fields['is_helpdesk_default'],
+            ],
+            __('Default for followups') => [
+                'name'  => 'is_followup_default',
+                'type'  => 'checkbox',
+                'value' => $this->fields['is_followup_default'],
+            ],
+            __('Default for mail recipients') => [
+                'name'  => 'is_mail_default',
+                'type'  => 'checkbox',
+                'value' => $this->fields['is_mail_default'],
+            ],
+            __('Default for followup mail recipients') => [
+                'name'  => 'is_mailfollowup_default',
+                'type'  => 'checkbox',
+                'value' => $this->fields['is_mailfollowup_default'],
+            ],
+            __('Request source visible for tickets') => [
+                'name'  => 'is_ticketheader',
+                'type'  => 'checkbox',
+                'value' => $this->fields['is_ticketheader'],
+            ],
+            __('Request source visible for followups') => [
+                'name'  => 'is_itilfollowup',
+                'type'  => 'checkbox',
+                'value' => $this->fields['is_itilfollowup'],
+            ],
         ];
     }
 
@@ -92,63 +92,63 @@ class RequestType extends CommonDropdown
         $tab = parent::rawSearchOptions();
 
         $tab[] = [
-           'id'                 => '14',
-           'table'              => $this->getTable(),
-           'field'              => 'is_helpdesk_default',
-           'name'               => __('Default for tickets'),
-           'datatype'           => 'bool',
-           'massiveaction'      => false
+            'id'                 => '14',
+            'table'              => $this->getTable(),
+            'field'              => 'is_helpdesk_default',
+            'name'               => __('Default for tickets'),
+            'datatype'           => 'bool',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '182',
-           'table'              => $this->getTable(),
-           'field'              => 'is_followup_default',
-           'name'               => __('Default for followups'),
-           'datatype'           => 'bool',
-           'massiveaction'      => false
+            'id'                 => '182',
+            'table'              => $this->getTable(),
+            'field'              => 'is_followup_default',
+            'name'               => __('Default for followups'),
+            'datatype'           => 'bool',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '15',
-           'table'              => $this->getTable(),
-           'field'              => 'is_mail_default',
-           'name'               => __('Default for mail recipients'),
-           'datatype'           => 'bool',
-           'massiveaction'      => false
+            'id'                 => '15',
+            'table'              => $this->getTable(),
+            'field'              => 'is_mail_default',
+            'name'               => __('Default for mail recipients'),
+            'datatype'           => 'bool',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '183',
-           'table'              => $this->getTable(),
-           'field'              => 'is_mailfollowup_default',
-           'name'               => __('Default for followup mail recipients'),
-           'datatype'           => 'bool',
-           'massiveaction'      => false
+            'id'                 => '183',
+            'table'              => $this->getTable(),
+            'field'              => 'is_mailfollowup_default',
+            'name'               => __('Default for followup mail recipients'),
+            'datatype'           => 'bool',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '8',
-           'table'              => $this->getTable(),
-           'field'              => 'is_active',
-           'name'               => __('Active'),
-           'datatype'           => 'bool'
+            'id'                 => '8',
+            'table'              => $this->getTable(),
+            'field'              => 'is_active',
+            'name'               => __('Active'),
+            'datatype'           => 'bool',
         ];
 
         $tab[] = [
-           'id'                 => '180',
-           'table'              => $this->getTable(),
-           'field'              => 'is_ticketheader',
-           'name'               => __('Request source visible for tickets'),
-           'datatype'           => 'bool'
+            'id'                 => '180',
+            'table'              => $this->getTable(),
+            'field'              => 'is_ticketheader',
+            'name'               => __('Request source visible for tickets'),
+            'datatype'           => 'bool',
         ];
 
         $tab[] = [
-           'id'                 => '181',
-           'table'              => $this->getTable(),
-           'field'              => 'is_itilfollowup',
-           'name'               => __('Request source visible for followups'),
-           'datatype'           => 'bool'
+            'id'                 => '181',
+            'table'              => $this->getTable(),
+            'field'              => 'is_itilfollowup',
+            'name'               => __('Request source visible for followups'),
+            'datatype'           => 'bool',
         ];
 
         return $tab;
@@ -182,7 +182,7 @@ class RequestType extends CommonDropdown
                 $this->getTable(),
                 $update,
                 [
-                  'id' => ['<>', $this->fields['id']]
+                    'id' => ['<>', $this->fields['id']],
                 ]
             );
         }
@@ -234,7 +234,7 @@ class RequestType extends CommonDropdown
                 $this->getTable(),
                 $update,
                 [
-                  'id' => ['<>', $this->fields['id']]
+                    'id' => ['<>', $this->fields['id']],
                 ]
             );
         }
@@ -275,12 +275,12 @@ class RequestType extends CommonDropdown
         parent::cleanRelationData();
 
         if ($this->isUsedAsDefaultRequestType()) {
-            $newval = (isset($this->input['_replace_by']) ? $this->input['_replace_by'] : 0);
+            $newval = ($this->input['_replace_by'] ?? 0);
 
             Config::setConfigurationValues(
                 'core',
                 [
-                  'default_requesttypes_id' => $newval,
+                    'default_requesttypes_id' => $newval,
                 ]
             );
         }
@@ -301,7 +301,7 @@ class RequestType extends CommonDropdown
     /**
      * Check if type is used as default for new tickets.
      *
-     * @return boolean
+     * @return bool
      */
     private function isUsedAsDefaultRequestType()
     {

@@ -49,7 +49,7 @@ interface CalDAVCompatibleItemInterface
     /**
      * Get group items as VCalendar documents.
      *
-     * @param integer $groups_id
+     * @param int $groups_id
      *
      * @return VCalendar[]
      */
@@ -58,7 +58,7 @@ interface CalDAVCompatibleItemInterface
     /**
      * Get user items as VCalendar documents.
      *
-     * @param integer $users_id
+     * @param int $users_id
      *
      * @return VCalendar[]
      */

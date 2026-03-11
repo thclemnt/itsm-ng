@@ -130,8 +130,8 @@ class Contract_Supplier extends CommonDBRelation
 
         $contracts = [];
         $options = getOptionForItems('Contract', [
-           'entities_id' => $supplier->fields["entities_id"],
-           'is_recursive' => $supplier->fields["is_recursive"]
+            'entities_id' => $supplier->fields["entities_id"],
+            'is_recursive' => $supplier->fields["is_recursive"],
         ]);
         while ($data = $iterator->next()) {
             unset($options[$data['id']]);
@@ -140,55 +140,55 @@ class Contract_Supplier extends CommonDBRelation
 
         if ($canedit) {
             $form = [
-               'action' => Toolbox::getItemTypeFormURL(__CLASS__),
-               'buttons' => [
-                  [
-                     'type' => 'submit',
-                     'name' => 'add',
-                     'value' => _sx('button', 'Add'),
-                     'class' => 'btn btn-secondary'
-                  ]
-               ],
-               'content' => [
-                  __('Add a contract') => [
-                     'visible' => true,
-                     'inputs' => [
-                        [
-                           'type' => 'hidden',
-                           'name' => 'suppliers_id',
-                           'value' => $ID
+                'action' => Toolbox::getItemTypeFormURL(__CLASS__),
+                'buttons' => [
+                    [
+                        'type' => 'submit',
+                        'name' => 'add',
+                        'value' => _sx('button', 'Add'),
+                        'class' => 'btn btn-secondary',
+                    ],
+                ],
+                'content' => [
+                    __('Add a contract') => [
+                        'visible' => true,
+                        'inputs' => [
+                            [
+                                'type' => 'hidden',
+                                'name' => 'suppliers_id',
+                                'value' => $ID,
+                            ],
+                            '' => [
+                                'type' => 'select',
+                                'name' => 'contracts_id',
+                                'values' => $options,
+                                'actions' => getItemActionButtons(['info'], 'Contract'),
+                                'col_lg' => 12,
+                                'col_md' => 12,
+                            ],
                         ],
-                        '' => [
-                           'type' => 'select',
-                           'name' => 'contracts_id',
-                           'values' => $options,
-                           'actions' => getItemActionButtons(['info'], 'Contract'),
-                           'col_lg' => 12,
-                           'col_md' => 12,
-                        ]
-                     ]
-                  ]
-               ]
+                    ],
+                ],
             ];
             renderTwigForm($form);
         }
 
         if ($canedit && $number) {
             $massiveactionparams = [
-               'container'     => 'tableForContractSupplier',
-               'num_displayed' => min($_SESSION['glpilist_limit'], $number),
-               'display_arrow' => false,
-               'is_deleted' => false,
+                'container'     => 'tableForContractSupplier',
+                'num_displayed' => min($_SESSION['glpilist_limit'], $number),
+                'display_arrow' => false,
+                'is_deleted' => false,
             ];
             Html::showMassiveActions($massiveactionparams);
         }
         $fields = [
-           'name' => __('Name'),
-           'entities_id' => Entity::getTypeName(1),
-           'num' => _x('phone', 'Number'),
-           'contracttypes_id' => ContractType::getTypeName(1),
-           'begin_date' => __('Start date'),
-           'duration' => __('Initial contract period')
+            'name' => __('Name'),
+            'entities_id' => Entity::getTypeName(1),
+            'num' => _x('phone', 'Number'),
+            'contracttypes_id' => ContractType::getTypeName(1),
+            'begin_date' => __('Start date'),
+            'duration' => __('Initial contract period'),
         ];
         $values = [];
         $massiveactionValues = [];
@@ -203,21 +203,21 @@ class Contract_Supplier extends CommonDBRelation
                 $name = sprintf(__('%1$s (%2$s)'), $name, $data["id"]);
             }
             $values[] = [
-               'checkbox' => $canedit ? Html::getCheckAllAsCheckbox('mass' . __CLASS__ . $rand) : '',
-               'name' => "<a href='" . Contract::getFormURLWithID($cID) . "'>" . $name . "</a>",
-               'entities_id' => Dropdown::getDropdownName("glpi_entities", $data["entity"]),
-               'num' => $data["num"],
-               'contracttypes_id' => Dropdown::getDropdownName("glpi_contracttypes", $data["contracttypes_id"]),
-               'begin_date' => Html::convDate($data["begin_date"]),
-               'duration' => sprintf(_n('%d month', '%d months', $data["duration"]), $data["duration"])
+                'checkbox' => $canedit ? Html::getCheckAllAsCheckbox('mass' . __CLASS__ . $rand) : '',
+                'name' => "<a href='" . Contract::getFormURLWithID($cID) . "'>" . $name . "</a>",
+                'entities_id' => Dropdown::getDropdownName("glpi_entities", $data["entity"]),
+                'num' => $data["num"],
+                'contracttypes_id' => Dropdown::getDropdownName("glpi_contracttypes", $data["contracttypes_id"]),
+                'begin_date' => Html::convDate($data["begin_date"]),
+                'duration' => sprintf(_n('%d month', '%d months', $data["duration"]), $data["duration"]),
             ];
             $massiveactionValues[] = sprintf('item[%s][%s]', __CLASS__, $assocID);
         }
         renderTwigTemplate('table.twig', [
-           'id' => 'tableForContractSupplier',
-           'fields' => $fields,
-           'values' => $values,
-           'massive_action' => $massiveactionValues,
+            'id' => 'tableForContractSupplier',
+            'fields' => $fields,
+            'values' => $values,
+            'massive_action' => $massiveactionValues,
         ]);
     }
 
@@ -263,8 +263,8 @@ class Contract_Supplier extends CommonDBRelation
                         'type' => 'submit',
                         'name' => 'add',
                         'value' => _sx('button', 'Add'),
-                        'class' => 'btn btn-secondary'
-                    ]
+                        'class' => 'btn btn-secondary',
+                    ],
                 ],
                 'content' => [
                     '' => [
@@ -273,7 +273,7 @@ class Contract_Supplier extends CommonDBRelation
                             [
                                 'type' => 'hidden',
                                 'name' => 'contracts_id',
-                                'value' => $instID
+                                'value' => $instID,
                             ],
                             __('Add a supplier') => [
                                 'type' => 'select',
@@ -283,26 +283,26 @@ class Contract_Supplier extends CommonDBRelation
                                 'col_lg' => 12,
                                 'col_md' => 12,
                             ],
-                        ]
-                    ]
-                ]
+                        ],
+                    ],
+                ],
             ];
             renderTwigForm($form);
         }
 
         $headers = [
-          'supplier' => Supplier::getTypeName(1),
-          'entity' => Entity::getTypeName(1),
-          'suppliertypes_id' => SupplierType::getTypeName(1),
-          'phonenumber' => _x('phone', 'Number'),
-          'website' => __('Website')
+            'supplier' => Supplier::getTypeName(1),
+            'entity' => Entity::getTypeName(1),
+            'suppliertypes_id' => SupplierType::getTypeName(1),
+            'phonenumber' => _x('phone', 'Number'),
+            'website' => __('Website'),
         ];
         $values = [];
         $massiveactionValues = [];
         Html::showMassiveActions([
-          'container'     => 'tableForContractSupplier',
-          'display_arrow' => false,
-          'is_deleted' => false,
+            'container'     => 'tableForContractSupplier',
+            'display_arrow' => false,
+            'is_deleted' => false,
         ]);
         foreach ($suppliers as $data) {
             $assocID = $data['linkid'];
@@ -323,19 +323,19 @@ class Contract_Supplier extends CommonDBRelation
                 $entname = sprintf(__('%1$s (%2$s)'), $entname, $entID);
             }
             $values[] = [
-               'supplier' => "<a href='" . Supplier::getFormURLWithID($entID) . "'>" . $entname . "</a>",
-               'entity' => Dropdown::getDropdownName("glpi_entities", $entity),
-               'suppliertypes_id' => Dropdown::getDropdownName("glpi_suppliertypes", $data['suppliertypes_id']),
-               'phonenumber' => $data['phonenumber'],
-               'website' => $website
+                'supplier' => "<a href='" . Supplier::getFormURLWithID($entID) . "'>" . $entname . "</a>",
+                'entity' => Dropdown::getDropdownName("glpi_entities", $entity),
+                'suppliertypes_id' => Dropdown::getDropdownName("glpi_suppliertypes", $data['suppliertypes_id']),
+                'phonenumber' => $data['phonenumber'],
+                'website' => $website,
             ];
             $massiveactionValues[] = sprintf('item[%s][%s]', __CLASS__, $assocID);
         }
         renderTwigTemplate('table.twig', [
-           'id' => 'tableForContractSupplier',
-           'fields' => $headers,
-           'values' => $values,
-           'massive_action' => $massiveactionValues,
+            'id' => 'tableForContractSupplier',
+            'fields' => $headers,
+            'values' => $values,
+            'massive_action' => $massiveactionValues,
         ]);
     }
 }

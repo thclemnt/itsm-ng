@@ -30,6 +30,4 @@
  * along with GLPI. If not, see <http://www.gnu.org/licenses/>.
  * ---------------------------------------------------------------------
  */
-class PluginFooService
-{
-}
+class PluginFooService {}

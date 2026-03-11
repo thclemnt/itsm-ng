@@ -50,22 +50,22 @@ class DBmysql
      * @var array
      */
     private const ALLOWED_SIGNED_KEYS = [
-       // FIXME Entity preference `glpi_entities.calendars_id` inherit/never strategy should be stored in another field.
-       'glpi_calendars.id',
-       // FIXME Entity preference `glpi_entities.changetemplates_id` inherit/never strategy should be stored in another field.
-       'glpi_changetemplates.id',
-       // FIXME Entity preference `glpi_entities.contracts_id_default` inherit/never strategy should be stored in another field.
-       'glpi_contracts.id',
-       // FIXME root entity uses "-1" value for its parent (`glpi_entities.entities_id`), should be null
-       // FIXME some entities_id foreign keys are using "-1" as default value, should be null
-       // FIXME Entity preference `glpi_entities.entities_id_software` inherit/never strategy should be stored in another field.
-       'glpi_entities.id',
-       // FIXME Entity preference `glpi_entities.problemtemplates_id` inherit/never strategy should be stored in another field.
-       'glpi_problemtemplates.id',
-       // FIXME Entity preference `glpi_entities.tickettemplates_id` inherit/never strategy should be stored in another field.
-       'glpi_tickettemplates.id',
-       // FIXME Entity preference `glpi_entities.transfers_id` inherit/never strategy should be stored in another field.
-       'glpi_transfers.id',
+        // FIXME Entity preference `glpi_entities.calendars_id` inherit/never strategy should be stored in another field.
+        'glpi_calendars.id',
+        // FIXME Entity preference `glpi_entities.changetemplates_id` inherit/never strategy should be stored in another field.
+        'glpi_changetemplates.id',
+        // FIXME Entity preference `glpi_entities.contracts_id_default` inherit/never strategy should be stored in another field.
+        'glpi_contracts.id',
+        // FIXME root entity uses "-1" value for its parent (`glpi_entities.entities_id`), should be null
+        // FIXME some entities_id foreign keys are using "-1" as default value, should be null
+        // FIXME Entity preference `glpi_entities.entities_id_software` inherit/never strategy should be stored in another field.
+        'glpi_entities.id',
+        // FIXME Entity preference `glpi_entities.problemtemplates_id` inherit/never strategy should be stored in another field.
+        'glpi_problemtemplates.id',
+        // FIXME Entity preference `glpi_entities.tickettemplates_id` inherit/never strategy should be stored in another field.
+        'glpi_tickettemplates.id',
+        // FIXME Entity preference `glpi_entities.transfers_id` inherit/never strategy should be stored in another field.
+        'glpi_transfers.id',
     ];
 
     //! Database Host - string or Array of string (round robin)
@@ -88,7 +88,7 @@ class DBmysql
     /**
      * Defines if connection must use SSL.
      *
-     * @var boolean
+     * @var bool
      */
     public $dbssl              = false;
 
@@ -166,7 +166,7 @@ class DBmysql
     /**
      * Constructor / Connect to the MySQL Database
      *
-     * @param integer $choice host number (default NULL)
+     * @param int $choice host number (default NULL)
      *
      * @return void
      */
@@ -179,7 +179,7 @@ class DBmysql
      * Connect using current database settings
      * Use dbhost, dbuser, dbpassword and dbdefault
      *
-     * @param integer $choice host number (default NULL)
+     * @param int $choice host number (default NULL)
      *
      * @return void
      */
@@ -200,7 +200,7 @@ class DBmysql
 
         if (is_array($this->dbhost)) {
             // Round robin choice
-            $i    = (isset($choice) ? $choice : mt_rand(0, count($this->dbhost) - 1));
+            $i    = ($choice ?? mt_rand(0, count($this->dbhost) - 1));
             $host = $this->dbhost[$i];
         } else {
             $host = $this->dbhost;
@@ -228,7 +228,7 @@ class DBmysql
             if (isset($this->dbenc)) {
                 Toolbox::deprecated('Usage of alternative DB connection encoding (`DB::$dbenc` property) is deprecated.');
             }
-            $dbenc = isset($this->dbenc) ? $this->dbenc : "utf8";
+            $dbenc = $this->dbenc ?? "utf8";
             $this->dbh->set_charset($dbenc);
             if ($dbenc === "utf8") {
                 // The mysqli::set_charset function will make COLLATE to be defined to the default one for used charset.
@@ -275,12 +275,12 @@ class DBmysql
                 && $this->fieldExists(Config::getTable(), 'value')
             ) {
                 $conf_tz = $this->request([
-                   'SELECT' => 'value',
-                   'FROM'   => Config::getTable(),
-                   'WHERE'  => [
-                      'context'   => 'core',
-                      'name'      => 'timezone'
-                    ]
+                    'SELECT' => 'value',
+                    'FROM'   => Config::getTable(),
+                    'WHERE'  => [
+                        'context'   => 'core',
+                        'name'      => 'timezone',
+                    ],
                 ])->next();
             }
             $zone = !empty($conf_tz['value']) ? $conf_tz['value'] : date_default_timezone_get();
@@ -311,9 +311,9 @@ class DBmysql
      *
      * @var array   $CFG_GLPI
      * @var array   $DEBUG_SQL
-     * @var integer $SQL_TOTAL_REQUEST
+     * @var int $SQL_TOTAL_REQUEST
      *
-     * @return mysqli_result|boolean Query result handler
+     * @return mysqli_result|bool Query result handler
      *
      * @throws GlpitestSQLError
      */
@@ -343,10 +343,10 @@ class DBmysql
                 $this->execution_time = $TIMER->getTime(0, true);
             }
             return $res;
-        } catch (\mysqli_sql_exception $e) {
+        } catch (mysqli_sql_exception $e) {
             // no translation for error logs
-            $error = "  *** MySQL query error:\n  SQL: " . $query . "\n  Error: " .
-                      $this->dbh->error . "\n";
+            $error = "  *** MySQL query error:\n  SQL: " . $query . "\n  Error: "
+                      . $this->dbh->error . "\n";
             $error .= Toolbox::backtrace(false, 'DBmysql->query()', ['Toolbox::backtrace()']);
 
             Toolbox::logSqlError($error);
@@ -385,7 +385,7 @@ class DBmysql
                 $this->error()
             );
             if (isCommandLine()) {
-                throw new \RuntimeException($message);
+                throw new RuntimeException($message);
             } else {
                 echo $message . "\n";
                 die(1);
@@ -399,7 +399,7 @@ class DBmysql
      *
      * @param string $query Query to prepare
      *
-     * @return mysqli_stmt|boolean statement object or FALSE if an error occurred.
+     * @return mysqli_stmt|bool statement object or FALSE if an error occurred.
      *
      * @throws GlpitestSQLError
      */
@@ -410,8 +410,8 @@ class DBmysql
         $res = $this->dbh->prepare($query);
         if (!$res) {
             // no translation for error logs
-            $error = "  *** MySQL prepare error:\n  SQL: " . $query . "\n  Error: " .
-                      $this->dbh->error . "\n";
+            $error = "  *** MySQL prepare error:\n  SQL: " . $query . "\n  Error: "
+                      . $this->dbh->error . "\n";
             $error .= Toolbox::backtrace(false, 'DBmysql->prepare()', ['Toolbox::backtrace()']);
 
             Toolbox::logInFile("sql-errors", $error);
@@ -457,7 +457,7 @@ class DBmysql
      *
      * @param mysqli_result $result MySQL result handler
      *
-     * @return integer number of rows
+     * @return int number of rows
      */
     public function numrows($result)
     {
@@ -578,9 +578,9 @@ class DBmysql
      * @deprecated 9.5.0
      *
      * @param mysqli_result $result MySQL result handler
-     * @param integer       $num    Row to move current pointer
+     * @param int       $num    Row to move current pointer
      *
-     * @return boolean
+     * @return bool
      */
     public function data_seek($result, $num)
     {
@@ -592,9 +592,9 @@ class DBmysql
      * Move current pointer of a Mysql result to the specific row
      *
      * @param mysqli_result $result MySQL result handler
-     * @param integer       $num    Row to move current pointer
+     * @param int       $num    Row to move current pointer
      *
-     * @return boolean
+     * @return bool
      */
     public function dataSeek($result, $num)
     {
@@ -657,7 +657,7 @@ class DBmysql
      * Give name of a field of a Mysql result
      *
      * @param mysqli_result $result MySQL result handler
-     * @param integer       $nb     ID of the field
+     * @param int       $nb     ID of the field
      *
      * @return string name of the field
      *
@@ -673,7 +673,7 @@ class DBmysql
      * Give name of a field of a Mysql result
      *
      * @param mysqli_result $result MySQL result handler
-     * @param integer       $nb     ID of the field
+     * @param int       $nb     ID of the field
      *
      * @return string name of the field
      *
@@ -697,13 +697,13 @@ class DBmysql
     public function listTables($table = 'glpi\_%', array $where = [])
     {
         $iterator = $this->request([
-           'SELECT' => 'table_name as TABLE_NAME',
-           'FROM'   => 'information_schema.tables',
-           'WHERE'  => [
-              'table_schema' => $this->dbdefault,
-              'table_type'   => 'BASE TABLE',
-              'table_name'   => ['LIKE', $table]
-           ] + $where
+            'SELECT' => 'table_name as TABLE_NAME',
+            'FROM'   => 'information_schema.tables',
+            'WHERE'  => [
+                'table_schema' => $this->dbdefault,
+                'table_type'   => 'BASE TABLE',
+                'table_name'   => ['LIKE', $table],
+            ] + $where,
         ]);
         return $iterator;
     }
@@ -723,7 +723,7 @@ class DBmysql
      * List fields of a table
      *
      * @param string  $table    Table name condition
-     * @param boolean $usecache If use field list cache (default true)
+     * @param bool $usecache If use field list cache (default true)
      *
      * @return mixed list of fields
      *
@@ -739,7 +739,7 @@ class DBmysql
      * List fields of a table
      *
      * @param string  $table    Table name condition
-     * @param boolean $usecache If use field list cache (default true)
+     * @param bool $usecache If use field list cache (default true)
      *
      * @return mixed list of fields
      */
@@ -768,7 +768,7 @@ class DBmysql
      *
      * @param string  $table
      * @param string  $field
-     * @param boolean $usecache
+     * @param bool $usecache
      *
      * @return array|null Field characteristics
      */
@@ -808,7 +808,7 @@ class DBmysql
      *
      * @param mysqli_result $result MySQL result handler
      *
-     * @return boolean
+     * @return bool
      *
      * @deprecated 9.5.0
      */
@@ -823,7 +823,7 @@ class DBmysql
      *
      * @param mysqli_result $result MySQL result handler
      *
-     * @return boolean
+     * @return bool
      */
     public function freeResult($result)
     {
@@ -853,7 +853,7 @@ class DBmysql
     /**
      * Close MySQL connection
      *
-     * @return boolean TRUE on success or FALSE on failure.
+     * @return bool TRUE on success or FALSE on failure.
      */
     public function close()
     {
@@ -866,7 +866,7 @@ class DBmysql
     /**
      * is a slave database ?
      *
-     * @return boolean
+     * @return bool
      */
     public function isSlave()
     {
@@ -878,7 +878,7 @@ class DBmysql
      *
      * @param string $path with file full path
      *
-     * @return boolean true if all query are successfull
+     * @return bool true if all query are successfull
      */
     public function runFile($path)
     {
@@ -937,7 +937,7 @@ class DBmysql
      * @param string|string[] $tableorsql Table name, array of names or SQL query
      * @param string|string[] $crit       String or array of filed/values, ex array("id"=>1), if empty => all rows
      *                                    (default '')
-     * @param boolean         $debug      To log the request (default false)
+     * @param bool         $debug      To log the request (default false)
      *
      * @return DBmysqlIterator
      */
@@ -990,7 +990,7 @@ class DBmysql
      *
      * @param string $msg Mode
      *
-     * @return boolean
+     * @return bool
      *
      * @since 0.90
      * @deprecated 9.5.0
@@ -1017,16 +1017,16 @@ class DBmysql
      *
      * @param string $name lock's name
      *
-     * @return boolean
+     * @return bool
      */
     public function getLock($name)
     {
         $name          = addslashes($this->dbdefault . '.' . $name);
         $query         = "SELECT GET_LOCK('$name', 0)";
         $result        = $this->query($query);
-        list($lock_ok) = $this->fetchRow($result);
+        [$lock_ok] = $this->fetchRow($result);
 
-        return (bool)$lock_ok;
+        return (bool) $lock_ok;
     }
 
     /**
@@ -1036,14 +1036,14 @@ class DBmysql
      *
      * @param string $name lock's name
      *
-     * @return boolean
+     * @return bool
      */
     public function releaseLock($name)
     {
         $name          = addslashes($this->dbdefault . '.' . $name);
         $query         = "SELECT RELEASE_LOCK('$name')";
         $result        = $this->query($query);
-        list($lock_ok) = $this->fetchRow($result);
+        [$lock_ok] = $this->fetchRow($result);
 
         return $lock_ok;
     }
@@ -1056,9 +1056,9 @@ class DBmysql
      * @since 9.5 Added $usecache parameter.
      *
      * @param string  $tablename Table name
-     * @param boolean $usecache  If use table list cache
+     * @param bool $usecache  If use table list cache
      *
-     * @return boolean
+     * @return bool
      **/
     public function tableExists($tablename, $usecache = true)
     {
@@ -1095,9 +1095,9 @@ class DBmysql
      *
      * @param string  $table    Table name for the field we're looking for
      * @param string  $field    Field name
-     * @param Boolean $usecache Use cache; @see DBmysql::listFields(), defaults to true
+     * @param bool $usecache Use cache; @see DBmysql::listFields(), defaults to true
      *
-     * @return boolean
+     * @return bool
      **/
     public function fieldExists($table, $field, $usecache = true)
     {
@@ -1206,7 +1206,7 @@ class DBmysql
             $value = 'NULL';
         } elseif (is_bool($value)) {
             // transform boolean as int (prevent `false` to be transformed to empty string)
-            $value = "'" . (int)$value . "'";
+            $value = "'" . (int) $value . "'";
         } else {
             //phone numbers may start with '+' and will be considered as numeric
             $value = "'$value'";
@@ -1250,7 +1250,7 @@ class DBmysql
      * @param string $table  Table name
      * @param array  $params Query parameters ([field name => field value)
      *
-     * @return mysqli_result|boolean Query result handler
+     * @return mysqli_result|bool Query result handler
      */
     public function insert($table, $params)
     {
@@ -1270,7 +1270,7 @@ class DBmysql
      * @param array  $params  Query parameters ([field name => field value)
      * @param string $message Explanation of query (default '')
      *
-     * @return mysqli_result|boolean Query result handler
+     * @return mysqli_result|bool Query result handler
      */
     public function insertOrDie($table, $params, $message = '')
     {
@@ -1285,7 +1285,7 @@ class DBmysql
                 $this->error()
             );
             if (isCommandLine()) {
-                throw new \RuntimeException($message);
+                throw new RuntimeException($message);
             } else {
                 echo $message . "\n";
                 die(1);
@@ -1316,7 +1316,7 @@ class DBmysql
             $known_clauses = ['WHERE', 'ORDER', 'LIMIT', 'START'];
             foreach (array_keys($clauses) as $key) {
                 if (!in_array($key, $known_clauses)) {
-                    throw new \RuntimeException(
+                    throw new RuntimeException(
                         str_replace(
                             '%clause',
                             $key,
@@ -1328,7 +1328,7 @@ class DBmysql
         }
 
         if (!count($clauses['WHERE'])) {
-            throw new \RuntimeException('Cannot run an UPDATE query without WHERE clause!');
+            throw new RuntimeException('Cannot run an UPDATE query without WHERE clause!');
         }
 
         $query  = "UPDATE " . self::quoteName($table);
@@ -1369,7 +1369,7 @@ class DBmysql
      * @param array  $joins  JOINS criteria array
      *
      * @since 9.4.0 $joins parameter added
-     * @return mysqli_result|boolean Query result handler
+     * @return mysqli_result|bool Query result handler
      */
     public function update($table, $params, $where, array $joins = [])
     {
@@ -1391,7 +1391,7 @@ class DBmysql
      * @param array  $joins   JOINS criteria array
      *
      * @since 9.4.0 $joins parameter added
-     * @return mysqli_result|boolean Query result handler
+     * @return mysqli_result|bool Query result handler
      */
     public function updateOrDie($table, $params, $where, $message = '', array $joins = [])
     {
@@ -1406,7 +1406,7 @@ class DBmysql
                 $this->error()
             );
             if (isCommandLine()) {
-                throw new \RuntimeException($message);
+                throw new RuntimeException($message);
             } else {
                 echo $message . "\n";
                 die(1);
@@ -1423,9 +1423,9 @@ class DBmysql
      * @param string  $table   Table name
      * @param array   $params  Query parameters ([:field name => field value)
      * @param array   $where   WHERE clause
-     * @param boolean $onlyone Do the update only one one element, defaults to true
+     * @param bool $onlyone Do the update only one one element, defaults to true
      *
-     * @return mysqli_result|boolean Query result handler
+     * @return mysqli_result|bool Query result handler
      */
     public function updateOrInsert($table, $params, $where, $onlyone = true)
     {
@@ -1458,7 +1458,7 @@ class DBmysql
     {
 
         if (!count($where)) {
-            throw new \RuntimeException('Cannot run an DELETE query without WHERE clause!');
+            throw new RuntimeException('Cannot run an DELETE query without WHERE clause!');
         }
 
         $query  = "DELETE " . self::quoteName($table) . " FROM " . self::quoteName($table);
@@ -1480,7 +1480,7 @@ class DBmysql
      * @param array  $joins  JOINS criteria array
      *
      * @since 9.4.0 $joins parameter added
-     * @return mysqli_result|boolean Query result handler
+     * @return mysqli_result|bool Query result handler
      */
     public function delete($table, $where, array $joins = [])
     {
@@ -1501,7 +1501,7 @@ class DBmysql
      * @param array  $joins   JOINS criteria array
      *
      * @since 9.4.0 $joins parameter added
-     * @return mysqli_result|boolean Query result handler
+     * @return mysqli_result|bool Query result handler
      */
     public function deleteOrDie($table, $where, $message = '', array $joins = [])
     {
@@ -1516,7 +1516,7 @@ class DBmysql
                 $this->error()
             );
             if (isCommandLine()) {
-                throw new \RuntimeException($message);
+                throw new RuntimeException($message);
             } else {
                 echo $message . "\n";
                 die(1);
@@ -1554,8 +1554,8 @@ class DBmysql
         //get table schema, without index, without AUTO_INCREMENT
         $structure = preg_replace(
             [
-              "/\s\s+KEY .*/",
-              "/AUTO_INCREMENT=\d+ /"
+                "/\s\s+KEY .*/",
+                "/AUTO_INCREMENT=\d+ /",
             ],
             "",
             (string) $structure
@@ -1565,14 +1565,14 @@ class DBmysql
 
         $structure = str_replace(
             [
-              " COLLATE utf8_unicode_ci",
-              " CHARACTER SET utf8",
-              ', ',
+                " COLLATE utf8_unicode_ci",
+                " CHARACTER SET utf8",
+                ', ',
             ],
             [
-              '',
-              '',
-              ',',
+                '',
+                '',
+                ',',
             ],
             trim($structure)
         );
@@ -1615,8 +1615,8 @@ class DBmysql
         $structure = preg_replace('/(TINYINT) /i', '$1(4) ', (string) $structure);
 
         return [
-           'schema' => strtolower((string) $structure),
-           'index'  => $index
+            'schema' => strtolower((string) $structure),
+            'index'  => $index,
         ];
     }
 
@@ -1635,7 +1635,7 @@ class DBmysql
     /**
      * Starts a transaction
      *
-     * @return boolean
+     * @return bool
      */
     public function beginTransaction()
     {
@@ -1646,7 +1646,7 @@ class DBmysql
     /**
      * Commits a transaction
      *
-     * @return boolean
+     * @return bool
      */
     public function commit()
     {
@@ -1657,7 +1657,7 @@ class DBmysql
     /**
      * Rollbacks a transaction
      *
-     * @return boolean
+     * @return bool
      */
     public function rollBack()
     {
@@ -1668,7 +1668,7 @@ class DBmysql
     /**
      * Are we in a transaction?
      *
-     * @return boolean
+     * @return bool
      */
     public function inTransaction()
     {
@@ -1680,7 +1680,7 @@ class DBmysql
      *
      * @param string $msg  Variable that would contain the reason of data unavailability.
      *
-     * @return boolean
+     * @return bool
      *
      * @since 9.5.0
      */
@@ -1711,8 +1711,8 @@ class DBmysql
         }
 
         $criteria = [
-           'COUNT'  => 'cpt',
-           'FROM'   => 'mysql.time_zone_name',
+            'COUNT'  => 'cpt',
+            'FROM'   => 'mysql.time_zone_name',
         ];
         $iterator = $this->request($criteria);
         $result = $iterator->next();
@@ -1754,20 +1754,20 @@ class DBmysql
     {
         $list = []; //default $tz is empty
 
-        $from_php = \DateTimeZone::listIdentifiers();
-        $now = new \DateTime();
+        $from_php = DateTimeZone::listIdentifiers();
+        $now = new DateTime();
 
         try {
             $iterator = $this->request([
-               'SELECT' => 'Name',
-               'FROM'   => 'mysql.time_zone_name',
-               'WHERE'  => ['Name' => $from_php]
+                'SELECT' => 'Name',
+                'FROM'   => 'mysql.time_zone_name',
+                'WHERE'  => ['Name' => $from_php],
             ]);
             while ($from_mysql = $iterator->next()) {
-                $now->setTimezone(new \DateTimeZone($from_mysql['Name']));
+                $now->setTimezone(new DateTimeZone($from_mysql['Name']));
                 $list[$from_mysql['Name']] = $from_mysql['Name'] . $now->format(" (T P)");
             }
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             //do nothing
         }
 
@@ -1790,12 +1790,12 @@ class DBmysql
             'COUNT'       => 'cpt',
             'FROM'        => 'information_schema.columns',
             'WHERE'       => [
-               'information_schema.columns.table_schema' => $DB->dbdefault,
-               'information_schema.columns.table_name'   => ['LIKE', 'glpi\_%'],
-               'information_schema.columns.data_type'    => ['datetime']
-            ]
+                'information_schema.columns.table_schema' => $DB->dbdefault,
+                'information_schema.columns.table_name'   => ['LIKE', 'glpi\_%'],
+                'information_schema.columns.data_type'    => ['datetime'],
+            ],
         ])->next();
-        return (int)$result['cpt'];
+        return (int) $result['cpt'];
     }
 
     /**
@@ -1809,58 +1809,58 @@ class DBmysql
     {
 
         $query = [
-           'SELECT'     => [
-              'information_schema.columns.table_name as TABLE_NAME',
-              'information_schema.columns.column_name as COLUMN_NAME',
-              'information_schema.columns.data_type as DATA_TYPE',
-              'information_schema.columns.column_default as COLUMN_DEFAULT',
-              'information_schema.columns.is_nullable as IS_NULLABLE',
-              'information_schema.columns.extra as EXTRA',
-           ],
-           'FROM'       => 'information_schema.columns',
-           'INNER JOIN' => [
-              'information_schema.tables' => [
-                 'FKEY' => [
-                    'information_schema.tables'  => 'table_name',
-                    'information_schema.columns' => 'table_name',
-                    [
-                       'AND' => [
-                          'information_schema.tables.table_schema' => new QueryExpression(
-                              $this->quoteName('information_schema.columns.table_schema')
-                          ),
-                       ]
-                    ],
-                 ]
-              ]
-           ],
-           'WHERE'      => [
-            'information_schema.tables.table_schema'  => $this->dbdefault,
-            'information_schema.tables.table_name'    => ['LIKE', 'glpi\_%'],
-            'information_schema.tables.table_type'    => 'BASE TABLE',
-            [
-               'OR' => [
-                  ['information_schema.columns.column_name' => 'id'],
-                  ['information_schema.columns.column_name' => ['LIKE', '%\_id']],
-                  ['information_schema.columns.column_name' => ['LIKE', '%\_id\_%']],
-               ],
+            'SELECT'     => [
+                'information_schema.columns.table_name as TABLE_NAME',
+                'information_schema.columns.column_name as COLUMN_NAME',
+                'information_schema.columns.data_type as DATA_TYPE',
+                'information_schema.columns.column_default as COLUMN_DEFAULT',
+                'information_schema.columns.is_nullable as IS_NULLABLE',
+                'information_schema.columns.extra as EXTRA',
             ],
-            'information_schema.columns.data_type' => ['tinyint', 'smallint', 'mediumint', 'int', 'bigint'],
-            ['NOT' => ['information_schema.columns.column_type' => ['LIKE', '%unsigned%']]],
-           ],
-           'ORDER'      => ['TABLE_NAME']
+            'FROM'       => 'information_schema.columns',
+            'INNER JOIN' => [
+                'information_schema.tables' => [
+                    'FKEY' => [
+                        'information_schema.tables'  => 'table_name',
+                        'information_schema.columns' => 'table_name',
+                        [
+                            'AND' => [
+                                'information_schema.tables.table_schema' => new QueryExpression(
+                                    $this->quoteName('information_schema.columns.table_schema')
+                                ),
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+            'WHERE'      => [
+                'information_schema.tables.table_schema'  => $this->dbdefault,
+                'information_schema.tables.table_name'    => ['LIKE', 'glpi\_%'],
+                'information_schema.tables.table_type'    => 'BASE TABLE',
+                [
+                    'OR' => [
+                        ['information_schema.columns.column_name' => 'id'],
+                        ['information_schema.columns.column_name' => ['LIKE', '%\_id']],
+                        ['information_schema.columns.column_name' => ['LIKE', '%\_id\_%']],
+                    ],
+                ],
+                'information_schema.columns.data_type' => ['tinyint', 'smallint', 'mediumint', 'int', 'bigint'],
+                ['NOT' => ['information_schema.columns.column_type' => ['LIKE', '%unsigned%']]],
+            ],
+            'ORDER'      => ['TABLE_NAME'],
         ];
         foreach (self::ALLOWED_SIGNED_KEYS as $allowed_signed_key) {
-            list($excluded_table, $excluded_field) = explode('.', $allowed_signed_key);
+            [$excluded_table, $excluded_field] = explode('.', $allowed_signed_key);
             $excluded_fkey = getForeignKeyFieldForTable($excluded_table);
             $query['WHERE'][] = [
-               [
-                  'NOT' => [
-                     'information_schema.tables.table_name'   => $excluded_table,
-                     'information_schema.columns.column_name' => $excluded_field
-                  ]
-               ],
-               ['NOT' => ['information_schema.columns.column_name' => $excluded_fkey]],
-               ['NOT' => ['information_schema.columns.column_name' => ['LIKE', str_replace('_', '\_', $excluded_fkey . '_%')]]],
+                [
+                    'NOT' => [
+                        'information_schema.tables.table_name'   => $excluded_table,
+                        'information_schema.columns.column_name' => $excluded_field,
+                    ],
+                ],
+                ['NOT' => ['information_schema.columns.column_name' => $excluded_fkey]],
+                ['NOT' => ['information_schema.columns.column_name' => ['LIKE', str_replace('_', '\_', $excluded_fkey . '_%')]]],
             ];
         }
 
@@ -1880,21 +1880,21 @@ class DBmysql
     {
 
         $query = [
-           'SELECT' => [
-              'table_schema as TABLE_SCHEMA',
-              'table_name as TABLE_NAME',
-              'column_name as COLUMN_NAME',
-              'constraint_name as CONSTRAINT_NAME',
-              'referenced_table_name as REFERENCED_TABLE_NAME',
-              'referenced_column_name as REFERENCED_COLUMN_NAME',
-              'ordinal_position as ORDINAL_POSITION',
-           ],
-           'FROM'   => 'information_schema.key_column_usage',
-           'WHERE'  => [
-              'referenced_table_schema' => $this->dbdefault,
-              'referenced_table_name'   => ['LIKE', 'glpi\_%'],
-           ],
-           'ORDER'  => ['TABLE_NAME']
+            'SELECT' => [
+                'table_schema as TABLE_SCHEMA',
+                'table_name as TABLE_NAME',
+                'column_name as COLUMN_NAME',
+                'constraint_name as CONSTRAINT_NAME',
+                'referenced_table_name as REFERENCED_TABLE_NAME',
+                'referenced_column_name as REFERENCED_COLUMN_NAME',
+                'ordinal_position as ORDINAL_POSITION',
+            ],
+            'FROM'   => 'information_schema.key_column_usage',
+            'WHERE'  => [
+                'referenced_table_schema' => $this->dbdefault,
+                'referenced_table_name'   => ['LIKE', 'glpi\_%'],
+            ],
+            'ORDER'  => ['TABLE_NAME'],
         ];
 
         $iterator = $this->request($query);
@@ -1919,7 +1919,7 @@ class DBmysql
      * replacements in the source code in the future.
      *
      * @param mixed   $value Value to quote
-     * @param integer $type  Value type, defaults to PDO::PARAM_STR
+     * @param int $type  Value type, defaults to PDO::PARAM_STR
      *
      * @return mixed
      *
@@ -1946,9 +1946,9 @@ class DBmysql
     /**
      * Is value quoted as database field/expression?
      *
-     * @param string|\QueryExpression $value Value to check
+     * @param string|QueryExpression $value Value to check
      *
-     * @return boolean
+     * @return bool
      *
      * @since 9.5.0
      */

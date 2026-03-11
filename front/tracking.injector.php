@@ -66,8 +66,8 @@ if (isset($_POST['add'])) {
             Html::redirect($track->getLinkURL());
         }
         if (isset($_POST["_type"]) && ($_POST["_type"] == "Helpdesk")) {
-            echo "<div class='center spaced'>" .
-                   __('Your ticket has been registered, its treatment is in progress.');
+            echo "<div class='center spaced'>"
+                   . __('Your ticket has been registered, its treatment is in progress.');
             Html::displayBackLink();
             echo "</div>";
         } else {
@@ -81,8 +81,8 @@ if (isset($_POST['add'])) {
         echo "<div class='center'>";
         echo "<img src='" . $CFG_GLPI["root_doc"] . "/pics/warning.png' alt='" . __s('Warning') . "'><br>";
         Html::displayMessageAfterRedirect();
-        echo "<a href='" . $CFG_GLPI["root_doc"] . "/front/helpdesk.public.php?create_ticket=1'>" .
-              __('Back') . "</a></div>";
+        echo "<a href='" . $CFG_GLPI["root_doc"] . "/front/helpdesk.public.php?create_ticket=1'>"
+              . __('Back') . "</a></div>";
     }
     Html::nullFooter();
 } else { // reload display form

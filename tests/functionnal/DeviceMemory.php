@@ -56,24 +56,24 @@ class DeviceMemory extends DbTestCase
 
         $obj = new \DeviceMemory();
         $id = $obj->add([
-           'designation'   => $this->method,
-           'size_default'  => 'not-a-number',
-           'frequence'     => 3200,
+            'designation'   => $this->method,
+            'size_default'  => 'not-a-number',
+            'frequence'     => 3200,
         ]);
-        $this->integer((int)$id)->isGreaterThan(0);
+        $this->integer((int) $id)->isGreaterThan(0);
         $this->boolean($obj->getFromDB($id))->isTrue();
-        $this->integer((int)$obj->getField('size_default'))->isEqualTo(0);
-        $this->integer((int)$obj->getField('frequence'))->isEqualTo(3200);
+        $this->integer((int) $obj->getField('size_default'))->isEqualTo(0);
+        $this->integer((int) $obj->getField('frequence'))->isEqualTo(3200);
 
         $this->boolean(
             $obj->update([
-               'id'            => $id,
-               'designation'   => $this->method . '-updated',
-               'size_default'  => 8192,
+                'id'            => $id,
+                'designation'   => $this->method . '-updated',
+                'size_default'  => 8192,
             ])
         )->isTrue();
         $this->boolean($obj->getFromDB($id))->isTrue();
-        $this->integer((int)$obj->getField('size_default'))->isEqualTo(8192);
+        $this->integer((int) $obj->getField('size_default'))->isEqualTo(8192);
 
         $this->boolean($obj->delete(['id' => $id]))->isTrue();
     }

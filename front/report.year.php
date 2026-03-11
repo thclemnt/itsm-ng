@@ -53,33 +53,33 @@ for ($i = ($y - 10); $i < ($y + 10); $i++) {
     $dates[$i] = $i;
 }
 $form = [
-   'action' => 'report.year.list.php',
-   'buttons' => [
-      [
-         'value' => __s('Display report'),
-         'class' => 'btn btn-secondary'
-      ]
-   ],
-   'content' => [
-      __('Hardware under contract') => [
-         'visible' => true,
-         'inputs' => [
-            __('Item type') => [
-               'type' => 'checklist',
-               'name' => 'item_type',
-               'options' => $values,
-               'col_lg' => 6,
+    'action' => 'report.year.list.php',
+    'buttons' => [
+        [
+            'value' => __s('Display report'),
+            'class' => 'btn btn-secondary',
+        ],
+    ],
+    'content' => [
+        __('Hardware under contract') => [
+            'visible' => true,
+            'inputs' => [
+                __('Item type') => [
+                    'type' => 'checklist',
+                    'name' => 'item_type',
+                    'options' => $values,
+                    'col_lg' => 6,
+                ],
+                _n('Date', 'Dates', 1) => [
+                    'type' => 'checklist',
+                    'name' => 'year',
+                    'options' => $dates,
+                    'values' => [$y],
+                    'col_lg' => 6,
+                ],
             ],
-            _n('Date', 'Dates', 1) => [
-               'type' => 'checklist',
-               'name' => 'year',
-               'options' => $dates,
-               'values' => [$y],
-               'col_lg' => 6,
-            ],
-         ]
-      ]
-   ]
+        ],
+    ],
 ];
 renderTwigForm($form);
 

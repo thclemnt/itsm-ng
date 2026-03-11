@@ -153,8 +153,8 @@ abstract class HTMLTableHeader extends HTMLTableEntity
 
 
     /**
-     * @param boolean $with_content do we displaye the content ?
-     * @param boolean $main_header  main header (from table) or secondary (from group) ? (true by default)
+     * @param bool $with_content do we displaye the content ?
+     * @param bool $main_header  main header (from table) or secondary (from group) ? (true by default)
     **/
     public function displayTableHeader($with_content, $main_header = true)
     {

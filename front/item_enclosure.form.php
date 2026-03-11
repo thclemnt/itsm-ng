@@ -35,7 +35,7 @@ include('../inc/includes.php');
 
 Session::checkCentralAccess();
 
-$ien = new \Item_Enclosure();
+$ien = new Item_Enclosure();
 $enclosure = new Enclosure();
 
 if (isset($_POST['update'])) {
@@ -68,7 +68,7 @@ if (isset($_REQUEST['id'])) {
     $params['id'] = $_REQUEST['id'];
 } else {
     $params = [
-       'enclosures_id'   => $_REQUEST['enclosure']
+        'enclosures_id'   => $_REQUEST['enclosure'],
     ];
 }
 

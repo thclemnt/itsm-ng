@@ -52,7 +52,7 @@ class KnowbaseItem_Profile extends CommonDBRelation
     /**
      * Get profiles for a knowbaseitem
      *
-     * @param integer $knowbaseitems_id  ID of the knowbaseitem
+     * @param int $knowbaseitems_id  ID of the knowbaseitem
      *
      * @return array of profiles linked to a knowbaseitem
     **/
@@ -63,10 +63,10 @@ class KnowbaseItem_Profile extends CommonDBRelation
         $prof  = [];
 
         $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'knowbaseitems_id' => $knowbaseitems_id
-           ]
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'knowbaseitems_id' => $knowbaseitems_id,
+            ],
         ]);
 
         while ($data = $iterator->next()) {

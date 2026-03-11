@@ -45,6 +45,7 @@ use Glpi\CalDAV\Plugin\Acl;
 use Glpi\CalDAV\Plugin\Browser;
 use Glpi\CalDAV\Plugin\CalDAV;
 use Sabre\DAV;
+use Sabre\DAV\Exception;
 use Sabre\DAVACL;
 
 class Server extends DAV\Server
@@ -60,20 +61,20 @@ class Server extends DAV\Server
 
         // Directory tree
         $tree = [
-           new DAV\SimpleCollection(
-               Principal::PRINCIPALS_ROOT,
-               [
-                 new DAVACL\PrincipalCollection($principalBackend, Principal::PREFIX_GROUPS),
-                 new DAVACL\PrincipalCollection($principalBackend, Principal::PREFIX_USERS),
-               ]
-           ),
-           new DAV\SimpleCollection(
-               Calendar::CALENDAR_ROOT,
-               [
-                 new CalendarRoot($principalBackend, $calendarBackend, Principal::PREFIX_GROUPS),
-                 new CalendarRoot($principalBackend, $calendarBackend, Principal::PREFIX_USERS),
-               ]
-           ),
+            new DAV\SimpleCollection(
+                Principal::PRINCIPALS_ROOT,
+                [
+                    new DAVACL\PrincipalCollection($principalBackend, Principal::PREFIX_GROUPS),
+                    new DAVACL\PrincipalCollection($principalBackend, Principal::PREFIX_USERS),
+                ]
+            ),
+            new DAV\SimpleCollection(
+                Calendar::CALENDAR_ROOT,
+                [
+                    new CalendarRoot($principalBackend, $calendarBackend, Principal::PREFIX_GROUPS),
+                    new CalendarRoot($principalBackend, $calendarBackend, Principal::PREFIX_USERS),
+                ]
+            ),
         ];
 
         parent::__construct($tree);
@@ -92,7 +93,7 @@ class Server extends DAV\Server
      */
     public function logException(\Throwable $exception)
     {
-        if ($exception instanceof \Sabre\DAV\Exception && $exception->getHTTPCode() < 500) {
+        if ($exception instanceof Exception && $exception->getHTTPCode() < 500) {
             // Ignore server exceptions that does not corresponds to a server error
             return;
         }

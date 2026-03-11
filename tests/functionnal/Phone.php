@@ -49,7 +49,7 @@ class Phone extends DbTestCase
             'name'        => $name,
             'entities_id' => $entities_id,
         ]);
-        $this->integer((int)$id)->isGreaterThan(0);
+        $this->integer((int) $id)->isGreaterThan(0);
         $this->boolean($obj->getFromDB($id))->isTrue();
 
         $this->boolean($obj->update([

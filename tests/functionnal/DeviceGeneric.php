@@ -66,7 +66,7 @@ class DeviceGeneric extends DbTestCase
                 $designation = strtolower($device_type) . '-' . $this->getUniqueString();
 
                 $id = $obj->add(['designation' => $designation]);
-                $this->integer((int)$id)->isGreaterThan(0);
+                $this->integer((int) $id)->isGreaterThan(0);
                 $this->boolean($obj->getFromDB($id))->isTrue();
 
                 $this->boolean(

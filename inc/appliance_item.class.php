@@ -1,5 +1,7 @@
 <?php
 
+use Glpi\Features\Clonable;
+
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access directly to this file");
 }
@@ -36,7 +38,7 @@ if (!defined('GLPI_ROOT')) {
  **/
 class Appliance_Item extends CommonDBRelation
 {
-    use Glpi\Features\Clonable;
+    use Clonable;
 
     public static $itemtype_1 = 'Appliance';
     public static $items_id_1 = 'appliances_id';
@@ -49,7 +51,7 @@ class Appliance_Item extends CommonDBRelation
     public function getCloneRelations(): array
     {
         return [
-            Appliance_Item_Relation::class
+            Appliance_Item_Relation::class,
         ];
     }
 
@@ -101,7 +103,7 @@ class Appliance_Item extends CommonDBRelation
      *
      * @param Appliance $appliance  Appliance object wanted
      *
-     * @return void|boolean (display) Returns false if there is a rights error.
+     * @return void|bool (display) Returns false if there is a rights error.
      **/
     public static function showItems(Appliance $appliance)
     {
@@ -130,8 +132,8 @@ class Appliance_Item extends CommonDBRelation
         $items = $DB->request([
             'FROM' => self::getTable(),
             'WHERE' => [
-                self::$items_id_1 => $ID
-            ]
+                self::$items_id_1 => $ID,
+            ],
         ]);
 
         Session::initNavigateListItems(
@@ -159,8 +161,8 @@ class Appliance_Item extends CommonDBRelation
                         'type' => 'submit',
                         'name' => 'add',
                         'value' => _sx('button', 'Add an item'),
-                        'class' => 'btn btn-secondary'
-                    ]
+                        'class' => 'btn btn-secondary',
+                    ],
                 ],
                 'content' => [
                     __('Add an item') => [
@@ -169,7 +171,7 @@ class Appliance_Item extends CommonDBRelation
                             [
                                 'type' => 'hidden',
                                 'name' => 'appliances_id',
-                                'value' => $ID
+                                'value' => $ID,
                             ],
                             __('Type') => [
                                 'type' => 'select',
@@ -210,7 +212,7 @@ class Appliance_Item extends CommonDBRelation
                                     }
                                  });
                            JS,
-                                ]
+                                ],
                             ],
                             __('Item') => [
                                 'type' => 'select',
@@ -219,9 +221,9 @@ class Appliance_Item extends CommonDBRelation
                                 'values' => [],
                                 'col_lg' => 6,
                             ],
-                        ]
-                    ]
-                ]
+                        ],
+                    ],
+                ],
             ];
             renderTwigForm($form);
         }
@@ -275,7 +277,7 @@ class Appliance_Item extends CommonDBRelation
      * @since 9.5.2
      *
      * @param CommonDBTM $item         CommonDBTM object wanted
-     * @param boolean    $withtemplate not used (to be deleted)
+     * @param bool    $withtemplate not used (to be deleted)
      *
      * @return void
      **/
@@ -312,7 +314,7 @@ class Appliance_Item extends CommonDBRelation
                         'name' => 'add',
                         'value' => _x('button', 'Associate'),
                         'class' => 'btn btn-secondary',
-                    ]
+                    ],
                 ],
                 'content' => [
                     '' => [
@@ -335,10 +337,10 @@ class Appliance_Item extends CommonDBRelation
                                 'actions' => getItemActionButtons(['info'], Appliance::class),
                                 'col_lg' => 12,
                                 'col_md' => 12,
-                            ]
-                        ]
-                    ]
-                ]
+                            ],
+                        ],
+                    ],
+                ],
             ];
             renderTwigForm($form);
         }
@@ -453,7 +455,7 @@ class Appliance_Item extends CommonDBRelation
         if (count($types)) {
             $clause = ['itemtype' => $types];
         } else {
-            $clause = [new \QueryExpression('true = false')];
+            $clause = [new QueryExpression('true = false')];
         }
         $extra_types_where = array_merge(
             $extra_types_where,

@@ -82,9 +82,9 @@ class NotificationEventMailing extends NotificationEventAbstract implements Noti
         }
 
         return [
-           'email'     => $CFG_GLPI['admin_email'],
-           'name'      => $CFG_GLPI['admin_email_name'] ?? '',
-           'language'  => $CFG_GLPI['language']
+            'email'     => $CFG_GLPI['admin_email'],
+            'name'      => $CFG_GLPI['admin_email_name'] ?? '',
+            'language'  => $CFG_GLPI['language'],
         ];
     }
 
@@ -94,8 +94,8 @@ class NotificationEventMailing extends NotificationEventAbstract implements Noti
         global $DB, $CFG_GLPI;
 
         $iterator = $DB->request([
-           'FROM'   => 'glpi_entities',
-           'WHERE'  => ['id' => $entity]
+            'FROM'   => 'glpi_entities',
+            'WHERE'  => ['id' => $entity],
         ]);
 
         $admins = [];
@@ -103,9 +103,9 @@ class NotificationEventMailing extends NotificationEventAbstract implements Noti
         while ($row = $iterator->next()) {
             if (NotificationMailing::isUserAddressValid($row['admin_email'])) {
                 $admins[] = [
-                   'language'  => $CFG_GLPI['language'],
-                   'email'     => $row['admin_email'],
-                   'name'      => $row['admin_email_name'] ?? ''
+                    'language'  => $CFG_GLPI['language'],
+                    'email'     => $row['admin_email'],
+                    'name'      => $row['admin_email_name'] ?? '',
                 ];
             }
         }
@@ -138,8 +138,8 @@ class NotificationEventMailing extends NotificationEventAbstract implements Noti
             }
 
             // Add custom header for mail grouping in reader
-            $mmail->AddCustomHeader("In-Reply-To: <GLPI-" . $current->fields["itemtype"] . "-" .
-                                    $current->fields["items_id"] . ">");
+            $mmail->AddCustomHeader("In-Reply-To: <GLPI-" . $current->fields["itemtype"] . "-"
+                                    . $current->fields["items_id"] . ">");
 
             $mmail->SetFrom($current->fields['sender'], $current->fields['sendername']);
 
@@ -157,8 +157,8 @@ class NotificationEventMailing extends NotificationEventAbstract implements Noti
                 // or if documents are attached to mail.
                 $item = getItemForItemtype($current->fields['itemtype']);
                 $doc_crit = [
-                   'items_id' => $current->fields['items_id'],
-                   'itemtype' => $current->fields['itemtype'],
+                    'items_id' => $current->fields['items_id'],
+                    'itemtype' => $current->fields['itemtype'],
                 ];
                 if ($item instanceof CommonITILObject) {
                     $item->getFromDB($current->fields['items_id']);
@@ -168,15 +168,15 @@ class NotificationEventMailing extends NotificationEventAbstract implements Noti
                         // these documents corresponds to inlined images.
                         // If notification is in plain text, they should be kepts as they cannot be rendered in text.
                         $doc_crit[] = [
-                           'timeline_position'  => ['>', CommonITILObject::NO_TIMELINE]
+                            'timeline_position'  => ['>', CommonITILObject::NO_TIMELINE],
                         ];
                     }
                 }
                 $doc_items_iterator = $DB->request(
                     [
-                      'SELECT' => ['documents_id'],
-                      'FROM'   => Document_Item::getTable(),
-                      'WHERE'  => $doc_crit,
+                        'SELECT' => ['documents_id'],
+                        'FROM'   => Document_Item::getTable(),
+                        'WHERE'  => $doc_crit,
                     ]
                 );
                 foreach ($doc_items_iterator as $doc_item) {
@@ -278,12 +278,12 @@ class NotificationEventMailing extends NotificationEventAbstract implements Noti
                 foreach ($inline_docs as $docID => $tag) {
                     $current->fields['body_html'] = preg_replace(
                         [
-                          '/src=["\'][^"\']*document\.send\.php\?docid=' . $docID . '(&[^"\']+)?["\']/',
-                          '/href=["\'][^"\']*document\.send\.php\?docid=' . $docID . '(&[^"\']+)?["\']/',
+                            '/src=["\'][^"\']*document\.send\.php\?docid=' . $docID . '(&[^"\']+)?["\']/',
+                            '/href=["\'][^"\']*document\.send\.php\?docid=' . $docID . '(&[^"\']+)?["\']/',
                         ],
                         [
-                          'src="cid:' . $tag . '"',
-                          'href="' . $CFG_GLPI['url_base'] . '/front/document.send.php?docid=' . $docID . '$1"',
+                            'src="cid:' . $tag . '"',
+                            'href="' . $CFG_GLPI['url_base'] . '/front/document.send.php?docid=' . $docID . '$1"',
                         ],
                         $current->fields['body_html']
                     );
@@ -349,7 +349,7 @@ class NotificationEventMailing extends NotificationEventAbstract implements Noti
                 $mmail->ClearAddresses();
                 $input = [
                     'id'        => $current->fields['id'],
-                    'sent_try'  => $current->fields['sent_try'] + 1
+                    'sent_try'  => $current->fields['sent_try'] + 1,
                 ];
 
                 if ($CFG_GLPI["smtp_retry_time"] > 0) {
@@ -372,7 +372,7 @@ class NotificationEventMailing extends NotificationEventAbstract implements Noti
                 $mmail->ClearAddresses();
                 $processed[] = $current->getID();
                 $current->update(['id'        => $current->fields['id'],
-                                    'sent_time' => $_SESSION['glpi_currenttime']]);
+                    'sent_time' => $_SESSION['glpi_currenttime']]);
                 $current->delete(['id'        => $current->fields['id']]);
             }
         }

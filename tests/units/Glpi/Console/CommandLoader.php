@@ -43,16 +43,15 @@ class CommandLoader extends \GLPITestCase
     {
 
         $structure = [
-           'inc' => [
-              // Not instanciable case
-              'abstractcommand.class.php' => <<<PHP
+            'inc' => [
+                // Not instanciable case
+                'abstractcommand.class.php' => <<<PHP
 <?php
 abstract class AbstractCommand extends \\Symfony\\Component\\Console\\Command\\Command { }
-PHP
-              ,
+PHP,
 
-              // Base command case with alias
-              'installcommand.class.php' => <<<PHP
+                // Base command case with alias
+                'installcommand.class.php' => <<<PHP
 <?php
 class InstallCommand extends \\Symfony\\Component\\Console\\Command\\Command {
    protected function configure() {
@@ -60,11 +59,10 @@ class InstallCommand extends \\Symfony\\Component\\Console\\Command\\Command {
       \$this->setAliases(['db:install']);
    }
 }
-PHP
-              ,
+PHP,
 
-              // Namespaced command case located in root of source dir
-              'validatecommand.class.php' => <<<PHP
+                // Namespaced command case located in root of source dir
+                'validatecommand.class.php' => <<<PHP
 <?php
 namespace Glpi;
 class ValidateCommand extends \\Symfony\\Component\\Console\\Command\\Command {
@@ -72,15 +70,14 @@ class ValidateCommand extends \\Symfony\\Component\\Console\\Command\\Command {
       \$this->setName('itsmng:validate');
    }
 }
-PHP
-              ,
+PHP,
 
-              // Not a command case
-              'somename.class.php' => '<?php class SomeName {}',
+                // Not a command case
+                'somename.class.php' => '<?php class SomeName {}',
 
-              'console' => [
-                 // Namespaced command case
-                 'testcommand.class.php' => <<<PHP
+                'console' => [
+                    // Namespaced command case
+                    'testcommand.class.php' => <<<PHP
 <?php
 namespace Glpi\\Console;
 class TestCommand extends \\Symfony\\Component\\Console\\Command\\Command {
@@ -88,12 +85,12 @@ class TestCommand extends \\Symfony\\Component\\Console\\Command\\Command {
       \$this->setName('itsmng:test');
    }
 }
-PHP
-              ],
-           ],
-           'tools' => [
-              // Base command case with alias
-              'debugcommand.class.php' => <<<PHP
+PHP,
+                ],
+            ],
+            'tools' => [
+                // Base command case with alias
+                'debugcommand.class.php' => <<<PHP
 <?php
 class DebugCommand extends \\Symfony\\Component\\Console\\Command\\Command {
    protected function configure() {
@@ -101,39 +98,36 @@ class DebugCommand extends \\Symfony\\Component\\Console\\Command\\Command {
       \$this->setAliases(['tools:debug']);
    }
 }
-PHP
-              ,
+PHP,
 
-              // Not a command case
-              'oldscript.php' => '<?php echo("Hi !");',
-           ],
-           'plugins' => [
-              'awesome' => [
-                 'inc' => [
-                    // Not recognized due to bad filename pattern
-                    'basecmd.class.php' => <<<PHP
+                // Not a command case
+                'oldscript.php' => '<?php echo("Hi !");',
+            ],
+            'plugins' => [
+                'awesome' => [
+                    'inc' => [
+                        // Not recognized due to bad filename pattern
+                        'basecmd.class.php' => <<<PHP
 <?php
 class PluginAwesomeBaseCmd extends \\Symfony\\Component\\Console\\Command\\Command {
    protected function configure() {
       \$this->setName('plugin_awesome:base');
    }
 }
-PHP
-                    ,
+PHP,
 
-                    // Plugin command case
-                    'updatecommand.class.php' => <<<PHP
+                        // Plugin command case
+                        'updatecommand.class.php' => <<<PHP
 <?php
 class PluginAwesomeUpdateCommand extends \\Symfony\\Component\\Console\\Command\\Command {
    protected function configure() {
       \$this->setName('plugin_awesome:update');
    }
 }
-PHP
-                    ,
+PHP,
 
-                    // Plugin namespaced command case (inside "inc" dir)
-                    'namespacedcommand.class.php' => <<<PHP
+                        // Plugin namespaced command case (inside "inc" dir)
+                        'namespacedcommand.class.php' => <<<PHP
 <?php
 namespace GlpiPlugin\\Awesome;
 class NamespacedCommand extends \\Symfony\\Component\\Console\\Command\\Command {
@@ -141,12 +135,11 @@ class NamespacedCommand extends \\Symfony\\Component\\Console\\Command\\Command 
       \$this->setName('plugin_awesome:namespaced');
    }
 }
-PHP
-                    ,
+PHP,
 
-                    'console' => [
-                       // Plugin namespaced command case (inside a sub dir)
-                      'anothercommand.class.php' => <<<PHP
+                        'console' => [
+                            // Plugin namespaced command case (inside a sub dir)
+                            'anothercommand.class.php' => <<<PHP
 <?php
 namespace GlpiPlugin\\Awesome\\Console;
 class AnotherCommand extends \\Symfony\\Component\\Console\\Command\\Command {
@@ -154,46 +147,44 @@ class AnotherCommand extends \\Symfony\\Component\\Console\\Command\\Command {
       \$this->setName('plugin_awesome:another');
    }
 }
-PHP
+PHP,
+                        ],
                     ],
-                 ],
-              ],
-              'misc' => [
-                 'inc' => [
-                    // Not a command case
-                    'misc.class.php' => '<?php class PluginMiscMisc {}',
-                 ]
-              ],
-           ],
-           'tests' => [
-              'fixtures' => [
-                 'plugins' => [
-                    'random' => [
-                       'inc' => [
-                          // Not recognized due to bad filename pattern
-                          'testcmd.class.php' => <<<PHP
+                ],
+                'misc' => [
+                    'inc' => [
+                        // Not a command case
+                        'misc.class.php' => '<?php class PluginMiscMisc {}',
+                    ],
+                ],
+            ],
+            'tests' => [
+                'fixtures' => [
+                    'plugins' => [
+                        'random' => [
+                            'inc' => [
+                                // Not recognized due to bad filename pattern
+                                'testcmd.class.php' => <<<PHP
 <?php
 class PluginRandomTestCmd extends \\Symfony\\Component\\Console\\Command\\Command {
    protected function configure() {
       \$this->setName('plugin_random:test');
    }
 }
-PHP
-                          ,
+PHP,
 
-                          // Plugin command case
-                          'randomcommand.class.php' => <<<PHP
+                                // Plugin command case
+                                'randomcommand.class.php' => <<<PHP
 <?php
 class PluginRandomRandomCommand extends \\Symfony\\Component\\Console\\Command\\Command {
    protected function configure() {
       \$this->setName('plugin_random:random');
    }
 }
-PHP
-                          ,
+PHP,
 
-                          // Plugin namespaced command case (inside "inc" dir)
-                          'checkcommand.class.php' => <<<PHP
+                                // Plugin namespaced command case (inside "inc" dir)
+                                'checkcommand.class.php' => <<<PHP
 <?php
 namespace GlpiPlugin\\Random;
 class CheckCommand extends \\Symfony\\Component\\Console\\Command\\Command {
@@ -201,12 +192,11 @@ class CheckCommand extends \\Symfony\\Component\\Console\\Command\\Command {
       \$this->setName('plugin_random:check');
    }
 }
-PHP
-                          ,
+PHP,
 
-                          'console' => [
-                             // Plugin namespaced command case (inside a sub dir)
-                            'foocommand.class.php' => <<<PHP
+                                'console' => [
+                                    // Plugin namespaced command case (inside a sub dir)
+                                    'foocommand.class.php' => <<<PHP
 <?php
 namespace GlpiPlugin\\Random\\Console;
 class FooCommand extends \\Symfony\\Component\\Console\\Command\\Command {
@@ -214,38 +204,38 @@ class FooCommand extends \\Symfony\\Component\\Console\\Command\\Command {
       \$this->setName('plugin_random:foo');
    }
 }
-PHP
-                          ],
-                       ],
+PHP,
+                                ],
+                            ],
+                        ],
+                        'misc' => [
+                            'inc' => [
+                                // Not a command case
+                                'something.class.php' => '<?php class PluginRandomSomething {}',
+                            ],
+                        ],
                     ],
-                    'misc' => [
-                       'inc' => [
-                          // Not a command case
-                          'something.class.php' => '<?php class PluginRandomSomething {}',
-                       ]
-                    ],
-                 ],
-              ],
-           ]
+                ],
+            ],
         ];
         vfsStream::setup('glpi', null, $structure);
 
         $core_names_to_class = [
-           'itsmng:database:install' => 'InstallCommand',
-           'db:install'            => 'InstallCommand',
-           'itsmng:validate'         => 'Glpi\\ValidateCommand',
-           'itsmng:test'             => 'Glpi\\Console\\TestCommand',
-           'itsmng:tools:debug'      => 'DebugCommand',
-           'tools:debug'           => 'DebugCommand',
+            'itsmng:database:install' => 'InstallCommand',
+            'db:install'            => 'InstallCommand',
+            'itsmng:validate'         => 'Glpi\\ValidateCommand',
+            'itsmng:test'             => 'Glpi\\Console\\TestCommand',
+            'itsmng:tools:debug'      => 'DebugCommand',
+            'tools:debug'           => 'DebugCommand',
         ];
 
         $plugins_names_to_class = [
-           'plugin_awesome:update'     => 'PluginAwesomeUpdateCommand',
-           'plugin_awesome:namespaced' => 'GlpiPlugin\\Awesome\\NamespacedCommand',
-           'plugin_awesome:another'    => 'GlpiPlugin\\Awesome\\Console\\AnotherCommand',
-           'plugin_random:random'      => 'PluginRandomRandomCommand',
-           'plugin_random:check'       => 'GlpiPlugin\\Random\\CheckCommand',
-           'plugin_random:foo'         => 'GlpiPlugin\\Random\\Console\\FooCommand',
+            'plugin_awesome:update'     => 'PluginAwesomeUpdateCommand',
+            'plugin_awesome:namespaced' => 'GlpiPlugin\\Awesome\\NamespacedCommand',
+            'plugin_awesome:another'    => 'GlpiPlugin\\Awesome\\Console\\AnotherCommand',
+            'plugin_random:random'      => 'PluginRandomRandomCommand',
+            'plugin_random:check'       => 'GlpiPlugin\\Random\\CheckCommand',
+            'plugin_random:foo'         => 'GlpiPlugin\\Random\\Console\\FooCommand',
         ];
 
         $all_names_to_class = array_merge($core_names_to_class, $plugins_names_to_class);

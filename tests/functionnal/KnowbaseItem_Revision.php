@@ -65,22 +65,22 @@ class KnowbaseItem_Revision extends DbTestCase
         $kb1 = $this->getNewKbItem();
 
         $where = [
-           'knowbaseitems_id' => $kb1->getID(),
-           'language'         => ''
+            'knowbaseitems_id' => $kb1->getID(),
+            'language'         => '',
         ];
 
         $nb = countElementsInTable(
             'glpi_knowbaseitems_revisions',
             $where
         );
-        $this->integer((int)$nb)->isIdenticalTo(0);
+        $this->integer((int) $nb)->isIdenticalTo(0);
 
         $this->boolean(
             $kb1->update(
                 [
-                 'id'   => $kb1->getID(),
-                 'name' => '_knowbaseitem01-01'
-            ]
+                    'id'   => $kb1->getID(),
+                    'name' => '_knowbaseitem01-01',
+                ]
             )
         )->isTrue();
 
@@ -88,12 +88,12 @@ class KnowbaseItem_Revision extends DbTestCase
             'glpi_knowbaseitems_revisions',
             $where
         );
-        $this->integer((int)$nb)->isIdenticalTo(1);
+        $this->integer((int) $nb)->isIdenticalTo(1);
 
         $rev_id = null;
         $data = $DB->request([
-           'SELECT' => ['MIN' => 'id as id'],
-           'FROM'   => 'glpi_knowbaseitems_revisions'
+            'SELECT' => ['MIN' => 'id as id'],
+            'FROM'   => 'glpi_knowbaseitems_revisions',
         ])->next();
         $rev_id = $data['id'];
 
@@ -104,24 +104,24 @@ class KnowbaseItem_Revision extends DbTestCase
             'glpi_knowbaseitems_revisions',
             $where
         );
-        $this->integer((int)$nb)->isIdenticalTo(2);
+        $this->integer((int) $nb)->isIdenticalTo(2);
 
         //try a change on contents
         $this->boolean(
             $kb1->update(
                 [
-                 'id'     => $kb1->getID(),
-                 'answer' => \Toolbox::addslashes_deep('Don\'t use paths with spaces, like C:\\Program Files\\MyApp')
-            ]
+                    'id'     => $kb1->getID(),
+                    'answer' => \Toolbox::addslashes_deep('Don\'t use paths with spaces, like C:\\Program Files\\MyApp'),
+                ]
             )
         )->isTrue();
 
         $this->boolean(
             $kb1->update(
                 [
-                 'id'     => $kb1->getID(),
-                 'answer' => 'Answer changed'
-            ]
+                    'id'     => $kb1->getID(),
+                    'answer' => 'Answer changed',
+                ]
             )
         )->isTrue();
 
@@ -129,12 +129,12 @@ class KnowbaseItem_Revision extends DbTestCase
             'glpi_knowbaseitems_revisions',
             $where
         );
-        $this->integer((int)$nb)->isIdenticalTo(4);
+        $this->integer((int) $nb)->isIdenticalTo(4);
 
         $nrev_id = null;
         $data = $DB->request([
-           'SELECT' => new \QueryExpression('MAX(id) AS id'),
-           'FROM'   => 'glpi_knowbaseitems_revisions'
+            'SELECT' => new \QueryExpression('MAX(id) AS id'),
+            'FROM'   => 'glpi_knowbaseitems_revisions',
         ])->next();
         $nrev_id = $data['id'];
 
@@ -171,9 +171,9 @@ class KnowbaseItem_Revision extends DbTestCase
         $this->boolean(
             $kb1->update(
                 [
-                 'id'   => $kb1->getID(),
-                 'name' => '_knowbaseitem01-01'
-            ]
+                    'id'   => $kb1->getID(),
+                    'name' => '_knowbaseitem01-01',
+                ]
             )
         )->isTrue();
 
@@ -184,9 +184,9 @@ class KnowbaseItem_Revision extends DbTestCase
         $this->boolean(
             $kb1->update(
                 [
-                 'id'   => $kb1->getID(),
-                 'name' => '_knowbaseitem01-02'
-            ]
+                    'id'   => $kb1->getID(),
+                    'name' => '_knowbaseitem01-02',
+                ]
             )
         )->isTrue();
 
@@ -206,7 +206,7 @@ class KnowbaseItem_Revision extends DbTestCase
         unset($toadd['date_creation']);
         unset($toadd['date_mod']);
         $toadd['name'] = $this->getUniqueString();
-        $this->integer((int)$kb1->add($toadd))->isGreaterThan(0);
+        $this->integer((int) $kb1->add($toadd))->isGreaterThan(0);
         return $kb1;
     }
 }

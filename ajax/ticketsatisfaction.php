@@ -61,23 +61,23 @@ if (isset($_POST['inquest_config']) && isset($_POST['entities_id'])) {
         Dropdown::showNumber(
             'inquest_delay',
             ['value' => $inquest_delay,
-                                   'min'   => 1,
-                                   'max'   => 90,
-                                   'step'  => 1,
-                                   'toadd' => ['0' => __('As soon as possible')],
-                                   'unit'  => 'day']
+                'min'   => 1,
+                'max'   => 90,
+                'step'  => 1,
+                'toadd' => ['0' => __('As soon as possible')],
+                'unit'  => 'day']
         );
         echo "</td></tr>";
 
-        echo "<tr class='tab_bg_1'>" .
-             "<td>" . __('Rate to trigger survey') . "</td>";
+        echo "<tr class='tab_bg_1'>"
+             . "<td>" . __('Rate to trigger survey') . "</td>";
         echo "<td>";
         Dropdown::showNumber('inquest_rate', ['value'   => $inquest_rate,
-                                                   'min'     => 10,
-                                                   'max'     => 100,
-                                                   'step'    => 10,
-                                                   'toadd'   => [0 => __('Disabled')],
-                                                   'unit'    => '%']);
+            'min'     => 10,
+            'max'     => 100,
+            'step'    => 10,
+            'toadd'   => [0 => __('Disabled')],
+            'unit'    => '%']);
         echo "</td></tr>";
 
         echo "<tr class='tab_bg_1'><td width='50%'>" . __('Duration of survey') . "</td>";
@@ -85,27 +85,27 @@ if (isset($_POST['inquest_config']) && isset($_POST['entities_id'])) {
         Dropdown::showNumber(
             'inquest_duration',
             ['value' => $inquest_duration,
-                                   'min'   => 1,
-                                   'max'   => 180,
-                                   'step'  => 1,
-                                   'toadd' => ['0' => __('Unspecified')],
-                                   'unit'  => 'day']
+                'min'   => 1,
+                'max'   => 180,
+                'step'  => 1,
+                'toadd' => ['0' => __('Unspecified')],
+                'unit'  => 'day']
         );
         echo "</td></tr>";
 
         echo "<tr class='tab_bg_1'><td>" . __('For tickets closed after') . "</td><td>";
         Html::showDateTimeField("max_closedate", ['value'      => $max_closedate,
-                                                        'timestep'   => 1]);
+            'timestep'   => 1]);
         echo "</td></tr>";
 
         if ($_POST['inquest_config'] == 2) {
             echo "<tr class='tab_bg_1'>";
-            echo "<td>" . __('Valid tags') . "</td><td>" .
-                  "[TICKET_ID] [TICKET_NAME] [TICKET_CREATEDATE] [TICKET_SOLVEDATE] " .
-                  "[REQUESTTYPE_ID] [REQUESTTYPE_NAME] [TICKET_PRIORITY] [TICKET_PRIORITYNAME]  " .
-                  "[TICKETCATEGORY_ID] [TICKETCATEGORY_NAME] [TICKETTYPE_ID] " .
-                  "[TICKETTYPE_NAME] [SOLUTIONTYPE_ID] [SOLUTIONTYPE_NAME] " .
-                  "[SLA_TTO_ID] [SLA_TTO_NAME] [SLA_TTR_ID] [SLA_TTR_NAME] [SLALEVEL_ID] [SLALEVEL_NAME]</td></tr>";
+            echo "<td>" . __('Valid tags') . "</td><td>"
+                  . "[TICKET_ID] [TICKET_NAME] [TICKET_CREATEDATE] [TICKET_SOLVEDATE] "
+                  . "[REQUESTTYPE_ID] [REQUESTTYPE_NAME] [TICKET_PRIORITY] [TICKET_PRIORITYNAME]  "
+                  . "[TICKETCATEGORY_ID] [TICKETCATEGORY_NAME] [TICKETTYPE_ID] "
+                  . "[TICKETTYPE_NAME] [SOLUTIONTYPE_ID] [SOLUTIONTYPE_NAME] "
+                  . "[SLA_TTO_ID] [SLA_TTO_NAME] [SLA_TTR_ID] [SLA_TTR_NAME] [SLALEVEL_ID] [SLALEVEL_NAME]</td></tr>";
 
             echo "<tr class='tab_bg_1'><td>" . __('URL') . "</td>";
             echo "<td>";

@@ -95,9 +95,9 @@ class RuleCollection extends CommonDBTM
     /**
      * Get Collection Size : retrieve the number of rules
      *
-     * @param boolean $recursive (true by default)
-     * @param integer $condition (0 by default)
-     * @param integer $children (0 by default)
+     * @param bool $recursive (true by default)
+     * @param int $condition (0 by default)
+     * @param int $children (0 by default)
      *
      * @return : number of rules
      **/
@@ -144,8 +144,8 @@ class RuleCollection extends CommonDBTM
             'SELECT' => Rule::getTable() . '.*',
             'FROM'   => Rule::getTable(),
             'ORDER'  => [
-                $this->orderby . ' ASC'
-            ]
+                $this->orderby . ' ASC',
+            ],
         ];
 
         $where = [];
@@ -154,7 +154,7 @@ class RuleCollection extends CommonDBTM
         }
 
         if ($p['condition'] > 0) {
-            $where['condition'] = ['&', (int)$p['condition']];
+            $where['condition'] = ['&', (int) $p['condition']];
         }
 
         //Select all the rules of a different type
@@ -164,9 +164,9 @@ class RuleCollection extends CommonDBTM
                 Entity::getTable() => [
                     'ON' => [
                         Entity::getTable()   => 'id',
-                        Rule::getTable()     => 'entities_id'
-                    ]
-                ]
+                        Rule::getTable()     => 'entities_id',
+                    ],
+                ],
             ];
 
             if (!$p['childrens']) {
@@ -183,13 +183,13 @@ class RuleCollection extends CommonDBTM
 
             $criteria['ORDER'] = [
                 Entity::getTable() . '.level ASC',
-                $this->orderby . ' ASC'
+                $this->orderby . ' ASC',
             ];
         }
 
         if ($p['limit']) {
-            $criteria['LIMIT'] = (int)$p['limit'];
-            $criteria['START'] = (int)$p['start'];
+            $criteria['LIMIT'] = (int) $p['limit'];
+            $criteria['START'] = (int) $p['start'];
         }
         $criteria['WHERE'] = $where;
 
@@ -334,9 +334,7 @@ class RuleCollection extends CommonDBTM
      *
      * @return -1 if all rows done, else offset for next run
      **/
-    public function replayRulesOnExistingDB($offset = 0, $maxtime = 0, $items = [], $params = [])
-    {
-    }
+    public function replayRulesOnExistingDB($offset = 0, $maxtime = 0, $items = [], $params = []) {}
 
 
     /**
@@ -404,8 +402,8 @@ class RuleCollection extends CommonDBTM
         //Display information about the how the rules engine process the rules
         if ($this->stop_on_first_match) {
             //The engine stop on the first matched rule
-            echo "<span class='center b'>" . __('The engine stops on the first checked rule.') .
-                "</span><br>";
+            echo "<span class='center b'>" . __('The engine stops on the first checked rule.')
+                . "</span><br>";
         } else {
             //The engine process all the rules
             echo "<span class='center b'>" . __('The engine treats all the rules.') . "</span><br>";
@@ -413,14 +411,14 @@ class RuleCollection extends CommonDBTM
 
         if ($this->use_output_rule_process_as_next_input) {
             //The engine keep the result of a rule to be processed further
-            echo "<span class='center b'>" .
-                __('The engine passes the result of a rule to the following one.') . "</span><br>";
+            echo "<span class='center b'>"
+                . __('The engine passes the result of a rule to the following one.') . "</span><br>";
         }
 
         if ($this->isRuleUseConditions()) {
             //The engine keep the result of a rule to be processed further
-            echo "<span class='center b'>" .
-                __('Rules are conditionals. Each one can be used on multiple actions.');
+            echo "<span class='center b'>"
+                . __('Rules are conditionals. Each one can be used on multiple actions.');
             echo "</span><br>";
         }
 
@@ -483,7 +481,7 @@ class RuleCollection extends CommonDBTM
         }
 
         $nb         = $this->getCollectionSize($p['inherited'], $p['condition'], $p['childrens']);
-        $p['start'] = (isset($options["start"]) ? $options["start"] : 0);
+        $p['start'] = ($options["start"] ?? 0);
 
         if ($p['start'] >= $nb) {
             $p['start'] = 0;
@@ -498,7 +496,7 @@ class RuleCollection extends CommonDBTM
                 'extraparams'   => [
                     'entity' => $this->entity,
                     'condition' => $p['condition'],
-                    'rule_class_name' => $this->getRuleClassName()
+                    'rule_class_name' => $this->getRuleClassName(),
                 ],
                 'display_arrow' => false,
             ];
@@ -542,22 +540,22 @@ class RuleCollection extends CommonDBTM
                     Html::showSimpleForm(
                         $target,
                         ['action' => 'up',
-                        'condition' => $active_condition],
+                            'condition' => $active_condition],
                         '',
                         ['type' => $rule->fields["sub_type"],
-                        'id'   => $rule->fields["id"],],
-                        $CFG_GLPI["root_doc"]."/pics/deplier_up.png"
+                            'id'   => $rule->fields["id"],],
+                        $CFG_GLPI["root_doc"] . "/pics/deplier_up.png"
                     );
                 }
                 if ($idx < count($this->RuleList->list) - 1) {
                     Html::showSimpleForm(
                         $target,
                         ['action' => 'down',
-                        'condition' => $active_condition],
+                            'condition' => $active_condition],
                         '',
                         ['type' => $rule->fields["sub_type"],
-                        'id'   => $rule->fields["id"]],
-                        $CFG_GLPI["root_doc"]."/pics/deplier_down.png"
+                            'id'   => $rule->fields["id"]],
+                        $CFG_GLPI["root_doc"] . "/pics/deplier_down.png"
                     );
                 }
                 $newValue[] = ob_get_clean();
@@ -584,22 +582,22 @@ class RuleCollection extends CommonDBTM
             $url = $CFG_GLPI["root_doc"];
         }
 
-        echo "<a class='btn btn-secondary' href='#' onClick=\"" .
-            Html::jsGetElementbyID('allruletest' . $rand) . ".dialog('open'); return false;\">" .
-            __('Test rules engine') . "</a>";
+        echo "<a class='btn btn-secondary' href='#' onClick=\""
+            . Html::jsGetElementbyID('allruletest' . $rand) . ".dialog('open'); return false;\">"
+            . __('Test rules engine') . "</a>";
         Ajax::createIframeModalWindow(
             'allruletest' . $rand,
-            $url . "/front/rulesengine.test.php?" .
-            "sub_type=" . $this->getRuleClassName() .
-            "&condition=" . $p['condition'],
+            $url . "/front/rulesengine.test.php?"
+            . "sub_type=" . $this->getRuleClassName()
+            . "&condition=" . $p['condition'],
             ['title' => __('Test rules engine')]
         );
         echo "</div>";
 
         if ($this->can_replay_rules) {
             echo "<div class='spaced center'>";
-            echo "<a class='vsubmit' href='" . $rule->getSearchURL() . "?replay_rule=replay_rule'>" .
-                __s('Replay the dictionary rules') . "</a>";
+            echo "<a class='vsubmit' href='" . $rule->getSearchURL() . "?replay_rule=replay_rule'>"
+                . __s('Replay the dictionary rules') . "</a>";
             echo "</div>";
         }
 
@@ -616,9 +614,7 @@ class RuleCollection extends CommonDBTM
      *
      * @return void
      **/
-    public function showAdditionalInformationsInForm($target)
-    {
-    }
+    public function showAdditionalInformationsInForm($target) {}
 
 
     /**
@@ -635,12 +631,12 @@ class RuleCollection extends CommonDBTM
         $criteria = [
             'SELECT' => 'ranking',
             'FROM'   => 'glpi_rules',
-            'WHERE'  => ['id' => $ID]
+            'WHERE'  => ['id' => $ID],
         ];
 
         $add_condition = [];
         if ($condition > 0) {
-            $add_condition = ['condition' => ['&', (int)$condition]];
+            $add_condition = ['condition' => ['&', (int) $condition]];
         }
 
         $iterator = $DB->request($criteria);
@@ -652,9 +648,9 @@ class RuleCollection extends CommonDBTM
                 'SELECT' => ['id', 'ranking'],
                 'FROM'   => 'glpi_rules',
                 'WHERE'  => [
-                    'sub_type'  => $this->getRuleClassName()
+                    'sub_type'  => $this->getRuleClassName(),
                 ] + $add_condition,
-                'LIMIT'  => 1
+                'LIMIT'  => 1,
             ];
 
             switch ($action) {
@@ -685,7 +681,7 @@ class RuleCollection extends CommonDBTM
                 $criteria = [
                     'SELECT' => ['id', 'ranking'],
                     'FROM'   => 'glpi_rules',
-                    'WHERE'  => ['sub_type' => $this->getRuleClassName()]
+                    'WHERE'  => ['sub_type' => $this->getRuleClassName()],
                 ];
                 $diff = $new_rank - $current_rank;
                 switch ($action) {
@@ -694,7 +690,7 @@ class RuleCollection extends CommonDBTM
                             $criteria['WHERE'],
                             [
                                 ['ranking' => ['>', $new_rank]],
-                                ['ranking' => ['<=', $current_rank]]
+                                ['ranking' => ['<=', $current_rank]],
                             ]
                         );
                         $diff += 1;
@@ -705,7 +701,7 @@ class RuleCollection extends CommonDBTM
                             $criteria['WHERE'],
                             [
                                 ['ranking' => ['>=', $current_rank]],
-                                ['ranking' => ['<', $new_rank]]
+                                ['ranking' => ['<', $new_rank]],
                             ]
                         );
                         $diff -= 1;
@@ -726,7 +722,7 @@ class RuleCollection extends CommonDBTM
                     // Only move one
                     $result = $rule->update([
                         'id'      => $ID,
-                        'ranking' => $new_rank
+                        'ranking' => $new_rank,
                     ]);
                 }
 
@@ -734,7 +730,7 @@ class RuleCollection extends CommonDBTM
                 if ($result) {
                     $result = $rule->update([
                         'id'      => $other_ID,
-                        'ranking' => $current_rank
+                        'ranking' => $current_rank,
                     ]);
                 }
                 return $result;
@@ -758,11 +754,11 @@ class RuleCollection extends CommonDBTM
         $result = $DB->update(
             'glpi_rules',
             [
-                'ranking' => new \QueryExpression($DB->quoteName('ranking') . ' - 1')
+                'ranking' => new QueryExpression($DB->quoteName('ranking') . ' - 1'),
             ],
             [
                 'sub_type'  => $this->getRuleClassName(),
-                'ranking'   => ['>', $ranking]
+                'ranking'   => ['>', $ranking],
             ]
         );
         return $result;
@@ -797,7 +793,7 @@ class RuleCollection extends CommonDBTM
             $result = $DB->request([
                 'SELECT' => ['MAX' => 'ranking AS maxi'],
                 'FROM'   => 'glpi_rules',
-                'WHERE'  => ['sub_type' => $this->getRuleClassName()]
+                'WHERE'  => ['sub_type' => $this->getRuleClassName()],
             ])->next();
             $rank   = $result['maxi'];
         } else {
@@ -822,8 +818,8 @@ class RuleCollection extends CommonDBTM
                 'WHERE'  => [
                     'sub_type'  => $this->getRuleClassName(),
                     ['ranking'  => ['>', $old_rank]],
-                    ['ranking'  => ['<=', $rank]]
-                ]
+                    ['ranking'  => ['<=', $rank]],
+                ],
             ]);
             while ($data = $iterator->next()) {
                 $data['ranking']--;
@@ -841,8 +837,8 @@ class RuleCollection extends CommonDBTM
                 'WHERE'  => [
                     'sub_type'  => $this->getRuleClassName(),
                     ['ranking'  => ['>=', $rank]],
-                    ['ranking'  => ['<', $old_rank]]
-                ]
+                    ['ranking'  => ['<', $old_rank]],
+                ],
             ]);
             while ($data = $iterator->next()) {
                 $data['ranking']++;
@@ -1012,15 +1008,15 @@ class RuleCollection extends CommonDBTM
     public static function displayImportRulesForm()
     {
 
-        echo "<form aria-label='Import' name='form' method='post' action='rule.backup.php' " .
-            "enctype='multipart/form-data' >";
+        echo "<form aria-label='Import' name='form' method='post' action='rule.backup.php' "
+            . "enctype='multipart/form-data' >";
         echo "<div class='center'>";
 
         echo "<h2>" . __("Import rules from a XML file") . "</h2>";
         echo "<input type='file' name='xml_file'>&nbsp;";
         echo "<input type='hidden' name='action' value='preview_import'>";
-        echo "<input type='submit' name='import' value=\"" . _sx('button', 'Import') .
-            "\" class='submit'>";
+        echo "<input type='submit' name='import' value=\"" . _sx('button', 'Import')
+            . "\" class='submit'>";
 
         // Close for Form
         echo "</div>";
@@ -1249,8 +1245,8 @@ class RuleCollection extends CommonDBTM
                     Dropdown::show(
                         'Entity',
                         ['comments' => false,
-                        'name'     => "new_entities[" .
-                        $rules['rule'][$k_rule]['uuid'] . "]"]
+                            'name'     => "new_entities["
+                            . $rules['rule'][$k_rule]['uuid'] . "]"]
                     );
                     echo "</td>";
                     echo "</tr>";
@@ -1326,8 +1322,8 @@ class RuleCollection extends CommonDBTM
         //display buttons
         $class = ($odd ? " class='tab_bg_1' " : " class='tab_bg_2' ");
         echo "<tr $class><td colspan='3' class='center'>";
-        echo "<input type='submit' name='import' value=\"" . _sx('button', 'Post') .
-            "\" class='submit'>";
+        echo "<input type='submit' name='import' value=\"" . _sx('button', 'Post')
+            . "\" class='submit'>";
         echo "</td></tr>";
 
         // Close for Form
@@ -1570,7 +1566,7 @@ class RuleCollection extends CommonDBTM
                     $criteria,
                     $criteria,
                     Rule::PATTERN_IS,
-                    isset($values[$criteria]) ? $values[$criteria] : ''
+                    $values[$criteria] ?? ''
                 );
                 echo "</td></tr>\n";
             }
@@ -1579,7 +1575,7 @@ class RuleCollection extends CommonDBTM
             // adapt its output depending on used criteria
             $rule->criterias = [];
             foreach ($input as $criteria) {
-                $rule->criterias[] = (object)[
+                $rule->criterias[] = (object) [
                     'fields' => ['criteria' => $criteria],
                 ];
             }
@@ -1694,8 +1690,8 @@ class RuleCollection extends CommonDBTM
                         $plugin,
                         'ruleCollectionPrepareInputDataForProcess',
                         ['rule_itemtype' => $this->getRuleClassName(),
-                        'values'        => ['input' => $input,
-                        'params' => $params]]
+                            'values'        => ['input' => $input,
+                                'params' => $params]]
                     );
                     if (is_array($results)) {
                         foreach ($results as $id => $result) {
@@ -1722,7 +1718,7 @@ class RuleCollection extends CommonDBTM
 
         $limit = [];
         if ($condition > 0) {
-            $limit = ['glpi_rules.condition' => ['&', (int)$condition]];
+            $limit = ['glpi_rules.condition' => ['&', (int) $condition]];
         }
         $input = [];
 
@@ -1734,14 +1730,14 @@ class RuleCollection extends CommonDBTM
                 'glpi_rules'   => [
                     'ON' => [
                         'glpi_rulecriterias' => 'rules_id',
-                        'glpi_rules'         => 'id'
-                    ]
-                ]
+                        'glpi_rules'         => 'id',
+                    ],
+                ],
             ],
             'WHERE'           => [
                 'glpi_rules.is_active'  => 1,
-                'glpi_rules.sub_type'   => $this->getRuleClassName()
-            ] + $limit
+                'glpi_rules.sub_type'   => $this->getRuleClassName(),
+            ] + $limit,
         ]);
 
         while ($data = $iterator->next()) {
@@ -1858,7 +1854,7 @@ class RuleCollection extends CommonDBTM
             if (isset($actions[$criteria])) {
                 echo "<tr class='tab_bg_2'>";
                 echo "<td>" . $actions[$criteria]["name"] . "</td>";
-                $action_type = (isset($actions[$criteria]['action_type']) ? $actions[$criteria]['action_type'] : '');
+                $action_type = ($actions[$criteria]['action_type'] ?? '');
                 echo "<td>" . $rule->getActionValue($criteria, $action_type, $value);
                 echo "</td></tr>\n";
             }
@@ -1885,7 +1881,7 @@ class RuleCollection extends CommonDBTM
                         $plugin,
                         "preProcessRuleCollectionPreviewResults",
                         ['output' => $output,
-                        'params' => $params]
+                            'params' => $params]
                     );
                     if (is_array($results)) {
                         foreach ($results as $id => $result) {
@@ -1904,9 +1900,7 @@ class RuleCollection extends CommonDBTM
      *
      * @return void
      **/
-    public function title()
-    {
-    }
+    public function title() {}
 
 
     /**
@@ -1973,14 +1967,14 @@ class RuleCollection extends CommonDBTM
                 'glpi_rules'   => [
                     'ON' => [
                         'glpi_rulecriterias' => 'rules_id',
-                        'glpi_rules'         => 'id'
-                    ]
-                ]
+                        'glpi_rules'         => 'id',
+                    ],
+                ],
             ],
             'WHERE'           => [
                 'glpi_rules.is_active'  => 1,
-                'glpi_rules.sub_type'   => $this->getRuleClassName()
-            ]
+                'glpi_rules.sub_type'   => $this->getRuleClassName(),
+            ],
         ]);
 
         while ($data = $iterator->next()) {
@@ -2097,28 +2091,28 @@ class RuleCollection extends CommonDBTM
         if (Session::haveRight("rule_dictionnary_software", READ)) {
             $entries[] = [
                 'label'  => _n('Software', 'Software', Session::getPluralNumber()),
-                'link'   => 'ruledictionnarysoftware.php'
+                'link'   => 'ruledictionnarysoftware.php',
             ];
         }
 
         if (Session::haveRight("rule_dictionnary_dropdown", READ)) {
             $entries[] = [
                 'label'  => _n('Manufacturer', 'Manufacturers', Session::getPluralNumber()),
-                'link'   => 'ruledictionnarymanufacturer.php'
+                'link'   => 'ruledictionnarymanufacturer.php',
             ];
         }
 
         if (Session::haveRight("rule_dictionnary_printer", READ)) {
             $entries[] = [
                 'label'  => _n('Printer', 'Printers', Session::getPluralNumber()),
-                'link'   => 'ruledictionnaryprinter.php'
+                'link'   => 'ruledictionnaryprinter.php',
             ];
         }
 
         if (count($entries)) {
             $dictionnaries[] = [
                 'type'      => __('Global dictionary'),
-                'entries'   => $entries
+                'entries'   => $entries,
             ];
         }
 
@@ -2128,24 +2122,24 @@ class RuleCollection extends CommonDBTM
                 'entries'   => [
                     [
                         'label'  => _n('Computer model', 'Computer models', Session::getPluralNumber()),
-                        'link'   => 'ruledictionnarycomputermodel.php'
+                        'link'   => 'ruledictionnarycomputermodel.php',
                     ], [
                         'label'  => _n('Monitor model', 'Monitor models', Session::getPluralNumber()),
-                        'link'   => 'ruledictionnarymonitormodel.php'
+                        'link'   => 'ruledictionnarymonitormodel.php',
                     ], [
                         'label'  => _n('Printer model', 'Printer models', Session::getPluralNumber()),
-                        'link'   => 'ruledictionnaryprintermodel.php'
+                        'link'   => 'ruledictionnaryprintermodel.php',
                     ], [
                         'label'  => _n('Device model', 'Device models', Session::getPluralNumber()),
-                        'link'   => 'ruledictionnaryperipheralmodel.php'
+                        'link'   => 'ruledictionnaryperipheralmodel.php',
                     ], [
                         'label'  => _n('Network equipment model', 'Network equipment models', Session::getPluralNumber()),
-                        'link'   => 'ruledictionnarynetworkequipmentmodel.php'
+                        'link'   => 'ruledictionnarynetworkequipmentmodel.php',
                     ], [
                         'label'  => _n('Phone model', 'Phone models', Session::getPluralNumber()),
-                        'link'   => 'ruledictionnaryphonemodel.php'
-                    ]
-                ]
+                        'link'   => 'ruledictionnaryphonemodel.php',
+                    ],
+                ],
             ];
         }
 
@@ -2155,24 +2149,24 @@ class RuleCollection extends CommonDBTM
                 'entries'   => [
                     [
                         'label'  => _n('Computer type', 'Computer types', Session::getPluralNumber()),
-                        'link'   => 'ruledictionnarycomputertype.php'
+                        'link'   => 'ruledictionnarycomputertype.php',
                     ], [
                         'label'  => _n('Monitor type', 'Monitor types', Session::getPluralNumber()),
-                        'link'   => 'ruledictionnarymonitortype.php'
+                        'link'   => 'ruledictionnarymonitortype.php',
                     ], [
                         'label'  => _n('Printer type', 'Printer types', Session::getPluralNumber()),
-                        'link'   => 'ruledictionnaryprintertype.php'
+                        'link'   => 'ruledictionnaryprintertype.php',
                     ], [
                         'label'  => _n('Device type', 'Device types', Session::getPluralNumber()),
-                        'link'   => 'ruledictionnaryperipheraltype.php'
+                        'link'   => 'ruledictionnaryperipheraltype.php',
                     ], [
                         'label'  => _n('Network equipment type', 'Network equipment types', Session::getPluralNumber()),
-                        'link'   => 'ruledictionnarynetworkequipmenttype.php'
+                        'link'   => 'ruledictionnarynetworkequipmenttype.php',
                     ], [
                         'label'  => _n('Phone type', 'Phone types', Session::getPluralNumber()),
-                        'link'   => 'ruledictionnaryphonetype.php'
-                    ]
-                ]
+                        'link'   => 'ruledictionnaryphonetype.php',
+                    ],
+                ],
             ];
         }
 
@@ -2182,18 +2176,18 @@ class RuleCollection extends CommonDBTM
                 'entries'   => [
                     [
                         'label'  => OperatingSystem::getTypeName(Session::getPluralNumber()),
-                        'link'   => 'ruledictionnaryoperatingsystem.php'
+                        'link'   => 'ruledictionnaryoperatingsystem.php',
                     ], [
                         'label'  => _n('Service pack', 'Service packs', Session::getPluralNumber()),
-                        'link'   => 'ruledictionnaryoperatingsystemservicepack.php'
+                        'link'   => 'ruledictionnaryoperatingsystemservicepack.php',
                     ], [
                         'label'  => _n('Version', 'Versions', Session::getPluralNumber()),
-                        'link'   => 'ruledictionnaryoperatingsystemversion.php'
+                        'link'   => 'ruledictionnaryoperatingsystemversion.php',
                     ], [
                         'label'  => _n('Architecture', 'Architectures', Session::getPluralNumber()),
-                        'link'   => 'ruledictionnaryoperatingsystemarchitecture.php'
-                    ]
-                ]
+                        'link'   => 'ruledictionnaryoperatingsystemarchitecture.php',
+                    ],
+                ],
             ];
         }
 

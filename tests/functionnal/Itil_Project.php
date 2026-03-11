@@ -53,9 +53,9 @@ class Itil_Project extends DbTestCase
         $itil_project = new \Itil_Project();
 
         $this->integer(
-            (int)$project->add([
-              'name' => 'Some project',
-         ])
+            (int) $project->add([
+                'name' => 'Some project',
+            ])
         )->isGreaterThan(0);
         $baseProjectId = $project->fields['id'];
 
@@ -64,40 +64,40 @@ class Itil_Project extends DbTestCase
             $item = new $itemtype();
 
             $this->integer(
-                (int)$item->add([
-                  'name'    => 'ITIL item ' . $itemtype,
-                  'content' => 'ITIL item ' . $itemtype,
-            ])
+                (int) $item->add([
+                    'name'    => 'ITIL item ' . $itemtype,
+                    'content' => 'ITIL item ' . $itemtype,
+                ])
             )->isGreaterThan(0);
             $items[] = $item;
 
             // Item should be linkable to a project
             $this->integer(
-                (int)$itil_project->add([
-                  'itemtype'    => $itemtype,
-                  'items_id'    => $item->fields['id'],
-                  'projects_id' => $baseProjectId,
-            ])
+                (int) $itil_project->add([
+                    'itemtype'    => $itemtype,
+                    'items_id'    => $item->fields['id'],
+                    'projects_id' => $baseProjectId,
+                ])
             )->isGreaterThan(0);
 
             // Count displayed in tab name should be equal to count of ITIL items linked to project
             $this->integer(
-                (int)preg_replace('/[^\d]*(\d+)[^\d]*/', '$1', $itil_project->getTabNameForItem($project))
+                (int) preg_replace('/[^\d]*(\d+)[^\d]*/', '$1', $itil_project->getTabNameForItem($project))
             )->isEqualTo(count($items));
         }
 
         //add a task
         $ptask = new \ProjectTask();
-        $ptid = (int)$ptask->add([
-           'name' => 'Task for test project Clone',
-           'projects_id' => $baseProjectId
+        $ptid = (int) $ptask->add([
+            'name' => 'Task for test project Clone',
+            'projects_id' => $baseProjectId,
         ]);
         $this->integer($ptid)->isGreaterThan(0);
 
         // Clone project should clone its links to ITIL items and task
-        $cloneProjectId = (int)$project->add([
-           'name'   => 'Some project clone',
-           '_oldID' => $baseProjectId,
+        $cloneProjectId = (int) $project->add([
+            'name'   => 'Some project clone',
+            '_oldID' => $baseProjectId,
         ]);
         $this->integer($cloneProjectId)->isGreaterThan(0);
 
@@ -132,9 +132,9 @@ class Itil_Project extends DbTestCase
                 countElementsInTable(
                     $itil_project::getTable(),
                     [
-                     'itemtype' => $itemtype,
-                     'items_id' => $items_id,
-               ]
+                        'itemtype' => $itemtype,
+                        'items_id' => $items_id,
+                    ]
                 )
             )->isEqualTo(0);
         }

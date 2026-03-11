@@ -60,9 +60,9 @@ class Session extends \DbTestCase
         \Session::addMessageAfterRedirect($info_msg, false, INFO);
 
         $expected = [
-          ERROR   => [$err_msg],
-          WARNING => [$warn_msg],
-          INFO    => [$info_msg]
+            ERROR   => [$err_msg],
+            WARNING => [$warn_msg],
+            INFO    => [$info_msg],
         ];
         $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'])->isIdenticalTo($expected);
 
@@ -71,9 +71,9 @@ class Session extends \DbTestCase
                 \Html::displayMessageAfterRedirect();
             }
         )
-           ->matches('/' . str_replace('.', '\.', $err_msg)  . '/')
-           ->matches('/' . str_replace('.', '\.', $warn_msg)  . '/')
-           ->matches('/' . str_replace(['.', ')'], ['\.', '\)'], $info_msg)  . '/');
+           ->matches('/' . str_replace('.', '\.', $err_msg) . '/')
+           ->matches('/' . str_replace('.', '\.', $warn_msg) . '/')
+           ->matches('/' . str_replace(['.', ')'], ['\.', '\)'], $info_msg) . '/');
 
         $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'])->isEmpty();
 
@@ -83,7 +83,7 @@ class Session extends \DbTestCase
         \Session::addMessageAfterRedirect($err_msg, false, ERROR);
 
         $expected = [
-          ERROR   => [$err_msg, $err_msg, $err_msg]
+            ERROR   => [$err_msg, $err_msg, $err_msg],
         ];
         $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'])->isIdenticalTo($expected);
 
@@ -91,7 +91,7 @@ class Session extends \DbTestCase
             function () {
                 \Html::displayMessageAfterRedirect();
             }
-        )->matches('/' . str_replace('.', '\.', $err_msg)  . '/');
+        )->matches('/' . str_replace('.', '\.', $err_msg) . '/');
 
         $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'])->isEmpty();
 
@@ -103,7 +103,7 @@ class Session extends \DbTestCase
         \Session::addMessageAfterRedirect($err_msg, true, ERROR);
 
         $expected = [
-          ERROR   => [$err_msg, $err_msg_bis]
+            ERROR   => [$err_msg, $err_msg_bis],
         ];
         $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'])->isIdenticalTo($expected);
 
@@ -112,8 +112,8 @@ class Session extends \DbTestCase
                 \Html::displayMessageAfterRedirect();
             }
         )
-           ->matches('/' . str_replace('.', '\.', $err_msg)  . '/')
-           ->matches('/' . str_replace('.', '\.', $err_msg_bis)  . '/');
+           ->matches('/' . str_replace('.', '\.', $err_msg) . '/')
+           ->matches('/' . str_replace('.', '\.', $err_msg_bis) . '/');
 
         $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'])->isEmpty();
 
@@ -123,7 +123,7 @@ class Session extends \DbTestCase
         \Session::addMessageAfterRedirect($info_msg, false, INFO, true);
 
         $expected = [
-           INFO   => [$info_msg]
+            INFO   => [$info_msg],
         ];
         $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'])->isIdenticalTo($expected);
 
@@ -131,7 +131,7 @@ class Session extends \DbTestCase
             function () {
                 \Html::displayMessageAfterRedirect();
             }
-        )->matches('/' . str_replace(['.', ')'], ['\.', '\)'], $info_msg)  . '/');
+        )->matches('/' . str_replace(['.', ')'], ['\.', '\)'], $info_msg) . '/');
 
         $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'])->isEmpty();
     }
@@ -145,7 +145,7 @@ class Session extends \DbTestCase
 
         $entities_ids = [$entid_root, $entid_1, $entid_2];
 
-        $uid = (int)getItemByTypeName('User', 'normal', true);
+        $uid = (int) getItemByTypeName('User', 'normal', true);
 
         $group = new \Group();
         $group_user = new \Group_User();
@@ -154,33 +154,33 @@ class Session extends \DbTestCase
 
         foreach ($entities_ids as $entid) {
             $group_1 = [
-               'name'         => "Test group {$entid} recursive=no",
-               'entities_id'  => $entid,
-               'is_recursive' => 0,
+                'name'         => "Test group {$entid} recursive=no",
+                'entities_id'  => $entid,
+                'is_recursive' => 0,
             ];
-            $gid_1 = (int)$group->add($group_1);
+            $gid_1 = (int) $group->add($group_1);
             $this->integer($gid_1)->isGreaterThan(0);
-            $this->integer((int)$group_user->add(['groups_id' => $gid_1, 'users_id'  => $uid]))->isGreaterThan(0);
+            $this->integer((int) $group_user->add(['groups_id' => $gid_1, 'users_id'  => $uid]))->isGreaterThan(0);
             $group_1['id'] = $gid_1;
             $user_groups[] = $group_1;
 
             $group_2 = [
-               'name'         => "Test group {$entid} recursive=yes",
-               'entities_id'  => $entid,
-               'is_recursive' => 1,
+                'name'         => "Test group {$entid} recursive=yes",
+                'entities_id'  => $entid,
+                'is_recursive' => 1,
             ];
-            $gid_2 = (int)$group->add($group_2);
+            $gid_2 = (int) $group->add($group_2);
             $this->integer($gid_2)->isGreaterThan(0);
-            $this->integer((int)$group_user->add(['groups_id' => $gid_2, 'users_id'  => $uid]))->isGreaterThan(0);
+            $this->integer((int) $group_user->add(['groups_id' => $gid_2, 'users_id'  => $uid]))->isGreaterThan(0);
             $group_2['id'] = $gid_2;
             $user_groups[] = $group_2;
 
             $group_3 = [
-               'name'         => "Test group {$entid} not attached to user",
-               'entities_id'  => $entid,
-               'is_recursive' => 1,
+                'name'         => "Test group {$entid} not attached to user",
+                'entities_id'  => $entid,
+                'is_recursive' => 1,
             ];
-            $gid_3 = (int)$group->add($group_3);
+            $gid_3 = (int) $group->add($group_3);
             $this->integer($gid_3)->isGreaterThan(0);
         }
 
@@ -194,7 +194,7 @@ class Session extends \DbTestCase
         $_SESSION = $session_backup;
         $expected_groups = array_map(
             function ($group) {
-                return (string)$group['id'];
+                return (string) $group['id'];
             },
             $user_groups
         );
@@ -206,7 +206,7 @@ class Session extends \DbTestCase
             foreach ($user_groups as $user_group) {
                 if (($user_group['entities_id'] == $entid_root && $user_group['is_recursive'] == 1)
                     || $user_group['entities_id'] == $entid) {
-                    $expected_groups[] = (string)$user_group['id'];
+                    $expected_groups[] = (string) $user_group['id'];
                 }
             }
 
@@ -226,14 +226,14 @@ class Session extends \DbTestCase
         $this->string(__('Login'))->isIdenticalTo('Login');
 
         //create directory for local i18n
-        if (!file_exists(GLPI_LOCAL_I18N_DIR.'/core')) {
-            mkdir(GLPI_LOCAL_I18N_DIR.'/core');
+        if (!file_exists(GLPI_LOCAL_I18N_DIR . '/core')) {
+            mkdir(GLPI_LOCAL_I18N_DIR . '/core');
         }
 
         //write local MO file with i18n override
         copy(
             __DIR__ . '/../local_en_GB.mo',
-            GLPI_LOCAL_I18N_DIR.'/core/en_GB.mo'
+            GLPI_LOCAL_I18N_DIR . '/core/en_GB.mo'
         );
         \Session::loadLanguage('en_GB');
 
@@ -242,7 +242,7 @@ class Session extends \DbTestCase
 
         //write local PHP file with i18n override
         file_put_contents(
-            GLPI_LOCAL_I18N_DIR.'/core/en_GB.php',
+            GLPI_LOCAL_I18N_DIR . '/core/en_GB.php',
             "<?php\n\$lang['Login'] = 'Login from local PHP';\n\$lang['Password'] = 'Password from local PHP';\nreturn \$lang;"
         );
         \Session::loadLanguage('en_GB');
@@ -251,8 +251,8 @@ class Session extends \DbTestCase
         $this->string(__('Password'))->isIdenticalTo('Password from local PHP');
 
         //cleanup -- keep at the end
-        unlink(GLPI_LOCAL_I18N_DIR.'/core/en_GB.php');
-        unlink(GLPI_LOCAL_I18N_DIR.'/core/en_GB.mo');
+        unlink(GLPI_LOCAL_I18N_DIR . '/core/en_GB.php');
+        unlink(GLPI_LOCAL_I18N_DIR . '/core/en_GB.mo');
     }
 
     protected function mustChangePasswordProvider()
@@ -261,21 +261,21 @@ class Session extends \DbTestCase
 
         // test with no password expiration
         $tests[] = [
-           'last_update'      => date('Y-m-d H:i:s', strtotime('-10 years')),
-           'expiration_delay' => -1,
-           'expected_result'  => false,
+            'last_update'      => date('Y-m-d H:i:s', strtotime('-10 years')),
+            'expiration_delay' => -1,
+            'expected_result'  => false,
         ];
 
         // tests with password expiration
         $cases = [
-           '-5 days'  => false,
-           '-30 days' => true,
+            '-5 days'  => false,
+            '-30 days' => true,
         ];
         foreach ($cases as $last_update => $expected_result) {
             $tests[] = [
-               'last_update'      => date('Y-m-d H:i:s', strtotime($last_update)),
-               'expiration_delay' => 15,
-               'expected_result'  => $expected_result,
+                'last_update'      => date('Y-m-d H:i:s', strtotime($last_update)),
+                'expiration_delay' => 15,
+                'expected_result'  => $expected_result,
             ];
         }
 
@@ -292,11 +292,11 @@ class Session extends \DbTestCase
         $this->login();
         $user = new \User();
         $username = 'test_must_change_pass_' . mt_rand();
-        $user_id = (int)$user->add([
-           'name'         => $username,
-           'password'     => 'test',
-           'password2'    => 'test',
-           '_profiles_id' => 1,
+        $user_id = (int) $user->add([
+            'name'         => $username,
+            'password'     => 'test',
+            'password2'    => 'test',
+            '_profiles_id' => 1,
         ]);
         $this->integer($user_id)->isGreaterThan(0);
         $this->boolean($user->update(['id' => $user_id, 'password_last_update' => $last_update]))->isTrue();
@@ -317,37 +317,37 @@ class Session extends \DbTestCase
     protected function preferredLanguageProvider()
     {
         return [
-           [
-              'header'        => null,
-              'config'        => null,
-              'legacy_config' => null,
-              'expected'      => 'en_GB',
-           ],
-           [
-              'header'        => null,
-              'config'        => null,
-              'legacy_config' => 'it_IT',
-              'expected'      => 'it_IT',
-           ],
-           [
-              'header'        => null,
-              'config'        => 'de_DE',
-              'legacy_config' => null,
-              'expected'      => 'de_DE',
-           ],
-           [
-              'header'        => 'en-US',
-              'config'        => 'fr_FR',
-              'legacy_config' => null,
-              'expected'      => 'en_US',
-           ],
-           [
-              // latin as first choice (not available in GLPI), should fallback to italian
-              'header'        => 'la, it-IT;q=0.9, it;q=0.8',
-              'config'        => 'en_GB',
-              'legacy_config' => null,
-              'expected'      => 'it_IT',
-           ],
+            [
+                'header'        => null,
+                'config'        => null,
+                'legacy_config' => null,
+                'expected'      => 'en_GB',
+            ],
+            [
+                'header'        => null,
+                'config'        => null,
+                'legacy_config' => 'it_IT',
+                'expected'      => 'it_IT',
+            ],
+            [
+                'header'        => null,
+                'config'        => 'de_DE',
+                'legacy_config' => null,
+                'expected'      => 'de_DE',
+            ],
+            [
+                'header'        => 'en-US',
+                'config'        => 'fr_FR',
+                'legacy_config' => null,
+                'expected'      => 'en_US',
+            ],
+            [
+                // latin as first choice (not available in GLPI), should fallback to italian
+                'header'        => 'la, it-IT;q=0.9, it;q=0.8',
+                'config'        => 'en_GB',
+                'legacy_config' => null,
+                'expected'      => 'it_IT',
+            ],
         ];
     }
 
@@ -380,11 +380,11 @@ class Session extends \DbTestCase
     protected function idorProvider()
     {
         return [
-           ['itemtype' => 'Computer'],
-           ['itemtype' => 'Ticket'],
-           ['itemtype' => 'Glpi\\Dashboard\\Item'],
-           ['itemtype' => 'User', 'add_params' => ['right' => 'all']],
-           ['itemtype' => 'User', 'add_params' => ['entity_restrict' => 0]],
+            ['itemtype' => 'Computer'],
+            ['itemtype' => 'Ticket'],
+            ['itemtype' => 'Glpi\\Dashboard\\Item'],
+            ['itemtype' => 'User', 'add_params' => ['right' => 'all']],
+            ['itemtype' => 'User', 'add_params' => ['entity_restrict' => 0]],
         ];
     }
 
@@ -408,8 +408,8 @@ class Session extends \DbTestCase
 
         // validate token with dedicated method
         $result = \Session::validateIDOR([
-           '_idor_token' => $token,
-           'itemtype'    => $itemtype,
+            '_idor_token' => $token,
+            'itemtype'    => $itemtype,
         ] + $add_params);
         $this->boolean($result)->isTrue();
     }
@@ -419,30 +419,30 @@ class Session extends \DbTestCase
     {
         //  random token
         $result = \Session::validateIDOR([
-           '_idor_token' => bin2hex(random_bytes(32)),
-           'itemtype'    => 'Computer',
+            '_idor_token' => bin2hex(random_bytes(32)),
+            'itemtype'    => 'Computer',
         ]);
         $this->boolean($result)->isFalse();
 
         // bad itemtype
         $token_bad_itt = \Session::getNewIDORToken('Ticket');
         $result = \Session::validateIDOR([
-           '_idor_token' => $token_bad_itt,
-           'itemtype'    => 'Computer',
+            '_idor_token' => $token_bad_itt,
+            'itemtype'    => 'Computer',
         ]);
         $this->boolean($result)->isFalse();
 
         // missing add params
         $token_miss_param = \Session::getNewIDORToken('User', ['right' => 'all']);
         $result = \Session::validateIDOR([
-           '_idor_token' => $token_miss_param,
-           'itemtype'    => 'User',
+            '_idor_token' => $token_miss_param,
+            'itemtype'    => 'User',
         ]);
         $this->boolean($result)->isFalse();
         $result = \Session::validateIDOR([
-           '_idor_token' => $token_miss_param,
-           'itemtype'    => 'User',
-           'right'       => 'all'
+            '_idor_token' => $token_miss_param,
+            'itemtype'    => 'User',
+            'right'       => 'all',
         ]);
         $this->boolean($result)->isTrue();
     }

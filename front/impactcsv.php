@@ -55,7 +55,7 @@ $impact_item = ImpactItem::findForItem($item);
 $impact_context = ImpactContext::findForImpactItem($impact_item);
 
 if (!$impact_context) {
-    $max_depth = \Impact::DEFAULT_DEPTH;
+    $max_depth = Impact::DEFAULT_DEPTH;
 } else {
     $max_deph = $impact_context->fields["max_depth"];
 }
@@ -73,15 +73,15 @@ header("Content-Type: text/csv");
 header("Content-Disposition: attachment; filename='impact.csv'; filename*=UTF-8''$filename");
 $output = fopen('php://output', 'w');
 if ($output === false) {
-    throw new \RuntimeException("Can't open php://output");
+    throw new RuntimeException("Can't open php://output");
 }
 
 // Title of the cols in the first line
 fputcsv($output, [
-   __("Relation"),
-   __("Itemtype"),
-   __("Id"),
-   __("Name"),
+    __("Relation"),
+    __("Itemtype"),
+    __("Id"),
+    __("Name"),
 ]);
 
 // Flatten the hiarchical $data and insert it line by line
@@ -95,10 +95,10 @@ foreach ($data as $direction => $impact_data) {
     foreach ($impact_data as $data_type => $data_elements) {
         foreach ($data_elements as $data_element) {
             fputcsv($output, [
-               $direction_label,
-               $data_type,
-               $data_element['stored']->fields['id'],
-               $data_element['stored']->fields['name'],
+                $direction_label,
+                $data_type,
+                $data_element['stored']->fields['id'],
+                $data_element['stored']->fields['name'],
             ]);
         }
     }

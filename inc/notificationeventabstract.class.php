@@ -47,7 +47,7 @@ abstract class NotificationEventAbstract
      * @param array                $data               Notification data
      * @param NotificationTarget   $notificationtarget Target
      * @param NotificationTemplate $template           Template
-     * @param boolean              $notify_me          Whether to notify current user
+     * @param bool              $notify_me          Whether to notify current user
      *
      * @return void
      */
@@ -79,13 +79,13 @@ abstract class NotificationEventAbstract
             );
 
             static::extraRaise([
-               'event'              => $event,
-               'item'               => $item,
-               'options'            => $options,
-               'data'               => $data,
-               'notificationtarget' => $notificationtarget,
-               'template'           => $template,
-               'notify_me'          => $notify_me
+                'event'              => $event,
+                'item'               => $item,
+                'options'            => $options,
+                'data'               => $data,
+                'notificationtarget' => $notificationtarget,
+                'template'           => $template,
+                'notify_me'          => $notify_me,
             ]);
 
             // get original timezone

@@ -60,21 +60,21 @@ abstract class CommonDBChild extends CommonDBConnexity
      * @since 9.4
      *
      * @param string  $itemtype Item type
-     * @param integer $items_id Item ID
+     * @param int $items_id Item ID
      *
      * @return array|null
     **/
     public static function getSQLCriteriaToSearchForItem($itemtype, $items_id)
     {
         $criteria = [
-           'SELECT' => [
-              static::getIndexName(),
-              static::$items_id . ' AS items_id'
-           ],
-           'FROM'   => static::getTable(),
-           'WHERE'  => [
-              static::$items_id  => $items_id
-           ]
+            'SELECT' => [
+                static::getIndexName(),
+                static::$items_id . ' AS items_id',
+            ],
+            'FROM'   => static::getTable(),
+            'WHERE'  => [
+                static::$items_id  => $items_id,
+            ],
         ];
 
         // Check item 1 type
@@ -84,7 +84,7 @@ abstract class CommonDBChild extends CommonDBConnexity
             $criteria['WHERE'][static::$itemtype] = $itemtype;
             $request = true;
         } else {
-            $criteria['SELECT'][] = new \QueryExpression("'" . static::$itemtype . "' AS itemtype");
+            $criteria['SELECT'][] = new QueryExpression("'" . static::$itemtype . "' AS itemtype");
             if (
                 ($itemtype ==  static::$itemtype)
                 || is_subclass_of($itemtype, static::$itemtype)
@@ -219,7 +219,7 @@ abstract class CommonDBChild extends CommonDBConnexity
      * @param $methodItem
      * @param $methodNotItem
      *
-     * @return boolean
+     * @return bool
     **/
     public function canChildItem($methodItem, $methodNotItem)
     {
@@ -320,7 +320,7 @@ abstract class CommonDBChild extends CommonDBConnexity
     /**
      * Get the ID of entity assigned to the object
      *
-     * @return integer ID of the entity
+     * @return int ID of the entity
     **/
     public function getEntityID()
     {
@@ -359,7 +359,7 @@ abstract class CommonDBChild extends CommonDBConnexity
     /**
      * Is the object may be recursive
      *
-     * @return boolean
+     * @return bool
     **/
     public function maybeRecursive()
     {
@@ -382,7 +382,7 @@ abstract class CommonDBChild extends CommonDBConnexity
     /**
      * Is the object recursive
      *
-     * @return boolean
+     * @return bool
     **/
     public function isRecursive()
     {
@@ -463,7 +463,7 @@ abstract class CommonDBChild extends CommonDBConnexity
         // True if item changed
         if (
             !$this->checkAttachedItemChangesAllowed($input, [static::$itemtype,
-                                                                   static::$items_id])
+                static::$items_id])
         ) {
             return false;
         }
@@ -488,7 +488,7 @@ abstract class CommonDBChild extends CommonDBConnexity
     {
 
         return $this->getNameID(['forceid'    => true,
-                                      'additional' => true]);
+            'additional' => true]);
     }
 
 
@@ -519,17 +519,17 @@ abstract class CommonDBChild extends CommonDBConnexity
             if (count($infocoms)) {
                 $infocom = reset($infocoms);
                 $infocom->clone([
-                   'itemtype'  => self::getType(),
-                   'items_id'  => $this->getID()
+                    'itemtype'  => self::getType(),
+                    'items_id'  => $this->getID(),
                 ]);
             }
         }
 
         if ($item->dohistory) {
             $changes = [
-               '0',
-               '',
-               $this->getHistoryNameForItem($item, 'add'),
+                '0',
+                '',
+                $this->getHistoryNameForItem($item, 'add'),
             ];
             Log::history(
                 $item->getID(),
@@ -547,7 +547,7 @@ abstract class CommonDBChild extends CommonDBConnexity
      *
      * @since 0.84
      *
-     * @param integer|boolean $history store changes history ?
+     * @param int|bool $history store changes history ?
      *
      * @return void
     **/
@@ -649,7 +649,7 @@ abstract class CommonDBChild extends CommonDBConnexity
             && $item->dohistory
         ) {
             $changes = [
-               '0',
+                '0',
             ];
 
             if (static::$log_history_delete == Log::HISTORY_LOG_SIMPLE_MESSAGE) {
@@ -698,9 +698,9 @@ abstract class CommonDBChild extends CommonDBConnexity
                 && $item->dohistory
             ) {
                 $changes = [
-                   '0',
-                   addslashes($this->getHistoryNameForItem($item, 'lock')),
-                   '',
+                    '0',
+                    addslashes($this->getHistoryNameForItem($item, 'lock')),
+                    '',
                 ];
                 Log::history(
                     $item->getID(),
@@ -742,9 +742,9 @@ abstract class CommonDBChild extends CommonDBConnexity
                 && $item->dohistory
             ) {
                 $changes = [
-                   '0',
-                   '',
-                   addslashes($this->getHistoryNameForItem($item, 'unlock')),
+                    '0',
+                    '',
+                    addslashes($this->getHistoryNameForItem($item, 'unlock')),
                 ];
                 Log::history(
                     $item->getID(),
@@ -773,8 +773,8 @@ abstract class CommonDBChild extends CommonDBConnexity
     **/
     public static function getJSCodeToAddForItemChild($field_name, $child_count_js_var)
     {
-        return "<input type=\'text\' size=\'40\' " . "name=\'" . $field_name .
-               "[-'+$child_count_js_var+']\'>";
+        return "<input type=\'text\' size=\'40\' " . "name=\'" . $field_name
+               . "[-'+$child_count_js_var+']\'>";
     }
 
 
@@ -785,9 +785,9 @@ abstract class CommonDBChild extends CommonDBConnexity
      *
      * @see showChildsForItemForm()
      *
-     * @param boolean $canedit     true if we can edit the child
+     * @param bool $canedit     true if we can edit the child
      * @param string  $field_name  the name of the HTML field inside Item's form
-     * @param integer $id          id of the child
+     * @param int $id          id of the child
      *
      * @return void
     **/
@@ -820,8 +820,8 @@ abstract class CommonDBChild extends CommonDBConnexity
      *
      * @param CommonDBTM   $item        the item on which to add the current CommenDBChild
      * @param string       $field_name  the name of the HTML field inside Item's form
-     * @param boolean|null $canedit     boolean to force rights, NULL to use default behaviour
-     * @param boolean      $display     true display or false to return the button HTML code
+     * @param bool|null $canedit     boolean to force rights, NULL to use default behaviour
+     * @param bool      $display     true display or false to return the button HTML code
      *
      *
      * @return void|string the button HTML code if $display is true, void otherwise
@@ -859,13 +859,13 @@ abstract class CommonDBChild extends CommonDBConnexity
 
             // Beware : -1 is for the first element added ...
             $result = "&nbsp;<script type='text/javascript'>var $child_count_js_var=2; </script>";
-            $result .= "<span id='add" . $lower_name . "button' class='fa fa-plus pointer'" .
-                 " title=\"" . __s('Add') . "\"" .
-                   "\" onClick=\"var row = " . Html::jsGetElementByID($div_id) . ";
-                             row.append('<br>" .
-                  static::getJSCodeToAddForItemChild($field_name, $child_count_js_var) . "');
+            $result .= "<span id='add" . $lower_name . "button' class='fa fa-plus pointer'"
+                 . " title=\"" . __s('Add') . "\""
+                   . "\" onClick=\"var row = " . Html::jsGetElementByID($div_id) . ";
+                             row.append('<br>"
+                  . static::getJSCodeToAddForItemChild($field_name, $child_count_js_var) . "');
                             $child_count_js_var++;\"
-               ><span class='sr-only'>" . __s('Add')  . "</span></span>";
+               ><span class='sr-only'>" . __s('Add') . "</span></span>";
         }
         if ($display) {
             echo $result;
@@ -887,9 +887,9 @@ abstract class CommonDBChild extends CommonDBConnexity
      *
      * @param CommonDBTM   $item        the item on which to add the current CommenDBChild
      * @param string       $field_name  the name of the HTML field inside Item's form
-     * @param boolean|null $canedit     boolean to force rights, NULL to use default behaviour
+     * @param bool|null $canedit     boolean to force rights, NULL to use default behaviour
      *
-     * @return void|boolean (display) Returns false if there is a rights error.
+     * @return void|bool (display) Returns false if there is a rights error.
     **/
     public static function showChildsForItemForm(CommonDBTM $item, $field_name, $canedit = null)
     {
@@ -921,10 +921,10 @@ abstract class CommonDBChild extends CommonDBConnexity
         }
 
         $query = [
-           'FROM'   => static::getTable(),
-           'WHERE'  => [
-              static::$items_id => $item->getID()
-           ]
+            'FROM'   => static::getTable(),
+            'WHERE'  => [
+                static::$items_id => $item->getID(),
+            ],
         ];
 
         if (preg_match('/^itemtype/', (string) static::$itemtype)) {
@@ -969,13 +969,13 @@ abstract class CommonDBChild extends CommonDBConnexity
      * @param $items_id    integer   the id of the new item (default 0)
      * @param $itemtype    string    the type of the new item (default '')
      *
-     * @return boolean : true on success
+     * @return bool : true on success
     **/
     public function affectChild($id, $items_id = 0, $itemtype = '')
     {
 
         $input = [static::getIndexName() => $id,
-                       static::$items_id      => $items_id];
+            static::$items_id      => $items_id];
 
         if (preg_match('/^itemtype/', (string) static::$itemtype)) {
             $input[static::$itemtype] = $itemtype;
@@ -998,6 +998,6 @@ abstract class CommonDBChild extends CommonDBConnexity
             return static::$items_id;
         }
 
-        throw new \RuntimeException('Cannot guess field for itemtype ' . $itemtype . ' on ' . static::class);
+        throw new RuntimeException('Cannot guess field for itemtype ' . $itemtype . ' on ' . static::class);
     }
 }

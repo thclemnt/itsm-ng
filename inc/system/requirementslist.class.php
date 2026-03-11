@@ -67,7 +67,7 @@ class RequirementsList implements \IteratorAggregate
     /**
      * Indicates if a mandatory requirement is missing.
      *
-     * @return boolean
+     * @return bool
      */
     public function hasMissingMandatoryRequirements()
     {
@@ -82,7 +82,7 @@ class RequirementsList implements \IteratorAggregate
     /**
      * Indicates if an optional requirement is missing.
      *
-     * @return boolean
+     * @return bool
      */
     public function hasMissingOptionalRequirements()
     {

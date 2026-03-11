@@ -80,8 +80,8 @@ if (isset($_POST["action"])) {
 
     echo "<table class='tab_cadrehov' aria-label='Replay the rules dictionary'>";
 
-    echo "<tr><th><div class='relative b'>" . $rulecollection->getTitle() . "<br>" .
-          __('Replay the rules dictionary') . "</div></th></tr>\n";
+    echo "<tr><th><div class='relative b'>" . $rulecollection->getTitle() . "<br>"
+          . __('Replay the rules dictionary') . "</div></th></tr>\n";
     echo "<tr><td class='center'>";
     Html::createProgressBar(__('Work in progress...'));
     echo "</td></tr>\n";
@@ -90,7 +90,7 @@ if (isset($_POST["action"])) {
     if (!isset($_GET['offset'])) {
         // First run
         $offset       = $rulecollection->replayRulesOnExistingDB(0, $max, [], $_POST);
-        $manufacturer = (isset($_POST["manufacturer"]) ? $_POST["manufacturer"] : 0);
+        $manufacturer = ($_POST["manufacturer"] ?? 0);
     } else {
         // Next run
         $offset       = $rulecollection->replayRulesOnExistingDB(
@@ -116,8 +116,8 @@ if (isset($_POST["action"])) {
         echo "<a href='" . $_SERVER['PHP_SELF'] . "'>" . __('Back') . "</a>";
     } else {
         // Need more work
-        Html::redirect($_SERVER['PHP_SELF'] . "?start=$start&replay_rule=1&offset=$offset&manufacturer=" .
-                       "$manufacturer");
+        Html::redirect($_SERVER['PHP_SELF'] . "?start=$start&replay_rule=1&offset=$offset&manufacturer="
+                       . "$manufacturer");
     }
 
     Html::footer(true);

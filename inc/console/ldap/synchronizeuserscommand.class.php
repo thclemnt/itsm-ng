@@ -38,30 +38,31 @@ if (!defined('GLPI_ROOT')) {
 }
 
 use AuthLDAP;
-use User;
 use Glpi\Console\AbstractCommand;
 use Symfony\Component\Console\Exception\InvalidArgumentException;
 use Symfony\Component\Console\Exception\RuntimeException;
 use Symfony\Component\Console\Helper\ProgressBar;
+use Symfony\Component\Console\Helper\QuestionHelper;
 use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Question\ConfirmationQuestion;
+use User;
 
 class SynchronizeUsersCommand extends AbstractCommand
 {
     /**
      * Error code returned if LDAP connection failed.
      *
-     * @var integer
+     * @var int
      */
     public const ERROR_LDAP_CONNECTION_FAILED = 1;
 
     /**
      * Error code returned if LDAP limit exceeded.
      *
-     * @var integer
+     * @var int
      */
     public const ERROR_LDAP_LIMIT_EXCEEDED = 2;
 
@@ -127,7 +128,7 @@ class SynchronizeUsersCommand extends AbstractCommand
         $strategies = AuthLDAP::getLdapDeletedUserActionOptions();
         $description = sprintf(
             __('Force strategy used for deleted users (current configured action: "%s")'),
-            (isset($CFG_GLPI['user_deleted_ldap']) ? $CFG_GLPI['user_deleted_ldap'] : __('unknown'))
+            ($CFG_GLPI['user_deleted_ldap'] ?? __('unknown'))
         );
         $description .= "\n" . __('Possible values are:') . "\n";
         $description .= implode(
@@ -165,16 +166,16 @@ class SynchronizeUsersCommand extends AbstractCommand
         $actions = [];
         if ($only_create) {
             $actions = [
-               AuthLDAP::ACTION_IMPORT, // Import unexisting users
+                AuthLDAP::ACTION_IMPORT, // Import unexisting users
             ];
         } elseif ($only_update) {
             $actions = [
-               AuthLDAP::ACTION_SYNCHRONIZE, // Update existing users but does not handle deleted ones
+                AuthLDAP::ACTION_SYNCHRONIZE, // Update existing users but does not handle deleted ones
             ];
         } else {
             $actions = [
-               AuthLDAP::ACTION_IMPORT, // Import unexisting users
-               AuthLDAP::ACTION_ALL, // Update existing users and handle deleted ones
+                AuthLDAP::ACTION_IMPORT, // Import unexisting users
+                AuthLDAP::ACTION_ALL, // Update existing users and handle deleted ones
             ];
             $deleted_user_strategy = $input->getOption('deleted-user-strategy');
             if (null !== $deleted_user_strategy) {
@@ -186,11 +187,11 @@ class SynchronizeUsersCommand extends AbstractCommand
         if (empty($servers_id)) {
             $servers_iterator = $this->db->request(
                 [
-                  'SELECT' => 'id',
-                  'FROM'   => AuthLDAP::getTable(),
-                  'WHERE'  => [
-                     'is_active' => 1,
-                  ],
+                    'SELECT' => 'id',
+                    'FROM'   => AuthLDAP::getTable(),
+                    'WHERE'  => [
+                        'is_active' => 1,
+                    ],
                 ]
             );
             if ($servers_iterator->count() === 0) {
@@ -207,11 +208,11 @@ class SynchronizeUsersCommand extends AbstractCommand
 
             $servers_iterator = $this->db->request(
                 [
-                  'SELECT' => ['id', 'name'],
-                  'FROM'   => AuthLDAP::getTable(),
-                  'WHERE'  => [
-                     'id' => $servers_id,
-                  ],
+                    'SELECT' => ['id', 'name'],
+                    'FROM'   => AuthLDAP::getTable(),
+                    'WHERE'  => [
+                        'id' => $servers_id,
+                    ],
                 ]
             );
             $servers_names = [];
@@ -226,7 +227,7 @@ class SynchronizeUsersCommand extends AbstractCommand
             $informations->addRow([__('End date'), $end_date]);
             $informations->render();
 
-            /** @var \Symfony\Component\Console\Helper\QuestionHelper $question_helper */
+            /** @var QuestionHelper $question_helper */
             $question_helper = $this->getHelper('question');
             $run = $question_helper->ask(
                 $input,
@@ -264,20 +265,20 @@ class SynchronizeUsersCommand extends AbstractCommand
 
             foreach ($actions as $action) {
                 $results = [
-                   AuthLDAP::USER_IMPORTED     => 0,
-                   AuthLDAP::USER_SYNCHRONIZED => 0,
-                   AuthLDAP::USER_DELETED_LDAP => 0,
+                    AuthLDAP::USER_IMPORTED     => 0,
+                    AuthLDAP::USER_SYNCHRONIZED => 0,
+                    AuthLDAP::USER_DELETED_LDAP => 0,
                 ];
                 $limitexceeded = false;
 
                 $users = AuthLDAP::getAllUsers(
                     [
-                      'authldaps_id' => $server_id,
-                      'mode'         => $action,
-                      'ldap_filter'  => null !== $ldap_filter ? $ldap_filter : '',
-                      'script'       => true,
-                      'begin_date'   => null !== $begin_date ? $begin_date : '',
-                      'end_date'     => null !== $end_date ? $end_date : '',
+                        'authldaps_id' => $server_id,
+                        'mode'         => $action,
+                        'ldap_filter'  => null !== $ldap_filter ? $ldap_filter : '',
+                        'script'       => true,
+                        'begin_date'   => null !== $begin_date ? $begin_date : '',
+                        'end_date'     => null !== $end_date ? $end_date : '',
                     ],
                     $results,
                     $limitexceeded
@@ -369,10 +370,10 @@ class SynchronizeUsersCommand extends AbstractCommand
 
                     $result = AuthLDAP::ldapImportUserByServerId(
                         [
-                          'method'           => AuthLDAP::IDENTIFIER_LOGIN,
-                          'value'            => $value,
-                          'identifier_field' => $id_field,
-                          'user_field'       => $user_field
+                            'method'           => AuthLDAP::IDENTIFIER_LOGIN,
+                            'value'            => $value,
+                            'identifier_field' => $id_field,
+                            'user_field'       => $user_field,
                         ],
                         $action,
                         $server_id
@@ -396,18 +397,18 @@ class SynchronizeUsersCommand extends AbstractCommand
                 $result_output = new Table($output);
                 $result_output->setHeaders(
                     [
-                      __('LDAP server'),
-                      __('Imported'),
-                      __('Synchronized'),
-                      __('Deleted from LDAP'),
+                        __('LDAP server'),
+                        __('Imported'),
+                        __('Synchronized'),
+                        __('Deleted from LDAP'),
                     ]
                 );
                 $result_output->addRow(
                     [
-                      $server_id,
-                      $results[AuthLDAP::USER_IMPORTED],
-                      $results[AuthLDAP::USER_SYNCHRONIZED],
-                      $results[AuthLDAP::USER_DELETED_LDAP],
+                        $server_id,
+                        $results[AuthLDAP::USER_IMPORTED],
+                        $results[AuthLDAP::USER_SYNCHRONIZED],
+                        $results[AuthLDAP::USER_DELETED_LDAP],
                     ]
                 );
                 $result_output->render();
@@ -465,7 +466,7 @@ class SynchronizeUsersCommand extends AbstractCommand
         $begin_date = $input->getOption('begin-date');
         $end_date   = $input->getOption('end-date');
         if ($only_create === false && $only_update === false && ($begin_date !== null || $end_date !== null)) {
-            throw new \Symfony\Component\Console\Exception\InvalidArgumentException(
+            throw new InvalidArgumentException(
                 __('Options --begin-date and --end-date can only be used with --only-create-new or --only-update-existing option.')
             );
         }

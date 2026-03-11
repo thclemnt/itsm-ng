@@ -54,18 +54,18 @@ class NetworkPort_NetworkPort extends CommonDBRelation
     /**
      * Retrieve an item from the database
      *
-     * @param integer $ID ID of the item to get
+     * @param int $ID ID of the item to get
      *
-     * @return boolean  true if succeed else false
+     * @return bool  true if succeed else false
     **/
     public function getFromDBForNetworkPort($ID)
     {
 
         return $this->getFromDBByCrit([
-           'OR'  => [
-              $this->getTable() . '.networkports_id_1'  => $ID,
-              $this->getTable() . '.networkports_id_2'  => $ID
-           ]
+            'OR'  => [
+                $this->getTable() . '.networkports_id_1'  => $ID,
+                $this->getTable() . '.networkports_id_2'  => $ID,
+            ],
         ]);
     }
 
@@ -73,9 +73,9 @@ class NetworkPort_NetworkPort extends CommonDBRelation
     /**
      * Get port opposite port ID
      *
-     * @param integer $ID networking port ID
+     * @param int $ID networking port ID
      *
-     * @return integer|false  ID of opposite port. false if not found
+     * @return int|false  ID of opposite port. false if not found
     **/
     public function getOppositeContact($ID)
     {
