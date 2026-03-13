@@ -51,52 +51,52 @@ echo "</table><br>";
 
 // 3. Selection d'affichage pour generer la liste
 $form = [
-   'action' => $_SERVER['PHP_SELF'],
-   'buttons' => [
-      [
-         'value' => __s('Display report'),
-         'class' => 'btn btn-secondary',
-      ]
-   ],
-   'content' => [
-      '' => [
-         'visible' => true,
-         'inputs' => [
-            __('By location') => [
-               'type' => 'select',
-               'name' => 'locations_id',
-               'itemtype' => Location::class,
-               'col_lg' => 12,
-               'col_md' => 12,
-            ]
-         ]
-      ]
-   ]
+    'action' => $_SERVER['PHP_SELF'],
+    'buttons' => [
+        [
+            'value' => __s('Display report'),
+            'class' => 'btn btn-secondary',
+        ],
+    ],
+    'content' => [
+        '' => [
+            'visible' => true,
+            'inputs' => [
+                __('By location') => [
+                    'type' => 'select',
+                    'name' => 'locations_id',
+                    'itemtype' => Location::class,
+                    'col_lg' => 12,
+                    'col_md' => 12,
+                ],
+            ],
+        ],
+    ],
 ];
 renderTwigForm($form);
 
 $form = [
-   'action' => $_SERVER['PHP_SELF'],
-   'buttons' => [
-      [
-         'value' => __s('Display report'),
-         'class' => 'btn btn-secondary',
-      ]
-   ],
-   'content' => [
-      '' => [
-         'visible' => true,
-         'inputs' => [
-            __('By hardware') => [
-               'type' => 'select',
-               'name' => 'switch',
-               'itemtype' => NetworkEquipment::class,
-               'col_lg' => 12,
-               'col_md' => 12,
-            ]
-         ]
-      ]
-   ]
+    'action' => $_SERVER['PHP_SELF'],
+    'buttons' => [
+        [
+            'value' => __s('Display report'),
+            'class' => 'btn btn-secondary',
+        ],
+    ],
+    'content' => [
+        '' => [
+            'visible' => true,
+            'inputs' => [
+                __('By hardware') => [
+                    'type' => 'select',
+                    'name' => 'switch',
+                    'itemtype' => NetworkEquipment::class,
+                    'col_lg' => 12,
+                    'col_md' => 12,
+                ],
+            ],
+        ],
+    ],
 ];
 renderTwigForm($form);
 

@@ -57,11 +57,11 @@ class Software extends DbTestCase
 
         $software = new \Software();
         $input    = ['name'         => 'soft1',
-                     'entities_id'  => 0,
-                     'is_recursive' => 1
-                    ];
+            'entities_id'  => 0,
+            'is_recursive' => 1,
+        ];
         $softwares_id = $software->add($input);
-        $this->integer((int)$softwares_id)->isGreaterThan(0);
+        $this->integer((int) $softwares_id)->isGreaterThan(0);
         $software->getFromDB($softwares_id);
         $this->string($software->getTabNameForItem($software, 1))->isEmpty();
     }
@@ -116,13 +116,13 @@ class Software extends DbTestCase
         $this->array($result)->isIdenticalTo($expected);
 
         $input    = ['is_update'             => 0,
-                     'withtemplate'          => 0,
-                     'softwarecategories_id' => 3
-                    ];
+            'withtemplate'          => 0,
+            'softwarecategories_id' => 3,
+        ];
         $result   = $software->prepareInputForAdd($input);
         $expected = ['is_update'             => 0,
-                     'softwarecategories_id' => 3,
-                     'softwares_id'          => 0];
+            'softwarecategories_id' => 3,
+            'softwares_id'          => 0];
 
         $this->array($result)->isIdenticalTo($expected);
 
@@ -139,47 +139,47 @@ class Software extends DbTestCase
         $categories_id = $category->importExternal('Application');
 
         $rules_id = $rule->add(['name'        => 'Add application category',
-                                'is_active'   => 1,
-                                'entities_id' => 0,
-                                'sub_type'    => 'RuleSoftwareCategory',
-                                'match'       => \Rule::AND_MATCHING,
-                                'condition'   => 0,
-                                'description' => ''
-                             ]);
-        $this->integer((int)$rules_id)->isGreaterThan(0);
+            'is_active'   => 1,
+            'entities_id' => 0,
+            'sub_type'    => 'RuleSoftwareCategory',
+            'match'       => \Rule::AND_MATCHING,
+            'condition'   => 0,
+            'description' => '',
+        ]);
+        $this->integer((int) $rules_id)->isGreaterThan(0);
 
         $this->integer(
-            (int)$criteria->add([
-              'rules_id'  => $rules_id,
-              'criteria'  => 'name',
-              'condition' => \Rule::PATTERN_IS,
-              'pattern'   => 'MySoft'
-         ])
+            (int) $criteria->add([
+                'rules_id'  => $rules_id,
+                'criteria'  => 'name',
+                'condition' => \Rule::PATTERN_IS,
+                'pattern'   => 'MySoft',
+            ])
         )->isGreaterThan(0);
 
         $this->integer(
-            (int)$action->add(['rules_id'    => $rules_id,
-              'action_type' => 'assign',
-              'field'       => 'softwarecategories_id',
-              'value'       => $categories_id
-         ])
+            (int) $action->add(['rules_id'    => $rules_id,
+                'action_type' => 'assign',
+                'field'       => 'softwarecategories_id',
+                'value'       => $categories_id,
+            ])
         )->isGreaterThan(0);
 
         $input    = ['name'             => 'MySoft',
-                     'is_update'        => 0,
-                     'entities_id'      => 0,
-                     'comment'          => 'Comment'
-                    ];
+            'is_update'        => 0,
+            'entities_id'      => 0,
+            'comment'          => 'Comment',
+        ];
 
         $software = new \Software();
         $result   = $software->prepareInputForAdd($input);
         $expected = [
-           'name'                  => 'MySoft',
-           'is_update'             => 0,
-           'entities_id'           => 0,
-           'comment'               => 'Comment',
-           'softwares_id'          => 0,
-           'softwarecategories_id' => "$categories_id"
+            'name'                  => 'MySoft',
+            'is_update'             => 0,
+            'entities_id'           => 0,
+            'comment'               => 'Comment',
+            'softwares_id'          => 0,
+            'softwarecategories_id' => "$categories_id",
         ];
 
         $this->array($result)->isIdenticalTo($expected);
@@ -193,31 +193,31 @@ class Software extends DbTestCase
 
         $software     = new \Software();
         $softwares_id = $software->add([
-           'name'         => 'MySoft',
-           'is_template'  => 0,
-           'entities_id'  => 0
+            'name'         => 'MySoft',
+            'is_template'  => 0,
+            'entities_id'  => 0,
         ]);
-        $this->integer((int)$softwares_id)->isGreaterThan(0);
+        $this->integer((int) $softwares_id)->isGreaterThan(0);
 
         $this->variable($software->fields['is_template'])->isEqualTo(0);
         $this->string($software->fields['name'])->isIdenticalTo('MySoft');
 
         $query = ['itemtype' => 'Software', 'items_id' => $softwares_id];
-        $this->integer((int)countElementsInTable('glpi_infocoms', $query))->isIdenticalTo(0);
-        $this->integer((int)countElementsInTable('glpi_contracts_items', $query))->isIdenticalTo(0);
+        $this->integer((int) countElementsInTable('glpi_infocoms', $query))->isIdenticalTo(0);
+        $this->integer((int) countElementsInTable('glpi_contracts_items', $query))->isIdenticalTo(0);
 
         //Force creation of infocom when an asset is added
         $CFG_GLPI['auto_create_infocoms'] = 1;
 
         $softwares_id = $software->add([
-           'name'         => 'MySoft2',
-           'is_template'  => 0,
-           'entities_id'  => 0
+            'name'         => 'MySoft2',
+            'is_template'  => 0,
+            'entities_id'  => 0,
         ]);
-        $this->integer((int)$softwares_id)->isGreaterThan(0);
+        $this->integer((int) $softwares_id)->isGreaterThan(0);
 
         $query = ['itemtype' => 'Software', 'items_id' => $softwares_id];
-        $this->integer((int)countElementsInTable('glpi_infocoms', $query))->isIdenticalTo(1);
+        $this->integer((int) countElementsInTable('glpi_infocoms', $query))->isIdenticalTo(1);
     }
 
     public function testPost_addItemWithTemplate()
@@ -226,51 +226,51 @@ class Software extends DbTestCase
 
         $software     = new \Software();
         $softwares_id = $software->add([
-           'name'          => 'MyTemplate',
-           'is_template'   => 1,
-           'template_name' => 'template'
+            'name'          => 'MyTemplate',
+            'is_template'   => 1,
+            'template_name' => 'template',
         ]);
-        $this->integer((int)$softwares_id)->isGreaterThan(0);
+        $this->integer((int) $softwares_id)->isGreaterThan(0);
 
         $infocom = new \Infocom();
         $this->integer(
-            (int)$infocom->add([
-              'itemtype' => 'Software',
-              'items_id' => $softwares_id,
-              'value'    => '500'
-         ])
+            (int) $infocom->add([
+                'itemtype' => 'Software',
+                'items_id' => $softwares_id,
+                'value'    => '500',
+            ])
         )->isGreaterThan(0);
 
         $contract     = new \Contract();
         $contracts_id = $contract->add([
-           'name'         => 'contract01',
-           'entities_id'  => 0
+            'name'         => 'contract01',
+            'entities_id'  => 0,
         ]);
-        $this->integer((int)$contracts_id)->isGreaterThan(0);
+        $this->integer((int) $contracts_id)->isGreaterThan(0);
 
         $contract_item = new \Contract_Item();
         $this->integer(
-            (int)$contract_item->add([
-              'itemtype'     => 'Software',
-              'items_id'     => $softwares_id,
-              'contracts_id' => $contracts_id
-         ])
+            (int) $contract_item->add([
+                'itemtype'     => 'Software',
+                'items_id'     => $softwares_id,
+                'contracts_id' => $contracts_id,
+            ])
         )->isGreaterThan(0);
 
         $softwares_id_2 = $software->add([
-           'name'         => 'MySoft',
-           'id'           => $softwares_id,
-           'entities_id'  => 0
+            'name'         => 'MySoft',
+            'id'           => $softwares_id,
+            'entities_id'  => 0,
         ]);
-        $this->integer((int)$softwares_id_2)->isGreaterThan(0);
+        $this->integer((int) $softwares_id_2)->isGreaterThan(0);
 
         $this->boolean($software->getFromDB($softwares_id_2))->isTrue();
         $this->variable($software->fields['is_template'])->isEqualTo(0);
         $this->string($software->fields['name'])->isIdenticalTo('MySoft (copy)');
 
         $query = ['itemtype' => 'Software', 'items_id' => $softwares_id_2];
-        $this->integer((int)countElementsInTable('glpi_infocoms', $query))->isIdenticalTo(1);
-        $this->integer((int)countElementsInTable('glpi_contracts_items', $query))->isIdenticalTo(1);
+        $this->integer((int) countElementsInTable('glpi_infocoms', $query))->isIdenticalTo(1);
+        $this->integer((int) countElementsInTable('glpi_contracts_items', $query))->isIdenticalTo(1);
     }
 
     public function testCleanDBonPurge()
@@ -283,32 +283,32 @@ class Software extends DbTestCase
 
         $software     = new \Software();
         $softwares_id = $software->add([
-           'name'         => 'MySoft',
-           'is_template'  => 0,
-           'entities_id'  => 0
+            'name'         => 'MySoft',
+            'is_template'  => 0,
+            'entities_id'  => 0,
         ]);
-        $this->integer((int)$softwares_id)->isGreaterThan(0);
+        $this->integer((int) $softwares_id)->isGreaterThan(0);
 
         $contract     = new \Contract();
         $contracts_id = $contract->add([
-           'name'         => 'contract02',
-           'entities_id'  => 0
+            'name'         => 'contract02',
+            'entities_id'  => 0,
         ]);
-        $this->integer((int)$contracts_id)->isGreaterThan(0);
+        $this->integer((int) $contracts_id)->isGreaterThan(0);
 
         $contract_item = new \Contract_Item();
         $this->integer(
-            (int)$contract_item->add([
-              'itemtype'     => 'Software',
-              'items_id'     => $softwares_id,
-              'contracts_id' => $contracts_id
-         ])
+            (int) $contract_item->add([
+                'itemtype'     => 'Software',
+                'items_id'     => $softwares_id,
+                'contracts_id' => $contracts_id,
+            ])
         )->isGreaterThan(0);
 
         $this->boolean($software->delete(['id' => $softwares_id], true))->isTrue();
         $query = ['itemtype' => 'Software', 'items_id' => $softwares_id];
-        $this->integer((int)countElementsInTable('glpi_infocoms', $query))->isIdenticalTo(0);
-        $this->integer((int)countElementsInTable('glpi_contracts_items', $query))->isIdenticalTo(0);
+        $this->integer((int) countElementsInTable('glpi_infocoms', $query))->isIdenticalTo(0);
+        $this->integer((int) countElementsInTable('glpi_contracts_items', $query))->isIdenticalTo(0);
 
         //TODO : test Change_Item, Item_Problem, Item_Project
     }
@@ -322,11 +322,11 @@ class Software extends DbTestCase
     {
         $software     = new \Software();
         $softwares_id = $software->add([
-           'name'         => 'Software ' .$this->getUniqueString(),
-           'is_template'  => 0,
-           'entities_id'  => 0
+            'name'         => 'Software ' . $this->getUniqueString(),
+            'is_template'  => 0,
+            'entities_id'  => 0,
         ]);
-        $this->integer((int)$softwares_id)->isGreaterThan(0);
+        $this->integer((int) $softwares_id)->isGreaterThan(0);
         $this->boolean($software->getFromDB($softwares_id))->isTrue();
 
         return $software;
@@ -339,25 +339,25 @@ class Software extends DbTestCase
         //create a license with 3 installations
         $license = new \SoftwareLicense();
         $license_id = $license->add([
-           'name'         => 'a_software_license',
-           'softwares_id' => $software->getID(),
-           'entities_id'  => 0,
-           'number'       => 3
+            'name'         => 'a_software_license',
+            'softwares_id' => $software->getID(),
+            'entities_id'  => 0,
+            'number'       => 3,
         ]);
-        $this->integer((int)$license_id)->isGreaterThan(0);
+        $this->integer((int) $license_id)->isGreaterThan(0);
 
         //attach 2 licenses
         $license_computer = new \Item_SoftwareLicense();
         foreach (['_test_pc01', '_test_pc02'] as $pcid) {
             $computer = getItemByTypeName('Computer', $pcid);
             $input_comp = [
-               'softwarelicenses_id'   => $license_id,
-               'items_id'              => $computer->getID(),
-               'itemtype'              => 'Computer',
-               'is_deleted'            => 0,
-               'is_dynamic'            => 0
+                'softwarelicenses_id'   => $license_id,
+                'items_id'              => $computer->getID(),
+                'itemtype'              => 'Computer',
+                'is_deleted'            => 0,
+                'is_dynamic'            => 0,
             ];
-            $this->integer((int)$license_computer->add($input_comp))->isGreaterThan(0);
+            $this->integer((int) $license_computer->add($input_comp))->isGreaterThan(0);
         }
 
         $this->boolean($software->getFromDB($software->getID()))->isTrue();

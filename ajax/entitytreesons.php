@@ -53,18 +53,18 @@ if (isset($_GET['node'])) {
             $is_recursive                 = $entity['is_recursive'];
 
             $path = [
-               // append r for root nodes, id are uniques in jstree.
-               // so, in case of presence of this id in subtree of other nodes,
-               // it will be removed from root nodes
-               'id'   => $ID . 'r',
-               'text' => Dropdown::getDropdownName("glpi_entities", $ID)
+                // append r for root nodes, id are uniques in jstree.
+                // so, in case of presence of this id in subtree of other nodes,
+                // it will be removed from root nodes
+                'id'   => $ID . 'r',
+                'text' => Dropdown::getDropdownName("glpi_entities", $ID),
             ];
 
             if ($is_recursive) {
                 $result2 = $DB->request([
-                   'FROM'   => 'glpi_entities',
-                   'COUNT'  => 'cpt',
-                   'WHERE'  => ['entities_id' => $ID]
+                    'FROM'   => 'glpi_entities',
+                    'COUNT'  => 'cpt',
+                    'WHERE'  => ['entities_id' => $ID],
                 ]);
                 $result2 = $result2->next();
                 if ($result2['cpt'] > 0) {
@@ -81,30 +81,30 @@ if (isset($_GET['node'])) {
     } else { // standard node
         $node_id = preg_replace('/r$/', '', $_GET['node']);
         $iterator = $DB->request([
-           'SELECT' => [
-              'ent.id',
-              'ent.name',
-              'ent.sons_cache',
-              'COUNT'  => 'sub_entities.id AS nb_subs'
-           ],
-           'FROM'   => 'glpi_entities AS ent',
-           'LEFT JOIN' => [
-              'glpi_entities AS sub_entities'  => [
-                 'ON'  => [
-                    'sub_entities' => 'entities_id',
-                    'ent'          => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => ['ent.entities_id' => $node_id],
-           'GROUPBY'   => ['ent.id', 'ent.name', 'ent.sons_cache'],
-           'ORDERBY'   => 'name'
+            'SELECT' => [
+                'ent.id',
+                'ent.name',
+                'ent.sons_cache',
+                'COUNT'  => 'sub_entities.id AS nb_subs',
+            ],
+            'FROM'   => 'glpi_entities AS ent',
+            'LEFT JOIN' => [
+                'glpi_entities AS sub_entities'  => [
+                    'ON'  => [
+                        'sub_entities' => 'entities_id',
+                        'ent'          => 'id',
+                    ],
+                ],
+            ],
+            'WHERE'     => ['ent.entities_id' => $node_id],
+            'GROUPBY'   => ['ent.id', 'ent.name', 'ent.sons_cache'],
+            'ORDERBY'   => 'name',
         ]);
 
         while ($row = $iterator->next()) {
             $path = [
-               'id'   => $row['id'],
-               'text' => $row['name']
+                'id'   => $row['id'],
+                'text' => $row['name'],
             ];
 
             if ($row['nb_subs'] > 0) {

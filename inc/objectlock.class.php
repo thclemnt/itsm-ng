@@ -155,17 +155,17 @@ class ObjectLock extends CommonDBTM
                      id: {$this->fields['id']}
                   },
                   dataType: 'json',
-                  success: function( data, textStatus, jqXHR ) { " .
-                          Html::jsConfirmCallback(__('Reload page?'), __('Item unlocked!'), "function() {
+                  success: function( data, textStatus, jqXHR ) { "
+                          . Html::jsConfirmCallback(__('Reload page?'), __('Item unlocked!'), "function() {
                               window.location.reload(true);
                            }") . "
                      },
-                  error: function() { " .
-                          Html::jsAlertCallback(__('Contact your ITSM-NG admin!'), __('Item NOT unlocked!')) . "
+                  error: function() { "
+                          . Html::jsAlertCallback(__('Contact your ITSM-NG admin!'), __('Item NOT unlocked!')) . "
                      }
                });
-            }" .
-              Html::jsConfirmCallback(__('Force unlock this item?'), $this->itemtypename . " #" . $this->itemid, "callUnlock") . "
+            }"
+              . Html::jsConfirmCallback(__('Force unlock this item?'), $this->itemtypename . " #" . $this->itemid, "callUnlock") . "
          }");
 
         return $ret;
@@ -228,8 +228,8 @@ class ObjectLock extends CommonDBTM
 
         $useremail     = new UserEmail();
         $showAskUnlock = $useremail->getFromDBByCrit([
-           'users_id'     => $this->fields['users_id'],
-           'is_default'   => 1
+            'users_id'     => $this->fields['users_id'],
+            'is_default'   => 1,
         ]) && ($CFG_GLPI['notifications_mailing'] == 1);
 
         $userdata = getUserName($this->fields['users_id'], 2);
@@ -271,8 +271,8 @@ class ObjectLock extends CommonDBTM
                            data: 'lockstatus=1&id=" . $this->fields['id'] . "',
                            success: function( data, textStatus, jqXHR ) {
                                  if( data == 0 ) {
-                                    clearInterval(lockStatusTimer);" .
-                                      Html::jsConfirmCallback(__('Reload page?'), __('Item unlocked!'), "function() {
+                                    clearInterval(lockStatusTimer);"
+                                      . Html::jsConfirmCallback(__('Reload page?'), __('Item unlocked!'), "function() {
                                        window.location.reload(true);
                                     }") . "
                                  }
@@ -318,8 +318,8 @@ class ObjectLock extends CommonDBTM
         $msg .= '<form aria-label="read Only message" action="' . $_SERVER['REQUEST_URI'] . '" method="POST" style="display:inline;">';
         $msg .= Html::hidden('_glpi_csrf_token', ['value' => Session::getNewCSRFToken()]);
         $msg .= Html::hidden('lockwrite', ['value' => 1]);
-        $msg .= '<button type="submit" class="vsubmit" aria-label="request write on">' .
-                  __('Request write on ') . $this->itemtypename . " #" . $this->itemid . '</button>';
+        $msg .= '<button type="submit" class="vsubmit" aria-label="request write on">'
+                  . __('Request write on ') . $this->itemtypename . " #" . $this->itemid . '</button>';
         $msg .= '</form>';
 
         $this->displayLockMessage($msg);
@@ -340,10 +340,10 @@ class ObjectLock extends CommonDBTM
         $ret = false;
         if (
             !($gotIt = $this->getFromDBByCrit(['itemtype' => $this->itemtype,
-                 'items_id' => $this->itemid]))
+                'items_id' => $this->itemid]))
                  && $id = $this->add(['itemtype' => $this->itemtype,
-                                            'items_id' => $this->itemid,
-                                            'users_id' => Session::getLoginUserID()])
+                     'items_id' => $this->itemid,
+                     'users_id' => Session::getLoginUserID()])
         ) {
             // add a script to unlock the Object
             echo Html::scriptBlock("$(function() {
@@ -386,8 +386,8 @@ class ObjectLock extends CommonDBTM
         } else { // can't add a lock as another one is already existing
             if (!$gotIt) {
                 $this->getFromDBByCrit([
-                   'itemtype'  => $this->itemtype,
-                   'items_id'  => $this->itemid
+                    'itemtype'  => $this->itemtype,
+                    'items_id'  => $this->itemid,
                 ]);
             }
             // open the object as read-only as it is already locked by someone
@@ -420,7 +420,7 @@ class ObjectLock extends CommonDBTM
             && Session::getCurrentInterface() == 'central'
             && in_array($this->itemtype, $CFG_GLPI['lock_item_list'])
             && $this->getFromDBByCrit(['itemtype' => $this->itemtype,
-                                       'items_id' => $this->itemid])
+                'items_id' => $this->itemid])
         ) {
             $ret = true;
         }
@@ -589,32 +589,32 @@ class ObjectLock extends CommonDBTM
             && in_array($itemtype, $CFG_GLPI['lock_item_list'])
         ) {
             $tab[] = [
-               'id' => '205',
-               'table'         => 'glpi_users',
-               'field'         => 'name',
-               'datatype'      => 'dropdown',
-               'right'         => 'all',
-               'name'          => __('Locked by'),
-               'forcegroupby'  => true,
-               'massiveaction' => false,
-               'joinparams'    => [
-                  'jointype'   => '',
-                  'beforejoin' => [
-                     'table'      => getTableForItemType('ObjectLock'),
-                     'joinparams' => ['jointype' => "itemtype_item"]
-                  ]
-               ]
+                'id' => '205',
+                'table'         => 'glpi_users',
+                'field'         => 'name',
+                'datatype'      => 'dropdown',
+                'right'         => 'all',
+                'name'          => __('Locked by'),
+                'forcegroupby'  => true,
+                'massiveaction' => false,
+                'joinparams'    => [
+                    'jointype'   => '',
+                    'beforejoin' => [
+                        'table'      => getTableForItemType('ObjectLock'),
+                        'joinparams' => ['jointype' => "itemtype_item"],
+                    ],
+                ],
             ];
 
             $tab[] = [
-               'id'            => '206',
-               'table'         => getTableForItemType('ObjectLock'),
-               'field'         => 'date_mod',
-               'datatype'      => 'datetime',
-               'name'          => __('Locked date'),
-               'joinparams'    => ['jointype' => 'itemtype_item'],
-               'massiveaction' => false,
-               'forcegroupby'  => true
+                'id'            => '206',
+                'table'         => getTableForItemType('ObjectLock'),
+                'field'         => 'date_mod',
+                'datatype'      => 'datetime',
+                'name'          => __('Locked date'),
+                'joinparams'    => ['jointype' => 'itemtype_item'],
+                'massiveaction' => false,
+                'forcegroupby'  => true,
             ];
         }
 
@@ -660,7 +660,7 @@ class ObjectLock extends CommonDBTM
         switch ($name) {
             case 'unlockobject':
                 return ['description' => __('Unlock forgotten locked objects'),
-                             'parameter'   => __('Timeout to force unlock (hours)')];
+                    'parameter'   => __('Timeout to force unlock (hours)')];
         }
         return [];
     }
@@ -671,7 +671,7 @@ class ObjectLock extends CommonDBTM
      *
      * @param $task : crontask object
      *
-     * @return integer
+     * @return int
      *    >0 : done
      *    <0 : to be run again (not finished)
      *     0 : nothing to do
@@ -685,7 +685,7 @@ class ObjectLock extends CommonDBTM
         $lockedItems = getAllDataFromTable(
             getTableForItemType(__CLASS__),
             [
-              'date_mod' => ['<', date("Y-m-d H:i:s", time() - ($task->fields['param'] * HOUR_TIMESTAMP))]
+                'date_mod' => ['<', date("Y-m-d H:i:s", time() - ($task->fields['param'] * HOUR_TIMESTAMP))],
             ]
         );
 

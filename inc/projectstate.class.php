@@ -58,16 +58,16 @@ class ProjectState extends CommonDropdown
     {
 
         return [
-           __('Color') => [
-              'name'     => 'color',
-              'type'     => 'color',
-              'value' => $this->fields['color'],
-           ],
-           __('Finished state') => [
-              'name'     => 'is_finished',
-              'type'     => 'checkbox',
-              'value' => $this->fields['is_finished'],
-           ],
+            __('Color') => [
+                'name'     => 'color',
+                'type'     => 'color',
+                'value' => $this->fields['color'],
+            ],
+            __('Finished state') => [
+                'name'     => 'is_finished',
+                'type'     => 'checkbox',
+                'value' => $this->fields['is_finished'],
+            ],
         ];
     }
 
@@ -77,19 +77,19 @@ class ProjectState extends CommonDropdown
         $tab = parent::rawSearchOptions();
 
         $tab[] = [
-           'id'                 => '11',
-           'table'              => $this->getTable(),
-           'field'              => 'color',
-           'name'               => __('Color'),
-           'datatype'           => 'color'
+            'id'                 => '11',
+            'table'              => $this->getTable(),
+            'field'              => 'color',
+            'name'               => __('Color'),
+            'datatype'           => 'color',
         ];
 
         $tab[] = [
-           'id'                 => '12',
-           'table'              => $this->getTable(),
-           'field'              => 'is_finished',
-           'name'               => __('Finished state'),
-           'datatype'           => 'bool'
+            'id'                 => '12',
+            'table'              => $this->getTable(),
+            'field'              => 'is_finished',
+            'name'               => __('Finished state'),
+            'datatype'           => 'bool',
         ];
 
         return $tab;

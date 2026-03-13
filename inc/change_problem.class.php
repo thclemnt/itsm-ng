@@ -131,24 +131,24 @@ class Change_Problem extends CommonDBRelation
         $rand    = mt_rand();
 
         $iterator = $DB->request([
-           'SELECT' => [
-              'glpi_changes_problems.id AS linkid',
-              'glpi_changes.*'
-           ],
-           'DISTINCT'        => true,
-           'FROM'            => 'glpi_changes_problems',
-           'LEFT JOIN'       => [
-              'glpi_changes' => [
-                 'ON' => [
-                    'glpi_changes_problems' => 'changes_id',
-                    'glpi_changes'          => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'           => [
-              'glpi_changes_problems.problems_id' => $ID
-           ],
-           'ORDERBY'         => 'glpi_changes.name'
+            'SELECT' => [
+                'glpi_changes_problems.id AS linkid',
+                'glpi_changes.*',
+            ],
+            'DISTINCT'        => true,
+            'FROM'            => 'glpi_changes_problems',
+            'LEFT JOIN'       => [
+                'glpi_changes' => [
+                    'ON' => [
+                        'glpi_changes_problems' => 'changes_id',
+                        'glpi_changes'          => 'id',
+                    ],
+                ],
+            ],
+            'WHERE'           => [
+                'glpi_changes_problems.problems_id' => $ID,
+            ],
+            'ORDERBY'         => 'glpi_changes.name',
         ]);
 
         $changes = [];
@@ -171,9 +171,9 @@ class Change_Problem extends CommonDBRelation
             echo "<tr class='tab_bg_2'><td>";
             echo "<input type='hidden' name='problems_id' value='$ID'>";
             Change::dropdown([
-               'used'        => $used,
-               'entity'      => $problem->getEntityID(),
-               'entity_sons' => $problem->isRecursive(),
+                'used'        => $used,
+                'entity'      => $problem->getEntityID(),
+                'entity_sons' => $problem->isRecursive(),
             ]);
             echo "</td><td class='center'>";
             echo "<input type='submit' name='add' value=\"" . _sx('button', 'Add') . "\" class='submit'>";
@@ -192,7 +192,7 @@ class Change_Problem extends CommonDBRelation
         if ($canedit && $numrows) {
             Html::openMassiveActionsForm('mass' . __CLASS__ . $rand);
             $massiveactionparams = ['num_displayed' => min($_SESSION['glpilist_limit'], $numrows),
-                                         'container'     => 'mass' . __CLASS__ . $rand];
+                'container'     => 'mass' . __CLASS__ . $rand];
             Html::showMassiveActions($massiveactionparams);
         }
 
@@ -216,8 +216,8 @@ class Change_Problem extends CommonDBRelation
             foreach ($changes as $data) {
                 Session::addToNavigateListItems('Change', $data["id"]);
                 Change::showShort($data['id'], ['row_num'                => $i,
-                                                     'type_for_massiveaction' => __CLASS__,
-                                                     'id_for_massiveaction'   => $data['linkid']]);
+                    'type_for_massiveaction' => __CLASS__,
+                    'id_for_massiveaction'   => $data['linkid']]);
                 $i++;
             }
             Change::commonListHeader(Search::HTML_OUTPUT, 'mass' . __CLASS__ . $rand);
@@ -251,24 +251,24 @@ class Change_Problem extends CommonDBRelation
         $rand    = mt_rand();
 
         $iterator = $DB->request([
-           'SELECT' => [
-              'glpi_changes_problems.id AS linkid',
-              'glpi_problems.*'
-           ],
-           'DISTINCT'        => true,
-           'FROM'            => 'glpi_changes_problems',
-           'LEFT JOIN'       => [
-              'glpi_problems' => [
-                 'ON' => [
-                    'glpi_changes_problems' => 'problems_id',
-                    'glpi_problems'         => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'           => [
-              'glpi_changes_problems.changes_id' => $ID
-           ],
-           'ORDERBY'         => 'glpi_problems.name'
+            'SELECT' => [
+                'glpi_changes_problems.id AS linkid',
+                'glpi_problems.*',
+            ],
+            'DISTINCT'        => true,
+            'FROM'            => 'glpi_changes_problems',
+            'LEFT JOIN'       => [
+                'glpi_problems' => [
+                    'ON' => [
+                        'glpi_changes_problems' => 'problems_id',
+                        'glpi_problems'         => 'id',
+                    ],
+                ],
+            ],
+            'WHERE'           => [
+                'glpi_changes_problems.changes_id' => $ID,
+            ],
+            'ORDERBY'         => 'glpi_problems.name',
         ]);
 
         $problems = [];
@@ -281,59 +281,59 @@ class Change_Problem extends CommonDBRelation
 
         if ($canedit) {
             $form = [
-               'action' => Toolbox::getItemTypeFormURL(__CLASS__),
-               'buttons' => [
-                  [
-                     'type' => 'submit',
-                     'name' => 'add',
-                     'value' => _sx('button', 'Add'),
-                     'class' => 'btn btn-secondary'
-                  ]
-               ],
-               'content' => [
-                  __('Add an item') => [
-                     'visible' => true,
-                     'inputs' => [
-                        [
-                           'type' => 'hidden',
-                           'name' => 'changes_id',
-                           'value' => $ID
+                'action' => Toolbox::getItemTypeFormURL(__CLASS__),
+                'buttons' => [
+                    [
+                        'type' => 'submit',
+                        'name' => 'add',
+                        'value' => _sx('button', 'Add'),
+                        'class' => 'btn btn-secondary',
+                    ],
+                ],
+                'content' => [
+                    __('Add an item') => [
+                        'visible' => true,
+                        'inputs' => [
+                            [
+                                'type' => 'hidden',
+                                'name' => 'changes_id',
+                                'value' => $ID,
+                            ],
+                            __('Problem') => [
+                                'type' => 'select',
+                                'name' => 'problems_id',
+                                'itemtype' => Problem::class,
+                                'col_lg' => 12,
+                                'col_md' => 12,
+                                'actions' => getItemActionButtons(['info'], Problem::class),
+                            ],
                         ],
-                        __('Problem') => [
-                           'type' => 'select',
-                           'name' => 'problems_id',
-                           'itemtype' => Problem::class,
-                           'col_lg' => 12,
-                           'col_md' => 12,
-                           'actions' => getItemActionButtons(['info'], Problem::class),
-                        ]
-                     ]
-                  ]
-               ]
+                    ],
+                ],
             ];
             renderTwigForm($form);
         }
 
         if ($canedit && $numrows) {
             $massiveactionparams = [
-               'container'     => 'tableForChangeProblem',
-               'specific_actions' => [
-                  'MassiveAction:purge' => _x('button', 'Delete permanently the relation with selected elements'),
-               ],
-               'display_arrow' => false,
+                'container'     => 'tableForChangeProblem',
+                'specific_actions' => [
+                    'MassiveAction:purge' => _x('button', 'Delete permanently the relation with selected elements'),
+                ],
+                'display_arrow' => false,
             ];
             Html::showMassiveActions($massiveactionparams);
         }
         $fields = [
-           __('Status'),
-           _n('Date', 'Dates', 1),
-           __('Last update'),
-           __('Priority'),
-           _n('Requester', 'Requesters', 1),
-           __('Assigned'),
-           __('Category'),
-           __('Title'),
-           __('Planification'),
+            __('Status'),
+            _n('Date', 'Dates', 1),
+            __('Last update'),
+            __('Priority'),
+            _n('Requester', 'Requesters', 1),
+            __('Assigned'),
+            __('Category'),
+            __('Title'),
+            __('Planification'),
         ];
         if (count($_SESSION["glpiactiveentities"]) > 1) {
             $fields[] = Entity::getTypeName(Session::getPluralNumber());
@@ -370,7 +370,7 @@ class Change_Problem extends CommonDBRelation
                     Html::showToolTip(
                         $userdata["comment"],
                         ['link'    => $userdata["link"],
-                                            'display' => false]
+                            'display' => false]
                     )
                 );
                 $cell .= "<br>";
@@ -396,7 +396,7 @@ class Change_Problem extends CommonDBRelation
                         Html::showToolTip(
                             $userdata["comment"],
                             ['link'    => $userdata["link"],
-                                                'display' => false]
+                                'display' => false]
                         )
                     );
                 }
@@ -421,8 +421,8 @@ class Change_Problem extends CommonDBRelation
                 $item->fields["itilcategories_id"]
             );
 
-            $newValue[] = ($item->canViewItem()) ?
-            "<a id='" . $item->getType() . $item->fields["id"] . "$rand' href=\"" . $item->getLinkURL()
+            $newValue[] = ($item->canViewItem())
+            ? "<a id='" . $item->getType() . $item->fields["id"] . "$rand' href=\"" . $item->getLinkURL()
             . "\">" . $item->getName() . "</a>" : $item->getName();
 
             $cell  = '';
@@ -432,10 +432,10 @@ class Change_Problem extends CommonDBRelation
             $items         = [];
             $result = $DB->request(
                 [
-                  'FROM'  => $plan->getTable(),
-                  'WHERE' => [
-                     $item->getForeignKeyField() => $item->fields['id'],
-                  ],
+                    'FROM'  => $plan->getTable(),
+                    'WHERE' => [
+                        $item->getForeignKeyField() => $item->fields['id'],
+                    ],
                 ]
             );
             foreach ($result as $plan) {
@@ -453,17 +453,17 @@ class Change_Problem extends CommonDBRelation
             $cell = count($items);
             if ($cell) {
                 $cell = "<span class='pointer'
-                              id='" . $item->getType() . $item->fields["id"] . "planning$rand'>" .
-                                  $cell . '</span>';
+                              id='" . $item->getType() . $item->fields["id"] . "planning$rand'>"
+                                  . $cell . '</span>';
                 $cell = sprintf(
                     __('%1$s %2$s'),
                     $cell,
                     Html::showToolTip(
                         $planned_infos,
                         ['display' => false,
-                          'applyto' => $item->getType() .
-                                         $item->fields["id"] .
-                                         "planning" . $rand]
+                            'applyto' => $item->getType()
+                                           . $item->fields["id"]
+                                           . "planning" . $rand]
                     )
                 );
             }
@@ -473,10 +473,10 @@ class Change_Problem extends CommonDBRelation
             $massive_action[] = sprintf('item[%s][%s]', self::class, $data['linkid']);
         };
         renderTwigTemplate('table.twig', [
-           'id' => 'tableForChangeProblem',
-           'fields' => $fields,
-           'values' => $values,
-           'massive_action' => $massive_action,
+            'id' => 'tableForChangeProblem',
+            'fields' => $fields,
+            'values' => $values,
+            'massive_action' => $massive_action,
         ]);
     }
 }

@@ -33,9 +33,8 @@
 
 namespace tests\units\Glpi\Api;
 
-use GuzzleHttp\Exception\ClientException;
-use GuzzleHttp;
 use APIBaseClass;
+use GuzzleHttp;
 
 /* Test for inc/api/apixmlrpc.class.php */
 
@@ -53,7 +52,7 @@ class APIXmlrpc extends APIBaseClass
         }
 
         $this->http_client = new GuzzleHttp\Client();
-        $this->base_uri    = trim((string) $CFG_GLPI['url_base'], "/")."/apixmlrpc.php";
+        $this->base_uri    = trim((string) $CFG_GLPI['url_base'], "/") . "/apixmlrpc.php";
 
         parent::beforeTestMethod($method);
     }
@@ -63,7 +62,7 @@ class APIXmlrpc extends APIBaseClass
         $headers = ["Content-Type" => "text/xml"];
         $request = xmlrpc_encode_request($resource, $params);
         return $this->http_client->post($this->base_uri, ['body'    => $request,
-                                                         'headers' => $headers]);
+            'headers' => $headers]);
     }
 
     protected function query($resource = "", $params = [], $expected_codes = 200, $expected_symbol = '')
@@ -71,9 +70,9 @@ class APIXmlrpc extends APIBaseClass
         //reconstruct params for xmlrpc (base params done for rest)
         $flat_params = array_merge(
             $params,
-            isset($params['query']) ? $params['query'] : [],
-            isset($params['headers']) ? $params['headers'] : [],
-            isset($params['json']) ? $params['json'] : []
+            $params['query'] ?? [],
+            $params['headers'] ?? [],
+            $params['json'] ?? []
         );
         unset($flat_params['query'],
             $flat_params['json'],
@@ -116,8 +115,8 @@ class APIXmlrpc extends APIBaseClass
         $data = $this->query(
             'initSession',
             ['query' => [
-                    'login'    => TU_USER,
-                    'password' => TU_PASS]]
+                'login'    => TU_USER,
+                'password' => TU_PASS]]
         );
 
         $this->variable($data)->isNotFalse();
@@ -145,9 +144,9 @@ class APIXmlrpc extends APIBaseClass
         $data = $this->query(
             'updateItems',
             ['itemtype' => 'Computer',
-                    'verb'     => 'PUT',
-                    'headers'  => ['Session-Token' => $this->session_token],
-                    'json'     => []],
+                'verb'     => 'PUT',
+                'headers'  => ['Session-Token' => $this->session_token],
+                'json'     => []],
             400,
             'ERROR_BAD_ARRAY'
         );

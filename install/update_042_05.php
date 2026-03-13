@@ -77,17 +77,17 @@ function update042to05()
                 $line["location"] = 0;
             }
 
-            $query2 .= " VALUES ('".$line["name"]."', '".$line["osver"]."',
-                              '".$line["processor_speed"]."', '".$line["serial"]."',
-                              '".$line["otherserial"]."', '".$line["ram"]."',
-                              '".$line ["hdspace"]."', '".$line["contact"]."',
-                              '".$line["contact_num"]."', '".$line["comments"]."',
-                              '".$line["achat_date"]."', '".$line["date_fin_garantie"]."',
-                              '".$line["maintenance"]."', '".$line["os"]."', '".$line["hdtype"]."',
-                              '".$line["sndcard"]."', '".$line["moboard"]."', '".$line["gfxcard"]."',
-                              '".$line["network"]."', '".$line["ramtype"]."',
-                              '".$line["location"]."', '".$line["processor"]."', '".$line["type"]."',
-                              '1', '".$line["templname"]."')";
+            $query2 .= " VALUES ('" . $line["name"] . "', '" . $line["osver"] . "',
+                              '" . $line["processor_speed"] . "', '" . $line["serial"] . "',
+                              '" . $line["otherserial"] . "', '" . $line["ram"] . "',
+                              '" . $line ["hdspace"] . "', '" . $line["contact"] . "',
+                              '" . $line["contact_num"] . "', '" . $line["comments"] . "',
+                              '" . $line["achat_date"] . "', '" . $line["date_fin_garantie"] . "',
+                              '" . $line["maintenance"] . "', '" . $line["os"] . "', '" . $line["hdtype"] . "',
+                              '" . $line["sndcard"] . "', '" . $line["moboard"] . "', '" . $line["gfxcard"] . "',
+                              '" . $line["network"] . "', '" . $line["ramtype"] . "',
+                              '" . $line["location"] . "', '" . $line["processor"] . "', '" . $line["type"] . "',
+                              '1', '" . $line["templname"] . "')";
             $DB->queryOrDie($query2, "0.5-convert template 2 computers");
         }
 
@@ -618,13 +618,13 @@ function update042to05()
 
                 if (!empty($data["VERS"])) {
                     $query_update = "UPDATE `glpi_dropdown_os`
-                                SET `name` = '".$data["NAME"]." - ".$data["VERS"]."'
-                                WHERE `ID` = '".$data["ID"]."'";
+                                SET `name` = '" . $data["NAME"] . " - " . $data["VERS"] . "'
+                                WHERE `ID` = '" . $data["ID"] . "'";
                     $DB->queryOrDie($query_update, "0.5 update for update OS");
                 }
 
             } else { // OS deja mis a jour -> creation d'un nouvel OS et mise a jour des elements
-                $newname      = $data["NAME"]." - ".$data["VERS"];
+                $newname      = $data["NAME"] . " - " . $data["VERS"];
                 $query_insert = "INSERT INTO `glpi_dropdown_os`
                                     (`name`)
                              VALUES ('$newname')";
@@ -637,9 +637,9 @@ function update042to05()
 
                 if ($DB->numrows($res) == 1) {
                     $query_update = "UPDATE `glpi_computers`
-                                SET `os` . ='".$DB->result($res, 0, "ID")."'
-                                WHERE `os` = '".$data["ID"]."'
-                                      AND `osver` = '".$data["VERS"]."'";
+                                SET `os` . ='" . $DB->result($res, 0, "ID") . "'
+                                WHERE `os` = '" . $data["ID"] . "'
+                                      AND `osver` = '" . $data["VERS"] . "'";
                     $DB->queryOrDie($query_update, "0.5 update2 for update OS");
                 }
             }
@@ -1218,7 +1218,7 @@ function update042to05()
                 if (!in_array($line["name"], $prefs)) {
                     $query_insert = "INSERT INTO `glpi_prefs`
                                        (`username` , `tracking_order` , `language`)
-                                VALUES ('".$line["name"]."', 'no', 'english')";
+                                VALUES ('" . $line["name"] . "', 'no', 'english')";
                     $DB->queryOrDie($query_insert, "glpi maj prefs");
                 }
             }
@@ -1276,7 +1276,7 @@ function updateMaintenanceInfos($table, $type, $ID)
     while ($data = $DB->fetchArray($result)) {
         $query_insert = "INSERT INTO `glpi_contract_device`
                               (`FK_contract`, `FK_device` ,`device_type`)
-                       VALUES ('$ID', '".$data["ID"]."', '$type')";
+                       VALUES ('$ID', '" . $data["ID"] . "', '$type')";
         $result_insert = $DB->queryOrDie($query_insert, "0.5 insert for update maintenance");
     }
     $DB->freeResult($result);
@@ -1320,7 +1320,7 @@ function updateWarrantyInfos($table, $type)
             $query_insert  = "INSERT INTO `glpi_infocoms`
                                   (`device_type`, `FK_device`, `buy_date`, `warranty_duration`,
                                    `comments`)
-                           VALUES ('$type', '$IDitem', '".$achat_date."', '$duration', '')";
+                           VALUES ('$type', '$IDitem', '" . $achat_date . "', '$duration', '')";
             $result_insert = $DB->queryOrDie($query_insert, "0.5 insert for update warranty");
         }
     }
@@ -1342,7 +1342,7 @@ function isMaintenanceUsed()
     global $DB;
 
     $tables = ["glpi_computers", "glpi_monitors", "glpi_networking", "glpi_peripherals",
-                    "glpi_printers"];
+        "glpi_printers"];
 
     foreach ($tables as $key => $table) {
         $query  = "SELECT `ID`
@@ -1364,7 +1364,7 @@ function dropMaintenanceField()
     global $DB;
 
     $tables = ["glpi_computers", "glpi_monitors", "glpi_networking", "glpi_peripherals",
-                    "glpi_printers"];
+        "glpi_printers"];
 
     foreach ($tables as $key => $table) {
         $query  = "ALTER TABLE `$table`
@@ -1393,54 +1393,54 @@ function compDpd2Device($devtype, $devname, $dpdname, $compDpdName, $specif = ''
     global $DB;
 
     $query = "SELECT *
-             FROM `glpi_dropdown_".$dpdname."`";
+             FROM `glpi_dropdown_" . $dpdname . "`";
 
     $result = $DB->query($query);
     while ($lndropd = $DB->fetchArray($result)) {
-        $query2 = "INSERT INTO `glpi_device_".$devname."`
+        $query2 = "INSERT INTO `glpi_device_" . $devname . "`
                         (`designation`, `comment`, `specif_default`)
-                 VALUES ('".addslashes($lndropd["name"])."', '', '')";
-        $DB->queryOrDie($query2, "unable to transfer ".$dpdname." to ".$devname." ");
+                 VALUES ('" . addslashes($lndropd["name"]) . "', '', '')";
+        $DB->queryOrDie($query2, "unable to transfer " . $dpdname . " to " . $devname . " ");
 
         $devid   = $DB->insertId();
         $query3  = "SELECT *
                   FROM `glpi_computers`
-                  WHERE `".$compDpdName."` = '".$lndropd["ID"]."'";
+                  WHERE `" . $compDpdName . "` = '" . $lndropd["ID"] . "'";
         $result3 = $DB->query($query3);
 
         while ($lncomp = $DB->fetchArray($result3)) {
             $query4 = "INSERT INTO `glpi_computer_device`
                            (`device_type`, `FK_device`, `FK_computers`)
-                    VALUES ('$devtype', '".$devid."', '".$lncomp["ID"]."')";
+                    VALUES ('$devtype', '" . $devid . "', '" . $lncomp["ID"] . "')";
 
             if (!empty($specif)) {
-                $queryspecif = "SELECT `".$specif."`
+                $queryspecif = "SELECT `" . $specif . "`
                             FROM `glpi_computers`
-                            WHERE `ID` = '".$lncomp["ID"]."'";
+                            WHERE `ID` = '" . $lncomp["ID"] . "'";
 
                 if ($resultspecif = $DB->query($queryspecif)) {
                     $query4 = "INSERT INTO `glpi_computer_device`
                                  (`specificity`, `device_type`, `FK_device`, `FK_computers`)
-                          VALUES ('".$DB->result($resultspecif, 0, $specif)."', '$devtype',
-                                  '".$devid."', '".$lncomp["ID"]."')";
+                          VALUES ('" . $DB->result($resultspecif, 0, $specif) . "', '$devtype',
+                                  '" . $devid . "', '" . $lncomp["ID"] . "')";
                 }
             }
-            $DB->queryOrDie($query4, "unable to migrate from ".$dpdname." to ".$devname." for item computer:".$lncomp["ID"]);
+            $DB->queryOrDie($query4, "unable to migrate from " . $dpdname . " to " . $devname . " for item computer:" . $lncomp["ID"]);
         }
     }
     $DB->freeResult($result);
 
     //Delete unused elements (dropdown on the computer table, dropdown table and specif)
     $query = "ALTER TABLE `glpi_computers`
-             DROP `".$compDpdName."`";
+             DROP `" . $compDpdName . "`";
     $DB->queryOrDie($query);
 
-    $query = "DROP TABLE `glpi_dropdown_".$dpdname."`";
+    $query = "DROP TABLE `glpi_dropdown_" . $dpdname . "`";
     $DB->queryOrDie($query);
 
     if (!empty($specif)) {
         $query = "ALTER TABLE `glpi_computers`
-                DROP `".$specif."`";
+                DROP `" . $specif . "`";
         $DB->queryOrDie($query);
     }
 }

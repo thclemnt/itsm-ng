@@ -54,8 +54,8 @@ function update0843to0844()
         // rename new tables if exists ?
         if ($DB->tableExists($new_table)) {
             $migration->dropTable("backup_$new_table");
-            $migration->displayWarning("$new_table table already exists. ".
-                                       "A backup have been done to backup_$new_table.");
+            $migration->displayWarning("$new_table table already exists. "
+                                       . "A backup have been done to backup_$new_table.");
             $backup_tables = true;
             $query         = $migration->renameTable("$new_table", "backup_$new_table");
         }
@@ -69,17 +69,17 @@ function update0843to0844()
 
     // Upgrade ticket bookmarks and clean _glpi_csrf_token
     $status =  ['new'           => CommonITILObject::INCOMING,
-                     'assign'        => CommonITILObject::ASSIGNED,
-                     'plan'          => CommonITILObject::PLANNED,
-                     'waiting'       => CommonITILObject::WAITING,
-                     'solved'        => CommonITILObject::SOLVED,
-                     'closed'        => CommonITILObject::CLOSED,
-                     'accepted'      => CommonITILObject::ACCEPTED,
-                     'observe'       => CommonITILObject::OBSERVED,
-                     'evaluation'    => CommonITILObject::EVALUATION,
-                     'approbation'   => CommonITILObject::APPROVAL,
-                     'test'          => CommonITILObject::TEST,
-                     'qualification' => CommonITILObject::QUALIFICATION];
+        'assign'        => CommonITILObject::ASSIGNED,
+        'plan'          => CommonITILObject::PLANNED,
+        'waiting'       => CommonITILObject::WAITING,
+        'solved'        => CommonITILObject::SOLVED,
+        'closed'        => CommonITILObject::CLOSED,
+        'accepted'      => CommonITILObject::ACCEPTED,
+        'observe'       => CommonITILObject::OBSERVED,
+        'evaluation'    => CommonITILObject::EVALUATION,
+        'approbation'   => CommonITILObject::APPROVAL,
+        'test'          => CommonITILObject::TEST,
+        'qualification' => CommonITILObject::QUALIFICATION];
 
     // Migrate templates : back for validation
     $query = "SELECT `glpi_notificationtemplatetranslations`.*
@@ -103,10 +103,10 @@ function update0843to0844()
                     $html    = str_replace("validation.storestatus=$new", "validation.storestatus=$old", $html);
                 }
                 $query = "UPDATE `glpi_notificationtemplatetranslations`
-                        SET `subject` = '".addslashes($subject)."',
-                           `content_text` = '".addslashes($text)."',
-                           `content_html` = '".addslashes($html)."'
-                        WHERE `id` = ".$data['id']."";
+                        SET `subject` = '" . addslashes($subject) . "',
+                           `content_text` = '" . addslashes($text) . "',
+                           `content_html` = '" . addslashes($html) . "'
+                        WHERE `id` = " . $data['id'] . "";
                 $DB->queryOrDie($query, "0.84.4 fix tags usage for storestatus");
             }
         }
@@ -126,7 +126,7 @@ function update0843to0844()
                 while ($data = $DB->fetchAssoc($result)) {
                     $query = "SELECT MAX(`rank`)
                          FROM `glpi_displaypreferences`
-                         WHERE `users_id` = '".$data['users_id']."'
+                         WHERE `users_id` = '" . $data['users_id'] . "'
                                AND `itemtype` = '$type'";
                     $result = $DB->query($query);
                     $rank   = $DB->result($result, 0, 0);
@@ -135,15 +135,15 @@ function update0843to0844()
                     foreach ($tab as $newval) {
                         $query = "SELECT *
                             FROM `glpi_displaypreferences`
-                            WHERE `users_id` = '".$data['users_id']."'
+                            WHERE `users_id` = '" . $data['users_id'] . "'
                                   AND `num` = '$newval'
                                   AND `itemtype` = '$type'";
                         if ($result2 = $DB->query($query)) {
                             if ($DB->numrows($result2) == 0) {
                                 $query = "INSERT INTO `glpi_displaypreferences`
                                          (`itemtype` ,`num` ,`rank` ,`users_id`)
-                                  VALUES ('$type', '$newval', '".$rank++."',
-                                          '".$data['users_id']."')";
+                                  VALUES ('$type', '$newval', '" . $rank++ . "',
+                                          '" . $data['users_id'] . "')";
                                 $DB->query($query);
                             }
                         }
@@ -155,7 +155,7 @@ function update0843to0844()
                 foreach ($tab as $newval) {
                     $query = "INSERT INTO `glpi_displaypreferences`
                                 (`itemtype` ,`num` ,`rank` ,`users_id`)
-                         VALUES ('$type', '$newval', '".$rank++."', '0')";
+                         VALUES ('$type', '$newval', '" . $rank++ . "', '0')";
                     $DB->query($query);
                 }
             }

@@ -114,18 +114,18 @@ class NetworkPortAlias extends NetworkPortInstantiation
         $netport_types = ['NetworkPortEthernet', 'NetworkPortWifi'];
         foreach ($netport_types as $netport_type) {
             $iterator = $DB->request([
-               'SELECT' => [
-                  'port.id',
-                  'port.name',
-                  'port.mac'
-               ],
-               'FROM'   => 'glpi_networkports AS port',
-               'WHERE'  => [
-                  'items_id'           => $lastItem->getID(),
-                  'itemtype'           => $lastItem->getType(),
-                  'instantiation_type' => $netport_type
-               ],
-               'ORDER'  => ['logical_number', 'name']
+                'SELECT' => [
+                    'port.id',
+                    'port.name',
+                    'port.mac',
+                ],
+                'FROM'   => 'glpi_networkports AS port',
+                'WHERE'  => [
+                    'items_id'           => $lastItem->getID(),
+                    'itemtype'           => $lastItem->getType(),
+                    'instantiation_type' => $netport_type,
+                ],
+                'ORDER'  => ['logical_number', 'name'],
             ]);
 
             if (count($iterator)) {
@@ -154,22 +154,22 @@ class NetworkPortAlias extends NetworkPortInstantiation
         }
 
         return [
-           $this->getTypeName() => [
-              'visible' => true,
-              'inputs' => [
-                 __('MAC') => [
-                    'type' => 'text',
-                    'name' => 'mac',
-                    'value' => $netport->fields['mac'],
-                 ],
-                 __('Origin port') => [
-                    'type' => 'select',
-                    'name' => 'networkports_id_alias',
-                    'values' => $checklistOptions,
-                    'value' => $this->fields['networkports_id_alias'],
-                 ]
-              ]
-           ]
+            $this->getTypeName() => [
+                'visible' => true,
+                'inputs' => [
+                    __('MAC') => [
+                        'type' => 'text',
+                        'name' => 'mac',
+                        'value' => $netport->fields['mac'],
+                    ],
+                    __('Origin port') => [
+                        'type' => 'select',
+                        'name' => 'networkports_id_alias',
+                        'values' => $checklistOptions,
+                        'value' => $this->fields['networkports_id_alias'],
+                    ],
+                ],
+            ],
         ];
     }
 

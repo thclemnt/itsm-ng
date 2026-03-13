@@ -117,7 +117,7 @@ class RuleAction extends CommonDBChild
             && ($realrule = Rule::getRuleObjectByID($this->input['rules_id']))
         ) {
             $realrule->update(['id'       => $this->input['rules_id'],
-                                    'date_mod' => $_SESSION['glpi_currenttime']]);
+                'date_mod' => $_SESSION['glpi_currenttime']]);
         }
     }
 
@@ -136,7 +136,7 @@ class RuleAction extends CommonDBChild
             && ($realrule = Rule::getRuleObjectByID($this->fields['rules_id']))
         ) {
             $realrule->update(['id'       => $this->fields['rules_id'],
-                                    'date_mod' => $_SESSION['glpi_currenttime']]);
+                'date_mod' => $_SESSION['glpi_currenttime']]);
         }
     }
 
@@ -159,34 +159,34 @@ class RuleAction extends CommonDBChild
         $tab = [];
 
         $tab[] = [
-           'id'                 => '1',
-           'table'              => $this->getTable(),
-           'field'              => 'action_type',
-           'name'               => self::getTypeName(1),
-           'massiveaction'      => false,
-           'datatype'           => 'specific',
-           'additionalfields'   => ['rules_id']
+            'id'                 => '1',
+            'table'              => $this->getTable(),
+            'field'              => 'action_type',
+            'name'               => self::getTypeName(1),
+            'massiveaction'      => false,
+            'datatype'           => 'specific',
+            'additionalfields'   => ['rules_id'],
         ];
 
         $tab[] = [
-           'id'                 => '2',
-           'table'              => $this->getTable(),
-           'field'              => 'field',
-           'name'               => _n('Field', 'Fields', Session::getPluralNumber()),
-           'massiveaction'      => false,
-           'datatype'           => 'specific',
-           'additionalfields'   => ['rules_id']
+            'id'                 => '2',
+            'table'              => $this->getTable(),
+            'field'              => 'field',
+            'name'               => _n('Field', 'Fields', Session::getPluralNumber()),
+            'massiveaction'      => false,
+            'datatype'           => 'specific',
+            'additionalfields'   => ['rules_id'],
         ];
 
         $tab[] = [
-           'id'                 => '3',
-           'table'              => $this->getTable(),
-           'field'              => 'value',
-           'name'               => __('Value'),
-           'massiveaction'      => false,
-           'datatype'           => 'specific',
-           'additionalfields'   => ['rules_id'],
-           'autocomplete'       => true,
+            'id'                 => '3',
+            'table'              => $this->getTable(),
+            'field'              => 'value',
+            'name'               => __('Value'),
+            'massiveaction'      => false,
+            'datatype'           => 'specific',
+            'additionalfields'   => ['rules_id'],
+            'autocomplete'       => true,
         ];
 
         return $tab;
@@ -285,10 +285,10 @@ class RuleAction extends CommonDBChild
                     && $generic_rule->getFromDB($values['rules_id'])
                 ) {
                     return self::dropdownActions(['subtype'     => $generic_rule->fields["sub_type"],
-                                                       'name'        => $name,
-                                                       'value'       => $values[$field],
-                                                       'alreadyused' => false,
-                                                       'display'     => false]);
+                        'name'        => $name,
+                        'value'       => $values[$field],
+                        'alreadyused' => false,
+                        'display'     => false]);
                 }
                 break;
 
@@ -325,9 +325,9 @@ class RuleAction extends CommonDBChild
         global $DB;
 
         $iterator = $DB->request([
-           'FROM'   => $this->getTable(),
-           'WHERE'  => [static::$items_id => $ID],
-           'ORDER'  => 'id'
+            'FROM'   => $this->getTable(),
+            'WHERE'  => [static::$items_id => $ID],
+            'ORDER'  => 'id',
         ]);
 
         $rules_actions = [];
@@ -352,10 +352,10 @@ class RuleAction extends CommonDBChild
     {
 
         $input = [
-           'action_type'     => $action,
-           'field'           => $field,
-           'value'           => $value,
-           static::$items_id => $ruleid,
+            'action_type'     => $action,
+            'field'           => $field,
+            'value'           => $value,
+            static::$items_id => $ruleid,
         ];
         $this->add($input);
     }
@@ -376,12 +376,12 @@ class RuleAction extends CommonDBChild
     {
 
         $p = [
-           'subtype'     => '',
-           'name'        => '',
-           'field'       => '',
-           'value'       => '',
-           'alreadyused' => false,
-           'display'     => true,
+            'subtype'     => '',
+            'name'        => '',
+            'field'       => '',
+            'value'       => '',
+            'alreadyused' => false,
+            'display'     => true,
         ];
 
         if (is_array($options) && count($options)) {
@@ -412,7 +412,7 @@ class RuleAction extends CommonDBChild
             }
 
             return Dropdown::showFromArray($p['name'], $elements, ['value'   => $p['value'],
-                                                                        'display' => $p['display']]);
+                'display' => $p['display']]);
         }
     }
 
@@ -421,19 +421,19 @@ class RuleAction extends CommonDBChild
     {
 
         return ['assign'              => __('Assign'),
-                     'append'              => __('Add'),
-                     'regex_result'        => __('Assign the value from regular expression'),
-                     'append_regex_result' => __('Add the result of regular expression'),
-                     'affectbyip'          => __('Assign: equipment by IP address'),
-                     'affectbyfqdn'        => __('Assign: equipment by name + domain'),
-                     'affectbymac'         => __('Assign: equipment by MAC address'),
-                     'compute'             => __('Recalculate'),
-                     'do_not_compute'      => __('Do not calculate'),
-                     'send'                => __('Send'),
-                     'add_validation'      => __('Send'),
-                     'fromuser'            => __('Copy from user'),
-                     'defaultfromuser'     => __('Copy default from user'),
-                     'fromitem'            => __('Copy from item')];
+            'append'              => __('Add'),
+            'regex_result'        => __('Assign the value from regular expression'),
+            'append_regex_result' => __('Add the result of regular expression'),
+            'affectbyip'          => __('Assign: equipment by IP address'),
+            'affectbyfqdn'        => __('Assign: equipment by name + domain'),
+            'affectbymac'         => __('Assign: equipment by MAC address'),
+            'compute'             => __('Recalculate'),
+            'do_not_compute'      => __('Do not calculate'),
+            'send'                => __('Send'),
+            'add_validation'      => __('Send'),
+            'fromuser'            => __('Copy from user'),
+            'defaultfromuser'     => __('Copy default from user'),
+            'fromitem'            => __('Copy from item')];
     }
 
 
@@ -465,7 +465,7 @@ class RuleAction extends CommonDBChild
                 foreach ($results[1] as $result) {
                     $action = str_replace(
                         "#$result",
-                        (isset($regex_result[$result]) ? $regex_result[$result] : ''),
+                        ($regex_result[$result] ?? ''),
                         $action
                     );
                 }
@@ -488,9 +488,9 @@ class RuleAction extends CommonDBChild
 
             $actions = [];
             $iterator = $DB->request([
-               'SELECT' => 'field',
-               'FROM'   => $this->getTable(),
-               'WHERE'  => [static::$items_id => $rules_id],
+                'SELECT' => 'field',
+                'FROM'   => $this->getTable(),
+                'WHERE'  => [static::$items_id => $rules_id],
             ]);
 
             while ($action = $iterator->next()) {
@@ -517,7 +517,7 @@ class RuleAction extends CommonDBChild
         $display = false;
 
         $param = [
-           'value' => '',
+            'value' => '',
         ];
         if (isset($options['value'])) {
             $param['value'] = $options['value'];
@@ -601,10 +601,10 @@ class RuleAction extends CommonDBChild
                         case "dropdown_urgency":
                             $param['name']  = 'value';
                             renderTwigTemplate('macros/input.twig', [
-                             'type' => 'select',
-                             'name' => 'value',
-                             'values' => [ 3 => Ticket::getUrgencyName(3) ],
-                             'value' => $param['value'],
+                                'type' => 'select',
+                                'name' => 'value',
+                                'values' => [ 3 => Ticket::getUrgencyName(3) ],
+                                'value' => $param['value'],
                             ]);
                             $display = true;
                             break;
@@ -612,10 +612,10 @@ class RuleAction extends CommonDBChild
                         case "dropdown_impact":
                             $param['name']  = 'value';
                             renderTwigTemplate('macros/input.twig', [
-                             'type' => 'select',
-                             'name' => 'value',
-                             'values' => [ 3 => Ticket::getImpactName(3) ],
-                             'value' => $param['value'],
+                                'type' => 'select',
+                                'name' => 'value',
+                                'values' => [ 3 => Ticket::getImpactName(3) ],
+                                'value' => $param['value'],
                             ]);
                             $display = true;
                             break;
@@ -624,17 +624,17 @@ class RuleAction extends CommonDBChild
                             if ($_POST["action_type"] != 'compute') {
                                 $param['name']  = 'value';
                                 renderTwigTemplate('macros/input.twig', [
-                                 'type' => 'select',
-                                 'name' => 'value',
-                                 'values' => [
-                                     6 => Ticket::getPriorityName(6),
-                                     5 => Ticket::getPriorityName(5),
-                                     4 => Ticket::getPriorityName(4),
-                                     3 => Ticket::getPriorityName(3),
-                                     2 => Ticket::getPriorityName(2),
-                                     1 => Ticket::getPriorityName(1),
-                                 ],
-                                 'value' => $param['value'],
+                                    'type' => 'select',
+                                    'name' => 'value',
+                                    'values' => [
+                                        6 => Ticket::getPriorityName(6),
+                                        5 => Ticket::getPriorityName(5),
+                                        4 => Ticket::getPriorityName(4),
+                                        3 => Ticket::getPriorityName(3),
+                                        2 => Ticket::getPriorityName(2),
+                                        1 => Ticket::getPriorityName(1),
+                                    ],
+                                    'value' => $param['value'],
                                 ]);
                             }
                             $display = true;
@@ -643,10 +643,10 @@ class RuleAction extends CommonDBChild
                         case "dropdown_status":
                             $param['name']  = 'value';
                             renderTwigTemplate('macros/input.twig', [
-                             'type' => 'select',
-                             'name' => 'value',
-                             'values' => Ticket::getAllStatusArray(),
-                             'value' => $param['value'],
+                                'type' => 'select',
+                                'name' => 'value',
+                                'values' => Ticket::getAllStatusArray(),
+                                'value' => $param['value'],
                             ]);
                             $display = true;
                             break;
@@ -654,9 +654,9 @@ class RuleAction extends CommonDBChild
                         case "yesonly":
                         case "yesno":
                             renderTwigTemplate('macros/input.twig', [
-                             'type' => 'checkbox',
-                             'name' => 'value',
-                             'value' => $param['value'],
+                                'type' => 'checkbox',
+                                'name' => 'value',
+                                'value' => $param['value'],
                             ]);
                             $display = true;
                             break;
@@ -675,9 +675,9 @@ class RuleAction extends CommonDBChild
                                 $rule_data = getAllDataFromTable(
                                     self::getTable(),
                                     [
-                                      'action_type'           => 'add_validation',
-                                      'field'                 => 'users_id_validate',
-                                      $item->getRuleIdField() => $options[$item->getRuleIdField()]
+                                        'action_type'           => 'add_validation',
+                                        'field'                 => 'users_id_validate',
+                                        $item->getRuleIdField() => $options[$item->getRuleIdField()],
                                     ]
                                 );
 
@@ -704,9 +704,9 @@ class RuleAction extends CommonDBChild
                                 $rule_data = getAllDataFromTable(
                                     self::getTable(),
                                     [
-                                      'action_type'           => 'add_validation',
-                                      'field'                 => 'groups_id_validate',
-                                      $item->getRuleIdField() => $options[$item->getRuleIdField()]
+                                        'action_type'           => 'add_validation',
+                                        'field'                 => 'groups_id_validate',
+                                        $item->getRuleIdField() => $options[$item->getRuleIdField()],
                                     ]
                                 );
                                 foreach ($rule_data as $data) {
@@ -716,9 +716,9 @@ class RuleAction extends CommonDBChild
 
                             $param['name']      = 'value';
                             $param['condition'] = [new QuerySubQuery([
-                               'SELECT' => ['COUNT' => ['users_id']],
-                               'FROM'   => 'glpi_groups_users',
-                               'WHERE'  => ['groups_id' => new \QueryExpression('glpi_groups.id')]
+                                'SELECT' => ['COUNT' => ['users_id']],
+                                'FROM'   => 'glpi_groups_users',
+                                'WHERE'  => ['groups_id' => new QueryExpression('glpi_groups.id')],
                             ])];
                             $param['right']     = ['validate_incident', 'validate_request'];
                             $param['used']      = $used;
@@ -792,48 +792,48 @@ class RuleAction extends CommonDBChild
         $rand = rand();
 
         $form = [
-           'action' => $this->getFormURL(),
-           'buttons' => [
-              [
-                 'name'  => 'add',
-                 'value' => __('Add'),
-                 'class' => 'btn btn-secondary',
-              ]
-           ],
-           'content' => [
-              '' => [
-                 'visible' => true,
-                 'inputs' => [
-                    [
-                       'type' => 'hidden',
-                       'name' => $rule->getRuleIdField(),
-                       'value' => $this->fields[static::$items_id],
+            'action' => $this->getFormURL(),
+            'buttons' => [
+                [
+                    'name'  => 'add',
+                    'value' => __('Add'),
+                    'class' => 'btn btn-secondary',
+                ],
+            ],
+            'content' => [
+                '' => [
+                    'visible' => true,
+                    'inputs' => [
+                        [
+                            'type' => 'hidden',
+                            'name' => $rule->getRuleIdField(),
+                            'value' => $this->fields[static::$items_id],
+                        ],
+                        _n('Action', 'Actions', 1) => [
+                            'type' => 'select',
+                            'name' => 'field',
+                            'id'   => 'dropdown_field' . $rand,
+                            'values' => [Dropdown::EMPTY_VALUE]
+                                + $rule->dropdownActions(['noHtml' => true, 'used' => $used]),
+                            'value' => $this->fields['field'],
+                            'col_lg' => 12,
+                            'col_md' => 12,
+                        ],
+                        '' => [
+                            'content' => '<span class="w-100" id="action_span"></span>',
+                            'col_lg' => 12,
+                            'col_md' => 12,
+                        ],
                     ],
-                    _n('Action', 'Actions', 1) => [
-                       'type' => 'select',
-                       'name' => 'field',
-                       'id'   => 'dropdown_field' . $rand,
-                       'values' => [Dropdown::EMPTY_VALUE] +
-                           $rule->dropdownActions(['noHtml' => true, 'used' => $used]),
-                       'value' => $this->fields['field'],
-                       'col_lg' => 12,
-                       'col_md' => 12,
-                    ],
-                    '' => [
-                       'content' => '<span class="w-100" id="action_span"></span>',
-                       'col_lg' => 12,
-                       'col_md' => 12,
-                    ],
-                 ]
-              ]
-           ]
+                ],
+            ],
         ];
         renderTwigForm($form);
 
         $params = ['field'                 => '__VALUE__',
-                        'sub_type'              => $rule->getType(),
-                        'ruleactions_id'        => $this->getID(),
-                        $rule->getRuleIdField() => $this->fields[static::$items_id]];
+            'sub_type'              => $rule->getType(),
+            'ruleactions_id'        => $this->getID(),
+            $rule->getRuleIdField() => $this->fields[static::$items_id]];
         Ajax::updateItemOnSelectEvent(
             "dropdown_field$rand",
             "action_span",

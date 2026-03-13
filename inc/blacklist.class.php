@@ -80,17 +80,17 @@ class Blacklist extends CommonDropdown
     {
 
         return [
-           __('Value') => [
-              'name'  => 'value',
-              'type'  => 'text',
-              'value' => $this->fields['value'],
-           ],
-           _n('Type', 'Types', 1) => [
-              'name'  => 'type',
-              'type'  => 'select',
-              'values' => self::getTypes(),
-              'value' => $this->fields['type'],
-           ]
+            __('Value') => [
+                'name'  => 'value',
+                'type'  => 'text',
+                'value' => $this->fields['value'],
+            ],
+            _n('Type', 'Types', 1) => [
+                'name'  => 'type',
+                'type'  => 'select',
+                'values' => self::getTypes(),
+                'value' => $this->fields['type'],
+            ],
         ];
     }
 
@@ -111,21 +111,21 @@ class Blacklist extends CommonDropdown
         $tab = parent::rawSearchOptions();
 
         $tab[] = [
-           'id'                 => '11',
-           'table'              => $this->getTable(),
-           'field'              => 'value',
-           'name'               => __('Value'),
-           'datatype'           => 'text',
-           'autocomplete'       => true,
+            'id'                 => '11',
+            'table'              => $this->getTable(),
+            'field'              => 'value',
+            'name'               => __('Value'),
+            'datatype'           => 'text',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '12',
-           'table'              => $this->getTable(),
-           'field'              => 'type',
-           'name'               => _n('Type', 'Types', 1),
-           'searchtype'         => ['equals', 'notequals'],
-           'datatype'           => 'specific'
+            'id'                 => '12',
+            'table'              => $this->getTable(),
+            'field'              => 'type',
+            'name'               => _n('Type', 'Types', 1),
+            'searchtype'         => ['equals', 'notequals'],
+            'datatype'           => 'specific',
         ];
 
         return $tab;
@@ -201,10 +201,10 @@ class Blacklist extends CommonDropdown
     {
 
         $params = [
-           'value'     => 0,
-           'toadd'     => [],
-           'on_change' => '',
-           'display'   => true,
+            'value'     => 0,
+            'toadd'     => [],
+            'on_change' => '',
+            'display'   => true,
         ];
 
         if (is_array($options) && count($options)) {
@@ -233,11 +233,11 @@ class Blacklist extends CommonDropdown
     {
 
         $options = [
-           self::IP     => __('IP'),
-           self::MAC    => __('MAC'),
-           self::SERIAL => __('Serial number'),
-           self::UUID   => __('UUID'),
-           self::EMAIL  => _n('Email', 'Emails', 1),
+            self::IP     => __('IP'),
+            self::MAC    => __('MAC'),
+            self::SERIAL => __('Serial number'),
+            self::UUID   => __('UUID'),
+            self::EMAIL  => _n('Email', 'Emails', 1),
         ];
 
         return $options;

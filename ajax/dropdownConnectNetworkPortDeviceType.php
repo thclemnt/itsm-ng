@@ -45,17 +45,17 @@ Session::checkRight("networking", UPDATE);
 // Make a select box
 if (class_exists($_POST["itemtype"])) {
     $params   = [
-       'entity'    => $_POST["entity_restrict"],
-       'condition' => [
-          'id' => new \QuerySubQuery([
-             'SELECT' => 'items_id',
-             'FROM'   => 'glpi_networkports',
-             'WHERE'  => [
-                'itemtype'           => $_POST['itemtype'],
-                'instantiation_type' => $_POST['instantiation_type']
-             ]
-          ])
-       ],
+        'entity'    => $_POST["entity_restrict"],
+        'condition' => [
+            'id' => new QuerySubQuery([
+                'SELECT' => 'items_id',
+                'FROM'   => 'glpi_networkports',
+                'WHERE'  => [
+                    'itemtype'           => $_POST['itemtype'],
+                    'instantiation_type' => $_POST['instantiation_type'],
+                ],
+            ]),
+        ],
     ];
 
     echo json_encode(getOptionForItems($_POST["itemtype"], ['entities_id' => $_POST["entity_restrict"] ?? Session::getActiveEntity()]));

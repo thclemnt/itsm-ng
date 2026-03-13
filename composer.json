@@ -75,6 +75,7 @@
         "rector/rector": "^2.3",
         "sserbin/twig-linter": "^3.1",
         "symfony/var-dumper": "^6.3",
+        "symplify/easy-coding-standard": "^13.0",
         "vimeo/psalm": "^5.26"
     },
     "replace": {
@@ -115,6 +116,8 @@
         "test:web": "php vendor/bin/atoum -p 'php -d memory_limit=512M' --debug --force-terminal --use-dot-report --bootstrap-file tests/bootstrap.php --no-code-coverage --max-children-number 1 -d tests/web",
         "test:ldap": "php vendor/bin/atoum -p 'php -d memory_limit=512M' --debug --force-terminal --use-dot-report --bootstrap-file tests/bootstrap.php --no-code-coverage --max-children-number 1 -d tests/LDAP",
         "test:imap": "php vendor/bin/atoum -p 'php -d memory_limit=512M' --debug --force-terminal --use-dot-report --bootstrap-file tests/bootstrap.php --no-code-coverage --max-children-number 1 -d tests/imap",
+        "lint:php": "vendor/bin/ecs check --config ecs.php --no-progress-bar --no-diffs",
+        "lint:php:fix": "vendor/bin/ecs check --config ecs.php --no-diffs --fix",
         "server": "php -S localhost:8000"
     },
     "repositories": [

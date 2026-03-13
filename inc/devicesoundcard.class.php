@@ -54,34 +54,34 @@ class DeviceSoundCard extends CommonDevice
         return array_merge(
             parent::getAdditionalFields(),
             [
-              _n('Type', 'Types', 1) => [
-                 'name'  => 'type',
-                 'type'  => 'text',
-                 'value' => $this->fields['type'],
-              ],
-              _n('Model', 'Models', 1) => [
-                 'name'  => 'devicesoundcardmodels_id',
-                 'type'  => 'select',
-                 'values' => getOptionForItems('DeviceSoundCardModel'),
-                 'value' => $this->fields['devicesoundcardmodels_id'],
-                 'actions' => getItemActionButtons(['info', 'add'], 'DeviceSoundCardModel'),
-              ],
-              RegisteredID::getTypeName(Session::getPluralNumber()) => [
-                 'name'  => 'none',
-                 'type'  => 'multiSelect',
-                 'inputs' => [
-                    [
-                       'name' => 'current_registeredID_type',
-                       'type' => 'select',
-                       'values' => array_merge([ Dropdown::EMPTY_VALUE ], RegisteredID::getRegisteredIDTypes()),
+                _n('Type', 'Types', 1) => [
+                    'name'  => 'type',
+                    'type'  => 'text',
+                    'value' => $this->fields['type'],
+                ],
+                _n('Model', 'Models', 1) => [
+                    'name'  => 'devicesoundcardmodels_id',
+                    'type'  => 'select',
+                    'values' => getOptionForItems('DeviceSoundCardModel'),
+                    'value' => $this->fields['devicesoundcardmodels_id'],
+                    'actions' => getItemActionButtons(['info', 'add'], 'DeviceSoundCardModel'),
+                ],
+                RegisteredID::getTypeName(Session::getPluralNumber()) => [
+                    'name'  => 'none',
+                    'type'  => 'multiSelect',
+                    'inputs' => [
+                        [
+                            'name' => 'current_registeredID_type',
+                            'type' => 'select',
+                            'values' => array_merge([ Dropdown::EMPTY_VALUE ], RegisteredID::getRegisteredIDTypes()),
+                        ],
+                        [
+                            'name' => 'current_registeredID',
+                            'type' => 'text',
+                            'size' => 30,
+                        ],
                     ],
-                    [
-                       'name' => 'current_registeredID',
-                       'type' => 'text',
-                       'size' => 30,
-                    ],
-                 ],
-                 'getInputAdd' => <<<JS
+                    'getInputAdd' => <<<JS
                   function () {
                      if (!$('input[name="current_registeredID"]').val()) {
                         return;
@@ -94,14 +94,14 @@ class DeviceSoundCard extends CommonDevice
                      return {values, title};
                   }
                JS,
-                 'values' => getOptionsWithNameForItem(
-                     'RegisteredID',
-                     ['itemtype' => $this::class, 'items_id' => $this->getID()],
-                     ['_registeredID_type' => 'device_type', '_registeredID' => 'name']
-                 ),
-                 'col_lg' => 12,
-                 'col_md' => 12,
-              ],
+                    'values' => getOptionsWithNameForItem(
+                        'RegisteredID',
+                        ['itemtype' => $this::class, 'items_id' => $this->getID()],
+                        ['_registeredID_type' => 'device_type', '_registeredID' => 'name']
+                    ),
+                    'col_lg' => 12,
+                    'col_md' => 12,
+                ],
             ]
         );
     }
@@ -112,20 +112,20 @@ class DeviceSoundCard extends CommonDevice
         $tab = parent::rawSearchOptions();
 
         $tab[] = [
-           'id'                 => '12',
-           'table'              => $this->getTable(),
-           'field'              => 'type',
-           'name'               => _n('Type', 'Types', 1),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '12',
+            'table'              => $this->getTable(),
+            'field'              => 'type',
+            'name'               => _n('Type', 'Types', 1),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '13',
-           'table'              => 'glpi_devicesoundcardmodels',
-           'field'              => 'name',
-           'name'               => _n('Model', 'Models', 1),
-           'datatype'           => 'dropdown'
+            'id'                 => '13',
+            'table'              => 'glpi_devicesoundcardmodels',
+            'field'              => 'name',
+            'name'               => _n('Model', 'Models', 1),
+            'datatype'           => 'dropdown',
         ];
 
         return $tab;
@@ -186,19 +186,19 @@ class DeviceSoundCard extends CommonDevice
         $tab = [];
 
         $tab[] = [
-           'id'                 => '12',
-           'table'              => 'glpi_devicesoundcards',
-           'field'              => 'designation',
-           'name'               => static::getTypeName(1),
-           'forcegroupby'       => true,
-           'massiveaction'      => false,
-           'datatype'           => 'string',
-           'joinparams'         => [
-              'beforejoin'         => [
-                 'table'              => 'glpi_items_devicesoundcards',
-                 'joinparams'         => $main_joinparams
-              ]
-           ]
+            'id'                 => '12',
+            'table'              => 'glpi_devicesoundcards',
+            'field'              => 'designation',
+            'name'               => static::getTypeName(1),
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
+            'datatype'           => 'string',
+            'joinparams'         => [
+                'beforejoin'         => [
+                    'table'              => 'glpi_items_devicesoundcards',
+                    'joinparams'         => $main_joinparams,
+                ],
+            ],
         ];
 
         return $tab;

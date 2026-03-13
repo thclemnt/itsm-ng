@@ -88,27 +88,27 @@ class NetworkPortEthernet extends NetworkPortInstantiation
         global $CFG_GLPI;
 
         $returnValue = [
-              $this->getTypeName() => [
-                 'visible' => true,
-                 'inputs' => [],
-              ],
+            $this->getTypeName() => [
+                'visible' => true,
+                'inputs' => [],
+            ],
         ];
         if (!$options['several']) {
             $returnValue[$this->getTypeName()]['inputs'] = [
-               _n('Network outlet', 'Network outlets', 1) => !$options['several'] ? [
-                  'type' => 'select',
-                  'name' => 'netpoints_id',
-                  'itemtype' => Netpoint::class,
-                  'value' => $this->fields['netpoints_id'],
-                  'actions' => getItemActionButtons(['info', 'add'], Netpoint::class),
-               ] : [],
-               DeviceNetworkCard::getTypeName(1) => !$options['several'] ? [
-                  'type' => 'select',
-                  'name' => 'items_devicenetworkcards_id',
-                  'itemtype' => DeviceNetworkCard::class,
-                  'value' => $this->fields['items_devicenetworkcards_id'],
-                  'actions' => getItemActionButtons(['info', 'add'], DeviceNetworkCard::class),
-               ] : [],
+                _n('Network outlet', 'Network outlets', 1) => !$options['several'] ? [
+                    'type' => 'select',
+                    'name' => 'netpoints_id',
+                    'itemtype' => Netpoint::class,
+                    'value' => $this->fields['netpoints_id'],
+                    'actions' => getItemActionButtons(['info', 'add'], Netpoint::class),
+                ] : [],
+                DeviceNetworkCard::getTypeName(1) => !$options['several'] ? [
+                    'type' => 'select',
+                    'name' => 'items_devicenetworkcards_id',
+                    'itemtype' => DeviceNetworkCard::class,
+                    'value' => $this->fields['items_devicenetworkcards_id'],
+                    'actions' => getItemActionButtons(['info', 'add'], DeviceNetworkCard::class),
+                ] : [],
             ];
         }
         $oppositePort = NetworkPort_NetworkPort::getOpposite($netport, $relations_id);
@@ -125,40 +125,40 @@ class NetworkPortEthernet extends NetworkPortInstantiation
         $entity_restrict = $options['entity_restrict'] ?? 0;
 
         $returnValue[$this->getTypeName()]['inputs'] += [
-           __('Ethernet port type') => [
-              'type' => 'select',
-              'name' => 'type',
-              'values' => self::getPortTypeName(),
-              'value' => $this->fields['type'],
-           ],
-           __('Ethernet port speed') => [
-              'type' => 'select',
-              'name' => 'speed',
-              'values' => array_merge(
-                  self::getPortSpeed(),
-                  (!isset($standard_speeds[$this->fields['speed']]) && !empty($this->fields['speed'])) ?
-                    ['speed_other_value' => self::transformPortSpeed($this->fields['speed'], true)] :
-                       ['speed_other_value' => __('Other')]
-              ),
-              'value' => $this->fields['speed'],
-           ],
-           __('MAC') => [
-              'type' => 'text',
-              'name' => 'mac',
-              'value' => $netport->fields['mac'],
-           ],
-           !$oppositePort ? [
-              'type' => 'hidden',
-              'name' => 'NetworkPortConnect_networkports_id_1',
-              'values' => $netport->getID(),
-           ] : [],
-           __('Connected to') => !$oppositePort ? [
-              'type' => 'select',
-              'id' => 'NetworkPortConnect_itemtype',
-              'name' => 'NetworkPortConnect_itemtype',
-              'values' => [Dropdown::EMPTY_VALUE] + $values,
-              'hooks' => [
-                 'change' => <<<JS
+            __('Ethernet port type') => [
+                'type' => 'select',
+                'name' => 'type',
+                'values' => self::getPortTypeName(),
+                'value' => $this->fields['type'],
+            ],
+            __('Ethernet port speed') => [
+                'type' => 'select',
+                'name' => 'speed',
+                'values' => array_merge(
+                    self::getPortSpeed(),
+                    (!isset($standard_speeds[$this->fields['speed']]) && !empty($this->fields['speed']))
+                      ? ['speed_other_value' => self::transformPortSpeed($this->fields['speed'], true)]
+                         : ['speed_other_value' => __('Other')]
+                ),
+                'value' => $this->fields['speed'],
+            ],
+            __('MAC') => [
+                'type' => 'text',
+                'name' => 'mac',
+                'value' => $netport->fields['mac'],
+            ],
+            !$oppositePort ? [
+                'type' => 'hidden',
+                'name' => 'NetworkPortConnect_networkports_id_1',
+                'values' => $netport->getID(),
+            ] : [],
+            __('Connected to') => !$oppositePort ? [
+                'type' => 'select',
+                'id' => 'NetworkPortConnect_itemtype',
+                'name' => 'NetworkPortConnect_itemtype',
+                'values' => [Dropdown::EMPTY_VALUE] + $values,
+                'hooks' => [
+                    'change' => <<<JS
                   $.ajax({
                      url: '{$CFG_GLPI['root_doc']}/ajax/dropdownConnectNetworkPortDeviceType.php',
                      type: 'POST',
@@ -179,14 +179,14 @@ class NetworkPortEthernet extends NetworkPortInstantiation
                      }
                   });
                JS,
-              ]
-           ] : [],
-           __('Itemtype') => !$oppositePort ? [
-              'type' => 'select',
-              'id' => 'NetworkPortConnect_items_id',
-              'name' => 'items',
-              'hooks' => [
-                 'change' => <<<JS
+                ],
+            ] : [],
+            __('Itemtype') => !$oppositePort ? [
+                'type' => 'select',
+                'id' => 'NetworkPortConnect_items_id',
+                'name' => 'items',
+                'hooks' => [
+                    'change' => <<<JS
                   $.ajax({
                      url: '{$CFG_GLPI['root_doc']}/ajax/dropdownConnectNetworkPort.php',
                      type: 'POST',
@@ -206,20 +206,20 @@ class NetworkPortEthernet extends NetworkPortInstantiation
                      }
                   });
                JS,
-              ]
-           ] : [],
-           __('Network port') => !$oppositePort ? [
-              'type' => 'select',
-              'name' => 'NetworkPortConnect_networkports_id_2',
-           ] : [],
-           __('Action') => $oppositePort ? [
-              'content' => Html::showSimpleForm(
-                  $oppositePort->getFormURL(),
-                  'disconnect',
-                  _x('button', 'Disconnect'),
-                  ['id' => $relations_id]
-              )
-           ] : [],
+                ],
+            ] : [],
+            __('Network port') => !$oppositePort ? [
+                'type' => 'select',
+                'name' => 'NetworkPortConnect_networkports_id_2',
+            ] : [],
+            __('Action') => $oppositePort ? [
+                'content' => Html::showSimpleForm(
+                    $oppositePort->getFormURL(),
+                    'disconnect',
+                    _x('button', 'Disconnect'),
+                    ['id' => $relations_id]
+                ),
+            ] : [],
         ];
         return $returnValue;
     }
@@ -302,38 +302,38 @@ class NetworkPortEthernet extends NetworkPortInstantiation
         $tab = [];
 
         $tab[] = [
-           'id'                 => 'common',
-           'name'               => __('Characteristics')
+            'id'                 => 'common',
+            'name'               => __('Characteristics'),
         ];
 
         $tab[] = [
-           'id'                 => '10',
-           'table'              => NetworkPort::getTable(),
-           'field'              => 'mac',
-           'datatype'           => 'mac',
-           'name'               => __('MAC'),
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'jointype'           => 'empty'
-           ]
+            'id'                 => '10',
+            'table'              => NetworkPort::getTable(),
+            'field'              => 'mac',
+            'datatype'           => 'mac',
+            'name'               => __('MAC'),
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'jointype'           => 'empty',
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '11',
-           'table'              => $this->getTable(),
-           'field'              => 'type',
-           'name'               => __('Ethernet port type'),
-           'massiveaction'      => false,
-           'datatype'           => 'specific'
+            'id'                 => '11',
+            'table'              => $this->getTable(),
+            'field'              => 'type',
+            'name'               => __('Ethernet port type'),
+            'massiveaction'      => false,
+            'datatype'           => 'specific',
         ];
 
         $tab[] = [
-           'id'                 => '12',
-           'table'              => $this->getTable(),
-           'field'              => 'speed',
-           'name'               => __('Ethernet port speed'),
-           'massiveaction'      => false,
-           'datatype'           => 'specific'
+            'id'                 => '12',
+            'table'              => $this->getTable(),
+            'field'              => 'speed',
+            'name'               => __('Ethernet port speed'),
+            'massiveaction'      => false,
+            'datatype'           => 'specific',
         ];
 
         return $tab;
@@ -368,10 +368,10 @@ class NetworkPortEthernet extends NetworkPortInstantiation
     /**
      * Transform a port speed from string to integerer and vice-versa
      *
-     * @param integer|string $val        port speed
-     * @param boolean        $to_string  true if we must transform the speed to string
+     * @param int|string $val        port speed
+     * @param bool        $to_string  true if we must transform the speed to string
      *
-     * @return integer|string (regarding what is requested)
+     * @return int|string (regarding what is requested)
     **/
     public static function transformPortSpeed($val, $to_string)
     {
@@ -399,11 +399,11 @@ class NetworkPortEthernet extends NetworkPortInstantiation
             }
 
             if (($unit == 'mbit/s') || ($unit == 'mb/s')) {
-                return (int)$speed;
+                return (int) $speed;
             }
 
             if (($unit == 'gbit/s') || ($unit == 'gb/s')) {
-                return (int)($speed * 1000);
+                return (int) ($speed * 1000);
             }
 
             return false;
@@ -414,7 +414,7 @@ class NetworkPortEthernet extends NetworkPortInstantiation
     /**
      * Get the possible value for Ethernet port speed
      *
-     * @param integer|null $val  if not set, ask for all values, else for 1 value (default NULL)
+     * @param int|null $val  if not set, ask for all values, else for 1 value (default NULL)
      *
      * @return array|string
     **/
@@ -422,12 +422,12 @@ class NetworkPortEthernet extends NetworkPortInstantiation
     {
 
         $tmp = [0     => '',
-                     //TRANS: %d is the speed
-                     10    => sprintf(__('%d Mbit/s'), 10),
-                     100   => sprintf(__('%d Mbit/s'), 100),
-                     //TRANS: %d is the speed
-                     1000  => sprintf(__('%d Gbit/s'), 1),
-                     10000 => sprintf(__('%d Gbit/s'), 10)];
+            //TRANS: %d is the speed
+            10    => sprintf(__('%d Mbit/s'), 10),
+            100   => sprintf(__('%d Mbit/s'), 100),
+            //TRANS: %d is the speed
+            1000  => sprintf(__('%d Gbit/s'), 1),
+            10000 => sprintf(__('%d Gbit/s'), 10)];
 
         if (is_null($val)) {
             return $tmp;
@@ -495,20 +495,20 @@ class NetworkPortEthernet extends NetworkPortInstantiation
     public static function getSearchOptionsToAddForInstantiation(array &$tab, array $joinparams)
     {
         $tab[] = [
-           'id'                 => '22',
-           'table'              => 'glpi_netpoints',
-           'field'              => 'name',
-           'datatype'           => 'dropdown',
+            'id'                 => '22',
+            'table'              => 'glpi_netpoints',
+            'field'              => 'name',
+            'datatype'           => 'dropdown',
             'name'              => __('Ethernet outlet'),
-           'forcegroupby'       => true,
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'jointype'           => 'standard',
-              'beforejoin'         => [
-                 'table'              => 'glpi_networkportethernets',
-                 'joinparams'         => $joinparams
-              ]
-           ]
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'jointype'           => 'standard',
+                'beforejoin'         => [
+                    'table'              => 'glpi_networkportethernets',
+                    'joinparams'         => $joinparams,
+                ],
+            ],
         ];
     }
 }

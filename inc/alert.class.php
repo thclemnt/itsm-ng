@@ -63,9 +63,9 @@ class Alert extends CommonDBTM
      *
      * @param string  $itemtype   ID of the type to clear
      * @param string  $ID         ID of the item to clear
-     * @param integer $alert_type ID of the alert type to clear
+     * @param int $alert_type ID of the alert type to clear
      *
-     * @return boolean
+     * @return bool
      */
     public function clear($itemtype, $ID, $alert_type)
     {
@@ -80,9 +80,9 @@ class Alert extends CommonDBTM
      * @since 0.84
      *
      * @param string  $itemtype ID of the type to clear
-     * @param integer $ID       ID of the item to clear
+     * @param int $ID       ID of the item to clear
      *
-     * @return boolean
+     * @return bool
      */
     public function cleanDBonItemDelete($itemtype, $ID)
     {
@@ -94,10 +94,10 @@ class Alert extends CommonDBTM
     {
 
         $p = [
-           'name'           => 'alert',
-           'value'          => 0,
-           'display'        => true,
-           'inherit_parent' => false,
+            'name'           => 'alert',
+            'value'          => 0,
+            'display'        => true,
+            'inherit_parent' => false,
         ];
 
         if (count($options)) {
@@ -132,10 +132,10 @@ class Alert extends CommonDBTM
     {
 
         $p = [
-           'name'           => 'alert',
-           'value'          => 0,
-           'display'        => true,
-           'inherit_parent' => false,
+            'name'           => 'alert',
+            'value'          => 0,
+            'display'        => true,
+            'inherit_parent' => false,
         ];
 
         if (count($options)) {
@@ -170,11 +170,11 @@ class Alert extends CommonDBTM
     {
 
         $p = [
-           'min'     => 1,
-           'max'     => 100,
-           'step'    => 1,
-           'toadd'   => [],
-           'display' => true,
+            'min'     => 1,
+            'max'     => 100,
+            'step'    => 1,
+            'toadd'   => [],
+            'display' => true,
         ];
 
         if (isset($options['inherit_parent']) && $options['inherit_parent']) {
@@ -205,10 +205,10 @@ class Alert extends CommonDBTM
      *
      * @since 9.5.0 Made all params required. Dropped invalid defaults.
      * @param string  $itemtype The item type
-     * @param integer $items_id The item's ID
-     * @param integer $type     The type of alert (see constants in {@link \Alert} class)
+     * @param int $items_id The item's ID
+     * @param int $type     The type of alert (see constants in {@link \Alert} class)
      *
-     * @return integer|boolean
+     * @return int|bool
      */
     public static function alertExists($itemtype, $items_id, $type)
     {
@@ -232,10 +232,10 @@ class Alert extends CommonDBTM
      * @since 9.5.0 Made all params required. Dropped invalid defaults.
      *
      * @param string  $itemtype The item type
-     * @param integer $items_id The item's ID
-     * @param integer $type     The type of alert (see constants in {@link \Alert} class)
+     * @param int $items_id The item's ID
+     * @param int $type     The type of alert (see constants in {@link \Alert} class)
      *
-     * @return mixed|boolean
+     * @return mixed|bool
      */
     public static function getAlertDate($itemtype, $items_id, $type)
     {
@@ -256,7 +256,7 @@ class Alert extends CommonDBTM
      * Display last alert
      *
      * @param string  $itemtype The item type
-     * @param integer $items_id The item's ID
+     * @param int $items_id The item's ID
      *
      * @return void
      */
@@ -266,10 +266,10 @@ class Alert extends CommonDBTM
 
         if ($items_id) {
             $iter = $DB->request(self::getTable(), ['FIELDS'   => 'date',
-                                                    'ORDER'    => 'date DESC',
-                                                    'LIMIT'    => 1,
-                                                    'itemtype' => $itemtype,
-                                                    'items_id' => $items_id]);
+                'ORDER'    => 'date DESC',
+                'LIMIT'    => 1,
+                'itemtype' => $itemtype,
+                'items_id' => $items_id]);
             if ($row = $iter->next()) {
                 //TRANS: %s is the date
                 echo sprintf(__('Alert sent on %s'), Html::convDateTime($row['date']));

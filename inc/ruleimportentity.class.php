@@ -135,11 +135,11 @@ class RuleImportEntity extends Rule
                 $tab[$plug] = Plugin::getInfo($plug, 'name');
             }
             renderTwigTemplate('macros/input.twig', [
-               'name' => $name,
-               'type' => 'select',
-               'values' => $tab,
-               'value' => $value,
-               'test' => $test,
+                'name' => $name,
+                'type' => 'select',
+                'values' => $tab,
+                'value' => $value,
+                'test' => $test,
             ]);
             return true;
         }

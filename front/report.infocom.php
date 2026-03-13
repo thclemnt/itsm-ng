@@ -55,40 +55,40 @@ if (
 
 $stat = new Stat();
 $chart_opts =  [
-   'width'  => '90%',
-   'legend' => false,
-   'title'  => __('Value'),
+    'width'  => '90%',
+    'legend' => false,
+    'title'  => __('Value'),
 ];
 
 Report::title();
 
 $form = [
-   'action' => $_SERVER['PHP_SELF'],
-   'buttons' => [
-      [
-         'value' => __s('Display report'),
-         'class' => 'btn btn-secondary',
-      ]
-   ],
-   'content' => [
-      '' => [
-         'visible' => true,
-         'inputs' => [
-            __('Start date') => [
-               'type' => 'date',
-               'name' => 'date1',
-               'value' => $_POST["date1"],
-               'col_lg' => 6,
+    'action' => $_SERVER['PHP_SELF'],
+    'buttons' => [
+        [
+            'value' => __s('Display report'),
+            'class' => 'btn btn-secondary',
+        ],
+    ],
+    'content' => [
+        '' => [
+            'visible' => true,
+            'inputs' => [
+                __('Start date') => [
+                    'type' => 'date',
+                    'name' => 'date1',
+                    'value' => $_POST["date1"],
+                    'col_lg' => 6,
+                ],
+                __('End date') => [
+                    'type' => 'date',
+                    'name' => 'date2',
+                    'value' => $_POST["date2"],
+                    'col_lg' => 6,
+                ],
             ],
-            __('End date') => [
-               'type' => 'date',
-               'name' => 'date2',
-               'value' => $_POST["date2"],
-               'col_lg' => 6,
-            ]
-         ]
-      ]
-   ]
+        ],
+    ],
 ];
 renderTwigForm($form);
 
@@ -114,54 +114,54 @@ function display_infocoms_report($itemtype, $begin, $end)
         return false;
     }
     $criteria = [
-       'SELECT'       => [
-          'glpi_infocoms.*',
-          "$itemtable.name AS name",
-          "$itemtable.ticket_tco",
-          'glpi_entities.completename AS entname',
-          'glpi_entities.id AS entID'
+        'SELECT'       => [
+            'glpi_infocoms.*',
+            "$itemtable.name AS name",
+            "$itemtable.ticket_tco",
+            'glpi_entities.completename AS entname',
+            'glpi_entities.id AS entID',
 
-       ],
-       'FROM'         => 'glpi_infocoms',
-       'INNER JOIN'   => [
-          $itemtable  => [
-             'ON'  => [
-                'glpi_infocoms'   => 'items_id',
-                $itemtable        => 'id', [
-                   'AND' => [
-                      'glpi_infocoms.itemtype'   => $itemtype
-                   ]
-                ]
-             ]
-          ]
-       ],
-       'LEFT JOIN'    => [
-          'glpi_entities'   => [
-             'ON'  => [
-                'glpi_entities'   => 'id',
-                $itemtable        => 'entities_id'
-             ]
-          ]
-       ],
-       'WHERE'        => ["$itemtable.is_template" => 0] + getEntitiesRestrictCriteria($itemtable),
-       'ORDERBY'      => ['entname ASC', 'buy_date', 'use_date']
+        ],
+        'FROM'         => 'glpi_infocoms',
+        'INNER JOIN'   => [
+            $itemtable  => [
+                'ON'  => [
+                    'glpi_infocoms'   => 'items_id',
+                    $itemtable        => 'id', [
+                        'AND' => [
+                            'glpi_infocoms.itemtype'   => $itemtype,
+                        ],
+                    ],
+                ],
+            ],
+        ],
+        'LEFT JOIN'    => [
+            'glpi_entities'   => [
+                'ON'  => [
+                    'glpi_entities'   => 'id',
+                    $itemtable        => 'entities_id',
+                ],
+            ],
+        ],
+        'WHERE'        => ["$itemtable.is_template" => 0] + getEntitiesRestrictCriteria($itemtable),
+        'ORDERBY'      => ['entname ASC', 'buy_date', 'use_date'],
     ];
 
     if (!empty($begin)) {
         $criteria['WHERE'][] = [
-           'OR'  => [
-              'glpi_infocoms.buy_date'   => ['>=', $begin],
-              'glpi_infocoms.use_date'   => ['>=', $begin]
-           ]
+            'OR'  => [
+                'glpi_infocoms.buy_date'   => ['>=', $begin],
+                'glpi_infocoms.use_date'   => ['>=', $begin],
+            ],
         ];
     }
 
     if (!empty($end)) {
         $criteria['WHERE'][] = [
-           'OR'  => [
-              'glpi_infocoms.buy_date'   => ['<=', $end],
-              'glpi_infocoms.use_date'   => ['<=', $end]
-           ]
+            'OR'  => [
+                'glpi_infocoms.buy_date'   => ['<=', $end],
+                'glpi_infocoms.use_date'   => ['<=', $end],
+            ],
         ];
     }
 
@@ -252,13 +252,13 @@ function display_infocoms_report($itemtype, $begin, $end)
                 echo "<td>" . $line['entname'] . "</td>";
             }
 
-            echo "<td class='right'>" . Html::formatNumber($line["value"]) . "</td>" .
-                 "<td class='right'>" . Html::formatNumber($valeurnette) . "</td>" .
-                 "<td class='right'>" . Infocom::showTco($line["ticket_tco"], $line["value"]) . "</td>" .
-                 "<td>" . Html::convDate($line["buy_date"]) . "</td>" .
-                 "<td>" . Html::convDate($line["use_date"]) . "</td>" .
-                 "<td>" . Infocom::getWarrantyExpir($line["buy_date"], $line["warranty_duration"]) .
-                 "</td></tr>";
+            echo "<td class='right'>" . Html::formatNumber($line["value"]) . "</td>"
+                 . "<td class='right'>" . Html::formatNumber($valeurnette) . "</td>"
+                 . "<td class='right'>" . Infocom::showTco($line["ticket_tco"], $line["value"]) . "</td>"
+                 . "<td>" . Html::convDate($line["buy_date"]) . "</td>"
+                 . "<td>" . Html::convDate($line["use_date"]) . "</td>"
+                 . "<td>" . Infocom::getWarrantyExpir($line["buy_date"], $line["warranty_duration"])
+                 . "</td></tr>";
         }
 
         $valeurtot      += $valeursoustot;
@@ -290,9 +290,9 @@ function display_infocoms_report($itemtype, $begin, $end)
                 ),
                 array_keys($valeurnettegraphdisplay),
                 [
-                  [
-                     'data' => $valeurnettegraphdisplay
-                  ]
+                    [
+                        'data' => $valeurnettegraphdisplay,
+                    ],
                 ],
                 $chart_opts
             );
@@ -319,9 +319,9 @@ function display_infocoms_report($itemtype, $begin, $end)
                 ),
                 array_keys($valeurgraphdisplay),
                 [
-                  [
-                     'data' => $valeurgraphdisplay
-                  ]
+                    [
+                        'data' => $valeurgraphdisplay,
+                    ],
                 ],
                 $chart_opts
             );
@@ -373,9 +373,9 @@ if (count($valeurnettegraphtot) > 0) {
         __('Total account net value'),
         array_keys($valeurnettegraphtotdisplay),
         [
-          [
-             'data' => $valeurnettegraphtotdisplay
-          ]
+            [
+                'data' => $valeurnettegraphtotdisplay,
+            ],
         ],
         $chart_opts
     );
@@ -387,9 +387,9 @@ if (count($valeurgraphtot) > 0) {
         __('Total value'),
         array_keys($valeurgraphtotdisplay),
         [
-          [
-             'data' => $valeurgraphtotdisplay
-          ]
+            [
+                'data' => $valeurgraphtotdisplay,
+            ],
         ],
         $chart_opts
     );

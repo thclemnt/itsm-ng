@@ -46,31 +46,31 @@ class Crontask extends \GLPITestCase
 
         //create some files
         $Data = [
-           [
-              'name'    => $tmp_dir . '/recent_file.txt',
-              'content' => 'content1',
-           ],
-           [
-              'name'    => $tmp_dir . '/file1.txt',
-              'content' => 'content1',
-           ],
-           [
-              'name'    => $tmp_dir . '/file2.txt',
-              'content' => 'content2',
-           ],
-           [
-              'name'    => $tmp_dir . '/auto_orient/file3.txt',
-              'content' => 'content3',
-           ],
-           [
-              'name'    => $tmp_dir . '/auto_orient/file4.txt',
-              'content' => 'content4',
-           ]
+            [
+                'name'    => $tmp_dir . '/recent_file.txt',
+                'content' => 'content1',
+            ],
+            [
+                'name'    => $tmp_dir . '/file1.txt',
+                'content' => 'content1',
+            ],
+            [
+                'name'    => $tmp_dir . '/file2.txt',
+                'content' => 'content2',
+            ],
+            [
+                'name'    => $tmp_dir . '/auto_orient/file3.txt',
+                'content' => 'content3',
+            ],
+            [
+                'name'    => $tmp_dir . '/auto_orient/file4.txt',
+                'content' => 'content4',
+            ],
         ];
 
         //create auto_orient directory
         if (!file_exists($tmp_dir . '/auto_orient/')) {
-            mkdir($tmp_dir . '/auto_orient/', 0755, true);
+            mkdir($tmp_dir . '/auto_orient/', 0o755, true);
         }
 
         foreach ($Data as $Row) {

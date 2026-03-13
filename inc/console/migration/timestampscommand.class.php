@@ -40,6 +40,7 @@ if (!defined('GLPI_ROOT')) {
 use Glpi\Console\AbstractCommand;
 use QueryExpression;
 use Symfony\Component\Console\Helper\ProgressBar;
+use Symfony\Component\Console\Helper\QuestionHelper;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Question\ConfirmationQuestion;
@@ -60,34 +61,34 @@ class TimestampsCommand extends AbstractCommand
 
         // we are going to update datetime types to timestamp type
         $tbl_iterator = $this->db->request([
-           'SELECT'       => ['information_schema.columns.table_name as TABLE_NAME'],
-           'DISTINCT'     => true,
-           'FROM'         => 'information_schema.columns',
-           'INNER JOIN'   => [
-              'information_schema.tables' => [
-                 'FKEY' => [
-                    'information_schema.tables'  => 'table_name',
-                    'information_schema.columns' => 'table_name',
-                    [
-                       'AND' => [
-                          'information_schema.tables.table_schema' => new QueryExpression(
-                              $this->db->quoteName('information_schema.columns.table_schema')
-                          ),
-                       ]
+            'SELECT'       => ['information_schema.columns.table_name as TABLE_NAME'],
+            'DISTINCT'     => true,
+            'FROM'         => 'information_schema.columns',
+            'INNER JOIN'   => [
+                'information_schema.tables' => [
+                    'FKEY' => [
+                        'information_schema.tables'  => 'table_name',
+                        'information_schema.columns' => 'table_name',
+                        [
+                            'AND' => [
+                                'information_schema.tables.table_schema' => new QueryExpression(
+                                    $this->db->quoteName('information_schema.columns.table_schema')
+                                ),
+                            ],
+                        ],
                     ],
-                 ]
-              ]
-           ],
-           'WHERE'       => [
-            'information_schema.columns.table_schema' => $this->db->dbdefault,
-            'information_schema.columns.table_name'   => ['LIKE', 'glpi\_%'],
-            'information_schema.columns.data_type'    => 'datetime',
-            'information_schema.tables.table_type'    => 'BASE TABLE',
+                ],
+            ],
+            'WHERE'       => [
+                'information_schema.columns.table_schema' => $this->db->dbdefault,
+                'information_schema.columns.table_name'   => ['LIKE', 'glpi\_%'],
+                'information_schema.columns.data_type'    => 'datetime',
+                'information_schema.tables.table_type'    => 'BASE TABLE',
 
-           ],
-           'ORDER'       => [
-            'information_schema.columns.table_name'
-           ]
+            ],
+            'ORDER'       => [
+                'information_schema.columns.table_name',
+            ],
         ]);
 
         $output->writeln(
@@ -104,7 +105,7 @@ class TimestampsCommand extends AbstractCommand
 
         if (!$input->getOption('no-interaction')) {
             // Ask for confirmation (unless --no-interaction)
-            /** @var \Symfony\Component\Console\Helper\QuestionHelper $question_helper */
+            /** @var QuestionHelper $question_helper */
             $question_helper = $this->getHelper('question');
             $run = $question_helper->ask(
                 $input,
@@ -130,19 +131,19 @@ class TimestampsCommand extends AbstractCommand
 
             // get accurate info from information_schema to perform correct alter
             $col_iterator = $this->db->request([
-               'SELECT' => [
-                  'table_name AS TABLE_NAME',
-                  'column_name AS COLUMN_NAME',
-                  'column_default AS COLUMN_DEFAULT',
-                  'column_comment AS COLUMN_COMMENT',
-                  'is_nullable AS IS_NULLABLE',
-               ],
-               'FROM'   => 'information_schema.columns',
-               'WHERE'  => [
-                  'table_schema' => $this->db->dbdefault,
-                  'table_name'   => $table['TABLE_NAME'],
-                  'data_type'    => 'datetime'
-               ]
+                'SELECT' => [
+                    'table_name AS TABLE_NAME',
+                    'column_name AS COLUMN_NAME',
+                    'column_default AS COLUMN_DEFAULT',
+                    'column_comment AS COLUMN_COMMENT',
+                    'is_nullable AS IS_NULLABLE',
+                ],
+                'FROM'   => 'information_schema.columns',
+                'WHERE'  => [
+                    'table_schema' => $this->db->dbdefault,
+                    'table_name'   => $table['TABLE_NAME'],
+                    'data_type'    => 'datetime',
+                ],
             ]);
 
             while ($column = $col_iterator->next()) {

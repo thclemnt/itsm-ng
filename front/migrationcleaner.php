@@ -39,7 +39,7 @@
 include('../inc/includes.php');
 
 Session::checkSeveralRightsOr(["networking" => UPDATE,
-                                    "internet"   => UPDATE]);
+    "internet"   => UPDATE]);
 
 if (!$DB->tableExists('glpi_networkportmigrations')) {
     Session::addMessageAfterRedirect(__('You don\'t need the "migration cleaner" tool anymore...'));
@@ -68,8 +68,8 @@ if (
 }
 if (Session::haveRight('networking', UPDATE)) {
     echo "<tr class='tab_bg_1'><td class='center'>";
-    echo "<a href='" . $CFG_GLPI['root_doc'] . "/front/networkportmigration.php'>" .
-          __('Clean the network port migration errors') . "</a>";
+    echo "<a href='" . $CFG_GLPI['root_doc'] . "/front/networkportmigration.php'>"
+          . __('Clean the network port migration errors') . "</a>";
     echo "</td></tr>";
 }
 echo "</table>";

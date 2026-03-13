@@ -47,7 +47,7 @@ interface NotificationEventInterface
      * @param array                $data               Notification data
      * @param NotificationTarget   $notificationtarget Target
      * @param NotificationTemplate $template           Template
-     * @param boolean              $notify_me          Whether to notify current user
+     * @param bool              $notify_me          Whether to notify current user
      *
      * @return void
      */
@@ -83,7 +83,7 @@ interface NotificationEventInterface
     /**
      * Whether notifications can be handled by a crontab
      *
-     * @return boolean
+     * @return bool
      */
     public static function canCron();
 
@@ -97,7 +97,7 @@ interface NotificationEventInterface
     /**
      * Get entity admin data
      *
-     * @param integer $entity Entity ID
+     * @param int $entity Entity ID
      *
      * @return array
      */
@@ -109,7 +109,7 @@ interface NotificationEventInterface
      *
      * @param array $data Data to send
      *
-     * @return false|integer False if something went wrong, number of send notifications otherwise
+     * @return false|int False if something went wrong, number of send notifications otherwise
      */
     public static function send(array $data);
 }

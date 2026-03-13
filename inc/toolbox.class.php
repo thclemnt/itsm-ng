@@ -35,10 +35,12 @@ use Glpi\Console\Application;
 use Glpi\Event;
 use Glpi\Mail\Protocol\ProtocolInterface;
 use Glpi\System\RequirementsManager;
+use Glpi\Toolbox\URL;
+use Laminas\Mail\Protocol\Imap;
+use Laminas\Mail\Protocol\Pop3;
 use Laminas\Mail\Storage\AbstractStorage;
-use Monolog\Logger;
 use Mexitek\PHPColors\Color;
-use Psr\Log\InvalidArgumentException;
+use Monolog\Logger;
 use Symfony\Component\Console\Output\OutputInterface;
 
 if (!defined('GLPI_ROOT')) {
@@ -56,7 +58,7 @@ class Toolbox
      *
      * @since 0.84
      *
-     * @return integer
+     * @return int
     **/
     public static function get_max_input_vars()
     {
@@ -102,9 +104,9 @@ class Toolbox
 
         $pos = self::strpos(self::strtolower($str), self::strtolower($shortcut));
         if ($pos !== false) {
-            return self::substr($str, 0, $pos) .
-                   "<u>" . self::substr($str, $pos, 1) . "</u>" .
-                   self::substr($str, $pos + 1);
+            return self::substr($str, 0, $pos)
+                   . "<u>" . self::substr($str, $pos, 1) . "</u>"
+                   . self::substr($str, $pos + 1);
         }
         return $str;
     }
@@ -115,9 +117,9 @@ class Toolbox
      *
      * @param string  $str      string
      * @param string  $tofound  string to found
-     * @param integer $offset   The search offset. If it is not specified, 0 is used.
+     * @param int $offset   The search offset. If it is not specified, 0 is used.
      *
-     * @return integer|false
+     * @return int|false
     **/
     public static function strpos($str, $tofound, $offset = 0)
     {
@@ -131,9 +133,9 @@ class Toolbox
      *  who bug with utf8
      *
      * @param string  $input       input string
-     * @param integer $pad_length  padding length
+     * @param int $pad_length  padding length
      * @param string  $pad_string  padding string
-     * @param integer $pad_type    padding type
+     * @param int $pad_type    padding type
      *
      * @return string
     **/
@@ -150,7 +152,7 @@ class Toolbox
      *
      * @param string $str
      *
-     * @return integer  length of the string
+     * @return int  length of the string
     **/
     public static function strlen($str)
     {
@@ -162,8 +164,8 @@ class Toolbox
      * substr function for utf8 string
      *
      * @param string  $str
-     * @param integer $start   start of the result substring
-     * @param integer $length  The maximum length of the returned string if > 0 (default -1)
+     * @param int $start   start of the result substring
+     * @param int $length  The maximum length of the returned string if > 0 (default -1)
      *
      * @return string
     **/
@@ -208,7 +210,7 @@ class Toolbox
      *
      * @param $str string   string to analyse
      *
-     * @return boolean
+     * @return bool
     **/
     public static function seems_utf8($str)
     {
@@ -476,12 +478,12 @@ class Toolbox
     public static function getHtmLawedSafeConfig(): array
     {
         $config = [
-           'elements'         => '* -applet -canvas -embed -object -script -link',
-           'deny_attribute'   => 'on*, srcdoc',
-           'comment'          => 1, // 1: remove HTML comments (and do not display their contents)
-           'cdata'            => 1, // 1: remove CDATA sections (and do not display their contents)
-           'direct_list_nest' => 1, // 1: Allow usage of ul/ol tags nested in other ul/ol tags
-           'schemes'          => '*: aim, app, feed, file, ftp, gopher, http, https, irc, mailto, news, nntp, sftp, ssh, tel, telnet, notes'
+            'elements'         => '* -applet -canvas -embed -object -script -link',
+            'deny_attribute'   => 'on*, srcdoc',
+            'comment'          => 1, // 1: remove HTML comments (and do not display their contents)
+            'cdata'            => 1, // 1: remove CDATA sections (and do not display their contents)
+            'direct_list_nest' => 1, // 1: Allow usage of ul/ol tags nested in other ul/ol tags
+            'schemes'          => '*: aim, app, feed, file, ftp, gopher, http, https, irc, mailto, news, nntp, sftp, ssh, tel, telnet, notes',
         ];
         if (!GLPI_ALLOW_IFRAME_IN_RICH_TEXT) {
             $config['elements'] .= '-iframe';
@@ -494,7 +496,7 @@ class Toolbox
      * Log in 'php-errors' all args
      *
      * @param Logger  $logger Logger instance, if any
-     * @param integer $level  Log level (defaults to warning)
+     * @param int $level  Log level (defaults to warning)
      * @param array   $args   Arguments (message to log, ...)
      *
      * @return void
@@ -508,8 +510,8 @@ class Toolbox
             $extra['user'] = Session::getLoginUserID() . '@' . php_uname('n');
         }
         if ($tps && function_exists('memory_get_usage')) {
-            $extra['mem_usage'] = number_format(microtime(true) - $tps, 3) . '", ' .
-                         number_format(memory_get_usage() / 1024 / 1024, 2) . 'Mio)';
+            $extra['mem_usage'] = number_format(microtime(true) - $tps, 3) . '", '
+                         . number_format(memory_get_usage() / 1024 / 1024, 2) . 'Mio)';
         }
 
         $msg = "";
@@ -543,7 +545,7 @@ class Toolbox
         }
 
         if (defined('TU_USER') && $level >= Logger::NOTICE) {
-            throw new \RuntimeException($msg);
+            throw new RuntimeException($msg);
         }
 
         $tps = microtime(true);
@@ -555,7 +557,7 @@ class Toolbox
 
         try {
             $logger->addRecord($level, $msg, $extra);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             //something went wrong, make sure logging does not cause fatal
             error_log($e);
         }
@@ -617,11 +619,11 @@ class Toolbox
         $msg = $args[0];
         try {
             self::log($SQLLOGGER, Logger::ERROR, $args);
-        } catch (\RuntimeException $e) {
+        } catch (RuntimeException $e) {
             $msg = $e->getMessage();
         } finally {
             if (class_exists('GlpitestSQLError')) { // For unit test
-                throw new \GlpitestSQLError($msg);
+                throw new GlpitestSQLError($msg);
             }
         }
     }
@@ -645,8 +647,8 @@ class Toolbox
             $message = "  Backtrace :\n";
             $traces  = debug_backtrace();
             foreach ($traces as $trace) {
-                $script = (isset($trace["file"]) ? $trace["file"] : "") . ":" .
-                            (isset($trace["line"]) ? $trace["line"] : "");
+                $script = ($trace["file"] ?? "") . ":"
+                            . ($trace["line"] ?? "");
                 if (strpos($script, (string) GLPI_ROOT) === 0) {
                     $script = substr($script, strlen((string) GLPI_ROOT) + 1);
                 }
@@ -655,9 +657,9 @@ class Toolbox
                 } else {
                     $script = str_pad($script, 50);
                 }
-                $call = (isset($trace["class"]) ? $trace["class"] : "") .
-                        (isset($trace["type"]) ? $trace["type"] : "") .
-                        (isset($trace["function"]) ? $trace["function"] . "()" : "");
+                $call = ($trace["class"] ?? "")
+                        . ($trace["type"] ?? "")
+                        . (isset($trace["function"]) ? $trace["function"] . "()" : "");
                 if ($call == $hide) {
                     $call = '';
                 }
@@ -693,9 +695,9 @@ class Toolbox
      *
      * @param string  $name   name of the log file
      * @param string  $text   text to log
-     * @param boolean $force  force log in file not seeing use_log_in_files config
+     * @param bool $force  force log in file not seeing use_log_in_files config
      *
-     * @return boolean
+     * @return bool
     **/
     public static function logInFile($name, $text, $force = false)
     {
@@ -733,10 +735,10 @@ class Toolbox
     /**
      * Specific error handler in Normal mode
      *
-     * @param integer $errno     level of the error raised.
+     * @param int $errno     level of the error raised.
      * @param string  $errmsg    error message.
      * @param string  $filename  filename that the error was raised in.
-     * @param integer $linenum   line number the error was raised at.
+     * @param int $linenum   line number the error was raised at.
      *
      * @return string  Error type
      *
@@ -748,20 +750,20 @@ class Toolbox
         Toolbox::deprecated();
 
         $errortype = [E_ERROR             => 'Error',
-                           E_WARNING           => 'Warning',
-                           E_PARSE             => 'Parsing Error',
-                           E_NOTICE            => 'Notice',
-                           E_CORE_ERROR        => 'Core Error',
-                           E_CORE_WARNING      => 'Core Warning',
-                           E_COMPILE_ERROR     => 'Compile Error',
-                           E_COMPILE_WARNING   => 'Compile Warning',
-                           E_USER_ERROR        => 'User Error',
-                           E_USER_WARNING      => 'User Warning',
-                           E_USER_NOTICE       => 'User Notice',
-                           E_STRICT            => 'Runtime Notice',
-                           E_RECOVERABLE_ERROR => 'Catchable Fatal Error',
-                           E_DEPRECATED        => 'Deprecated function',
-                           E_USER_DEPRECATED   => 'User deprecated function'];
+            E_WARNING           => 'Warning',
+            E_PARSE             => 'Parsing Error',
+            E_NOTICE            => 'Notice',
+            E_CORE_ERROR        => 'Core Error',
+            E_CORE_WARNING      => 'Core Warning',
+            E_COMPILE_ERROR     => 'Compile Error',
+            E_COMPILE_WARNING   => 'Compile Warning',
+            E_USER_ERROR        => 'User Error',
+            E_USER_WARNING      => 'User Warning',
+            E_USER_NOTICE       => 'User Notice',
+            E_STRICT            => 'Runtime Notice',
+            E_RECOVERABLE_ERROR => 'Catchable Fatal Error',
+            E_DEPRECATED        => 'Deprecated function',
+            E_USER_DEPRECATED   => 'User deprecated function'];
 
         $err = '  *** PHP ' . $errortype[$errno] . "($errno): $errmsg\n";
 
@@ -800,10 +802,10 @@ class Toolbox
     /**
      * Specific error handler in Debug mode
      *
-     * @param integer $errno     level of the error raised.
+     * @param int $errno     level of the error raised.
      * @param string  $errmsg    error message.
      * @param string  $filename  filename that the error was raised in.
-     * @param integer $linenum   line number the error was raised at.
+     * @param int $linenum   line number the error was raised at.
      *
      * @return void
      *
@@ -825,8 +827,8 @@ class Toolbox
 
         // Display
         if (!isCommandLine()) {
-            echo '<div style="position:float-left; background-color:red; z-index:10000">' .
-                 '<span class="b">PHP ' . $type . ': </span>';
+            echo '<div style="position:float-left; background-color:red; z-index:10000">'
+                 . '<span class="b">PHP ' . $type . ': </span>';
             echo $errmsg . ' in ' . $filename . ' at line ' . $linenum . '</div>';
         } else {
             echo 'PHP ' . $type . ': ' . $errmsg . ' in ' . $filename . ' at line ' . $linenum . "\n";
@@ -837,10 +839,10 @@ class Toolbox
     /**
      * Switch error mode for GLPI
      *
-     * @param integer|null $mode       From Session::*_MODE
-     * @param boolean|null $debug_sql
-     * @param boolean|null $debug_vars
-     * @param boolean|null $log_in_files
+     * @param int|null $mode       From Session::*_MODE
+     * @param bool|null $debug_sql
+     * @param bool|null $debug_vars
+     * @param bool|null $log_in_files
      *
      * @return void
      *
@@ -880,7 +882,7 @@ class Toolbox
      * @param string      $file        storage filename
      * @param string      $filename    file title
      * @param string|null $mime        file mime type
-     * @param boolean     $add_expires add expires headers maximize cacheability ?
+     * @param bool     $add_expires add expires headers maximize cacheability ?
      *
      * @return void
     **/
@@ -945,10 +947,10 @@ class Toolbox
             header('Expires: ' . gmdate('D, d M Y H:i:s \G\M\T', time() + $max_age));
         }
         header(
-            "Content-disposition:$attachment filename=\"" .
-            addslashes(mb_convert_encoding($filename, 'UTF-8', mb_detect_encoding($filename))) .
-            "\"; filename*=utf-8''" .
-            rawurlencode($filename)
+            "Content-disposition:$attachment filename=\""
+            . addslashes(mb_convert_encoding($filename, 'UTF-8', mb_detect_encoding($filename)))
+            . "\"; filename*=utf-8''"
+            . rawurlencode($filename)
         );
         header("Content-type: " . $mime);
 
@@ -1048,7 +1050,7 @@ class Toolbox
      *
      * @param string $ininame  name of the ini ooption to retrieve (since 9.1)
      *
-     * @return integer memory limit
+     * @return int memory limit
     **/
     public static function getMemoryLimit($ininame = 'memory_limit')
     {
@@ -1089,7 +1091,7 @@ class Toolbox
      *
      * @since 0.83
      *
-     * @return integer
+     * @return int
      *   0 if PHP not compiled with memory_limit support,
      *   1 no memory limit (memory_limit = -1),
      *   2 insufficient memory for GLPI,
@@ -1115,9 +1117,9 @@ class Toolbox
     /**
      * Check GLPI system requirement.
      *
-     * @param boolean $isInstall Is the check run on a install process (don't check DB as not configured yet)
+     * @param bool $isInstall Is the check run on a install process (don't check DB as not configured yet)
      *
-     * @return integer
+     * @return int
      *    2 = missing mandatory requirement
      *    1 = missing optional requirement
      *    0 = OK
@@ -1168,9 +1170,9 @@ class Toolbox
      *
      * @since 0.84
      *
-     * @param boolean $fordebug  true is displayed in system information
+     * @param bool $fordebug  true is displayed in system information
      *
-     * @return integer 0: OK, 1:Warning, 2:Error
+     * @return int 0: OK, 1:Warning, 2:Error
      *
      * @deprecated 9.5.0
     **/
@@ -1225,7 +1227,7 @@ class Toolbox
         // Permissive mode will write lot of stuff in audit.log
 
         $bools = ['httpd_can_network_connect', 'httpd_can_network_connect_db',
-                       'httpd_can_sendmail'];
+            'httpd_can_sendmail'];
         $msg2 = __s('Some features may require this to be on');
         foreach ($bools as $bool) {
             if (function_exists('selinux_get_boolean_active')) {
@@ -1242,21 +1244,21 @@ class Toolbox
             $msg = sprintf(__('SELinux boolean configuration for %s'), $state);
             if ($fordebug) {
                 if (substr($state, -2) == 'on') {
-                    echo "<img src='" . $CFG_GLPI['root_doc'] . "/pics/ok_min.png' alt=\"" . __s('OK') .
-                    "\" title=\"" . __s('OK') . "\">$msg\n";
+                    echo "<img src='" . $CFG_GLPI['root_doc'] . "/pics/ok_min.png' alt=\"" . __s('OK')
+                    . "\" title=\"" . __s('OK') . "\">$msg\n";
                 } else {
-                    echo "<img src='" . $CFG_GLPI['root_doc'] . "/pics/warning_min.png' alt=\"" . $msg2 .
-                    "\" title=\"$msg2\">$msg ($msg2)\n";
+                    echo "<img src='" . $CFG_GLPI['root_doc'] . "/pics/warning_min.png' alt=\"" . $msg2
+                    . "\" title=\"$msg2\">$msg ($msg2)\n";
                 }
             } else {
                 if (substr($state, -2) == 'on') {
                     echo "<tr class='tab_bg_1'><td class='left b'>$msg</td>";
-                    echo "<td><img src='" . $CFG_GLPI['root_doc'] . "/pics/ok_min.png' alt='$state' title='$state'>" .
-                         "</td>";
+                    echo "<td><img src='" . $CFG_GLPI['root_doc'] . "/pics/ok_min.png' alt='$state' title='$state'>"
+                         . "</td>";
                 } else {
                     echo "<tr class='tab_bg_1'><td class='left b'>$msg ($msg2)</td>";
-                    echo "<td><img src='" . $CFG_GLPI['root_doc'] . "/pics/warning_min.png' alt='$msg2' title='$msg2'>" .
-                         "</td>";
+                    echo "<td><img src='" . $CFG_GLPI['root_doc'] . "/pics/warning_min.png' alt='$msg2' title='$msg2'>"
+                         . "</td>";
                     $err = 1;
                 }
                 echo "</tr>";
@@ -1272,7 +1274,7 @@ class Toolbox
      *
      * @param string $path  directory or file to get size
      *
-     * @return integer
+     * @return int
     **/
     public static function filesizeDirectory($path)
     {
@@ -1299,7 +1301,7 @@ class Toolbox
 
     /** Format a size passing a size in octet
      *
-     * @param integer $size  Size in octet
+     * @param int $size  Size in octet
      *
      * @return string  formatted size
     **/
@@ -1331,7 +1333,7 @@ class Toolbox
     {
 
         if (file_exists($dir)) {
-            chmod($dir, 0777);
+            chmod($dir, 0o777);
 
             if (is_dir($dir)) {
                 $id_dir = opendir($dir);
@@ -1361,15 +1363,15 @@ class Toolbox
      *
      * @param string  $source_path   path of the picture to be resized
      * @param string  $dest_path     path of the new resized picture
-     * @param integer $new_width     new width after resized (default 71)
-     * @param integer $new_height    new height after resized (default 71)
-     * @param integer $img_y         y axis of picture (default 0)
-     * @param integer $img_x         x axis of picture (default 0)
-     * @param integer $img_width     width of picture (default 0)
-     * @param integer $img_height    height of picture (default 0)
-     * @param integer $max_size      max size of the picture (default 500, is set to 0 no resize)
+     * @param int $new_width     new width after resized (default 71)
+     * @param int $new_height    new height after resized (default 71)
+     * @param int $img_y         y axis of picture (default 0)
+     * @param int $img_x         x axis of picture (default 0)
+     * @param int $img_width     width of picture (default 0)
+     * @param int $img_height    height of picture (default 0)
+     * @param int $max_size      max size of the picture (default 500, is set to 0 no resize)
      *
-     * @return boolean
+     * @return bool
     **/
     public static function resizePicture(
         $source_path,
@@ -1492,7 +1494,7 @@ class Toolbox
     /**
      * Determine if Imap/Pop is usable checking extension existence
      *
-     * @return boolean
+     * @return bool
      *
      * @deprecated 9.5.0
     **/
@@ -1506,7 +1508,7 @@ class Toolbox
     /**
      * Determine if Ldap is usable checking ldap extension existence
      *
-     * @return boolean
+     * @return bool
     **/
     public static function canUseLdap()
     {
@@ -1519,7 +1521,7 @@ class Toolbox
      *
      * @since 9.3
      *
-     * @return boolean
+     * @return bool
     **/
     public static function canUseCas()
     {
@@ -1532,7 +1534,7 @@ class Toolbox
      *
      * @param string $dir  directory to check
      *
-     * @return integer
+     * @return int
      *   0: OK,
      *   1: delete error,
      *   2: creation error
@@ -1577,7 +1579,7 @@ class Toolbox
      * Get form URL for itemtype
      *
      * @param string  $itemtype  item type
-     * @param boolean $full      path or relative one
+     * @param bool $full      path or relative one
      *
      * return string itemtype Form URL
     **/
@@ -1606,7 +1608,7 @@ class Toolbox
      * Get search URL for itemtype
      *
      * @param string  $itemtype  item type
-     * @param boolean $full      path or relative one
+     * @param bool $full      path or relative one
      *
      * return string itemtype search URL
     **/
@@ -1640,7 +1642,7 @@ class Toolbox
      * Get ajax tabs url for itemtype
      *
      * @param string  $itemtype  item type
-     * @param boolean $full      path or relative one
+     * @param bool $full      path or relative one
      *
      * return string itemtype tabs URL
     **/
@@ -1657,7 +1659,7 @@ class Toolbox
     /**
      * Get a random string
      *
-     * @param integer $length of the random string
+     * @param int $length of the random string
      *
      * @return string  random string
      *
@@ -1678,7 +1680,7 @@ class Toolbox
     /**
      * Split timestamp in time units
      *
-     * @param integer $time  timestamp
+     * @param int $time  timestamp
      *
      * @return array
     **/
@@ -1718,7 +1720,7 @@ class Toolbox
      *
      * @param string  $url    URL to retrieve
      * @param string  $msgerr set if problem encountered (default NULL)
-     * @param integer $rec    internal use only Must be 0 (default 0)
+     * @param int $rec    internal use only Must be 0 (default 0)
      *
      * @return string content of the page (or empty)
     **/
@@ -1757,30 +1759,30 @@ class Toolbox
 
         $ch = curl_init($url);
         $opts = [
-           CURLOPT_URL             => $url,
-           CURLOPT_USERAGENT       => "GLPI/" . trim((string) $CFG_GLPI["version"]),
-           CURLOPT_RETURNTRANSFER  => 1,
-           CURLOPT_CONNECTTIMEOUT  => 5,
+            CURLOPT_URL             => $url,
+            CURLOPT_USERAGENT       => "GLPI/" . trim((string) $CFG_GLPI["version"]),
+            CURLOPT_RETURNTRANSFER  => 1,
+            CURLOPT_CONNECTTIMEOUT  => 5,
         ] + $eopts;
 
         if (!empty($CFG_GLPI["proxy_name"])) {
             // Connection using proxy
             $opts += [
-               CURLOPT_PROXY           => $CFG_GLPI['proxy_name'],
-               CURLOPT_PROXYPORT       => $CFG_GLPI['proxy_port'],
-               CURLOPT_PROXYTYPE       => CURLPROXY_HTTP
+                CURLOPT_PROXY           => $CFG_GLPI['proxy_name'],
+                CURLOPT_PROXYPORT       => $CFG_GLPI['proxy_port'],
+                CURLOPT_PROXYTYPE       => CURLPROXY_HTTP,
             ];
 
             if (!empty($CFG_GLPI["proxy_user"])) {
                 $opts += [
-                   CURLOPT_PROXYAUTH    => CURLAUTH_BASIC,
-                   CURLOPT_PROXYUSERPWD => $CFG_GLPI["proxy_user"] . ":" . self::sodiumDecrypt($CFG_GLPI["proxy_passwd"]),
+                    CURLOPT_PROXYAUTH    => CURLAUTH_BASIC,
+                    CURLOPT_PROXYUSERPWD => $CFG_GLPI["proxy_user"] . ":" . self::sodiumDecrypt($CFG_GLPI["proxy_passwd"]),
                 ];
             }
 
             if ($defaultport == 443) {
                 $opts += [
-                   CURLOPT_HTTPPROXYTUNNEL => 1
+                    CURLOPT_HTTPPROXYTUNNEL => 1,
                 ];
             }
         }
@@ -1817,7 +1819,7 @@ class Toolbox
     /**
      * Returns whether this is an AJAX (XMLHttpRequest) request.
      *
-     * @return boolean whether this is an AJAX (XMLHttpRequest) request.
+     * @return bool whether this is an AJAX (XMLHttpRequest) request.
      */
     public static function isAjax()
     {
@@ -1829,7 +1831,7 @@ class Toolbox
      * @param $need
      * @param $tab
      *
-     * @return boolean
+     * @return bool
     **/
     public static function key_exists_deep($need, $tab)
     {
@@ -1939,7 +1941,7 @@ class Toolbox
                 }
             }
             if (array_key_exists('path', $parsed_url) && $parsed_url['path'][0] == '/') {
-                return Glpi\Toolbox\URL::isITSMNGRelativeURL($where) ? $CFG_GLPI['root_doc'] . $where : null;
+                return URL::isITSMNGRelativeURL($where) ? $CFG_GLPI['root_doc'] . $where : null;
             }
         }
 
@@ -2063,14 +2065,14 @@ class Toolbox
      *
      * @param string $val  config value (like 10k, 5M)
      *
-     * @return integer $val
+     * @return int $val
     **/
     public static function return_bytes_from_ini_vars($val)
     {
 
         $val  = trim($val);
         $last = self::strtolower($val[strlen($val) - 1]);
-        $val  = (int)$val;
+        $val  = (int) $val;
 
         switch ($last) {
             // Le modifieur 'G' est disponible depuis PHP 5.1.0
@@ -2096,8 +2098,8 @@ class Toolbox
      * use itsmng\MailServer:parseMailServerConnectString
      *
      * @param string  $value      connect string
-     * @param boolean $forceport  force compute port if not set
-     * @param boolean $allow_plugins_protocols allow plugins protocols
+     * @param bool $forceport  force compute port if not set
+     * @param bool $allow_plugins_protocols allow plugins protocols
      *
      * @return array  parsed arguments (address, port, mailbox, type, ssl, tls, validate-cert
      *                norsh, secure and debug) : options are empty if not set
@@ -2182,7 +2184,7 @@ class Toolbox
      * Display a mail server configuration form
      *
      * @param string $value  host connect string ex {localhost:993/imap/ssl}INBOX
-     * @param boolean $allow_plugins_protocols allow plugins protocols
+     * @param bool $allow_plugins_protocols allow plugins protocols
      *
      * @return string  type of the server (imap/pop)
     **/
@@ -2211,10 +2213,10 @@ class Toolbox
             'server_type',
             $values,
             ['value'               => $svalue,
-                                      'display_emptychoice' => true]
+                'display_emptychoice' => true]
         );
         $values = [//TRANS: imap_open option see http://www.php.net/manual/en/function.imap-open.php
-                       '/ssl' => __('SSL')];
+            '/ssl' => __('SSL')];
 
         $svalue = ($tab['ssl'] ? '/ssl' : '');
 
@@ -2222,13 +2224,13 @@ class Toolbox
             'server_ssl',
             $values,
             ['value'               => $svalue,
-                                      'display_emptychoice' => true]
+                'display_emptychoice' => true]
         );
 
         $values = [//TRANS: imap_open option see http://www.php.net/manual/en/function.imap-open.php
-                       '/tls' => __('TLS'),
-                       //TRANS: imap_open option see http://www.php.net/manual/en/function.imap-open.php
-                       '/notls' => __('NO-TLS'),];
+            '/tls' => __('TLS'),
+            //TRANS: imap_open option see http://www.php.net/manual/en/function.imap-open.php
+            '/notls' => __('NO-TLS'),];
 
         $svalue = '';
         if (($tab['tls'] === true)) {
@@ -2242,14 +2244,14 @@ class Toolbox
             'server_tls',
             $values,
             ['value'               => $svalue,
-                                      'width'               => '14%',
-                                      'display_emptychoice' => true]
+                'width'               => '14%',
+                'display_emptychoice' => true]
         );
 
         $values = [//TRANS: imap_open option see http://www.php.net/manual/en/function.imap-open.php
-                       '/novalidate-cert' => __('NO-VALIDATE-CERT'),
-                       //TRANS: imap_open option see http://www.php.net/manual/en/function.imap-open.php
-                       '/validate-cert' => __('VALIDATE-CERT'),];
+            '/novalidate-cert' => __('NO-VALIDATE-CERT'),
+            //TRANS: imap_open option see http://www.php.net/manual/en/function.imap-open.php
+            '/validate-cert' => __('VALIDATE-CERT'),];
 
         $svalue = '';
         if (($tab['validate-cert'] === false)) {
@@ -2263,11 +2265,11 @@ class Toolbox
             'server_cert',
             $values,
             ['value'               => $svalue,
-                                      'display_emptychoice' => true]
+                'display_emptychoice' => true]
         );
 
         $values = [//TRANS: imap_open option see http://www.php.net/manual/en/function.imap-open.php
-                       '/norsh' => __('NORSH')];
+            '/norsh' => __('NORSH')];
 
         $svalue = ($tab['norsh'] === true ? '/norsh' : '');
 
@@ -2275,11 +2277,11 @@ class Toolbox
             'server_rsh',
             $values,
             ['value'               => $svalue,
-                                      'display_emptychoice' => true]
+                'display_emptychoice' => true]
         );
 
         $values = [//TRANS: imap_open option see http://www.php.net/manual/en/function.imap-open.php
-                       '/secure' => __('SECURE')];
+            '/secure' => __('SECURE')];
 
         $svalue = ($tab['secure'] === true ? '/secure' : '');
 
@@ -2287,11 +2289,11 @@ class Toolbox
             'server_secure',
             $values,
             ['value'               => $svalue,
-                                      'display_emptychoice' => true]
+                'display_emptychoice' => true]
         );
 
         $values = [//TRANS: imap_open option see http://www.php.net/manual/en/function.imap-open.php
-                       '/debug' => __('DEBUG')];
+            '/debug' => __('DEBUG')];
 
         $svalue = ($tab['debug'] === true ? '/debug' : '');
 
@@ -2299,8 +2301,8 @@ class Toolbox
             'server_debug',
             $values,
             ['value'               => $svalue,
-                                      'width'               => '12%',
-                                      'display_emptychoice' => true]
+                'width'               => '12%',
+                'display_emptychoice' => true]
         );
 
         echo "<input type=hidden name=imap_string value='" . $value . "'>";
@@ -2386,25 +2388,25 @@ class Toolbox
      *  - 'protocol_class' field is the protocol class to use (see Laminas\Mail\Protocol\Imap | Laminas\Mail\Protocol\Pop3);
      *  - 'storage_class' field is the storage class to use (see Laminas\Mail\Storage\Imap | Laminas\Mail\Storage\Pop3).
      *
-     * @param boolean $allow_plugins_protocols allow plugins protocols
+     * @param bool $allow_plugins_protocols allow plugins protocols
      *
      * @return array
      */
     private static function getMailServerProtocols($allow_plugins_protocols = true): array
     {
         $protocols = [
-           'imap' => [
-              //TRANS: IMAP mail server protocol
-              'label'    => __('IMAP'),
-              'protocol' => 'Laminas\Mail\Protocol\Imap',
-              'storage'  => 'Laminas\Mail\Storage\Imap',
-           ],
-           'pop'  => [
-              //TRANS: POP3 mail server protocol
-              'label'    => __('POP'),
-              'protocol' => 'Laminas\Mail\Protocol\Pop3',
-              'storage'  => 'Laminas\Mail\Storage\Pop3',
-           ]
+            'imap' => [
+                //TRANS: IMAP mail server protocol
+                'label'    => __('IMAP'),
+                'protocol' => 'Laminas\Mail\Protocol\Imap',
+                'storage'  => 'Laminas\Mail\Storage\Imap',
+            ],
+            'pop'  => [
+                //TRANS: POP3 mail server protocol
+                'label'    => __('POP'),
+                'protocol' => 'Laminas\Mail\Protocol\Pop3',
+                'storage'  => 'Laminas\Mail\Storage\Pop3',
+            ],
         ];
 
         if (!$allow_plugins_protocols) {
@@ -2452,9 +2454,9 @@ class Toolbox
      * or should be \Laminas\Mail\Protocol\Imap|\Laminas\Mail\Protocol\Pop3 for native protocols.
      *
      * @param string $protocol_type
-     * @param boolean $allow_plugins_protocols allow plugins protocols
+     * @param bool $allow_plugins_protocols allow plugins protocols
      *
-     * @return null|\Glpi\Mail\Protocol\ProtocolInterface|\Laminas\Mail\Protocol\Imap|\Laminas\Mail\Protocol\Pop3
+     * @return null|ProtocolInterface|Imap|Pop3
      */
     public static function getMailServerProtocolInstance(string $protocol_type, $allow_plugins_protocols = true)
     {
@@ -2466,8 +2468,8 @@ class Toolbox
             } elseif (
                 class_exists($protocol)
                 && (is_a($protocol, ProtocolInterface::class, true)
-                    || is_a($protocol, \Laminas\Mail\Protocol\Imap::class, true)
-                    || is_a($protocol, \Laminas\Mail\Protocol\Pop3::class, true))
+                    || is_a($protocol, Imap::class, true)
+                    || is_a($protocol, Pop3::class, true))
             ) {
                 return new $protocol();
             } else {
@@ -2487,7 +2489,7 @@ class Toolbox
      *
      * @param string $protocol_type
      * @param array  $params         Storage constructor params, as defined in AbstractStorage
-     * @param boolean $allow_plugins_protocols allow plugins protocols
+     * @param bool $allow_plugins_protocols allow plugins protocols
      *
      * @return null|AbstractStorage
      */
@@ -2562,7 +2564,7 @@ class Toolbox
      * @param string $string  string to search
      * @param array  $data    array to search in
      *
-     * @return boolean  string found ?
+     * @return bool  string found ?
     **/
     public static function inArrayCaseCompare($string, $data = [])
     {
@@ -2671,7 +2673,7 @@ class Toolbox
                 $stmt = $DB->prepare($DB->buildInsert($table, $reference));
                 if (false === $stmt) {
                     $msg = "Error preparing statement in table $table";
-                    throw new \RuntimeException($msg);
+                    throw new RuntimeException($msg);
                 }
 
                 $types = str_repeat('s', count($data[0]));
@@ -2680,14 +2682,14 @@ class Toolbox
                     if (false === $res) {
                         $msg = "Error binding params in table $table\n";
                         $msg .= print_r($row, true);
-                        throw new \RuntimeException($msg);
+                        throw new RuntimeException($msg);
                     }
                     $res = $stmt->execute();
                     if (false === $res) {
                         $msg = $stmt->error;
                         $msg .= "\nError execution statement in table $table\n";
                         $msg .= print_r($row, true);
-                        throw new \RuntimeException($msg);
+                        throw new RuntimeException($msg);
                     }
                     if (!isCommandLine()) {
                         // Flush will prevent proxy to timeout as it will receive data.
@@ -2703,10 +2705,10 @@ class Toolbox
             Config::setConfigurationValues(
                 'core',
                 [
-                  'language'      => $lang,
-                  'version'       => ITSM_VERSION,
-                  'dbversion'     => ITSM_SCHEMA_VERSION,
-                  'use_timezones' => $DB->areTimezonesAvailable()
+                    'language'      => $lang,
+                    'version'       => ITSM_VERSION,
+                    'dbversion'     => ITSM_SCHEMA_VERSION,
+                    'use_timezones' => $DB->areTimezonesAvailable(),
                 ]
             );
 
@@ -2714,8 +2716,8 @@ class Toolbox
             Config::setConfigurationValues(
                 'core',
                 [
-                  'itsmversion'       => ITSM_VERSION,
-                  'itsmdbversion'     => ITSM_SCHEMA_VERSION
+                    'itsmversion'       => ITSM_VERSION,
+                    'itsmdbversion'     => ITSM_SCHEMA_VERSION,
                 ]
             );
 
@@ -2724,11 +2726,11 @@ class Toolbox
                 $DB->updateOrDie(
                     'glpi_crontasks',
                     [
-                      'mode'   => 2
+                        'mode'   => 2,
                     ],
                     [
-                      'name'      => ['!=', 'watcher'],
-                      'allowmode' => ['&', 2]
+                        'name'      => ['!=', 'watcher'],
+                        'allowmode' => ['&', 2],
                     ],
                     '4203'
                 );
@@ -2745,7 +2747,7 @@ class Toolbox
      * @param string $name     config file name
      * @param string $content  config file content
      *
-     * @return boolean
+     * @return bool
     **/
     public static function writeConfig($name, $content)
     {
@@ -2876,9 +2878,9 @@ class Toolbox
      * @since 0.85.5
      *
      * @param string         $file  path of the file
-     * @param boolean|string $type  check if $file is the correct type
+     * @param bool|string $type  check if $file is the correct type
      *
-     * @return boolean|string (if $type not given) else boolean
+     * @return bool|string (if $type not given) else boolean
      *
     **/
     public static function getMime($file, $type = false)
@@ -3043,8 +3045,8 @@ class Toolbox
                         $itil_url_param = null !== $itil_object
                            ? "&{$itil_object->getForeignKeyField()}={$itil_object->fields['id']}"
                            : "";
-                        $img = "<img alt='" . $image['tag'] . "' src='" . $base_path .
-                                "/front/document.send.php?docid=" . $id . $itil_url_param . "'/>";
+                        $img = "<img alt='" . $image['tag'] . "' src='" . $base_path
+                                . "/front/document.send.php?docid=" . $id . $itil_url_param . "'/>";
 
                         // 1 - Replace direct tag (with prefix and suffix) by the image
                         $content_text = preg_replace(
@@ -3110,10 +3112,10 @@ class Toolbox
                         ) {
                             $docitem = new Document_Item();
                             $docitem->add(['documents_id'  => $image['id'],
-                                                '_do_notif'     => false,
-                                                '_disablenotif' => true,
-                                                'itemtype'      => $item->getType(),
-                                                'items_id'      => $item->fields['id']]);
+                                '_do_notif'     => false,
+                                '_disablenotif' => true,
+                                'itemtype'      => $item->getType(),
+                                'items_id'      => $item->fields['id']]);
                         }
                     } else {
                         // Remove tag
@@ -3136,7 +3138,7 @@ class Toolbox
      * @since 9.2
      *
      * @param string $content_html   html content of input
-     * @param boolean $force_update  force update of content in item
+     * @param bool $force_update  force update of content in item
      *
      * @return string  html content
     **/
@@ -3185,7 +3187,7 @@ class Toolbox
      * Because json can have been modified from addslashes_deep
      *
      * @param string $encoded Encoded JSON
-     * @param boolean $assoc  assoc parameter of json_encode native function
+     * @param bool $assoc  assoc parameter of json_encode native function
      *
      * @return mixed
      */
@@ -3218,7 +3220,7 @@ class Toolbox
      * @param string $haystack String to check
      * @param string $needle   String to find
      *
-     * @return boolean
+     * @return bool
      */
     public static function startsWith($haystack, $needle)
     {
@@ -3234,7 +3236,7 @@ class Toolbox
      * @param string $haystack String to check
      * @param string $needle   String to find
      *
-     * @return boolean
+     * @return bool
      */
     public static function endsWith($haystack, $needle)
     {
@@ -3269,20 +3271,20 @@ class Toolbox
         switch ($type) {
             case 'js':
                 $formats = [
-                   0 => 'Y-m-d',
-                   1 => 'd-m-Y',
-                   2 => 'm-d-Y'
+                    0 => 'Y-m-d',
+                    1 => 'd-m-Y',
+                    2 => 'm-d-Y',
                 ];
                 break;
             case 'php':
                 $formats = [
-                   0 => __('YYYY-MM-DD'),
-                   1 => __('DD-MM-YYYY'),
-                   2 => __('MM-DD-YYYY')
+                    0 => __('YYYY-MM-DD'),
+                    1 => __('DD-MM-YYYY'),
+                    2 => __('MM-DD-YYYY'),
                 ];
                 break;
             default:
-                throw new \RuntimeException("Unknown type $type to get date formats.");
+                throw new RuntimeException("Unknown type $type to get date formats.");
         }
         return $formats;
     }
@@ -3371,7 +3373,7 @@ class Toolbox
      *
      * @since 9.2
      *
-     * @return boolean
+     * @return bool
      */
     public static function useCache()
     {
@@ -3383,7 +3385,7 @@ class Toolbox
     /**
      * Convert a integer index into an excel like alpha index (A, B, ..., AA, AB, ...)
      * @since 9.3
-     * @param  integer $index the numeric index
+     * @param  int $index the numeric index
      * @return string         excel like string index
      */
     public static function getBijectiveIndex($index = 0)
@@ -3392,7 +3394,7 @@ class Toolbox
         while ((int) $index > 0) {
             $index--;
             $bij_str = chr($index % 26 + ord("A")) . $bij_str;
-            $index = (int)($index / 26);
+            $index = (int) ($index / 26);
         }
         return $bij_str;
     }
@@ -3424,7 +3426,7 @@ class Toolbox
      * @param string|null $src          Source path of the picture
      * @param string      $uniq_prefix  Unique prefix that can be used to improve uniqueness of destination filename
      *
-     * @return boolean|string      Destination filepath, relative to GLPI_PICTURE_DIR, or false on failure
+     * @return bool|string      Destination filepath, relative to GLPI_PICTURE_DIR, or false on failure
      *
      * @since 9.5.0
      */
@@ -3466,7 +3468,7 @@ class Toolbox
      *
      * @param string $path
      *
-     * @return boolean
+     * @return bool
      *
      * @since 9.5.0
      */
@@ -3618,7 +3620,7 @@ HTML;
 
         // Backport of Javascript function charCodeAt()
         $getCharCode = function ($c) {
-            list(, $ord) = unpack('N', mb_convert_encoding($c, 'UCS-4BE', 'UTF-8'));
+            [, $ord] = unpack('N', mb_convert_encoding($c, 'UCS-4BE', 'UTF-8'));
             return $ord;
         };
 
@@ -3638,9 +3640,9 @@ HTML;
         $hash = intval($hash / count($base_S));
         $L = $base_L[$hash % count($base_L)];
         $hsl = [
-           'H' => $H,
-           'S' => $S,
-           'L' => $L
+            'H' => $H,
+            'S' => $S,
+            'L' => $L,
         ];
 
         // return hex
@@ -3730,7 +3732,7 @@ HTML;
      *
      * @param string $url The URL to check
      *
-     * @return boolean
+     * @return bool
      */
     public static function isValidWebUrl($url): bool
     {

@@ -52,7 +52,7 @@ class Appliance_Item_Relation extends CommonDBRelation
     /**
      * Get item types that can be linked to an appliance item
      *
-     * @param boolean $all Get all possible types or only allowed ones
+     * @param bool $all Get all possible types or only allowed ones
      *
      * @return array
      */
@@ -158,7 +158,7 @@ class Appliance_Item_Relation extends CommonDBRelation
         if (count($types)) {
             $clause = ['itemtype' => $types];
         } else {
-            $clause = [new \QueryExpression('true = false')];
+            $clause = [new QueryExpression('true = false')];
         }
         $extra_types_where = array_merge(
             $extra_types_where,
@@ -180,10 +180,10 @@ class Appliance_Item_Relation extends CommonDBRelation
         global $DB;
 
         $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              Appliance_Item::getForeignKeyField() => $appliances_items_id
-           ]
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                Appliance_Item::getForeignKeyField() => $appliances_items_id,
+            ],
         ]);
 
         $relations = [];
@@ -191,9 +191,9 @@ class Appliance_Item_Relation extends CommonDBRelation
             $itemtype = $row['itemtype'];
             $item = new $itemtype();
             $item->getFromDB($row['items_id']);
-            $relations[$row['id']] = "<i class='" . $item->getIcon() . "' title='" . $item::getTypeName(1) . "'></i>" .
-                           "&nbsp;" . $item::getTypeName(1) .
-                           "&nbsp;-&nbsp;" . $item->getLink();
+            $relations[$row['id']] = "<i class='" . $item->getIcon() . "' title='" . $item::getTypeName(1) . "'></i>"
+                           . "&nbsp;" . $item::getTypeName(1)
+                           . "&nbsp;-&nbsp;" . $item->getLink();
         }
 
         return $relations;
@@ -251,14 +251,14 @@ class Appliance_Item_Relation extends CommonDBRelation
             echo "<div id='add_relation_dialog' title='" . _x('button', "Add an item") . "' style='display:none;'>
          <form  aria-label='Add Relation dialog' action='{$form_url}' method='POST'>
             <p>" . Dropdown::showSelectItemFromItemtypes([
-                  'items_id_name'   => 'items_id',
-                  'itemtypes'       => Appliance_Item_Relation::getTypes(true),
-                  'entity_restrict' => ($item->fields['is_recursive'] ?? false)
-                                          ? getSonsOf('glpi_entities', $item->fields['entities_id'])
-                                          : $item->fields['entities_id'],
-                  'checkright'     => true,
-                  'display'        => false,
-               ]) . "</p>
+                'items_id_name'   => 'items_id',
+                'itemtypes'       => Appliance_Item_Relation::getTypes(true),
+                'entity_restrict' => ($item->fields['is_recursive'] ?? false)
+                                        ? getSonsOf('glpi_entities', $item->fields['entities_id'])
+                                        : $item->fields['entities_id'],
+                'checkright'     => true,
+                'display'        => false,
+            ]) . "</p>
             <input type='hidden' name='appliances_items_id'>
             " . Html::submit(_x('button', "Add"), ['name' => 'add']) . "
          " . Html::closeForm(false) . "

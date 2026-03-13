@@ -123,7 +123,7 @@ class ITILSolution extends CommonDBChild
      *     - item: CommonITILObject instance
      *     - kb_id_toload: load new item content from KB entry
      *
-     * @return boolean item found
+     * @return bool item found
     **/
     public function showForm($ID, $options = [])
     {
@@ -143,13 +143,13 @@ class ITILSolution extends CommonDBChild
         $this->item = $item;
         $item->check($item->getID(), READ);
 
-        $entities_id = isset($options['entities_id']) ? $options['entities_id'] : $item->getEntityID();
+        $entities_id = $options['entities_id'] ?? $item->getEntityID();
 
         if ($item instanceof Ticket && $this->isNewItem()) {
             $ti = new Ticket_Ticket();
             $open_child = $ti->countOpenChildren($item->getID());
             if ($open_child > 0) {
-                echo "<div class='tab_cadre_fixe warning'>" . __('Warning: non closed children tickets depends on current ticket. Are you sure you want to close it?')  . "</div>";
+                echo "<div class='tab_cadre_fixe warning'>" . __('Warning: non closed children tickets depends on current ticket. Are you sure you want to close it?') . "</div>";
             }
         }
 
@@ -173,31 +173,31 @@ class ITILSolution extends CommonDBChild
         }
         $show_template = $canedit;
         $form = [
-           'action' =>  !isset($options['noform']) && $canedit ? $this->getFormURL() : '',
-           'buttons' => !isset($options['noform']) && $canedit ? [
-              [
-                 'name' => $ID > 0 ? 'update' : 'add',
-                 'value' => $ID > 0 ? _x('button', 'Save') : _x('button', 'Add'),
-                 'class' => 'btn btn-secondary',
-              ]
-           ] : [],
-           'content' => [
-              $this->getTypeName() => [
-                 'visible' => true,
-                 'inputs' => [
-                    $ID > 0 ? [
-                       'type' => 'hidden',
-                       'name' => 'id',
-                       'value' => $ID,
-                    ] : [],
-                    _n('Solution template', 'Solution templates', 1) => ($show_template) ? [
-                       'type' => 'select',
-                       'name' => 'solutiontemplates_id',
-                       'id' => 'DropdownForSolutionTemplate',
-                       'itemtype' => SolutionTemplate::class,
-                       'actions' => getItemActionButtons(['info', 'add'], SolutionTemplate::class),
-                       'hooks' => [
-                          'change' => <<<JS
+            'action' =>  !isset($options['noform']) && $canedit ? $this->getFormURL() : '',
+            'buttons' => !isset($options['noform']) && $canedit ? [
+                [
+                    'name' => $ID > 0 ? 'update' : 'add',
+                    'value' => $ID > 0 ? _x('button', 'Save') : _x('button', 'Add'),
+                    'class' => 'btn btn-secondary',
+                ],
+            ] : [],
+            'content' => [
+                $this->getTypeName() => [
+                    'visible' => true,
+                    'inputs' => [
+                        $ID > 0 ? [
+                            'type' => 'hidden',
+                            'name' => 'id',
+                            'value' => $ID,
+                        ] : [],
+                        _n('Solution template', 'Solution templates', 1) => ($show_template) ? [
+                            'type' => 'select',
+                            'name' => 'solutiontemplates_id',
+                            'id' => 'DropdownForSolutionTemplate',
+                            'itemtype' => SolutionTemplate::class,
+                            'actions' => getItemActionButtons(['info', 'add'], SolutionTemplate::class),
+                            'hooks' => [
+                                'change' => <<<JS
                            $.ajax({
                               url: "{$CFG_GLPI["root_doc"]}/ajax/solution.php",
                               type: "POST",
@@ -210,67 +210,67 @@ class ITILSolution extends CommonDBChild
                               $('#DropdownForSolutionTypeId').val(jsonData.solutiontypes_id).trigger('change');
                            });
                         JS,
-                       ]
-                    ] : [],
-                    '' => ($show_template) && (Session::haveRightsOr('knowbase', [READ, KnowbaseItem::READFAQ])) ? [
-                       'content' => "<a class='btn btn-secondary' title=\"" . __('Search a solution') . "\"
-                        href='" . $CFG_GLPI['root_doc'] . "/front/knowbaseitem.php?item_itemtype=" .
-                          $item->getType() . "&amp;item_items_id=" . $item->getID() .
-                          "&amp;forcetab=Knowbase$1'>" . __('Search a solution') . "</a>",
-                    ] : [],
-                    [
-                       'type' => 'hidden',
-                       'name' => 'itemtype',
-                       'value' => $item->getType(),
-                    ],
-                    [
-                       'type' => 'hidden',
-                       'name' => 'items_id',
-                       'value' => $item->getID(),
-                    ],
-                    [
-                       'type' => 'hidden',
-                       'name' => '_no_message_link',
-                       'value' => 1,
-                    ],
-                    SolutionType::getTypeName(1) =>  $canedit ? [
-                       'type' => 'select',
-                       'name' => 'solutiontypes_id',
-                       'id' => 'DropdownForSolutionTypeId',
-                       'itemtype' => SolutionType::class,
-                       'value' => $this->fields['solutiontypes_id'],
-                       'actions' => getItemActionButtons(['info', 'add'], SolutionType::class),
-                    ] : [
-                       'content' => Dropdown::getDropdownName(
-                           'glpi_solutiontypes',
-                           $this->getField('solutiontypes_id')
-                       ),
-                    ],
-                    str_replace('%id', isset($kb) ? $kb->getID() : '', __('Link to knowledge base entry #%id')) =>
-                    (Session::haveRightsOr('knowbase', [READ, KnowbaseItem::READFAQ]) && isset($options['kb_id_toload']) && $options['kb_id_toload'] != 0) ? [
-                       'type' => 'checkbox',
-                       'name' => 'kb_linked_id',
-                       'value' => $kb->getID(),
-                       'checked' => '',
-                    ] : [],
-                    __('Save and add to the knowledge base') => ($canedit && Session::haveRight('knowbase', UPDATE) && !isset($options['nokb'])) ? [
-                       'type' => 'checkbox',
-                       'name' => '_sol_to_kb',
-                    ] : [],
-                    __('Description') => ($canedit) ? [
-                       'type' => 'richtextarea',
-                       'name' => 'content',
-                       'id' => 'TextAreaForSolutionContent',
-                       'value' => $this->fields['content'],
-                       'col_lg' => 12,
-                       'col_md' => 12,
+                            ],
+                        ] : [],
+                        '' => ($show_template) && (Session::haveRightsOr('knowbase', [READ, KnowbaseItem::READFAQ])) ? [
+                            'content' => "<a class='btn btn-secondary' title=\"" . __('Search a solution') . "\"
+                        href='" . $CFG_GLPI['root_doc'] . "/front/knowbaseitem.php?item_itemtype="
+                               . $item->getType() . "&amp;item_items_id=" . $item->getID()
+                               . "&amp;forcetab=Knowbase$1'>" . __('Search a solution') . "</a>",
+                        ] : [],
+                        [
+                            'type' => 'hidden',
+                            'name' => 'itemtype',
+                            'value' => $item->getType(),
+                        ],
+                        [
+                            'type' => 'hidden',
+                            'name' => 'items_id',
+                            'value' => $item->getID(),
+                        ],
+                        [
+                            'type' => 'hidden',
+                            'name' => '_no_message_link',
+                            'value' => 1,
+                        ],
+                        SolutionType::getTypeName(1) =>  $canedit ? [
+                            'type' => 'select',
+                            'name' => 'solutiontypes_id',
+                            'id' => 'DropdownForSolutionTypeId',
+                            'itemtype' => SolutionType::class,
+                            'value' => $this->fields['solutiontypes_id'],
+                            'actions' => getItemActionButtons(['info', 'add'], SolutionType::class),
+                        ] : [
+                            'content' => Dropdown::getDropdownName(
+                                'glpi_solutiontypes',
+                                $this->getField('solutiontypes_id')
+                            ),
+                        ],
+                        str_replace('%id', isset($kb) ? $kb->getID() : '', __('Link to knowledge base entry #%id'))
+                        => (Session::haveRightsOr('knowbase', [READ, KnowbaseItem::READFAQ]) && isset($options['kb_id_toload']) && $options['kb_id_toload'] != 0) ? [
+                            'type' => 'checkbox',
+                            'name' => 'kb_linked_id',
+                            'value' => $kb->getID(),
+                            'checked' => '',
+                        ] : [],
+                        __('Save and add to the knowledge base') => ($canedit && Session::haveRight('knowbase', UPDATE) && !isset($options['nokb'])) ? [
+                            'type' => 'checkbox',
+                            'name' => '_sol_to_kb',
+                        ] : [],
+                        __('Description') => ($canedit) ? [
+                            'type' => 'richtextarea',
+                            'name' => 'content',
+                            'id' => 'TextAreaForSolutionContent',
+                            'value' => $this->fields['content'],
+                            'col_lg' => 12,
+                            'col_md' => 12,
 
-                    ] : [
-                       Toolbox::unclean_cross_side_scripting_deep($this->getField('content'))
+                        ] : [
+                            Toolbox::unclean_cross_side_scripting_deep($this->getField('content')),
+                        ],
                     ],
-                 ]
-              ]
-           ]
+                ],
+            ],
         ];
 
         renderTwigForm($form);
@@ -281,19 +281,19 @@ class ITILSolution extends CommonDBChild
      * Count solutions for specific item
      *
      * @param string  $itemtype Item type
-     * @param integer $items_id Item ID
+     * @param int $items_id Item ID
      *
-     * @return integer
+     * @return int
      */
     public static function countFor($itemtype, $items_id)
     {
         return countElementsInTable(
             self::getTable(),
             [
-              'WHERE' => [
-                 'itemtype'  => $itemtype,
-                 'items_id'  => $items_id
-              ]
+                'WHERE' => [
+                    'itemtype'  => $itemtype,
+                    'items_id'  => $items_id,
+                ],
             ]
         );
     }
@@ -366,9 +366,9 @@ class ITILSolution extends CommonDBChild
         $this->input = $this->addFiles(
             $this->input,
             [
-              'force_update' => true,
-              'name' => 'content',
-              'content_field' => 'content',
+                'force_update' => true,
+                'name' => 'content',
+                'content_field' => 'content',
             ]
         );
 
@@ -396,8 +396,8 @@ class ITILSolution extends CommonDBChild
             }
 
             $this->item->update([
-               'id'     => $this->item->getID(),
-               'status' => $status
+                'id'     => $this->item->getID(),
+                'status' => $status,
             ]);
         }
 
@@ -429,9 +429,9 @@ class ITILSolution extends CommonDBChild
     {
         // Replace inline pictures
         $options = [
-           'force_update' => true,
-           'name' => 'content',
-           'content_field' => 'content',
+            'force_update' => true,
+            'name' => 'content',
+            'content_field' => 'content',
         ];
         $this->input = $this->addFiles($this->input, $options);
     }
@@ -453,7 +453,7 @@ class ITILSolution extends CommonDBChild
                 $value = $values[$field];
                 $statuses = self::getStatuses();
 
-                return (isset($statuses[$value]) ? $statuses[$value] : $value);
+                return ($statuses[$value] ?? $value);
                 break;
         }
 
@@ -491,9 +491,9 @@ class ITILSolution extends CommonDBChild
     public static function getStatuses()
     {
         return [
-           CommonITILValidation::WAITING  => __('Waiting for approval'),
-           CommonITILValidation::REFUSED  => __('Refused'),
-           CommonITILValidation::ACCEPTED => __('Accepted'),
+            CommonITILValidation::WAITING  => __('Waiting for approval'),
+            CommonITILValidation::REFUSED  => __('Refused'),
+            CommonITILValidation::ACCEPTED => __('Accepted'),
         ];
     }
 }

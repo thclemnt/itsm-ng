@@ -68,7 +68,7 @@ class HTMLTableSuperHeader extends HTMLTableHeader
      * @param $first
      * @param $second
      *
-     * @return integer LCM of $first and $second
+     * @return int LCM of $first and $second
     **/
     private static function LCM($first, $second)
     {
@@ -120,7 +120,7 @@ class HTMLTableSuperHeader extends HTMLTableHeader
      * compute the total number of current super header colspan: it is the Least Common
      * Multiple of the colspan of each subHeader it owns.
      *
-     * @param integer $number the colspan for this header given by the group
+     * @param int $number the colspan for this header given by the group
     **/
     public function updateNumberOfSubHeader($number)
     {

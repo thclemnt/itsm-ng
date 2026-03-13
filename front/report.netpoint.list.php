@@ -43,8 +43,8 @@ if (isset($_POST["prise"]) && $_POST["prise"]) {
     $name = Dropdown::getDropdownName("glpi_netpoints", $_POST["prise"]);
 
     // Titre
-    echo "<div class='center spaced'><h2>" . sprintf(__('Network report by outlet: %s'), $name) .
-         "</h2></div>";
+    echo "<div class='center spaced'><h2>" . sprintf(__('Network report by outlet: %s'), $name)
+         . "</h2></div>";
 
     Report::reportForNetworkInformations(
         'glpi_netpoints', //from
@@ -52,20 +52,20 @@ if (isset($_POST["prise"]) && $_POST["prise"]) {
         ['glpi_netpoints.id' => (int) $_POST["prise"]], //where
         ['glpi_locations.completename AS extra'], //select
         [
-           'glpi_locations'  => [
-              'ON'  => [
-                 'glpi_locations'  => 'id',
-                 'glpi_netpoints'  => 'locations_id'
-              ]
-           ]
+            'glpi_locations'  => [
+                'ON'  => [
+                    'glpi_locations'  => 'id',
+                    'glpi_netpoints'  => 'locations_id',
+                ],
+            ],
         ], //left join
         [
-           'glpi_networkportethernets'   => [
-              'ON'  => [
-                 'glpi_networkportethernets'   => 'netpoints_id',
-                 'glpi_netpoints'              => 'id'
-              ]
-           ]
+            'glpi_networkportethernets'   => [
+                'ON'  => [
+                    'glpi_networkportethernets'   => 'netpoints_id',
+                    'glpi_netpoints'              => 'id',
+                ],
+            ],
         ], //inner join
         [], //order
         Location::getTypeName()

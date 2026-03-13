@@ -42,25 +42,25 @@ class AuthLdapReplicate extends DbTestCase
     public function testCanCreate()
     {
         $this->login();
-        $this->boolean((bool)\AuthLdapReplicate::canCreate())->isTrue();
+        $this->boolean((bool) \AuthLdapReplicate::canCreate())->isTrue();
 
         $_SESSION['glpiactiveprofile']['config'] = READ;
-        $this->boolean((bool)\AuthLdapReplicate::canCreate())->isFalse();
+        $this->boolean((bool) \AuthLdapReplicate::canCreate())->isFalse();
 
         $_SESSION['glpiactiveprofile']['config'] = 0;
-        $this->boolean((bool)\AuthLdapReplicate::canCreate())->isFalse();
+        $this->boolean((bool) \AuthLdapReplicate::canCreate())->isFalse();
     }
 
     public function testCanPurge()
     {
         $this->login();
-        $this->boolean((bool)\AuthLdapReplicate::canPurge())->isTrue();
+        $this->boolean((bool) \AuthLdapReplicate::canPurge())->isTrue();
 
         $_SESSION['glpiactiveprofile']['config'] = READ;
-        $this->boolean((bool)\AuthLdapReplicate::canCreate())->isFalse();
+        $this->boolean((bool) \AuthLdapReplicate::canCreate())->isFalse();
 
         $_SESSION['glpiactiveprofile']['config'] = 0;
-        $this->boolean((bool)\AuthLdapReplicate::canCreate())->isFalse();
+        $this->boolean((bool) \AuthLdapReplicate::canCreate())->isFalse();
     }
 
     public function testGetForbiddenStandardMassiveAction()
@@ -78,24 +78,24 @@ class AuthLdapReplicate extends DbTestCase
         foreach (['prepareInputForAdd', 'prepareInputForUpdate'] as $method) {
             //Do not set a port : no port added
             $result = $replicate->$method([
-               'name' => 'test',
-               'host' => 'host'
+                'name' => 'test',
+                'host' => 'host',
             ]);
             $this->array($result)->nothasKey('port');
 
             //Port=0, change value to 389
             $result = $replicate->$method([
-               'name' => 'test',
-               'host' => 'host',
-               'port' => 0
+                'name' => 'test',
+                'host' => 'host',
+                'port' => 0,
             ]);
             $this->integer($result['port'])->isIdenticalTo(389);
 
             //Port set : do not change it's value
             $result = $replicate->$method([
-               'name' => 'test',
-               'host' => 'host',
-               'port' => 3389
+                'name' => 'test',
+                'host' => 'host',
+                'port' => 3389,
             ]);
             $this->integer($result['port'])->isIdenticalTo(3389);
         }

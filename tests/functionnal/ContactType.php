@@ -43,16 +43,16 @@ class ContactType extends DbTestCase
 
         $obj = new \ContactType();
         $id = $obj->add([
-           'name'    => 'contact-type-' . $this->getUniqueString(),
-           'comment' => 'comment-' . $this->getUniqueString(),
+            'name'    => 'contact-type-' . $this->getUniqueString(),
+            'comment' => 'comment-' . $this->getUniqueString(),
         ]);
-        $this->integer((int)$id)->isGreaterThan(0);
+        $this->integer((int) $id)->isGreaterThan(0);
         $this->boolean($obj->getFromDB($id))->isTrue();
 
         $this->boolean($obj->update([
-           'id'      => $id,
-           'name'    => 'contact-type-updated-' . $this->getUniqueString(),
-           'comment' => 'updated-' . $this->getUniqueString(),
+            'id'      => $id,
+            'name'    => 'contact-type-updated-' . $this->getUniqueString(),
+            'comment' => 'updated-' . $this->getUniqueString(),
         ]))->isTrue();
         $this->boolean($obj->getFromDB($id))->isTrue();
 

@@ -65,45 +65,45 @@ class Item_SoftwareVersion extends CommonDBRelation
         $tab = [];
 
         $tab[] = [
-           'id'                 => 'common',
-           'name'               => __('Characteristics')
+            'id'                 => 'common',
+            'name'               => __('Characteristics'),
         ];
 
         $tab[] = [
-           'id'                 => '2',
-           'table'              => $this->getTable(),
-           'field'              => 'id',
-           'name'               => __('ID'),
-           'massiveaction'      => false,
-           'datatype'           => 'number'
+            'id'                 => '2',
+            'table'              => $this->getTable(),
+            'field'              => 'id',
+            'name'               => __('ID'),
+            'massiveaction'      => false,
+            'datatype'           => 'number',
         ];
 
         $tab[] = [
-           'id'                 => '3',
-           'table'              => $this->getTable(),
-           'field'              => 'items_id',
-           'name'               => _n('Associated element', 'Associated elements', Session::getPluralNumber()),
-           'massiveaction'      => false,
-           'nosort'             => true,
-           'datatype'           => 'specific',
-           'additionalfields'   => ['itemtype']
+            'id'                 => '3',
+            'table'              => $this->getTable(),
+            'field'              => 'items_id',
+            'name'               => _n('Associated element', 'Associated elements', Session::getPluralNumber()),
+            'massiveaction'      => false,
+            'nosort'             => true,
+            'datatype'           => 'specific',
+            'additionalfields'   => ['itemtype'],
         ];
 
         $tab[] = [
-           'id'                 => '4',
-           'table'              => 'glpi_softwareversions',
-           'field'              => 'name',
-           'name'               => _n('Version', 'Versions', 1),
-           'datatype'           => 'dropdown',
-           'massiveaction'      => false
+            'id'                 => '4',
+            'table'              => 'glpi_softwareversions',
+            'field'              => 'name',
+            'name'               => _n('Version', 'Versions', 1),
+            'datatype'           => 'dropdown',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '5',
-           'table'              => $this->getTable(),
-           'field'              => 'itemtype',
-           'name'               => _x('software', 'Request source'),
-           'datatype'           => 'dropdown'
+            'id'                 => '5',
+            'table'              => $this->getTable(),
+            'field'              => 'itemtype',
+            'name'               => _x('software', 'Request source'),
+            'datatype'           => 'dropdown',
         ];
 
         return $tab;
@@ -171,22 +171,22 @@ class Item_SoftwareVersion extends CommonDBRelation
         switch ($ma->getAction()) {
             case 'add':
                 $inputs = [
-                   Software::getTypeName() => [
-                      'type' => 'select',
-                      'name' => Software::getForeignKeyField(),
-                      'values' => getOptionForItems(
-                          Software::class,
-                          [
-                            'is_deleted' => 0,
-                            'entities_id' => $_SESSION["glpiactive_entity"],
-                            'is_template' => 0
-                          ]
-                      ),
-                      'actions' => getItemActionButtons(['info'], Software::class),
-                      'col_lg' => 12,
-                      'col_md' => 12,
-                      'hooks' => [
-                         'change' => <<<JS
+                    Software::getTypeName() => [
+                        'type' => 'select',
+                        'name' => Software::getForeignKeyField(),
+                        'values' => getOptionForItems(
+                            Software::class,
+                            [
+                                'is_deleted' => 0,
+                                'entities_id' => $_SESSION["glpiactive_entity"],
+                                'is_template' => 0,
+                            ]
+                        ),
+                        'actions' => getItemActionButtons(['info'], Software::class),
+                        'col_lg' => 12,
+                        'col_md' => 12,
+                        'hooks' => [
+                            'change' => <<<JS
                         const val = this.value;
                         const select = document.querySelector('select[name="peer_softwareversions_id"]');
                         select.disabled = !val;
@@ -211,22 +211,22 @@ class Item_SoftwareVersion extends CommonDBRelation
                            });
                         }
                      JS,
-                      ]
-                   ],
-                   SoftwareVersion::getTypeName() => [
-                      'type' => 'select',
-                      'name' => 'peer_softwareversions_id',
-                      'values' => [],
-                      'disabled' => '',
-                      'col_lg' => 12,
-                      'col_md' => 12,
-                   ]
+                        ],
+                    ],
+                    SoftwareVersion::getTypeName() => [
+                        'type' => 'select',
+                        'name' => 'peer_softwareversions_id',
+                        'values' => [],
+                        'disabled' => '',
+                        'col_lg' => 12,
+                        'col_md' => 12,
+                    ],
 
                 ];
                 foreach ($inputs as $title => $input) {
                     renderTwigTemplate('macros/wrappedInput.twig', [
-                       'title' => $title,
-                       'input' => $input,
+                        'title' => $title,
+                        'input' => $input,
                     ]);
                 }
                 echo Html::submit(_x('button', 'Post'), ['name' => 'massiveaction', 'class' => 'btn btn-secondary']);
@@ -266,9 +266,9 @@ class Item_SoftwareVersion extends CommonDBRelation
                             //Process rules
                             if (
                                 $item->update([
-                                'id' => $id,
-                                'softwareversions_id'
-                                => $input['softwareversions_id']
+                                    'id' => $id,
+                                    'softwareversions_id'
+                                    => $input['softwareversions_id'],
                                 ])
                             ) {
                                 $ma->itemDone($item->getType(), $id, MassiveAction::ACTION_OK);
@@ -294,9 +294,9 @@ class Item_SoftwareVersion extends CommonDBRelation
                             //Process rules
                             if (
                                 $itemtoadd->add([
-                                'items_id'              => $id,
-                                'itemtype'              => $item::getType(),
-                                'softwareversions_id'   => $_POST['peer_softwareversions_id']
+                                    'items_id'              => $id,
+                                    'itemtype'              => $item::getType(),
+                                    'softwareversions_id'   => $_POST['peer_softwareversions_id'],
                                 ])
                             ) {
                                 $ma->itemDone($item->getType(), $id, MassiveAction::ACTION_OK);
@@ -339,12 +339,12 @@ class Item_SoftwareVersion extends CommonDBRelation
             $result = $DB->update(
                 $this->getTable(),
                 [
-                  'is_template_item'  => $item->maybeTemplate() ? $item->getField('is_template') : 0,
-                  'is_deleted_item'   => $item->maybeDeleted() ? $item->getField('is_deleted') : 0
+                    'is_template_item'  => $item->maybeTemplate() ? $item->getField('is_template') : 0,
+                    'is_deleted_item'   => $item->maybeDeleted() ? $item->getField('is_deleted') : 0,
                 ],
                 [
-                  'items_id' => $items_id,
-                  'itemtype' => $itemtype
+                    'items_id' => $items_id,
+                    'itemtype' => $itemtype,
                 ]
             );
             return $result;
@@ -355,10 +355,10 @@ class Item_SoftwareVersion extends CommonDBRelation
     /**
      * Get number of installed licenses of a version
      *
-     * @param integer          $softwareversions_id version ID
-     * @param string|integer[] $entity              to search for item in ('' = all active entities)
+     * @param int          $softwareversions_id version ID
+     * @param string|int[] $entity              to search for item in ('' = all active entities)
      *
-     * @return integer number of installations
+     * @return int number of installations
      **/
     public static function countForVersion($softwareversions_id, $entity = '')
     {
@@ -366,12 +366,12 @@ class Item_SoftwareVersion extends CommonDBRelation
 
         $item_version_table = self::getTable(__CLASS__);
         $iterator = $DB->request([
-           'SELECT'    => ['itemtype'],
-           'DISTINCT'  => true,
-           'FROM'      => $item_version_table,
-           'WHERE'     => [
-              'softwareversions_id'   => $softwareversions_id
-           ]
+            'SELECT'    => ['itemtype'],
+            'DISTINCT'  => true,
+            'FROM'      => $item_version_table,
+            'WHERE'     => [
+                'softwareversions_id'   => $softwareversions_id,
+            ],
         ]);
 
         $target_types = [];
@@ -383,24 +383,24 @@ class Item_SoftwareVersion extends CommonDBRelation
         foreach ($target_types as $itemtype) {
             $itemtable = $itemtype::getTable();
             $request = [
-               'FROM'         => 'glpi_items_softwareversions',
-               'COUNT'        => 'cpt',
-               'INNER JOIN'   => [
-                  $itemtable  => [
-                     'FKEY'   => [
-                        $itemtable                    => 'id',
-                        'glpi_items_softwareversions' => 'items_id', [
-                           'AND' => [
-                              'glpi_items_softwareversions.itemtype' => $itemtype
-                           ]
-                        ]
-                     ]
-                  ]
-               ],
-               'WHERE'        => [
-                  'glpi_items_softwareversions.softwareversions_id'     => $softwareversions_id,
-                  'glpi_items_softwareversions.is_deleted'              => 0
-               ] + getEntitiesRestrictCriteria($itemtable, '', $entity)
+                'FROM'         => 'glpi_items_softwareversions',
+                'COUNT'        => 'cpt',
+                'INNER JOIN'   => [
+                    $itemtable  => [
+                        'FKEY'   => [
+                            $itemtable                    => 'id',
+                            'glpi_items_softwareversions' => 'items_id', [
+                                'AND' => [
+                                    'glpi_items_softwareversions.itemtype' => $itemtype,
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+                'WHERE'        => [
+                    'glpi_items_softwareversions.softwareversions_id'     => $softwareversions_id,
+                    'glpi_items_softwareversions.is_deleted'              => 0,
+                ] + getEntitiesRestrictCriteria($itemtable, '', $entity),
             ];
             $item = new $itemtype();
             if ($item->maybeDeleted()) {
@@ -427,20 +427,20 @@ class Item_SoftwareVersion extends CommonDBRelation
         global $DB;
 
         $iterator = $DB->request([
-           'SELECT'    => ['itemtype'],
-           'DISTINCT'  => true,
-           'FROM'      => 'glpi_softwareversions',
-           'INNER JOIN'   => [
-              'glpi_items_softwareversions'   => [
-                 'FKEY'   => [
-                    'glpi_items_softwareversions' => 'softwareversions_id',
-                    'glpi_softwareversions'       => 'id'
-                 ]
-              ],
-           ],
-           'WHERE'     => [
-              'softwares_id' => $softwares_id
-           ]
+            'SELECT'    => ['itemtype'],
+            'DISTINCT'  => true,
+            'FROM'      => 'glpi_softwareversions',
+            'INNER JOIN'   => [
+                'glpi_items_softwareversions'   => [
+                    'FKEY'   => [
+                        'glpi_items_softwareversions' => 'softwareversions_id',
+                        'glpi_softwareversions'       => 'id',
+                    ],
+                ],
+            ],
+            'WHERE'     => [
+                'softwares_id' => $softwares_id,
+            ],
         ]);
 
         $target_types = [];
@@ -452,30 +452,30 @@ class Item_SoftwareVersion extends CommonDBRelation
         foreach ($target_types as $itemtype) {
             $itemtable = $itemtype::getTable();
             $request = [
-               'FROM'         => 'glpi_softwareversions',
-               'COUNT'        => 'cpt',
-               'INNER JOIN'   => [
-                  'glpi_items_softwareversions'   => [
-                     'FKEY'   => [
-                        'glpi_items_softwareversions' => 'softwareversions_id',
-                        'glpi_softwareversions'       => 'id'
-                     ]
-                  ],
-                  $itemtable  => [
-                     'FKEY'   => [
-                        $itemtable                    => 'id',
-                        'glpi_items_softwareversions' => 'items_id', [
-                           'AND' => [
-                              'glpi_items_softwareversions.itemtype' => $itemtype
-                           ]
-                        ]
-                     ]
-                  ]
-               ],
-               'WHERE'        => [
-                  'glpi_softwareversions.softwares_id'      => $softwares_id,
-                  'glpi_items_softwareversions.is_deleted'  => 0
-               ] + getEntitiesRestrictCriteria($itemtable, '', '', true)
+                'FROM'         => 'glpi_softwareversions',
+                'COUNT'        => 'cpt',
+                'INNER JOIN'   => [
+                    'glpi_items_softwareversions'   => [
+                        'FKEY'   => [
+                            'glpi_items_softwareversions' => 'softwareversions_id',
+                            'glpi_softwareversions'       => 'id',
+                        ],
+                    ],
+                    $itemtable  => [
+                        'FKEY'   => [
+                            $itemtable                    => 'id',
+                            'glpi_items_softwareversions' => 'items_id', [
+                                'AND' => [
+                                    'glpi_items_softwareversions.itemtype' => $itemtype,
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+                'WHERE'        => [
+                    'glpi_softwareversions.softwares_id'      => $softwares_id,
+                    'glpi_items_softwareversions.is_deleted'  => 0,
+                ] + getEntitiesRestrictCriteria($itemtable, '', '', true),
             ];
             $item = new $itemtype();
             if ($item->maybeDeleted()) {
@@ -519,7 +519,7 @@ class Item_SoftwareVersion extends CommonDBRelation
     /**
      * Show installations of a software
      *
-     * @param integer $searchID  value of the ID to search
+     * @param int $searchID  value of the ID to search
      * @param string  $crit      to search : softwares_id (software) or id (version)
      *
      * @return void
@@ -559,40 +559,40 @@ class Item_SoftwareVersion extends CommonDBRelation
             $canshowitems[$itemtype] = $itemtype::canView();
             $itemtable = $itemtype::getTable();
             $query = [
-               'SELECT' => [
-                  $item_version_table . '.*',
-                  'glpi_softwareversions.name AS version',
-                  'glpi_softwareversions.softwares_id AS sID',
-                  'glpi_softwareversions.id AS vID',
-                  "{$itemtable}.name AS itemname",
-                  "{$itemtable}.id AS iID",
-                  new QueryExpression($DB->quoteValue($itemtype) . " AS " . $DB::quoteName('item_type')),
-               ],
-               'FROM'   => $item_version_table,
-               'INNER JOIN' => [
-                  'glpi_softwareversions' => [
-                     'FKEY'   => [
-                        $item_version_table     => 'softwareversions_id',
-                        'glpi_softwareversions' => 'id'
-                     ]
-                  ]
-               ],
-               'LEFT JOIN' => [
-                  $itemtable => [
-                     'FKEY'   => [
-                        $item_version_table  => 'items_id',
-                        $itemtable        => 'id', [
-                           'AND' => [
-                              $item_version_table . '.itemtype'  => $itemtype
-                           ]
-                        ]
-                     ]
-                  ]
-               ],
-               'WHERE'     => [
-                  "glpi_softwareversions.$crit"                => $searchID,
-                  'glpi_items_softwareversions.is_deleted'     => 0
-               ]
+                'SELECT' => [
+                    $item_version_table . '.*',
+                    'glpi_softwareversions.name AS version',
+                    'glpi_softwareversions.softwares_id AS sID',
+                    'glpi_softwareversions.id AS vID',
+                    "{$itemtable}.name AS itemname",
+                    "{$itemtable}.id AS iID",
+                    new QueryExpression($DB->quoteValue($itemtype) . " AS " . $DB::quoteName('item_type')),
+                ],
+                'FROM'   => $item_version_table,
+                'INNER JOIN' => [
+                    'glpi_softwareversions' => [
+                        'FKEY'   => [
+                            $item_version_table     => 'softwareversions_id',
+                            'glpi_softwareversions' => 'id',
+                        ],
+                    ],
+                ],
+                'LEFT JOIN' => [
+                    $itemtable => [
+                        'FKEY'   => [
+                            $item_version_table  => 'items_id',
+                            $itemtable        => 'id', [
+                                'AND' => [
+                                    $item_version_table . '.itemtype'  => $itemtype,
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+                'WHERE'     => [
+                    "glpi_softwareversions.$crit"                => $searchID,
+                    'glpi_items_softwareversions.is_deleted'     => 0,
+                ],
             ];
             if ($DB->fieldExists($itemtable, 'serial')) {
                 $query['SELECT'][] = $itemtable . '.serial';
@@ -614,10 +614,10 @@ class Item_SoftwareVersion extends CommonDBRelation
                 $query['SELECT'][] = 'glpi_users.realname AS userrealname';
                 $query['SELECT'][] = 'glpi_users.firstname AS userfirstname';
                 $query['LEFT JOIN']['glpi_users'] = [
-                   'FKEY'   => [
-                      $itemtable     => 'users_id',
-                      'glpi_users'   => 'id'
-                   ]
+                    'FKEY'   => [
+                        $itemtable     => 'users_id',
+                        'glpi_users'   => 'id',
+                    ],
                 ];
             } else {
                 $query['SELECT'][] = new QueryExpression(
@@ -636,10 +636,10 @@ class Item_SoftwareVersion extends CommonDBRelation
             if ($DB->fieldExists($itemtable, 'entities_id')) {
                 $query['SELECT'][] = 'glpi_entities.completename AS entity';
                 $query['LEFT JOIN']['glpi_entities'] = [
-                   'FKEY'   => [
-                      $itemtable     => 'entities_id',
-                      'glpi_entities'   => 'id'
-                   ]
+                    'FKEY'   => [
+                        $itemtable     => 'entities_id',
+                        'glpi_entities'   => 'id',
+                    ],
                 ];
                 $query['WHERE'] += getEntitiesRestrictCriteria($itemtable, '', '', true);
             } else {
@@ -650,10 +650,10 @@ class Item_SoftwareVersion extends CommonDBRelation
             if ($DB->fieldExists($itemtable, 'locations_id')) {
                 $query['SELECT'][] = 'glpi_locations.completename AS location';
                 $query['LEFT JOIN']['glpi_locations'] = [
-                   'FKEY'   => [
-                      $itemtable     => 'locations_id',
-                      'glpi_locations'   => 'id'
-                   ]
+                    'FKEY'   => [
+                        $itemtable     => 'locations_id',
+                        'glpi_locations'   => 'id',
+                    ],
                 ];
             } else {
                 $query['SELECT'][] = new QueryExpression(
@@ -663,10 +663,10 @@ class Item_SoftwareVersion extends CommonDBRelation
             if ($DB->fieldExists($itemtable, 'states_id')) {
                 $query['SELECT'][] = 'glpi_states.name AS state';
                 $query['LEFT JOIN']['glpi_states'] = [
-                   'FKEY'   => [
-                      $itemtable     => 'states_id',
-                      'glpi_states'   => 'id'
-                   ]
+                    'FKEY'   => [
+                        $itemtable     => 'states_id',
+                        'glpi_states'   => 'id',
+                    ],
                 ];
             } else {
                 $query['SELECT'][] = new QueryExpression(
@@ -676,10 +676,10 @@ class Item_SoftwareVersion extends CommonDBRelation
             if ($DB->fieldExists($itemtable, 'groups_id')) {
                 $query['SELECT'][] = 'glpi_groups.name AS groupe';
                 $query['LEFT JOIN']['glpi_groups'] = [
-                   'FKEY'   => [
-                      $itemtable     => 'groups_id',
-                      'glpi_groups'   => 'id'
-                   ]
+                    'FKEY'   => [
+                        $itemtable     => 'groups_id',
+                        'glpi_groups'   => 'id',
+                    ],
                 ];
             } else {
                 $query['SELECT'][] = new QueryExpression(
@@ -697,9 +697,9 @@ class Item_SoftwareVersion extends CommonDBRelation
 
         $union = new QueryUnion($queries, true);
         $criteria = [
-           'SELECT' => [],
-           'FROM'   => $union,
-           'ORDER'  => ['entity ASC', 'version ASC', 'itemname ASC']
+            'SELECT' => [],
+            'FROM'   => $union,
+            'ORDER'  => ['entity ASC', 'version ASC', 'itemname ASC'],
         ];
         $iterator = $DB->request($criteria);
 
@@ -761,8 +761,8 @@ class Item_SoftwareVersion extends CommonDBRelation
 
             // Version column (only for software view)
             if ($crit == "softwares_id") {
-                $newValue[] = "<a href='" . SoftwareVersion::getFormURLWithID($data['vID']) . "'>" .
-                   htmlspecialchars((string) $data['version']) . "</a>";
+                $newValue[] = "<a href='" . SoftwareVersion::getFormURLWithID($data['vID']) . "'>"
+                   . htmlspecialchars((string) $data['version']) . "</a>";
             }
 
             // Item type
@@ -774,8 +774,8 @@ class Item_SoftwareVersion extends CommonDBRelation
                 $itemname = sprintf(__('%1$s (%2$s)'), $itemname, $data['iID']);
             }
             if ($canshowitems[$data['item_type']]) {
-                $newValue[] = "<a href='" . $data['item_type']::getFormURLWithID($data['iID']) . "'>" .
-                   htmlspecialchars((string) $itemname) . "</a>";
+                $newValue[] = "<a href='" . $data['item_type']::getFormURLWithID($data['iID']) . "'>"
+                   . htmlspecialchars((string) $itemname) . "</a>";
             } else {
                 $newValue[] = htmlspecialchars((string) $itemname);
             }
@@ -815,8 +815,8 @@ class Item_SoftwareVersion extends CommonDBRelation
                     if (!empty($lic['type'])) {
                         $serial = sprintf(__('%1$s (%2$s)'), $serial, $lic['type']);
                     }
-                    $licParts[] = "<a href='" . SoftwareLicense::getFormURLWithID($lic['id']) . "'>" .
-                       htmlspecialchars((string) $lic['name']) . "</a> - " . htmlspecialchars((string) $serial);
+                    $licParts[] = "<a href='" . SoftwareLicense::getFormURLWithID($lic['id']) . "'>"
+                       . htmlspecialchars((string) $lic['name']) . "</a> - " . htmlspecialchars((string) $serial);
                 }
                 $licenseHtml = implode('<br>', $licParts);
             }
@@ -834,14 +834,14 @@ class Item_SoftwareVersion extends CommonDBRelation
 
         if ($canedit && count($values) > 0) {
             $massiveactionparams = [
-               'num_displayed' => count($values),
-               'container' => $massActionContainerId,
-               'display_arrow' => false,
-               'specific_actions' => [
-                  __CLASS__ . MassiveAction::CLASS_ACTION_SEPARATOR . 'move_version'
-                  => _x('button', 'Move'),
-                  'purge' => _x('button', 'Delete permanently')
-               ]
+                'num_displayed' => count($values),
+                'container' => $massActionContainerId,
+                'display_arrow' => false,
+                'specific_actions' => [
+                    __CLASS__ . MassiveAction::CLASS_ACTION_SEPARATOR . 'move_version'
+                    => _x('button', 'Move'),
+                    'purge' => _x('button', 'Delete permanently'),
+                ],
             ];
             // Options to update version
             if ($softwares_id) {
@@ -857,10 +857,10 @@ class Item_SoftwareVersion extends CommonDBRelation
         }
 
         renderTwigTemplate('table.twig', [
-           'id' => $massActionContainerId,
-           'fields' => $fields,
-           'values' => $values,
-           'massive_action' => $canedit ? $massive_action : [],
+            'id' => $massActionContainerId,
+            'fields' => $fields,
+            'values' => $values,
+            'massive_action' => $canedit ? $massive_action : [],
         ]);
 
         echo "</div>\n";
@@ -893,10 +893,10 @@ class Item_SoftwareVersion extends CommonDBRelation
         $tot = 0;
 
         $iterator = $DB->request([
-           'SELECT' => ['id', 'completename'],
-           'FROM'   => 'glpi_entities',
-           'WHERE'  => getEntitiesRestrictCriteria('glpi_entities'),
-           'ORDER'  => ['completename']
+            'SELECT' => ['id', 'completename'],
+            'FROM'   => 'glpi_entities',
+            'WHERE'  => getEntitiesRestrictCriteria('glpi_entities'),
+            'ORDER'  => ['completename'],
         ]);
 
         while ($data = $iterator->next()) {
@@ -922,7 +922,7 @@ class Item_SoftwareVersion extends CommonDBRelation
      * Show software installed on a computer
      *
      * @param Computer $comp         Computer object
-     * @param boolean  $withtemplate template case of the view process
+     * @param bool  $withtemplate template case of the view process
      *
      * @return void
      **/
@@ -950,15 +950,15 @@ class Item_SoftwareVersion extends CommonDBRelation
         $selftable     = self::getTable(__CLASS__);
 
         $select = [
-           'glpi_softwares.softwarecategories_id',
-           'glpi_softwares.name AS softname',
-           "glpi_items_softwareversions.id",
-           'glpi_states.name as state',
-           'glpi_softwareversions.id AS verid',
-           'glpi_softwareversions.softwares_id',
-           'glpi_softwareversions.name AS version',
-           'glpi_softwares.is_valid AS softvalid',
-           'glpi_items_softwareversions.date_install AS dateinstall'
+            'glpi_softwares.softwarecategories_id',
+            'glpi_softwares.name AS softname',
+            "glpi_items_softwareversions.id",
+            'glpi_states.name as state',
+            'glpi_softwareversions.id AS verid',
+            'glpi_softwareversions.softwares_id',
+            'glpi_softwareversions.name AS version',
+            'glpi_softwares.is_valid AS softvalid',
+            'glpi_items_softwareversions.date_install AS dateinstall',
         ];
 
         if (Plugin::haveImport()) {
@@ -966,33 +966,33 @@ class Item_SoftwareVersion extends CommonDBRelation
         }
 
         $request = [
-           'SELECT'    => $select,
-           'FROM'      => $selftable,
-           'LEFT JOIN' => [
-              'glpi_softwareversions' => [
-                 'FKEY'   => [
-                    $selftable              => 'softwareversions_id',
-                    'glpi_softwareversions' => 'id'
-                 ]
-              ],
-              'glpi_states'  => [
-                 'FKEY'   => [
-                    'glpi_softwareversions' => 'states_id',
-                    'glpi_states'           => 'id'
-                 ]
-              ],
-              'glpi_softwares'  => [
-                 'FKEY'   => [
-                    'glpi_softwareversions' => 'softwares_id',
-                    'glpi_softwares'        => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              "{$selftable}.items_id"  => $item->getField('id'),
-              "{$selftable}.itemtype"    => $item->getType()
-           ] + getEntitiesRestrictCriteria('glpi_softwares', '', '', true),
-           'ORDER'     => ['softname', 'version']
+            'SELECT'    => $select,
+            'FROM'      => $selftable,
+            'LEFT JOIN' => [
+                'glpi_softwareversions' => [
+                    'FKEY'   => [
+                        $selftable              => 'softwareversions_id',
+                        'glpi_softwareversions' => 'id',
+                    ],
+                ],
+                'glpi_states'  => [
+                    'FKEY'   => [
+                        'glpi_softwareversions' => 'states_id',
+                        'glpi_states'           => 'id',
+                    ],
+                ],
+                'glpi_softwares'  => [
+                    'FKEY'   => [
+                        'glpi_softwareversions' => 'softwares_id',
+                        'glpi_softwares'        => 'id',
+                    ],
+                ],
+            ],
+            'WHERE'     => [
+                "{$selftable}.items_id"  => $item->getField('id'),
+                "{$selftable}.itemtype"    => $item->getType(),
+            ] + getEntitiesRestrictCriteria('glpi_softwares', '', '', true),
+            'ORDER'     => ['softname', 'version'],
         ];
 
         if ($item->maybeDeleted()) {
@@ -1001,7 +1001,7 @@ class Item_SoftwareVersion extends CommonDBRelation
 
         $crit = Session::getSavedOption(__CLASS__, 'criterion', -1);
         if ($crit > -1) {
-            $request['WHERE']['glpi_softwares.softwarecategories_id'] = (int)$crit;
+            $request['WHERE']['glpi_softwares.softwarecategories_id'] = (int) $crit;
         }
 
         $iterator = $DB->request($request);
@@ -1012,7 +1012,7 @@ class Item_SoftwareVersion extends CommonDBRelation
      * Show software installed on a computer
      *
      * @param Computer $comp         Computer object
-     * @param boolean  $withtemplate template case of the view process
+     * @param bool  $withtemplate template case of the view process
      *
      * @return void
      **/
@@ -1039,37 +1039,37 @@ class Item_SoftwareVersion extends CommonDBRelation
             && $canedit
         ) {
             $form = [
-               'action' => Item_SoftwareVersion::getFormURL(),
-               'buttons' => [
-                  'Install' => [
-                     'type' => 'submit',
-                     'name' => 'add',
-                     'value' => _x('button', 'Install'),
-                     'class' => 'btn btn-primary mb-3'
-                  ]
-               ],
-               'content' => [
-                  __("Software") => [
-                     'visible' => true,
-                     'inputs' => [
-                        [
-                           'type' => 'hidden',
-                           'name' => 'itemtype',
-                           'value' => $itemtype
-                        ],
-                        [
-                           'type' => 'hidden',
-                           'name' => 'items_id',
-                           'value' => $items_id
-                        ],
-                        _n('Software', 'Software', Session::getPluralNumber()) => [
-                           'type' => 'select',
-                           'id' => 'dropdownForSoftware',
-                           'name' => 'softwareversions_id',
-                           'itemtype' => 'Software',
-                           'col_lg' => 6,
-                           'hooks' => [
-                              'change' => <<<JS
+                'action' => Item_SoftwareVersion::getFormURL(),
+                'buttons' => [
+                    'Install' => [
+                        'type' => 'submit',
+                        'name' => 'add',
+                        'value' => _x('button', 'Install'),
+                        'class' => 'btn btn-primary mb-3',
+                    ],
+                ],
+                'content' => [
+                    __("Software") => [
+                        'visible' => true,
+                        'inputs' => [
+                            [
+                                'type' => 'hidden',
+                                'name' => 'itemtype',
+                                'value' => $itemtype,
+                            ],
+                            [
+                                'type' => 'hidden',
+                                'name' => 'items_id',
+                                'value' => $items_id,
+                            ],
+                            _n('Software', 'Software', Session::getPluralNumber()) => [
+                                'type' => 'select',
+                                'id' => 'dropdownForSoftware',
+                                'name' => 'softwareversions_id',
+                                'itemtype' => 'Software',
+                                'col_lg' => 6,
+                                'hooks' => [
+                                    'change' => <<<JS
                               var softwareversions_id = $(this).val();
                               var url = '{$CFG_GLPI["root_doc"]}/ajax/dropdownInstallVersion.php';
 
@@ -1097,19 +1097,19 @@ class Item_SoftwareVersion extends CommonDBRelation
                                  },
                               });
                            JS,
-                           ]
+                                ],
+                            ],
+                            __("Version") => [
+                                'type' => 'select',
+                                'id' => 'dropdownForSoftwareVersion',
+                                'name' => 'softwareversions_id',
+                                'values' => getOptionForItems('Software', ['entities_id' => $entities_id]),
+                                'col_lg' => 6,
+                                'disabled' => true,
+                            ],
                         ],
-                        __("Version") => [
-                           'type' => 'select',
-                           'id' => 'dropdownForSoftwareVersion',
-                           'name' => 'softwareversions_id',
-                           'values' => getOptionForItems('Software', ['entities_id' => $entities_id]),
-                           'col_lg' => 6,
-                           'disabled' => true,
-                        ],
-                     ]
-                  ]
-               ]
+                    ],
+                ],
             ];
             renderTwigForm($form);
         }
@@ -1125,21 +1125,21 @@ class Item_SoftwareVersion extends CommonDBRelation
         $massActionContainerSoftware = 'mass' . __CLASS__ . $rand;
         if ($canedit) {
             $massiveactionparams = [
-               'container' => $massActionContainerSoftware,
-               'specific_actions' => [
-                  'purge' => _x('button', 'Delete permanently')
-               ],
-               'display_arrow' => false,
+                'container' => $massActionContainerSoftware,
+                'specific_actions' => [
+                    'purge' => _x('button', 'Delete permanently'),
+                ],
+                'display_arrow' => false,
             ];
 
             Html::showMassiveActions($massiveactionparams);
         }
         $fields = [
-           __('Name'),
-           __('Status'),
-           _n('Version', 'Versions', 1),
-           SoftwareLicense::getTypeName(1),
-           __('Installation date')
+            __('Name'),
+            __('Status'),
+            _n('Version', 'Versions', 1),
+            SoftwareLicense::getTypeName(1),
+            __('Installation date'),
         ];
         if (Plugin::haveImport()) {
             $fields[] = __('Automatic inventory');
@@ -1167,11 +1167,11 @@ class Item_SoftwareVersion extends CommonDBRelation
             $version = new SoftwareVersion();
             $version->getFromDB($data['verid']);
             $newValue = [
-               $soft->getLink(),
-               $data['state'],
-               $version->getLink(),
-               implode('<br>', $licids),
-               Html::convDate($data['dateinstall']),
+                $soft->getLink(),
+                $data['state'],
+                $version->getLink(),
+                implode('<br>', $licids),
+                Html::convDate($data['dateinstall']),
             ];
             if (Plugin::haveImport()) {
                 $newValue[] = $data['is_dynamic'] ? __('Yes') : __('No');
@@ -1187,10 +1187,10 @@ class Item_SoftwareVersion extends CommonDBRelation
             $massive_action[] = sprintf('item[%s][%s]', self::class, $data['id']);
         }
         renderTwigTemplate('table.twig', [
-           'id' => $massActionContainerSoftware,
-           'fields' => $fields,
-           'values' => $values,
-           'massive_action' => $massive_action,
+            'id' => $massActionContainerSoftware,
+            'fields' => $fields,
+            'values' => $values,
+            'massive_action' => $massive_action,
         ]);
 
         if (
@@ -1205,41 +1205,41 @@ class Item_SoftwareVersion extends CommonDBRelation
                 }
             }
             $form = [
-               'action' => Item_SoftwareLicense::getFormURL(),
-               'buttons' => [
-                  'Install' => [
-                     'type' => 'submit',
-                     'name' => 'add',
-                     'value' => _x('button', 'Install'),
-                     'class' => 'btn btn-primary mb-3'
-                  ]
-               ],
-               'content' => [
-                  SoftwareLicense::getTypeName(Session::getPluralNumber()) => [
-                     'visible' => 'true',
-                     'inputs' => [
-                        SoftwareLicense::getTypeName(Session::getPluralNumber()) => [
-                           'type' => 'select',
-                           'id' => 'licenceDropdown',
-                           'name' => 'softwarelicenses_id',
-                           'itemtype' => 'SoftwareLicense',
-                           'conditions' => ['entities_id' => $entities_id],
-                           'disabled' => true,
-                           'col_lg' => 6,
+                'action' => Item_SoftwareLicense::getFormURL(),
+                'buttons' => [
+                    'Install' => [
+                        'type' => 'submit',
+                        'name' => 'add',
+                        'value' => _x('button', 'Install'),
+                        'class' => 'btn btn-primary mb-3',
+                    ],
+                ],
+                'content' => [
+                    SoftwareLicense::getTypeName(Session::getPluralNumber()) => [
+                        'visible' => 'true',
+                        'inputs' => [
+                            SoftwareLicense::getTypeName(Session::getPluralNumber()) => [
+                                'type' => 'select',
+                                'id' => 'licenceDropdown',
+                                'name' => 'softwarelicenses_id',
+                                'itemtype' => 'SoftwareLicense',
+                                'conditions' => ['entities_id' => $entities_id],
+                                'disabled' => true,
+                                'col_lg' => 6,
+                            ],
+                            [
+                                'type' => 'hidden',
+                                'name' => 'itemtype',
+                                'value' => $itemtype,
+                            ],
+                            [
+                                'type' => 'hidden',
+                                'name' => 'items_id',
+                                'value' => $items_id,
+                            ],
                         ],
-                        [
-                           'type' => 'hidden',
-                           'name' => 'itemtype',
-                           'value' => $itemtype
-                        ],
-                        [
-                           'type' => 'hidden',
-                           'name' => 'items_id',
-                           'value' => $items_id
-                        ],
-                     ]
-                  ]
-               ]
+                    ],
+                ],
             ];
             renderTwigForm($form);
         }
@@ -1249,53 +1249,53 @@ class Item_SoftwareVersion extends CommonDBRelation
         }
 
         $lic_request = [
-           'SELECT'       => [
-              'glpi_softwarelicenses.*',
-              'glpi_items_softwarelicenses.id AS linkid',
-              'glpi_softwares.name AS softname',
-              'glpi_softwareversions.name AS version',
-              'glpi_states.name AS state'
-           ],
-           'FROM'         => SoftwareLicense::getTable(),
-           'INNER JOIN'   => [
-              'glpi_softwares'  => [
-                 'FKEY'   => [
-                    'glpi_softwarelicenses' => 'softwares_id',
-                    'glpi_softwares'        => 'id'
-                 ]
-              ]
-           ],
-           'LEFT JOIN'    => [
-              'glpi_items_softwarelicenses'   => [
-                 'FKEY'   => [
-                    'glpi_items_softwarelicenses' => 'softwarelicenses_id',
-                    'glpi_softwarelicenses'       => 'id'
-                 ]
-              ],
-              'glpi_softwareversions'   => [
-                 'FKEY'   => [
-                    'glpi_softwareversions' => 'id',
-                    'glpi_softwarelicenses' => 'softwareversions_id_use',
-                    [
-                       'AND' => [
-                          'glpi_softwarelicenses.softwareversions_id_use' => 0,
-                          'glpi_softwarelicenses.softwareversions_id_buy' => new \QueryExpression(DBmysql::quoteName('glpi_softwareversions.id')),
-                       ]
-                    ]
-                 ]
-              ],
-              'glpi_states'  => [
-                 'FKEY'   => [
-                    'glpi_softwareversions' => 'states_id',
-                    'glpi_states'           => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_items_softwarelicenses.items_id'  => $items_id,
-              'glpi_items_softwarelicenses.itemtype'  => $itemtype,
-           ] + $lic_where,
-           'ORDER'     => ['softname', 'version']
+            'SELECT'       => [
+                'glpi_softwarelicenses.*',
+                'glpi_items_softwarelicenses.id AS linkid',
+                'glpi_softwares.name AS softname',
+                'glpi_softwareversions.name AS version',
+                'glpi_states.name AS state',
+            ],
+            'FROM'         => SoftwareLicense::getTable(),
+            'INNER JOIN'   => [
+                'glpi_softwares'  => [
+                    'FKEY'   => [
+                        'glpi_softwarelicenses' => 'softwares_id',
+                        'glpi_softwares'        => 'id',
+                    ],
+                ],
+            ],
+            'LEFT JOIN'    => [
+                'glpi_items_softwarelicenses'   => [
+                    'FKEY'   => [
+                        'glpi_items_softwarelicenses' => 'softwarelicenses_id',
+                        'glpi_softwarelicenses'       => 'id',
+                    ],
+                ],
+                'glpi_softwareversions'   => [
+                    'FKEY'   => [
+                        'glpi_softwareversions' => 'id',
+                        'glpi_softwarelicenses' => 'softwareversions_id_use',
+                        [
+                            'AND' => [
+                                'glpi_softwarelicenses.softwareversions_id_use' => 0,
+                                'glpi_softwarelicenses.softwareversions_id_buy' => new QueryExpression(DBmysql::quoteName('glpi_softwareversions.id')),
+                            ],
+                        ],
+                    ],
+                ],
+                'glpi_states'  => [
+                    'FKEY'   => [
+                        'glpi_softwareversions' => 'states_id',
+                        'glpi_states'           => 'id',
+                    ],
+                ],
+            ],
+            'WHERE'     => [
+                'glpi_items_softwarelicenses.items_id'  => $items_id,
+                'glpi_items_softwarelicenses.itemtype'  => $itemtype,
+            ] + $lic_where,
+            'ORDER'     => ['softname', 'version'],
         ];
         if ($item->maybeDeleted()) {
             $lic_request['WHERE']['glpi_items_softwarelicenses.is_deleted'] = 0;
@@ -1305,46 +1305,46 @@ class Item_SoftwareVersion extends CommonDBRelation
         $massActionContainerSoftwareLicense = 'massSoftwareLicense' . $rand;
         if ($canedit) {
             $actions = [
-               'Item_SoftwareLicense' . MassiveAction::CLASS_ACTION_SEPARATOR .
-               'install' => _x('button', 'Install')
+                'Item_SoftwareLicense' . MassiveAction::CLASS_ACTION_SEPARATOR
+                . 'install' => _x('button', 'Install'),
             ];
             if (SoftwareLicense::canUpdate()) {
                 $actions['purge'] = _x('button', 'Delete permanently');
             }
 
             $massiveactionparams = [
-               'display_arrow' => false,
-               'container'        => $massActionContainerSoftwareLicense,
-               'specific_actions' => $actions,
-               'is_deleted' => 0,
+                'display_arrow' => false,
+                'container'        => $massActionContainerSoftwareLicense,
+                'specific_actions' => $actions,
+                'is_deleted' => 0,
             ];
 
             Html::showMassiveActions($massiveactionparams);
         }
         $fields = [
-           __('Name'),
-           __('Status'),
-           _n('Version', 'Versions', 1),
-           SoftwareLicense::getTypeName(1),
+            __('Name'),
+            __('Status'),
+            _n('Version', 'Versions', 1),
+            SoftwareLicense::getTypeName(1),
         ];
         $values = [];
         $massive_action = [];
         $datas = iterator_to_array($lic_iterator);
         foreach ($datas as $data) {
             $newValue = [
-               $data['softname'],
-               $data['state'],
-               $data['version'],
-               $data['name'],
+                $data['softname'],
+                $data['state'],
+                $data['version'],
+                $data['name'],
             ];
             $values[] = $newValue;
             $massive_action[] = sprintf('item[%s][%s]', Item_SoftwareLicense::class, $data['linkid']);
         }
         renderTwigTemplate('table.twig', [
-           'id' => $massActionContainerSoftwareLicense,
-           'fields' => $fields,
-           'values' => $values,
-           'massive_action' => $massive_action,
+            'id' => $massActionContainerSoftwareLicense,
+            'fields' => $fields,
+            'values' => $values,
+            'massive_action' => $massive_action,
         ]);
     }
 
@@ -1353,12 +1353,12 @@ class Item_SoftwareVersion extends CommonDBRelation
      * Display a installed software for a category
      *
      * @param array   $data         data used to display
-     * @param integer $computers_id ID of the computer
-     * @param boolean $withtemplate template case of the view process
-     * @param boolean $canedit      user can edit software ?
-     * @param boolean $display      display and calculte if true or juste calculate
+     * @param int $computers_id ID of the computer
+     * @param bool $withtemplate template case of the view process
+     * @param bool $canedit      user can edit software ?
+     * @param bool $display      display and calculte if true or juste calculate
      *
-     * @return integer[] Found licenses ids
+     * @return int[] Found licenses ids
      **/
     private static function softsByCategory(
         $data,
@@ -1377,12 +1377,12 @@ class Item_SoftwareVersion extends CommonDBRelation
      *
      * @param array   $data         data used to display
      * @param string  $itemtype     Type of the item
-     * @param integer $items_id     ID of the item
-     * @param boolean $withtemplate template case of the view process
-     * @param boolean $canedit      user can edit software ?
-     * @param boolean $display      display and calculate if true or just calculate
+     * @param int $items_id     ID of the item
+     * @param bool $withtemplate template case of the view process
+     * @param bool $canedit      user can edit software ?
+     * @param bool $display      display and calculate if true or just calculate
      *
-     * @return integer[] Found licenses ids
+     * @return int[] Found licenses ids
      **/
     private static function softwareByCategory(
         $data,
@@ -1420,38 +1420,38 @@ class Item_SoftwareVersion extends CommonDBRelation
         }
 
         $iterator = $DB->request([
-           'SELECT'       => [
-              'glpi_softwarelicenses.*',
-              'glpi_softwarelicensetypes.name AS type'
-           ],
-           'FROM'         => 'glpi_items_softwarelicenses',
-           'INNER JOIN'   => [
-              'glpi_softwarelicenses' => [
-                 'FKEY'   => [
-                    'glpi_items_softwarelicenses'   => 'softwarelicenses_id',
-                    'glpi_softwarelicenses'             => 'id'
-                 ]
-              ]
-           ],
-           'LEFT JOIN'    => [
-              'glpi_softwarelicensetypes'   => [
-                 'FKEY'   => [
-                    'glpi_softwarelicenses'       => 'softwarelicensetypes_id',
-                    'glpi_softwarelicensetypes'   => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'        => [
-              "glpi_items_softwarelicenses.items_id"    => $items_id,
-              'glpi_items_softwarelicenses.itemtype'    => $itemtype,
-              'OR'                                            => [
-                 'glpi_softwarelicenses.softwareversions_id_use' => $verid,
-                 [
-                    'glpi_softwarelicenses.softwareversions_id_use' => 0,
-                    'glpi_softwarelicenses.softwareversions_id_buy' => $verid
-                 ]
-              ]
-           ]
+            'SELECT'       => [
+                'glpi_softwarelicenses.*',
+                'glpi_softwarelicensetypes.name AS type',
+            ],
+            'FROM'         => 'glpi_items_softwarelicenses',
+            'INNER JOIN'   => [
+                'glpi_softwarelicenses' => [
+                    'FKEY'   => [
+                        'glpi_items_softwarelicenses'   => 'softwarelicenses_id',
+                        'glpi_softwarelicenses'             => 'id',
+                    ],
+                ],
+            ],
+            'LEFT JOIN'    => [
+                'glpi_softwarelicensetypes'   => [
+                    'FKEY'   => [
+                        'glpi_softwarelicenses'       => 'softwarelicensetypes_id',
+                        'glpi_softwarelicensetypes'   => 'id',
+                    ],
+                ],
+            ],
+            'WHERE'        => [
+                "glpi_items_softwarelicenses.items_id"    => $items_id,
+                'glpi_items_softwarelicenses.itemtype'    => $itemtype,
+                'OR'                                            => [
+                    'glpi_softwarelicenses.softwareversions_id_use' => $verid,
+                    [
+                        'glpi_softwarelicenses.softwareversions_id_use' => 0,
+                        'glpi_softwarelicenses.softwareversions_id_buy' => $verid,
+                    ],
+                ],
+            ],
         ]);
 
         $licids = [];
@@ -1468,10 +1468,10 @@ class Item_SoftwareVersion extends CommonDBRelation
 
                 $link_item = Toolbox::getItemTypeFormURL('SoftwareLicense');
                 $link      = $link_item . "?id=" . $licdata['id'];
-                $comment   = "<table aria-label='Software License'><tr><td>" . __('Name') . "</td><td>" . $licdata['name'] . "</td></tr>" .
-                   "<tr><td>" . __('Serial number') . "</td><td>" . $licdata['serial'] . "</td></tr>" .
-                   "<tr><td>" . __('Comments') . '</td><td>' . $licdata['comment'] . "</td></tr>" .
-                   "</table>";
+                $comment   = "<table aria-label='Software License'><tr><td>" . __('Name') . "</td><td>" . $licdata['name'] . "</td></tr>"
+                   . "<tr><td>" . __('Serial number') . "</td><td>" . $licdata['serial'] . "</td></tr>"
+                   . "<tr><td>" . __('Comments') . '</td><td>' . $licdata['comment'] . "</td></tr>"
+                   . "</table>";
 
                 Html::showToolTip($comment, ['link' => $link]);
                 echo "<br>";
@@ -1508,9 +1508,9 @@ class Item_SoftwareVersion extends CommonDBRelation
      * Display a software for a License (not installed)
      *
      * @param array   $data         data used to display
-     * @param integer $computers_id ID of the computer
-     * @param boolean $withtemplate template case of the view process
-     * @param boolean $canedit      user can edit software ?
+     * @param int $computers_id ID of the computer
+     * @param bool $withtemplate template case of the view process
+     * @param bool $canedit      user can edit software ?
      *
      * @return void
      */
@@ -1526,8 +1526,8 @@ class Item_SoftwareVersion extends CommonDBRelation
      * Display a software for a License (not installed)
      *
      * @param array   $data         data used to display
-     * @param boolean $withtemplate template case of the view process
-     * @param boolean $canedit      user can edit software ?
+     * @param bool $withtemplate template case of the view process
+     * @param bool $canedit      user can edit software ?
      *
      * @return void
      */
@@ -1575,9 +1575,9 @@ class Item_SoftwareVersion extends CommonDBRelation
         }
         echo "</td><td class='b'>" . $data["name"] . " - " . $serial;
 
-        $comment = "<table aria-label='Software License ID'><tr><td>" . __('Name') . "</td>" . "<td>" . $data['name'] . "</td></tr>" .
-           "<tr><td>" . __('Serial number') . "</td><td>" . $data['serial'] . "</td></tr>" .
-           "<tr><td>" . __('Comments') . "</td><td>" . $data['comment'] . "</td></tr></table>";
+        $comment = "<table aria-label='Software License ID'><tr><td>" . __('Name') . "</td>" . "<td>" . $data['name'] . "</td></tr>"
+           . "<tr><td>" . __('Serial number') . "</td><td>" . $data['serial'] . "</td></tr>"
+           . "<tr><td>" . __('Comments') . "</td><td>" . $data['comment'] . "</td></tr></table>";
 
         Html::showToolTip($comment, ['link' => $link]);
         echo "</td></tr>\n";
@@ -1587,9 +1587,9 @@ class Item_SoftwareVersion extends CommonDBRelation
     /**
      * Update version installed on a item
      *
-     * @param integer $instID              ID of the installed software link
-     * @param integer $softwareversions_id ID of the new version
-     * @param boolean $dohistory           Do history ? (default 1)
+     * @param int $instID              ID of the installed software link
+     * @param int $softwareversions_id ID of the new version
+     * @param bool $dohistory           Do history ? (default 1)
      *
      * @return void
      **/
@@ -1601,9 +1601,9 @@ class Item_SoftwareVersion extends CommonDBRelation
             $itemtype = $this->fields['itemtype'];
             $this->delete(['id' => $instID]);
             $this->add([
-               'itemtype'              => $itemtype,
-               'items_id'              => $items_id,
-               'softwareversions_id'   => $softwareversions_id
+                'itemtype'              => $itemtype,
+                'items_id'              => $items_id,
+                'softwareversions_id'   => $softwareversions_id,
             ]);
         }
     }
@@ -1614,8 +1614,8 @@ class Item_SoftwareVersion extends CommonDBRelation
      *
      * @deprecated 9.5
      *
-     * @param integer $oldid ID of the computer to clone
-     * @param integer $newid ID of the computer cloned
+     * @param int $oldid ID of the computer to clone
+     * @param int $newid ID of the computer cloned
      **/
     public static function cloneComputer($oldid, $newid)
     {
@@ -1631,8 +1631,8 @@ class Item_SoftwareVersion extends CommonDBRelation
      * @deprecated 9.5
      *
      * @param string  $itemtype Itemtype of the item to clone
-     * @param integer $oldid ID of the item to clone
-     * @param integer $newid ID of the item cloned
+     * @param int $oldid ID of the item to clone
+     * @param int $newid ID of the item cloned
      **/
     public static function cloneItem($itemtype, $oldid, $newid)
     {
@@ -1640,11 +1640,11 @@ class Item_SoftwareVersion extends CommonDBRelation
 
         Toolbox::deprecated('Use clone');
         $iterator = $DB->request([
-           'FROM'   => 'glpi_items_softwareversions',
-           'WHERE'  => [
-              'items_id' => $oldid,
-              'itemtype' => $itemtype
-           ]
+            'FROM'   => 'glpi_items_softwareversions',
+            'WHERE'  => [
+                'items_id' => $oldid,
+                'itemtype' => $itemtype,
+            ],
         ]);
 
         while ($data = $iterator->next()) {
@@ -1679,11 +1679,11 @@ class Item_SoftwareVersion extends CommonDBRelation
                         $nb = self::countForVersion($item->getID());
                     }
                     return [
-                       1 => __('Summary'),
-                       2 => self::createTabEntry(
-                           self::getTypeName(Session::getPluralNumber()),
-                           $nb
-                       )
+                        1 => __('Summary'),
+                        2 => self::createTabEntry(
+                            self::getTypeName(Session::getPluralNumber()),
+                            $nb
+                        ),
                     ];
                 }
                 break;
@@ -1731,9 +1731,9 @@ class Item_SoftwareVersion extends CommonDBRelation
         $params = parent::getListForItemParams($item);
         unset($params['SELECT'], $params['ORDER']);
         $params['WHERE'] = [
-           $table . '.items_id'   => $item->getID(),
-           $table . '.itemtype'   => $item::getType(),
-           $table . '.is_deleted' => 0
+            $table . '.items_id'   => $item->getID(),
+            $table . '.itemtype'   => $item::getType(),
+            $table . '.is_deleted' => 0,
         ];
         if ($noent === false) {
             $params['WHERE'] += getEntitiesRestrictCriteria($table, '', '', 'auto');

@@ -106,8 +106,8 @@ if (($_POST['action'] ?? null) == 'update') {
     $checkParams(['column_field', 'column_value']);
     // Update project or task based on changes made in the Kanban
     $item->update([
-       'id'                   => $_POST['items_id'],
-       $_POST['column_field'] => $_POST['column_value']
+        'id'                   => $_POST['items_id'],
+        $_POST['column_field'] => $_POST['column_value'],
     ]);
 } elseif (($_POST['action'] ?? null) == 'add_item') {
     $checkParams(['inputs']);
@@ -176,7 +176,7 @@ if (($_POST['action'] ?? null) == 'update') {
 } elseif ($_REQUEST['action'] == 'get_switcher_dropdown') {
     $values = $itemtype::getAllForKanban();
     Dropdown::showFromArray('kanban-board-switcher', $values, [
-       'value'  => isset($_REQUEST['items_id']) ? $_REQUEST['items_id'] : ''
+        'value'  => $_REQUEST['items_id'] ?? '',
     ]);
 } elseif ($_REQUEST['action'] == 'get_url') {
     $checkParams(['items_id']);
@@ -205,7 +205,7 @@ if (($_POST['action'] ?? null) == 'update') {
     $params = $_POST['params'] ?? [];
     $column_item = new $column_itemtype();
     $column_id = $column_item->add([
-       'name'   => $_POST['column_name']
+        'name'   => $_POST['column_name'],
     ] + $params);
     header("Content-Type: application/json; charset=UTF-8", true);
     $column = $itemtype::getKanbanColumns($_POST['items_id'], $column_field, [$column_id]);
@@ -217,8 +217,8 @@ if (($_POST['action'] ?? null) == 'update') {
     $checkParams(['items_id', 'last_load']);
     header("Content-Type: application/json; charset=UTF-8", true);
     $response = [
-       'state'     => Item_Kanban::loadStateForItem($_REQUEST['itemtype'], $_REQUEST['items_id'], $_REQUEST['last_load']),
-       'timestamp' => $_SESSION['glpi_currenttime']
+        'state'     => Item_Kanban::loadStateForItem($_REQUEST['itemtype'], $_REQUEST['items_id'], $_REQUEST['last_load']),
+        'timestamp' => $_SESSION['glpi_currenttime'],
     ];
     echo json_encode($response, JSON_FORCE_OBJECT);
 } elseif ($_REQUEST['action'] == 'list_columns') {

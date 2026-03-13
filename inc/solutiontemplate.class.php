@@ -58,21 +58,21 @@ class SolutionTemplate extends CommonDropdown
     {
 
         return [
-           SolutionType::getTypeName(1) => [
-              'name'  => 'solutiontypes_id',
-              'type'  => 'select',
-              'values' => getOptionForItems('SolutionType'),
-              'value' => $this->fields['solutiontypes_id'],
-              'actions' => getItemActionButtons(['info', 'add'], 'SolutionType')
-           ],
-           __('Content') => [
-              'name'  => 'content',
-              'id'    => 'TextAreaForSolutionContent',
-              'type'  => 'richtextarea',
-              'value' => $this->fields['content'],
-              'col_lg' => 12,
-              'col_md' => 12,
-           ]
+            SolutionType::getTypeName(1) => [
+                'name'  => 'solutiontypes_id',
+                'type'  => 'select',
+                'values' => getOptionForItems('SolutionType'),
+                'value' => $this->fields['solutiontypes_id'],
+                'actions' => getItemActionButtons(['info', 'add'], 'SolutionType'),
+            ],
+            __('Content') => [
+                'name'  => 'content',
+                'id'    => 'TextAreaForSolutionContent',
+                'type'  => 'richtextarea',
+                'value' => $this->fields['content'],
+                'col_lg' => 12,
+                'col_md' => 12,
+            ],
         ];
     }
 
@@ -82,20 +82,20 @@ class SolutionTemplate extends CommonDropdown
         $tab = parent::rawSearchOptions();
 
         $tab[] = [
-           'id'                 => '4',
-           'name'               => __('Content'),
-           'field'              => 'content',
-           'table'              => $this->getTable(),
-           'datatype'           => 'text',
-           'htmltext'           => true
+            'id'                 => '4',
+            'name'               => __('Content'),
+            'field'              => 'content',
+            'table'              => $this->getTable(),
+            'datatype'           => 'text',
+            'htmltext'           => true,
         ];
 
         $tab[] = [
-           'id'                 => '3',
-           'name'               => SolutionType::getTypeName(1),
-           'field'              => 'name',
-           'table'              => getTableForItemType('SolutionType'),
-           'datatype'           => 'dropdown'
+            'id'                 => '3',
+            'name'               => SolutionType::getTypeName(1),
+            'field'              => 'name',
+            'table'              => getTableForItemType('SolutionType'),
+            'datatype'           => 'dropdown',
         ];
 
         return $tab;

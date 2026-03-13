@@ -46,32 +46,32 @@ use Glpi\Console\Command\GlpiCommandInterface;
 use Glpi\System\RequirementsManager;
 use Plugin;
 use Session;
-use Toolbox;
 use Symfony\Component\Console\Application as BaseApplication;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Exception\CommandNotFoundException;
+use Symfony\Component\Console\Exception\RuntimeException;
 use Symfony\Component\Console\Helper\Helper;
 use Symfony\Component\Console\Input\ArgvInput;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputDefinition;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
-use Symfony\Component\Console\Exception\CommandNotFoundException;
-use Symfony\Component\Console\Exception\RuntimeException;
 use Symfony\Component\Console\Output\OutputInterface;
+use Toolbox;
 
 class Application extends BaseApplication
 {
     /**
      * Error code returned when system requirements are missing.
      *
-     * @var integer
+     * @var int
      */
     public const ERROR_MISSING_REQUIREMENTS = 128; // start application codes at 128 be sure to be different from commands codes
 
     /**
      * Error code returned when DB is not up-to-date.
      *
-     * @var integer
+     * @var int
      */
     public const ERROR_DB_OUTDATED = 129;
 
@@ -126,72 +126,72 @@ class Application extends BaseApplication
 
         $definition = new InputDefinition(
             [
-              new InputArgument(
-                  'command',
-                  InputArgument::REQUIRED,
-                  __('The command to execute')
-              ),
+                new InputArgument(
+                    'command',
+                    InputArgument::REQUIRED,
+                    __('The command to execute')
+                ),
 
-              new InputOption(
-                  '--help',
-                  '-h',
-                  InputOption::VALUE_NONE,
-                  __('Display this help message')
-              ),
-              new InputOption(
-                  '--quiet',
-                  '-q',
-                  InputOption::VALUE_NONE,
-                  __('Do not output any message')
-              ),
-              new InputOption(
-                  '--verbose',
-                  '-v|vv|vvv',
-                  InputOption::VALUE_NONE,
-                  __('Increase the verbosity of messages: 1 for normal output, 2 for more verbose output and 3 for debug')
-              ),
-              new InputOption(
-                  '--version',
-                  '-V',
-                  InputOption::VALUE_NONE,
-                  __('Display this application version')
-              ),
-              new InputOption(
-                  '--ansi',
-                  null,
-                  InputOption::VALUE_NONE,
-                  __('Force ANSI output')
-              ),
-              new InputOption(
-                  '--no-ansi',
-                  null,
-                  InputOption::VALUE_NONE,
-                  __('Disable ANSI output')
-              ),
-              new InputOption(
-                  '--no-interaction',
-                  '-n',
-                  InputOption::VALUE_NONE,
-                  __('Do not ask any interactive question')
-              ),
-              new InputOption(
-                  '--config-dir',
-                  null,
-                  InputOption::VALUE_OPTIONAL,
-                  __('Configuration directory to use')
-              ),
-              new InputOption(
-                  '--no-plugins',
-                  null,
-                  InputOption::VALUE_NONE,
-                  __('Disable ITSM-NG plugins (unless commands forces plugins loading)')
-              ),
-              new InputOption(
-                  '--lang',
-                  null,
-                  InputOption::VALUE_OPTIONAL,
-                  __('Output language (default value is existing ITSM-NG "language" configuration or "en_GB")')
-              )
+                new InputOption(
+                    '--help',
+                    '-h',
+                    InputOption::VALUE_NONE,
+                    __('Display this help message')
+                ),
+                new InputOption(
+                    '--quiet',
+                    '-q',
+                    InputOption::VALUE_NONE,
+                    __('Do not output any message')
+                ),
+                new InputOption(
+                    '--verbose',
+                    '-v|vv|vvv',
+                    InputOption::VALUE_NONE,
+                    __('Increase the verbosity of messages: 1 for normal output, 2 for more verbose output and 3 for debug')
+                ),
+                new InputOption(
+                    '--version',
+                    '-V',
+                    InputOption::VALUE_NONE,
+                    __('Display this application version')
+                ),
+                new InputOption(
+                    '--ansi',
+                    null,
+                    InputOption::VALUE_NONE,
+                    __('Force ANSI output')
+                ),
+                new InputOption(
+                    '--no-ansi',
+                    null,
+                    InputOption::VALUE_NONE,
+                    __('Disable ANSI output')
+                ),
+                new InputOption(
+                    '--no-interaction',
+                    '-n',
+                    InputOption::VALUE_NONE,
+                    __('Do not ask any interactive question')
+                ),
+                new InputOption(
+                    '--config-dir',
+                    null,
+                    InputOption::VALUE_OPTIONAL,
+                    __('Configuration directory to use')
+                ),
+                new InputOption(
+                    '--no-plugins',
+                    null,
+                    InputOption::VALUE_NONE,
+                    __('Disable ITSM-NG plugins (unless commands forces plugins loading)')
+                ),
+                new InputOption(
+                    '--lang',
+                    null,
+                    InputOption::VALUE_OPTIONAL,
+                    __('Output language (default value is existing ITSM-NG "language" configuration or "en_GB")')
+                ),
             ]
         );
 
@@ -291,8 +291,8 @@ class Application extends BaseApplication
         $CFG_GLPI = array_merge(
             $CFG_GLPI,
             [
-              'debug_sql'  => 0,
-              'debug_vars' => 0,
+                'debug_sql'  => 0,
+                'debug_vars' => 0,
             ]
         );
 
@@ -437,7 +437,7 @@ class Application extends BaseApplication
      *
      * @param string $language
      *
-     * @return boolean
+     * @return bool
      */
     private function isLanguageValid($language)
     {
@@ -449,7 +449,7 @@ class Application extends BaseApplication
     /**
      * Whether or not plugins have to be used.
      *
-     * @return boolean
+     * @return bool
      */
     private function usePlugins()
     {
@@ -475,7 +475,7 @@ class Application extends BaseApplication
     /**
      * Check if core mandatory requirements are OK.
      *
-     * @return boolean  true if requirements are OK, false otherwise
+     * @return bool  true if requirements are OK, false otherwise
      */
     private function checkCoreMandatoryRequirements(): bool
     {

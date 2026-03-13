@@ -113,8 +113,8 @@ class Notepad extends CommonDBChild
      * @since 9.2
      *
      * @param string $itemtype      itemtype of the item
-     * @param integer $oldid        ID of the item to clone
-     * @param integer $newid        ID of the item cloned
+     * @param int $oldid        ID of the item to clone
+     * @param int $newid        ID of the item cloned
      **/
     public static function cloneItem($itemtype, $oldid, $newid)
     {
@@ -122,11 +122,11 @@ class Notepad extends CommonDBChild
 
         Toolbox::deprecated('Use clone');
         $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'items_id'  => $oldid,
-              'itemtype'  => $itemtype
-           ]
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'items_id'  => $oldid,
+                'itemtype'  => $itemtype,
+            ],
         ]);
 
         while ($data = $iterator->next()) {
@@ -174,7 +174,7 @@ class Notepad extends CommonDBChild
         return countElementsInTable(
             'glpi_notepads',
             ['itemtype' => $item->getType(),
-                                     'items_id' => $item->getID()]
+                'items_id' => $item->getID()]
         );
     }
 
@@ -188,24 +188,24 @@ class Notepad extends CommonDBChild
 
         $data = [];
         $iterator = $DB->request([
-           'SELECT'    => [
-              'glpi_notepads.*',
-              'glpi_users.picture'
-           ],
-           'FROM'      => self::getTable(),
-           'LEFT JOIN' => [
-              'glpi_users'   => [
-                 'ON' => [
-                    self::getTable()  => 'users_id_lastupdater',
-                    'glpi_users'      => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'itemtype'  => $item->getType(),
-              'items_id'  => $item->getID()
-           ],
-           'ORDERBY'   => 'date_mod DESC'
+            'SELECT'    => [
+                'glpi_notepads.*',
+                'glpi_users.picture',
+            ],
+            'FROM'      => self::getTable(),
+            'LEFT JOIN' => [
+                'glpi_users'   => [
+                    'ON' => [
+                        self::getTable()  => 'users_id_lastupdater',
+                        'glpi_users'      => 'id',
+                    ],
+                ],
+            ],
+            'WHERE'     => [
+                'itemtype'  => $item->getType(),
+                'items_id'  => $item->getID(),
+            ],
+            'ORDERBY'   => 'date_mod DESC',
         ]);
 
         while ($note = $iterator->next()) {
@@ -221,85 +221,85 @@ class Notepad extends CommonDBChild
         $name = _n('Note', 'Notes', Session::getPluralNumber());
 
         $tab[] = [
-           'id'                 => 'notepad',
-           'name'               => $name
+            'id'                 => 'notepad',
+            'name'               => $name,
         ];
 
         $tab[] = [
-           'id'                 => '200',
-           'table'              => 'glpi_notepads',
-           'field'              => 'content',
-           'name'               => $name,
-           'datatype'           => 'text',
-           'joinparams'         => [
-              'jointype'           => 'itemtype_item'
-           ],
-           'forcegroupby'       => true,
-           'splititems'         => true,
-           'massiveaction'      => false
+            'id'                 => '200',
+            'table'              => 'glpi_notepads',
+            'field'              => 'content',
+            'name'               => $name,
+            'datatype'           => 'text',
+            'joinparams'         => [
+                'jointype'           => 'itemtype_item',
+            ],
+            'forcegroupby'       => true,
+            'splititems'         => true,
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '201',
-           'table'              => 'glpi_notepads',
-           'field'              => 'date',
-           'name'               => __('Creation date'),
-           'datatype'           => 'datetime',
-           'joinparams'         => [
-              'jointype'           => 'itemtype_item'
-           ],
-           'forcegroupby'       => true,
-           'massiveaction'      => false
+            'id'                 => '201',
+            'table'              => 'glpi_notepads',
+            'field'              => 'date',
+            'name'               => __('Creation date'),
+            'datatype'           => 'datetime',
+            'joinparams'         => [
+                'jointype'           => 'itemtype_item',
+            ],
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '202',
-           'table'              => 'glpi_users',
-           'field'              => 'name',
-           'name'               => __('Writer'),
-           'datatype'           => 'dropdown',
-           'forcegroupby'       => true,
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'beforejoin'         => [
-                 'table'              => 'glpi_notepads',
-                 'joinparams'         => [
-                    'jointype'           => 'itemtype_item'
-                 ]
-              ]
-           ]
+            'id'                 => '202',
+            'table'              => 'glpi_users',
+            'field'              => 'name',
+            'name'               => __('Writer'),
+            'datatype'           => 'dropdown',
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'beforejoin'         => [
+                    'table'              => 'glpi_notepads',
+                    'joinparams'         => [
+                        'jointype'           => 'itemtype_item',
+                    ],
+                ],
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '203',
-           'table'              => 'glpi_notepads',
-           'field'              => 'date_mod',
-           'name'               => __('Last update'),
-           'datatype'           => 'datetime',
-           'joinparams'         => [
-              'jointype'           => 'itemtype_item'
-           ],
-           'forcegroupby'       => true,
-           'massiveaction'      => false
+            'id'                 => '203',
+            'table'              => 'glpi_notepads',
+            'field'              => 'date_mod',
+            'name'               => __('Last update'),
+            'datatype'           => 'datetime',
+            'joinparams'         => [
+                'jointype'           => 'itemtype_item',
+            ],
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '204',
-           'table'              => 'glpi_users',
-           'field'              => 'name',
-           'linkfield'          => 'users_id_lastupdater',
-           'name'               => __('Last updater'),
-           'datatype'           => 'dropdown',
-           'forcegroupby'       => true,
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'beforejoin'         => [
-                 'table'              => 'glpi_notepads',
-                 'joinparams'         => [
-                    'jointype'           => 'itemtype_item'
-                 ]
-              ]
-           ]
+            'id'                 => '204',
+            'table'              => 'glpi_users',
+            'field'              => 'name',
+            'linkfield'          => 'users_id_lastupdater',
+            'name'               => __('Last updater'),
+            'datatype'           => 'dropdown',
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'beforejoin'         => [
+                    'table'              => 'glpi_notepads',
+                    'joinparams'         => [
+                        'jointype'           => 'itemtype_item',
+                    ],
+                ],
+            ],
         ];
 
         return $tab;
@@ -330,40 +330,40 @@ class Notepad extends CommonDBChild
             && !(!empty($withtemplate) && ($withtemplate == 2))
         ) {
             $form = [
-               'action' => Toolbox::getItemTypeFormURL('Notepad'),
-               'buttons' => [
-                   [
-                       'type' => 'submit',
-                       'name' => 'add',
-                       'value' => _x('button', 'Add'),
-                       'class' => 'btn btn-secondary',
-                   ],
-               ],
-               'content' => [
-                   __('Comment') => [
-                       'visible' => true,
-                       'inputs' => [
-                           'itemtype' => [
-                               'type' => 'hidden',
-                               'name' => 'itemtype',
-                               'value' => $item->getType()
-                           ],
-                           'items_id' => [
-                               'type' => 'hidden',
-                               'name' => 'items_id',
-                               'value' => $item->getID()
-                           ],
-                           '' => [
-                               'name' => 'content',
-                               'type' => 'textarea',
-                               'col_lg' => 12,
-                               'col_md' => 12,
-                               'rows' => 3,
-                               'value' => ''
-                           ],
-                       ]
-                   ]
-               ]
+                'action' => Toolbox::getItemTypeFormURL('Notepad'),
+                'buttons' => [
+                    [
+                        'type' => 'submit',
+                        'name' => 'add',
+                        'value' => _x('button', 'Add'),
+                        'class' => 'btn btn-secondary',
+                    ],
+                ],
+                'content' => [
+                    __('Comment') => [
+                        'visible' => true,
+                        'inputs' => [
+                            'itemtype' => [
+                                'type' => 'hidden',
+                                'name' => 'itemtype',
+                                'value' => $item->getType(),
+                            ],
+                            'items_id' => [
+                                'type' => 'hidden',
+                                'name' => 'items_id',
+                                'value' => $item->getID(),
+                            ],
+                            '' => [
+                                'name' => 'content',
+                                'type' => 'textarea',
+                                'col_lg' => 12,
+                                'col_md' => 12,
+                                'rows' => 3,
+                                'value' => '',
+                            ],
+                        ],
+                    ],
+                ],
             ];
             renderTwigForm($form);
         }
@@ -378,8 +378,8 @@ class Notepad extends CommonDBChild
                 echo "<div class='boxnote' id='view$id'>";
 
                 echo "<div class='boxnoteleft'>";
-                echo "<img class='user_picture_verysmall' alt=\"" . __s('Picture') . "\" src='" .
-                    User::getThumbnailURLForPicture($note['picture']) . "'>";
+                echo "<img class='user_picture_verysmall' alt=\"" . __s('Picture') . "\" src='"
+                    . User::getThumbnailURLForPicture($note['picture']) . "'>";
                 echo "</div>"; // boxnoteleft
 
                 echo "<div class='boxnotecontent'>";
@@ -408,8 +408,8 @@ class Notepad extends CommonDBChild
 
                 echo "<div class='boxnotetext $classtoadd' ";
                 if ($canedit) {
-                    echo "onclick=\"" . Html::jsHide("view$id") . " " .
-                                   Html::jsShow("edit$id") . "\"";
+                    echo "onclick=\"" . Html::jsHide("view$id") . " "
+                                   . Html::jsShow("edit$id") . "\"";
                 }
                 echo ">";
                 $content = nl2br((string) $note['content']);
@@ -453,7 +453,7 @@ class Notepad extends CommonDBChild
                                     'id' => [
                                         'type' => 'hidden',
                                         'name' => 'id',
-                                        'value' => $note['id']
+                                        'value' => $note['id'],
                                     ],
                                     '' => [
                                         'name' => 'content',
@@ -463,9 +463,9 @@ class Notepad extends CommonDBChild
                                         'rows' => 3,
                                         'value' => $note['content'] ?? '',
                                     ],
-                                ]
-                            ]
-                        ]
+                                ],
+                            ],
+                        ],
                     ];
                     renderTwigForm($form);
                     echo "</div>";

@@ -50,11 +50,11 @@ function update0781to0782($output = 'HTML')
 
     /// Add document types
     $types = ['docx' => ['name' => 'Word XML',
-                                   'icon' => 'doc-dist.png'],
-                   'xlsx' => ['name' => 'Excel XML',
-                                   'icon' => 'xls-dist.png'],
-                   'pptx' => ['name' => 'PowerPoint XML',
-                                   'icon' => 'ppt-dist.png']];
+        'icon' => 'doc-dist.png'],
+        'xlsx' => ['name' => 'Excel XML',
+            'icon' => 'xls-dist.png'],
+        'pptx' => ['name' => 'PowerPoint XML',
+            'icon' => 'ppt-dist.png']];
 
     foreach ($types as $ext => $data) {
 
@@ -65,7 +65,7 @@ function update0781to0782($output = 'HTML')
             if ($DB->numrows($result) == 0) {
                 $query = "INSERT INTO `glpi_documenttypes`
                              (`name`, `ext`, `icon`, `is_uploadable`, `date_mod`)
-                      VALUES ('".$data['name']."', '$ext', '".$data['icon']."', '1', NOW())";
+                      VALUES ('" . $data['name'] . "', '$ext', '" . $data['icon'] . "', '1', NOW())";
                 $DB->queryOrDie($query, "0.78.2 add document type $ext");
             }
         }
@@ -109,7 +109,7 @@ function update0781to0782($output = 'HTML')
         // Get rules
         $query = "SELECT GROUP_CONCAT(`id`)
                 FROM `glpi_rules`
-                WHERE `sub_type` = '".$ruletype."'
+                WHERE `sub_type` = '" . $ruletype . "'
                 GROUP BY `sub_type`";
         if ($result = $DB->query($query)) {
             if ($DB->numrows($result) > 0) {
@@ -145,8 +145,8 @@ function update0781to0782($output = 'HTML')
             while ($data = $DB->fetchAssoc($result)) {
                 $query = "UPDATE `glpi_rules`
                       SET `ranking` = ranking +1
-                      WHERE `sub_type` = '".$data['sub_type']."';";
-                $DB->queryOrDie($query, "0.78.2 reorder rule ranking for ".$data['sub_type']);
+                      WHERE `sub_type` = '" . $data['sub_type'] . "';";
+                $DB->queryOrDie($query, "0.78.2 reorder rule ranking for " . $data['sub_type']);
             }
         }
     }

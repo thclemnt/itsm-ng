@@ -39,14 +39,14 @@ Session::checkRight("statistic", READ);
 
 //sanitize dates
 foreach (['date1', 'date2'] as $key) {
-    if (array_key_exists($key, $_GET) && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$_GET[$key]) !== 1) {
+    if (array_key_exists($key, $_GET) && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $_GET[$key]) !== 1) {
         unset($_GET[$key]);
     }
 }
 
 if (empty($_GET["date1"]) && empty($_GET["date2"])) {
     $year          = date("Y") - 1;
-    $_GET["date1"] = date("Y-m-d", mktime(1, 0, 0, (int)date("m"), (int)date("d"), $year));
+    $_GET["date1"] = date("Y-m-d", mktime(1, 0, 0, (int) date("m"), (int) date("d"), $year));
     $_GET["date2"] = date("Y-m-d");
 }
 
@@ -112,17 +112,17 @@ if (isset($_GET['submit'])) {
         [
             [
                 'name' => _nx('ticket', 'Opened', 'Opened', Session::getPluralNumber()),
-                'data' => $values['total']
+                'data' => $values['total'],
             ], [
                 'name' => _nx('ticket', 'Solved', 'Solved', Session::getPluralNumber()),
-                'data' => $values['solved']
+                'data' => $values['solved'],
             ], [
                 'name' => __('Late'),
-                'data' => $values['late']
+                'data' => $values['late'],
             ], [
                 'name' => __('Closed'),
-                'data' => $values['closed']
-            ]
+                'data' => $values['closed'],
+            ],
         ]
     );
 
@@ -164,19 +164,19 @@ if (isset($_GET['submit'])) {
     }
 
     $stat->displayLineGraph(
-        __('Average time') . " - " .  _n('Hour', 'Hours', Session::getPluralNumber()),
+        __('Average time') . " - " . _n('Hour', 'Hours', Session::getPluralNumber()),
         array_keys($values['avgsolved']),
         [
             [
                 'name' => __('Closure'),
-                'data' => $values['avgsolved']
+                'data' => $values['avgsolved'],
             ], [
                 'name' => __('Resolution'),
-                'data' => $values['avgclosed']
+                'data' => $values['avgclosed'],
             ], [
                 'name' => __('Real duration'),
-                'data' => $values['avgactiontime']
-            ]
+                'data' => $values['avgactiontime'],
+            ],
         ]
     );
 
@@ -198,16 +198,16 @@ if (isset($_GET['submit'])) {
         );
 
         $stat->displayLineGraph(
-            __('Satisfaction survey') . " - " .  __('Tickets'),
+            __('Satisfaction survey') . " - " . __('Tickets'),
             array_keys($values['opensatisfaction']),
             [
                 [
                     'name' => _nx('survey', 'Opened', 'Opened', Session::getPluralNumber()),
-                    'data' => $values['opensatisfaction']
+                    'data' => $values['opensatisfaction'],
                 ], [
                     'name' => _nx('survey', 'Answered', 'Answered', Session::getPluralNumber()),
-                    'data' => $values['answersatisfaction']
-                ]
+                    'data' => $values['answersatisfaction'],
+                ],
             ]
         );
 
@@ -225,8 +225,8 @@ if (isset($_GET['submit'])) {
             [
                 [
                     'name' => __('Satisfaction'),
-                    'data' => $values['avgsatisfaction']
-                ]
+                    'data' => $values['avgsatisfaction'],
+                ],
             ]
         );
     }

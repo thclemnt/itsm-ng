@@ -42,7 +42,7 @@ $rr = new Reservation();
 Html::header(Reservation::getTypeName(Session::getPluralNumber()), $_SERVER['PHP_SELF'], "tools", "reservationitem");
 
 if (isset($_POST["update"])) {
-    list($begin_year, $begin_month) = explode("-", (string) $_POST['resa']["begin"]);
+    [$begin_year, $begin_month] = explode("-", (string) $_POST['resa']["begin"]);
     Toolbox::manageBeginAndEndPlanDates($_POST['resa']);
     if (
         Session::haveRight("reservation", UPDATE)
@@ -53,8 +53,8 @@ if (isset($_POST["update"])) {
         $_POST['begin']   = $_POST['resa']["begin"];
         $_POST['end']     = $_POST['resa']["end"];
         if ($rr->update($_POST)) {
-            Html::redirect($CFG_GLPI["root_doc"] . "/front/reservation.php?reservationitems_id=" .
-                           $_POST['_item'] . "&mois_courant=$begin_month&annee_courante=$begin_year");
+            Html::redirect($CFG_GLPI["root_doc"] . "/front/reservation.php?reservationitems_id="
+                           . $_POST['_item'] . "&mois_courant=$begin_month&annee_courante=$begin_year");
         }
     }
 } elseif (isset($_POST["purge"])) {
@@ -74,9 +74,9 @@ if (isset($_POST["update"])) {
         );
     }
 
-    list($begin_year, $begin_month) = explode("-", (string) $rr->fields["begin"]);
-    Html::redirect($CFG_GLPI["root_doc"] . "/front/reservation.php?reservationitems_id=" .
-                   "$reservationitems_id&mois_courant=$begin_month&annee_courante=$begin_year");
+    [$begin_year, $begin_month] = explode("-", (string) $rr->fields["begin"]);
+    Html::redirect($CFG_GLPI["root_doc"] . "/front/reservation.php?reservationitems_id="
+                   . "$reservationitems_id&mois_courant=$begin_month&annee_courante=$begin_year");
 } elseif (isset($_POST["add"])) {
     $all_ok              = true;
     $reservationitems_id = 0;
@@ -85,7 +85,7 @@ if (isset($_POST["update"])) {
     }
     Toolbox::manageBeginAndEndPlanDates($_POST['resa']);
     $dates_to_add = [];
-    list($begin_year, $begin_month) = explode("-", (string) $_POST['resa']["begin"]);
+    [$begin_year, $begin_month] = explode("-", (string) $_POST['resa']["begin"]);
     if (isset($_POST['resa']["end"])) {
         // Compute dates to add.
         $dates_to_add[$_POST['resa']["begin"]] = $_POST['resa']["end"];
@@ -120,7 +120,7 @@ if (isset($_POST["update"])) {
             foreach ($dates_to_add as $begin => $end) {
                 $input['begin']    = $begin;
                 $input['end']      = $end;
-                $input['users_id'] = (int)$_POST['users_id'];
+                $input['users_id'] = (int) $_POST['users_id'];
 
                 if (
                     Session::haveRight("reservation", UPDATE)

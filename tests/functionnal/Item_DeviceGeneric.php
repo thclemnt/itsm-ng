@@ -75,7 +75,7 @@ class Item_DeviceGeneric extends DbTestCase
                     'designation' => strtolower($device_type) . '-' . $this->getUniqueString(),
                 ]);
 
-                $this->integer((int)$device_id)->isGreaterThan(0);
+                $this->integer((int) $device_id)->isGreaterThan(0);
 
                 $id = $link->add([
                     'itemtype'    => 'Computer',
@@ -83,7 +83,7 @@ class Item_DeviceGeneric extends DbTestCase
                     $device_fk    => $device_id,
                     'entities_id' => 0,
                 ]);
-                $this->integer((int)$id)->isGreaterThan(0);
+                $this->integer((int) $id)->isGreaterThan(0);
                 $this->boolean($link->getFromDB($id))->isTrue();
 
                 $this->boolean($link->delete(['id' => $id]))->isTrue();
@@ -111,7 +111,7 @@ class Item_DeviceGeneric extends DbTestCase
                 'designation'  => 'memory-' . $this->getUniqueString(),
                 'size_default' => 2048,
             ]);
-            $this->integer((int)$device_id)->isGreaterThan(0);
+            $this->integer((int) $device_id)->isGreaterThan(0);
 
             $link = new \Item_DeviceMemory();
             $initial_link_id = $link->add([
@@ -120,7 +120,7 @@ class Item_DeviceGeneric extends DbTestCase
                 'devicememories_id' => $device_id,
                 'entities_id'       => 0,
             ]);
-            $this->integer((int)$initial_link_id)->isGreaterThan(0);
+            $this->integer((int) $initial_link_id)->isGreaterThan(0);
 
             $link_selection_key = \Item_DeviceMemory::getForeignKeyField();
             $_POST = ['devices_id' => $device_id];
@@ -132,7 +132,7 @@ class Item_DeviceGeneric extends DbTestCase
             ]);
 
             $this->boolean($link->getFromDB($initial_link_id))->isTrue();
-            $this->integer((int)$link->getField('items_id'))->isEqualTo((int)$target_computer->getID());
+            $this->integer((int) $link->getField('items_id'))->isEqualTo((int) $target_computer->getID());
 
             $count_before_update = count($link->find([
                 'itemtype'          => 'Computer',
@@ -158,7 +158,7 @@ class Item_DeviceGeneric extends DbTestCase
             $this->integer(count($links_after_update))->isEqualTo($count_before_update);
 
             $this->boolean($link->getFromDB($initial_link_id))->isTrue();
-            $this->integer((int)$link->getField('size'))->isEqualTo(8192);
+            $this->integer((int) $link->getField('size'))->isEqualTo(8192);
         } finally {
             $_POST = [];
             error_reporting($previous_error_reporting);

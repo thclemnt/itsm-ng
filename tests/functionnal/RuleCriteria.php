@@ -57,21 +57,21 @@ class RuleCriteria extends DbTestCase
         $criteria = new \RuleCriteria();
 
         $rules_id = $rule->add(['name'        => 'Ignore import',
-                                'is_active'   => 1,
-                                'entities_id' => 0,
-                                'sub_type'    => 'RuleDictionnarySoftware',
-                                'match'       => \Rule::AND_MATCHING,
-                                'condition'   => 0,
-                                'description' => ''
-                               ]);
-        $this->integer((int)$rules_id)->isGreaterThan(0);
+            'is_active'   => 1,
+            'entities_id' => 0,
+            'sub_type'    => 'RuleDictionnarySoftware',
+            'match'       => \Rule::AND_MATCHING,
+            'condition'   => 0,
+            'description' => '',
+        ]);
+        $this->integer((int) $rules_id)->isGreaterThan(0);
 
         $criteria_id = $criteria->add(['rules_id'  => $rules_id,
-                                      'criteria'  => 'name',
-                                      'condition' => \Rule::PATTERN_IS,
-                                      'pattern'   => 'Mozilla Firefox 52'
-                                   ]);
-        $this->integer((int)$criteria_id)->isGreaterThan(0);
+            'criteria'  => 'name',
+            'condition' => \Rule::PATTERN_IS,
+            'pattern'   => 'Mozilla Firefox 52',
+        ]);
+        $this->integer((int) $criteria_id)->isGreaterThan(0);
 
         $this->boolean($criteria->getFromDB($criteria_id))->isTrue();
         $this->string($criteria::$itemtype)->isIdenticalTo('RuleDictionnarySoftware');
@@ -89,21 +89,21 @@ class RuleCriteria extends DbTestCase
         $criteria = new \RuleCriteria();
 
         $rules_id = $rule->add(['name'        => 'Ignore import',
-                                'is_active'   => 1,
-                                'entities_id' => 0,
-                                'sub_type'    => 'RuleDictionnarySoftware',
-                                'match'       => \Rule::AND_MATCHING,
-                                'condition'   => 0,
-                                'description' => ''
-                             ]);
-        $this->integer((int)$rules_id)->isGreaterThan(0);
+            'is_active'   => 1,
+            'entities_id' => 0,
+            'sub_type'    => 'RuleDictionnarySoftware',
+            'match'       => \Rule::AND_MATCHING,
+            'condition'   => 0,
+            'description' => '',
+        ]);
+        $this->integer((int) $rules_id)->isGreaterThan(0);
 
         $criteria_id = $criteria->add(['rules_id'  => $rules_id,
-                                       'criteria'  => 'name',
-                                       'condition' => \Rule::PATTERN_IS,
-                                       'pattern'   => 'Mozilla Firefox 52'
-                                      ]);
-        $this->integer((int)$criteria_id)->isGreaterThan(0);
+            'criteria'  => 'name',
+            'condition' => \Rule::PATTERN_IS,
+            'pattern'   => 'Mozilla Firefox 52',
+        ]);
+        $this->integer((int) $criteria_id)->isGreaterThan(0);
 
         $this->boolean($criteria->getFromDB($criteria_id))->isTrue();
         $this->string($criteria->getFriendlyName())->isIdenticalTo('SoftwareisMozilla Firefox 52');
@@ -116,24 +116,24 @@ class RuleCriteria extends DbTestCase
         $criteria = new \RuleCriteria();
 
         $rules_id = $rule->add(['name'        => 'Ignore import',
-                                'is_active'   => 1,
-                                'entities_id' => 0,
-                                'sub_type'    => 'RuleDictionnarySoftware',
-                                'match'       => \Rule::AND_MATCHING,
-                                'condition'   => 0,
-                                'description' => '',
-                               ]);
-        $this->integer((int)$rules_id)->isGreaterThan(0);
+            'is_active'   => 1,
+            'entities_id' => 0,
+            'sub_type'    => 'RuleDictionnarySoftware',
+            'match'       => \Rule::AND_MATCHING,
+            'condition'   => 0,
+            'description' => '',
+        ]);
+        $this->integer((int) $rules_id)->isGreaterThan(0);
 
         $this->boolean($rule->getFromDB($rules_id))->isTrue();
         $this->updateDateMod($rules_id, '2017-03-31 00:00:00');
 
         $criteria_id = $criteria->add(['rules_id'  => $rules_id,
-                                       'criteria'  => 'name',
-                                       'condition' => \Rule::PATTERN_IS,
-                                       'pattern'   => 'Mozilla Firefox 52'
-                                      ]);
-        $this->integer((int)$criteria_id)->isGreaterThan(0);
+            'criteria'  => 'name',
+            'condition' => \Rule::PATTERN_IS,
+            'pattern'   => 'Mozilla Firefox 52',
+        ]);
+        $this->integer((int) $criteria_id)->isGreaterThan(0);
 
         $this->boolean($rule->getFromDB($rules_id))->isTrue();
 
@@ -149,23 +149,23 @@ class RuleCriteria extends DbTestCase
         $criteria = new \RuleCriteria();
 
         $rules_id = $rule->add(['name'        => 'Ignore import',
-                                'is_active'   => 1,
-                                'entities_id' => 0,
-                                'sub_type'    => 'RuleDictionnarySoftware',
-                                'match'       => \Rule::AND_MATCHING,
-                                'condition'   => 0,
-                                'description' => '',
-                               ]);
-        $this->integer((int)$rules_id)->isGreaterThan(0);
+            'is_active'   => 1,
+            'entities_id' => 0,
+            'sub_type'    => 'RuleDictionnarySoftware',
+            'match'       => \Rule::AND_MATCHING,
+            'condition'   => 0,
+            'description' => '',
+        ]);
+        $this->integer((int) $rules_id)->isGreaterThan(0);
 
         $this->boolean($rule->getFromDB($rules_id))->isTrue();
 
         $criteria_id = $criteria->add(['rules_id'  => $rules_id,
-                                       'criteria'  => 'name',
-                                       'condition' => \Rule::PATTERN_IS,
-                                       'pattern'   => 'Mozilla Firefox 52'
-                                      ]);
-        $this->integer((int)$criteria_id)->isGreaterThan(0);
+            'criteria'  => 'name',
+            'condition' => \Rule::PATTERN_IS,
+            'pattern'   => 'Mozilla Firefox 52',
+        ]);
+        $this->integer((int) $criteria_id)->isGreaterThan(0);
         $this->updateDateMod($rules_id, '2017-03-31 00:00:00');
 
         $this->boolean($criteria->delete(['id' => $criteria_id], true))->isTrue();
@@ -187,14 +187,14 @@ class RuleCriteria extends DbTestCase
         $this->boolean($criteria->prepareInputForAdd($input))->isFalse();
 
         $rules_id = $rule->add(['name'        => 'Ignore import',
-                                'is_active'   => 1,
-                                'entities_id' => 0,
-                                'sub_type'    => 'RuleDictionnarySoftware',
-                                'match'       => \Rule::AND_MATCHING,
-                                'condition'   => 0,
-                                'description' => '',
-                               ]);
-        $this->integer((int)$rules_id)->isGreaterThan(0);
+            'is_active'   => 1,
+            'entities_id' => 0,
+            'sub_type'    => 'RuleDictionnarySoftware',
+            'match'       => \Rule::AND_MATCHING,
+            'condition'   => 0,
+            'description' => '',
+        ]);
+        $this->integer((int) $rules_id)->isGreaterThan(0);
 
         $this->boolean($rule->getFromDB($rules_id))->isTrue();
 
@@ -217,31 +217,31 @@ class RuleCriteria extends DbTestCase
         $criteria = new \RuleCriteria();
 
         $rules_id = $rule->add(['name'        => 'Example rule',
-                                'is_active'   => 1,
-                                'entities_id' => 0,
-                                'sub_type'    => 'RuleDictionnarySoftware',
-                                'match'       => \Rule::AND_MATCHING,
-                                'condition'   => 0,
-                                'description' => '',
-                               ]);
-        $this->integer((int)$rules_id)->isGreaterThan(0);
+            'is_active'   => 1,
+            'entities_id' => 0,
+            'sub_type'    => 'RuleDictionnarySoftware',
+            'match'       => \Rule::AND_MATCHING,
+            'condition'   => 0,
+            'description' => '',
+        ]);
+        $this->integer((int) $rules_id)->isGreaterThan(0);
 
         $this->integer(
-            (int)$criteria->add([
-              'rules_id'  => $rules_id,
-              'criteria'  => 'name',
-              'condition' => \Rule::PATTERN_IS,
-              'pattern'   => 'Mozilla Firefox 52'
-         ])
+            (int) $criteria->add([
+                'rules_id'  => $rules_id,
+                'criteria'  => 'name',
+                'condition' => \Rule::PATTERN_IS,
+                'pattern'   => 'Mozilla Firefox 52',
+            ])
         )->isGreaterThan(0);
 
         $this->integer(
-            (int)$criteria->add([
-              'rules_id'  => $rules_id,
-              'criteria'  => 'version',
-              'condition' => \Rule::REGEX_NOT_MATCH,
-              'pattern'   => '/(.*)/'
-         ])
+            (int) $criteria->add([
+                'rules_id'  => $rules_id,
+                'criteria'  => 'version',
+                'condition' => \Rule::REGEX_NOT_MATCH,
+                'pattern'   => '/(.*)/',
+            ])
         )->isGreaterThan(0);
 
         //Get criteria for the newly created rule
@@ -259,11 +259,11 @@ class RuleCriteria extends DbTestCase
         $criteria = new \RuleCriteria();
 
         $criteria->fields = ['id' => 1,
-                             'rules_id'  => 1,
-                             'criteria'  => 'name',
-                             'condition' => \Rule::PATTERN_IS,
-                             'pattern'   => \Rule::RULE_WILDCARD
-                            ];
+            'rules_id'  => 1,
+            'criteria'  => 'name',
+            'condition' => \Rule::PATTERN_IS,
+            'pattern'   => \Rule::RULE_WILDCARD,
+        ];
 
         $results      = [];
         $regex_result = [];
@@ -277,11 +277,11 @@ class RuleCriteria extends DbTestCase
         )->isTrue();
 
         $criteria->fields = ['id' => 1,
-                             'rules_id'  => 1,
-                             'criteria'  => 'name',
-                             'condition' => \Rule::PATTERN_FIND,
-                             'pattern'   => \Rule::RULE_WILDCARD
-                            ];
+            'rules_id'  => 1,
+            'criteria'  => 'name',
+            'condition' => \Rule::PATTERN_FIND,
+            'pattern'   => \Rule::RULE_WILDCARD,
+        ];
         $this->boolean(
             $criteria->match(
                 $criteria,
@@ -297,11 +297,11 @@ class RuleCriteria extends DbTestCase
         $criteria = new \RuleCriteria();
 
         $criteria->fields = ['id' => 1,
-                             'rules_id'  => 1,
-                             'criteria'  => 'name',
-                             'condition' => \Rule::PATTERN_IS,
-                             'pattern'   => 'Mozilla Firefox'
-                            ];
+            'rules_id'  => 1,
+            'criteria'  => 'name',
+            'condition' => \Rule::PATTERN_IS,
+            'pattern'   => 'Mozilla Firefox',
+        ];
 
         $results      = [];
         $regex_result = [];
@@ -349,11 +349,11 @@ class RuleCriteria extends DbTestCase
         $this->array($results)->isEmpty();
 
         $criteria->fields = ['id' => 1,
-                             'rules_id'  => 1,
-                             'criteria'  => 'name',
-                             'condition' => \Rule::PATTERN_IS_NOT,
-                             'pattern'   => 'Mozilla Firefox'
-                            ];
+            'rules_id'  => 1,
+            'criteria'  => 'name',
+            'condition' => \Rule::PATTERN_IS_NOT,
+            'pattern'   => 'Mozilla Firefox',
+        ];
 
         $results = [];
         $this->boolean(
@@ -372,11 +372,11 @@ class RuleCriteria extends DbTestCase
         $criteria = new \RuleCriteria();
 
         $criteria->fields = ['id' => 1,
-                             'rules_id'  => 1,
-                             'criteria'  => 'name',
-                             'condition' => \Rule::PATTERN_EXISTS,
-                             'pattern'   => ''
-                            ];
+            'rules_id'  => 1,
+            'criteria'  => 'name',
+            'condition' => \Rule::PATTERN_EXISTS,
+            'pattern'   => '',
+        ];
 
         $results      = [];
         $regex_result = [];
@@ -419,11 +419,11 @@ class RuleCriteria extends DbTestCase
         $criteria = new \RuleCriteria();
 
         $criteria->fields = ['id' => 1,
-                             'rules_id'  => 1,
-                             'criteria'  => 'name',
-                             'condition' => \Rule::PATTERN_CONTAIN,
-                             'pattern'   => 'Firefox'
-                            ];
+            'rules_id'  => 1,
+            'criteria'  => 'name',
+            'condition' => \Rule::PATTERN_CONTAIN,
+            'pattern'   => 'Firefox',
+        ];
 
         $results      = [];
         $regex_result = [];
@@ -468,11 +468,11 @@ class RuleCriteria extends DbTestCase
         $this->array($results)->isIdenticalTo(['name' => 'Firefox']);
 
         $criteria->fields = ['id' => 1,
-                             'rules_id'  => 1,
-                             'criteria'  => 'name',
-                             'condition' => \Rule::PATTERN_NOT_CONTAIN,
-                             'pattern'   => 'Firefox'
-                            ];
+            'rules_id'  => 1,
+            'criteria'  => 'name',
+            'condition' => \Rule::PATTERN_NOT_CONTAIN,
+            'pattern'   => 'Firefox',
+        ];
 
         $results      = [];
         $regex_result = [];
@@ -494,11 +494,11 @@ class RuleCriteria extends DbTestCase
         $criteria = new \RuleCriteria();
 
         $criteria->fields = ['id'        => 1,
-                             'rules_id'  => 1,
-                             'criteria'  => 'name',
-                             'condition' => \Rule::PATTERN_BEGIN,
-                             'pattern'   => 'Mozilla'
-                            ];
+            'rules_id'  => 1,
+            'criteria'  => 'name',
+            'condition' => \Rule::PATTERN_BEGIN,
+            'pattern'   => 'Mozilla',
+        ];
 
         $results      = [];
         $regex_result = [];
@@ -549,11 +549,11 @@ class RuleCriteria extends DbTestCase
         $this->array($results)->isIdenticalTo([]);
 
         $criteria->fields = ['id' => 1,
-                             'rules_id'  => 1,
-                             'criteria'  => 'name',
-                             'condition' => \Rule::PATTERN_END,
-                             'pattern'   => 'Firefox'
-                            ];
+            'rules_id'  => 1,
+            'criteria'  => 'name',
+            'condition' => \Rule::PATTERN_END,
+            'pattern'   => 'Firefox',
+        ];
 
         $results      = [];
         $regex_result = [];
@@ -600,11 +600,11 @@ class RuleCriteria extends DbTestCase
         $criteria = new \RuleCriteria();
 
         $criteria->fields = ['id'        => 1,
-                             'rules_id'  => 1,
-                             'criteria'  => 'name',
-                             'condition' => \Rule::REGEX_MATCH,
-                             'pattern'   => '/Mozilla Firefox (.*)/'
-                            ];
+            'rules_id'  => 1,
+            'criteria'  => 'name',
+            'condition' => \Rule::REGEX_MATCH,
+            'pattern'   => '/Mozilla Firefox (.*)/',
+        ];
 
         $results      = [];
         $regex_result = [];
@@ -629,11 +629,11 @@ class RuleCriteria extends DbTestCase
         )->isFalse();
 
         $criteria->fields = ['id'        => 1,
-                             'rules_id'  => 1,
-                             'criteria'  => 'name',
-                             'condition' => \Rule::REGEX_NOT_MATCH,
-                             'pattern'   => '/Mozilla Firefox (.*)/'
-                            ];
+            'rules_id'  => 1,
+            'criteria'  => 'name',
+            'condition' => \Rule::REGEX_NOT_MATCH,
+            'pattern'   => '/Mozilla Firefox (.*)/',
+        ];
 
         $results      = [];
         $regex_result = [];
@@ -662,11 +662,11 @@ class RuleCriteria extends DbTestCase
 
         //another one
         $criteria->fields = ['id'        => 1,
-                             'rules_id'  => 1,
-                             'criteria'  => 'name',
-                             'condition' => \Rule::REGEX_MATCH,
-                             'pattern'   => '/Mozilla (Firefox|Thunderbird) (.*)/'
-                            ];
+            'rules_id'  => 1,
+            'criteria'  => 'name',
+            'condition' => \Rule::REGEX_MATCH,
+            'pattern'   => '/Mozilla (Firefox|Thunderbird) (.*)/',
+        ];
 
         $results      = [];
         $regex_result = [];
@@ -696,11 +696,11 @@ class RuleCriteria extends DbTestCase
 
         //test for #8117
         $criteria->fields = ['id'        => 1,
-                             'rules_id'  => 1,
-                             'criteria'  => 'name',
-                             'condition' => \Rule::REGEX_MATCH,
-                             'pattern'   => '/CN=([0-9a-z]+) VPN/'
-                            ];
+            'rules_id'  => 1,
+            'criteria'  => 'name',
+            'condition' => \Rule::REGEX_MATCH,
+            'pattern'   => '/CN=([0-9a-z]+) VPN/',
+        ];
 
         $results      = [];
         $regex_result = [];
@@ -724,24 +724,24 @@ class RuleCriteria extends DbTestCase
         $location = new \Location();
 
         $loc_1 = $location->import(['completename' => 'loc1',
-                                    'entities_id' => 0, 'is_recursive' => 1]);
+            'entities_id' => 0, 'is_recursive' => 1]);
         $this->integer($loc_1)->isGreaterThan(0);
 
         $loc_2 = $location->import(['completename' => 'loc1 > sloc1',
-                                    'entities_id' => 0, 'is_recursive' => 1,
-                                    'locations_id' => $loc_1]);
+            'entities_id' => 0, 'is_recursive' => 1,
+            'locations_id' => $loc_1]);
         $this->integer($loc_2)->isGreaterThan(0);
 
         $loc_3 = $location->import(['completename' => 'loc3',
-                                    'entities_id' => 0, 'is_recursive' => 1]);
+            'entities_id' => 0, 'is_recursive' => 1]);
         $this->integer($loc_3)->isGreaterThan(0);
 
         $criteria->fields = ['id'        => 1,
-                             'rules_id'  => 1,
-                             'criteria'  => 'locations_id',
-                             'condition' => \Rule::PATTERN_UNDER,
-                             'pattern'   => $loc_1
-                            ];
+            'rules_id'  => 1,
+            'criteria'  => 'locations_id',
+            'condition' => \Rule::PATTERN_UNDER,
+            'pattern'   => $loc_1,
+        ];
 
         $results      = [];
         $regex_result = [];
@@ -774,11 +774,11 @@ class RuleCriteria extends DbTestCase
         )->isFalse();
 
         $criteria->fields = ['id'        => 1,
-                             'rules_id'  => 1,
-                             'criteria'  => 'locations_id',
-                             'condition' => \Rule::PATTERN_NOT_UNDER,
-                             'pattern'   => $loc_1
-                            ];
+            'rules_id'  => 1,
+            'criteria'  => 'locations_id',
+            'condition' => \Rule::PATTERN_NOT_UNDER,
+            'pattern'   => $loc_1,
+        ];
 
         $results      = [];
         $regex_result = [];
@@ -832,7 +832,7 @@ class RuleCriteria extends DbTestCase
     /**
      * Update rule modification date
      *
-     * @param integer $rules_id Rule ID
+     * @param int $rules_id Rule ID
      * @param string  $time     Time to set modification date to
      *
      * @return void

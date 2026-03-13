@@ -166,16 +166,16 @@ class QueuedNotification extends CommonDBTM
             && isset($input['recipient'])
         ) {
             $criteria = [
-               'FROM'   => $this->getTable(),
-               'WHERE'  => [
-                  'is_deleted'   => 0,
-                  'itemtype'     => $input['itemtype'],
-                  'items_id'     => $input['items_id'],
-                  'entities_id'  => $input['entities_id'],
-                  'notificationtemplates_id' => $input['notificationtemplates_id'],
-                  'recipient'                => $input['recipient']
+                'FROM'   => $this->getTable(),
+                'WHERE'  => [
+                    'is_deleted'   => 0,
+                    'itemtype'     => $input['itemtype'],
+                    'items_id'     => $input['items_id'],
+                    'entities_id'  => $input['entities_id'],
+                    'notificationtemplates_id' => $input['notificationtemplates_id'],
+                    'recipient'                => $input['recipient'],
 
-               ]
+                ],
             ];
             $iterator = $DB->request($criteria);
             while ($data = $iterator->next()) {
@@ -192,202 +192,202 @@ class QueuedNotification extends CommonDBTM
         $tab = [];
 
         $tab[] = [
-           'id'                 => 'common',
-           'name'               => __('Characteristics')
+            'id'                 => 'common',
+            'name'               => __('Characteristics'),
         ];
 
         $tab[] = [
-           'id'                 => '1',
-           'table'              => $this->getTable(),
-           'field'              => 'name',
-           'name'               => __('Subject'),
-           'datatype'           => 'itemlink',
-           'massiveaction'      => false
+            'id'                 => '1',
+            'table'              => $this->getTable(),
+            'field'              => 'name',
+            'name'               => __('Subject'),
+            'datatype'           => 'itemlink',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '2',
-           'table'              => $this->getTable(),
-           'field'              => 'id',
-           'name'               => __('ID'),
-           'massiveaction'      => false,
-           'datatype'           => 'number'
+            'id'                 => '2',
+            'table'              => $this->getTable(),
+            'field'              => 'id',
+            'name'               => __('ID'),
+            'massiveaction'      => false,
+            'datatype'           => 'number',
         ];
 
         $tab[] = [
-           'id'                 => '16',
-           'table'              => $this->getTable(),
-           'field'              => 'create_time',
-           'name'               => __('Creation date'),
-           'datatype'           => 'datetime',
-           'massiveaction'      => false
+            'id'                 => '16',
+            'table'              => $this->getTable(),
+            'field'              => 'create_time',
+            'name'               => __('Creation date'),
+            'datatype'           => 'datetime',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '3',
-           'table'              => $this->getTable(),
-           'field'              => 'send_time',
-           'name'               => __('Expected send date'),
-           'datatype'           => 'datetime',
-           'massiveaction'      => false
+            'id'                 => '3',
+            'table'              => $this->getTable(),
+            'field'              => 'send_time',
+            'name'               => __('Expected send date'),
+            'datatype'           => 'datetime',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '4',
-           'table'              => $this->getTable(),
-           'field'              => 'sent_time',
-           'name'               => __('Send date'),
-           'datatype'           => 'datetime',
-           'massiveaction'      => false
+            'id'                 => '4',
+            'table'              => $this->getTable(),
+            'field'              => 'sent_time',
+            'name'               => __('Send date'),
+            'datatype'           => 'datetime',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '5',
-           'table'              => $this->getTable(),
-           'field'              => 'sender',
-           'name'               => __('Sender email'),
-           'datatype'           => 'text',
-           'massiveaction'      => false
+            'id'                 => '5',
+            'table'              => $this->getTable(),
+            'field'              => 'sender',
+            'name'               => __('Sender email'),
+            'datatype'           => 'text',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '6',
-           'table'              => $this->getTable(),
-           'field'              => 'sendername',
-           'name'               => __('Sender name'),
-           'datatype'           => 'string',
-           'massiveaction'      => false
+            'id'                 => '6',
+            'table'              => $this->getTable(),
+            'field'              => 'sendername',
+            'name'               => __('Sender name'),
+            'datatype'           => 'string',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '7',
-           'table'              => $this->getTable(),
-           'field'              => 'recipient',
-           'name'               => __('Recipient email'),
-           'datatype'           => 'string',
-           'massiveaction'      => false
+            'id'                 => '7',
+            'table'              => $this->getTable(),
+            'field'              => 'recipient',
+            'name'               => __('Recipient email'),
+            'datatype'           => 'string',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '8',
-           'table'              => $this->getTable(),
-           'field'              => 'recipientname',
-           'name'               => __('Recipient name'),
-           'datatype'           => 'string',
-           'massiveaction'      => false
+            'id'                 => '8',
+            'table'              => $this->getTable(),
+            'field'              => 'recipientname',
+            'name'               => __('Recipient name'),
+            'datatype'           => 'string',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '9',
-           'table'              => $this->getTable(),
-           'field'              => 'replyto',
-           'name'               => __('Reply-to email'),
-           'datatype'           => 'string',
-           'massiveaction'      => false
+            'id'                 => '9',
+            'table'              => $this->getTable(),
+            'field'              => 'replyto',
+            'name'               => __('Reply-to email'),
+            'datatype'           => 'string',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '10',
-           'table'              => $this->getTable(),
-           'field'              => 'replytoname',
-           'name'               => __('Reply-to name'),
-           'datatype'           => 'string',
-           'massiveaction'      => false
+            'id'                 => '10',
+            'table'              => $this->getTable(),
+            'field'              => 'replytoname',
+            'name'               => __('Reply-to name'),
+            'datatype'           => 'string',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '11',
-           'table'              => $this->getTable(),
-           'field'              => 'headers',
-           'name'               => __('Additional headers'),
-           'datatype'           => 'specific',
-           'massiveaction'      => false
+            'id'                 => '11',
+            'table'              => $this->getTable(),
+            'field'              => 'headers',
+            'name'               => __('Additional headers'),
+            'datatype'           => 'specific',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '12',
-           'table'              => $this->getTable(),
-           'field'              => 'body_html',
-           'name'               => __('Email HTML body'),
-           'datatype'           => 'text',
-           'massiveaction'      => false,
-           'htmltext'           => true
+            'id'                 => '12',
+            'table'              => $this->getTable(),
+            'field'              => 'body_html',
+            'name'               => __('Email HTML body'),
+            'datatype'           => 'text',
+            'massiveaction'      => false,
+            'htmltext'           => true,
         ];
 
         $tab[] = [
-           'id'                 => '13',
-           'table'              => $this->getTable(),
-           'field'              => 'body_text',
-           'name'               => __('Email text body'),
-           'datatype'           => 'text',
-           'massiveaction'      => false
+            'id'                 => '13',
+            'table'              => $this->getTable(),
+            'field'              => 'body_text',
+            'name'               => __('Email text body'),
+            'datatype'           => 'text',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '14',
-           'table'              => $this->getTable(),
-           'field'              => 'messageid',
-           'name'               => __('Message ID'),
-           'datatype'           => 'string',
-           'massiveaction'      => false
+            'id'                 => '14',
+            'table'              => $this->getTable(),
+            'field'              => 'messageid',
+            'name'               => __('Message ID'),
+            'datatype'           => 'string',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '15',
-           'table'              => $this->getTable(),
-           'field'              => 'sent_try',
-           'name'               => __('Number of tries of sent'),
-           'datatype'           => 'integer',
-           'massiveaction'      => false
+            'id'                 => '15',
+            'table'              => $this->getTable(),
+            'field'              => 'sent_try',
+            'name'               => __('Number of tries of sent'),
+            'datatype'           => 'integer',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '20',
-           'table'              => $this->getTable(),
-           'field'              => 'itemtype',
-           'name'               => _n('Type', 'Types', 1),
-           'datatype'           => 'itemtype',
-           'massiveaction'      => false
+            'id'                 => '20',
+            'table'              => $this->getTable(),
+            'field'              => 'itemtype',
+            'name'               => _n('Type', 'Types', 1),
+            'datatype'           => 'itemtype',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '21',
-           'table'              => $this->getTable(),
-           'field'              => 'items_id',
-           'name'               => __('Associated item ID'),
-           'massiveaction'      => false,
-           'datatype'           => 'integer'
+            'id'                 => '21',
+            'table'              => $this->getTable(),
+            'field'              => 'items_id',
+            'name'               => __('Associated item ID'),
+            'massiveaction'      => false,
+            'datatype'           => 'integer',
         ];
 
         $tab[] = [
-           'id'                 => '22',
-           'table'              => 'glpi_notificationtemplates',
-           'field'              => 'name',
-           'name'               => _n('Notification template', 'Notification templates', 1),
-           'massiveaction'      => false,
-           'datatype'           => 'dropdown'
+            'id'                 => '22',
+            'table'              => 'glpi_notificationtemplates',
+            'field'              => 'name',
+            'name'               => _n('Notification template', 'Notification templates', 1),
+            'massiveaction'      => false,
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '23',
-           'table'              => 'glpi_queuednotifications',
-           'field'              => 'mode',
-           'name'               => __('Mode'),
-           'massiveaction'      => false,
-           'datatype'           => 'specific',
-           'searchtype'         => [
-              0 => 'equals',
-              1 => 'notequals'
-           ]
+            'id'                 => '23',
+            'table'              => 'glpi_queuednotifications',
+            'field'              => 'mode',
+            'name'               => __('Mode'),
+            'massiveaction'      => false,
+            'datatype'           => 'specific',
+            'searchtype'         => [
+                0 => 'equals',
+                1 => 'notequals',
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '80',
-           'table'              => 'glpi_entities',
-           'field'              => 'completename',
-           'name'               => Entity::getTypeName(1),
-           'massiveaction'      => false,
-           'datatype'           => 'dropdown'
+            'id'                 => '80',
+            'table'              => 'glpi_entities',
+            'field'              => 'completename',
+            'name'               => Entity::getTypeName(1),
+            'massiveaction'      => false,
+            'datatype'           => 'dropdown',
         ];
 
         return $tab;
@@ -445,9 +445,9 @@ class QueuedNotification extends CommonDBTM
     /**
      * Send notification in queue
      *
-     * @param integer $ID Id
+     * @param int $ID Id
      *
-     * @return boolean
+     * @return bool
      */
     public function sendById($ID)
     {
@@ -479,11 +479,11 @@ class QueuedNotification extends CommonDBTM
         switch ($name) {
             case 'queuednotification':
                 return ['description' => __('Send chat in queue'),
-                             'parameter'   => __('Maximum chat to send at once')];
+                    'parameter'   => __('Maximum chat to send at once')];
 
             case 'queuednotificationclean':
                 return ['description' => __('Clean notification queue'),
-                             'parameter'   => __('Days to keep sent chat')];
+                    'parameter'   => __('Days to keep sent chat')];
         }
         return [];
     }
@@ -493,7 +493,7 @@ class QueuedNotification extends CommonDBTM
      * Get pending notifications in queue
      *
      * @param string  $send_time   Maximum sent_time
-     * @param integer $limit       Query limit clause
+     * @param int $limit       Query limit clause
      * @param array   $limit_modes Modes to limit to
      * @param array   $extra_where Extra params to add to the where clause
      *
@@ -508,15 +508,15 @@ class QueuedNotification extends CommonDBTM
         }
 
         $base_query = [
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'is_deleted'   => 0,
-              'mode'         => 'TOFILL',
-              'send_time'    => ['<', $send_time],
-           ] +  $extra_where,
-           'ORDER'  => 'send_time ASC',
-           'START'  => 0,
-           'LIMIT'  => $limit
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'is_deleted'   => 0,
+                'mode'         => 'TOFILL',
+                'send_time'    => ['<', $send_time],
+            ] +  $extra_where,
+            'ORDER'  => 'send_time ASC',
+            'START'  => 0,
+            'LIMIT'  => $limit,
         ];
 
         $pendings = [];
@@ -557,7 +557,7 @@ class QueuedNotification extends CommonDBTM
      *
      * @param CommonDBTM $task for log (default NULL)
      *
-     * @return integer either 0 or 1
+     * @return int either 0 or 1
     **/
     public static function cronQueuedNotification($task = null)
     {
@@ -599,7 +599,7 @@ class QueuedNotification extends CommonDBTM
      *
      * @param CommonDBTM $task for log (default NULL)
      *
-     * @return integer either 0 or 1
+     * @return int either 0 or 1
     **/
     public static function cronQueuedNotificationClean($task = null)
     {
@@ -614,8 +614,8 @@ class QueuedNotification extends CommonDBTM
             $DB->delete(
                 self::getTable(),
                 [
-                  'is_deleted'   => 1,
-                  new \QueryExpression('(UNIX_TIMESTAMP(' . $DB->quoteName('send_time') . ') < ' . $DB->quoteValue($send_time) . ')')
+                    'is_deleted'   => 1,
+                    new QueryExpression('(UNIX_TIMESTAMP(' . $DB->quoteName('send_time') . ') < ' . $DB->quoteValue($send_time) . ')'),
                 ]
             );
             $vol = $DB->affectedRows();
@@ -630,7 +630,7 @@ class QueuedNotification extends CommonDBTM
      * Force sending all mails in queue for a specific item
      *
      * @param string  $itemtype item type
-     * @param integer $items_id id of the item
+     * @param int $items_id id of the item
      *
      * @return void
     **/
@@ -645,8 +645,8 @@ class QueuedNotification extends CommonDBTM
                 1,
                 null,
                 [
-                  'itemtype'  => $itemtype,
-                  'items_id'  => $items_id
+                    'itemtype'  => $itemtype,
+                    'items_id'  => $items_id,
                 ]
             );
 
@@ -661,7 +661,7 @@ class QueuedNotification extends CommonDBTM
     /**
      * Print the queued mail form
      *
-     * @param integer $ID      ID of the item
+     * @param int $ID      ID of the item
      * @param array   $options Options
      *
      * @return true if displayed  false if item not found or not right to display

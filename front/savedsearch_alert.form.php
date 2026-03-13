@@ -95,6 +95,6 @@ if (isset($_POST["add"])) {
 } else {
     Html::header(SavedSearch::getTypeName(Session::getPluralNumber()), $_SERVER['PHP_SELF'], "tools", "savedsearch");
     $alert->display(['id'           => $_GET["id"],
-                         'savedsearches_id' => $_GET["savedsearches_id"]]);
+        'savedsearches_id' => $_GET["savedsearches_id"]]);
     Html::footer();
 }

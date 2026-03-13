@@ -54,7 +54,7 @@ interface NotificationInterface
      * @param mixed $value   The data to check (may differ for every notification mode)
      * @param array $options Optionnal special options (may be needed)
      *
-     * @return boolean
+     * @return bool
     **/
     public static function check($value, $options = []);
 

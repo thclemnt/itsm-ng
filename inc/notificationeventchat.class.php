@@ -31,7 +31,6 @@
  * ---------------------------------------------------------------------
  */
 
-use PHPMailer\PHPMailer\PHPMailer;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -67,9 +66,9 @@ class NotificationEventChat extends NotificationEventAbstract implements Notific
         global $CFG_GLPI;
 
         return [
-           'email'     => $CFG_GLPI['admin_email'],
-           'name'      => $CFG_GLPI['admin_email_name'],
-           'language'  => $CFG_GLPI['language']
+            'email'     => $CFG_GLPI['admin_email'],
+            'name'      => $CFG_GLPI['admin_email_name'],
+            'language'  => $CFG_GLPI['language'],
         ];
 
         //return true;
@@ -119,7 +118,7 @@ class NotificationEventChat extends NotificationEventAbstract implements Notific
             $processed[] = $current->getID();
             $current->update([
                 'id'        => $current->fields['id'],
-                'sent_time' => $_SESSION['glpi_currenttime']
+                'sent_time' => $_SESSION['glpi_currenttime'],
             ]);
             $current->delete(['id'        => $current->fields['id']]);
         }

@@ -87,7 +87,7 @@ function update151to200(): bool
             PRIMARY KEY (`profileId`, `userId`)
             ) ENGINE=InnoDB  DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
         ";
-        $DB->queryOrDie($query, "erreur lors de la mise a jour de la table de glpi_dashboards".$DB->error());
+        $DB->queryOrDie($query, "erreur lors de la mise a jour de la table de glpi_dashboards" . $DB->error());
     }
 
     // ************ Keep it at the end **************

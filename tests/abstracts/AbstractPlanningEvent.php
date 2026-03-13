@@ -31,7 +31,7 @@
  * ---------------------------------------------------------------------
 */
 
-abstract class AbstractPlanningEvent extends \DbTestCase
+abstract class AbstractPlanningEvent extends DbTestCase
 {
     protected $myclass = "";
     protected $input   = [];
@@ -55,21 +55,21 @@ abstract class AbstractPlanningEvent extends \DbTestCase
         $this->exdate2  = date('Y-m-d', $this->now + (3 * \DAY_TIMESTAMP));
 
         $this->input = [
-           'name'       => 'test add external event',
-           'test'       => 'comment for external event',
-           'plan'       => [
-              'begin'     => $this->begin,
-              '_duration' => $this->duration,
-           ],
-           'rrule'      => [
-              'freq'      => 'daily',
-              'interval'  => 1,
-              'byweekday' => 'MO',
-              'bymonth'   => 1,
-              'exceptions' => "$this->exdate1, $this->exdate2"
-           ],
-           'state'      => \Planning::TODO,
-           'background' => 1,
+            'name'       => 'test add external event',
+            'test'       => 'comment for external event',
+            'plan'       => [
+                'begin'     => $this->begin,
+                '_duration' => $this->duration,
+            ],
+            'rrule'      => [
+                'freq'      => 'daily',
+                'interval'  => 1,
+                'byweekday' => 'MO',
+                'bymonth'   => 1,
+                'exceptions' => "$this->exdate1, $this->exdate2",
+            ],
+            'state'      => Planning::TODO,
+            'background' => 1,
         ];
     }
 
@@ -89,9 +89,9 @@ abstract class AbstractPlanningEvent extends \DbTestCase
         }
 
         // check rrule encoding
-        $exp_exdates = '"exceptions":["'.$this->exdate1.'","'.$this->exdate2.'"]';
+        $exp_exdates = '"exceptions":["' . $this->exdate1 . '","' . $this->exdate2 . '"]';
         $this->string($event->fields['rrule'])
-             ->isEqualTo('{"freq":"daily","interval":1,"byweekday":"MO","bymonth":1,'.$exp_exdates.'}');
+             ->isEqualTo('{"freq":"daily","interval":1,"byweekday":"MO","bymonth":1,' . $exp_exdates . '}');
 
         return $event;
     }
@@ -108,21 +108,21 @@ abstract class AbstractPlanningEvent extends \DbTestCase
         $new_end   = date("Y-m-d H:i:s", strtotime($this->end) + $this->duration);
 
         $update = array_merge($this->input, [
-           'id'         => $id,
-           'name'       => 'updated external event',
-           'test'       => 'updated comment for external event',
-           'plan'       => [
-              'begin'     => $new_begin,
-              '_duration' => $this->duration,
-           ],
-           'rrule'      => [
-              'freq'      => 'monthly',
-              'interval'  => 2,
-              'byweekday' => 'TU',
-              'bymonth'   => 2,
-           ],
-           'state'      => \Planning::INFO,
-           'background' => 0,
+            'id'         => $id,
+            'name'       => 'updated external event',
+            'test'       => 'updated comment for external event',
+            'plan'       => [
+                'begin'     => $new_begin,
+                '_duration' => $this->duration,
+            ],
+            'rrule'      => [
+                'freq'      => 'monthly',
+                'interval'  => 2,
+                'byweekday' => 'TU',
+                'bymonth'   => 2,
+            ],
+            'state'      => Planning::INFO,
+            'background' => 0,
         ]);
         $this->boolean($event->update($update))->isTrue();
 
@@ -148,10 +148,10 @@ abstract class AbstractPlanningEvent extends \DbTestCase
 
         $event = new $this->myclass();
         $id    = $event->add($this->input);
-        $this->integer((int)$id)->isGreaterThan(0);
+        $this->integer((int) $id)->isGreaterThan(0);
 
         $this->boolean($event->delete([
-           'id' => $id,
+            'id' => $id,
         ]))->isTrue();
         $this->boolean($event->getFromDB($id))->isFalse();
     }

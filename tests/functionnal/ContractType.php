@@ -43,16 +43,16 @@ class ContractType extends DbTestCase
 
         $obj = new \ContractType();
         $id = $obj->add([
-           'name'    => 'contract-type-' . $this->getUniqueString(),
-           'comment' => 'comment-' . $this->getUniqueString(),
+            'name'    => 'contract-type-' . $this->getUniqueString(),
+            'comment' => 'comment-' . $this->getUniqueString(),
         ]);
-        $this->integer((int)$id)->isGreaterThan(0);
+        $this->integer((int) $id)->isGreaterThan(0);
         $this->boolean($obj->getFromDB($id))->isTrue();
 
         $this->boolean($obj->update([
-           'id'      => $id,
-           'name'    => 'contract-type-updated-' . $this->getUniqueString(),
-           'comment' => 'updated-' . $this->getUniqueString(),
+            'id'      => $id,
+            'name'    => 'contract-type-updated-' . $this->getUniqueString(),
+            'comment' => 'updated-' . $this->getUniqueString(),
         ]))->isTrue();
         $this->boolean($obj->getFromDB($id))->isTrue();
 

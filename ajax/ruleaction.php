@@ -104,15 +104,15 @@ if (isset($_POST["sub_type"]) && class_exists($_POST["sub_type"])) {
        });
    JS;
     renderTwigTemplate('macros/input.twig', [
-         'type'  => 'select',
-         'id' => 'DropdownForConditionAction',
-         'name'  => 'action_type',
-         'value' => $action_type,
-         'values' => $elements,
-         'hooks' => [
-             'change' => $updateScript
-         ],
-         'init' => $updateScript
+        'type'  => 'select',
+        'id' => 'DropdownForConditionAction',
+        'name'  => 'action_type',
+        'value' => $action_type,
+        'values' => $elements,
+        'hooks' => [
+            'change' => $updateScript,
+        ],
+        'init' => $updateScript,
     ]);
     echo "<span id='action_type_span'></span>\n";
 }

@@ -110,7 +110,7 @@ class NotificationEvent extends CommonDBTM
      * @param array      $options array   of options used
      * @param string     $label   used for debugEvent() (default '')
      *
-     * @return boolean
+     * @return bool
     **/
     public static function raiseEvent($event, $item, $options = [], $label = '')
     {
@@ -225,8 +225,8 @@ class NotificationEvent extends CommonDBTM
 
         echo "<div class='spaced'>";
         echo "<table class='tab_cadre_fixe' aria-label='Notification'>";
-        echo "<tr><th colspan='3'>" . _n('Notification', 'Notifications', Session::getPluralNumber()) .
-              "</th><th colspan='2'><font color='blue'> (" . $item->getTypeName(1) . ")</font></th></tr>";
+        echo "<tr><th colspan='3'>" . _n('Notification', 'Notifications', Session::getPluralNumber())
+              . "</th><th colspan='2'><font color='blue'> (" . $item->getTypeName(1) . ")</font></th></tr>";
 
         $events = [];
         if ($target = NotificationTarget::getInstanceByType(get_class($item))) {
@@ -234,9 +234,9 @@ class NotificationEvent extends CommonDBTM
 
             if (count($events) > 0) {
                 echo "<tr><th>" . self::getTypeName(Session::getPluralNumber()) . '</th><th>' . _n('Recipient', 'Recipients', Session::getPluralNumber()) . "</th>";
-                echo "<th>" . _n('Notification template', 'Notification templates', Session::getPluralNumber()) . "</th>" .
-                     "<th>" . __('Mode') . "</th>" .
-                     "<th>" . _n('Recipient', 'Recipients', 1) . "</th></tr>";
+                echo "<th>" . _n('Notification template', 'Notification templates', Session::getPluralNumber()) . "</th>"
+                     . "<th>" . __('Mode') . "</th>"
+                     . "<th>" . _n('Recipient', 'Recipients', 1) . "</th></tr>";
 
                 foreach ($events as $event => $label) {
                     self::raiseEvent($event, $item, $options, $label);

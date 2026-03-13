@@ -56,44 +56,44 @@ class NetworkEquipment extends DbTestCase
 
         $networkequipment = new \NetworkEquipment();
         $root_id = $networkequipment->add([
-           'name'         => 'root-networkequipment',
-           'entities_id'  => $root_entity,
-           'is_recursive' => 1,
+            'name'         => 'root-networkequipment',
+            'entities_id'  => $root_entity,
+            'is_recursive' => 1,
         ]);
-        $this->integer((int)$root_id)->isGreaterThan(0);
+        $this->integer((int) $root_id)->isGreaterThan(0);
 
         $child_networkequipment = new \NetworkEquipment();
         $child_id = $child_networkequipment->add([
-           'name'         => 'child-networkequipment',
-           'entities_id'  => $child_entity,
-           'is_recursive' => 0,
+            'name'         => 'child-networkequipment',
+            'entities_id'  => $child_entity,
+            'is_recursive' => 0,
         ]);
-        $this->integer((int)$child_id)->isGreaterThan(0);
+        $this->integer((int) $child_id)->isGreaterThan(0);
 
         $networkport = new \NetworkPort();
         $root_port_id = $networkport->add([
-           'items_id'          => $root_id,
-           'itemtype'          => 'NetworkEquipment',
-           'entities_id'       => $root_entity,
-           'logical_number'    => 1,
-           'name'              => 'root-port',
+            'items_id'          => $root_id,
+            'itemtype'          => 'NetworkEquipment',
+            'entities_id'       => $root_entity,
+            'logical_number'    => 1,
+            'name'              => 'root-port',
         ]);
         $child_port_id = $networkport->add([
-           'items_id'          => $child_id,
-           'itemtype'          => 'NetworkEquipment',
-           'entities_id'       => $child_entity,
-           'logical_number'    => 1,
-           'name'              => 'child-port',
+            'items_id'          => $child_id,
+            'itemtype'          => 'NetworkEquipment',
+            'entities_id'       => $child_entity,
+            'logical_number'    => 1,
+            'name'              => 'child-port',
         ]);
-        $this->integer((int)$root_port_id)->isGreaterThan(0);
-        $this->integer((int)$child_port_id)->isGreaterThan(0);
+        $this->integer((int) $root_port_id)->isGreaterThan(0);
+        $this->integer((int) $child_port_id)->isGreaterThan(0);
 
         $link = new \NetworkPort_NetworkPort();
         $link_id = $link->add([
-           'networkports_id_1' => $root_port_id,
-           'networkports_id_2' => $child_port_id,
+            'networkports_id_1' => $root_port_id,
+            'networkports_id_2' => $child_port_id,
         ]);
-        $this->integer((int)$link_id)->isGreaterThan(0);
+        $this->integer((int) $link_id)->isGreaterThan(0);
 
         $this->boolean($networkequipment->getFromDB($root_id))->isTrue();
         $this->boolean($networkequipment->canUnrecurs())->isFalse();

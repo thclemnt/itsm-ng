@@ -33,6 +33,7 @@
 
 namespace tests\units\Glpi\Cache;
 
+use Laminas\Cache\Storage\Adapter\Memory;
 use org\bovigo\vfs\vfsStream;
 
 /* Test for inc/cache/simplecache.class.php */
@@ -51,14 +52,14 @@ class SimpleCache extends \GLPITestCase
             'glpi',
             null,
             [
-              'cache' => [],
-         ]
+                'cache' => [],
+            ]
         );
 
         $footprint_file = vfsStream::url('glpi/cache/' . $cache_namespace . '.json');
 
         $this->newTestedInstance(
-            new \Laminas\Cache\Storage\Adapter\Memory(['namespace' => $cache_namespace]),
+            new Memory(['namespace' => $cache_namespace]),
             $cache_dir
         );
 
@@ -80,16 +81,16 @@ class SimpleCache extends \GLPITestCase
             'glpi',
             null,
             [
-              'cache' => [
-                 $cache_namespace . '.json' => ''
-              ],
-         ]
+                'cache' => [
+                    $cache_namespace . '.json' => '',
+                ],
+            ]
         );
 
         $footprint_file = vfsStream::url('glpi/cache/' . $cache_namespace . '.json');
 
         $this->newTestedInstance(
-            new \Laminas\Cache\Storage\Adapter\Memory(['namespace' => $cache_namespace]),
+            new Memory(['namespace' => $cache_namespace]),
             $cache_dir
         );
 
@@ -113,16 +114,16 @@ class SimpleCache extends \GLPITestCase
             'glpi',
             null,
             [
-              'cache' => [
-                 $cache_namespace . '.json' => $existing_footprint
-              ],
-         ]
+                'cache' => [
+                    $cache_namespace . '.json' => $existing_footprint,
+                ],
+            ]
         );
 
         $footprint_file = vfsStream::url('glpi/cache/' . $cache_namespace . '.json');
 
         $this->newTestedInstance(
-            new \Laminas\Cache\Storage\Adapter\Memory(['namespace' => $cache_namespace]),
+            new Memory(['namespace' => $cache_namespace]),
             $cache_dir
         );
 
@@ -145,10 +146,10 @@ class SimpleCache extends \GLPITestCase
             'glpi',
             null,
             [
-              'cache' => [
-                 $cache_namespace . '.json' => 'invalid json'
-              ],
-         ]
+                'cache' => [
+                    $cache_namespace . '.json' => 'invalid json',
+                ],
+            ]
         );
 
         $footprint_file = vfsStream::url('glpi/cache/' . $cache_namespace . '.json');
@@ -156,7 +157,7 @@ class SimpleCache extends \GLPITestCase
         $this->when(
             function () use ($self, $cache_dir, $cache_namespace) {
                 $self->newTestedInstance(
-                    new \Laminas\Cache\Storage\Adapter\Memory(['namespace' => $cache_namespace]),
+                    new Memory(['namespace' => $cache_namespace]),
                     $cache_dir
                 );
             }
@@ -183,20 +184,20 @@ class SimpleCache extends \GLPITestCase
             'glpi',
             null,
             [
-              'cache' => [],
-         ]
+                'cache' => [],
+            ]
         );
 
         // Simulate existing cache with footprint.
         $this->newTestedInstance(
-            new \Laminas\Cache\Storage\Adapter\Memory(['namespace' => $cache_namespace]),
+            new Memory(['namespace' => $cache_namespace]),
             $cache_dir
         );
 
         $this->boolean($this->testedInstance->set('footprinted', 'some value'))->isTrue();
         $this->boolean($this->testedInstance->has('footprinted'))->isTrue();
 
-        $root_directory->getChild('cache/' . $cache_namespace . '.json')->chmod(0500); // Make file not writable
+        $root_directory->getChild('cache/' . $cache_namespace . '.json')->chmod(0o500); // Make file not writable
 
         $footprint_file = vfsStream::url('glpi/cache/' . $cache_namespace . '.json');
 
@@ -204,7 +205,7 @@ class SimpleCache extends \GLPITestCase
         $this->when(
             function () use ($self, $cache_dir, $cache_namespace) {
                 $self->newTestedInstance(
-                    new \Laminas\Cache\Storage\Adapter\Memory(['namespace' => $cache_namespace]),
+                    new Memory(['namespace' => $cache_namespace]),
                     $cache_dir
                 );
             }
@@ -231,13 +232,13 @@ class SimpleCache extends \GLPITestCase
             'glpi',
             null,
             [
-              'cache' => [
-                 $cache_namespace . '.json' => '[]',
-              ],
-         ]
+                'cache' => [
+                    $cache_namespace . '.json' => '[]',
+                ],
+            ]
         );
         // Make file writable but not readable
-        $root_directory->getChild('cache/' . $cache_namespace . '.json')->chmod(0200);
+        $root_directory->getChild('cache/' . $cache_namespace . '.json')->chmod(0o200);
 
         $footprint_file = vfsStream::url('glpi/cache/' . $cache_namespace . '.json');
 
@@ -245,7 +246,7 @@ class SimpleCache extends \GLPITestCase
         $this->when(
             function () use ($self, $cache_dir, $cache_namespace) {
                 $self->newTestedInstance(
-                    new \Laminas\Cache\Storage\Adapter\Memory(['namespace' => $cache_namespace]),
+                    new Memory(['namespace' => $cache_namespace]),
                     $cache_dir
                 );
             }
@@ -266,16 +267,16 @@ class SimpleCache extends \GLPITestCase
     {
         // Different scalar types to test.
         $values = [
-           'null'         => null,
-           'string'       => 'some value',
-           'true'         => true,
-           'false'        => false,
-           'negative int' => -10,
-           'positive int' => 15,
-           'zero'         => 0,
-           'float'        => 15.358,
-           'simple array' => ['a', 'b', 'c'],
-           'assoc array'  => ['some' => 'value', 'from' => 'assoc', 'array' => null]
+            'null'         => null,
+            'string'       => 'some value',
+            'true'         => true,
+            'false'        => false,
+            'negative int' => -10,
+            'positive int' => 15,
+            'zero'         => 0,
+            'float'        => 15.358,
+            'simple array' => ['a', 'b', 'c'],
+            'assoc array'  => ['some' => 'value', 'from' => 'assoc', 'array' => null],
         ];
 
         // Test single set/get/has/delete

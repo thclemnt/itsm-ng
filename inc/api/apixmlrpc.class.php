@@ -56,9 +56,7 @@ class APIXmlrpc extends API
      *
      * @return void
      */
-    public function manageUploadedFiles()
-    {
-    }
+    public function manageUploadedFiles() {}
 
     /**
      * parse POST var to retrieve
@@ -193,8 +191,8 @@ class APIXmlrpc extends API
                 }
 
                 $additionalheaders                  = [];
-                $additionalheaders["Accept-Range"]  = $this->parameters['itemtype'] . " " .
-                                                      Toolbox::get_max_input_vars();
+                $additionalheaders["Accept-Range"]  = $this->parameters['itemtype'] . " "
+                                                      . Toolbox::get_max_input_vars();
                 if ($totalcount > 0) {
                     $additionalheaders["Content-Range"] = implode('-', $range) . "/" . $totalcount;
                 }
@@ -212,8 +210,8 @@ class APIXmlrpc extends API
                     $additionalheaders['link'] = "";
                     foreach ($response as $created_item) {
                         if ($created_item['id']) {
-                            $additionalheaders['link'] .= self::$api_url . "/" . $this->parameters['itemtype'] .
-                                                         "/" . $created_item['id'] . ",";
+                            $additionalheaders['link'] .= self::$api_url . "/" . $this->parameters['itemtype']
+                                                         . "/" . $created_item['id'] . ",";
                         }
                     }
                     // remove last comma
@@ -314,7 +312,7 @@ class APIXmlrpc extends API
 
         $response = $this->escapekeys($response);
         $out = xmlrpc_encode_request(null, $response, ['encoding' => 'UTF-8',
-                                                            'escaping' => 'markup']);
+            'escaping' => 'markup']);
         echo $out;
         exit;
     }

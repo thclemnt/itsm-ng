@@ -63,29 +63,29 @@ class DocumentType extends CommonDropdown
         }
 
         return [
-           __('Icon') => [
-              'name'  => 'icon',
-              'type'  => 'select',
-              'values'  => $values,
-              'value' => $this->fields['icon']
+            __('Icon') => [
+                'name'  => 'icon',
+                'type'  => 'select',
+                'values'  => $values,
+                'value' => $this->fields['icon'],
 
-           ],
-           __('Authorized upload') => [
-              'name'  => 'is_uploadable',
-              'type'  => 'checkbox',
-              'value' => $this->fields['is_uploadable']
-           ],
-           __('Extension') => [
-              'name'    => 'ext',
-              'type'    => 'text',
-              'title' => __('May be a regular expression'),
-              'value' => $this->fields['ext']
-           ],
-           __('MIME type') => [
-              'name'  => 'mime',
-              'type'  => 'text',
-              'value' => $this->fields['mime']
-           ]
+            ],
+            __('Authorized upload') => [
+                'name'  => 'is_uploadable',
+                'type'  => 'checkbox',
+                'value' => $this->fields['is_uploadable'],
+            ],
+            __('Extension') => [
+                'name'    => 'ext',
+                'type'    => 'text',
+                'title' => __('May be a regular expression'),
+                'value' => $this->fields['ext'],
+            ],
+            __('MIME type') => [
+                'name'  => 'mime',
+                'type'  => 'text',
+                'value' => $this->fields['mime'],
+            ],
         ];
     }
 
@@ -106,38 +106,38 @@ class DocumentType extends CommonDropdown
         $tab = parent::rawSearchOptions();
 
         $tab[] = [
-           'id'                 => '3',
-           'table'              => $this->getTable(),
-           'field'              => 'ext',
-           'name'               => __('Extension'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '3',
+            'table'              => $this->getTable(),
+            'field'              => 'ext',
+            'name'               => __('Extension'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '6',
-           'table'              => $this->getTable(),
-           'field'              => 'icon',
-           'name'               => __('Icon'),
-           'massiveaction'      => false,
-           'datatype'           => 'specific'
+            'id'                 => '6',
+            'table'              => $this->getTable(),
+            'field'              => 'icon',
+            'name'               => __('Icon'),
+            'massiveaction'      => false,
+            'datatype'           => 'specific',
         ];
 
         $tab[] = [
-           'id'                 => '4',
-           'table'              => $this->getTable(),
-           'field'              => 'mime',
-           'name'               => __('MIME type'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '4',
+            'table'              => $this->getTable(),
+            'field'              => 'mime',
+            'name'               => __('MIME type'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '5',
-           'table'              => $this->getTable(),
-           'field'              => 'is_uploadable',
-           'name'               => __('Authorized upload'),
-           'datatype'           => 'bool'
+            'id'                 => '5',
+            'table'              => $this->getTable(),
+            'field'              => 'is_uploadable',
+            'name'               => __('Authorized upload'),
+            'datatype'           => 'bool',
         ];
 
         return $tab;
@@ -155,8 +155,8 @@ class DocumentType extends CommonDropdown
         switch ($field) {
             case 'icon':
                 if (!empty($values[$field])) {
-                    return "&nbsp;<img style='vertical-align:middle;' alt='' src='" .
-                           $CFG_GLPI["typedoc_icon_dir"] . "/" . $values[$field] . "'>";
+                    return "&nbsp;<img style='vertical-align:middle;' alt='' src='"
+                           . $CFG_GLPI["typedoc_icon_dir"] . "/" . $values[$field] . "'>";
                 }
         }
         return parent::getSpecificValueToDisplay($field, $values, $options);
@@ -207,15 +207,15 @@ class DocumentType extends CommonDropdown
         $p = array_merge($p, $options);
 
         $display = "&nbsp;";
-        $display .= "<a href='#' onClick=\"" . Html::jsGetElementbyID('documenttypelist') .
-                    ".dialog('open'); return false;\" class='fa fa-info pointer' title='" . __s('Help') . "' >";
+        $display .= "<a href='#' onClick=\"" . Html::jsGetElementbyID('documenttypelist')
+                    . ".dialog('open'); return false;\" class='fa fa-info pointer' title='" . __s('Help') . "' >";
         $display .= "<span class='sr-only'>" . __s('Help') . "></span>";
         $display .= "</a>";
         $display .= Ajax::createIframeModalWindow(
             'documenttypelist',
             $CFG_GLPI["root_doc"] . "/front/documenttype.list.php",
             ['title'   => static::getTypeName(Session::getPluralNumber()),
-                                                   'display' => false]
+                'display' => false]
         );
 
         if ($p['display']) {

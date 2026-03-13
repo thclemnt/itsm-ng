@@ -52,7 +52,7 @@ class Group_KnowbaseItem extends CommonDBRelation
     /**
      * Get groups for a knowbaseitem
      *
-     * @param integer $knowbaseitems_id ID of the knowbaseitem
+     * @param int $knowbaseitems_id ID of the knowbaseitem
      *
      * @return array of groups linked to a knowbaseitem
     **/
@@ -63,10 +63,10 @@ class Group_KnowbaseItem extends CommonDBRelation
         $groups = [];
 
         $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'knowbaseitems_id' => $knowbaseitems_id
-           ]
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'knowbaseitems_id' => $knowbaseitems_id,
+            ],
         ]);
 
         while ($data = $iterator->next()) {

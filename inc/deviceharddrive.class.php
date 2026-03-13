@@ -52,37 +52,37 @@ class DeviceHardDrive extends CommonDevice
         return array_merge(
             parent::getAdditionalFields(),
             [
-              __('Capacity by default') => [
-                 'name'  => 'capacity_default',
-                 'type'  => 'number',
-                 'after'  => __('Mio'),
-                 'value' => $this->fields['capacity_default']
-              ],
-              __('Rpm') => [
-                 'name'  => 'rpm',
-                 'type'  => 'number',
-                 'value' => $this->fields['rpm']
-              ],
-              __('Cache') => [
-                 'name'  => 'cache',
-                 'type'  => 'number',
-                 'after'  => __('Mio'),
-                 'value' => $this->fields['cache']
-              ],
-              _n('Model', 'Models', 1) => [
-                 'name'  => 'deviceharddrivemodels_id',
-                 'type'  => 'select',
-                 'values' => getOptionForItems('DeviceHardDriveModel'),
-                 'value' => $this->fields['deviceharddrivemodels_id'],
-                 'actions' => getItemActionButtons(['info', 'add'], 'DeviceHardDriveModel')
-              ],
-              __('Interface') => [
-                 'name'  => 'interfacetypes_id',
-                 'type'  => 'select',
-                 'values' => getOptionForItems('InterfaceType'),
-                 'value' => $this->fields['interfacetypes_id'],
-                 'actions' => getItemActionButtons(['info', 'add'], 'InterfaceType')
-              ]
+                __('Capacity by default') => [
+                    'name'  => 'capacity_default',
+                    'type'  => 'number',
+                    'after'  => __('Mio'),
+                    'value' => $this->fields['capacity_default'],
+                ],
+                __('Rpm') => [
+                    'name'  => 'rpm',
+                    'type'  => 'number',
+                    'value' => $this->fields['rpm'],
+                ],
+                __('Cache') => [
+                    'name'  => 'cache',
+                    'type'  => 'number',
+                    'after'  => __('Mio'),
+                    'value' => $this->fields['cache'],
+                ],
+                _n('Model', 'Models', 1) => [
+                    'name'  => 'deviceharddrivemodels_id',
+                    'type'  => 'select',
+                    'values' => getOptionForItems('DeviceHardDriveModel'),
+                    'value' => $this->fields['deviceharddrivemodels_id'],
+                    'actions' => getItemActionButtons(['info', 'add'], 'DeviceHardDriveModel'),
+                ],
+                __('Interface') => [
+                    'name'  => 'interfacetypes_id',
+                    'type'  => 'select',
+                    'values' => getOptionForItems('InterfaceType'),
+                    'value' => $this->fields['interfacetypes_id'],
+                    'actions' => getItemActionButtons(['info', 'add'], 'InterfaceType'),
+                ],
             ]
         );
     }
@@ -93,46 +93,46 @@ class DeviceHardDrive extends CommonDevice
         $tab = parent::rawSearchOptions();
 
         $tab[] = [
-           'id'                 => '11',
-           'table'              => $this->getTable(),
-           'field'              => 'capacity_default',
-           'name'               => __('Capacity by default'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '11',
+            'table'              => $this->getTable(),
+            'field'              => 'capacity_default',
+            'name'               => __('Capacity by default'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '12',
-           'table'              => $this->getTable(),
-           'field'              => 'rpm',
-           'name'               => __('Rpm'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '12',
+            'table'              => $this->getTable(),
+            'field'              => 'rpm',
+            'name'               => __('Rpm'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '13',
-           'table'              => $this->getTable(),
-           'field'              => 'cache',
-           'name'               => __('Cache'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '13',
+            'table'              => $this->getTable(),
+            'field'              => 'cache',
+            'name'               => __('Cache'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '14',
-           'table'              => 'glpi_interfacetypes',
-           'field'              => 'name',
-           'name'               => __('Interface'),
-           'datatype'           => 'dropdown'
+            'id'                 => '14',
+            'table'              => 'glpi_interfacetypes',
+            'field'              => 'name',
+            'name'               => __('Interface'),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '15',
-           'table'              => 'glpi_deviceharddrivemodels',
-           'field'              => 'name',
-           'name'               => _n('Model', 'Models', 1),
-           'datatype'           => 'dropdown'
+            'id'                 => '15',
+            'table'              => 'glpi_deviceharddrivemodels',
+            'field'              => 'name',
+            'name'               => _n('Model', 'Models', 1),
+            'datatype'           => 'dropdown',
         ];
 
         return $tab;
@@ -238,8 +238,8 @@ class DeviceHardDrive extends CommonDevice
     {
 
         return ['designation'       => 'equal',
-                     'manufacturers_id'  => 'equal',
-                     'interfacetypes_id' => 'equal'];
+            'manufacturers_id'  => 'equal',
+            'interfacetypes_id' => 'equal'];
     }
 
     public static function rawSearchOptionsToAdd($itemtype, $main_joinparams)
@@ -249,39 +249,39 @@ class DeviceHardDrive extends CommonDevice
         $tab = [];
 
         $tab[] = [
-           'id'                 => '114',
-           'table'              => 'glpi_deviceharddrives',
-           'field'              => 'designation',
-           'name'               => __('Hard drive type'),
-           'forcegroupby'       => true,
-           'usehaving'          => true,
-           'massiveaction'      => false,
-           'datatype'           => 'string',
-           'joinparams'         => [
-              'beforejoin'         => [
-                 'table'              => 'glpi_items_deviceharddrives',
-                 'joinparams'         => $main_joinparams
-              ]
-           ]
+            'id'                 => '114',
+            'table'              => 'glpi_deviceharddrives',
+            'field'              => 'designation',
+            'name'               => __('Hard drive type'),
+            'forcegroupby'       => true,
+            'usehaving'          => true,
+            'massiveaction'      => false,
+            'datatype'           => 'string',
+            'joinparams'         => [
+                'beforejoin'         => [
+                    'table'              => 'glpi_items_deviceharddrives',
+                    'joinparams'         => $main_joinparams,
+                ],
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '115',
-           'table'              => 'glpi_items_deviceharddrives',
-           'field'              => 'capacity',
-           'name'               => __('Hard drive size'),
-           'unit'               => 'auto',
-           'forcegroupby'       => true,
-           'usehaving'          => true,
-           'datatype'           => 'number',
-           'width'              => 1000,
-           'massiveaction'      => false,
-           'joinparams'         => $main_joinparams,
-           'computation'        =>
-              '(SUM(' . $DB->quoteName('TABLE.capacity') . ') / COUNT(' .
-              $DB->quoteName('TABLE.id') . '))
+            'id'                 => '115',
+            'table'              => 'glpi_items_deviceharddrives',
+            'field'              => 'capacity',
+            'name'               => __('Hard drive size'),
+            'unit'               => 'auto',
+            'forcegroupby'       => true,
+            'usehaving'          => true,
+            'datatype'           => 'number',
+            'width'              => 1000,
+            'massiveaction'      => false,
+            'joinparams'         => $main_joinparams,
+            'computation'
+               => '(SUM(' . $DB->quoteName('TABLE.capacity') . ') / COUNT('
+               . $DB->quoteName('TABLE.id') . '))
             * COUNT(DISTINCT ' . $DB->quoteName('TABLE.id') . ')',
-           'nometa'             => true, // cannot GROUP_CONCAT a SUM
+            'nometa'             => true, // cannot GROUP_CONCAT a SUM
         ];
 
         return $tab;

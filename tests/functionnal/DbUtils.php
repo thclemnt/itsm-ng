@@ -40,8 +40,8 @@ use DbTestCase;
 class DbUtils extends DbTestCase
 {
     protected $cached_methods = [
-       'testGetAncestorsOfCached',
-       'testGetSonsOfCached'
+        'testGetAncestorsOfCached',
+        'testGetSonsOfCached',
     ];
 
     public function setUp()
@@ -57,11 +57,11 @@ class DbUtils extends DbTestCase
     {
 
         return [
-           ['foo', ''],
-           ['glpi_computers', 'computers_id'],
-           ['glpi_users', 'users_id'],
-           ['glpi_plugin_foo_bars', 'plugin_foo_bars_id'],
-           ['glpi_plugin_fooglpis', 'plugin_fooglpis_id']
+            ['foo', ''],
+            ['glpi_computers', 'computers_id'],
+            ['glpi_users', 'users_id'],
+            ['glpi_plugin_foo_bars', 'plugin_foo_bars_id'],
+            ['glpi_plugin_fooglpis', 'plugin_fooglpis_id'],
         ];
     }
 
@@ -69,9 +69,9 @@ class DbUtils extends DbTestCase
     {
 
         return [
-           ['glpi_computers', 'computers_id'],
-           ['glpi_users', 'users_id'],
-           ['glpi_plugin_foo_bars', 'plugin_foo_bars_id']
+            ['glpi_computers', 'computers_id'],
+            ['glpi_users', 'users_id'],
+            ['glpi_plugin_foo_bars', 'plugin_foo_bars_id'],
         ];
     }
 
@@ -145,16 +145,16 @@ class DbUtils extends DbTestCase
         require_once __DIR__ . '/../fixtures/pluginfooservice.php';
 
         return [
-           ['glpi_dbmysqls', 'DBmysql', false], // not a CommonGLPI, should not be valid
-           ['glpi_computers', 'Computer', true],
-           ['glpi_events', 'Glpi\Event', true],
-           ['glpi_users', 'User', true],
-           ['glpi_users', 'User', true],
-           ['glpi_plugin_bar_foos', 'GlpiPlugin\Bar\Foo', true],
-           ['glpi_plugin_baz_foos', 'GlpiPlugin\Baz\Foo', false], // class not exists
-           ['glpi_plugin_foo_bars', 'PluginFooBar', true],
-           ['glpi_plugin_foo_bazs', 'PluginFooBaz', false], // class not exists
-           ['glpi_plugin_foo_services', 'PluginFooService', false], // not a CommonGLPI should not be valid
+            ['glpi_dbmysqls', 'DBmysql', false], // not a CommonGLPI, should not be valid
+            ['glpi_computers', 'Computer', true],
+            ['glpi_events', 'Glpi\Event', true],
+            ['glpi_users', 'User', true],
+            ['glpi_users', 'User', true],
+            ['glpi_plugin_bar_foos', 'GlpiPlugin\Bar\Foo', true],
+            ['glpi_plugin_baz_foos', 'GlpiPlugin\Baz\Foo', false], // class not exists
+            ['glpi_plugin_foo_bars', 'PluginFooBar', true],
+            ['glpi_plugin_foo_bazs', 'PluginFooBaz', false], // class not exists
+            ['glpi_plugin_foo_services', 'PluginFooService', false], // not a CommonGLPI should not be valid
         ];
     }
 
@@ -278,17 +278,17 @@ class DbUtils extends DbTestCase
     {
 
         return [
-           ['model', 'models'],
-           ['address', 'addresses'],
-           ['computer', 'computers'],
-           ['thing', 'things'],
-           ['criteria', 'criterias'],
-           ['version', 'versions'],
-           ['config', 'configs'],
-           ['machine', 'machines'],
-           ['memory', 'memories'],
-           ['licence', 'licences'],
-           ['pdu', 'pdus']
+            ['model', 'models'],
+            ['address', 'addresses'],
+            ['computer', 'computers'],
+            ['thing', 'things'],
+            ['criteria', 'criterias'],
+            ['version', 'versions'],
+            ['config', 'configs'],
+            ['machine', 'machines'],
+            ['memory', 'memories'],
+            ['licence', 'licences'],
+            ['pdu', 'pdus'],
         ];
     }
 
@@ -395,17 +395,17 @@ class DbUtils extends DbTestCase
     protected function dataCountMyEntities()
     {
         return [
-           ['_test_root_entity', true, 'glpi_computers', [], 8],
-           ['_test_root_entity', true, 'glpi_computers', ['name' => '_test_pc11'], 1],
-           ['_test_root_entity', true, 'glpi_computers', ['name' => '_test_pc01'], 1],
+            ['_test_root_entity', true, 'glpi_computers', [], 8],
+            ['_test_root_entity', true, 'glpi_computers', ['name' => '_test_pc11'], 1],
+            ['_test_root_entity', true, 'glpi_computers', ['name' => '_test_pc01'], 1],
 
-           ['_test_root_entity', false, 'glpi_computers', [], 3],
-           ['_test_root_entity', false, 'glpi_computers', ['name' => '_test_pc11'], 0],
-           ['_test_root_entity', false, 'glpi_computers', ['name' => '_test_pc01'], 1],
+            ['_test_root_entity', false, 'glpi_computers', [], 3],
+            ['_test_root_entity', false, 'glpi_computers', ['name' => '_test_pc11'], 0],
+            ['_test_root_entity', false, 'glpi_computers', ['name' => '_test_pc01'], 1],
 
-           ['_test_child_1', false, 'glpi_computers', [], 3],
-           ['_test_child_1', false, 'glpi_computers', ['name' => '_test_pc11'], 1],
-           ['_test_child_1', false, 'glpi_computers', ['name' => '_test_pc01'], 0],
+            ['_test_child_1', false, 'glpi_computers', [], 3],
+            ['_test_child_1', false, 'glpi_computers', ['name' => '_test_pc11'], 1],
+            ['_test_child_1', false, 'glpi_computers', ['name' => '_test_pc01'], 0],
         ];
     }
 
@@ -434,13 +434,13 @@ class DbUtils extends DbTestCase
     protected function dataCountEntities()
     {
         return [
-           ['_test_root_entity', 'glpi_computers', [], 3],
-           ['_test_root_entity', 'glpi_computers', ['name' => '_test_pc11'], 0],
-           ['_test_root_entity', 'glpi_computers', ['name' => '_test_pc01'], 1],
+            ['_test_root_entity', 'glpi_computers', [], 3],
+            ['_test_root_entity', 'glpi_computers', ['name' => '_test_pc11'], 0],
+            ['_test_root_entity', 'glpi_computers', ['name' => '_test_pc01'], 1],
 
-           ['_test_child_1', 'glpi_computers', [], 3],
-           ['_test_child_1', 'glpi_computers', ['name' => '_test_pc11'], 1],
-           ['_test_child_1', 'glpi_computers', ['name' => '_test_pc01'], 0],
+            ['_test_child_1', 'glpi_computers', [], 3],
+            ['_test_child_1', 'glpi_computers', ['name' => '_test_pc11'], 1],
+            ['_test_child_1', 'glpi_computers', ['name' => '_test_pc01'], 0],
         ];
     }
 
@@ -696,8 +696,8 @@ class DbUtils extends DbTestCase
     /**
      * Run getAncestorsOf tests
      *
-     * @param boolean $cache Is cache enabled?
-     * @param boolean $hit   Do we expect a cache hit? (ie. data already exists)
+     * @param bool $cache Is cache enabled?
+     * @param bool $hit   Do we expect a cache hit? (ie. data already exists)
      *
      * @return void
      */
@@ -769,9 +769,9 @@ class DbUtils extends DbTestCase
         $new_id = getItemByTypeName('Entity', 'Sub child entity', true);
         if (!$new_id) {
             $entity = new \Entity();
-            $new_id = (int)$entity->add([
-               'name'         => 'Sub child entity',
-               'entities_id'  => $ent1
+            $new_id = (int) $entity->add([
+                'name'         => 'Sub child entity',
+                'entities_id'  => $ent1,
             ]);
             $this->integer($new_id)->isGreaterThan(0);
         }
@@ -793,9 +793,9 @@ class DbUtils extends DbTestCase
         $new_id2 = getItemByTypeName('Entity', 'Sub child entity 2', true);
         if (!$new_id2) {
             $entity = new \Entity();
-            $new_id2 = (int)$entity->add([
-               'name'         => 'Sub child entity 2',
-               'entities_id'  => $ent2
+            $new_id2 = (int) $entity->add([
+                'name'         => 'Sub child entity 2',
+                'entities_id'  => $ent2,
             ]);
             $this->integer($new_id2)->isGreaterThan(0);
         }
@@ -842,7 +842,7 @@ class DbUtils extends DbTestCase
             countElementsInTable(
                 'glpi_entities',
                 [
-                 'NOT' => ['ancestors_cache' => null]]
+                    'NOT' => ['ancestors_cache' => null]]
             )
         )->isGreaterThan(0);
         //run a second time: db cache must be set
@@ -870,8 +870,8 @@ class DbUtils extends DbTestCase
     /**
      * Run getSonsOf tests
      *
-     * @param boolean $cache Is cache enabled?
-     * @param boolean $hit   Do we expect a cache hit? (ie. data already exists)
+     * @param bool $cache Is cache enabled?
+     * @param bool $hit   Do we expect a cache hit? (ie. data already exists)
      *
      * @return void
      */
@@ -944,9 +944,9 @@ class DbUtils extends DbTestCase
         $new_id = getItemByTypeName('Entity', 'Sub child entity', true);
         if (!$new_id) {
             $entity = new \Entity();
-            $new_id = (int)$entity->add([
-               'name'         => 'Sub child entity',
-               'entities_id'  => $ent1
+            $new_id = (int) $entity->add([
+                'name'         => 'Sub child entity',
+                'entities_id'  => $ent1,
             ]);
             $this->integer($new_id)->isGreaterThan(0);
         }
@@ -967,9 +967,9 @@ class DbUtils extends DbTestCase
         $new_id2 = getItemByTypeName('Entity', 'Sub child entity 2', true);
         if (!$new_id2) {
             $entity = new \Entity();
-            $new_id2 = (int)$entity->add([
-               'name'         => 'Sub child entity 2',
-               'entities_id'  => $ent1
+            $new_id2 = (int) $entity->add([
+                'name'         => 'Sub child entity 2',
+                'entities_id'  => $ent1,
             ]);
             $this->integer($new_id2)->isGreaterThan(0);
         }
@@ -1012,8 +1012,8 @@ class DbUtils extends DbTestCase
             $this->testedInstance->countElementsInTable(
                 'glpi_entities',
                 [
-                 'NOT' => ['sons_cache' => null]
-            ]
+                    'NOT' => ['sons_cache' => null],
+                ]
             )
         )->isGreaterThan(0);
         //run a second time: db cache must be set
@@ -1104,7 +1104,7 @@ class DbUtils extends DbTestCase
         $this->array(
             $this->testedInstance->getDateCriteria('date', '2018-11-09', null)
         )->isIdenticalTo([
-           ['date' => ['>=', '2018-11-09']]
+            ['date' => ['>=', '2018-11-09']],
         ]);
 
         $result = $this->testedInstance->getDateCriteria('date', null, '2018-11-09');
@@ -1136,72 +1136,72 @@ class DbUtils extends DbTestCase
     protected function autoNameProvider()
     {
         return [
-           //will return name without changes
-           [
-              //not a template
-              'name'         => 'Computer 1',
-              'field'        => 'name',
-              'is_template'  => false,
-              'itemtype'     => 'Computer',
-              'entities_id'  => -1, //default
-              'expected'     => 'Computer 1'
-           ], [
-              //not a template
-              'name'         => '&lt;abc&gt;',
-              'field'        => 'name',
-              'is_template'  => false,
-              'itemtype'     => 'Computer',
-              'entities_id'  => -1, // default
-              'expected'     => '&lt;abc&gt;'
-           ], [
-              //does not match pattern
-              'name'         => '&lt;abc&gt;',
-              'field'        => 'name',
-              'is_template'  => true,
-              'itemtype'     => 'Computer',
-              'entities_id'  => -1, // default
-              'expected'     => '&lt;abc&gt;'
-           ], [
-              //first added
-              'name'         => '&lt;####&gt;',
-              'field'       => 'name',
-              'is_template'  => true,
-              'itemtype'     => 'Computer',
-              'entities_id'  => -1, // default
-              'expected'     => '0001'
-           ], [
-              //existing
-              'name'         => '&lt;_test_pc##&gt;',
-              'field'       => 'name',
-              'is_template'  => true,
-              'itemtype'     => 'Computer',
-              'entities_id'  => -1, // default
-              'expected'     => '_test_pc23'
-           ], [
-              //not existing on entity
-              'name'         => '&lt;_test_pc##&gt;',
-              'field'       => 'name',
-              'is_template'  => true,
-              'itemtype'     => 'Computer',
-              'entities_id'  => 0,
-              'expected'     => '_test_pc01'
-           ], [
-              //existing on entity
-              'name'         => '&lt;_test_pc##&gt;',
-              'field'       => 'name',
-              'is_template'  => true,
-              'itemtype'     => 'Computer',
-              'entities_id'  => 1,
-              'expected'     => '_test_pc04'
-           ], [
-              //existing on entity
-              'name'         => '&lt;_test_pc##&gt;',
-              'field'       => 'name',
-              'is_template'  => true,
-              'itemtype'     => 'Computer',
-              'entities_id'  => 2,
-              'expected'     => '_test_pc14'
-           ]
+            //will return name without changes
+            [
+                //not a template
+                'name'         => 'Computer 1',
+                'field'        => 'name',
+                'is_template'  => false,
+                'itemtype'     => 'Computer',
+                'entities_id'  => -1, //default
+                'expected'     => 'Computer 1',
+            ], [
+                //not a template
+                'name'         => '&lt;abc&gt;',
+                'field'        => 'name',
+                'is_template'  => false,
+                'itemtype'     => 'Computer',
+                'entities_id'  => -1, // default
+                'expected'     => '&lt;abc&gt;',
+            ], [
+                //does not match pattern
+                'name'         => '&lt;abc&gt;',
+                'field'        => 'name',
+                'is_template'  => true,
+                'itemtype'     => 'Computer',
+                'entities_id'  => -1, // default
+                'expected'     => '&lt;abc&gt;',
+            ], [
+                //first added
+                'name'         => '&lt;####&gt;',
+                'field'       => 'name',
+                'is_template'  => true,
+                'itemtype'     => 'Computer',
+                'entities_id'  => -1, // default
+                'expected'     => '0001',
+            ], [
+                //existing
+                'name'         => '&lt;_test_pc##&gt;',
+                'field'       => 'name',
+                'is_template'  => true,
+                'itemtype'     => 'Computer',
+                'entities_id'  => -1, // default
+                'expected'     => '_test_pc23',
+            ], [
+                //not existing on entity
+                'name'         => '&lt;_test_pc##&gt;',
+                'field'       => 'name',
+                'is_template'  => true,
+                'itemtype'     => 'Computer',
+                'entities_id'  => 0,
+                'expected'     => '_test_pc01',
+            ], [
+                //existing on entity
+                'name'         => '&lt;_test_pc##&gt;',
+                'field'       => 'name',
+                'is_template'  => true,
+                'itemtype'     => 'Computer',
+                'entities_id'  => 1,
+                'expected'     => '_test_pc04',
+            ], [
+                //existing on entity
+                'name'         => '&lt;_test_pc##&gt;',
+                'field'       => 'name',
+                'is_template'  => true,
+                'itemtype'     => 'Computer',
+                'entities_id'  => 2,
+                'expected'     => '_test_pc14',
+            ],
         ];
     }
 

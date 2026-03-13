@@ -72,7 +72,7 @@ class Notification_NotificationTemplate extends DbTestCase
         $toadd = $n_nt->fields;
         unset($toadd['id']);
         $toadd['mode'] = \Notification_NotificationTemplate::MODE_XMPP;
-        $this->integer((int)$n_nt->add($toadd))->isGreaterThan(0);
+        $this->integer((int) $n_nt->add($toadd))->isGreaterThan(0);
 
         $_SESSION['glpishow_count_on_tabs'] = 1;
         $name = $n_nt->getTabNameForItem($notif);
@@ -137,7 +137,7 @@ class Notification_NotificationTemplate extends DbTestCase
         $this->integer(\Session::haveRight('notification', UPDATE))->isGreaterThan(0);
         $this->integer(\Session::haveRight('notificationtemplate', UPDATE))->isGreaterThan(0);
 
-        $notifications_id = (int)$notification->add([
+        $notifications_id = (int) $notification->add([
             'name'       => __FUNCTION__,
             'itemtype'   => 'Ticket',
             'event'      => 'new',
@@ -162,8 +162,8 @@ class Notification_NotificationTemplate extends DbTestCase
     {
         $mode = \Notification_NotificationTemplate::getMode(\Notification_NotificationTemplate::MODE_MAIL);
         $expected = [
-           'label'  => 'Email',
-           'from'   => 'core'
+            'label'  => 'Email',
+            'from'   => 'core',
         ];
         $this->array($mode)->isIdenticalTo($expected);
 

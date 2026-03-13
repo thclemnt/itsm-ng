@@ -137,7 +137,7 @@ switch ($action) {
                 $available[] = [
                     'id' => (int) $key,
                     'name' => $val['name'] ?? '',
-                    'group' => $group
+                    'group' => $group,
                 ];
             }
         }
@@ -146,9 +146,9 @@ switch ($action) {
             'FROM'   => DisplayPreference::getTable(),
             'WHERE'  => [
                 'itemtype'  => $itemtype,
-                'users_id'  => $users_id
+                'users_id'  => $users_id,
             ],
-            'ORDER'  => 'rank'
+            'ORDER'  => 'rank',
         ]);
 
         while ($data = $iterator->next()) {
@@ -162,9 +162,9 @@ switch ($action) {
                 'FROM'   => DisplayPreference::getTable(),
                 'WHERE'  => [
                     'itemtype'  => $itemtype,
-                    'users_id'  => $global_view
+                    'users_id'  => $global_view,
                 ],
-                'ORDER'  => 'rank'
+                'ORDER'  => 'rank',
             ]);
             while ($data = $iterator->next()) {
                 if (isset($searchopt[$data['num']])) {
@@ -175,7 +175,7 @@ switch ($action) {
 
         $has_personal = countElementsInTable(DisplayPreference::getTable(), [
             'itemtype' => $itemtype,
-            'users_id' => $personal_view
+            'users_id' => $personal_view,
         ]) > 0;
 
         echo json_encode([
@@ -189,7 +189,7 @@ switch ($action) {
             'available' => $available,
             'locked' => $locked,
             'labels' => $labels,
-            'noremove' => $noremove
+            'noremove' => $noremove,
         ]);
         break;
 
@@ -201,7 +201,7 @@ switch ($action) {
         $dp = new DisplayPreference();
         $dp->activatePerso([
             'itemtype' => $itemtype,
-            'users_id' => $personal_view
+            'users_id' => $personal_view,
         ]);
         echo json_encode(['success' => true]);
         break;
@@ -214,7 +214,7 @@ switch ($action) {
         $dp = new DisplayPreference();
         $deleted = $dp->deleteByCriteria([
             'itemtype' => $itemtype,
-            'users_id' => $personal_view
+            'users_id' => $personal_view,
         ]);
         if ($deleted) {
             echo json_encode(['success' => true]);
@@ -236,12 +236,12 @@ switch ($action) {
         if ($view !== 'global') {
             $personal_count = countElementsInTable(DisplayPreference::getTable(), [
                 'itemtype' => $itemtype,
-                'users_id' => $personal_view
+                'users_id' => $personal_view,
             ]);
             if ($personal_count === 0) {
                 echo json_encode([
                     'success' => false,
-                    'message' => __('No personal criteria. Create personal parameters?')
+                    'message' => __('No personal criteria. Create personal parameters?'),
                 ]);
                 exit;
             }
@@ -286,8 +286,8 @@ switch ($action) {
             'FROM'   => DisplayPreference::getTable(),
             'WHERE'  => [
                 'itemtype' => $itemtype,
-                'users_id' => $users_id
-            ]
+                'users_id' => $users_id,
+            ],
         ]);
         $existing_noremove = [];
         while ($existing = $existing_iterator->next()) {
@@ -320,7 +320,7 @@ switch ($action) {
         $dp = new DisplayPreference();
         $dp->deleteByCriteria([
             'itemtype' => $itemtype,
-            'users_id' => $users_id
+            'users_id' => $users_id,
         ]);
 
         $rank = 1;
@@ -329,7 +329,7 @@ switch ($action) {
                 'itemtype' => $itemtype,
                 'users_id' => $users_id,
                 'num' => $num,
-                'rank' => $rank
+                'rank' => $rank,
             ]);
             $rank++;
         }

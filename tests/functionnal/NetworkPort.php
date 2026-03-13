@@ -47,19 +47,19 @@ class NetworkPort extends DbTestCase
         $networkport = new \NetworkPort();
 
         // Be sure added
-        $nb_log = (int)countElementsInTable('glpi_logs');
+        $nb_log = (int) countElementsInTable('glpi_logs');
         $new_id = $networkport->add([
-           'items_id'           => $computer1->getID(),
-           'itemtype'           => 'Computer',
-           'entities_id'        => $computer1->fields['entities_id'],
-           'is_recursive'       => 0,
-           'logical_number'     => 1,
-           'mac'                => '00:24:81:eb:c6:d0',
-           'instantiation_type' => 'NetworkPortEthernet',
-           'name'               => 'eth1',
+            'items_id'           => $computer1->getID(),
+            'itemtype'           => 'Computer',
+            'entities_id'        => $computer1->fields['entities_id'],
+            'is_recursive'       => 0,
+            'logical_number'     => 1,
+            'mac'                => '00:24:81:eb:c6:d0',
+            'instantiation_type' => 'NetworkPortEthernet',
+            'name'               => 'eth1',
         ]);
-        $this->integer((int)$new_id)->isGreaterThan(0);
-        $this->integer((int)countElementsInTable('glpi_logs'))->isGreaterThan($nb_log);
+        $this->integer((int) $new_id)->isGreaterThan(0);
+        $this->integer((int) countElementsInTable('glpi_logs'))->isGreaterThan($nb_log);
 
         // check data in db
         $all_netports = getAllDataFromTable('glpi_networkports', ['ORDER' => 'id']);
@@ -87,17 +87,17 @@ class NetworkPort extends DbTestCase
         $this->boolean($networkportethernet)->isFalse();
 
         // be sure added and have no logs
-        $nb_log = (int)countElementsInTable('glpi_logs');
+        $nb_log = (int) countElementsInTable('glpi_logs');
         $new_id = $networkport->add([
-           'items_id'           => $computer1->getID(),
-           'itemtype'           => 'Computer',
-           'entities_id'        => $computer1->fields['entities_id'],
-           'logical_number'     => 2,
-           'mac'                => '00:24:81:eb:c6:d1',
-           'instantiation_type' => 'NetworkPortEthernet',
+            'items_id'           => $computer1->getID(),
+            'itemtype'           => 'Computer',
+            'entities_id'        => $computer1->fields['entities_id'],
+            'logical_number'     => 2,
+            'mac'                => '00:24:81:eb:c6:d1',
+            'instantiation_type' => 'NetworkPortEthernet',
         ], [], false);
-        $this->integer((int)$new_id)->isGreaterThan(0);
-        $this->integer((int)countElementsInTable('glpi_logs'))->isIdenticalTo($nb_log);
+        $this->integer((int) $new_id)->isGreaterThan(0);
+        $this->integer((int) countElementsInTable('glpi_logs'))->isIdenticalTo($nb_log);
     }
 
     public function testAddCompleteNetworkPort()
@@ -110,30 +110,30 @@ class NetworkPort extends DbTestCase
         $networkport = new \NetworkPort();
 
         // Be sure added
-        $nb_log = (int)countElementsInTable('glpi_logs');
+        $nb_log = (int) countElementsInTable('glpi_logs');
         $new_id = $networkport->add([
-           'items_id'                    => $computer1->getID(),
-           'itemtype'                    => 'Computer',
-           'entities_id'                 => $computer1->fields['entities_id'],
-           'is_recursive'                => 0,
-           'logical_number'              => 3,
-           'mac'                         => '00:24:81:eb:c6:d2',
-           'instantiation_type'          => 'NetworkPortEthernet',
-           'name'                        => 'em3',
-           'comment'                     => 'Comment me!',
-           'netpoints_id'                => 0,
-           'items_devicenetworkcards_id' => 0,
-           'type'                        => 'T',
-           'speed'                       => 1000,
-           'speed_other_value'           => '',
-           'NetworkName_name'            => 'test1',
-           'NetworkName_comment'         => 'test1 comment',
-           'NetworkName_fqdns_id'        => 0,
-           'NetworkName__ipaddresses'    => ['-1' => '192.168.20.1'],
-           '_create_children'            => true // automatically add instancation, networkname and ipadresses
+            'items_id'                    => $computer1->getID(),
+            'itemtype'                    => 'Computer',
+            'entities_id'                 => $computer1->fields['entities_id'],
+            'is_recursive'                => 0,
+            'logical_number'              => 3,
+            'mac'                         => '00:24:81:eb:c6:d2',
+            'instantiation_type'          => 'NetworkPortEthernet',
+            'name'                        => 'em3',
+            'comment'                     => 'Comment me!',
+            'netpoints_id'                => 0,
+            'items_devicenetworkcards_id' => 0,
+            'type'                        => 'T',
+            'speed'                       => 1000,
+            'speed_other_value'           => '',
+            'NetworkName_name'            => 'test1',
+            'NetworkName_comment'         => 'test1 comment',
+            'NetworkName_fqdns_id'        => 0,
+            'NetworkName__ipaddresses'    => ['-1' => '192.168.20.1'],
+            '_create_children'            => true, // automatically add instancation, networkname and ipadresses
         ]);
         $this->integer($new_id)->isGreaterThan(0);
-        $this->integer((int)countElementsInTable('glpi_logs'))->isGreaterThan($nb_log);
+        $this->integer((int) countElementsInTable('glpi_logs'))->isGreaterThan($nb_log);
 
         // check data in db
         // 1 -> NetworkPortEthernet
@@ -194,28 +194,28 @@ class NetworkPort extends DbTestCase
         $this->array($ipadress)->isIdenticalTo($expected);
 
         // be sure added and have no logs
-        $nb_log = (int)countElementsInTable('glpi_logs');
+        $nb_log = (int) countElementsInTable('glpi_logs');
         $new_id = $networkport->add([
-           'items_id'                    => $computer1->getID(),
-           'itemtype'                    => 'Computer',
-           'entities_id'                 => $computer1->fields['entities_id'],
-           'is_recursive'                => 0,
-           'logical_number'              => 4,
-           'mac'                         => '00:24:81:eb:c6:d4',
-           'instantiation_type'          => 'NetworkPortEthernet',
-           'name'                        => 'em4',
-           'comment'                     => 'Comment me!',
-           'netpoints_id'                => 0,
-           'items_devicenetworkcards_id' => 0,
-           'type'                        => 'T',
-           'speed'                       => 1000,
-           'speed_other_value'           => '',
-           'NetworkName_name'            => 'test2',
-           'NetworkName_fqdns_id'        => 0,
-           'NetworkName__ipaddresses'    => ['-1' => '192.168.20.2']
+            'items_id'                    => $computer1->getID(),
+            'itemtype'                    => 'Computer',
+            'entities_id'                 => $computer1->fields['entities_id'],
+            'is_recursive'                => 0,
+            'logical_number'              => 4,
+            'mac'                         => '00:24:81:eb:c6:d4',
+            'instantiation_type'          => 'NetworkPortEthernet',
+            'name'                        => 'em4',
+            'comment'                     => 'Comment me!',
+            'netpoints_id'                => 0,
+            'items_devicenetworkcards_id' => 0,
+            'type'                        => 'T',
+            'speed'                       => 1000,
+            'speed_other_value'           => '',
+            'NetworkName_name'            => 'test2',
+            'NetworkName_fqdns_id'        => 0,
+            'NetworkName__ipaddresses'    => ['-1' => '192.168.20.2'],
         ], [], false);
-        $this->integer((int)$new_id)->isGreaterThan(0);
-        $this->integer((int)countElementsInTable('glpi_logs'))->isIdenticalTo($nb_log);
+        $this->integer((int) $new_id)->isGreaterThan(0);
+        $this->integer((int) countElementsInTable('glpi_logs'))->isIdenticalTo($nb_log);
     }
 
     public function testClone()
@@ -231,34 +231,34 @@ class NetworkPort extends DbTestCase
         $networkport = new \NetworkPort();
 
         // Be sure added
-        $nb_log = (int)countElementsInTable('glpi_logs');
+        $nb_log = (int) countElementsInTable('glpi_logs');
         $new_id = $networkport->add([
-           'items_id'                    => $computer1->getID(),
-           'itemtype'                    => 'Computer',
-           'entities_id'                 => $computer1->fields['entities_id'],
-           'is_recursive'                => 0,
-           'logical_number'              => 3,
-           'mac'                         => '00:24:81:eb:c6:d2',
-           'instantiation_type'          => 'NetworkPortEthernet',
-           'name'                        => 'em3',
-           'comment'                     => 'Comment me!',
-           'netpoints_id'                => 0,
-           'items_devicenetworkcards_id' => 0,
-           'type'                        => 'T',
-           'speed'                       => 1000,
-           'speed_other_value'           => '',
-           'NetworkName_name'            => 'test1',
-           'NetworkName_comment'         => 'test1 comment',
-           'NetworkName_fqdns_id'        => 0,
-           'NetworkName__ipaddresses'    => ['-1' => '192.168.20.1'],
-           '_create_children'            => true // automatically add instancation, networkname and ipadresses
+            'items_id'                    => $computer1->getID(),
+            'itemtype'                    => 'Computer',
+            'entities_id'                 => $computer1->fields['entities_id'],
+            'is_recursive'                => 0,
+            'logical_number'              => 3,
+            'mac'                         => '00:24:81:eb:c6:d2',
+            'instantiation_type'          => 'NetworkPortEthernet',
+            'name'                        => 'em3',
+            'comment'                     => 'Comment me!',
+            'netpoints_id'                => 0,
+            'items_devicenetworkcards_id' => 0,
+            'type'                        => 'T',
+            'speed'                       => 1000,
+            'speed_other_value'           => '',
+            'NetworkName_name'            => 'test1',
+            'NetworkName_comment'         => 'test1 comment',
+            'NetworkName_fqdns_id'        => 0,
+            'NetworkName__ipaddresses'    => ['-1' => '192.168.20.1'],
+            '_create_children'            => true, // automatically add instancation, networkname and ipadresses
         ]);
         $this->integer($new_id)->isGreaterThan(0);
-        $this->integer((int)countElementsInTable('glpi_logs'))->isGreaterThan($nb_log);
+        $this->integer((int) countElementsInTable('glpi_logs'))->isGreaterThan($nb_log);
 
         // Test item cloning
         $added = $networkport->clone();
-        $this->integer((int)$added)->isGreaterThan(0);
+        $this->integer((int) $added)->isGreaterThan(0);
 
         $clonedNetworkport = new \NetworkPort();
         $this->boolean($clonedNetworkport->getFromDB($added))->isTrue();
@@ -319,32 +319,32 @@ class NetworkPort extends DbTestCase
         $networkport = new \NetworkPort();
 
         $origin_port_id = $networkport->add([
-           'items_id'           => $computer->getID(),
-           'itemtype'           => 'Computer',
-           'entities_id'        => $computer->fields['entities_id'],
-           'is_recursive'       => 0,
-           'logical_number'     => 10,
-           'mac'                => '00:24:81:eb:c7:10',
-           'instantiation_type' => 'NetworkPortEthernet',
-           'name'               => 'origin-port',
+            'items_id'           => $computer->getID(),
+            'itemtype'           => 'Computer',
+            'entities_id'        => $computer->fields['entities_id'],
+            'is_recursive'       => 0,
+            'logical_number'     => 10,
+            'mac'                => '00:24:81:eb:c7:10',
+            'instantiation_type' => 'NetworkPortEthernet',
+            'name'               => 'origin-port',
         ]);
         $this->integer($origin_port_id)->isGreaterThan(0);
 
         $alias_port_id = $networkport->add([
-           'items_id'           => $computer->getID(),
-           'itemtype'           => 'Computer',
-           'entities_id'        => $computer->fields['entities_id'],
-           'is_recursive'       => 0,
-           'logical_number'     => 11,
-           'instantiation_type' => 'NetworkPortAlias',
-           'name'               => 'alias-port',
+            'items_id'           => $computer->getID(),
+            'itemtype'           => 'Computer',
+            'entities_id'        => $computer->fields['entities_id'],
+            'is_recursive'       => 0,
+            'logical_number'     => 11,
+            'instantiation_type' => 'NetworkPortAlias',
+            'name'               => 'alias-port',
         ]);
         $this->integer($alias_port_id)->isGreaterThan(0);
 
         $alias = new \NetworkPortAlias();
         $alias_id = $alias->add([
-           'networkports_id'       => $alias_port_id,
-           'networkports_id_alias' => $origin_port_id,
+            'networkports_id'       => $alias_port_id,
+            'networkports_id_alias' => $origin_port_id,
         ]);
         $this->integer($alias_id)->isGreaterThan(0);
 
@@ -361,29 +361,29 @@ class NetworkPort extends DbTestCase
         $networkequipment = getItemByTypeName('NetworkEquipment', '_test_networkequipment_1');
         $networkport = new \NetworkPort();
 
-        $port1 = (int)$networkport->add([
-           'name'         => 'agg-if1',
-           'items_id'     => $networkequipment->getID(),
-           'itemtype'     => 'NetworkEquipment',
-           'entities_id'  => $networkequipment->fields['entities_id'],
+        $port1 = (int) $networkport->add([
+            'name'         => 'agg-if1',
+            'items_id'     => $networkequipment->getID(),
+            'itemtype'     => 'NetworkEquipment',
+            'entities_id'  => $networkequipment->fields['entities_id'],
         ]);
-        $port2 = (int)$networkport->add([
-           'name'         => 'agg-if2',
-           'items_id'     => $networkequipment->getID(),
-           'itemtype'     => 'NetworkEquipment',
-           'entities_id'  => $networkequipment->fields['entities_id'],
+        $port2 = (int) $networkport->add([
+            'name'         => 'agg-if2',
+            'items_id'     => $networkequipment->getID(),
+            'itemtype'     => 'NetworkEquipment',
+            'entities_id'  => $networkequipment->fields['entities_id'],
         ]);
-        $port3 = (int)$networkport->add([
-           'name'         => 'agg-if3',
-           'items_id'     => $networkequipment->getID(),
-           'itemtype'     => 'NetworkEquipment',
-           'entities_id'  => $networkequipment->fields['entities_id'],
+        $port3 = (int) $networkport->add([
+            'name'         => 'agg-if3',
+            'items_id'     => $networkequipment->getID(),
+            'itemtype'     => 'NetworkEquipment',
+            'entities_id'  => $networkequipment->fields['entities_id'],
         ]);
-        $agg_parent_port = (int)$networkport->add([
-           'name'         => 'agg-parent',
-           'items_id'     => $networkequipment->getID(),
-           'itemtype'     => 'NetworkEquipment',
-           'entities_id'  => $networkequipment->fields['entities_id'],
+        $agg_parent_port = (int) $networkport->add([
+            'name'         => 'agg-parent',
+            'items_id'     => $networkequipment->getID(),
+            'itemtype'     => 'NetworkEquipment',
+            'entities_id'  => $networkequipment->fields['entities_id'],
         ]);
 
         $this->integer($port1)->isGreaterThan(0);
@@ -393,17 +393,17 @@ class NetworkPort extends DbTestCase
 
         $aggregate = new \NetworkPortAggregate();
         $aggregate_id = $aggregate->add([
-           'networkports_id'      => $agg_parent_port,
-           'networkports_id_list' => [$port1, $port2],
+            'networkports_id'      => $agg_parent_port,
+            'networkports_id_list' => [$port1, $port2],
         ]);
         $this->integer($aggregate_id)->isGreaterThan(0);
         $this->array(importArrayFromDB($aggregate->fields['networkports_id_list']))
            ->isIdenticalTo([$port1, $port2]);
 
         $this->boolean($aggregate->update([
-           'id'                   => $aggregate_id,
-           'networkports_id'      => $agg_parent_port,
-           'networkports_id_list' => [$port2, $port3],
+            'id'                   => $aggregate_id,
+            'networkports_id'      => $agg_parent_port,
+            'networkports_id_list' => [$port2, $port3],
         ]))->isTrue();
         $this->array(importArrayFromDB($aggregate->fields['networkports_id_list']))
            ->isIdenticalTo([$port2, $port3]);
@@ -417,36 +417,36 @@ class NetworkPort extends DbTestCase
         $networkport = new \NetworkPort();
 
         $port_1_id = $networkport->add([
-           'items_id'           => $computer->getID(),
-           'itemtype'           => 'Computer',
-           'entities_id'        => $computer->fields['entities_id'],
-           'is_recursive'       => 0,
-           'logical_number'     => 20,
-           'instantiation_type' => 'NetworkPortEthernet',
-           'name'               => 'wire-port-1',
+            'items_id'           => $computer->getID(),
+            'itemtype'           => 'Computer',
+            'entities_id'        => $computer->fields['entities_id'],
+            'is_recursive'       => 0,
+            'logical_number'     => 20,
+            'instantiation_type' => 'NetworkPortEthernet',
+            'name'               => 'wire-port-1',
         ]);
         $this->integer($port_1_id)->isGreaterThan(0);
 
         $port_2_id = $networkport->add([
-           'items_id'           => $computer->getID(),
-           'itemtype'           => 'Computer',
-           'entities_id'        => $computer->fields['entities_id'],
-           'is_recursive'       => 0,
-           'logical_number'     => 21,
-           'instantiation_type' => 'NetworkPortEthernet',
-           'name'               => 'wire-port-2',
+            'items_id'           => $computer->getID(),
+            'itemtype'           => 'Computer',
+            'entities_id'        => $computer->fields['entities_id'],
+            'is_recursive'       => 0,
+            'logical_number'     => 21,
+            'instantiation_type' => 'NetworkPortEthernet',
+            'name'               => 'wire-port-2',
         ]);
         $this->integer($port_2_id)->isGreaterThan(0);
 
         $wire = new \NetworkPort_NetworkPort();
         $wire_id = $wire->add([
-           'networkports_id_1' => $port_1_id,
-           'networkports_id_2' => $port_2_id,
+            'networkports_id_1' => $port_1_id,
+            'networkports_id_2' => $port_2_id,
         ]);
         $this->integer($wire_id)->isGreaterThan(0);
         $this->boolean($wire->getFromDBForNetworkPort($port_1_id))->isTrue();
-        $this->integer((int)$wire->getOppositeContact($port_1_id))->isEqualTo($port_2_id);
-        $this->integer((int)$wire->getOppositeContact($port_2_id))->isEqualTo($port_1_id);
+        $this->integer((int) $wire->getOppositeContact($port_1_id))->isEqualTo($port_2_id);
+        $this->integer((int) $wire->getOppositeContact($port_2_id))->isEqualTo($port_1_id);
     }
 
     public function testVlanAssignAndUnassign()
@@ -456,21 +456,21 @@ class NetworkPort extends DbTestCase
         $computer = getItemByTypeName('Computer', '_test_pc01');
         $networkport = new \NetworkPort();
         $port_id = $networkport->add([
-           'items_id'           => $computer->getID(),
-           'itemtype'           => 'Computer',
-           'entities_id'        => $computer->fields['entities_id'],
-           'is_recursive'       => 0,
-           'logical_number'     => 12,
-           'mac'                => '00:24:81:eb:c7:12',
-           'instantiation_type' => 'NetworkPortEthernet',
-           'name'               => 'vlan-port',
+            'items_id'           => $computer->getID(),
+            'itemtype'           => 'Computer',
+            'entities_id'        => $computer->fields['entities_id'],
+            'is_recursive'       => 0,
+            'logical_number'     => 12,
+            'mac'                => '00:24:81:eb:c7:12',
+            'instantiation_type' => 'NetworkPortEthernet',
+            'name'               => 'vlan-port',
         ]);
         $this->integer($port_id)->isGreaterThan(0);
 
         $vlan = new \Vlan();
         $vlan_id = $vlan->add([
-           'name' => 'Functional VLAN',
-           'tag'  => 120,
+            'name' => 'Functional VLAN',
+            'tag'  => 120,
         ]);
         $this->integer($vlan_id)->isGreaterThan(0);
 
@@ -478,7 +478,7 @@ class NetworkPort extends DbTestCase
         $relation_id = $networkport_vlan->assignVlan($port_id, $vlan_id, 1);
         $this->integer($relation_id)->isGreaterThan(0);
         $this->boolean($networkport_vlan->getFromDB($relation_id))->isTrue();
-        $this->integer((int)$networkport_vlan->fields['tagged'])->isEqualTo(1);
+        $this->integer((int) $networkport_vlan->fields['tagged'])->isEqualTo(1);
 
         $this->boolean($networkport_vlan->unassignVlan($port_id, $vlan_id))->isTrue();
         $this->integer(countElementsInTable(

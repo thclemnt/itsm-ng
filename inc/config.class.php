@@ -31,14 +31,18 @@
  * ---------------------------------------------------------------------
  */
 
-use itsmng\Timezone;
 use Glpi\Cache\SimpleCache;
-use PHPMailer\PHPMailer\PHPMailer;
-use Glpi\System\RequirementsManager;
 use Glpi\Exception\PasswordTooWeakException;
-use Laminas\Cache\Storage\FlushableInterface;
-use Laminas\Cache\Storage\TotalSpaceCapableInterface;
+use Glpi\System\RequirementsManager;
+use itsmng\Timezone;
 use Laminas\Cache\Storage\AvailableSpaceCapableInterface;
+use Laminas\Cache\Storage\FlushableInterface;
+use Laminas\Cache\Storage\StorageInterface;
+use Laminas\Cache\Storage\TotalSpaceCapableInterface;
+use Laminas\Cache\StorageFactory;
+use Monolog\Logger;
+use PHPMailer\PHPMailer\PHPMailer;
+use Psr\SimpleCache\CacheInterface;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -100,9 +104,9 @@ class Config extends CommonDBTM
     public function canViewItem()
     {
         if (
-            isset($this->fields['context']) &&
-            ($this->fields['context'] == 'core' ||
-            Plugin::isPluginActive($this->fields['context']))
+            isset($this->fields['context'])
+            && ($this->fields['context'] == 'core'
+            || Plugin::isPluginActive($this->fields['context']))
         ) {
             return true;
         }
@@ -244,14 +248,13 @@ class Config extends CommonDBTM
 
         if (isset($input['_update_devices_in_menu'])) {
             $input['devices_in_menu'] = exportArrayToDB(
-                (isset($input['devices_in_menu']) ? $input['devices_in_menu'] : [])
+                ($input['devices_in_menu'] ?? [])
             );
         }
 
         // lock mechanism update
         if (isset($input['lock_use_lock_item'])) {
-            $input['lock_item_list'] = exportArrayToDB((isset($input['lock_item_list'])
-                ? $input['lock_item_list'] : []));
+            $input['lock_item_list'] = exportArrayToDB(($input['lock_item_list'] ?? []));
         }
 
         if (isset($input[Impact::CONF_ENABLED])) {
@@ -319,202 +322,202 @@ class Config extends CommonDBTM
                     'type' => 'submit',
                     'name' => 'update',
                     'value' => __('Update'),
-                    'class' => 'btn btn-secondary'
-                ]
+                    'class' => 'btn btn-secondary',
+                ],
             ] : [],
             'content' => [
-               __('General setup') => [
-                   'visible' => true,
-                   'inputs' => [
-                       __('URL of the application') => [
-                           'name' => 'url_base',
-                           'type' => 'text',
-                           'value' => $CFG_GLPI["url_base"],
-                           'col_lg' => 12,
-                           'col_md' => 12,
-                       ],
-                       __('Text in the login box') => [
-                        'name' => 'text_login',
-                        'type' => 'textarea',
-                        'value' => $CFG_GLPI["text_login"],
-                        'col_lg' => 12,
-                        'col_md' => 12,
-                       ],
-                       __('Simplified interface help link') => [
-                        'name' => 'helpdesk_doc_url',
-                        'type' => 'text',
-                        'value' => $CFG_GLPI["helpdesk_doc_url"],
-                        'col_lg' => 6,
-                       ],
-                       __('Standard interface help link') => [
-                        'name' => 'central_doc_url',
-                        'type' => 'text',
-                        'value' => $CFG_GLPI["central_doc_url"],
-                        'col_lg' => 6,
-                       ],
-                       __('Allow FAQ anonymous access') => [
-                        'name' => 'use_public_faq',
-                        'type' => 'checkbox',
-                        'value' => $CFG_GLPI["use_public_faq"],
-                        'col_lg' => 6,
-                       ],
-                       __('Default characters limit (summary text boxes)') => [
-                        'name' => 'cut',
-                        'type' => 'number',
-                        'value' => $CFG_GLPI["cut"],
-                        'col_lg' => 6,
-                       ],
-                       __('Default url length limit') => [
-                        'name' => 'url_maxlength',
-                        'type' => 'number',
-                        'value' => $CFG_GLPI["url_maxlength"],
-                        'min' => 20,
-                        'max' => 80,
-                        'step' => 5,
-                        'col_lg' => 6,
-                       ],
-                       __('Default decimals limit') => [
-                        'name' => 'decimal_number',
-                        'type' => 'number',
-                        'value' => $CFG_GLPI["decimal_number"],
-                        'min' => 1,
-                        'max' => 4,
-                       ],
-                       __("Translation of dropdowns") => [
-                        'name' => 'translate_dropdowns',
-                        'type' => 'checkbox',
-                        'value' => $CFG_GLPI["translate_dropdowns"],
-                       ],
-                       __("Knowledge base translation") => [
-                        'name' => 'translate_kb',
-                        'type' => 'checkbox',
-                        'value' => $CFG_GLPI["translate_kb"],
-                       ],
-                       __("Translation of reminders") => [
-                        'name' => 'translate_reminders',
-                        'type' => 'checkbox',
-                        'value' => $CFG_GLPI["translate_reminders"],
-                       ],
-                   ]
-               ],
-               __('Dynamic display') => [
-                  'visible' => true,
-                  'inputs' => [
-                      __('Page size for dropdown (paging using scroll)') => [
-                          'name' => 'dropdown_max',
-                          'type' => 'number',
-                          'value' => $CFG_GLPI["dropdown_max"],
-                          'min' => 1,
-                          'max' => 200,
-                          'col_lg' => 6,
-                      ],
-                      __('Autocompletion of text fields') => [
-                        'name' => 'use_ajax_autocompletion',
-                        'type' => 'checkbox',
-                        'value' => $CFG_GLPI["use_ajax_autocompletion"],
-                        'col_lg' => 6,
-                      ],
-                      __("Don't show search engine in dropdowns if the number of items is less than") => [
-                        'name' => 'ajax_limit_count',
-                        'type' => 'number',
-                        'value' => $CFG_GLPI["ajax_limit_count"],
-                        'min' => 1,
-                        'max' => 200,
-                        'step' => 1,
-                        'after' => "0 => " . __('Never'),
-                        'col_lg' => 12,
-                        'col_mg' => 12,
-                      ],
-                  ]
-               ],
-               __('Search engine') => [
-                  'visible' => true,
-                  'inputs' => [
-                      __('Items seen') => [
-                          'name' => 'allow_search_view',
-                          'type' => 'select',
-                          'values' => [
-                              0 => __('No'),
-                              1 => sprintf(__('%1$s (%2$s)'), __('Yes'), __('last criterion')),
-                              2 => sprintf(__('%1$s (%2$s)'), __('Yes'), __('default criterion'))
-                          ],
-                          'value' => $CFG_GLPI['allow_search_view'],
-                      ],
-                      __('Global search') => [
-                        'name' => 'allow_search_global',
-                        'type' => 'select',
-                        'values' => [
-                            0 => __('No'),
-                            1 => sprintf(__('%1$s (%2$s)'), __('Yes'), __('last criterion'))
+                __('General setup') => [
+                    'visible' => true,
+                    'inputs' => [
+                        __('URL of the application') => [
+                            'name' => 'url_base',
+                            'type' => 'text',
+                            'value' => $CFG_GLPI["url_base"],
+                            'col_lg' => 12,
+                            'col_md' => 12,
                         ],
-                        'value' => $CFG_GLPI['allow_search_global'],
-                      ],
-                      __('All') => [
-                        'name' => 'allow_search_all',
-                        'type' => 'select',
-                        'values' => [
-                            0 => __('No'),
-                            1 => sprintf(__('%1$s (%2$s)'), __('Yes'), __('last criterion'))
+                        __('Text in the login box') => [
+                            'name' => 'text_login',
+                            'type' => 'textarea',
+                            'value' => $CFG_GLPI["text_login"],
+                            'col_lg' => 12,
+                            'col_md' => 12,
                         ],
-                        'value' => $CFG_GLPI['allow_search_all'],
-                      ],
-                  ]
-               ],
-               __('Item locks') => [
-                  'visible' => true,
-                  'inputs' => [
-                      __('Use locks') => [
-                          'name' => 'lock_use_lock_item',
-                          'type' => 'checkbox',
-                          'value' => $CFG_GLPI["lock_use_lock_item"],
-                      ],
-                      __('Profile to be used when locking items') => ($CFG_GLPI["lock_use_lock_item"]) ? [
-                        'name' => 'lock_lockprofile_id',
-                        'type' => 'select',
-                        'values' => getOptionForItems('Profile'),
-                        'value' => $CFG_GLPI["lock_lockprofile_id"],
-                        'action' => getItemActionButtons(['info'], 'Profile'),
-                      ] : [
-                        'content' => Dropdown::getDropdownName(Profile::getTable(), $CFG_GLPI['lock_lockprofile_id']),
-                      ],
-                      __('List of items to lock') => [
-                        'name' => 'lock_item_list',
-                        'type' => 'checklist',
-                        'options' => ObjectLock::getLockableObjects(),
-                        'values' => $CFG_GLPI['lock_item_list'],
-                        !$CFG_GLPI["lock_use_lock_item"] ? 'disabled' : '',
-                      ],
-                  ]
-               ],
-               __('Auto Login') => [
-                  'visible' => true,
-                  'inputs' => [
-                      __('Time to allow "Remember Me"') => [
-                          'name' => 'login_remember_time',
-                          'type' => 'select',
-                          'values' => array_merge([__('Disabled')], Timezone::GetTimeStamp([
-                              'value' => $CFG_GLPI["login_remember_time"],
-                              'min'   => 0,
-                              'max'   => MONTH_TIMESTAMP * 2,
-                              'step'  => DAY_TIMESTAMP,
-                              'toadd' => [HOUR_TIMESTAMP, HOUR_TIMESTAMP * 2, HOUR_TIMESTAMP * 6, HOUR_TIMESTAMP * 12],
-                              'rand'  => $rand
-                          ])),
-                       'value' => $CFG_GLPI["login_remember_time"],
-                      ],
-                      __("Default state of checkbox") => [
-                        'name' => 'login_remember_default',
-                        'type' => 'checkbox',
-                        'value' => $CFG_GLPI["login_remember_default"],
-                      ],
-                      __('Display source dropdown on login page') => [
-                        'name' => 'display_login_source',
-                        'type' => 'checkbox',
-                        'value' => $CFG_GLPI["display_login_source"],
-                      ],
-                  ]
-               ],
-            ]
+                        __('Simplified interface help link') => [
+                            'name' => 'helpdesk_doc_url',
+                            'type' => 'text',
+                            'value' => $CFG_GLPI["helpdesk_doc_url"],
+                            'col_lg' => 6,
+                        ],
+                        __('Standard interface help link') => [
+                            'name' => 'central_doc_url',
+                            'type' => 'text',
+                            'value' => $CFG_GLPI["central_doc_url"],
+                            'col_lg' => 6,
+                        ],
+                        __('Allow FAQ anonymous access') => [
+                            'name' => 'use_public_faq',
+                            'type' => 'checkbox',
+                            'value' => $CFG_GLPI["use_public_faq"],
+                            'col_lg' => 6,
+                        ],
+                        __('Default characters limit (summary text boxes)') => [
+                            'name' => 'cut',
+                            'type' => 'number',
+                            'value' => $CFG_GLPI["cut"],
+                            'col_lg' => 6,
+                        ],
+                        __('Default url length limit') => [
+                            'name' => 'url_maxlength',
+                            'type' => 'number',
+                            'value' => $CFG_GLPI["url_maxlength"],
+                            'min' => 20,
+                            'max' => 80,
+                            'step' => 5,
+                            'col_lg' => 6,
+                        ],
+                        __('Default decimals limit') => [
+                            'name' => 'decimal_number',
+                            'type' => 'number',
+                            'value' => $CFG_GLPI["decimal_number"],
+                            'min' => 1,
+                            'max' => 4,
+                        ],
+                        __("Translation of dropdowns") => [
+                            'name' => 'translate_dropdowns',
+                            'type' => 'checkbox',
+                            'value' => $CFG_GLPI["translate_dropdowns"],
+                        ],
+                        __("Knowledge base translation") => [
+                            'name' => 'translate_kb',
+                            'type' => 'checkbox',
+                            'value' => $CFG_GLPI["translate_kb"],
+                        ],
+                        __("Translation of reminders") => [
+                            'name' => 'translate_reminders',
+                            'type' => 'checkbox',
+                            'value' => $CFG_GLPI["translate_reminders"],
+                        ],
+                    ],
+                ],
+                __('Dynamic display') => [
+                    'visible' => true,
+                    'inputs' => [
+                        __('Page size for dropdown (paging using scroll)') => [
+                            'name' => 'dropdown_max',
+                            'type' => 'number',
+                            'value' => $CFG_GLPI["dropdown_max"],
+                            'min' => 1,
+                            'max' => 200,
+                            'col_lg' => 6,
+                        ],
+                        __('Autocompletion of text fields') => [
+                            'name' => 'use_ajax_autocompletion',
+                            'type' => 'checkbox',
+                            'value' => $CFG_GLPI["use_ajax_autocompletion"],
+                            'col_lg' => 6,
+                        ],
+                        __("Don't show search engine in dropdowns if the number of items is less than") => [
+                            'name' => 'ajax_limit_count',
+                            'type' => 'number',
+                            'value' => $CFG_GLPI["ajax_limit_count"],
+                            'min' => 1,
+                            'max' => 200,
+                            'step' => 1,
+                            'after' => "0 => " . __('Never'),
+                            'col_lg' => 12,
+                            'col_mg' => 12,
+                        ],
+                    ],
+                ],
+                __('Search engine') => [
+                    'visible' => true,
+                    'inputs' => [
+                        __('Items seen') => [
+                            'name' => 'allow_search_view',
+                            'type' => 'select',
+                            'values' => [
+                                0 => __('No'),
+                                1 => sprintf(__('%1$s (%2$s)'), __('Yes'), __('last criterion')),
+                                2 => sprintf(__('%1$s (%2$s)'), __('Yes'), __('default criterion')),
+                            ],
+                            'value' => $CFG_GLPI['allow_search_view'],
+                        ],
+                        __('Global search') => [
+                            'name' => 'allow_search_global',
+                            'type' => 'select',
+                            'values' => [
+                                0 => __('No'),
+                                1 => sprintf(__('%1$s (%2$s)'), __('Yes'), __('last criterion')),
+                            ],
+                            'value' => $CFG_GLPI['allow_search_global'],
+                        ],
+                        __('All') => [
+                            'name' => 'allow_search_all',
+                            'type' => 'select',
+                            'values' => [
+                                0 => __('No'),
+                                1 => sprintf(__('%1$s (%2$s)'), __('Yes'), __('last criterion')),
+                            ],
+                            'value' => $CFG_GLPI['allow_search_all'],
+                        ],
+                    ],
+                ],
+                __('Item locks') => [
+                    'visible' => true,
+                    'inputs' => [
+                        __('Use locks') => [
+                            'name' => 'lock_use_lock_item',
+                            'type' => 'checkbox',
+                            'value' => $CFG_GLPI["lock_use_lock_item"],
+                        ],
+                        __('Profile to be used when locking items') => ($CFG_GLPI["lock_use_lock_item"]) ? [
+                            'name' => 'lock_lockprofile_id',
+                            'type' => 'select',
+                            'values' => getOptionForItems('Profile'),
+                            'value' => $CFG_GLPI["lock_lockprofile_id"],
+                            'action' => getItemActionButtons(['info'], 'Profile'),
+                        ] : [
+                            'content' => Dropdown::getDropdownName(Profile::getTable(), $CFG_GLPI['lock_lockprofile_id']),
+                        ],
+                        __('List of items to lock') => [
+                            'name' => 'lock_item_list',
+                            'type' => 'checklist',
+                            'options' => ObjectLock::getLockableObjects(),
+                            'values' => $CFG_GLPI['lock_item_list'],
+                            !$CFG_GLPI["lock_use_lock_item"] ? 'disabled' : '',
+                        ],
+                    ],
+                ],
+                __('Auto Login') => [
+                    'visible' => true,
+                    'inputs' => [
+                        __('Time to allow "Remember Me"') => [
+                            'name' => 'login_remember_time',
+                            'type' => 'select',
+                            'values' => array_merge([__('Disabled')], Timezone::GetTimeStamp([
+                                'value' => $CFG_GLPI["login_remember_time"],
+                                'min'   => 0,
+                                'max'   => MONTH_TIMESTAMP * 2,
+                                'step'  => DAY_TIMESTAMP,
+                                'toadd' => [HOUR_TIMESTAMP, HOUR_TIMESTAMP * 2, HOUR_TIMESTAMP * 6, HOUR_TIMESTAMP * 12],
+                                'rand'  => $rand,
+                            ])),
+                            'value' => $CFG_GLPI["login_remember_time"],
+                        ],
+                        __("Default state of checkbox") => [
+                            'name' => 'login_remember_default',
+                            'type' => 'checkbox',
+                            'value' => $CFG_GLPI["login_remember_default"],
+                        ],
+                        __('Display source dropdown on login page') => [
+                            'name' => 'display_login_source',
+                            'type' => 'checkbox',
+                            'value' => $CFG_GLPI["display_login_source"],
+                        ],
+                    ],
+                ],
+            ],
         ];
         renderTwigForm($form);
     }
@@ -552,195 +555,195 @@ class Config extends CommonDBTM
                     'type' => 'submit',
                     'name' => 'update',
                     'value' => __('Update'),
-                    'class' => 'btn btn-secondary'
+                    'class' => 'btn btn-secondary',
                 ] : [],
             ],
             'content' => [
-               __('Assets') => [
-                   'visible' => true,
-                   'inputs' => [
-                       __('Enable the financial and administrative information by default') => [
-                           'name' => 'auto_create_infocoms',
-                           'type' => 'checkbox',
-                           'value' => $CFG_GLPI["auto_create_infocoms"],
-                           'col_lg' => 6,
-                       ],
-                       __('Software category deleted by the dictionary rules') => [
-                        'name' => 'softwarecategories_id_ondelete',
-                        'type' => 'select',
-                        'values' => getOptionForItems('SoftwareCategory'),
-                        'value' => $CFG_GLPI["softwarecategories_id_ondelete"],
-                        'col_lg' => 6,
-                       ],
-                       __('Restrict monitor management') => [
-                        'name' => 'monitors_management_restrict',
-                        'type' => 'checkbox',
-                        'value' => $CFG_GLPI["monitors_management_restrict"],
-                        'col_lg' => 6,
-                       ],
-                       __('Restrict device management') => [
-                        'name' => 'peripherals_management_restrict',
-                        'type' => 'checkbox',
-                        'value' => $CFG_GLPI["peripherals_management_restrict"],
-                        'col_lg' => 6,
-                       ],
-                       __('Restrict phone management') => [
-                        'name' => 'phones_management_restrict',
-                        'type' => 'checkbox',
-                        'value' => $CFG_GLPI["phones_management_restrict"],
-                        'col_lg' => 6,
-                       ],
-                       __('Restrict printer management') => [
-                        'name' => 'printers_management_restrict',
-                        'type' => 'checkbox',
-                        'value' => $CFG_GLPI["printers_management_restrict"],
-                        'col_lg' => 6,
-                       ],
-                       __('End of fiscal year') => [
-                        'name' => 'date_tax',
-                        'type' => 'date',
-                        'value' => $CFG_GLPI["date_tax"],
-                        'rand' => $rand,
-                        'col_lg' => 6,
-                        'required' => true,
-                       ],
-                       __('Automatic fields (marked by *)') => [
-                        'name' => 'use_autoname_by_entity',
-                        'type' => 'select',
-                        'values' => [
-                            0 => __('Global'),
-                            1 => __('By entity')
+                __('Assets') => [
+                    'visible' => true,
+                    'inputs' => [
+                        __('Enable the financial and administrative information by default') => [
+                            'name' => 'auto_create_infocoms',
+                            'type' => 'checkbox',
+                            'value' => $CFG_GLPI["auto_create_infocoms"],
+                            'col_lg' => 6,
                         ],
-                        'value' => $CFG_GLPI["use_autoname_by_entity"],
-                        'rand' => $rand,
-                        'col_lg' => 6,
-                       ],
-                       __('Devices displayed in menu') => [
-                        'type' => 'checklist',
-                        'name' => 'devices_in_menu',
-                        'options' => $item_devices_types,
-                        'values' => $CFG_GLPI['devices_in_menu'],
-                       ],
-                       [
-                        'name' => '_update_devices_in_menu',
-                        'type' => 'hidden',
-                        'value' => 1,
-                       ],
-                       __('Automatic transfer of computers') => (Session::haveRightsOr("transfer", [CREATE, UPDATE])
-                       && Session::isMultiEntitiesMode()) ? [
-                        'name' => 'transfers_id_auto',
-                        'type' => 'select',
-                        'values' => array_merge([__('No automatic transfer')], getOptionForItems('Transfer')),
-                        'value' => $CFG_GLPI["transfers_id_auto"],
-                       ] : [],
-                   ]
-               ],
-               __('Automatically update of the elements related to the computers') . ' : ' . __('Unit management') => [
-                  'visible' => true,
-                  'inputs' => [
-                      __('Alternate username') . '(' . __('When connecting or updating') . ')' => [
-                          'name' => 'is_contact_autoupdate',
-                          'type' => 'select',
-                          'values' => [
-                              0 => __('Do not copy'),
-                              1 => __('Copy'),
-                          ],
-                          'value' => $CFG_GLPI["is_contact_autoupdate"],
-                          'col_lg' => 6,
-                      ],
-                      __('Alternate username') . '(' . __('When disconnecting') . ')' => [
-                        'name' => 'is_contact_autoclean',
-                        'type' => 'select',
-                        'values' => [
-                            0 => __('Do not delete'),
-                            1 => __('Clear'),
+                        __('Software category deleted by the dictionary rules') => [
+                            'name' => 'softwarecategories_id_ondelete',
+                            'type' => 'select',
+                            'values' => getOptionForItems('SoftwareCategory'),
+                            'value' => $CFG_GLPI["softwarecategories_id_ondelete"],
+                            'col_lg' => 6,
                         ],
-                        'value' => $CFG_GLPI["is_contact_autoclean"],
-                        'col_lg' => 6,
-                      ],
-                      User::getTypeName(1) . '(' . __('When connecting or updating') . ')' => [
-                        'name' => 'is_user_autoupdate',
-                        'type' => 'select',
-                        'values' => [
-                            0 => __('Do not copy'),
-                            1 => __('Copy'),
+                        __('Restrict monitor management') => [
+                            'name' => 'monitors_management_restrict',
+                            'type' => 'checkbox',
+                            'value' => $CFG_GLPI["monitors_management_restrict"],
+                            'col_lg' => 6,
                         ],
-                        'value' => $CFG_GLPI["is_user_autoupdate"],
-                        'col_lg' => 6,
-                      ],
-                      User::getTypeName(1) . '(' . __('When disconnecting') . ')' => [
-                        'name' => 'is_user_autoclean',
-                        'type' => 'select',
-                        'values' => [
-                            0 => __('Do not delete'),
-                            1 => __('Clear'),
+                        __('Restrict device management') => [
+                            'name' => 'peripherals_management_restrict',
+                            'type' => 'checkbox',
+                            'value' => $CFG_GLPI["peripherals_management_restrict"],
+                            'col_lg' => 6,
                         ],
-                        'value' => $CFG_GLPI["is_user_autoclean"],
-                        'col_lg' => 6,
-                      ],
-                      Group::getTypeName(1) . '(' . __('When connecting or updating') . ')' => [
-                        'name' => 'is_group_autoupdate',
-                        'type' => 'select',
-                        'values' => [
-                            0 => __('Do not copy'),
-                            1 => __('Copy'),
+                        __('Restrict phone management') => [
+                            'name' => 'phones_management_restrict',
+                            'type' => 'checkbox',
+                            'value' => $CFG_GLPI["phones_management_restrict"],
+                            'col_lg' => 6,
                         ],
-                        'value' => $CFG_GLPI["is_group_autoupdate"],
-                        'col_lg' => 6,
-                      ],
-                      Group::getTypeName(1) . '(' . __('When disconnecting') . ')' => [
-                        'name' => 'is_group_autoclean',
-                        'type' => 'select',
-                        'values' => [
-                            0 => __('Do not delete'),
-                            1 => __('Clear'),
+                        __('Restrict printer management') => [
+                            'name' => 'printers_management_restrict',
+                            'type' => 'checkbox',
+                            'value' => $CFG_GLPI["printers_management_restrict"],
+                            'col_lg' => 6,
                         ],
-                        'value' => $CFG_GLPI["is_group_autoclean"],
-                        'col_lg' => 6,
-                      ],
-                      Location::getTypeName(1) . '(' . __('When connecting or updating') . ')' => [
-                        'name' => 'is_location_autoupdate',
-                        'type' => 'select',
-                        'values' => [
-                            0 => __('Do not copy'),
-                            1 => __('Copy'),
+                        __('End of fiscal year') => [
+                            'name' => 'date_tax',
+                            'type' => 'date',
+                            'value' => $CFG_GLPI["date_tax"],
+                            'rand' => $rand,
+                            'col_lg' => 6,
+                            'required' => true,
                         ],
-                        'value' => $CFG_GLPI["is_location_autoupdate"],
-                        'col_lg' => 6,
-                      ],
-                      Location::getTypeName(1) . '(' . __('When disconnecting') . ')' => [
-                        'name' => 'is_location_autoclean',
-                        'type' => 'select',
-                        'values' => [
-                            0 => __('Do not delete'),
-                            1 => __('Clear'),
+                        __('Automatic fields (marked by *)') => [
+                            'name' => 'use_autoname_by_entity',
+                            'type' => 'select',
+                            'values' => [
+                                0 => __('Global'),
+                                1 => __('By entity'),
+                            ],
+                            'value' => $CFG_GLPI["use_autoname_by_entity"],
+                            'rand' => $rand,
+                            'col_lg' => 6,
                         ],
-                        'value' => $CFG_GLPI["is_location_autoclean"],
-                        'col_lg' => 6,
-                      ],
-                      __('Status') . '(' . __('When connecting or updating') . ')' => [
-                        'name' => 'state_autoupdate_mode',
-                        'type' => 'select',
-                        'values' => [
-                            0 => __('Do not copy'),
-                            1 => __('Copy computer status'),
+                        __('Devices displayed in menu') => [
+                            'type' => 'checklist',
+                            'name' => 'devices_in_menu',
+                            'options' => $item_devices_types,
+                            'values' => $CFG_GLPI['devices_in_menu'],
                         ],
-                        'value' => $CFG_GLPI["state_autoupdate_mode"],
-                        'col_lg' => 6,
-                      ],
-                      __('Status') . '(' . __('When disconnecting') . ')' => [
-                        'name' => 'state_autoclean_mode',
-                        'type' => 'select',
-                        'values' => [
-                            0 => __('Do not delete'),
-                            1 => __('Clear status'),
+                        [
+                            'name' => '_update_devices_in_menu',
+                            'type' => 'hidden',
+                            'value' => 1,
                         ],
-                        'value' => $CFG_GLPI["state_autoclean_mode"],
-                        'col_lg' => 6,
-                      ],
-                  ]
-               ]
-            ]
+                        __('Automatic transfer of computers') => (Session::haveRightsOr("transfer", [CREATE, UPDATE])
+                        && Session::isMultiEntitiesMode()) ? [
+                            'name' => 'transfers_id_auto',
+                            'type' => 'select',
+                            'values' => array_merge([__('No automatic transfer')], getOptionForItems('Transfer')),
+                            'value' => $CFG_GLPI["transfers_id_auto"],
+                        ] : [],
+                    ],
+                ],
+                __('Automatically update of the elements related to the computers') . ' : ' . __('Unit management') => [
+                    'visible' => true,
+                    'inputs' => [
+                        __('Alternate username') . '(' . __('When connecting or updating') . ')' => [
+                            'name' => 'is_contact_autoupdate',
+                            'type' => 'select',
+                            'values' => [
+                                0 => __('Do not copy'),
+                                1 => __('Copy'),
+                            ],
+                            'value' => $CFG_GLPI["is_contact_autoupdate"],
+                            'col_lg' => 6,
+                        ],
+                        __('Alternate username') . '(' . __('When disconnecting') . ')' => [
+                            'name' => 'is_contact_autoclean',
+                            'type' => 'select',
+                            'values' => [
+                                0 => __('Do not delete'),
+                                1 => __('Clear'),
+                            ],
+                            'value' => $CFG_GLPI["is_contact_autoclean"],
+                            'col_lg' => 6,
+                        ],
+                        User::getTypeName(1) . '(' . __('When connecting or updating') . ')' => [
+                            'name' => 'is_user_autoupdate',
+                            'type' => 'select',
+                            'values' => [
+                                0 => __('Do not copy'),
+                                1 => __('Copy'),
+                            ],
+                            'value' => $CFG_GLPI["is_user_autoupdate"],
+                            'col_lg' => 6,
+                        ],
+                        User::getTypeName(1) . '(' . __('When disconnecting') . ')' => [
+                            'name' => 'is_user_autoclean',
+                            'type' => 'select',
+                            'values' => [
+                                0 => __('Do not delete'),
+                                1 => __('Clear'),
+                            ],
+                            'value' => $CFG_GLPI["is_user_autoclean"],
+                            'col_lg' => 6,
+                        ],
+                        Group::getTypeName(1) . '(' . __('When connecting or updating') . ')' => [
+                            'name' => 'is_group_autoupdate',
+                            'type' => 'select',
+                            'values' => [
+                                0 => __('Do not copy'),
+                                1 => __('Copy'),
+                            ],
+                            'value' => $CFG_GLPI["is_group_autoupdate"],
+                            'col_lg' => 6,
+                        ],
+                        Group::getTypeName(1) . '(' . __('When disconnecting') . ')' => [
+                            'name' => 'is_group_autoclean',
+                            'type' => 'select',
+                            'values' => [
+                                0 => __('Do not delete'),
+                                1 => __('Clear'),
+                            ],
+                            'value' => $CFG_GLPI["is_group_autoclean"],
+                            'col_lg' => 6,
+                        ],
+                        Location::getTypeName(1) . '(' . __('When connecting or updating') . ')' => [
+                            'name' => 'is_location_autoupdate',
+                            'type' => 'select',
+                            'values' => [
+                                0 => __('Do not copy'),
+                                1 => __('Copy'),
+                            ],
+                            'value' => $CFG_GLPI["is_location_autoupdate"],
+                            'col_lg' => 6,
+                        ],
+                        Location::getTypeName(1) . '(' . __('When disconnecting') . ')' => [
+                            'name' => 'is_location_autoclean',
+                            'type' => 'select',
+                            'values' => [
+                                0 => __('Do not delete'),
+                                1 => __('Clear'),
+                            ],
+                            'value' => $CFG_GLPI["is_location_autoclean"],
+                            'col_lg' => 6,
+                        ],
+                        __('Status') . '(' . __('When connecting or updating') . ')' => [
+                            'name' => 'state_autoupdate_mode',
+                            'type' => 'select',
+                            'values' => [
+                                0 => __('Do not copy'),
+                                1 => __('Copy computer status'),
+                            ],
+                            'value' => $CFG_GLPI["state_autoupdate_mode"],
+                            'col_lg' => 6,
+                        ],
+                        __('Status') . '(' . __('When disconnecting') . ')' => [
+                            'name' => 'state_autoclean_mode',
+                            'type' => 'select',
+                            'values' => [
+                                0 => __('Do not delete'),
+                                1 => __('Clear status'),
+                            ],
+                            'value' => $CFG_GLPI["state_autoclean_mode"],
+                            'col_lg' => 6,
+                        ],
+                    ],
+                ],
+            ],
         ];
         renderTwigForm($form);
     }
@@ -767,37 +770,37 @@ class Config extends CommonDBTM
                     'name' => 'update_auth',
                     'value' => _sx('button', 'Save'),
                     'class' => 'btn btn-secondary',
-                  ],
+                ],
             ],
             'content' => [
-               __('Authentication') => [
-                   'visible' => true,
-                   'inputs' => [
-                       __('Automatically add users from an external authentication source') => [
-                           'name' => 'is_users_auto_add',
-                           'type' => 'checkbox',
-                           'value' => $CFG_GLPI["is_users_auto_add"],
-                       ],
-                       __('Add a user without accreditation from a LDAP directory') => [
-                        'name' => 'use_noright_users_add',
-                        'type' => 'checkbox',
-                        'value' => $CFG_GLPI["use_noright_users_add"],
-                       ],
-                       __('Action when a user is deleted from the LDAP directory') => [
-                        'name' => 'user_deleted_ldap',
-                        'type' => 'select',
-                        'values' => AuthLDAP::getLdapDeletedUserActionOptions(),
-                        'value' => $CFG_GLPI["user_deleted_ldap"],
-                       ],
-                       __('ITSM-NG server time zone') => [
-                        'name' => 'time_offset',
-                        'type' => 'select',
-                        'values' => Timezone::showGMT(),
-                        'value' => $CFG_GLPI["time_offset"],
-                       ],
-                   ],
-               ],
-            ]
+                __('Authentication') => [
+                    'visible' => true,
+                    'inputs' => [
+                        __('Automatically add users from an external authentication source') => [
+                            'name' => 'is_users_auto_add',
+                            'type' => 'checkbox',
+                            'value' => $CFG_GLPI["is_users_auto_add"],
+                        ],
+                        __('Add a user without accreditation from a LDAP directory') => [
+                            'name' => 'use_noright_users_add',
+                            'type' => 'checkbox',
+                            'value' => $CFG_GLPI["use_noright_users_add"],
+                        ],
+                        __('Action when a user is deleted from the LDAP directory') => [
+                            'name' => 'user_deleted_ldap',
+                            'type' => 'select',
+                            'values' => AuthLDAP::getLdapDeletedUserActionOptions(),
+                            'value' => $CFG_GLPI["user_deleted_ldap"],
+                        ],
+                        __('ITSM-NG server time zone') => [
+                            'name' => 'time_offset',
+                            'type' => 'select',
+                            'values' => Timezone::showGMT(),
+                            'value' => $CFG_GLPI["time_offset"],
+                        ],
+                    ],
+                ],
+            ],
         ];
 
         renderTwigForm($form);
@@ -822,8 +825,8 @@ class Config extends CommonDBTM
         echo "<input type='hidden' name='_dbslave_status' value='1'>";
         echo "<table class='tab_cadre_fixe' aria-label='DB Slave form'>";
 
-        echo "<tr class='tab_bg_2'><th colspan='4'>" . _n('SQL replica', 'SQL replicas', Session::getPluralNumber()) .
-            "</th></tr>";
+        echo "<tr class='tab_bg_2'><th colspan='4'>" . _n('SQL replica', 'SQL replicas', Session::getPluralNumber())
+            . "</th></tr>";
         $DBslave = DBConnection::getDBSlaveConf();
 
         if (is_array($DBslave->dbhost)) {
@@ -842,8 +845,8 @@ class Config extends CommonDBTM
         echo "<td>" . __('SQL user') . "</td>";
         echo "<td><input type='text' name='_dbreplicate_dbuser' value='" . $DBslave->dbuser . "'></td>";
         echo "<td>" . __('SQL password') . "</td>";
-        echo "<td><input type='password' name='_dbreplicate_dbpassword' value='" .
-            rawurldecode((string) $DBslave->dbpassword) . "'>";
+        echo "<td><input type='password' name='_dbreplicate_dbpassword' value='"
+            . rawurldecode((string) $DBslave->dbpassword) . "'>";
         echo "</td></tr>";
 
         echo "<tr class='tab_bg_2'>";
@@ -906,37 +909,37 @@ class Config extends CommonDBTM
                             'col_lg' => 6,
                         ],
                         __('Enable Rest API') => [
-                        'name' => 'enable_api',
-                        'type' => 'checkbox',
-                        'value' => $CFG_GLPI["enable_api"],
-                        'col_lg' => 6,
+                            'name' => 'enable_api',
+                            'type' => 'checkbox',
+                            'value' => $CFG_GLPI["enable_api"],
+                            'col_lg' => 6,
                         ],
                         '' => $CFG_GLPI['enable_api'] ? [
-                        'content' => "<a href='$inline_doc_api'>" . __("API inline Documentation") . "</a>"
+                            'content' => "<a href='$inline_doc_api'>" . __("API inline Documentation") . "</a>",
                         ] : [],
-                    ]
+                    ],
                 ],
                 __('Authentication') => [
-                  'visible' => true,
-                  'inputs' => [
-                      __('Enable login with credentials') => [
-                          'name' => 'enable_api_login_credentials',
-                          'type' => 'checkbox',
-                          'value' => $CFG_GLPI["enable_api_login_credentials"]
-                      ],
-                      __('Enable login with external token') => [
-                        'name' => 'enable_api_login_external_token',
-                        'type' => 'checkbox',
-                        'value' => $CFG_GLPI["enable_api_login_external_token"]
-                      ],
-                      [
-                        'name' => 'update',
-                        'type' => 'hidden',
-                        'value' => 1
-                      ]
-                  ]
+                    'visible' => true,
+                    'inputs' => [
+                        __('Enable login with credentials') => [
+                            'name' => 'enable_api_login_credentials',
+                            'type' => 'checkbox',
+                            'value' => $CFG_GLPI["enable_api_login_credentials"],
+                        ],
+                        __('Enable login with external token') => [
+                            'name' => 'enable_api_login_external_token',
+                            'type' => 'checkbox',
+                            'value' => $CFG_GLPI["enable_api_login_external_token"],
+                        ],
+                        [
+                            'name' => 'update',
+                            'type' => 'hidden',
+                            'value' => 1,
+                        ],
+                    ],
                 ],
-            ]
+            ],
         ];
 
         renderTwigForm($form);
@@ -1027,7 +1030,7 @@ class Config extends CommonDBTM
                         'type' => 'select',
                         'values' => $urgencynames,
                         'value' => $CFG_GLPI['priority_matrix'][$urgency][$impact],
-                        'noLib' => true
+                        'noLib' => true,
                     ]);
                     $content = ob_get_clean();
                     $matrix[$urgency][$impact] = [
@@ -1052,87 +1055,87 @@ class Config extends CommonDBTM
                     'type' => 'submit',
                     'name' => 'update',
                     'value' => __('Update'),
-                    'class' => 'btn btn-secondary'
+                    'class' => 'btn btn-secondary',
                 ] : [],
             ],
             'content' => [
-               __('Assistance') => [
-                   'visible' => true,
-                   'inputs' => [
-                       __('Limit of the schedules for planning : From') => [
-                           'name' => 'planning_begin',
-                           'type' => 'time',
-                           'value' => $CFG_GLPI["planning_begin"],
-                           'col_lg' => 6,
-                       ],
-                       __('To') => [
-                        'name' => 'planning_end',
-                        'type' => 'time',
-                        'value' => $CFG_GLPI["planning_end"],
-                        'col_lg' => 6,
-                       ],
-                       __('Step for the hours (minutes)') => [
-                        'name' => 'time_step',
-                        'type' => 'number',
-                        'value' => $CFG_GLPI["time_step"],
-                        'min' => 1,
-                        'max' => 60,
-                        'step' => 1,
-                       ],
-                       __('Default file size limit imported by the mails receiver') => [
-                        'name' => 'default_mailcollector_filesize_max',
-                        'type' => 'select',
-                        'values' => $sizes,
-                        'value' => $CFG_GLPI["default_mailcollector_filesize_max"],
-                       ],
-                       __('Default heading when adding a document to a ticket') => [
-                        'name' => 'documentcategories_id_forticket',
-                        'type' => 'select',
-                        'values' => getOptionForItems('DocumentCategory'),
-                        'value' => $CFG_GLPI["documentcategories_id_forticket"],
-                        'actions' => getItemActionButtons(['info', 'add'], 'DocumentCategory'),
-                       ],
-                       __('By default, a software may be linked to a ticket') => [
-                        'name' => 'default_software_helpdesk_visible',
-                        'type' => 'checkbox',
-                        'value' => $CFG_GLPI["default_software_helpdesk_visible"],
-                       ],
-                       __('Keep tickets when purging hardware in the inventory') => [
-                        'name' => 'keep_tickets_on_delete',
-                        'type' => 'checkbox',
-                        'value' => $CFG_GLPI["keep_tickets_on_delete"],
-                       ],
-                       __('Show personnal information in new ticket form (simplified interface)') => [
-                        'name' => 'use_check_pref',
-                        'type' => 'checkbox',
-                        'value' => $CFG_GLPI["use_check_pref"],
-                       ],
-                       __('Allow anonymous ticket creation (helpdesk.receiver)') => [
-                        'name' => 'use_anonymous_helpdesk',
-                        'type' => 'checkbox',
-                        'value' => $CFG_GLPI["use_anonymous_helpdesk"],
-                       ],
-                       __('Allow anonymous followups (receiver)') => [
-                        'name' => 'use_anonymous_followups',
-                        'type' => 'checkbox',
-                        'value' => $CFG_GLPI["use_anonymous_followups"],
-                       ],
-                       [
-                        'type' => 'hidden',
-                        'name' => '_matrix',
-                        'value' => 1,
-                       ],
-                       __('Matrix of calculus for priority') => [
-                        'type' => 'twig',
-                        'template' => 'matrix.twig',
-                        'col_lg' => 12,
-                        'col_md' => 12,
-                        'headers' => $headers,
-                        'matrix' => $matrix,
-                       ]
-                   ]
-               ]
-            ]
+                __('Assistance') => [
+                    'visible' => true,
+                    'inputs' => [
+                        __('Limit of the schedules for planning : From') => [
+                            'name' => 'planning_begin',
+                            'type' => 'time',
+                            'value' => $CFG_GLPI["planning_begin"],
+                            'col_lg' => 6,
+                        ],
+                        __('To') => [
+                            'name' => 'planning_end',
+                            'type' => 'time',
+                            'value' => $CFG_GLPI["planning_end"],
+                            'col_lg' => 6,
+                        ],
+                        __('Step for the hours (minutes)') => [
+                            'name' => 'time_step',
+                            'type' => 'number',
+                            'value' => $CFG_GLPI["time_step"],
+                            'min' => 1,
+                            'max' => 60,
+                            'step' => 1,
+                        ],
+                        __('Default file size limit imported by the mails receiver') => [
+                            'name' => 'default_mailcollector_filesize_max',
+                            'type' => 'select',
+                            'values' => $sizes,
+                            'value' => $CFG_GLPI["default_mailcollector_filesize_max"],
+                        ],
+                        __('Default heading when adding a document to a ticket') => [
+                            'name' => 'documentcategories_id_forticket',
+                            'type' => 'select',
+                            'values' => getOptionForItems('DocumentCategory'),
+                            'value' => $CFG_GLPI["documentcategories_id_forticket"],
+                            'actions' => getItemActionButtons(['info', 'add'], 'DocumentCategory'),
+                        ],
+                        __('By default, a software may be linked to a ticket') => [
+                            'name' => 'default_software_helpdesk_visible',
+                            'type' => 'checkbox',
+                            'value' => $CFG_GLPI["default_software_helpdesk_visible"],
+                        ],
+                        __('Keep tickets when purging hardware in the inventory') => [
+                            'name' => 'keep_tickets_on_delete',
+                            'type' => 'checkbox',
+                            'value' => $CFG_GLPI["keep_tickets_on_delete"],
+                        ],
+                        __('Show personnal information in new ticket form (simplified interface)') => [
+                            'name' => 'use_check_pref',
+                            'type' => 'checkbox',
+                            'value' => $CFG_GLPI["use_check_pref"],
+                        ],
+                        __('Allow anonymous ticket creation (helpdesk.receiver)') => [
+                            'name' => 'use_anonymous_helpdesk',
+                            'type' => 'checkbox',
+                            'value' => $CFG_GLPI["use_anonymous_helpdesk"],
+                        ],
+                        __('Allow anonymous followups (receiver)') => [
+                            'name' => 'use_anonymous_followups',
+                            'type' => 'checkbox',
+                            'value' => $CFG_GLPI["use_anonymous_followups"],
+                        ],
+                        [
+                            'type' => 'hidden',
+                            'name' => '_matrix',
+                            'value' => 1,
+                        ],
+                        __('Matrix of calculus for priority') => [
+                            'type' => 'twig',
+                            'template' => 'matrix.twig',
+                            'col_lg' => 12,
+                            'col_md' => 12,
+                            'headers' => $headers,
+                            'matrix' => $matrix,
+                        ],
+                    ],
+                ],
+            ],
         ];
         //debug matrix
         renderTwigForm($form);
@@ -1161,7 +1164,7 @@ class Config extends CommonDBTM
         if (array_key_exists('last_login', $data)) {
             $userpref = true;
             if ($data["id"] === Session::getLoginUserID()) {
-                $url  = $CFG_GLPI['root_doc']."/front/preference.php";
+                $url  = $CFG_GLPI['root_doc'] . "/front/preference.php";
             } else {
                 $url  = User::getFormURL();
             }
@@ -1187,374 +1190,374 @@ class Config extends CommonDBTM
         $tz_warning = '';
 
         $form = [
-           'action' => $url,
-           'buttons' => [
-              [
-                 'type' => 'submit',
-                 'name' => 'update',
-                 'value' => _sx('button', 'Save'),
-                 'class' => 'btn btn-secondary',
-              ],
-           ],
-           'content' => [
-              __('Personalization') => [
-                 'visible' => true,
-                 'inputs' => [
-                    ($userpref && isset($data['id'])) ? [
-                       'type' => 'hidden',
-                       'name' => 'id',
-                       'value' => $data['id'],
-                    ] : [],
-                    (Config::canUpdate() || !GLPI_DEMO_MODE) && $userpref ? __('Language') : __('Default language') => [
-                       'type' => 'select',
-                       'name' => 'language',
-                       'values' => Dropdown::getLanguages(),
-                       'value' => $data["language"],
+            'action' => $url,
+            'buttons' => [
+                [
+                    'type' => 'submit',
+                    'name' => 'update',
+                    'value' => _sx('button', 'Save'),
+                    'class' => 'btn btn-secondary',
+                ],
+            ],
+            'content' => [
+                __('Personalization') => [
+                    'visible' => true,
+                    'inputs' => [
+                        ($userpref && isset($data['id'])) ? [
+                            'type' => 'hidden',
+                            'name' => 'id',
+                            'value' => $data['id'],
+                        ] : [],
+                        (Config::canUpdate() || !GLPI_DEMO_MODE) && $userpref ? __('Language') : __('Default language') => [
+                            'type' => 'select',
+                            'name' => 'language',
+                            'values' => Dropdown::getLanguages(),
+                            'value' => $data["language"],
+                        ],
+                        __('Date format') => [
+                            'type' => 'select',
+                            'name' => 'date_format',
+                            'values' => Toolbox::phpDateFormats(),
+                            'value' => $data["date_format"],
+                        ],
+                        __('Display order of surnames firstnames') => [
+                            'type' => 'select',
+                            'name' => 'names_format',
+                            'values' => [
+                                User::REALNAME_BEFORE  => __('Surname, First name'),
+                                User::FIRSTNAME_BEFORE => __('First name, Surname'),
+                            ],
+                            'value' => $data["names_format"],
+                        ],
+                        __('Number format') => [
+                            'type' => 'select',
+                            'name' => 'number_format',
+                            'values' => [
+                                0 => '1 234.56',
+                                1 => '1,234.56',
+                                2 => '1 234,56',
+                                3 => '1234.56',
+                                4 => '1234,56',
+                            ],
+                            'value' => $data["number_format"],
+                        ],
+                        __('Results to display by page') => [
+                            'type' => 'number',
+                            'name' => 'list_limit',
+                            'min' => 5,
+                            'max' => $CFG_GLPI['list_limit_max'],
+                            'step' => 5,
+                            'value' => $data['list_limit'],
+                        ],
+                        __('Go to created item after creation') => [
+                            'type' => 'select',
+                            'name' => 'backcreated',
+                            'values' => [
+                                0 => __('No'),
+                                1 => __('Yes'),
+                            ],
+                            'value' => $data['backcreated'],
+                        ],
+                        __('Display the complete name in tree dropdowns') => [
+                            'type' => 'select',
+                            'name' => 'use_flat_dropdowntree',
+                            'values' => [
+                                0 => __('No'),
+                                1 => __('Yes'),
+                            ],
+                            'value' => $data["use_flat_dropdowntree"],
+                            $oncentral ? 'disabled' : '' => '',
+                        ],
+                        __('Display counters') => (!$userpref || ($CFG_GLPI['show_count_on_tabs'] != -1)) ? [
+                            'type' => 'select',
+                            'name' => 'show_count_on_tabs',
+                            'values' => [
+                                0 => __('No'),
+                                1 => __('Yes'),
+                            ] + (!$userpref ? [-1 => __('Never')] : []),
+                            'value' => $data["show_count_on_tabs"],
+                        ] : [],
+                        __('Display the number of items in the menu') => $oncentral ? [
+                            'type' => 'select',
+                            'name' => 'is_ids_visible',
+                            'values' => [
+                                0 => __('No'),
+                                1 => __('Yes'),
+                            ],
+                            'value' => $data["is_ids_visible"],
+                        ] : [],
+                        __('Keep devices when purging an item') => [
+                            'type' => 'select',
+                            'name' => 'keep_devices_when_purging_item',
+                            'values' => [
+                                0 => __('No'),
+                                1 => __('Yes'),
+                            ],
+                            'value' => $data["keep_devices_when_purging_item"],
+                        ],
+                        __('Notifications for my changes') => [
+                            'type' => 'select',
+                            'name' => 'notification_to_myself',
+                            'values' => [
+                                0 => __('No'),
+                                1 => __('Yes'),
+                            ],
+                            'value' => $data["notification_to_myself"],
+                        ],
+                        __('Results to display on home page') => $oncentral ? [
+                            'type' => 'number',
+                            'name' => 'display_count_on_home',
+                            'min' => 0,
+                            'max' => 30,
+                            'value' => $data['display_count_on_home'],
+                        ] : [],
+                        __('PDF export font') => [
+                            'type' => 'select',
+                            'name' => 'pdffont',
+                            'values' => GLPIPDF::getFontList(),
+                            'value' => $data["pdffont"],
+                        ],
+                        __('CSV delimiter') => [
+                            'type' => 'select',
+                            'name' => 'csv_delimiter',
+                            'values' => [
+                                ';' => ';',
+                                ',' => ',',
+                            ],
+                            'value' => $data["csv_delimiter"],
+                        ],
+                        __('Timezone') => $DB->areTimezonesAvailable($tz_warning) ? [
+                            'type' => 'select',
+                            'name' => 'timezone',
+                            'values' => array_merge([0 => __('Use server configuration')], $DB->getTimezones()),
+                            'value' => $data["timezone"] ?? 0,
+                        ] : [],
                     ],
-                    __('Date format') => [
-                       'type' => 'select',
-                       'name' => 'date_format',
-                       'values' => Toolbox::phpDateFormats(),
-                       'value' => $data["date_format"],
+                ],
+                __('Assistance') => [
+                    'visible' => $oncentral,
+                    'inputs' => [
+                        __('Private followups by default') => [
+                            'type' => 'select',
+                            'name' => 'followup_private',
+                            'values' => [
+                                0 => __('No'),
+                                1 => __('Yes'),
+                            ],
+                            'value' => $data["followup_private"],
+                        ],
+                        __('Show new tickets on the home page')
+                        => Session::haveRightsOr("ticket", [Ticket::READMY, Ticket::READALL, Ticket::READASSIGN]) ? [
+                            'type' => 'select',
+                            'name' => 'show_jobs_at_login',
+                            'values' => [
+                                0 => __('No'),
+                                1 => __('Yes'),
+                            ],
+                            'value' => $data["show_jobs_at_login"],
+                        ] : [],
+                        __('Private tasks by default') => [
+                            'type' => 'select',
+                            'name' => 'task_private',
+                            'values' => [
+                                0 => __('No'),
+                                1 => __('Yes'),
+                            ],
+                            'value' => $data["task_private"],
+                        ],
+                        __('Request sources by default') => [
+                            'type' => 'select',
+                            'name' => 'default_requesttypes_id',
+                            'values' => getOptionForItems('RequestType', ['is_active' => 1, 'is_ticketheader' => 1]),
+                            'value' => $data["default_requesttypes_id"],
+                        ],
+                        __('Tasks state by default') => [
+                            'type' => 'select',
+                            'name' => 'task_state',
+                            'values' => [
+                                Planning::INFO => _n('Information', 'Information', 1),
+                                Planning::TODO => __('To do'),
+                                Planning::DONE => __('Done'),
+                            ],
+                            'value' => $data["task_state"],
+                        ],
+                        __('Automatically refresh data (tickets list, project kanban) in minutes') => [
+                            'type' => 'number',
+                            'name' => 'refresh_views',
+                            'min' => 0,
+                            'max' => 30,
+                            'step' => 1,
+                            'after' => "0 => " . __('Never'),
+                            'value' => $data["refresh_views"],
+                        ],
+                        __('Pre-select me as a technician when creating a ticket')
+                        => !$userpref || Session::haveRight('ticket', Ticket::OWN) ? [
+                            'type' => 'select',
+                            'name' => 'set_default_tech',
+                            'values' => [
+                                0 => __('No'),
+                                1 => __('Yes'),
+                            ],
+                            'value' => $data["set_default_tech"],
+                            'col_md' => '6',
+                            'col_lg' => '6',
+                        ] : [],
+                        __('Pre-select me as a requester when creating a ticket')
+                        => !$userpref || Session::haveRight('ticket', CREATE) ? [
+                            'type' => 'select',
+                            'name' => 'set_default_requester',
+                            'values' => [
+                                0 => __('No'),
+                                1 => __('Yes'),
+                            ],
+                            'value' => $data["set_default_requester"],
+                            'col_md' => '6',
+                            'col_lg' => '6',
+                        ] : [],
+                        __('Priority color') . ' 1' => [
+                            'type' => 'color',
+                            'name' => 'priority_1',
+                            'value' => $data["priority_1"],
+                            'col_md' => '2',
+                            'col_lg' => '2',
+                        ],
+                        __('Priority color') . ' 2' => [
+                            'type' => 'color',
+                            'name' => 'priority_2',
+                            'value' => $data["priority_2"],
+                            'col_md' => '2',
+                            'col_lg' => '2',
+                        ],
+                        __('Priority color') . '3' => [
+                            'type' => 'color',
+                            'name' => 'priority_3',
+                            'value' => $data["priority_3"],
+                            'col_md' => '2',
+                            'col_lg' => '2',
+                        ],
+                        __('Priority color') . ' 4' => [
+                            'type' => 'color',
+                            'name' => 'priority_4',
+                            'value' => $data["priority_4"],
+                            'col_md' => '2',
+                            'col_lg' => '2',
+                        ],
+                        __('Priority color') . ' 5' => [
+                            'type' => 'color',
+                            'name' => 'priority_5',
+                            'value' => $data["priority_5"],
+                            'col_md' => '2',
+                            'col_lg' => '2',
+                        ],
+                        __('Priority color') . ' 6' => [
+                            'type' => 'color',
+                            'name' => 'priority_6',
+                            'value' => $data["priority_6"],
+                            'col_md' => '2',
+                            'col_lg' => '2',
+                        ],
                     ],
-                    __('Display order of surnames firstnames') => [
-                       'type' => 'select',
-                       'name' => 'names_format',
-                       'values' => [
-                          User::REALNAME_BEFORE  => __('Surname, First name'),
-                          User::FIRSTNAME_BEFORE => __('First name, Surname'),
-                       ],
-                       'value' => $data["names_format"],
+                ],
+                __('Due date progression') => [
+                    'visible' => true,
+                    'inputs' => [
+                        __('OK state color') => [
+                            'type' => 'color',
+                            'name' => 'duedateok_color',
+                            'value' => $data["duedateok_color"],
+                            'col_md' => '4',
+                            'col_lg' => '4',
+                        ],
+                        __('Warning state color') => [
+                            'type' => 'color',
+                            'name' => 'duedatewarning_color',
+                            'value' => $data["duedatewarning_color"],
+                            'col_md' => '4',
+                            'col_lg' => '4',
+                        ],
+                        __('Critical state color') => [
+                            'type' => 'color',
+                            'name' => 'duedatecritical_color',
+                            'value' => $data["duedatecritical_color"],
+                            'col_md' => '4',
+                            'col_lg' => '4',
+                        ],
+                        __('Warning state threshold') => [
+                            'type' => 'number',
+                            'name' => 'duedatewarning_less',
+                            'min' => 0,
+                            'max' => 100,
+                            'step' => 1,
+                            'value' => $data["duedatewarning_less"],
+                            'col_md' => '3',
+                            'col_lg' => '3',
+                        ],
+                        __('Warning state unit') => [
+                            'type' => 'select',
+                            'name' => 'duedatewarning_unit',
+                            'values' => [
+                                '%' => '%',
+                                'hours' => _n('Hour', 'Hours', Session::getPluralNumber()),
+                                'days' => _n('Day', 'Days', Session::getPluralNumber()),
+                            ],
+                            'value' => $data["duedatewarning_unit"],
+                            'col_md' => '3',
+                            'col_lg' => '3',
+                        ],
+                        __('Critical state threshold') => [
+                            'type' => 'number',
+                            'name' => 'duedatecritical_less',
+                            'min' => 0,
+                            'max' => 100,
+                            'step' => 1,
+                            'value' => $data["duedatecritical_less"],
+                            'col_md' => '3',
+                            'col_lg' => '3',
+                        ],
+                        __('Critical state unit') => [
+                            'type' => 'select',
+                            'name' => 'duedatecritical_unit',
+                            'values' => [
+                                '%' => '%',
+                                'hours' => _n('Hour', 'Hours', Session::getPluralNumber()),
+                                'days' => _n('Day', 'Days', Session::getPluralNumber()),
+                            ],
+                            'value' => $data["duedatecritical_unit"],
+                            'col_md' => '3',
+                            'col_lg' => '3',
+                        ],
                     ],
-                    __('Number format') => [
-                       'type' => 'select',
-                       'name' => 'number_format',
-                       'values' => [
-                          0 => '1 234.56',
-                          1 => '1,234.56',
-                          2 => '1 234,56',
-                          3 => '1234.56',
-                          4 => '1234,56',
-                       ],
-                       'value' => $data["number_format"],
-                    ],
-                    __('Results to display by page') => [
-                       'type' => 'number',
-                       'name' => 'list_limit',
-                       'min' => 5,
-                       'max' => $CFG_GLPI['list_limit_max'],
-                       'step' => 5,
-                       'value' => $data['list_limit'],
-                    ],
-                    __('Go to created item after creation') => [
-                       'type' => 'select',
-                       'name' => 'backcreated',
-                       'values' => [
-                          0 => __('No'),
-                          1 => __('Yes'),
-                       ],
-                       'value' => $data['backcreated'],
-                    ],
-                    __('Display the complete name in tree dropdowns') => [
-                       'type' => 'select',
-                       'name' => 'use_flat_dropdowntree',
-                       'values' => [
-                          0 => __('No'),
-                          1 => __('Yes'),
-                       ],
-                       'value' => $data["use_flat_dropdowntree"],
-                       $oncentral ? 'disabled' : '' => '',
-                    ],
-                    __('Display counters') => (!$userpref || ($CFG_GLPI['show_count_on_tabs'] != -1)) ? [
-                       'type' => 'select',
-                       'name' => 'show_count_on_tabs',
-                       'values' => [
-                          0 => __('No'),
-                          1 => __('Yes')
-                       ] + (!$userpref ? [-1 => __('Never')] : []),
-                       'value' => $data["show_count_on_tabs"],
-                    ] : [],
-                    __('Display the number of items in the menu') => $oncentral ? [
-                       'type' => 'select',
-                       'name' => 'is_ids_visible',
-                       'values' => [
-                          0 => __('No'),
-                          1 => __('Yes')
-                       ],
-                       'value' => $data["is_ids_visible"],
-                    ] : [],
-                    __('Keep devices when purging an item') => [
-                       'type' => 'select',
-                       'name' => 'keep_devices_when_purging_item',
-                       'values' => [
-                          0 => __('No'),
-                          1 => __('Yes')
-                       ],
-                       'value' => $data["keep_devices_when_purging_item"],
-                    ],
-                    __('Notifications for my changes') => [
-                       'type' => 'select',
-                       'name' => 'notification_to_myself',
-                       'values' => [
-                          0 => __('No'),
-                          1 => __('Yes')
-                       ],
-                       'value' => $data["notification_to_myself"],
-                    ],
-                    __('Results to display on home page') => $oncentral ? [
-                       'type' => 'number',
-                       'name' => 'display_count_on_home',
-                       'min' => 0,
-                       'max' => 30,
-                       'value' => $data['display_count_on_home'],
-                    ] : [],
-                    __('PDF export font') => [
-                       'type' => 'select',
-                       'name' => 'pdffont',
-                       'values' => GLPIPDF::getFontList(),
-                       'value' => $data["pdffont"],
-                    ],
-                    __('CSV delimiter') => [
-                       'type' => 'select',
-                       'name' => 'csv_delimiter',
-                       'values' => [
-                          ';' => ';',
-                          ',' => ','
-                       ],
-                       'value' => $data["csv_delimiter"],
-                    ],
-                    __('Timezone') => $DB->areTimezonesAvailable($tz_warning) ? [
-                       'type' => 'select',
-                       'name' => 'timezone',
-                       'values' => array_merge([0 => __('Use server configuration')], $DB->getTimezones()),
-                       'value' => $data["timezone"] ?? 0,
-                    ] : [],
-                 ],
-              ],
-              __('Assistance') => [
-                 'visible' => $oncentral,
-                 'inputs' => [
-                    __('Private followups by default') => [
-                       'type' => 'select',
-                       'name' => 'followup_private',
-                       'values' => [
-                          0 => __('No'),
-                          1 => __('Yes')
-                       ],
-                       'value' => $data["followup_private"],
-                    ],
-                    __('Show new tickets on the home page') =>
-                    Session::haveRightsOr("ticket", [Ticket::READMY, Ticket::READALL, Ticket::READASSIGN]) ? [
-                       'type' => 'select',
-                       'name' => 'show_jobs_at_login',
-                       'values' => [
-                          0 => __('No'),
-                          1 => __('Yes')
-                       ],
-                       'value' => $data["show_jobs_at_login"],
-                    ] : [],
-                    __('Private tasks by default') => [
-                       'type' => 'select',
-                       'name' => 'task_private',
-                       'values' => [
-                          0 => __('No'),
-                          1 => __('Yes')
-                       ],
-                       'value' => $data["task_private"],
-                    ],
-                    __('Request sources by default') => [
-                       'type' => 'select',
-                       'name' => 'default_requesttypes_id',
-                       'values' => getOptionForItems('RequestType', ['is_active' => 1, 'is_ticketheader' => 1]),
-                       'value' => $data["default_requesttypes_id"],
-                    ],
-                    __('Tasks state by default') => [
-                       'type' => 'select',
-                       'name' => 'task_state',
-                       'values' => [
-                          Planning::INFO => _n('Information', 'Information', 1),
-                          Planning::TODO => __('To do'),
-                          Planning::DONE => __('Done')
-                       ],
-                       'value' => $data["task_state"],
-                    ],
-                    __('Automatically refresh data (tickets list, project kanban) in minutes') => [
-                       'type' => 'number',
-                       'name' => 'refresh_views',
-                       'min' => 0,
-                       'max' => 30,
-                       'step' => 1,
-                       'after' => "0 => " . __('Never'),
-                       'value' => $data["refresh_views"],
-                    ],
-                    __('Pre-select me as a technician when creating a ticket') =>
-                    !$userpref || Session::haveRight('ticket', Ticket::OWN) ? [
-                       'type' => 'select',
-                       'name' => 'set_default_tech',
-                       'values' => [
-                          0 => __('No'),
-                          1 => __('Yes')
-                       ],
-                       'value' => $data["set_default_tech"],
-                       'col_md' => '6',
-                       'col_lg' => '6',
-                    ] : [],
-                    __('Pre-select me as a requester when creating a ticket') =>
-                    !$userpref || Session::haveRight('ticket', CREATE) ? [
-                       'type' => 'select',
-                       'name' => 'set_default_requester',
-                       'values' => [
-                          0 => __('No'),
-                          1 => __('Yes')
-                       ],
-                       'value' => $data["set_default_requester"],
-                       'col_md' => '6',
-                       'col_lg' => '6',
-                    ] : [],
-                    __('Priority color') . ' 1' => [
-                       'type' => 'color',
-                       'name' => 'priority_1',
-                       'value' => $data["priority_1"],
-                       'col_md' => '2',
-                       'col_lg' => '2',
-                    ],
-                    __('Priority color') . ' 2' => [
-                       'type' => 'color',
-                       'name' => 'priority_2',
-                       'value' => $data["priority_2"],
-                       'col_md' => '2',
-                       'col_lg' => '2',
-                    ],
-                    __('Priority color') . '3' => [
-                       'type' => 'color',
-                       'name' => 'priority_3',
-                       'value' => $data["priority_3"],
-                       'col_md' => '2',
-                       'col_lg' => '2',
-                    ],
-                    __('Priority color') . ' 4' => [
-                       'type' => 'color',
-                       'name' => 'priority_4',
-                       'value' => $data["priority_4"],
-                       'col_md' => '2',
-                       'col_lg' => '2',
-                    ],
-                    __('Priority color') . ' 5' => [
-                       'type' => 'color',
-                       'name' => 'priority_5',
-                       'value' => $data["priority_5"],
-                       'col_md' => '2',
-                       'col_lg' => '2',
-                    ],
-                    __('Priority color') . ' 6' => [
-                       'type' => 'color',
-                       'name' => 'priority_6',
-                       'value' => $data["priority_6"],
-                       'col_md' => '2',
-                       'col_lg' => '2',
-                    ],
-                 ]
-              ],
-              __('Due date progression') => [
-                 'visible' => true,
-                 'inputs' => [
-                    __('OK state color') => [
-                    'type' => 'color',
-                    'name' => 'duedateok_color',
-                    'value' => $data["duedateok_color"],
-                    'col_md' => '4',
-                    'col_lg' => '4',
-                    ],
-                    __('Warning state color') => [
-                       'type' => 'color',
-                       'name' => 'duedatewarning_color',
-                       'value' => $data["duedatewarning_color"],
-                       'col_md' => '4',
-                       'col_lg' => '4',
-                    ],
-                    __('Critical state color') => [
-                       'type' => 'color',
-                       'name' => 'duedatecritical_color',
-                       'value' => $data["duedatecritical_color"],
-                       'col_md' => '4',
-                       'col_lg' => '4',
-                    ],
-                    __('Warning state threshold') => [
-                       'type' => 'number',
-                       'name' => 'duedatewarning_less',
-                       'min' => 0,
-                       'max' => 100,
-                       'step' => 1,
-                       'value' => $data["duedatewarning_less"],
-                       'col_md' => '3',
-                       'col_lg' => '3',
-                    ],
-                    __('Warning state unit') => [
-                       'type' => 'select',
-                       'name' => 'duedatewarning_unit',
-                       'values' => [
-                          '%' => '%',
-                          'hours' => _n('Hour', 'Hours', Session::getPluralNumber()),
-                          'days' => _n('Day', 'Days', Session::getPluralNumber()),
-                       ],
-                       'value' => $data["duedatewarning_unit"],
-                       'col_md' => '3',
-                       'col_lg' => '3',
-                    ],
-                    __('Critical state threshold') => [
-                       'type' => 'number',
-                       'name' => 'duedatecritical_less',
-                       'min' => 0,
-                       'max' => 100,
-                       'step' => 1,
-                       'value' => $data["duedatecritical_less"],
-                       'col_md' => '3',
-                       'col_lg' => '3',
-                    ],
-                    __('Critical state unit') => [
-                       'type' => 'select',
-                       'name' => 'duedatecritical_unit',
-                       'values' => [
-                          '%' => '%',
-                          'hours' => _n('Hour', 'Hours', Session::getPluralNumber()),
-                          'days' => _n('Day', 'Days', Session::getPluralNumber()),
-                       ],
-                       'value' => $data["duedatecritical_unit"],
-                       'col_md' => '3',
-                       'col_lg' => '3',
-                    ],
-                 ],
-              ],
-              __('Item locks') =>
-              ($oncentral && $CFG_GLPI["lock_use_lock_item"]) ? [
-                 'visible' => true,
-                 'inputs' => [
-                    __('Auto-lock Mode') => [
-                       'type' => 'select',
-                       'name' => 'lock_autolock_mode',
-                       'values' => [
-                          0 => __('No'),
-                          1 => __('Yes')
-                       ],
-                       'value' => $data["lock_autolock_mode"],
-                       'col_md' => '6',
-                       'col_lg' => '6',
+                ],
+                __('Item locks')
+                => ($oncentral && $CFG_GLPI["lock_use_lock_item"]) ? [
+                    'visible' => true,
+                    'inputs' => [
+                        __('Auto-lock Mode') => [
+                            'type' => 'select',
+                            'name' => 'lock_autolock_mode',
+                            'values' => [
+                                0 => __('No'),
+                                1 => __('Yes'),
+                            ],
+                            'value' => $data["lock_autolock_mode"],
+                            'col_md' => '6',
+                            'col_lg' => '6',
 
+                        ],
+                        __('Direct Notification (requester for unlock will be the notification sender)') => [
+                            'type' => 'select',
+                            'name' => 'lock_directunlock_notification',
+                            'values' => [
+                                0 => __('No'),
+                                1 => __('Yes'),
+                            ],
+                            'value' => $data["lock_directunlock_notification"],
+                            'col_md' => '6',
+                            'col_lg' => '6',
+                        ],
                     ],
-                    __('Direct Notification (requester for unlock will be the notification sender)') => [
-                       'type' => 'select',
-                       'name' => 'lock_directunlock_notification',
-                       'values' => [
-                          0 => __('No'),
-                          1 => __('Yes')
-                       ],
-                       'value' => $data["lock_directunlock_notification"],
-                       'col_md' => '6',
-                       'col_lg' => '6',
-                    ],
-                 ],
-              ] : []
-           ]
+                ] : [],
+            ],
         ];
         renderTwigForm($form);
     }
@@ -1588,8 +1591,8 @@ class Config extends CommonDBTM
             printf(
                 __('%1$s: %2$s'),
                 __('Password minimum length'),
-                "<span id='password_min_length' class='red'>" . $CFG_GLPI['password_min_length'] .
-                      "</span>"
+                "<span id='password_min_length' class='red'>" . $CFG_GLPI['password_min_length']
+                      . "</span>"
             );
         }
 
@@ -1668,7 +1671,7 @@ class Config extends CommonDBTM
      *
      * @throws PasswordTooWeakException when $display is false and the password does not matches the requirements
      *
-     * @return boolean is password valid?
+     * @return bool is password valid?
      **/
     public static function validatePassword($password, $display = true)
     {
@@ -1956,7 +1959,7 @@ class Config extends CommonDBTM
 
         foreach (
             ['max_execution_time', 'memory_limit', 'post_max_size', 'safe_mode',
-            'session.save_handler', 'upload_max_filesize'] as $key
+                'session.save_handler', 'upload_max_filesize'] as $key
         ) {
             $msg .= $key . '="' . ini_get($key) . '" ';
         }
@@ -2051,104 +2054,104 @@ class Config extends CommonDBTM
                 ],
             ],
             'content' => [
-               __('General setup') => [
-                   'visible' => true,
-                   'inputs' => [
-                       __('Log Level') => [
-                           'type' => 'select',
-                           'name' => 'event_loglevel',
-                           'values' => [
-                               1 => __('1- Critical (login error only)'),
-                               2 => __('2- Severe (not used)'),
-                               3 => __('3- Important (successful logins)'),
-                               4 => __('4- Notices (add, delete, tracking)'),
-                               5 => __('5- Complete (all)'),
-                           ],
-                           'value' => $CFG_GLPI["event_loglevel"],
-                       ],
-                       __('Maximal number of automatic actions (run by CLI)') => [
-                        'type' => 'number',
-                        'name' => 'cron_limit',
-                        'min' => 1,
-                        'max' => 30,
-                        'value' => $CFG_GLPI["cron_limit"],
-                        'col_lg' => 8,
-                        'col_md' => 12,
-                       ],
-                       __('Logs in files (SQL, email, automatic action...)') => [
-                        'type' => 'checkbox',
-                        'name' => 'use_log_in_files',
-                        'value' => $CFG_GLPI["use_log_in_files"],
-                        'col_lg' => 6,
-                       ],
-                       _n('SQL replica', 'SQL replicas', 1) => [
-                        'type' => 'checkbox',
-                        'name' => 'use_db_slave',
-                        'value' => DBConnection::isDBSlaveActive(),
-                        'col_lg' => 6,
-                       ],
-                   ]
-               ],
-               __('Maintenance mode') => [
-                  'visible' => true,
-                  'inputs' => [
-                      __('Maintenance mode') => [
-                          'type' => 'checkbox',
-                          'name' => 'maintenance_mode',
-                          'value' => $CFG_GLPI["maintenance_mode"],
-                      ],
-                      __('Maintenance text') => [
-                        'type' => 'textarea',
-                        'name' => 'maintenance_text',
-                        'value' => $CFG_GLPI["maintenance_text"],
-                        'col_lg' => 8,
-                        'col_md' => 12,
-                      ]
-                  ]
-               ],
-               __('Proxy configuration for upgrade check') => [
-                  'visible' => true,
-                  'inputs' => [
-                      __('Server') => [
-                          'type' => 'text',
-                          'name' => 'proxy_name',
-                          'value' => $CFG_GLPI["proxy_name"],
-                          'col_lg' => 6,
-                      ],
-                      __('Port') => [
-                        'type' => 'text',
-                        'name' => 'proxy_port',
-                        'value' => $CFG_GLPI["proxy_port"],
-                        'col_lg' => 6,
-                      ],
-                      __('Login') => [
-                        'type' => 'text',
-                        'name' => 'proxy_user',
-                        'value' => $CFG_GLPI["proxy_user"],
-                        'col_lg' => 6,
-                      ],
-                      __('Password') => [
-                        'type' => 'password',
-                        'name' => 'proxy_passwd',
-                        'value' => '',
-                        'autocomplete' => 'new-password',
-                        'col_lg' => 6,
-                        'after' => <<<HTML
+                __('General setup') => [
+                    'visible' => true,
+                    'inputs' => [
+                        __('Log Level') => [
+                            'type' => 'select',
+                            'name' => 'event_loglevel',
+                            'values' => [
+                                1 => __('1- Critical (login error only)'),
+                                2 => __('2- Severe (not used)'),
+                                3 => __('3- Important (successful logins)'),
+                                4 => __('4- Notices (add, delete, tracking)'),
+                                5 => __('5- Complete (all)'),
+                            ],
+                            'value' => $CFG_GLPI["event_loglevel"],
+                        ],
+                        __('Maximal number of automatic actions (run by CLI)') => [
+                            'type' => 'number',
+                            'name' => 'cron_limit',
+                            'min' => 1,
+                            'max' => 30,
+                            'value' => $CFG_GLPI["cron_limit"],
+                            'col_lg' => 8,
+                            'col_md' => 12,
+                        ],
+                        __('Logs in files (SQL, email, automatic action...)') => [
+                            'type' => 'checkbox',
+                            'name' => 'use_log_in_files',
+                            'value' => $CFG_GLPI["use_log_in_files"],
+                            'col_lg' => 6,
+                        ],
+                        _n('SQL replica', 'SQL replicas', 1) => [
+                            'type' => 'checkbox',
+                            'name' => 'use_db_slave',
+                            'value' => DBConnection::isDBSlaveActive(),
+                            'col_lg' => 6,
+                        ],
+                    ],
+                ],
+                __('Maintenance mode') => [
+                    'visible' => true,
+                    'inputs' => [
+                        __('Maintenance mode') => [
+                            'type' => 'checkbox',
+                            'name' => 'maintenance_mode',
+                            'value' => $CFG_GLPI["maintenance_mode"],
+                        ],
+                        __('Maintenance text') => [
+                            'type' => 'textarea',
+                            'name' => 'maintenance_text',
+                            'value' => $CFG_GLPI["maintenance_text"],
+                            'col_lg' => 8,
+                            'col_md' => 12,
+                        ],
+                    ],
+                ],
+                __('Proxy configuration for upgrade check') => [
+                    'visible' => true,
+                    'inputs' => [
+                        __('Server') => [
+                            'type' => 'text',
+                            'name' => 'proxy_name',
+                            'value' => $CFG_GLPI["proxy_name"],
+                            'col_lg' => 6,
+                        ],
+                        __('Port') => [
+                            'type' => 'text',
+                            'name' => 'proxy_port',
+                            'value' => $CFG_GLPI["proxy_port"],
+                            'col_lg' => 6,
+                        ],
+                        __('Login') => [
+                            'type' => 'text',
+                            'name' => 'proxy_user',
+                            'value' => $CFG_GLPI["proxy_user"],
+                            'col_lg' => 6,
+                        ],
+                        __('Password') => [
+                            'type' => 'password',
+                            'name' => 'proxy_passwd',
+                            'value' => '',
+                            'autocomplete' => 'new-password',
+                            'col_lg' => 6,
+                            'after' => <<<HTML
                         <input type='checkbox' name='_blank_proxy_passwd' id='_blank_proxy_passwd'/>
                         <label for='_blank_proxy_passwd'>$clear</label>
                      HTML,
-                      ],
-                  ]
-               ],
-               Telemetry::getViewLink() => [
-                 'visible' => true,
-                 'inputs' => [
-                    __('Information about system installation and configuration') => [
-                       'content' => $serverLogs
-                    ]
-                 ]
-               ]
-            ]
+                        ],
+                    ],
+                ],
+                Telemetry::getViewLink() => [
+                    'visible' => true,
+                    'inputs' => [
+                        __('Information about system installation and configuration') => [
+                            'content' => $serverLogs,
+                        ],
+                    ],
+                ],
+            ],
         ];
         renderTwigForm($form);
     }
@@ -2191,77 +2194,77 @@ class Config extends CommonDBTM
 
         // use same name that in composer.json
         $deps = [[ 'name'    => 'htmlawed/htmlawed',
-                   'version' => hl_version() ,
-                   'check'   => 'hl_version' ],
-                 [ 'name'    => 'phpmailer/phpmailer',
-                   'version' => $pm::VERSION,
-                   'check'   => 'PHPMailer\\PHPMailer\\PHPMailer' ],
-                 [ 'name'    => 'simplepie/simplepie',
-                   'version' =>  \SimplePie\SimplePie::VERSION,
-                   'check'   => $sp ],
-                 [ 'name'    => 'tecnickcom/tcpdf',
-                   'version' => TCPDF_STATIC::getTCPDFVersion(),
-                   'check'   => 'TCPDF' ],
-                 [ 'name'    => 'michelf/php-markdown',
-                   'check'   => 'Michelf\\Markdown' ],
-                 // [ 'name'    => 'true/punycode',
-                 //   'check'   => 'TrueBV\\Punycode' ],
-                 [ 'name'    => 'iamcal/lib_autolink',
-                   'check'   => 'autolink' ],
-                 [ 'name'    => 'sabre/dav',
-                   'check'   => 'Sabre\\DAV\\Version' ],
-                 [ 'name'    => 'sabre/http',
-                   'check'   => 'Sabre\\HTTP\\Version' ],
-                 [ 'name'    => 'sabre/uri',
-                   'check'   => 'Sabre\\Uri\\Version' ],
-                 [ 'name'    => 'sabre/vobject',
-                   'check'   => 'Sabre\\VObject\\Component' ],
-                 [ 'name'    => 'laminas/laminas-cache',
-                   'check'   => 'Laminas\\Cache\\Module' ],
-                 [ 'name'    => 'laminas/laminas-i18n',
-                   'check'   => 'Laminas\\I18n\\Module' ],
-                 [ 'name'    => 'laminas/laminas-serializer',
-                   'check'   => 'Laminas\\Serializer\\Module' ],
-                 [ 'name'    => 'monolog/monolog',
-                   'check'   => 'Monolog\\Logger' ],
-                 [ 'name'    => 'sebastian/diff',
-                   'check'   => 'SebastianBergmann\\Diff\\Diff' ],
-                 [ 'name'    => 'elvanto/litemoji',
-                   'check'   => 'LitEmoji\\LitEmoji' ],
-                 [ 'name'    => 'symfony/console',
-                   'check'   => 'Symfony\\Component\\Console\\Application' ],
-                 [ 'name'    => 'scssphp/scssphp',
-                   'check'   => 'ScssPhp\ScssPhp\Compiler' ],
-                 [ 'name'    => 'laminas/laminas-mail',
-                   'check'   => 'Laminas\\Mail\\Protocol\\Imap' ],
-                 [ 'name'    => 'laminas/laminas-mime',
-                   'check'   => 'Laminas\\Mime\\Mime' ],
-                 [ 'name'    => 'rlanvin/php-rrule',
-                   'check'   => 'RRule\\RRule' ],
-                 [ 'name'    => 'blueimp/jquery-file-upload',
-                   'check'   => 'UploadHandler' ],
-                 [ 'name'    => 'ramsey/uuid',
-                   'check'   => 'Ramsey\\Uuid\\Uuid' ],
-                 [ 'name'    => 'psr/log',
-                   'check'   => 'Psr\\Log\\LoggerInterface' ],
-                 [ 'name'    => 'psr/simple-cache',
-                   'check'   => 'Psr\\SimpleCache\\CacheInterface' ],
-                 [ 'name'    => 'mexitek/phpcolors',
-                   'check'   => 'Mexitek\\PHPColors\\Color' ],
-                 [ 'name'    => 'guzzlehttp/guzzle',
-                   'check'   => 'GuzzleHttp\\Client' ],
-                 [ 'name'    => 'guzzlehttp/psr7',
-                   'check'   => 'GuzzleHttp\\Psr7\\Response' ],
-                 [ 'name'    => 'wapmorgan/unified-archive',
-                   'check'   => 'wapmorgan\\UnifiedArchive\\UnifiedArchive' ],
-                 [ 'name'    => 'paragonie/sodium_compat',
-                   'check'   => 'ParagonIE_Sodium_Compat' ],
+            'version' => hl_version(),
+            'check'   => 'hl_version' ],
+            [ 'name'    => 'phpmailer/phpmailer',
+                'version' => $pm::VERSION,
+                'check'   => 'PHPMailer\\PHPMailer\\PHPMailer' ],
+            [ 'name'    => 'simplepie/simplepie',
+                'version' =>  SimplePie\SimplePie::VERSION,
+                'check'   => $sp ],
+            [ 'name'    => 'tecnickcom/tcpdf',
+                'version' => TCPDF_STATIC::getTCPDFVersion(),
+                'check'   => 'TCPDF' ],
+            [ 'name'    => 'michelf/php-markdown',
+                'check'   => 'Michelf\\Markdown' ],
+            // [ 'name'    => 'true/punycode',
+            //   'check'   => 'TrueBV\\Punycode' ],
+            [ 'name'    => 'iamcal/lib_autolink',
+                'check'   => 'autolink' ],
+            [ 'name'    => 'sabre/dav',
+                'check'   => 'Sabre\\DAV\\Version' ],
+            [ 'name'    => 'sabre/http',
+                'check'   => 'Sabre\\HTTP\\Version' ],
+            [ 'name'    => 'sabre/uri',
+                'check'   => 'Sabre\\Uri\\Version' ],
+            [ 'name'    => 'sabre/vobject',
+                'check'   => 'Sabre\\VObject\\Component' ],
+            [ 'name'    => 'laminas/laminas-cache',
+                'check'   => 'Laminas\\Cache\\Module' ],
+            [ 'name'    => 'laminas/laminas-i18n',
+                'check'   => 'Laminas\\I18n\\Module' ],
+            [ 'name'    => 'laminas/laminas-serializer',
+                'check'   => 'Laminas\\Serializer\\Module' ],
+            [ 'name'    => 'monolog/monolog',
+                'check'   => 'Monolog\\Logger' ],
+            [ 'name'    => 'sebastian/diff',
+                'check'   => 'SebastianBergmann\\Diff\\Diff' ],
+            [ 'name'    => 'elvanto/litemoji',
+                'check'   => 'LitEmoji\\LitEmoji' ],
+            [ 'name'    => 'symfony/console',
+                'check'   => 'Symfony\\Component\\Console\\Application' ],
+            [ 'name'    => 'scssphp/scssphp',
+                'check'   => 'ScssPhp\ScssPhp\Compiler' ],
+            [ 'name'    => 'laminas/laminas-mail',
+                'check'   => 'Laminas\\Mail\\Protocol\\Imap' ],
+            [ 'name'    => 'laminas/laminas-mime',
+                'check'   => 'Laminas\\Mime\\Mime' ],
+            [ 'name'    => 'rlanvin/php-rrule',
+                'check'   => 'RRule\\RRule' ],
+            [ 'name'    => 'blueimp/jquery-file-upload',
+                'check'   => 'UploadHandler' ],
+            [ 'name'    => 'ramsey/uuid',
+                'check'   => 'Ramsey\\Uuid\\Uuid' ],
+            [ 'name'    => 'psr/log',
+                'check'   => 'Psr\\Log\\LoggerInterface' ],
+            [ 'name'    => 'psr/simple-cache',
+                'check'   => 'Psr\\SimpleCache\\CacheInterface' ],
+            [ 'name'    => 'mexitek/phpcolors',
+                'check'   => 'Mexitek\\PHPColors\\Color' ],
+            [ 'name'    => 'guzzlehttp/guzzle',
+                'check'   => 'GuzzleHttp\\Client' ],
+            [ 'name'    => 'guzzlehttp/psr7',
+                'check'   => 'GuzzleHttp\\Psr7\\Response' ],
+            [ 'name'    => 'wapmorgan/unified-archive',
+                'check'   => 'wapmorgan\\UnifiedArchive\\UnifiedArchive' ],
+            [ 'name'    => 'paragonie/sodium_compat',
+                'check'   => 'ParagonIE_Sodium_Compat' ],
         ];
         if (Toolbox::canUseCAS()) {
             $deps[] = [
-               'name'    => 'phpCas',
-               'version' => phpCAS::getVersion(),
-               'check'   => 'phpCAS'
+                'name'    => 'phpCas',
+                'version' => phpCAS::getVersion(),
+                'check'   => 'phpCAS',
             ];
         }
         return $deps;
@@ -2303,15 +2306,15 @@ class Config extends CommonDBTM
      *
      * @param string       $name   select name
      * @param string       $value  default value
-     * @param integer|null $rand   rand
+     * @param int|null $rand   rand
     **/
     public static function dropdownGlobalManagement($name, $value, $rand = null)
     {
 
         $choices = [
-           __('Yes - Restrict to unit management for manual add'),
-           __('Yes - Restrict to global management for manual add'),
-           __('No'),
+            __('Yes - Restrict to unit management for manual add'),
+            __('Yes - Restrict to global management for manual add'),
+            __('No'),
         ];
         Dropdown::showFromArray($name, $choices, ['value' => $value, 'rand' => $rand]);
     }
@@ -2404,8 +2407,8 @@ class Config extends CommonDBTM
     {
 
         $options = [
-           'diff' => 0,
-           'name' => '',
+            'diff' => 0,
+            'name' => '',
         ];
         NotificationEvent::debugEvent(new DBConnection(), $options);
     }
@@ -2440,10 +2443,10 @@ class Config extends CommonDBTM
 
             case __CLASS__:
                 $tabs = [
-                   1 => __('General setup'),  // Display
-                   2 => __('Default values'), // Prefs
-                   3 => __('Assets'),
-                   4 => __('Assistance'),
+                    1 => __('General setup'),  // Display
+                    2 => __('Default values'), // Prefs
+                    3 => __('Assets'),
+                    4 => __('Assistance'),
                 ];
                 if (Config::canUpdate()) {
                     $tabs[9]  = __('Logs purge');
@@ -2542,10 +2545,10 @@ class Config extends CommonDBTM
      *
      * @since 9.3
      *
-     * @param boolean $fordebug display for debug (no html required) (false by default)
+     * @param bool $fordebug display for debug (no html required) (false by default)
      * @param string  $version  Version to check (mainly from install), defaults to null
      *
-     * @return integer 2: missing extension,  1: missing optionnal extension, 0: OK,
+     * @return int 2: missing extension,  1: missing optionnal extension, 0: OK,
      **/
     public static function displayCheckDbEngine($fordebug = false, $version = null)
     {
@@ -2589,9 +2592,9 @@ class Config extends CommonDBTM
      *
      * @since 9.2
      *
-     * @param boolean    $fordebug display for debug (no html required) (false by default)
+     * @param bool    $fordebug display for debug (no html required) (false by default)
      *
-     * @return integer 2: missing extension,  1: missing optionnal extension, 0: OK,
+     * @return int 2: missing extension,  1: missing optionnal extension, 0: OK,
      *
      * @deprecated 9.5.0
      **/
@@ -2647,7 +2650,7 @@ class Config extends CommonDBTM
      *
      * @param string $raw Raw version to check (mainly from install), defaults to null
      *
-     * @return boolean
+     * @return bool
     **/
     public static function checkDbEngine($raw = null)
     {
@@ -2684,84 +2687,84 @@ class Config extends CommonDBTM
     {
         if ($list === null) {
             $extensions_to_check = [
-               'mysqli'   => [
-                  'required'  => true
-               ],
-               'ctype'    => [
-                  'required'  => true,
-                  'function'  => 'ctype_digit',
-               ],
-               'fileinfo' => [
-                  'required'  => true,
-                  'class'     => 'finfo'
-               ],
-               'json'     => [
-                  'required'  => true,
-                  'function'  => 'json_encode'
-               ],
-               'mbstring' => [
-                  'required'  => true,
-               ],
-               'iconv'    => [
-                  'required'  => true,
-               ],
-               'zlib'     => [
-                  'required'  => true,
-               ],
-               'curl'      => [
-                  'required'  => true,
-               ],
-               'gd'       => [
-                  'required'  => true,
-               ],
-               'simplexml' => [
-                  'required'  => true,
-               ],
-               'xml'        => [
-                  'required'  => true,
-                  'function'  => 'utf8_decode'
-               ],
-               //to sync/connect from LDAP
-               'ldap'       => [
-                  'required'  => false,
-               ],
-               //to enhance perfs
-               'Zend OPcache' => [
-                  'required'  => false
-               ],
-               //to enhance perfs
-               'APCu'      => [
-                  'required'  => false,
-                  'function'  => 'apcu_fetch'
-               ],
-               //for XMLRPC API
-               'xmlrpc'     => [
-                  'required'  => false
-               ],
-               //for CAS lib
-               'CAS'     => [
-                  'required' => false,
-                  'class'    => 'phpCAS'
-               ],
-               'exif' => [
-                  'required'  => false
-               ],
-               'intl' => [
-                  'required' => true
-               ],
-               'sodium' => [
-                  'required' => false
-               ]
+                'mysqli'   => [
+                    'required'  => true,
+                ],
+                'ctype'    => [
+                    'required'  => true,
+                    'function'  => 'ctype_digit',
+                ],
+                'fileinfo' => [
+                    'required'  => true,
+                    'class'     => 'finfo',
+                ],
+                'json'     => [
+                    'required'  => true,
+                    'function'  => 'json_encode',
+                ],
+                'mbstring' => [
+                    'required'  => true,
+                ],
+                'iconv'    => [
+                    'required'  => true,
+                ],
+                'zlib'     => [
+                    'required'  => true,
+                ],
+                'curl'      => [
+                    'required'  => true,
+                ],
+                'gd'       => [
+                    'required'  => true,
+                ],
+                'simplexml' => [
+                    'required'  => true,
+                ],
+                'xml'        => [
+                    'required'  => true,
+                    'function'  => 'utf8_decode',
+                ],
+                //to sync/connect from LDAP
+                'ldap'       => [
+                    'required'  => false,
+                ],
+                //to enhance perfs
+                'Zend OPcache' => [
+                    'required'  => false,
+                ],
+                //to enhance perfs
+                'APCu'      => [
+                    'required'  => false,
+                    'function'  => 'apcu_fetch',
+                ],
+                //for XMLRPC API
+                'xmlrpc'     => [
+                    'required'  => false,
+                ],
+                //for CAS lib
+                'CAS'     => [
+                    'required' => false,
+                    'class'    => 'phpCAS',
+                ],
+                'exif' => [
+                    'required'  => false,
+                ],
+                'intl' => [
+                    'required' => true,
+                ],
+                'sodium' => [
+                    'required' => false,
+                ],
             ];
         } else {
             $extensions_to_check = $list;
         }
 
         $report = [
-           'error'     => 0,
-           'good'      => [],
-           'missing'   => [],
-           'may'       => []
+            'error'     => 0,
+            'good'      => [],
+            'missing'   => [],
+            'may'       => [],
         ];
 
         //check for PHP extensions
@@ -2820,19 +2823,19 @@ class Config extends CommonDBTM
         Toolbox::deprecated();
 
         $dir_to_check = [
-           GLPI_CONFIG_DIR      => __('Checking write permissions for setting files'),
-           GLPI_DOC_DIR         => __('Checking write permissions for document files'),
-           GLPI_DUMP_DIR        => __('Checking write permissions for dump files'),
-           GLPI_SESSION_DIR     => __('Checking write permissions for session files'),
-           GLPI_CRON_DIR        => __('Checking write permissions for automatic actions files'),
-           GLPI_GRAPH_DIR       => __('Checking write permissions for graphic files'),
-           GLPI_LOCK_DIR        => __('Checking write permissions for lock files'),
-           GLPI_PLUGIN_DOC_DIR  => __('Checking write permissions for plugins document files'),
-           GLPI_TMP_DIR         => __('Checking write permissions for temporary files'),
-           GLPI_CACHE_DIR       => __('Checking write permissions for cache files'),
-           GLPI_RSS_DIR         => __('Checking write permissions for rss files'),
-           GLPI_UPLOAD_DIR      => __('Checking write permissions for upload files'),
-           GLPI_PICTURE_DIR     => __('Checking write permissions for pictures files')
+            GLPI_CONFIG_DIR      => __('Checking write permissions for setting files'),
+            GLPI_DOC_DIR         => __('Checking write permissions for document files'),
+            GLPI_DUMP_DIR        => __('Checking write permissions for dump files'),
+            GLPI_SESSION_DIR     => __('Checking write permissions for session files'),
+            GLPI_CRON_DIR        => __('Checking write permissions for automatic actions files'),
+            GLPI_GRAPH_DIR       => __('Checking write permissions for graphic files'),
+            GLPI_LOCK_DIR        => __('Checking write permissions for lock files'),
+            GLPI_PLUGIN_DOC_DIR  => __('Checking write permissions for plugins document files'),
+            GLPI_TMP_DIR         => __('Checking write permissions for temporary files'),
+            GLPI_CACHE_DIR       => __('Checking write permissions for cache files'),
+            GLPI_RSS_DIR         => __('Checking write permissions for rss files'),
+            GLPI_UPLOAD_DIR      => __('Checking write permissions for upload files'),
+            GLPI_PICTURE_DIR     => __('Checking write permissions for pictures files'),
         ];
 
         return $dir_to_check;
@@ -2842,9 +2845,9 @@ class Config extends CommonDBTM
     /**
      * Check Write Access to needed directories
      *
-     * @param boolean $fordebug display for debug (no html, no gettext required) (false by default)
+     * @param bool $fordebug display for debug (no html, no gettext required) (false by default)
      *
-     * @return integer 2 : creation error 1 : delete error 0: OK
+     * @return int 2 : creation error 1 : delete error 0: OK
      *
      * @deprecated 9.5.0
     **/
@@ -2856,38 +2859,38 @@ class Config extends CommonDBTM
 
         // Only write test for GLPI_LOG as SElinux prevent removing log file.
         if (!$fordebug) {
-            echo "<tr class='tab_bg_1'><td class='b left'>" .
-                  __('Checking write permissions for log files') . "</td>";
+            echo "<tr class='tab_bg_1'><td class='b left'>"
+                  . __('Checking write permissions for log files') . "</td>";
         }
 
         $can_write_logs = false;
 
         try {
             global $PHPLOGGER;
-            $PHPLOGGER->addRecord(Monolog\Logger::WARNING, "Test logger");
+            $PHPLOGGER->addRecord(Logger::WARNING, "Test logger");
             $can_write_logs = true;
-        } catch (\UnexpectedValueException $e) {
+        } catch (UnexpectedValueException $e) {
             $catched = true;
             //empty catch
         }
 
         if ($can_write_logs) {
             if ($fordebug) {
-                echo "<img src='" . $CFG_GLPI['root_doc'] . "/pics/ok_min.png' alt=\"" . __s('OK') . "\">" .
-                       GLPI_LOG_DIR . " : OK\n";
+                echo "<img src='" . $CFG_GLPI['root_doc'] . "/pics/ok_min.png' alt=\"" . __s('OK') . "\">"
+                       . GLPI_LOG_DIR . " : OK\n";
             } else {
-                echo "<td><img src='" . $CFG_GLPI['root_doc'] . "/pics/ok_min.png' alt=\"" .
-                           __s('A file was created - Perfect!') . "\" title=\"" .
-                           __s('A file was created - Perfect!') . "\"></td></tr>";
+                echo "<td><img src='" . $CFG_GLPI['root_doc'] . "/pics/ok_min.png' alt=\""
+                           . __s('A file was created - Perfect!') . "\" title=\""
+                           . __s('A file was created - Perfect!') . "\"></td></tr>";
             }
         } else {
             if ($fordebug) {
-                echo "<img src='" . $CFG_GLPI['root_doc'] . "/pics/warning_min.png'>" .
-                      sprintf(__('Check permissions to the directory: %s'), GLPI_LOG_DIR) . "\n";
+                echo "<img src='" . $CFG_GLPI['root_doc'] . "/pics/warning_min.png'>"
+                      . sprintf(__('Check permissions to the directory: %s'), GLPI_LOG_DIR) . "\n";
             } else {
-                echo "<td><img src='" . $CFG_GLPI['root_doc'] . "/pics/warning_min.png'>" .
-                     "<p class='red'>" . __('The file could not be created.') . "</p>" .
-                     sprintf(__('Check permissions to the directory: %s'), GLPI_LOG_DIR) . "</td></tr>";
+                echo "<td><img src='" . $CFG_GLPI['root_doc'] . "/pics/warning_min.png'>"
+                     . "<p class='red'>" . __('The file could not be created.') . "</p>"
+                     . sprintf(__('Check permissions to the directory: %s'), GLPI_LOG_DIR) . "</td></tr>";
             }
         }
 
@@ -2903,34 +2906,34 @@ class Config extends CommonDBTM
                 $tmperror = Toolbox::testWriteAccessToDirectory($dir);
 
                 $errors = [
-                   4 => __('The directory could not be created.'),
-                   3 => __('The directory was created but could not be removed.'),
-                   2 => __('The file could not be created.'),
-                   1 => __("The file was created but can't be deleted.")
+                    4 => __('The directory could not be created.'),
+                    3 => __('The directory was created but could not be removed.'),
+                    2 => __('The file could not be created.'),
+                    1 => __("The file was created but can't be deleted."),
                 ];
 
                 if ($tmperror > 0) {
                     if ($fordebug) {
-                        echo "<img src='" . $CFG_GLPI['root_doc'] . "/pics/ko_min.png'> " .
-                              sprintf(__('Check permissions to the directory: %s'), $dir) .
-                              " " . $errors[$tmperror] . "\n";
+                        echo "<img src='" . $CFG_GLPI['root_doc'] . "/pics/ko_min.png'> "
+                              . sprintf(__('Check permissions to the directory: %s'), $dir)
+                              . " " . $errors[$tmperror] . "\n";
                     } else {
-                        echo "<td><img src='" . $CFG_GLPI['root_doc'] . "/pics/ko_min.png'><p class='red'>" .
-                           $errors[$tmperror] . "</p> " .
-                           sprintf(__('Check permissions to the directory: %s'), $dir) .
-                           "'</td></tr>";
+                        echo "<td><img src='" . $CFG_GLPI['root_doc'] . "/pics/ko_min.png'><p class='red'>"
+                           . $errors[$tmperror] . "</p> "
+                           . sprintf(__('Check permissions to the directory: %s'), $dir)
+                           . "'</td></tr>";
                     }
                     $error = 2;
                 } else {
                     if ($fordebug) {
-                        echo "<img src='" . $CFG_GLPI['root_doc'] . "/pics/ok_min.png' alt=\"" . __s('OK') .
-                           "\">$dir : OK\n";
+                        echo "<img src='" . $CFG_GLPI['root_doc'] . "/pics/ok_min.png' alt=\"" . __s('OK')
+                           . "\">$dir : OK\n";
                     } else {
-                        echo "<td><img src='" . $CFG_GLPI['root_doc'] . "/pics/ok_min.png' alt=\"" .
-                                 __s('A file and a directory have be created and deleted - Perfect!') . "\"
-                           title=\"" .
-                                 __s('A file and a directory have be created and deleted - Perfect!') . "\">" .
-                           "</td></tr>";
+                        echo "<td><img src='" . $CFG_GLPI['root_doc'] . "/pics/ok_min.png' alt=\""
+                                 . __s('A file and a directory have be created and deleted - Perfect!') . "\"
+                           title=\""
+                                 . __s('A file and a directory have be created and deleted - Perfect!') . "\">"
+                           . "</td></tr>";
                     }
                 }
             }
@@ -2957,9 +2960,9 @@ class Config extends CommonDBTM
 
             //create a context to set timeout
             $context = stream_context_create([
-               'http' => [
-                  'timeout' => 2.0
-               ]
+                'http' => [
+                    'timeout' => 2.0,
+                ],
             ]);
 
             /* TODO: could be improved, only default vhost checked */
@@ -2972,41 +2975,41 @@ class Config extends CommonDBTM
             if ($fic = fopen($uri . '/index.php?skipCheckWriteAccessToDirs=1', 'r', false, $context)) {
                 fclose($fic);
                 if (!$fordebug) {
-                    echo "<tr class='tab_bg_1'><td class='b left'>" .
-                       __('Web access to files directory is protected') . "</td>";
+                    echo "<tr class='tab_bg_1'><td class='b left'>"
+                       . __('Web access to files directory is protected') . "</td>";
                 }
                 if ($fic = fopen($uri . '/files/_log/php-errors.log', 'r', false, $context)) {
                     fclose($fic);
                     if ($fordebug) {
-                        echo "<img src='" . $CFG_GLPI['root_doc'] . "/pics/warning_min.png'>" .
-                              __('Web access to the files directory should not be allowed') . "\n" .
-                              __('Check the .htaccess file and the web server configuration.') . "\n";
+                        echo "<img src='" . $CFG_GLPI['root_doc'] . "/pics/warning_min.png'>"
+                              . __('Web access to the files directory should not be allowed') . "\n"
+                              . __('Check the .htaccess file and the web server configuration.') . "\n";
                     } else {
-                        echo "<td><img src='" . $CFG_GLPI['root_doc'] . "/pics/warning_min.png'>" .
-                           "<p class='red'>" . __('Web access to the files directory should not be allowed') . "<br/>" .
-                           __('Check the .htaccess file and the web server configuration.') . "</p></td></tr>";
+                        echo "<td><img src='" . $CFG_GLPI['root_doc'] . "/pics/warning_min.png'>"
+                           . "<p class='red'>" . __('Web access to the files directory should not be allowed') . "<br/>"
+                           . __('Check the .htaccess file and the web server configuration.') . "</p></td></tr>";
                     }
                     $error = 1;
                 } else {
                     if ($fordebug) {
-                        echo "<img src='" . $CFG_GLPI['root_doc'] . "/pics/ok_min.png' alt=\"" .
-                              __s('Web access to files directory is protected') . "\">" .
-                              __s('Web access to files directory is protected') . " : OK\n";
+                        echo "<img src='" . $CFG_GLPI['root_doc'] . "/pics/ok_min.png' alt=\""
+                              . __s('Web access to files directory is protected') . "\">"
+                              . __s('Web access to files directory is protected') . " : OK\n";
                     } else {
-                        echo "<td><img src='" . $CFG_GLPI['root_doc'] . "/pics/ok_min.png' alt=\"" .
-                              __s('Web access to files directory is protected') . "\" title=\"" .
-                              __s('Web access to files directory is protected') . "\"></td></tr>";
+                        echo "<td><img src='" . $CFG_GLPI['root_doc'] . "/pics/ok_min.png' alt=\""
+                              . __s('Web access to files directory is protected') . "\" title=\""
+                              . __s('Web access to files directory is protected') . "\"></td></tr>";
                     }
                 }
             } else {
-                $msg = __('Web access to the files directory should not be allowed but this cannot be checked automatically on this instance.') . "\n" .
-                   "Make sure acces to <a href='{$CFG_GLPI['root_doc']}/files/_log/php-errors.log'>" . __('error log file') . "</a> is forbidden; otherwise review .htaccess file and web server configuration.";
+                $msg = __('Web access to the files directory should not be allowed but this cannot be checked automatically on this instance.') . "\n"
+                   . "Make sure acces to <a href='{$CFG_GLPI['root_doc']}/files/_log/php-errors.log'>" . __('error log file') . "</a> is forbidden; otherwise review .htaccess file and web server configuration.";
 
                 if ($fordebug) {
                     echo "<img src='" . $CFG_GLPI['root_doc'] . "/pics/warning_min.png'>" . $msg;
                 } else {
-                    echo "<td><img src='" . $CFG_GLPI['root_doc'] . "/pics/warning_min.png'>" .
-                          "<p class='red'>" . nl2br($msg) . "</p></td></tr>";
+                    echo "<td><img src='" . $CFG_GLPI['root_doc'] . "/pics/warning_min.png'>"
+                          . "<p class='red'>" . nl2br($msg) . "</p></td></tr>";
                 }
             }
 
@@ -3033,8 +3036,8 @@ class Config extends CommonDBTM
         $select  = 'value AS version';
         $table   = 'glpi_configs';
         $where   = [
-           'context'   => 'core',
-           'name'      => 'version'
+            'context'   => 'core',
+            'name'      => 'version',
         ];
 
         if (!$DB->tableExists('glpi_configs')) {
@@ -3047,9 +3050,9 @@ class Config extends CommonDBTM
         }
 
         $row = $DB->request([
-           'SELECT' => [$select],
-           'FROM'   => $table,
-           'WHERE'  => $where
+            'SELECT' => [$select],
+            'FROM'   => $table,
+            'WHERE'  => $where,
         ])->next();
 
         return trim((string) $row['version']);
@@ -3071,10 +3074,10 @@ class Config extends CommonDBTM
         global $DB;
 
         $query = [
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'context'   => $context
-           ]
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'context'   => $context,
+            ],
         ];
 
         if (count($names) > 0) {
@@ -3092,9 +3095,9 @@ class Config extends CommonDBTM
     /**
      * Load legacy configuration into $CFG_GLPI global variable.
      *
-     * @param boolean $older_to_latest Search on old configuration objects first
+     * @param bool $older_to_latest Search on old configuration objects first
      *
-     * @return boolean True for success, false if an error occured
+     * @return bool True for success, false if an error occured
      */
     public static function loadLegacyConfiguration($older_to_latest = true)
     {
@@ -3153,14 +3156,14 @@ class Config extends CommonDBTM
         if ($older_to_latest) {
             // Try with old config table first : for update process management from < 0.80 to >= 0.80.
             $functions = [
-               $get_prior_to_078_config,
-               $get_078_to_latest_config,
+                $get_prior_to_078_config,
+                $get_078_to_latest_config,
             ];
         } else {
             // Normal load process : use normal config table. If problem try old one.
             $functions = [
-               $get_078_to_latest_config,
-               $get_prior_to_078_config,
+                $get_078_to_latest_config,
+                $get_prior_to_078_config,
             ];
         }
 
@@ -3236,19 +3239,19 @@ class Config extends CommonDBTM
 
             if (
                 $config->getFromDBByCrit([
-                'context'   => $context,
-                'name'      => $name
+                    'context'   => $context,
+                    'name'      => $name,
                 ])
             ) {
                 $input = ['id'      => $config->getID(),
-                          'context' => $context,
-                          'value'   => $value];
+                    'context' => $context,
+                    'value'   => $value];
 
                 $config->update($input);
             } else {
                 $input = ['context' => $context,
-                          'name'    => $name,
-                          'value'   => $value];
+                    'name'    => $name,
+                    'value'   => $value];
 
                 $config->add($input);
             }
@@ -3272,8 +3275,8 @@ class Config extends CommonDBTM
         foreach ($values as $value) {
             if (
                 $config->getFromDBByCrit([
-                'context'   => $context,
-                'name'      => $value
+                    'context'   => $context,
+                    'name'      => $value,
                 ])
             ) {
                 $config->delete(['id' => $config->getID()]);
@@ -3298,7 +3301,7 @@ class Config extends CommonDBTM
     /**
      * Get message that informs the user he's using a development version
      *
-     * @param boolean $bg Display a background
+     * @param bool $bg Display a background
      *
      * @return void
      */
@@ -3324,9 +3327,9 @@ class Config extends CommonDBTM
      *
      * @param string  $optname name of the configuration field
      * @param string  $context name of the configuration context (default 'core')
-     * @param boolean $psr16   Whether to return a PSR16 compliant obkect or not (since Laminas Translator is NOT PSR16 compliant).
+     * @param bool $psr16   Whether to return a PSR16 compliant obkect or not (since Laminas Translator is NOT PSR16 compliant).
      *
-     * @return Psr\SimpleCache\CacheInterface|Laminas\Cache\Storage\StorageInterface object
+     * @return CacheInterface|StorageInterface object
      */
     public static function getCache($optname, $context = 'core', $psr16 = true)
     {
@@ -3445,7 +3448,7 @@ class Config extends CommonDBTM
 
         // Create adapter
         try {
-            $storage = Laminas\Cache\StorageFactory::factory($opt);
+            $storage = StorageFactory::factory($opt);
         } catch (Exception $e) {
             if (!$is_computed_config) {
                 Toolbox::logError($e->getMessage());
@@ -3455,19 +3458,19 @@ class Config extends CommonDBTM
             $fallback = false;
             if ($is_computed_config && $opt['adapter'] != 'filesystem') {
                 $opt = [
-                   'adapter'   => 'filesystem',
-                   'options'   => [
-                      'cache_dir' => GLPI_CACHE_DIR . '/' . $optname,
-                      'namespace' => $namespace,
-                   ],
-                   'plugins'   => ['serializer']
+                    'adapter'   => 'filesystem',
+                    'options'   => [
+                        'cache_dir' => GLPI_CACHE_DIR . '/' . $optname,
+                        'namespace' => $namespace,
+                    ],
+                    'plugins'   => ['serializer'],
                 ];
 
                 if (!is_dir($opt['options']['cache_dir'])) {
                     mkdir($opt['options']['cache_dir']);
                 }
                 try {
-                    $storage = Laminas\Cache\StorageFactory::factory($opt);
+                    $storage = StorageFactory::factory($opt);
                     $fallback = true;
                 } catch (Exception $e1) {
                     Toolbox::logError($e1->getMessage());
@@ -3483,7 +3486,7 @@ class Config extends CommonDBTM
 
             if ($fallback === false) {
                 $opt = ['adapter' => 'memory'];
-                $storage = Laminas\Cache\StorageFactory::factory($opt);
+                $storage = StorageFactory::factory($opt);
             }
             if (
                 isset($_SESSION['glpi_use_mode'])
@@ -3528,7 +3531,7 @@ class Config extends CommonDBTM
      *
      * @since 9.3
      *
-     * @return void|boolean (display) Returns false if there is a rights error.
+     * @return void|bool (display) Returns false if there is a rights error.
      */
     public function showFormLogs()
     {
@@ -3539,8 +3542,8 @@ class Config extends CommonDBTM
         }
 
         $values = [
-           self::DELETE_ALL => __("Delete all"),
-           self::KEEP_ALL   => __("Keep all"),
+            self::DELETE_ALL => __("Delete all"),
+            self::KEEP_ALL   => __("Keep all"),
         ];
         for ($i = 1; $i < 121; $i++) {
             $values[$i] = sprintf(
@@ -3554,93 +3557,93 @@ class Config extends CommonDBTM
         }
 
         $actions = [
-           __('General') => [
-              __("Add/update relation between items") => [ 'purge_addrelation', $CFG_GLPI["purge_addrelation"] ],
-              __("Delete relation between items") => [ 'purge_deleterelation', $CFG_GLPI["purge_deleterelation"] ],
-              __("Add the item") => [ 'purge_createitem', $CFG_GLPI["purge_createitem"] ],
-              __("Delete the item") => [ 'purge_deleteitem', $CFG_GLPI["purge_deleteitem"] ],
-              __("Restore the item") => [ 'purge_restoreitem', $CFG_GLPI["purge_restoreitem"] ],
-              __("Update the item") => [ 'purge_updateitem', $CFG_GLPI["purge_updateitem"] ],
-              __("Comments") => [ 'purge_comments', $CFG_GLPI["purge_comments"] ],
-              __("Last update") => [ 'purge_datemod', $CFG_GLPI["purge_datemod"] ],
-              __("Plugins") => [ 'purge_plugins', $CFG_GLPI["purge_plugins"] ],
-           ],
-           _n('Software', 'Software', Session::getPluralNumber()) => [
-              __("Installation/uninstallation of software on items") => [ 'purge_item_software_install', $CFG_GLPI["purge_item_software_install"] ],
-              __("Installation/uninstallation versions on softwares") => [ 'purge_software_version_install', $CFG_GLPI["purge_software_version_install"] ],
-              __("Add/Remove items from software versions") => [ 'purge_software_item_install', $CFG_GLPI["purge_software_item_install"] ],
-           ],
-           __('Financial and administrative information') => [
-              __("Add financial information to an item") => [ 'purge_infocom_creation', $CFG_GLPI["purge_infocom_creation"] ],
-           ],
-           User::getTypeName(Session::getPluralNumber()) => [
-              __("Add/remove profiles to users") => [ 'purge_profile_user', $CFG_GLPI["purge_profile_user"] ],
-              __("Add/remove groups to users") => [ 'purge_group_user', $CFG_GLPI["purge_group_user"] ],
-              __("User authentication method changes") => [ 'purge_user_auth_changes', $CFG_GLPI["purge_user_auth_changes"] ],
-              __("Deleted user in LDAP directory") => [ 'purge_userdeletedfromldap', $CFG_GLPI["purge_userdeletedfromldap"] ],
-           ],
-           _n('Component', 'Components', Session::getPluralNumber()) => [
-              __("Add component") => [ 'purge_adddevice', $CFG_GLPI["purge_adddevice"] ],
-              __("Update component") => [ 'purge_updatedevice', $CFG_GLPI["purge_updatedevice"] ],
-              __("Disconnect a component") => [ 'purge_disconnectdevice', $CFG_GLPI["purge_disconnectdevice"] ],
-              __("Connect a component") => [ 'purge_connectdevice', $CFG_GLPI["purge_connectdevice"] ],
-              __("Delete component") => [ 'purge_deletedevice', $CFG_GLPI["purge_deletedevice"] ],
-           ],
-           __("All sections") => [
-              __("Purge all log entries") => [ 'purge_all', $CFG_GLPI["purge_all"] ],
-           ]
+            __('General') => [
+                __("Add/update relation between items") => [ 'purge_addrelation', $CFG_GLPI["purge_addrelation"] ],
+                __("Delete relation between items") => [ 'purge_deleterelation', $CFG_GLPI["purge_deleterelation"] ],
+                __("Add the item") => [ 'purge_createitem', $CFG_GLPI["purge_createitem"] ],
+                __("Delete the item") => [ 'purge_deleteitem', $CFG_GLPI["purge_deleteitem"] ],
+                __("Restore the item") => [ 'purge_restoreitem', $CFG_GLPI["purge_restoreitem"] ],
+                __("Update the item") => [ 'purge_updateitem', $CFG_GLPI["purge_updateitem"] ],
+                __("Comments") => [ 'purge_comments', $CFG_GLPI["purge_comments"] ],
+                __("Last update") => [ 'purge_datemod', $CFG_GLPI["purge_datemod"] ],
+                __("Plugins") => [ 'purge_plugins', $CFG_GLPI["purge_plugins"] ],
+            ],
+            _n('Software', 'Software', Session::getPluralNumber()) => [
+                __("Installation/uninstallation of software on items") => [ 'purge_item_software_install', $CFG_GLPI["purge_item_software_install"] ],
+                __("Installation/uninstallation versions on softwares") => [ 'purge_software_version_install', $CFG_GLPI["purge_software_version_install"] ],
+                __("Add/Remove items from software versions") => [ 'purge_software_item_install', $CFG_GLPI["purge_software_item_install"] ],
+            ],
+            __('Financial and administrative information') => [
+                __("Add financial information to an item") => [ 'purge_infocom_creation', $CFG_GLPI["purge_infocom_creation"] ],
+            ],
+            User::getTypeName(Session::getPluralNumber()) => [
+                __("Add/remove profiles to users") => [ 'purge_profile_user', $CFG_GLPI["purge_profile_user"] ],
+                __("Add/remove groups to users") => [ 'purge_group_user', $CFG_GLPI["purge_group_user"] ],
+                __("User authentication method changes") => [ 'purge_user_auth_changes', $CFG_GLPI["purge_user_auth_changes"] ],
+                __("Deleted user in LDAP directory") => [ 'purge_userdeletedfromldap', $CFG_GLPI["purge_userdeletedfromldap"] ],
+            ],
+            _n('Component', 'Components', Session::getPluralNumber()) => [
+                __("Add component") => [ 'purge_adddevice', $CFG_GLPI["purge_adddevice"] ],
+                __("Update component") => [ 'purge_updatedevice', $CFG_GLPI["purge_updatedevice"] ],
+                __("Disconnect a component") => [ 'purge_disconnectdevice', $CFG_GLPI["purge_disconnectdevice"] ],
+                __("Connect a component") => [ 'purge_connectdevice', $CFG_GLPI["purge_connectdevice"] ],
+                __("Delete component") => [ 'purge_deletedevice', $CFG_GLPI["purge_deletedevice"] ],
+            ],
+            __("All sections") => [
+                __("Purge all log entries") => [ 'purge_all', $CFG_GLPI["purge_all"] ],
+            ],
         ];
 
         $form = [
-           'action' => $this->getFormURL(),
-           'buttons' => [
-              [
-                 'type' => 'submit',
-                 'name' => 'update',
-                 'value' => __('Save'),
-                 'class' => 'btn btn-secondary'
-              ]
-           ],
-           'content' => [
-              __("Logs purge configuration") => [
-                 'visible' => true,
-                 'inputs' => [
-                    [
-                       'type' => 'hidden',
-                       'name' => 'id',
-                       'value' => '1',
-                    ],
-                    __("Change all") => [
-                       'name' => 'init_all',
-                       'type' => 'select',
-                       'id' => 'init_all_dropdown',
-                       'values' => $values,
-                       'hooks' => [
-                          'change' => <<<JS
+            'action' => $this->getFormURL(),
+            'buttons' => [
+                [
+                    'type' => 'submit',
+                    'name' => 'update',
+                    'value' => __('Save'),
+                    'class' => 'btn btn-secondary',
+                ],
+            ],
+            'content' => [
+                __("Logs purge configuration") => [
+                    'visible' => true,
+                    'inputs' => [
+                        [
+                            'type' => 'hidden',
+                            'name' => 'id',
+                            'value' => '1',
+                        ],
+                        __("Change all") => [
+                            'name' => 'init_all',
+                            'type' => 'select',
+                            'id' => 'init_all_dropdown',
+                            'values' => $values,
+                            'hooks' => [
+                                'change' => <<<JS
                            $('.purgelog_interval').val($(this).val()).trigger('change');
-                        JS
-                       ],
-                       'col_lg' => 12,
-                       'col_md' => 12,
-                    ]
-                 ],
-              ],
-           ]
+                        JS,
+                            ],
+                            'col_lg' => 12,
+                            'col_md' => 12,
+                        ],
+                    ],
+                ],
+            ],
         ];
 
         foreach ($actions as $section => $action) {
             $form['content'][$section] = [
-               'visible' => true,
-               'inputs' => []
+                'visible' => true,
+                'inputs' => [],
             ];
             foreach ($action as $name => $value) {
                 $form['content'][$section]['inputs'][$name] = [
-                   'name' => $value[0],
-                   'type' => 'select',
-                   'class' => 'purgelog_interval',
-                   'values' => $values,
-                   'value' => $value[1],
-                   'col_lg' => 6
+                    'name' => $value[0],
+                    'type' => 'select',
+                    'class' => 'purgelog_interval',
+                    'values' => $values,
+                    'value' => $value[1],
+                    'col_lg' => 6,
                 ];
             }
         }
@@ -3662,8 +3665,8 @@ class Config extends CommonDBTM
     {
 
         $values = [
-           self::DELETE_ALL => __("Delete all"),
-           self::KEEP_ALL   => __("Keep all"),
+            self::DELETE_ALL => __("Delete all"),
+            self::KEEP_ALL   => __("Keep all"),
         ];
         for ($i = 1; $i < 121; $i++) {
             $values[$i] = sprintf(
@@ -3676,9 +3679,9 @@ class Config extends CommonDBTM
             );
         }
         $options = array_merge([
-           'value'   => $value,
-           'display' => false,
-           'class'   => 'purgelog_interval'
+            'value'   => $value,
+            'display' => false,
+            'class'   => 'purgelog_interval',
         ], $options);
 
         $out = "<div class='{$options['class']}'>";
@@ -3693,7 +3696,7 @@ class Config extends CommonDBTM
      *
      * @since 9.5.0
      *
-     * @return void|boolean (display) Returns false if there is a rights error.
+     * @return void|bool (display) Returns false if there is a rights error.
      */
     public function showFormSecurity()
     {
@@ -3706,86 +3709,86 @@ class Config extends CommonDBTM
         $rand = mt_rand();
 
         $form = [
-           'action' => Toolbox::getItemTypeFormURL(__CLASS__),
-           'buttons' => [
-              [
-                 'type' => 'submit',
-                 'name' => 'update',
-                 'value' => __('Save'),
-                 'class' => 'btn btn-secondary'
-              ]
-           ],
-           'content' => [
-              __('Password security policy') => [
-                 'visible' => true,
-                 'inputs' => [
-                    __('Password security policy validation') => [
-                       'type' => 'checkbox',
-                       'name' => 'use_password_security',
-                       'value' => $CFG_GLPI['use_password_security'],
+            'action' => Toolbox::getItemTypeFormURL(__CLASS__),
+            'buttons' => [
+                [
+                    'type' => 'submit',
+                    'name' => 'update',
+                    'value' => __('Save'),
+                    'class' => 'btn btn-secondary',
+                ],
+            ],
+            'content' => [
+                __('Password security policy') => [
+                    'visible' => true,
+                    'inputs' => [
+                        __('Password security policy validation') => [
+                            'type' => 'checkbox',
+                            'name' => 'use_password_security',
+                            'value' => $CFG_GLPI['use_password_security'],
+                        ],
+                        __('Password minimum length') => [
+                            'type' => 'number',
+                            'name' => 'password_min_length',
+                            'value' => $CFG_GLPI['password_min_length'],
+                            'min' => 4,
+                            'max' => 30,
+                            'rand' => $rand,
+                        ],
+                        __('Password need digit') => [
+                            'type' => 'checkbox',
+                            'name' => 'password_need_number',
+                            'value' => $CFG_GLPI['password_need_number'],
+                        ],
+                        __('Password need lowercase character') => [
+                            'type' => 'checkbox',
+                            'name' => 'password_need_letter',
+                            'value' => $CFG_GLPI['password_need_letter'],
+                        ],
+                        __('Password need uppercase character') => [
+                            'type' => 'checkbox',
+                            'name' => 'password_need_caps',
+                            'value' => $CFG_GLPI['password_need_caps'],
+                        ],
+                        __('Password need symbol') => [
+                            'type' => 'checkbox',
+                            'name' => 'password_need_symbol',
+                            'value' => $CFG_GLPI['password_need_symbol'],
+                        ],
                     ],
-                    __('Password minimum length') => [
-                       'type' => 'number',
-                       'name' => 'password_min_length',
-                       'value' => $CFG_GLPI['password_min_length'],
-                       'min' => 4,
-                       'max' => 30,
-                       'rand' => $rand
+                ],
+                __('Password expiration policy') => [
+                    'visible' => true,
+                    'inputs' => [
+                        __('Password expiration delay (in days)') => [
+                            'type' => 'number',
+                            'name' => 'password_expiration_delay',
+                            'min' => -1,
+                            'max' => 365,
+                            'after' => ' ( -1 = ' . __('Never') . ' )',
+                            'value' => $CFG_GLPI['password_expiration_delay'],
+                        ],
+                        __('Password expiration notice time (in days)') => [
+                            'type' => 'number',
+                            'name' => 'password_expiration_notice',
+                            'min' => -1,
+                            'max' => 30,
+                            'step' => 1,
+                            'after' => ' ( -1 = ' . __('Notification disabled') . ' )',
+                            'value' => $CFG_GLPI['password_expiration_notice'],
+                        ],
+                        __('Delay before account deactivation (in days)') => [
+                            'type' => 'number',
+                            'name' => 'password_expiration_lock_delay',
+                            'min' => -1,
+                            'max' => 30,
+                            'step' => 1,
+                            'after' => ' ( -1 = ' . __('Do not deactivate') . ' )',
+                            'value' => $CFG_GLPI['password_expiration_lock_delay'],
+                        ],
                     ],
-                    __('Password need digit') => [
-                       'type' => 'checkbox',
-                       'name' => 'password_need_number',
-                       'value' => $CFG_GLPI['password_need_number'],
-                    ],
-                    __('Password need lowercase character') => [
-                       'type' => 'checkbox',
-                       'name' => 'password_need_letter',
-                       'value' => $CFG_GLPI['password_need_letter'],
-                    ],
-                    __('Password need uppercase character') => [
-                       'type' => 'checkbox',
-                       'name' => 'password_need_caps',
-                       'value' => $CFG_GLPI['password_need_caps'],
-                    ],
-                    __('Password need symbol') => [
-                       'type' => 'checkbox',
-                       'name' => 'password_need_symbol',
-                       'value' => $CFG_GLPI['password_need_symbol'],
-                    ],
-                 ],
-              ],
-              __('Password expiration policy') => [
-                 'visible' => true,
-                 'inputs' => [
-                    __('Password expiration delay (in days)') => [
-                       'type' => 'number',
-                       'name' => 'password_expiration_delay',
-                       'min' => -1,
-                       'max' => 365,
-                       'after' => ' ( -1 = ' . __('Never') . ' )',
-                       'value' => $CFG_GLPI['password_expiration_delay'],
-                    ],
-                    __('Password expiration notice time (in days)') => [
-                       'type' => 'number',
-                       'name' => 'password_expiration_notice',
-                       'min' => -1,
-                       'max' => 30,
-                       'step' => 1,
-                       'after' => ' ( -1 = ' . __('Notification disabled') . ' )',
-                       'value' => $CFG_GLPI['password_expiration_notice'],
-                    ],
-                    __('Delay before account deactivation (in days)') => [
-                       'type' => 'number',
-                       'name' => 'password_expiration_lock_delay',
-                       'min' => -1,
-                       'max' => 30,
-                       'step' => 1,
-                       'after' => ' ( -1 = ' . __('Do not deactivate') . ' )',
-                       'value' => $CFG_GLPI['password_expiration_lock_delay'],
-                    ],
-                 ],
-              ]
-           ]
+                ],
+            ],
         ];
         renderTwigForm($form);
     }
@@ -3796,15 +3799,15 @@ class Config extends CommonDBTM
 
         $tab[] = [
             'id'   => 'common',
-            'name' => __('Characteristics')
+            'name' => __('Characteristics'),
         ];
 
         $tab[] = [
-           'id'            => 1,
-           'table'         => $this->getTable(),
-           'field'         => 'value',
-           'name'          => __('Value'),
-           'massiveaction' => false
+            'id'            => 1,
+            'table'         => $this->getTable(),
+            'field'         => 'value',
+            'name'          => __('Value'),
+            'massiveaction' => false,
         ];
 
         return $tab;
@@ -3817,7 +3820,7 @@ class Config extends CommonDBTM
 
     public function post_addItem()
     {
-        $this->logConfigChange($this->fields['context'], $this->fields['name'], (string)$this->fields['value'], '');
+        $this->logConfigChange($this->fields['context'], $this->fields['name'], (string) $this->fields['value'], '');
     }
 
     public function post_updateItem($history = 1)
@@ -3828,7 +3831,7 @@ class Config extends CommonDBTM
         if (
             $this->fields['name'] == 'password_expiration_delay'
             && array_key_exists('value', $this->oldvalues)
-            && (int)$this->oldvalues['value'] === -1
+            && (int) $this->oldvalues['value'] === -1
         ) {
             // As passwords will now expire, consider that "now" is the reference date of expiration delay
             $DB->update(
@@ -3849,15 +3852,15 @@ class Config extends CommonDBTM
             $this->logConfigChange(
                 $this->fields['context'],
                 $this->fields['name'],
-                (string)$this->fields['value'],
-                (string)$this->oldvalues['value']
+                (string) $this->fields['value'],
+                (string) $this->oldvalues['value']
             );
         }
     }
 
     public function post_purgeItem()
     {
-        $this->logConfigChange($this->fields['context'], $this->fields['name'], '', (string)$this->fields['value']);
+        $this->logConfigChange($this->fields['context'], $this->fields['name'], '', (string) $this->fields['value']);
     }
 
     /**
@@ -3883,7 +3886,7 @@ class Config extends CommonDBTM
     /**
      * Get the GLPI Config without unsafe keys like passwords and emails (true on $safer)
      *
-     * @param boolean $safer do we need to clean more (avoid emails disclosure)
+     * @param bool $safer do we need to clean more (avoid emails disclosure)
      * @return array of $CFG_GLPI without unsafe keys
      *
      * @since 9.5

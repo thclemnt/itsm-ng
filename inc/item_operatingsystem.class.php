@@ -89,45 +89,45 @@ class Item_OperatingSystem extends CommonDBRelation
         }
 
         $iterator = $DB->request([
-           'SELECT'    => [
-              'glpi_items_operatingsystems.id AS assocID',
-              'glpi_operatingsystems.name',
-              'glpi_operatingsystemversions.name AS version',
-              'glpi_operatingsystemarchitectures.name AS architecture',
-              'glpi_operatingsystemservicepacks.name AS servicepack'
-           ],
-           'FROM'      => 'glpi_items_operatingsystems',
-           'LEFT JOIN' => [
-              'glpi_operatingsystems'             => [
-                 'ON' => [
-                    'glpi_items_operatingsystems' => 'operatingsystems_id',
-                    'glpi_operatingsystems'       => 'id'
-                 ]
-              ],
-              'glpi_operatingsystemservicepacks'  => [
-                 'ON' => [
-                    'glpi_items_operatingsystems'       => 'operatingsystemservicepacks_id',
-                    'glpi_operatingsystemservicepacks'  => 'id'
-                 ]
-              ],
-              'glpi_operatingsystemarchitectures' => [
-                 'ON' => [
-                    'glpi_items_operatingsystems'       => 'operatingsystemarchitectures_id',
-                    'glpi_operatingsystemarchitectures' => 'id'
-                 ]
-              ],
-              'glpi_operatingsystemversions'      => [
-                 'ON' => [
-                    'glpi_items_operatingsystems'    => 'operatingsystemversions_id',
-                    'glpi_operatingsystemversions'   => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_items_operatingsystems.itemtype' => $item->getType(),
-              'glpi_items_operatingsystems.items_id' => $item->getID()
-           ],
-           'ORDERBY'   => "$sort $order"
+            'SELECT'    => [
+                'glpi_items_operatingsystems.id AS assocID',
+                'glpi_operatingsystems.name',
+                'glpi_operatingsystemversions.name AS version',
+                'glpi_operatingsystemarchitectures.name AS architecture',
+                'glpi_operatingsystemservicepacks.name AS servicepack',
+            ],
+            'FROM'      => 'glpi_items_operatingsystems',
+            'LEFT JOIN' => [
+                'glpi_operatingsystems'             => [
+                    'ON' => [
+                        'glpi_items_operatingsystems' => 'operatingsystems_id',
+                        'glpi_operatingsystems'       => 'id',
+                    ],
+                ],
+                'glpi_operatingsystemservicepacks'  => [
+                    'ON' => [
+                        'glpi_items_operatingsystems'       => 'operatingsystemservicepacks_id',
+                        'glpi_operatingsystemservicepacks'  => 'id',
+                    ],
+                ],
+                'glpi_operatingsystemarchitectures' => [
+                    'ON' => [
+                        'glpi_items_operatingsystems'       => 'operatingsystemarchitectures_id',
+                        'glpi_operatingsystemarchitectures' => 'id',
+                    ],
+                ],
+                'glpi_operatingsystemversions'      => [
+                    'ON' => [
+                        'glpi_items_operatingsystems'    => 'operatingsystemversions_id',
+                        'glpi_operatingsystemversions'   => 'id',
+                    ],
+                ],
+            ],
+            'WHERE'     => [
+                'glpi_items_operatingsystems.itemtype' => $item->getType(),
+                'glpi_items_operatingsystems.items_id' => $item->getID(),
+            ],
+            'ORDERBY'   => "$sort $order",
         ]);
         return $iterator;
     }
@@ -149,10 +149,10 @@ class Item_OperatingSystem extends CommonDBRelation
         $params = ['rand' => mt_rand()];
 
         $columns = [
-           __('Name'),
-           _n('Version', 'Versions', 1),
-           _n('Architecture', 'Architectures', 1),
-           OperatingSystemServicePack::getTypeName(1)
+            __('Name'),
+            _n('Version', 'Versions', 1),
+            _n('Architecture', 'Architectures', 1),
+            OperatingSystemServicePack::getTypeName(1),
         ];
 
         if (isset($_GET["order"]) && ($_GET["order"] == "ASC")) {
@@ -218,7 +218,7 @@ class Item_OperatingSystem extends CommonDBRelation
         ) {
             Html::openMassiveActionsForm('mass' . __CLASS__ . $params['rand']);
             $massiveactionparams = ['num_displayed'  => min($_SESSION['glpilist_limit'], $number),
-                                         'container'      => 'mass' . __CLASS__ . $params['rand']];
+                'container'      => 'mass' . __CLASS__ . $params['rand']];
             Html::showMassiveActions($massiveactionparams);
         }
 
@@ -240,9 +240,9 @@ class Item_OperatingSystem extends CommonDBRelation
         }
 
         foreach ($columns as $key => $val) {
-            $header_end .= "<th" . ($sort == $key ? " class='order_$order'" : '') . ">" .
-                           "<a href='javascript:reloadTab(\"sort=$key&amp;order=" .
-                             (($order == "ASC") ? "DESC" : "ASC") . "&amp;start=0\");'>$val</a></th>";
+            $header_end .= "<th" . ($sort == $key ? " class='order_$order'" : '') . ">"
+                           . "<a href='javascript:reloadTab(\"sort=$key&amp;order="
+                             . (($order == "ASC") ? "DESC" : "ASC") . "&amp;start=0\");'>$val</a></th>";
         }
 
         $header_end .= "</tr>";
@@ -318,82 +318,82 @@ class Item_OperatingSystem extends CommonDBRelation
             $this->getFromDB($ID);
         }
         $form = [
-           'action' => $this->getFormURL(),
-           'itemtype' => $this::class,
-           'content' => [
-              '' => [
-                 'visible' => true,
-                 'inputs' => [
-                    !$this->isNewID($ID) ? [
-                       'type' => 'hidden',
-                       'name' => 'id',
-                       'value' => $ID,
-                    ] : [],
-                    [
-                       'type' => 'hidden',
-                       'name' => 'itemtype',
-                       'value' => $this->fields['itemtype'] ?? '',
+            'action' => $this->getFormURL(),
+            'itemtype' => $this::class,
+            'content' => [
+                '' => [
+                    'visible' => true,
+                    'inputs' => [
+                        !$this->isNewID($ID) ? [
+                            'type' => 'hidden',
+                            'name' => 'id',
+                            'value' => $ID,
+                        ] : [],
+                        [
+                            'type' => 'hidden',
+                            'name' => 'itemtype',
+                            'value' => $this->fields['itemtype'] ?? '',
+                        ],
+                        [
+                            'type' => 'hidden',
+                            'name' => 'items_id',
+                            'value' => $this->fields['items_id'] ?? '',
+                        ],
+                        __("Name") => [
+                            'type' => 'select',
+                            'name' => 'operatingsystems_id',
+                            'values' => getOptionForItems(OperatingSystem::class),
+                            'value' => $this->fields['operatingsystems_id'] ?? '',
+                            'actions' => getItemActionButtons(['info', 'add'], OperatingSystem::class),
+                        ],
+                        _n('Version', 'Versions', 1) => [
+                            'type' => 'select',
+                            'name' => 'operatingsystemversions_id',
+                            'values' => getOptionForItems(OperatingSystemVersion::class),
+                            'value' => $this->fields['operatingsystemversions_id'] ?? '',
+                            'actions' => getItemActionButtons(['info', 'add'], OperatingSystemVersion::class),
+                        ],
+                        _n('Architecture', 'Architectures', 1) => [
+                            'type' => 'select',
+                            'name' => 'operatingsystemarchitectures_id',
+                            'values' => getOptionForItems(OperatingSystemArchitecture::class),
+                            'value' => $this->fields['operatingsystemarchitectures_id'] ?? '',
+                            'actions' => getItemActionButtons(['info', 'add'], OperatingSystemArchitecture::class),
+                        ],
+                        OperatingSystemServicePack::getTypeName(1) => [
+                            'type' => 'select',
+                            'name' => 'operatingsystemservicepacks_id',
+                            'values' => getOptionForItems(OperatingSystemServicePack::class),
+                            'value' => $this->fields['operatingsystemservicepacks_id'] ?? '',
+                            'actions' => getItemActionButtons(['info', 'add'], OperatingSystemServicePack::class),
+                        ],
+                        _n('Kernel', 'Kernels', 1) => [
+                            'type' => 'select',
+                            'name' => 'operatingsystemkernelversions_id',
+                            'values' => getOptionForItems(OperatingSystemKernelVersion::class),
+                            'value' => $this->fields['operatingsystemkernelversions_id'] ?? '',
+                            'actions' => getItemActionButtons(['info', 'add'], OperatingSystemKernelVersion::class),
+                        ],
+                        _n('Edition', 'Editions', 1) => [
+                            'type' => 'select',
+                            'name' => 'operatingsystemeditions_id',
+                            'values' => getOptionForItems(OperatingSystemEdition::class),
+                            'value' => $this->fields['operatingsystemeditions_id'] ?? '',
+                            'actions' => getItemActionButtons(['info', 'add'], OperatingSystemEdition::class),
+                        ],
+                        __('Product ID') => [
+                            'type' => 'text',
+                            'name' => 'licenseid',
+                            'value' => $this->fields['licenseid'] ?? '',
+                        ],
+                        __('Serial number') => [
+                            'type' => 'text',
+                            'name' => 'license_number',
+                            'value' => $this->fields['license_number'] ?? '',
+                        ],
                     ],
-                    [
-                       'type' => 'hidden',
-                       'name' => 'items_id',
-                       'value' => $this->fields['items_id'] ?? '',
-                    ],
-                    __("Name") => [
-                       'type' => 'select',
-                       'name' => 'operatingsystems_id',
-                       'values' => getOptionForItems(OperatingSystem::class),
-                       'value' => $this->fields['operatingsystems_id'] ?? '',
-                       'actions' => getItemActionButtons(['info', 'add'], OperatingSystem::class)
-                    ],
-                    _n('Version', 'Versions', 1) => [
-                       'type' => 'select',
-                       'name' => 'operatingsystemversions_id',
-                       'values' => getOptionForItems(OperatingSystemVersion::class),
-                       'value' => $this->fields['operatingsystemversions_id'] ?? '',
-                       'actions' => getItemActionButtons(['info', 'add'], OperatingSystemVersion::class)
-                    ],
-                    _n('Architecture', 'Architectures', 1) => [
-                       'type' => 'select',
-                       'name' => 'operatingsystemarchitectures_id',
-                       'values' => getOptionForItems(OperatingSystemArchitecture::class),
-                       'value' => $this->fields['operatingsystemarchitectures_id'] ?? '',
-                       'actions' => getItemActionButtons(['info', 'add'], OperatingSystemArchitecture::class)
-                    ],
-                    OperatingSystemServicePack::getTypeName(1) => [
-                       'type' => 'select',
-                       'name' => 'operatingsystemservicepacks_id',
-                       'values' => getOptionForItems(OperatingSystemServicePack::class),
-                       'value' => $this->fields['operatingsystemservicepacks_id'] ?? '',
-                       'actions' => getItemActionButtons(['info', 'add'], OperatingSystemServicePack::class)
-                    ],
-                    _n('Kernel', 'Kernels', 1) => [
-                       'type' => 'select',
-                       'name' => 'operatingsystemkernelversions_id',
-                       'values' => getOptionForItems(OperatingSystemKernelVersion::class),
-                       'value' => $this->fields['operatingsystemkernelversions_id'] ?? '',
-                       'actions' => getItemActionButtons(['info', 'add'], OperatingSystemKernelVersion::class)
-                    ],
-                    _n('Edition', 'Editions', 1) => [
-                       'type' => 'select',
-                       'name' => 'operatingsystemeditions_id',
-                       'values' => getOptionForItems(OperatingSystemEdition::class),
-                       'value' => $this->fields['operatingsystemeditions_id'] ?? '',
-                       'actions' => getItemActionButtons(['info', 'add'], OperatingSystemEdition::class)
-                    ],
-                    __('Product ID') => [
-                       'type' => 'text',
-                       'name' => 'licenseid',
-                       'value' => $this->fields['licenseid'] ?? '',
-                    ],
-                    __('Serial number') => [
-                       'type' => 'text',
-                       'name' => 'license_number',
-                       'value' => $this->fields['license_number'] ?? '',
-                    ],
-                 ]
-              ]
-           ]
+                ],
+            ],
         ];
 
         renderTwigForm($form, '', $this->fields);
@@ -416,8 +416,8 @@ class Item_OperatingSystem extends CommonDBRelation
      * @deprecated 9.5
      *
      * @param string  $itemtype    itemtype of the item
-     * @param integer $oldid       ID of the item to clone
-     * @param integer $newid       ID of the item cloned
+     * @param int $oldid       ID of the item to clone
+     * @param int $newid       ID of the item cloned
      * @param string  $newitemtype itemtype of the new item (= $itemtype if empty) (default '')
      *
      * @return void
@@ -428,11 +428,11 @@ class Item_OperatingSystem extends CommonDBRelation
 
         Toolbox::deprecated('Use clone');
         $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'itemtype'  => $itemtype,
-              'items_id'  => $oldid
-           ]
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'itemtype'  => $itemtype,
+                'items_id'  => $oldid,
+            ],
         ]);
 
         while ($row = $iterator->next()) {
@@ -455,28 +455,28 @@ class Item_OperatingSystem extends CommonDBRelation
         $tab = [];
 
         $tab[] = [
-           'id'                 => 'common',
-           'name'               => __('Characteristics')
+            'id'                 => 'common',
+            'name'               => __('Characteristics'),
         ];
 
         $tab[] = [
-           'id'                 => '2',
-           'table'              => $this->getTable(),
-           'field'              => 'license_number',
-           'name'               => __('Serial number'),
-           'datatype'           => 'string',
-           'massiveaction'      => false,
-           'autocomplete'       => true,
+            'id'                 => '2',
+            'table'              => $this->getTable(),
+            'field'              => 'license_number',
+            'name'               => __('Serial number'),
+            'datatype'           => 'string',
+            'massiveaction'      => false,
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '3',
-           'table'              => $this->getTable(),
-           'field'              => 'licenseid',
-           'name'               => __('Product ID'),
-           'datatype'           => 'string',
-           'massiveaction'      => false,
-           'autocomplete'       => true,
+            'id'                 => '3',
+            'table'              => $this->getTable(),
+            'field'              => 'licenseid',
+            'name'               => __('Product ID'),
+            'datatype'           => 'string',
+            'massiveaction'      => false,
+            'autocomplete'       => true,
         ];
 
         return $tab;
@@ -487,164 +487,164 @@ class Item_OperatingSystem extends CommonDBRelation
         $tab = [];
         $tab[] = [
             'id'                => 'operatingsystem',
-            'name'              => __('Operating System')
+            'name'              => __('Operating System'),
         ];
 
         $tab[] = [
-           'id'                 => '45',
-           'table'              => 'glpi_operatingsystems',
-           'field'              => 'name',
-           'name'               => __('Name'),
-           'datatype'           => 'dropdown',
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'beforejoin'         => [
-                 'table'              => 'glpi_items_operatingsystems',
-                 'joinparams'         => [
-                    'jointype'           => 'itemtype_item',
-                    'specific_itemtype'  => $itemtype
-                 ]
-              ]
-           ]
+            'id'                 => '45',
+            'table'              => 'glpi_operatingsystems',
+            'field'              => 'name',
+            'name'               => __('Name'),
+            'datatype'           => 'dropdown',
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'beforejoin'         => [
+                    'table'              => 'glpi_items_operatingsystems',
+                    'joinparams'         => [
+                        'jointype'           => 'itemtype_item',
+                        'specific_itemtype'  => $itemtype,
+                    ],
+                ],
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '46',
-           'table'              => 'glpi_operatingsystemversions',
-           'field'              => 'name',
-           'name'               => _n('Version', 'Versions', 1),
-           'datatype'           => 'dropdown',
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'beforejoin'         => [
-                 'table'              => 'glpi_items_operatingsystems',
-                 'joinparams'         => [
-                    'jointype'           => 'itemtype_item',
-                    'specific_itemtype'  => $itemtype
-                 ]
-              ]
-           ]
+            'id'                 => '46',
+            'table'              => 'glpi_operatingsystemversions',
+            'field'              => 'name',
+            'name'               => _n('Version', 'Versions', 1),
+            'datatype'           => 'dropdown',
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'beforejoin'         => [
+                    'table'              => 'glpi_items_operatingsystems',
+                    'joinparams'         => [
+                        'jointype'           => 'itemtype_item',
+                        'specific_itemtype'  => $itemtype,
+                    ],
+                ],
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '41',
-           'table'              => 'glpi_operatingsystemservicepacks',
-           'field'              => 'name',
-           'name'               => OperatingSystemServicePack::getTypeName(1),
-           'datatype'           => 'dropdown',
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'beforejoin'         => [
-                 'table'              => 'glpi_items_operatingsystems',
-                 'joinparams'         => [
-                    'jointype'           => 'itemtype_item',
-                    'specific_itemtype'  => $itemtype
-                 ]
-              ]
-           ]
+            'id'                 => '41',
+            'table'              => 'glpi_operatingsystemservicepacks',
+            'field'              => 'name',
+            'name'               => OperatingSystemServicePack::getTypeName(1),
+            'datatype'           => 'dropdown',
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'beforejoin'         => [
+                    'table'              => 'glpi_items_operatingsystems',
+                    'joinparams'         => [
+                        'jointype'           => 'itemtype_item',
+                        'specific_itemtype'  => $itemtype,
+                    ],
+                ],
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '43',
-           'table'              => 'glpi_items_operatingsystems',
-           'field'              => 'license_number',
-           'name'               => __('Serial number'),
-           'datatype'           => 'string',
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'jointype'           => 'itemtype_item',
-              'specific_itemtype'  => $itemtype
-           ]
+            'id'                 => '43',
+            'table'              => 'glpi_items_operatingsystems',
+            'field'              => 'license_number',
+            'name'               => __('Serial number'),
+            'datatype'           => 'string',
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'jointype'           => 'itemtype_item',
+                'specific_itemtype'  => $itemtype,
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '44',
-           'table'              => 'glpi_items_operatingsystems',
-           'field'              => 'licenseid',
-           'name'               => __('Product ID'),
-           'datatype'           => 'string',
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'jointype'           => 'itemtype_item',
-              'specific_itemtype'  => $itemtype
-           ]
+            'id'                 => '44',
+            'table'              => 'glpi_items_operatingsystems',
+            'field'              => 'licenseid',
+            'name'               => __('Product ID'),
+            'datatype'           => 'string',
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'jointype'           => 'itemtype_item',
+                'specific_itemtype'  => $itemtype,
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '61',
-           'table'              => 'glpi_operatingsystemarchitectures',
-           'field'              => 'name',
-           'name'               => _n('Architecture', 'Architectures', 1),
-           'datatype'           => 'dropdown',
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'beforejoin'         => [
-                 'table'              => 'glpi_items_operatingsystems',
-                 'joinparams'         => [
-                    'jointype'           => 'itemtype_item',
-                    'specific_itemtype'  => $itemtype
-                 ]
-              ]
-           ]
+            'id'                 => '61',
+            'table'              => 'glpi_operatingsystemarchitectures',
+            'field'              => 'name',
+            'name'               => _n('Architecture', 'Architectures', 1),
+            'datatype'           => 'dropdown',
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'beforejoin'         => [
+                    'table'              => 'glpi_items_operatingsystems',
+                    'joinparams'         => [
+                        'jointype'           => 'itemtype_item',
+                        'specific_itemtype'  => $itemtype,
+                    ],
+                ],
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '64',
-           'table'              => 'glpi_operatingsystemkernels',
-           'field'              => 'name',
-           'name'               => _n('Kernel', 'Kernels', 1),
-           'datatype'           => 'dropdown',
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'beforejoin'         => [
-                 'table'              => 'glpi_operatingsystemkernelversions',
-                 'joinparams'         => [
-                    'beforejoin'   => [
-                       'table'        => 'glpi_items_operatingsystems',
-                       'joinparams'   => [
-                          'jointype'           => 'itemtype_item',
-                          'specific_itemtype'  => $itemtype
-                       ]
-                    ]
-                 ]
-              ]
-           ]
+            'id'                 => '64',
+            'table'              => 'glpi_operatingsystemkernels',
+            'field'              => 'name',
+            'name'               => _n('Kernel', 'Kernels', 1),
+            'datatype'           => 'dropdown',
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'beforejoin'         => [
+                    'table'              => 'glpi_operatingsystemkernelversions',
+                    'joinparams'         => [
+                        'beforejoin'   => [
+                            'table'        => 'glpi_items_operatingsystems',
+                            'joinparams'   => [
+                                'jointype'           => 'itemtype_item',
+                                'specific_itemtype'  => $itemtype,
+                            ],
+                        ],
+                    ],
+                ],
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '48',
-           'table'              => 'glpi_operatingsystemkernelversions',
-           'field'              => 'name',
-           'name'               => _n('Kernel version', 'Kernel versions', 1),
-           'datatype'           => 'dropdown',
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'beforejoin'         => [
-                 'table'              => 'glpi_items_operatingsystems',
-                 'joinparams'         => [
-                    'jointype'           => 'itemtype_item',
-                    'specific_itemtype'  => $itemtype
-                 ]
-              ]
-           ]
+            'id'                 => '48',
+            'table'              => 'glpi_operatingsystemkernelversions',
+            'field'              => 'name',
+            'name'               => _n('Kernel version', 'Kernel versions', 1),
+            'datatype'           => 'dropdown',
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'beforejoin'         => [
+                    'table'              => 'glpi_items_operatingsystems',
+                    'joinparams'         => [
+                        'jointype'           => 'itemtype_item',
+                        'specific_itemtype'  => $itemtype,
+                    ],
+                ],
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '63',
-           'table'              => 'glpi_operatingsystemeditions',
-           'field'              => 'name',
-           'name'               => _n('Edition', 'Editions', 1),
-           'datatype'           => 'dropdown',
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'beforejoin'         => [
-                 'table'              => 'glpi_items_operatingsystems',
-                 'joinparams'         => [
-                    'jointype'           => 'itemtype_item',
-                    'specific_itemtype'  => $itemtype
-                 ]
-              ]
-           ]
+            'id'                 => '63',
+            'table'              => 'glpi_operatingsystemeditions',
+            'field'              => 'name',
+            'name'               => _n('Edition', 'Editions', 1),
+            'datatype'           => 'dropdown',
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'beforejoin'         => [
+                    'table'              => 'glpi_items_operatingsystems',
+                    'joinparams'         => [
+                        'jointype'           => 'itemtype_item',
+                        'specific_itemtype'  => $itemtype,
+                    ],
+                ],
+            ],
         ];
 
         return $tab;
@@ -677,23 +677,23 @@ class Item_OperatingSystem extends CommonDBRelation
         global $CFG_GLPI;
 
         $inputs = [
-           OperatingSystem::getTypeName() => [
-              'type' => 'select',
-              'name' => 'os_field',
-              'id'   => 'DropdownForOsTypeMassiveUpdate',
-              'values' => [
-                 Dropdown::EMPTY_VALUE,
-                 'OperatingSystem'             => __('Name'),
-                 'OperatingSystemVersion'      => _n('Version', 'Versions', 1),
-                 'OperatingSystemArchitecture' => _n('Architecture', 'Architectures', 1),
-                 'OperatingSystemKernel'       => OperatingSystemKernel::getTypeName(1),
-                 'OperatingSystemKernelVersion' => OperatingSystemKernelVersion::getTypeName(1),
-                 'OperatingSystemEdition'      => _n('Edition', 'Editions', 1)
-              ],
-              'col_lg' => 12,
-              'col_md' => 12,
-              'hooks' => [
-                 'change' => <<<JS
+            OperatingSystem::getTypeName() => [
+                'type' => 'select',
+                'name' => 'os_field',
+                'id'   => 'DropdownForOsTypeMassiveUpdate',
+                'values' => [
+                    Dropdown::EMPTY_VALUE,
+                    'OperatingSystem'             => __('Name'),
+                    'OperatingSystemVersion'      => _n('Version', 'Versions', 1),
+                    'OperatingSystemArchitecture' => _n('Architecture', 'Architectures', 1),
+                    'OperatingSystemKernel'       => OperatingSystemKernel::getTypeName(1),
+                    'OperatingSystemKernelVersion' => OperatingSystemKernelVersion::getTypeName(1),
+                    'OperatingSystemEdition'      => _n('Edition', 'Editions', 1),
+                ],
+                'col_lg' => 12,
+                'col_md' => 12,
+                'hooks' => [
+                    'change' => <<<JS
                   var value = $('#DropdownForOsTypeMassiveUpdate').val();
                   $('#DropdownForOsFieldMassiveUpdate').empty();
                   if (value == 0) {
@@ -717,20 +717,20 @@ class Item_OperatingSystem extends CommonDBRelation
                      }
                   });
                JS,
-              ]
-           ],
-           '' => [
-              'type' => 'select',
-              'id'   => 'DropdownForOsFieldMassiveUpdate',
-              'disabled' => '',
-              'col_lg' => 12,
-              'col_md' => 12,
-           ]
+                ],
+            ],
+            '' => [
+                'type' => 'select',
+                'id'   => 'DropdownForOsFieldMassiveUpdate',
+                'disabled' => '',
+                'col_lg' => 12,
+                'col_md' => 12,
+            ],
         ];
         foreach ($inputs as $title => $input) {
             renderTwigTemplate('macros/wrappedInput.twig', [
-               'title' => $title,
-               'input' => $input
+                'title' => $title,
+                'input' => $input,
             ]);
         };
         echo Html::submit(__('Update'), ['class' => 'btn btn-secondary', 'name' => 'update']);
@@ -753,8 +753,8 @@ class Item_OperatingSystem extends CommonDBRelation
                     if ($item->getFromDB($id)) {
                         if ($item->can($id, UPDATE, $input)) {
                             $exists = $ios->getFromDBByCrit([
-                               'itemtype'  => $item->getType(),
-                               'items_id'  => $item->getID()
+                                'itemtype'  => $item->getType(),
+                                'items_id'  => $item->getID(),
                             ]);
                             $ok = false;
                             if ($exists) {

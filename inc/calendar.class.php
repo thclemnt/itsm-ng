@@ -1,5 +1,7 @@
 <?php
 
+use Glpi\Features\Clonable;
+
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
@@ -40,7 +42,7 @@ if (!defined('GLPI_ROOT')) {
 **/
 class Calendar extends CommonDropdown
 {
-    use Glpi\Features\Clonable;
+    use Clonable;
 
     // From CommonDBTM
     public $dohistory                   = true;
@@ -54,8 +56,8 @@ class Calendar extends CommonDropdown
     public function getCloneRelations(): array
     {
         return [
-           Calendar_Holiday::class,
-           CalendarSegment::class
+            Calendar_Holiday::class,
+            CalendarSegment::class,
         ];
     }
 
@@ -109,30 +111,30 @@ class Calendar extends CommonDropdown
         switch ($ma->getAction()) {
             case 'duplicate':
                 renderTwigTemplate('macros/wrappedInput.twig', [
-                   'title' => Entity::getTypeName(),
-                   'input' => [
-                      'type'  => 'select',
-                      'name'  => 'entities_id',
-                      'values' => getOptionForItems(Entity::class),
-                      'col_lg' => 12,
-                      'col_md' => 12,
-                      'actions' => getItemActionButtons(['info', 'add'], Appliance::class)
-                   ]
+                    'title' => Entity::getTypeName(),
+                    'input' => [
+                        'type'  => 'select',
+                        'name'  => 'entities_id',
+                        'values' => getOptionForItems(Entity::class),
+                        'col_lg' => 12,
+                        'col_md' => 12,
+                        'actions' => getItemActionButtons(['info', 'add'], Appliance::class),
+                    ],
                 ]);
                 echo Html::submit(_x('button', 'Duplicate'), ['name' => 'massiveaction', 'class' => 'btn btn-secondary mt-3']);
                 return true;
 
             case 'addholiday':
                 renderTwigTemplate('macros/wrappedInput.twig', [
-                   'title' => Holiday::getTypeName(),
-                   'input' => [
-                      'type'  => 'select',
-                      'name'  => 'holidays_id',
-                      'itemtype' => Holiday::class,
-                      'col_lg' => 12,
-                      'col_md' => 12,
-                      'actions' => getItemActionButtons(['info', 'add'], Holiday::class)
-                   ]
+                    'title' => Holiday::getTypeName(),
+                    'input' => [
+                        'type'  => 'select',
+                        'name'  => 'holidays_id',
+                        'itemtype' => Holiday::class,
+                        'col_lg' => 12,
+                        'col_md' => 12,
+                        'actions' => getItemActionButtons(['info', 'add'], Holiday::class),
+                    ],
                 ]);
                 echo Html::submit(_x('button', 'Add'), ['name' => 'massiveaction', 'class' => 'btn btn-secondary mt-3']);
                 return true;
@@ -203,7 +205,7 @@ class Calendar extends CommonDropdown
                         $entities_id = CommonDBTM::getItemEntity('Calendar', $id);
                         if (isset($entities[$entities_id])) {
                             $input = ['calendars_id' => $id,
-                                           'holidays_id'  => $input['holidays_id']];
+                                'holidays_id'  => $input['holidays_id']];
                             if ($calendar_holiday->add($input)) {
                                 $ma->itemDone($item->getType(), $id, MassiveAction::ACTION_OK);
                             } else {
@@ -228,7 +230,7 @@ class Calendar extends CommonDropdown
      * Clone a calendar to another entity : name is updated
      *
      * @param $options array of new values to set
-     * @return boolean True on success
+     * @return bool True on success
      */
     public function duplicate($options = [])
     {
@@ -258,8 +260,8 @@ class Calendar extends CommonDropdown
 
         $this->deleteChildrenAndRelationsFromDb(
             [
-              Calendar_Holiday::class,
-              CalendarSegment::class,
+                Calendar_Holiday::class,
+                CalendarSegment::class,
             ]
         );
     }
@@ -269,7 +271,7 @@ class Calendar extends CommonDropdown
      *
      * @param string $date Date of the day to check
      *
-     * @return boolean
+     * @return bool
     **/
     public function isHoliday($date)
     {
@@ -284,37 +286,37 @@ class Calendar extends CommonDropdown
         }
 
         $result = $DB->request([
-           'COUNT'        => 'cpt',
-           'FROM'         => 'glpi_calendars_holidays',
-           'INNER JOIN'   => [
-              'glpi_holidays'   => [
-                 'ON' => [
-                    'glpi_calendars_holidays'  => 'holidays_id',
-                    'glpi_holidays'            => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'        => [
-              'glpi_calendars_holidays.calendars_id' => $this->fields['id'],
-              'OR'                                   => [
-                 [
-                    'AND' => [
-                       'glpi_holidays.end_date'            => ['>=', $date],
-                       'glpi_holidays.begin_date'          => ['<=', $date]
-                    ]
-                 ],
-                 [
-                    'AND' => [
-                       'glpi_holidays.is_perpetual'  => 1,
-                       new \QueryExpression("MONTH(" . $DB->quoteName('end_date') . ")*100 + DAY(" . $DB->quoteName('end_date') . ") >= " . date('nd', strtotime($date))),
-                       new \QueryExpression("MONTH(" . $DB->quoteName('begin_date') . ")*100 + DAY(" . $DB->quoteName('begin_date') . ") <= " . date('nd', strtotime($date)))
-                    ]
-                 ]
-              ]
-           ]
+            'COUNT'        => 'cpt',
+            'FROM'         => 'glpi_calendars_holidays',
+            'INNER JOIN'   => [
+                'glpi_holidays'   => [
+                    'ON' => [
+                        'glpi_calendars_holidays'  => 'holidays_id',
+                        'glpi_holidays'            => 'id',
+                    ],
+                ],
+            ],
+            'WHERE'        => [
+                'glpi_calendars_holidays.calendars_id' => $this->fields['id'],
+                'OR'                                   => [
+                    [
+                        'AND' => [
+                            'glpi_holidays.end_date'            => ['>=', $date],
+                            'glpi_holidays.begin_date'          => ['<=', $date],
+                        ],
+                    ],
+                    [
+                        'AND' => [
+                            'glpi_holidays.is_perpetual'  => 1,
+                            new QueryExpression("MONTH(" . $DB->quoteName('end_date') . ")*100 + DAY(" . $DB->quoteName('end_date') . ") >= " . date('nd', strtotime($date))),
+                            new QueryExpression("MONTH(" . $DB->quoteName('begin_date') . ")*100 + DAY(" . $DB->quoteName('begin_date') . ") <= " . date('nd', strtotime($date))),
+                        ],
+                    ],
+                ],
+            ],
         ])->next();
 
-        $is_holiday = (int)$result['cpt'] > 0;
+        $is_holiday = (int) $result['cpt'] > 0;
 
         $result_cache[$cache_key] = $is_holiday;
 
@@ -329,7 +331,7 @@ class Calendar extends CommonDropdown
      * @param $end             datetime end
      * @param $work_in_days    boolean  force working in days (false by default)
      *
-     * @return integer timestamp of delay
+     * @return int timestamp of delay
      */
     public function getActiveTimeBetween($start, $end, $work_in_days = false)
     {
@@ -400,9 +402,9 @@ class Calendar extends CommonDropdown
      *
      * @since 0.84
      *
-     * @param integer $time Time to check
+     * @param int $time Time to check
      *
-     * @return boolean
+     * @return bool
      */
     public function isAWorkingDay($time)
     {
@@ -419,7 +421,7 @@ class Calendar extends CommonDropdown
      *
      * @since 9.4.3
      *
-     * @return boolean
+     * @return bool
      */
     public function hasAWorkingDay()
     {
@@ -435,9 +437,9 @@ class Calendar extends CommonDropdown
      *
      * @since 0.85
      *
-     * @param integer $time Time to check
+     * @param int $time Time to check
      *
-     * @return boolean
+     * @return bool
      */
     public function isAWorkingHour($time)
     {
@@ -461,12 +463,12 @@ class Calendar extends CommonDropdown
      * else work in minutes
      *
      * @param datetime $start               begin
-     * @param integer  $delay               delay to add (in seconds)
-     * @param integer  $additional_delay    delay to add (default 0)
-     * @param boolean  $work_in_days        force working in days (false by default)
-     * @param boolean  $end_of_working_day  end of working day (false by default)
+     * @param int  $delay               delay to add (in seconds)
+     * @param int  $additional_delay    delay to add (default 0)
+     * @param bool  $work_in_days        force working in days (false by default)
+     * @param bool  $end_of_working_day  end of working day (false by default)
      *
-     * @return boolean|string end date
+     * @return bool|string end date
     **/
     public function computeEndDate($start, $delay, $additional_delay = 0, $work_in_days = false, $end_of_working_day = false)
     {
@@ -671,7 +673,7 @@ class Calendar extends CommonDropdown
     /**
      * Get days durations including all segments of the current calendar
      *
-     * @return boolean|array
+     * @return bool|array
     **/
     public function getDurationsCache()
     {
@@ -694,7 +696,7 @@ class Calendar extends CommonDropdown
     /**
      * Get days durations including all segments of the current calendar
      *
-     * @return boolean|array
+     * @return bool|array
     **/
     public function getDaysDurations()
     {
@@ -719,7 +721,7 @@ class Calendar extends CommonDropdown
     /**
      * Update the calendar cache
      *
-     * @param integer $calendars_id ID of the calendar
+     * @param int $calendars_id ID of the calendar
      *
      * @return bool True if successful in updating the cache, otherwise returns false.
      */
@@ -728,8 +730,8 @@ class Calendar extends CommonDropdown
 
         if ($this->getFromDB($calendars_id)) {
             $input = [
-               'id'             => $calendars_id,
-               'cache_duration' => exportArrayToDB($this->getDaysDurations()),
+                'id'             => $calendars_id,
+                'cache_duration' => exportArrayToDB($this->getDaysDurations()),
             ];
             return $this->update($input);
         }
@@ -740,12 +742,12 @@ class Calendar extends CommonDropdown
     /**
      * Get day number (in week) for a date.
      *
-     * @param integer $date Date as a UNIX timestamp
+     * @param int $date Date as a UNIX timestamp
      *
-     * @return integer
+     * @return int
      */
     public static function getDayNumberInWeek($date)
     {
-        return (int)date('w', $date);
+        return (int) date('w', $date);
     }
 }

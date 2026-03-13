@@ -48,13 +48,13 @@ class Item_DeviceSimcard extends DbTestCase
         $deviceSimcard = getItemForItemtype('DeviceSimcard', '_test_simcard_1');
         $this->object($deviceSimcard)->isInstanceOf('\DeviceSimcard');
         $in = [
-              'itemtype'           => 'Computer',
-              'items_id'           => $computer->getID(),
-              'devicesimcards_id'  => $deviceSimcard->getID(),
-              'entities_id'        => 0,
+            'itemtype'           => 'Computer',
+            'items_id'           => $computer->getID(),
+            'devicesimcards_id'  => $deviceSimcard->getID(),
+            'entities_id'        => 0,
         ];
         $id = $obj->add($in);
-        $this->integer((int)$id)->isGreaterThan(0);
+        $this->integer((int) $id)->isGreaterThan(0);
         $this->boolean($obj->getFromDB($id))->isTrue();
 
         // getField methods
@@ -75,21 +75,21 @@ class Item_DeviceSimcard extends DbTestCase
         $deviceSimcard = getItemForItemtype('DeviceSimcard', '_test_simcard_1');
         $this->object($deviceSimcard)->isInstanceOf('\DeviceSimcard');
         $id = $obj->add([
-              'itemtype'           => 'Computer',
-              'items_id'           => $computer->getID(),
-              'devicesimcards_id'  => $deviceSimcard->getID(),
-              'entities_id'        => 0,
+            'itemtype'           => 'Computer',
+            'items_id'           => $computer->getID(),
+            'devicesimcards_id'  => $deviceSimcard->getID(),
+            'entities_id'        => 0,
         ]);
         $this->integer($id)->isGreaterThan(0);
 
         // Update
         $id = $obj->getID();
         $in = [
-              'id'                       => $id,
-              'pin'                      => '0123',
-              'pin2'                     => '1234',
-              'puk'                      => '2345',
-              'puk2'                     => '3456',
+            'id'                       => $id,
+            'pin'                      => '0123',
+            'pin2'                     => '1234',
+            'puk'                      => '2345',
+            'puk2'                     => '3456',
         ];
         $this->boolean($obj->update($in))->isTrue();
         $this->boolean($obj->getFromDB($id))->isTrue();
@@ -108,9 +108,9 @@ class Item_DeviceSimcard extends DbTestCase
             'glpi_profilerights',
             ['rights' => 1],
             [
-              'profiles_id'  => 4,
-              'name'         => 'devicesimcard_pinpuk'
-         ]
+                'profiles_id'  => 4,
+                'name'         => 'devicesimcard_pinpuk',
+            ]
         );
 
         // Profile changed then login
@@ -120,9 +120,9 @@ class Item_DeviceSimcard extends DbTestCase
             'glpi_profilerights',
             ['rights' => 3],
             [
-              'profiles_id'  => 4,
-              'name'         => 'devicesimcard_pinpuk'
-         ]
+                'profiles_id'  => 4,
+                'name'         => 'devicesimcard_pinpuk',
+            ]
         );
 
         $obj = new \Item_DeviceSimcard();
@@ -133,25 +133,25 @@ class Item_DeviceSimcard extends DbTestCase
         $deviceSimcard = getItemForItemtype('DeviceSimcard', '_test_simcard_1');
         $this->object($deviceSimcard)->isInstanceOf('\DeviceSimcard');
         $id = $obj->add([
-              'itemtype'           => 'Computer',
-              'items_id'           => $computer->getID(),
-              'devicesimcards_id'  => $deviceSimcard->getID(),
-              'entities_id'        => 0,
-              'pin'                => '0123',
-              'pin2'               => '1234',
-              'puk'                => '2345',
-              'puk2'               => '3456',
+            'itemtype'           => 'Computer',
+            'items_id'           => $computer->getID(),
+            'devicesimcards_id'  => $deviceSimcard->getID(),
+            'entities_id'        => 0,
+            'pin'                => '0123',
+            'pin2'               => '1234',
+            'puk'                => '2345',
+            'puk2'               => '3456',
         ]);
         $this->integer($id)->isGreaterThan(0);
 
         // Update
         $id = $obj->getID();
         $in = [
-              'id'                 => $id,
-              'pin'                => '0000',
-              'pin2'               => '0000',
-              'puk'                => '0000',
-              'puk2'               => '0000',
+            'id'                 => $id,
+            'pin'                => '0000',
+            'pin2'               => '0000',
+            'puk'                => '0000',
+            'puk2'               => '0000',
         ];
         $this->boolean($obj->update($in))->isTrue();
         $this->boolean($obj->getFromDB($id))->isTrue();
@@ -175,16 +175,16 @@ class Item_DeviceSimcard extends DbTestCase
         $deviceSimcard = getItemForItemtype('DeviceSimcard', '_test_simcard_1');
         $this->object($deviceSimcard)->isInstanceOf('\DeviceSimcard');
         $id = $obj->add([
-              'itemtype'           => 'Computer',
-              'items_id'           => $computer->getID(),
-              'devicesimcards_id'  => $deviceSimcard->getID(),
-              'entities_id'        => 0,
+            'itemtype'           => 'Computer',
+            'items_id'           => $computer->getID(),
+            'devicesimcards_id'  => $deviceSimcard->getID(),
+            'entities_id'        => 0,
         ]);
         $this->integer($id)->isGreaterThan(0);
 
         // Delete
         $in = [
-              'id'                       => $obj->getID(),
+            'id'                       => $obj->getID(),
         ];
         $this->boolean($obj->delete($in))->isTrue();
     }

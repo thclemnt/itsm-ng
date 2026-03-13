@@ -35,15 +35,9 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
-class HTMLTableUnknownHeader extends Exception
-{
-}
-class HTMLTableUnknownHeaders extends Exception
-{
-}
-class HTMLTableUnknownHeadersOrder extends Exception
-{
-}
+class HTMLTableUnknownHeader extends Exception {}
+class HTMLTableUnknownHeaders extends Exception {}
+class HTMLTableUnknownHeadersOrder extends Exception {}
 
 /**
  * @since 0.84

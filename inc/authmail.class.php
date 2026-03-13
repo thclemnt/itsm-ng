@@ -95,7 +95,7 @@ class AuthMail extends CommonDBTM
 
         $tab[] = [
             'id'                 => 'common',
-            'name'               => __('Email server')
+            'name'               => __('Email server'),
         ];
 
         $tab[] = [
@@ -104,7 +104,7 @@ class AuthMail extends CommonDBTM
             'field'              => 'name',
             'name'               => __('Name'),
             'datatype'           => 'itemlink',
-            'massiveaction'      => false
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
@@ -113,7 +113,7 @@ class AuthMail extends CommonDBTM
             'field'              => 'id',
             'name'               => __('ID'),
             'datatype'           => 'number',
-            'massiveaction'      => false
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
@@ -121,7 +121,7 @@ class AuthMail extends CommonDBTM
             'table'              => $this->getTable(),
             'field'              => 'host',
             'name'               => __('Server'),
-            'datatype'           => 'string'
+            'datatype'           => 'string',
         ];
 
         $tab[] = [
@@ -130,7 +130,7 @@ class AuthMail extends CommonDBTM
             'field'              => 'connect_string',
             'name'               => __('Connection string'),
             'massiveaction'      => false,
-            'datatype'           => 'string'
+            'datatype'           => 'string',
         ];
 
         $tab[] = [
@@ -138,7 +138,7 @@ class AuthMail extends CommonDBTM
             'table'              => $this->getTable(),
             'field'              => 'is_active',
             'name'               => __('Active'),
-            'datatype'           => 'bool'
+            'datatype'           => 'bool',
         ];
 
         $tab[] = [
@@ -147,7 +147,7 @@ class AuthMail extends CommonDBTM
             'field'              => 'date_mod',
             'name'               => __('Last update'),
             'datatype'           => 'datetime',
-            'massiveaction'      => false
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
@@ -155,7 +155,7 @@ class AuthMail extends CommonDBTM
             'table'              => $this->getTable(),
             'field'              => 'comment',
             'name'               => __('Comments'),
-            'datatype'           => 'text'
+            'datatype'           => 'text',
         ];
 
         return $tab;
@@ -164,10 +164,10 @@ class AuthMail extends CommonDBTM
     /**
      * Print the auth mail form
      *
-     * @param integer $ID      ID of the item
+     * @param int $ID      ID of the item
      * @param array   $options Options
      *
-     * @return void|boolean (display) Returns false if there is a rights error.
+     * @return void|bool (display) Returns false if there is a rights error.
      */
     public function showForm($ID)
     {
@@ -202,8 +202,8 @@ class AuthMail extends CommonDBTM
                         'type' => 'submit',
                         'name' => 'test',
                         'value' => __('Test'),
-                        'class' => 'btn btn-secondary'
-                    ]
+                        'class' => 'btn btn-secondary',
+                    ],
                 ],
                 'content' => [
                     __('Test connection to email server') => [
@@ -212,7 +212,7 @@ class AuthMail extends CommonDBTM
                             ('') => [
                                 'name' => 'imap_string',
                                 'type' => 'hidden',
-                                'value' => $this->fields['connect_string']
+                                'value' => $this->fields['connect_string'],
                             ],
                             __('Login') => [
                                 'name' => 'imap_login',
@@ -223,10 +223,10 @@ class AuthMail extends CommonDBTM
                                 'name' => 'imap_password',
                                 'type' => 'password',
                                 'required' => true,
-                            ]
-                        ]
-                    ]
-                ]
+                            ],
+                        ],
+                    ],
+                ],
             ];
 
             renderTwigForm($form);
@@ -237,7 +237,7 @@ class AuthMail extends CommonDBTM
     /**
      * Is the Mail authentication used?
      *
-     * @return boolean
+     * @return bool
      */
     public static function useAuthMail()
     {
@@ -252,7 +252,7 @@ class AuthMail extends CommonDBTM
      * @param string $login          user login
      * @param string $password       user password
      *
-     * @return boolean Authentication succeeded?
+     * @return bool Authentication succeeded?
      */
     public static function testAuth($connect_string, $login, $password)
     {
@@ -304,8 +304,8 @@ class AuthMail extends CommonDBTM
      * @param object  $auth     identification object
      * @param string  $login    user login
      * @param string  $password user password
-     * @param integer $auths_id auths_id already used for the user (default 0)
-     * @param boolean $break    if user is not found in the first directory,
+     * @param int $auths_id auths_id already used for the user (default 0)
+     * @param bool $break    if user is not found in the first directory,
      *                          stop searching or try the following ones (true by default)
      *
      * @return object identification object

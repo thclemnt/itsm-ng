@@ -33,26 +33,8 @@
 
 namespace Glpi\Dashboard;
 
-use CommonGLPI;
-use DBConnection;
-use QueryExpression;
-use Change;
-use CommonITILActor;
-use CommonITILValidation;
-use CommonTreeDropdown;
 use CommonDBTM;
-use CommonITILObject;
-use Group;
-use Group_Ticket;
-use Problem;
-use QuerySubQuery;
 use Session;
-use Search;
-use Stat;
-use Ticket;
-use Ticket_User;
-use Toolbox;
-use User;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");

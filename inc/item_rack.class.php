@@ -106,11 +106,11 @@ class Item_Rack extends CommonDBRelation
         $canedit = $rack->canEdit($ID);
 
         $items = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'racks_id' => $rack->getID()
-           ],
-           'ORDER' => 'position DESC'
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'racks_id' => $rack->getID(),
+            ],
+            'ORDER' => 'position DESC',
         ]);
         $link = new self();
 
@@ -143,15 +143,15 @@ class Item_Rack extends CommonDBRelation
             $massiveActionId = 'mass' . __CLASS__ . $rand;
 
             $massiveactionparams = [
-               'num_displayed'   => min($_SESSION['glpilist_limit'], count($items)),
-               'container'       => $massiveActionId,
-               'display_arrow'   => false,
+                'num_displayed'   => min($_SESSION['glpilist_limit'], count($items)),
+                'container'       => $massiveActionId,
+                'display_arrow'   => false,
             ];
             Html::showMassiveActions($massiveactionparams);
             $fields = [
-              'item' => _n('Item', 'Items', 1),
-              'position' => __('Position'),
-              'orientation' => __('Orientation')
+                'item' => _n('Item', 'Items', 1),
+                'position' => __('Position'),
+                'orientation' => __('Orientation'),
             ];
             $values = [];
             $massiveActionValues = [];
@@ -161,15 +161,15 @@ class Item_Rack extends CommonDBRelation
                 $values[] = [
                     'item' => $item->getLink(),
                     'position' => $row['position'],
-                    'orientation' => $row['orientation'] == Rack::FRONT ? __('Front') : __('Rear')
+                    'orientation' => $row['orientation'] == Rack::FRONT ? __('Front') : __('Rear'),
                 ];
                 $massiveActionValues[] = sprintf("item[%s][%s]", $item->getType(), $item->getID());
             }
             renderTwigTemplate('table.twig', [
-              'id' => $massiveActionId,
-              'fields' => $fields,
-              'values' => $values,
-              'massive_action' => $massiveActionValues,
+                'id' => $massiveActionId,
+                'fields' => $fields,
+                'values' => $values,
+                'massive_action' => $massiveActionValues,
             ]);
         }
 
@@ -180,7 +180,7 @@ class Item_Rack extends CommonDBRelation
 
         $data = [];
         //all rows; empty
-        for ($i = (int)$rack->fields['number_units']; $i > 0; --$i) {
+        for ($i = (int) $rack->fields['number_units']; $i > 0; --$i) {
             $data[Rack::FRONT][$i] = false;
             $data[Rack::REAR][$i] = false;
         }
@@ -198,20 +198,20 @@ class Item_Rack extends CommonDBRelation
             $position = $row['position'];
 
             $gs_item = [
-               'id'        => $row['id'],
-               'name'      => $item->getName(),
-               'x'         => $row['hpos'] >= 2 ? 1 : 0,
-               'y'         => $rack->fields['number_units'] - $row['position'],
-               'height'    => 1,
-               'width'     => 2,
-               'bgcolor'   => $row['bgcolor'],
-               'picture_f' => null,
-               'picture_r' => null,
-               'url'       => $item->getLinkURL(),
-               'rel_url'   => $rel->getLinkURL(),
-               'rear'      => false,
-               'half_rack' => false,
-               'reserved'  => (bool) $row['is_reserved'],
+                'id'        => $row['id'],
+                'name'      => $item->getName(),
+                'x'         => $row['hpos'] >= 2 ? 1 : 0,
+                'y'         => $rack->fields['number_units'] - $row['position'],
+                'height'    => 1,
+                'width'     => 2,
+                'bgcolor'   => $row['bgcolor'],
+                'picture_f' => null,
+                'picture_r' => null,
+                'url'       => $item->getLinkURL(),
+                'rel_url'   => $rel->getLinkURL(),
+                'rear'      => false,
+                'half_rack' => false,
+                'reserved'  => (bool) $row['is_reserved'],
             ];
 
             $model_class = $item->getType() . 'Model';
@@ -248,9 +248,9 @@ class Item_Rack extends CommonDBRelation
 
             if (isset($data[$row['orientation']][$position])) {
                 $data[$row['orientation']][$row['position']] = [
-                   'row'     => $row,
-                   'item'    => $item,
-                   'gs_item' => $gs_item
+                    'row'     => $row,
+                    'item'    => $item,
+                    'gs_item' => $gs_item,
                 ];
 
                 //add to other side if needed
@@ -265,9 +265,9 @@ class Item_Rack extends CommonDBRelation
                         //$row['position'] = substr($row['position'], 0, -2)."_".$gs_item['x'];
                     }
                     $data[$flip_orientation][$row['position']] = [
-                       'row'     => $row,
-                       'item'    => $item,
-                       'gs_item' => $gs_item
+                        'row'     => $row,
+                        'item'    => $item,
+                        'gs_item' => $gs_item,
                     ];
                 }
             } else {
@@ -450,17 +450,17 @@ JAVASCRIPT;
         global $DB;
 
         $items = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'racks_id' => $rack->getID()
-           ]
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'racks_id' => $rack->getID(),
+            ],
         ]);
 
         $weight = 0;
         $power  = 0;
         $units  = [
-           Rack::FRONT => array_fill(0, $rack->fields['number_units'], 0),
-           Rack::REAR  => array_fill(0, $rack->fields['number_units'], 0),
+            Rack::FRONT => array_fill(0, $rack->fields['number_units'], 0),
+            Rack::REAR  => array_fill(0, $rack->fields['number_units'], 0),
         ];
 
         $rel = new self();
@@ -512,23 +512,23 @@ JAVASCRIPT;
         echo "<div class='rack_side_block_content'>";
         echo "<h3>" . __("Space") . "</h3>";
         Html::progressBar('rack_space', [
-           'create' => true,
-           'percent' => $space_prct,
-           'message' => $space_prct . "%",
+            'create' => true,
+            'percent' => $space_prct,
+            'message' => $space_prct . "%",
         ]);
 
         echo "<h3>" . __("Weight") . "</h3>";
         Html::progressBar('rack_weight', [
-           'create' => true,
-           'percent' => $weight_prct,
-           'message' => $weight . " / " . $rack->fields['max_weight']
+            'create' => true,
+            'percent' => $weight_prct,
+            'message' => $weight . " / " . $rack->fields['max_weight'],
         ]);
 
         echo "<h3>" . __("Power") . "</h3>";
         Html::progressBar('rack_power', [
-           'create' => true,
-           'percent' => $power_prct,
-           'message' => $power . " / " . $rack->fields['max_power']
+            'create' => true,
+            'percent' => $power_prct,
+            'message' => $power . " / " . $rack->fields['max_power'],
         ]);
         echo "</div>";
         echo "</div>";
@@ -548,7 +548,7 @@ JAVASCRIPT;
 
         $used = $used_reserved = [];
         $iterator = $DB->request([
-           'FROM' => $this->getTable()
+            'FROM' => $this->getTable(),
         ]);
         while ($row = $iterator->next()) {
             $used[$row['itemtype']][] = $row['items_id'];
@@ -559,10 +559,10 @@ JAVASCRIPT;
         }
         // get all reserved items
         $iterator = $DB->request([
-           'FROM'  => $this->getTable(),
-           'WHERE' => [
-              'is_reserved' => true
-           ]
+            'FROM'  => $this->getTable(),
+            'WHERE' => [
+                'is_reserved' => true,
+            ],
         ]);
         while ($row = $iterator->next()) {
             $used_reserved[$row['itemtype']][] = $row['items_id'];
@@ -570,40 +570,40 @@ JAVASCRIPT;
 
         //items part of an enclosure should not be listed
         $iterator = $DB->request([
-           'FROM'   => Item_Enclosure::getTable()
+            'FROM'   => Item_Enclosure::getTable(),
         ]);
         while ($row = $iterator->next()) {
             $used[$row['itemtype']][] = $row['items_id'];
         }
 
         $form = [
-          'action' => $this->getFormURL(),
-          'itemtype' => $this::class,
-         'content' => [
-              $this->getTypeName(1) => [
-                  'visible' => true,
-                  'inputs' => [
-                      (isset($options['_onlypdu']) && $options['_onlypdu']) ? [
-                          'type' => 'hidden',
-                          'name' => 'itemtype',
-                          'value' => 'PDU'
-                      ] : [],
-                      [
-                          'type' => 'hidden',
-                          'id' => 'used_input',
-                          'name' => 'used',
-                          'value' => json_encode($used)
-                      ],
-                      __('Item type') => (isset($options['_onlypdu']) && $options['_onlypdu']) ? [
-                          'content' => PDU::getTypeName(1)
-                      ] : [
-                          'type' => 'select',
-                          'id' => 'dropdown_itemtype',
-                          'name' => 'itemtype',
-                          'values' => [Dropdown::EMPTY_VALUE] + $types,
-                          'value' => $this->fields["itemtype"] ?? 0,
-                          'hooks' => [
-                              'change' => <<<JS
+            'action' => $this->getFormURL(),
+            'itemtype' => $this::class,
+            'content' => [
+                $this->getTypeName(1) => [
+                    'visible' => true,
+                    'inputs' => [
+                        (isset($options['_onlypdu']) && $options['_onlypdu']) ? [
+                            'type' => 'hidden',
+                            'name' => 'itemtype',
+                            'value' => 'PDU',
+                        ] : [],
+                        [
+                            'type' => 'hidden',
+                            'id' => 'used_input',
+                            'name' => 'used',
+                            'value' => json_encode($used),
+                        ],
+                        __('Item type') => (isset($options['_onlypdu']) && $options['_onlypdu']) ? [
+                            'content' => PDU::getTypeName(1),
+                        ] : [
+                            'type' => 'select',
+                            'id' => 'dropdown_itemtype',
+                            'name' => 'itemtype',
+                            'values' => [Dropdown::EMPTY_VALUE] + $types,
+                            'value' => $this->fields["itemtype"] ?? 0,
+                            'hooks' => [
+                                'change' => <<<JS
                                 const val = $('#dropdown_itemtype').val();
                                 $('#dropdown_items_id').empty();
                                 if (val == 0) {
@@ -634,63 +634,63 @@ JAVASCRIPT;
                                     }
                                 });
                             JS,
-                          ]
-                      ],
-                      _n('Item', 'Items', 1) => [
-                          'type' => 'select',
-                          'id' => 'dropdown_items_id',
-                          'name' => 'items_id',
-                          'value' => $this->fields["items_id"] ?? 0,
-                          'values' => isset($this->fields['itemtype']) && !empty($this->fields['itemtype'])
-                              ? getItemByEntity(new $this->fields['itemtype'](), $this->fields['entities_id'])
-                              : []
-                      ],
-                      Rack::getTypeName(1) => [
-                          'type' => 'select',
-                          'itemtype' => Rack::class,
-                          'name' => 'racks_id',
-                          'value' => $options["racks_id"] ?? $this->fields["racks_id"] ?? 0,
-                      ],
-                      __('Position') => [
-                          'type' => 'number',
-                          'name' => 'position',
-                          'min' => 1,
-                          'max' => $rack->fields['number_units'] ?? 1,
-                          'step' => 1,
-                          'value' => $options["position"] ?? $this->fields["position"] ?? 0,
-                      ],
-                      __('Orientation (front rack point of view)') => [
-                          'type' => 'select',
-                          'name' => 'orientation',
-                          'values' => [
-                              Rack::FRONT => __('Front'),
-                              Rack::REAR  => __('Rear')
-                          ],
-                          'value' => $options["orientation"] ?? $this->fields["orientation"] ?? 0,
-                      ],
-                      __('Background color') => [
-                          'type' => 'color',
-                          'name' => 'bgcolor',
-                          'value' => $options["bgcolor"] ?? $this->fields["bgcolor"] ?? '#69CEBA',
-                      ],
-                      __('Horizontal position (from rack point of view)') => [
-                          'type' => 'select',
-                          'name' => 'hpos',
-                          'values' => [
-                              Rack::POS_NONE  => __('None'),
-                              Rack::POS_LEFT  => __('Left'),
-                              Rack::POS_RIGHT => __('Right')
-                          ],
-                          'value' => $options["hpos"] ?? $this->fields["hpos"] ?? 0,
-                      ],
-                      __('Reserved position ?') => [
-                          'type' => 'checkbox',
-                          'name' => 'is_reserved',
-                          'value' => $options["is_reserved"] ?? $this->fields["is_reserved"] ?? 0,
-                      ]
-                  ]
-              ]
-          ]
+                            ],
+                        ],
+                        _n('Item', 'Items', 1) => [
+                            'type' => 'select',
+                            'id' => 'dropdown_items_id',
+                            'name' => 'items_id',
+                            'value' => $this->fields["items_id"] ?? 0,
+                            'values' => isset($this->fields['itemtype']) && !empty($this->fields['itemtype'])
+                                ? getItemByEntity(new $this->fields['itemtype'](), $this->fields['entities_id'])
+                                : [],
+                        ],
+                        Rack::getTypeName(1) => [
+                            'type' => 'select',
+                            'itemtype' => Rack::class,
+                            'name' => 'racks_id',
+                            'value' => $options["racks_id"] ?? $this->fields["racks_id"] ?? 0,
+                        ],
+                        __('Position') => [
+                            'type' => 'number',
+                            'name' => 'position',
+                            'min' => 1,
+                            'max' => $rack->fields['number_units'] ?? 1,
+                            'step' => 1,
+                            'value' => $options["position"] ?? $this->fields["position"] ?? 0,
+                        ],
+                        __('Orientation (front rack point of view)') => [
+                            'type' => 'select',
+                            'name' => 'orientation',
+                            'values' => [
+                                Rack::FRONT => __('Front'),
+                                Rack::REAR  => __('Rear'),
+                            ],
+                            'value' => $options["orientation"] ?? $this->fields["orientation"] ?? 0,
+                        ],
+                        __('Background color') => [
+                            'type' => 'color',
+                            'name' => 'bgcolor',
+                            'value' => $options["bgcolor"] ?? $this->fields["bgcolor"] ?? '#69CEBA',
+                        ],
+                        __('Horizontal position (from rack point of view)') => [
+                            'type' => 'select',
+                            'name' => 'hpos',
+                            'values' => [
+                                Rack::POS_NONE  => __('None'),
+                                Rack::POS_LEFT  => __('Left'),
+                                Rack::POS_RIGHT => __('Right'),
+                            ],
+                            'value' => $options["hpos"] ?? $this->fields["hpos"] ?? 0,
+                        ],
+                        __('Reserved position ?') => [
+                            'type' => 'checkbox',
+                            'name' => 'is_reserved',
+                            'value' => $options["is_reserved"] ?? $this->fields["is_reserved"] ?? 0,
+                        ],
+                    ],
+                ],
+            ],
         ];
         renderTwigForm($form, '', $this->fields);
 
@@ -782,8 +782,8 @@ JAVASCRIPT;
 
             $tip = "<span class='tipcontent'>";
             $tip .= "<span>
-                  <label>" .
-                     ($rear
+                  <label>"
+                     . ($rear
                         ? __("asset rear side")
                         : __("asset front side")) . "
                   </label>
@@ -829,8 +829,8 @@ JAVASCRIPT;
                gs-id='{$gs_item['id']}' {$readonly_attr}
                style='background-color: $bg_color; color: $fg_color;'>
             <div class='grid-stack-item-content' style='$fg_color_s $img_s'>
-               $icon" .
-                  (!empty($gs_item['url'])
+               $icon"
+                  . (!empty($gs_item['url'])
                      ? "<a href='{$gs_item['url']}' class='itemrack_name' style='$fg_color_s'>{$gs_item['name']}</a>"
                      : "<span class='itemrack_name'>" . $gs_item['name'] . "</span>") . "
                <a href='{$gs_item['rel_url']}'>
@@ -993,8 +993,8 @@ JAVASCRIPT;
             }
 
             if (
-                $position > $rack->fields['number_units'] ||
-                $position + $required_units  > $rack->fields['number_units'] + 1
+                $position > $rack->fields['number_units']
+                || $position + $required_units  > $rack->fields['number_units'] + 1
             ) {
                 $error_detected[] = __('Item is out of rack bounds');
             } elseif (!count($error_detected)) {

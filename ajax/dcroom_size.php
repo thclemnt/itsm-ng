@@ -37,12 +37,12 @@ Html::header_nocache();
 Session::checkLoginUser();
 
 if (!isset($_REQUEST['id'])) {
-    throw new \RuntimeException('Required argument missing!');
+    throw new RuntimeException('Required argument missing!');
 }
 
 $id = $_REQUEST['id'];
-$current = isset($_REQUEST['current']) ? $_REQUEST['current'] : null;
-$rand = isset($_REQUEST['rand']) ? $_REQUEST['rand'] : mt_rand();
+$current = $_REQUEST['current'] ?? null;
+$rand = $_REQUEST['rand'] ?? mt_rand();
 
 $room = new DCRoom();
 if ($room->getFromDB($id)) {

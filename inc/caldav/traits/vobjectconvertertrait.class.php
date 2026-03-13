@@ -73,8 +73,8 @@ trait VobjectConverterTrait
 
         $vobject = new \VObject();
         $vobject_crit = [
-           'items_id' => $item->fields['id'],
-           'itemtype' => $item->getType(),
+            'items_id' => $item->fields['id'],
+            'itemtype' => $item->getType(),
         ];
 
         // Restore previously saved VCalendar if available
@@ -179,8 +179,8 @@ trait VobjectConverterTrait
     /**
      * Return the most relevant caldav component according to configuration.
      *
-     * @param boolean $is_planned
-     * @param boolean $is_task
+     * @param bool $is_planned
+     * @param bool $is_task
      *
      * @return string|null
      */
@@ -284,7 +284,7 @@ trait VobjectConverterTrait
      *
      * @param Component $vcomponent
      *
-     * @return integer|null
+     * @return int|null
      */
     private function getStateInputFromVComponent(Component $vcomponent)
     {
@@ -337,8 +337,8 @@ trait VobjectConverterTrait
         }
 
         return [
-           'begin' => $begin_datetime->format('Y-m-d H:i:s'),
-           'end'   => $end_datetime->format('Y-m-d H:i:s'),
+            'begin' => $begin_datetime->format('Y-m-d H:i:s'),
+            'end'   => $end_datetime->format('Y-m-d H:i:s'),
         ];
     }
 

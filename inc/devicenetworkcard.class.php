@@ -57,8 +57,8 @@ class DeviceNetworkCard extends CommonDevice
     {
 
         return ['designation'      => 'equal',
-                     'manufacturers_id' => 'equal',
-                     'mac'              => 'equal'];
+            'manufacturers_id' => 'equal',
+            'mac'              => 'equal'];
     }
 
 
@@ -68,39 +68,39 @@ class DeviceNetworkCard extends CommonDevice
         return array_merge(
             parent::getAdditionalFields(),
             [
-              __('MAC address by default') => [
-                 'name'  => 'mac_default',
-                 'type'  => 'text',
-                 'value' => $this->fields['mac_default'],
-              ],
-              __('Flow') => [
-                 'name'  => 'bandwidth',
-                 'type'  => 'text',
-                 'value' => $this->fields['bandwidth'],
-              ],
-              _n('Model', 'Models', 1) => [
-                 'name'  => 'devicenetworkcardmodels_id',
-                 'type'  => 'select',
-                 'values' => getOptionForItems('DeviceNetworkCardModel'),
-                 'value' => $this->fields['devicenetworkcardmodels_id'],
-                 'actions' => getItemActionButtons(['info', 'add'], 'DeviceNetworkCardModel'),
-              ],
-              RegisteredID::getTypeName(Session::getPluralNumber()) => [
-                 'name'  => 'none',
-                 'type'  => 'multiSelect',
-                 'inputs' => [
-                    [
-                       'name' => 'current_registeredID_type',
-                       'type' => 'select',
-                       'values' => array_merge([ Dropdown::EMPTY_VALUE ], RegisteredID::getRegisteredIDTypes()),
+                __('MAC address by default') => [
+                    'name'  => 'mac_default',
+                    'type'  => 'text',
+                    'value' => $this->fields['mac_default'],
+                ],
+                __('Flow') => [
+                    'name'  => 'bandwidth',
+                    'type'  => 'text',
+                    'value' => $this->fields['bandwidth'],
+                ],
+                _n('Model', 'Models', 1) => [
+                    'name'  => 'devicenetworkcardmodels_id',
+                    'type'  => 'select',
+                    'values' => getOptionForItems('DeviceNetworkCardModel'),
+                    'value' => $this->fields['devicenetworkcardmodels_id'],
+                    'actions' => getItemActionButtons(['info', 'add'], 'DeviceNetworkCardModel'),
+                ],
+                RegisteredID::getTypeName(Session::getPluralNumber()) => [
+                    'name'  => 'none',
+                    'type'  => 'multiSelect',
+                    'inputs' => [
+                        [
+                            'name' => 'current_registeredID_type',
+                            'type' => 'select',
+                            'values' => array_merge([ Dropdown::EMPTY_VALUE ], RegisteredID::getRegisteredIDTypes()),
+                        ],
+                        [
+                            'name' => 'current_registeredID',
+                            'type' => 'text',
+                            'size' => 30,
+                        ],
                     ],
-                    [
-                       'name' => 'current_registeredID',
-                       'type' => 'text',
-                       'size' => 30,
-                    ],
-                 ],
-                 'getInputAdd' => <<<JS
+                    'getInputAdd' => <<<JS
                   function () {
                      if (!$('input[name="current_registeredID"]').val()) {
                         return;
@@ -113,14 +113,14 @@ class DeviceNetworkCard extends CommonDevice
                      return {values, title};
                   }
                JS,
-                 'values' => getOptionsWithNameForItem(
-                     'RegisteredID',
-                     ['itemtype' => $this::class, 'items_id' => $this->getID()],
-                     ['_registeredID_type' => 'device_type', '_registeredID' => 'name']
-                 ),
-                 'col_lg' => 8,
-                 'col_md' => 8,
-              ],
+                    'values' => getOptionsWithNameForItem(
+                        'RegisteredID',
+                        ['itemtype' => $this::class, 'items_id' => $this->getID()],
+                        ['_registeredID_type' => 'device_type', '_registeredID' => 'name']
+                    ),
+                    'col_lg' => 8,
+                    'col_md' => 8,
+                ],
             ]
         );
     }
@@ -131,29 +131,29 @@ class DeviceNetworkCard extends CommonDevice
         $tab = parent::rawSearchOptions();
 
         $tab[] = [
-           'id'                 => '11',
-           'table'              => $this->getTable(),
-           'field'              => 'mac_default',
-           'name'               => __('MAC address by default'),
-           'datatype'           => 'mac',
-           'autocomplete'       => true,
+            'id'                 => '11',
+            'table'              => $this->getTable(),
+            'field'              => 'mac_default',
+            'name'               => __('MAC address by default'),
+            'datatype'           => 'mac',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '12',
-           'table'              => $this->getTable(),
-           'field'              => 'bandwidth',
-           'name'               => __('Flow'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '12',
+            'table'              => $this->getTable(),
+            'field'              => 'bandwidth',
+            'name'               => __('Flow'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '13',
-           'table'              => 'glpi_devicenetworkcardmodels',
-           'field'              => 'name',
-           'name'               => _n('Model', 'Models', 1),
-           'datatype'           => 'dropdown'
+            'id'                 => '13',
+            'table'              => 'glpi_devicenetworkcardmodels',
+            'field'              => 'name',
+            'name'               => _n('Model', 'Models', 1),
+            'datatype'           => 'dropdown',
         ];
 
         return $tab;
@@ -165,7 +165,7 @@ class DeviceNetworkCard extends CommonDevice
      *
      * @param $input array of datas
      *
-     * @return integer ID of existing or new Device
+     * @return int ID of existing or new Device
     **/
     public function import(array $input)
     {
@@ -176,9 +176,9 @@ class DeviceNetworkCard extends CommonDevice
         }
 
         $criteria = [
-           'SELECT' => 'id',
-           'FROM'   => $this->getTable(),
-           'WHERE'  => ['designation' => $input['designation']]
+            'SELECT' => 'id',
+            'FROM'   => $this->getTable(),
+            'WHERE'  => ['designation' => $input['designation']],
         ];
 
         if (isset($input["bandwidth"])) {
@@ -286,30 +286,30 @@ class DeviceNetworkCard extends CommonDevice
         $tab = [];
 
         $tab[] = [
-           'id'                 => '112',
-           'table'              => 'glpi_devicenetworkcards',
-           'field'              => 'designation',
-           'name'               => NetworkInterface::getTypeName(1),
-           'forcegroupby'       => true,
-           'massiveaction'      => false,
-           'datatype'           => 'string',
-           'joinparams'         => [
-              'beforejoin'         => [
-                 'table'              => 'glpi_items_devicenetworkcards',
-                 'joinparams'         => $main_joinparams
-              ]
-           ]
+            'id'                 => '112',
+            'table'              => 'glpi_devicenetworkcards',
+            'field'              => 'designation',
+            'name'               => NetworkInterface::getTypeName(1),
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
+            'datatype'           => 'string',
+            'joinparams'         => [
+                'beforejoin'         => [
+                    'table'              => 'glpi_items_devicenetworkcards',
+                    'joinparams'         => $main_joinparams,
+                ],
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '113',
-           'table'              => 'glpi_items_devicenetworkcards',
-           'field'              => 'mac',
-           'name'               => __('MAC address'),
-           'forcegroupby'       => true,
-           'massiveaction'      => false,
-           'datatype'           => 'string',
-           'joinparams'         => $main_joinparams
+            'id'                 => '113',
+            'table'              => 'glpi_items_devicenetworkcards',
+            'field'              => 'mac',
+            'name'               => __('MAC address'),
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
+            'datatype'           => 'string',
+            'joinparams'         => $main_joinparams,
         ];
 
         return $tab;

@@ -44,10 +44,10 @@ class NotificationTargetSavedSearch_Alert extends NotificationTarget
         $events = [];
 
         $iterator = $DB->request([
-           'SELECT'          => 'event',
-           'DISTINCT'        => true,
-           'FROM'            => Notification::getTable(),
-           'WHERE'           => ['itemtype' => SavedSearch_Alert::getType()]
+            'SELECT'          => 'event',
+            'DISTINCT'        => true,
+            'FROM'            => Notification::getTable(),
+            'WHERE'           => ['itemtype' => SavedSearch_Alert::getType()],
         ]);
 
         if ($iterator->numRows()) {
@@ -82,11 +82,11 @@ class NotificationTargetSavedSearch_Alert extends NotificationTarget
         $this->data['##savedsearch.name##']      = $savedsearch->getField('name');
         $this->data['##savedsearch.message##']   = $options['msg'];
         $this->data['##savedsearch.id##']        = $savedsearch->getID();
-        $this->data['##savedsearch.count##']     = (int)$options['data']['totalcount'];
+        $this->data['##savedsearch.count##']     = (int) $options['data']['totalcount'];
         $this->data['##savedsearch.type##']      = $savedsearch->getField('itemtype');
-        $this->data['##savedsearch.url##']       = $CFG_GLPI['url_base'] . "/?redirect=" .
-                                                     rawurlencode($savedsearch->getSearchURL(false) .
-                                                     "?action=load&id=" . $savedsearch->getID());
+        $this->data['##savedsearch.url##']       = $CFG_GLPI['url_base'] . "/?redirect="
+                                                     . rawurlencode($savedsearch->getSearchURL(false)
+                                                     . "?action=load&id=" . $savedsearch->getID());
 
         $this->getTags();
         foreach ($this->tag_descriptions[NotificationTarget::TAG_LANGUAGE] as $tag => $values) {
@@ -100,19 +100,19 @@ class NotificationTargetSavedSearch_Alert extends NotificationTarget
     public function getTags()
     {
         $tags = [
-           'savedsearch.action' => _n('Event', 'Events', 1),
-           'savedsearch.name'   => __('Name'),
-           'savedsearch.message' => __('Message'),
-           'savedsearch.id'     => __('ID'),
-           'savedsearch.count'  => __('Number of results'),
-           'savedsearch.type'   => __('Item type'),
-           'savedsearch.url'    => __('Load saved search')
+            'savedsearch.action' => _n('Event', 'Events', 1),
+            'savedsearch.name'   => __('Name'),
+            'savedsearch.message' => __('Message'),
+            'savedsearch.id'     => __('ID'),
+            'savedsearch.count'  => __('Number of results'),
+            'savedsearch.type'   => __('Item type'),
+            'savedsearch.url'    => __('Load saved search'),
         ];
 
         foreach ($tags as $tag => $label) {
             $this->addTagToList(['tag'   => $tag,
-                                      'label' => $label,
-                                      'value' => true]);
+                'label' => $label,
+                'value' => true]);
         }
         asort($this->tag_descriptions);
     }
@@ -143,10 +143,10 @@ class NotificationTargetSavedSearch_Alert extends NotificationTarget
                         // Send to user without any check on profile / entity
                         // Do not set users_id
                         $data = ['name'     => $user->getName(),
-                                      'email'    => $user->getDefaultEmail(),
-                                      'language' => $user->getField('language'),
-                                      'users_id' => $user->getID(),
-                                      'usertype' => $usertype];
+                            'email'    => $user->getDefaultEmail(),
+                            'language' => $user->getField('language'),
+                            'users_id' => $user->getID(),
+                            'usertype' => $usertype];
                         $this->addToRecipientsList($data);
                 }
         }

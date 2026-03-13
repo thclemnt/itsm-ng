@@ -196,7 +196,7 @@ function update06to065()
         $DB->queryOrDie($query, "0.65 add url_in_mail in config");
 
         $query = "UPDATE `glpi_config`
-                SET `url_base` = '".str_replace("/install.php", "", $_SERVER['HTTP_REFERER'])."'
+                SET `url_base` = '" . str_replace("/install.php", "", $_SERVER['HTTP_REFERER']) . "'
                 WHERE `ID` = '1'";
         $DB->queryOrDie($query, " url");
     }
@@ -210,7 +210,7 @@ function update06to065()
     if (!$DB->fieldExists("glpi_config", "auto_update_check", false)) {
         $query = "ALTER TABLE `glpi_config`
                 ADD `auto_update_check` SMALLINT DEFAULT '0' NOT NULL ,
-                ADD `last_update_check` DATE DEFAULT '".date("Y-m-d")."' NOT NULL,
+                ADD `last_update_check` DATE DEFAULT '" . date("Y-m-d") . "' NOT NULL,
                 ADD `founded_new_version` VARCHAR( 10 ) NOT NULL ";
         $DB->queryOrDie($query, "0.65 add auto_login_check in config");
     }
@@ -318,7 +318,7 @@ function update06to065()
                 // Is a followup existing ?
                 $query2 = "SELECT *
                        FROM `glpi_followups`
-                       WHERE `tracking` = '".$data["id_tracking"]."'";
+                       WHERE `tracking` = '" . $data["id_tracking"] . "'";
                 $result2 = $DB->query($query2);
                 if ($DB->numrows($result2) > 0) {
                     while ($found < 0 && $data2 = $DB->fetchArray($result2)) {
@@ -333,7 +333,7 @@ function update06to065()
                 if ($found < 0) {
                     $query3 = "INSERT INTO `glpi_followups`
                                  (`tracking`, `date`, `author`, `contents`)
-                          VALUES ('".$data["id_tracking"]."', '".date("Y-m-d")."', '$suid',
+                          VALUES ('" . $data["id_tracking"] . "', '" . date("Y-m-d") . "', '$suid',
                                   'Automatic Added followup for compatibility problem in update')";
                     $DB->query($query3);
                     $found = $DB->insertId();
@@ -342,7 +342,7 @@ function update06to065()
 
                 $query4 = "UPDATE `glpi_tracking_planning`
                        SET `id_followup` = '$found'
-                       WHERE `ID` ='".$data['ID']."'";
+                       WHERE `ID` ='" . $data['ID'] . "'";
                 $DB->query($query4);
             }
         }
@@ -426,7 +426,7 @@ function update06to065()
                 while ($data = $DB->fetchArray($result)) {
                     $query = "INSERT INTO `glpi_dropdown_model_$model`
                                 (`ID`, `name`)
-                         VALUES ('".$data['ID']."', '".addslashes($data['name'])."')";
+                         VALUES ('" . $data['ID'] . "', '" . addslashes($data['name']) . "')";
                     $DB->queryOrDie($query, "0.65 insert value in glpi_dropdown_model_$model");
                 }
             }
@@ -479,15 +479,15 @@ function update06to065()
              FROM `glpi_computer_device`
              LEFT JOIN `glpi_device_processor`
                 ON (`glpi_computer_device`.`FK_device` = `glpi_device_processor`.`ID`
-                    AND `glpi_computer_device`.`device_type` = '".PROCESSOR_DEVICE."')
+                    AND `glpi_computer_device`.`device_type` = '" . PROCESSOR_DEVICE . "')
              WHERE `glpi_computer_device`.`specificity` =''";
     $result = $DB->query($query);
 
     if ($DB->numrows($result) > 0) {
         while ($data = $DB->fetchAssoc($result)) {
             $query2 = "UPDATE `glpi_computer_device`
-                    SET `specificity` = '".$data["SPECIF"]."'
-                    WHERE `ID` = '".$data["ID"]."'";
+                    SET `specificity` = '" . $data["SPECIF"] . "'
+                    WHERE `ID` = '" . $data["ID"] . "'";
             $DB->query($query2);
         }
     }
@@ -497,15 +497,15 @@ function update06to065()
              FROM `glpi_computer_device`
              LEFT JOIN `glpi_device_ram`
                 ON (`glpi_computer_device`.`FK_device` = `glpi_device_ram`.`ID`
-                    AND `glpi_computer_device`.`device_type` = '".RAM_DEVICE."')
+                    AND `glpi_computer_device`.`device_type` = '" . RAM_DEVICE . "')
              WHERE `glpi_computer_device`.`specificity` =''";
     $result = $DB->query($query);
 
     if ($DB->numrows($result) > 0) {
         while ($data = $DB->fetchAssoc($result)) {
             $query2 = "UPDATE `glpi_computer_device`
-                    SET `specificity` = '".$data["SPECIF"]."'
-                    WHERE `ID` = '".$data["ID"]."'";
+                    SET `specificity` = '" . $data["SPECIF"] . "'
+                    WHERE `ID` = '" . $data["ID"] . "'";
             $DB->query($query2);
         }
     }
@@ -515,15 +515,15 @@ function update06to065()
              FROM `glpi_computer_device`
              LEFT JOIN `glpi_device_hdd`
                 ON (`glpi_computer_device`.`FK_device` = `glpi_device_hdd`.`ID`
-                    AND `glpi_computer_device`.`device_type` = '".HDD_DEVICE."')
+                    AND `glpi_computer_device`.`device_type` = '" . HDD_DEVICE . "')
              WHERE `glpi_computer_device`.`specificity` =''";
     $result = $DB->query($query);
 
     if ($DB->numrows($result) > 0) {
         while ($data = $DB->fetchAssoc($result)) {
             $query2 = "UPDATE `glpi_computer_device`
-                    SET `specificity` = '".$data["SPECIF"]."'
-                    WHERE `ID` = '".$data["ID"]."'";
+                    SET `specificity` = '" . $data["SPECIF"] . "'
+                    WHERE `ID` = '" . $data["ID"] . "'";
             $DB->query($query2);
         }
     }
@@ -533,23 +533,23 @@ function update06to065()
              FROM `glpi_computer_device`
              LEFT JOIN `glpi_device_iface`
                 ON (`glpi_computer_device`.`FK_device` = `glpi_device_iface`.`ID`
-                    AND `glpi_computer_device`.`device_type` = '".NETWORK_DEVICE."')
+                    AND `glpi_computer_device`.`device_type` = '" . NETWORK_DEVICE . "')
              WHERE `glpi_computer_device`.`specificity` =''";
     $result = $DB->query($query);
 
     if ($DB->numrows($result) > 0) {
         while ($data = $DB->fetchAssoc($result)) {
             $query2 = "UPDATE `glpi_computer_device`
-                    SET `specificity` = '".$data["SPECIF"]."'
-                    WHERE `ID` = '".$data["ID"]."'";
+                    SET `specificity` = '" . $data["SPECIF"] . "'
+                    WHERE `ID` = '" . $data["ID"] . "'";
             $DB->query($query2);
         }
     }
 
     // add field notes in tables
     $new_notes = ["cartridges_type", "computers", "consumables_type", "contacts", "contracts",
-                       "docs", "enterprises", "monitors", "networking", "peripherals", "printers",
-                       "software"];
+        "docs", "enterprises", "monitors", "networking", "peripherals", "printers",
+        "software"];
 
     foreach ($new_notes as $notes) {
         if (!$DB->fieldExists("glpi_$notes", "notes", false)) {
@@ -729,7 +729,7 @@ function update06to065()
     }
 
     $device = ["case", "control", "drive", "gfxcard", "hdd", "iface", "moboard", "power", "pci",
-                    "processor", "ram", "sndcard"];
+        "processor", "ram", "sndcard"];
 
     foreach ($device as $dev) {
         if ($DB->fieldExists("glpi_device_$dev", "comment", false)) {
@@ -955,12 +955,12 @@ function update06to065()
 
         $query = "UPDATE `glpi_tracking`
                 SET `assign_ent` = `assign`
-                WHERE `assign_type` = '".ENTERPRISE_TYPE."'";
+                WHERE `assign_type` = '" . ENTERPRISE_TYPE . "'";
         $DB->queryOrDie($query, "0.65 update assign_ent in tracking");
 
         $query = "UPDATE `glpi_tracking`
                 SET `assign` = 0
-                WHERE `assign_type` = '".ENTERPRISE_TYPE."'";
+                WHERE `assign_type` = '" . ENTERPRISE_TYPE . "'";
         $DB->queryOrDie($query, "0.65 update assign_ent in tracking");
 
         $query = "ALTER TABLE `glpi_tracking`
@@ -1174,8 +1174,8 @@ function update06to065()
 
     // ADD INDEX
     $tbl = ["cartridges_type", "computers", "consumables_type", "contacts", "contracts",
-                 "docs", "enterprises", "monitors", "networking", "peripherals", "printers",
-                 "software", "users"];
+        "docs", "enterprises", "monitors", "networking", "peripherals", "printers",
+        "software", "users"];
 
     foreach ($tbl as $t) {
         if (!isIndex("glpi_$t", "name")) {
@@ -1189,9 +1189,9 @@ function update06to065()
     while ($line = $result->next()) {
         if (strstr($line['TABLE_NAME'], "glpi_dropdown") || strstr($line['TABLE_NAME'], "glpi_type")) {
             if (!isIndex($line['TABLE_NAME'], "name")) {
-                $query = "ALTER TABLE `".$line['TABLE_NAME']."`
+                $query = "ALTER TABLE `" . $line['TABLE_NAME'] . "`
                       ADD INDEX (`name`) ";
-                $DB->queryOrDie($query, "0.65 add index in name field ".$line['TABLE_NAME']."");
+                $DB->queryOrDie($query, "0.65 add index in name field " . $line['TABLE_NAME'] . "");
             }
         }
     }
@@ -1301,9 +1301,9 @@ function update06to065()
         if (strstr($line['TABLE_NAME'], "glpi_dropdown") || strstr($line['TABLE_NAME'], "glpi_type")) {
             if ($line['TABLE_NAME'] != "glpi_type_docs") {
                 if (!$DB->fieldExists($line['TABLE_NAME'], "comments", false)) {
-                    $query = "ALTER TABLE `".$line['TABLE_NAME']."`
+                    $query = "ALTER TABLE `" . $line['TABLE_NAME'] . "`
                          ADD `comments` TEXT NULL ";
-                    $DB->queryOrDie($query, "0.65 add comments field in ".$line['TABLE_NAME']."");
+                    $DB->queryOrDie($query, "0.65 add comments field in " . $line['TABLE_NAME'] . "");
                 }
             }
         }

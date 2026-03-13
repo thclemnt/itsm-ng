@@ -43,27 +43,27 @@ class ContractCost extends DbTestCase
 
         $contract = new \Contract();
         $contract_id = $contract->add([
-           'name'        => 'contract-cost-' . $this->getUniqueString(),
-           'entities_id' => 0,
+            'name'        => 'contract-cost-' . $this->getUniqueString(),
+            'entities_id' => 0,
         ]);
-        $this->integer((int)$contract_id)->isGreaterThan(0);
+        $this->integer((int) $contract_id)->isGreaterThan(0);
 
         $obj = new \ContractCost();
         $id = $obj->add([
-           'contracts_id' => $contract_id,
-           'name'         => 'cost-' . $this->getUniqueString(),
-           'begin_date'   => '2025-01-10',
-           'end_date'     => '2025-01-01',
-           'cost'         => 50,
+            'contracts_id' => $contract_id,
+            'name'         => 'cost-' . $this->getUniqueString(),
+            'begin_date'   => '2025-01-10',
+            'end_date'     => '2025-01-01',
+            'cost'         => 50,
         ]);
-        $this->integer((int)$id)->isGreaterThan(0);
+        $this->integer((int) $id)->isGreaterThan(0);
         $this->boolean($obj->getFromDB($id))->isTrue();
         $this->string($obj->getField('end_date'))->isEqualTo('2025-01-10');
 
         $this->boolean($obj->update([
-           'id'           => $id,
-           'begin_date'   => '2025-02-12',
-           'end_date'     => '2025-02-01',
+            'id'           => $id,
+            'begin_date'   => '2025-02-12',
+            'end_date'     => '2025-02-01',
         ]))->isTrue();
         $this->boolean($obj->getFromDB($id))->isTrue();
         $this->string($obj->getField('end_date'))->isEqualTo('2025-02-12');
@@ -75,27 +75,27 @@ class ContractCost extends DbTestCase
 
         $contract = new \Contract();
         $contract_id = $contract->add([
-           'name'        => 'contract-cost-prev-' . $this->getUniqueString(),
-           'entities_id' => 0,
+            'name'        => 'contract-cost-prev-' . $this->getUniqueString(),
+            'entities_id' => 0,
         ]);
-        $this->integer((int)$contract_id)->isGreaterThan(0);
+        $this->integer((int) $contract_id)->isGreaterThan(0);
 
         $previous = new \ContractCost();
         $previous_id = $previous->add([
-           'contracts_id' => $contract_id,
-           'name'         => 'previous-cost-' . $this->getUniqueString(),
-           'begin_date'   => '2025-05-01',
-           'end_date'     => '2025-05-20',
-           'cost'         => 210,
+            'contracts_id' => $contract_id,
+            'name'         => 'previous-cost-' . $this->getUniqueString(),
+            'begin_date'   => '2025-05-01',
+            'end_date'     => '2025-05-20',
+            'cost'         => 210,
         ]);
-        $this->integer((int)$previous_id)->isGreaterThan(0);
+        $this->integer((int) $previous_id)->isGreaterThan(0);
 
         $obj = new \ContractCost();
         $obj->fields['contracts_id'] = $contract_id;
         $obj->initBasedOnPrevious();
 
-        $this->string((string)$obj->fields['begin_date'])->isEqualTo('2025-05-20');
-        $this->string((string)$obj->fields['name'])->isEqualTo((string)$previous->fields['name']);
-        $this->integer((int)$obj->fields['cost'])->isEqualTo(210);
+        $this->string((string) $obj->fields['begin_date'])->isEqualTo('2025-05-20');
+        $this->string((string) $obj->fields['name'])->isEqualTo((string) $previous->fields['name']);
+        $this->integer((int) $obj->fields['cost'])->isEqualTo(210);
     }
 }

@@ -55,12 +55,12 @@ class Vlan extends CommonDropdown
     {
 
         return [
-           __('ID TAG') => [
-              'name'     => 'tag',
-              'type'     => 'number',
-              'min'     => 1,
-              'value' => $this->fields['tag']
-           ]
+            __('ID TAG') => [
+                'name'     => 'tag',
+                'type'     => 'number',
+                'min'     => 1,
+                'value' => $this->fields['tag'],
+            ],
         ];
     }
 
@@ -70,8 +70,8 @@ class Vlan extends CommonDropdown
 
         if ($field['name'] == 'tag') {
             Dropdown::showNumber('tag', ['value' => $this->fields['tag'],
-                                              'min'   => 1,
-                                              'max'   => (pow(2, 12) - 2)]);
+                'min'   => 1,
+                'max'   => (pow(2, 12) - 2)]);
         }
     }
 
@@ -81,13 +81,13 @@ class Vlan extends CommonDropdown
         $tab = parent::rawSearchOptions();
 
         $tab[] = [
-           'id'                 => '11',
-           'table'              => $this->getTable(),
-           'field'              => 'tag',
-           'name'               => __('ID TAG'),
-           'datatype'           => 'number',
-           'min'                => 1,
-           'max'                => 4094
+            'id'                 => '11',
+            'table'              => $this->getTable(),
+            'field'              => 'tag',
+            'name'               => __('ID TAG'),
+            'datatype'           => 'number',
+            'min'                => 1,
+            'max'                => 4094,
         ];
 
         return $tab;
@@ -99,8 +99,8 @@ class Vlan extends CommonDropdown
 
         $this->deleteChildrenAndRelationsFromDb(
             [
-              IPNetwork_Vlan::class,
-              NetworkPort_Vlan::class,
+                IPNetwork_Vlan::class,
+                NetworkPort_Vlan::class,
             ]
         );
     }
@@ -179,8 +179,8 @@ class Vlan extends CommonDropdown
                         __('%1$s: %2$s'),
                         __('ID TAG'),
                         $vlan->fields['tag']
-                    ) . "<br>" .
-                                              sprintf(
+                    ) . "<br>"
+                                              . sprintf(
                                                   __('%1$s: %2$s'),
                                                   __('Comments'),
                                                   $vlan->fields['comment']

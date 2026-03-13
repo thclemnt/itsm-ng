@@ -45,14 +45,14 @@ function update1610to1611()
 
     if (!$DB->fieldExists('glpi_oidc_config', 'sso_link_users')) {
         $query = "ALTER TABLE `glpi_oidc_config` ADD COLUMN (`sso_link_users` TINYINT(1) NOT NULL DEFAULT 1)";
-        $DB->queryOrDie($query, "erreur lors de la mise a jour de la table de glpi_oidc_config".$DB->error());
+        $DB->queryOrDie($query, "erreur lors de la mise a jour de la table de glpi_oidc_config" . $DB->error());
     }
 
     $taskExists = $DB->queryOrDie("SELECT id AS nu FROM `glpi_crontasks` WHERE `name` = 'cleantransferorphans'");
     if ($DB->numrows($taskExists) == 0) {
         $query = 'INSERT INTO `glpi_crontasks` (`itemtype`, `name`, `frequency`, `state`, `mode`, `allowmode`, `hourmin`, `hourmax`, `logs_lifetime`) VALUES
                 ("Transfer", "cleantransferorphans", "3600", "1", "1", "3", "0", "24", "30")';
-        $DB->queryOrDie($query, "erreur lors de la mise a jour de la table de glpi_crontasks".$DB->error());
+        $DB->queryOrDie($query, "erreur lors de la mise a jour de la table de glpi_crontasks" . $DB->error());
     }
 
     // ************ Keep it at the end **************

@@ -113,12 +113,12 @@ class NetworkPortMigration extends CommonDBChild
 
         return [ 'unknown_interface_type'
                                 => __('Undefined interface'),
-                      'invalid_network'
-                                => __('Invalid network (already defined or with invalid addresses)'),
-                      'invalid_gateway'
-                                => __('Gateway not include inside the network'),
-                      'invalid_address'
-                                => __('Invalid IP address') ];
+            'invalid_network'
+                      => __('Invalid network (already defined or with invalid addresses)'),
+            'invalid_gateway'
+                      => __('Gateway not include inside the network'),
+            'invalid_address'
+                      => __('Invalid IP address') ];
     }
 
 
@@ -178,7 +178,7 @@ class NetworkPortMigration extends CommonDBChild
             $network = new IPNetwork();
 
             $params = ["address" => $address,
-                            "netmask" => $netmask];
+                "netmask" => $netmask];
             if (isset($this->fields["address"])) {
                 $params["exclude IDs"] = $this->fields["address"];
             }
@@ -202,8 +202,8 @@ class NetworkPortMigration extends CommonDBChild
             $number_real_errors++;
             $interface_cell = "th";
 
-            echo "<tr class='tab_bg_1'><th>" . $motives['unknown_interface_type'] . "</th>\n" .
-                 "<td>" . __('Transform this network port to');
+            echo "<tr class='tab_bg_1'><th>" . $motives['unknown_interface_type'] . "</th>\n"
+                 . "<td>" . __('Transform this network port to');
             echo "</td><td colspan=2>";
             Dropdown::showItemTypes(
                 'transform_to',
@@ -227,8 +227,8 @@ class NetworkPortMigration extends CommonDBChild
                 } else {
                     echo __('No conflicting network');
                 }
-                echo "&nbsp;<a href='" . Toolbox::getItemTypeFormURL('IPNetwork') . "'>" .
-                      __('you may have to add a network') . "</a>";
+                echo "&nbsp;<a href='" . Toolbox::getItemTypeFormURL('IPNetwork') . "'>"
+                      . __('you may have to add a network') . "</a>";
             }
             echo "</td></tr>\n";
         }
@@ -257,8 +257,8 @@ class NetworkPortMigration extends CommonDBChild
             $networkPort = new NetworkPort();
             if ($networkPort->getFromDB($this->getID())) {
                 $number_real_errors++;
-                echo "<a href='" . $networkPort->getLinkURL() . "'>" .
-                       __('Add a correct IP to the network port') . "</a>";
+                echo "<a href='" . $networkPort->getLinkURL() . "'>"
+                       . __('Add a correct IP to the network port') . "</a>";
             } else {
                 echo __('Unknown network port');
             }
@@ -266,8 +266,8 @@ class NetworkPortMigration extends CommonDBChild
         }
 
         if ($number_real_errors == 0) {
-            echo "<tr class='tab_bg_1'><th colspan='3'>" .
-                 __('I don\'t understand why this migration error is not deleted.');
+            echo "<tr class='tab_bg_1'><th colspan='3'>"
+                 . __('I don\'t understand why this migration error is not deleted.');
             echo "</th><th>";
             Html::showSimpleForm(
                 $this->getFormURL(),
@@ -291,8 +291,8 @@ class NetworkPortMigration extends CommonDBChild
 
         echo "<tr class='tab_bg_1'><td colspan='4'>&nbsp;</td></tr>\n";
 
-        echo "<tr class='tab_bg_1'><th colspan='4'>" . __('Original network port information') . "</th>" .
-             "</tr>\n";
+        echo "<tr class='tab_bg_1'><th colspan='4'>" . __('Original network port information') . "</th>"
+             . "</tr>\n";
 
         echo "<tr class='tab_bg_1'><td>";
         $this->displayRecursiveItems($recursiveItems, 'Type');
@@ -317,9 +317,9 @@ class NetworkPortMigration extends CommonDBChild
 
         echo "<tr class='tab_bg_1'><td>" . NetworkInterface::getTypeName(1) . "</td><$interface_cell>\n";
         $iterator = $DB->request([
-           'SELECT' => 'name',
-           'FROM'   => 'glpi_networkinterfaces',
-           'WHERE'  => ['id' => $this->fields['networkinterfaces_id']]
+            'SELECT' => 'name',
+            'FROM'   => 'glpi_networkinterfaces',
+            'WHERE'  => ['id' => $this->fields['networkinterfaces_id']],
         ]);
         if (count($iterator)) {
             $row = $iterator->next();
@@ -423,54 +423,54 @@ class NetworkPortMigration extends CommonDBChild
         // From 10 to 14
         foreach (self::getMotives() as $motive => $name) {
             $tab[] = [
-               'id'                 => $optionIndex,
-               'table'              => $this->getTable(),
-               'field'              => $motive,
-               'name'               => $name,
-               'datatype'           => 'bool'
+                'id'                 => $optionIndex,
+                'table'              => $this->getTable(),
+                'field'              => $motive,
+                'name'               => $name,
+                'datatype'           => 'bool',
             ];
 
             $optionIndex++;
         }
 
         $tab[] = [
-           'id'                 => '20',
-           'table'              => $this->getTable(),
-           'field'              => 'ip',
-           'datatype'           => 'ip',
-           'name'               => IPAddress::getTypeName(1)
+            'id'                 => '20',
+            'table'              => $this->getTable(),
+            'field'              => 'ip',
+            'datatype'           => 'ip',
+            'name'               => IPAddress::getTypeName(1),
         ];
 
         $tab[] = [
-           'id'                 => '21',
-           'table'              => $this->getTable(),
-           'field'              => 'netmask',
-           'datatype'           => 'string',
-           'name'               => IPNetmask::getTypeName(1)
+            'id'                 => '21',
+            'table'              => $this->getTable(),
+            'field'              => 'netmask',
+            'datatype'           => 'string',
+            'name'               => IPNetmask::getTypeName(1),
         ];
 
         $tab[] = [
-           'id'                 => '22',
-           'table'              => $this->getTable(),
-           'field'              => 'subnet',
-           'datatype'           => 'string',
-           'name'               => __('Network address')
+            'id'                 => '22',
+            'table'              => $this->getTable(),
+            'field'              => 'subnet',
+            'datatype'           => 'string',
+            'name'               => __('Network address'),
         ];
 
         $tab[] = [
-           'id'                 => '23',
-           'table'              => $this->getTable(),
-           'field'              => 'gateway',
-           'datatype'           => 'string',
-           'name'               => IPAddress::getTypeName(1)
+            'id'                 => '23',
+            'table'              => $this->getTable(),
+            'field'              => 'gateway',
+            'datatype'           => 'string',
+            'name'               => IPAddress::getTypeName(1),
         ];
 
         $tab[] = [
-           'id'                 => '24',
-           'table'              => 'glpi_networkinterfaces',
-           'field'              => 'name',
-           'datatype'           => 'dropdown',
-           'name'               => NetworkInterface::getTypeName(1)
+            'id'                 => '24',
+            'table'              => 'glpi_networkinterfaces',
+            'field'              => 'name',
+            'datatype'           => 'dropdown',
+            'name'               => NetworkInterface::getTypeName(1),
         ];
 
         return $tab;

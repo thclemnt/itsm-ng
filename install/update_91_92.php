@@ -95,9 +95,9 @@ function update91to92()
         $DB->updateOrDie(
             "glpi_softwarelicensetypes",
             [
-              'completename' =>  new \QueryExpression(DBmysql::quoteName("name")),
-              'is_recursive' => "1"
-         ],
+                'completename' =>  new QueryExpression(DBmysql::quoteName("name")),
+                'is_recursive' => "1",
+            ],
             [true],
             "9.2 make glpi_softwarelicensetypes a tree dropdown"
         );
@@ -107,12 +107,12 @@ function update91to92()
     $DB->updateOrDie(
         "glpi_profilerights",
         [
-          'rights' => new \QueryExpression($DB->quoteName("rights") . " | " . READ)
-      ],
+            'rights' => new QueryExpression($DB->quoteName("rights") . " | " . READ),
+        ],
         [
-          new \QueryExpression(DBmysql::quoteName("rights") . " & " . DBmysql::quoteValue(UPDATE)),
-          'name' => "device"
-      ],
+            new QueryExpression(DBmysql::quoteName("rights") . " & " . DBmysql::quoteValue(UPDATE)),
+            'name' => "device",
+        ],
         "grant READ right on components to profiles having UPDATE right"
     );
 
@@ -158,10 +158,10 @@ function update91to92()
 
     //set kb translations users...
     foreach ($DB->request(['SELECT'     => ['glpi_knowbaseitems.id', 'glpi_knowbaseitems.users_id'],
-                           'FROM'       => 'glpi_knowbaseitems',
-                           'INNER JOIN' => ["glpi_knowbaseitemtranslations"
-                                            => ['FKEY' => ['glpi_knowbaseitemtranslations' => 'knowbaseitems_id',
-                                                           'glpi_knowbaseitems'            => 'id']]]]) as $knowitems) {
+        'FROM'       => 'glpi_knowbaseitems',
+        'INNER JOIN' => ["glpi_knowbaseitemtranslations"
+                         => ['FKEY' => ['glpi_knowbaseitemtranslations' => 'knowbaseitems_id',
+                             'glpi_knowbaseitems'            => 'id']]]]) as $knowitems) {
 
         $DB->updateOrDie(
             "glpi_knowbaseitemtranslations",
@@ -193,10 +193,10 @@ function update91to92()
     $DB->updateOrDie(
         "glpi_profilerights",
         [
-          'rights' => new \QueryExpression(
-              DBmysql::quoteName("rights") . " | " . DBmysql::quoteValue(KnowbaseItem::COMMENTS)
-          )
-      ],
+            'rights' => new QueryExpression(
+                DBmysql::quoteName("rights") . " | " . DBmysql::quoteValue(KnowbaseItem::COMMENTS)
+            ),
+        ],
         ['name' => "knowbase"],
         "9.2 update knowledge base with comment right"
     );
@@ -221,11 +221,11 @@ function update91to92()
 
     //add product number
     $product_types = ['Computer',
-                      'Printer',
-                      'NetworkEquipment',
-                      'Phone',
-                      'Peripheral',
-                      'Monitor'];
+        'Printer',
+        'NetworkEquipment',
+        'Phone',
+        'Peripheral',
+        'Monitor'];
 
     foreach ($product_types as $type) {
         if (class_exists($type . 'Model')) {
@@ -238,17 +238,17 @@ function update91to92()
 
     // add fields on every item_device tables
     $tables = ['glpi_items_devicecases',
-               'glpi_items_devicecontrols',
-               'glpi_items_devicedrives',
-               'glpi_items_devicegraphiccards',
-               'glpi_items_deviceharddrives',
-               'glpi_items_devicememories',
-               'glpi_items_devicemotherboards',
-               'glpi_items_devicenetworkcards',
-               'glpi_items_devicepcis',
-               'glpi_items_devicepowersupplies',
-               'glpi_items_deviceprocessors',
-               'glpi_items_devicesoundcards'];
+        'glpi_items_devicecontrols',
+        'glpi_items_devicedrives',
+        'glpi_items_devicegraphiccards',
+        'glpi_items_deviceharddrives',
+        'glpi_items_devicememories',
+        'glpi_items_devicemotherboards',
+        'glpi_items_devicenetworkcards',
+        'glpi_items_devicepcis',
+        'glpi_items_devicepowersupplies',
+        'glpi_items_deviceprocessors',
+        'glpi_items_devicesoundcards'];
 
     //add serial, location and state on each devices items
     foreach ($tables as $table) {
@@ -263,21 +263,21 @@ function update91to92()
 
     // Create tables :
     $tables = ['glpi_devicecasemodels',
-               'glpi_devicecontrolmodels',
-               'glpi_devicedrivemodels',
-               'glpi_devicegraphiccardmodels',
-               'glpi_deviceharddrivemodels',
-               'glpi_devicememorymodels',
-               'glpi_devicemotherboardmodels',
-               'glpi_devicenetworkcardmodels',
-               'glpi_devicepcimodels',
-               'glpi_devicepowersupplymodels',
-               'glpi_deviceprocessormodels',
-               'glpi_devicesoundcardmodels',
-               'glpi_devicegenericmodels',
-               'glpi_devicebatterymodels',
-               'glpi_devicefirmwaremodels',
-               'glpi_devicesensormodels'];
+        'glpi_devicecontrolmodels',
+        'glpi_devicedrivemodels',
+        'glpi_devicegraphiccardmodels',
+        'glpi_deviceharddrivemodels',
+        'glpi_devicememorymodels',
+        'glpi_devicemotherboardmodels',
+        'glpi_devicenetworkcardmodels',
+        'glpi_devicepcimodels',
+        'glpi_devicepowersupplymodels',
+        'glpi_deviceprocessormodels',
+        'glpi_devicesoundcardmodels',
+        'glpi_devicegenericmodels',
+        'glpi_devicebatterymodels',
+        'glpi_devicefirmwaremodels',
+        'glpi_devicesensormodels'];
 
     foreach ($tables as $table) {
         if (!$DB->tableExists($table)) {
@@ -296,17 +296,17 @@ function update91to92()
 
     // Add a field in glpi_device* tables :
     $tables = ['glpi_devicecases'         => 'devicecasemodels_id',
-               'glpi_devicecontrols'      => 'devicecontrolmodels_id',
-               'glpi_devicedrives'        => 'devicedrivemodels_id',
-               'glpi_devicegraphiccards'  => 'devicegraphiccardmodels_id',
-               'glpi_deviceharddrives'    => 'deviceharddrivemodels_id',
-               'glpi_devicememories'      => 'devicememorymodels_id',
-               'glpi_devicemotherboards'  => 'devicemotherboardmodels_id',
-               'glpi_devicenetworkcards'  => 'devicenetworkcardmodels_id',
-               'glpi_devicepcis'          => 'devicepcimodels_id',
-               'glpi_devicepowersupplies' => 'devicepowersupplymodels_id',
-               'glpi_deviceprocessors'    => 'deviceprocessormodels_id',
-               'glpi_devicesoundcards'    => 'devicesoundcardmodels_id'];
+        'glpi_devicecontrols'      => 'devicecontrolmodels_id',
+        'glpi_devicedrives'        => 'devicedrivemodels_id',
+        'glpi_devicegraphiccards'  => 'devicegraphiccardmodels_id',
+        'glpi_deviceharddrives'    => 'deviceharddrivemodels_id',
+        'glpi_devicememories'      => 'devicememorymodels_id',
+        'glpi_devicemotherboards'  => 'devicemotherboardmodels_id',
+        'glpi_devicenetworkcards'  => 'devicenetworkcardmodels_id',
+        'glpi_devicepcis'          => 'devicepcimodels_id',
+        'glpi_devicepowersupplies' => 'devicepowersupplymodels_id',
+        'glpi_deviceprocessors'    => 'deviceprocessormodels_id',
+        'glpi_devicesoundcards'    => 'devicesoundcardmodels_id'];
 
     foreach ($tables as $table => $field) {
         $migration->addField($table, $field, 'int(11) DEFAULT NULL', ['after' => 'is_recursive']);
@@ -521,27 +521,27 @@ function update91to92()
         $DB->queryOrDie($query, "9.2 add table glpi_devicefirmwaretypes");
 
         $DB->insertOrDie("glpi_devicefirmwaretypes", [
-           'id'              => "1",
-           'name'            => "BIOS",
-           'comment'         => null,
-           'date_mod'        => null,
-           'date_creation'   => null
+            'id'              => "1",
+            'name'            => "BIOS",
+            'comment'         => null,
+            'date_mod'        => null,
+            'date_creation'   => null,
         ]);
 
         $DB->insertOrDie("glpi_devicefirmwaretypes", [
-           'id'              => "2",
-           'name'            => "UEFI",
-           'comment'         => null,
-           'date_mod'        => null,
-           'date_creation'   => null
+            'id'              => "2",
+            'name'            => "UEFI",
+            'comment'         => null,
+            'date_mod'        => null,
+            'date_creation'   => null,
         ]);
 
         $DB->insertOrDie("glpi_devicefirmwaretypes", [
-           'id'              => "3",
-           'name'            => "Firmware",
-           'comment'         => null,
-           'date_mod'        => null,
-           'date_creation'   => null
+            'id'              => "3",
+            'name'            => "Firmware",
+            'comment'         => null,
+            'date_mod'        => null,
+            'date_creation'   => null,
         ]);
     }
 
@@ -625,8 +625,8 @@ function update91to92()
         $DB->updateOrDie(
             "glpi_softwarelicenses",
             [
-              'completename' => new \QueryExpression(DBmysql::quoteName("name"))
-         ],
+                'completename' => new QueryExpression(DBmysql::quoteName("name")),
+            ],
             [true],
             "9.2 copy name to completename for software licenses"
         );
@@ -659,38 +659,38 @@ function update91to92()
     $notification       = new Notification();
     $notificationtarget = new NotificationTarget();
     $new_notifications  = [
-       'requester_user'  => ['label'      => 'New user in requesters',
-                             'targets_id' => Notification::AUTHOR],
-       'requester_group' => ['label'      => 'New group in requesters',
-                             'targets_id' => Notification::REQUESTER_GROUP],
-       'observer_user'   => ['label'      => 'New user in observers',
-                             'targets_id' => Notification::OBSERVER],
-       'observer_group'  => ['label'      => 'New group in observers',
-                             'targets_id' => Notification::OBSERVER_GROUP],
-       'assign_user'     => ['label'      => 'New user in assignees',
-                             'targets_id' => Notification::ASSIGN_TECH],
-       'assign_group'    => ['label'      => 'New group in assignees',
-                             'targets_id' => Notification::ITEM_TECH_GROUP_IN_CHARGE],
-       'assign_supplier' => ['label'      => 'New supplier in assignees',
-                             'targets_id' => Notification::SUPPLIER],
+        'requester_user'  => ['label'      => 'New user in requesters',
+            'targets_id' => Notification::AUTHOR],
+        'requester_group' => ['label'      => 'New group in requesters',
+            'targets_id' => Notification::REQUESTER_GROUP],
+        'observer_user'   => ['label'      => 'New user in observers',
+            'targets_id' => Notification::OBSERVER],
+        'observer_group'  => ['label'      => 'New group in observers',
+            'targets_id' => Notification::OBSERVER_GROUP],
+        'assign_user'     => ['label'      => 'New user in assignees',
+            'targets_id' => Notification::ASSIGN_TECH],
+        'assign_group'    => ['label'      => 'New group in assignees',
+            'targets_id' => Notification::ITEM_TECH_GROUP_IN_CHARGE],
+        'assign_supplier' => ['label'      => 'New supplier in assignees',
+            'targets_id' => Notification::SUPPLIER],
     ];
 
     if ($DB->fieldExists("glpi_notifications", "mode", false)) {
         foreach ($new_notifications as $event => $notif_options) {
             $notifications_id = $notification->add([
-               'name'                     => $notif_options['label'],
-               'itemtype'                 => 'Ticket',
-               'event'                    => $event,
-               'mode'                     => Notification_NotificationTemplate::MODE_MAIL,
-               'notificationtemplates_id' => 0,
-               'is_recursive'             => 1,
-               'is_active'                => 0,
+                'name'                     => $notif_options['label'],
+                'itemtype'                 => 'Ticket',
+                'event'                    => $event,
+                'mode'                     => Notification_NotificationTemplate::MODE_MAIL,
+                'notificationtemplates_id' => 0,
+                'is_recursive'             => 1,
+                'is_active'                => 0,
             ]);
 
             $notificationtarget->add([
-               'items_id'         => $notif_options['targets_id'],
-               'type'             => 1,
-               'notifications_id' => $notifications_id,
+                'items_id'         => $notif_options['targets_id'],
+                'type'             => 1,
+                'notifications_id' => $notifications_id,
             ]);
         }
     }
@@ -786,22 +786,22 @@ function update91to92()
         $DB->updateOrInsert(
             "glpi_crontasks",
             [
-              'frequency'       => "604800",
-              'param'           => null,
-              'state'           => "0",
-              'mode'            => "1",
-              'allowmode'       => "3",
-              'hourmin'         => "0",
-              'hourmax'         => "24",
-              'logs_lifetime'   => "10",
-              'lastrun'         => null,
-              'lastcode'        => null,
-              'comment'         => null
-         ],
+                'frequency'       => "604800",
+                'param'           => null,
+                'state'           => "0",
+                'mode'            => "1",
+                'allowmode'       => "3",
+                'hourmin'         => "0",
+                'hourmax'         => "24",
+                'logs_lifetime'   => "10",
+                'lastrun'         => null,
+                'lastcode'        => null,
+                'comment'         => null,
+            ],
             [
-              'itemtype'  => "OlaLevel_Ticket",
-              'name'      => "olaticket"
-         ]
+                'itemtype'  => "OlaLevel_Ticket",
+                'name'      => "olaticket",
+            ]
         );
     }
 
@@ -954,8 +954,8 @@ function update91to92()
 
     /************** Auto login **************/
     $migration->addConfig([
-       'login_remember_time'      => 604800,
-       'login_remember_default'   => 1
+        'login_remember_time'      => 604800,
+        'login_remember_default'   => 1,
     ]);
 
     if ($DB->tableExists('glpi_bookmarks')) {
@@ -998,29 +998,29 @@ function update91to92()
     if (!countElementsInTable(
         'glpi_rules',
         ['sub_type' => 'RuleSoftwareCategory',
-                               'uuid'     => '500717c8-2bd6e957-53a12b5fd38869.86003425']
+            'uuid'     => '500717c8-2bd6e957-53a12b5fd38869.86003425']
     )) {
         $rule = new Rule();
         $rules_id = $rule->add(['name'        => 'Import category from inventory tool',
-                                'is_active'   => 0,
-                                'uuid'        => '500717c8-2bd6e957-53a12b5fd38869.86003425',
-                                'entities_id' => 0,
-                                'sub_type'    => 'RuleSoftwareCategory',
-                                'match'       => Rule::AND_MATCHING,
-                                'condition'   => 0,
-                                'description' => '']);
+            'is_active'   => 0,
+            'uuid'        => '500717c8-2bd6e957-53a12b5fd38869.86003425',
+            'entities_id' => 0,
+            'sub_type'    => 'RuleSoftwareCategory',
+            'match'       => Rule::AND_MATCHING,
+            'condition'   => 0,
+            'description' => '']);
         if ($rules_id) {
             $criteria = new RuleCriteria();
             $criteria->add(['rules_id'  => $rules_id,
-                            'criteria'  => 'name',
-                            'condition' => '0',
-                            'pattern'   => '*']);
+                'criteria'  => 'name',
+                'condition' => '0',
+                'pattern'   => '*']);
 
             $action = new RuleAction();
             $action->add(['rules_id'    => $rules_id,
-                          'action_type' => 'assign',
-                          'field'       => '_import_category',
-                          'value'       => '1']);
+                'action_type' => 'assign',
+                'field'       => '_import_category',
+                'value'       => '1']);
         }
     }
 
@@ -1060,12 +1060,12 @@ function update91to92()
     if (isset($current_config['use_mailing']) && !isset($current_config['use_notifications'])) {
         /** Notifications modes */
         $migration->addConfig([
-           'use_notifications'                 => $current_config['use_mailing'],
-                                        'notifications_mailing'    => $current_config['use_mailing'],
-                                        'notifications_ajax'       => 0,
-                                        'notifications_ajax_check_interval' => '5',
-                                        'notifications_ajax_sound' => null,
-           'notifications_ajax_icon_url'       => '/pics/glpi.png'
+            'use_notifications'                 => $current_config['use_mailing'],
+            'notifications_mailing'    => $current_config['use_mailing'],
+            'notifications_ajax'       => 0,
+            'notifications_ajax_check_interval' => '5',
+            'notifications_ajax_sound' => null,
+            'notifications_ajax_icon_url'       => '/pics/glpi.png',
         ]);
     }
 
@@ -1163,11 +1163,11 @@ function update91to92()
         $rank = 1;
         foreach ($tab as $newval) {
             $DB->updateOrInsert("glpi_displaypreferences", [
-               'rank'      => $rank++
+                'rank'      => $rank++,
             ], [
-               'users_id'  => "0",
-               'itemtype'  => $type,
-               'num'       => $newval,
+                'users_id'  => "0",
+                'itemtype'  => $type,
+                'num'       => $newval,
             ]);
         }
     }
@@ -1177,11 +1177,11 @@ function update91to92()
         $migration->addKey("glpi_logs", "id_search_option");
     } else {
         //Just display a Warning to the user.
-        $migration->displayWarning("An index must be added in the 'id_search_option' field " .
-           "of the 'glpi_logs table'; but your glpi_logs table is " .
-           "too huge. You'll have to add it on your database " .
-           "with the following query:\n" .
-           "'ALTER TABLE glpi_logs ADD INDEX id_search_option(id_search_option);'");
+        $migration->displayWarning("An index must be added in the 'id_search_option' field "
+           . "of the 'glpi_logs table'; but your glpi_logs table is "
+           . "too huge. You'll have to add it on your database "
+           . "with the following query:\n"
+           . "'ALTER TABLE glpi_logs ADD INDEX id_search_option(id_search_option);'");
     }
 
     // count cron task
@@ -1192,20 +1192,20 @@ function update91to92()
         $DB->insertOrDie(
             "glpi_crontasks",
             [
-              'itemtype'        => "SavedSearch",
-              'name'            => "countAll",
-              'frequency'       => "604800",
-              'param'           => null,
-              'state'           => "0",
-              'mode'            => "1",
-              'allowmode'       => "3",
-              'hourmin'         => "0",
-              'hourmax'         => "24",
-              'logs_lifetime'   => "10",
-              'lastrun'         => null,
-              'lastcode'        => null,
-              'comment'         => null
-         ],
+                'itemtype'        => "SavedSearch",
+                'name'            => "countAll",
+                'frequency'       => "604800",
+                'param'           => null,
+                'state'           => "0",
+                'mode'            => "1",
+                'allowmode'       => "3",
+                'hourmin'         => "0",
+                'hourmax'         => "24",
+                'logs_lifetime'   => "10",
+                'lastrun'         => null,
+                'lastcode'        => null,
+                'comment'         => null,
+            ],
             "9.2 Add countAll SavedSearch cron task"
         );
     };
@@ -1218,20 +1218,20 @@ function update91to92()
         $DB->insertOrDie(
             "glpi_crontasks",
             [
-              'itemtype'        => "SavedSearch_Alert",
-              'name'            => "savedsearchesalerts",
-              'frequency'       => "86400",
-              'param'           => null,
-              'state'           => "0",
-              'mode'            => "1",
-              'allowmode'       => "3",
-              'hourmin'         => "0",
-              'hourmax'         => "24",
-              'logs_lifetime'   => "10",
-              'lastrun'         => null,
-              'lastcode'        => null,
-              'comment'         => null
-         ],
+                'itemtype'        => "SavedSearch_Alert",
+                'name'            => "savedsearchesalerts",
+                'frequency'       => "86400",
+                'param'           => null,
+                'state'           => "0",
+                'mode'            => "1",
+                'allowmode'       => "3",
+                'hourmin'         => "0",
+                'hourmax'         => "24",
+                'logs_lifetime'   => "10",
+                'lastrun'         => null,
+                'lastcode'        => null,
+                'comment'         => null,
+            ],
             "9.2 Add saved searches alerts cron task"
         );
     }
@@ -1243,17 +1243,17 @@ function update91to92()
         $DB->insertOrDie(
             "glpi_notifications",
             [
-              'id'              => null,
-              'name'            => "Saved searches",
-              'entities_id'     => "0",
-              'itemtype'        => "SavedSearch_Alert",
-              'event'           => "alert",
-              'comment'         => "",
-              'is_recursive'    => "1",
-              'is_active'       => "1",
-              'date_creation'   => new \QueryExpression("NOW()"),
-              'date_mod'        => new \QueryExpression("NOW()")
-         ],
+                'id'              => null,
+                'name'            => "Saved searches",
+                'entities_id'     => "0",
+                'itemtype'        => "SavedSearch_Alert",
+                'event'           => "alert",
+                'comment'         => "",
+                'is_recursive'    => "1",
+                'is_active'       => "1",
+                'date_creation'   => new QueryExpression("NOW()"),
+                'date_mod'        => new QueryExpression("NOW()"),
+            ],
             "9.2 Add saved search alerts notification"
         );
         $notid = $DB->insertId();
@@ -1261,41 +1261,41 @@ function update91to92()
         $DB->insertOrDie(
             "glpi_notificationtemplates",
             [
-              'name'            => "Saved searches alerts",
-              'itemtype'        => "SavedSearch_Alert",
-              'date_mod'        => new \QueryExpression("NOW()")
-         ],
+                'name'            => "Saved searches alerts",
+                'itemtype'        => "SavedSearch_Alert",
+                'date_mod'        => new QueryExpression("NOW()"),
+            ],
             "9.2 Add saved search alerts notification template"
         );
         $nottid = $DB->insertId();
 
         $where =  [
-           'notifications_id'         => $notid,
-           'mode'                     => Notification_NotificationTemplate::MODE_MAIL,
-           'notificationtemplates_id' => $nottid
+            'notifications_id'         => $notid,
+            'mode'                     => Notification_NotificationTemplate::MODE_MAIL,
+            'notificationtemplates_id' => $nottid,
         ];
         if (countElementsInTable('glpi_notifications_notificationtemplates', $where)) {
             $DB->updateOrInsert(
                 "glpi_notifications_notificationtemplates",
                 [
-                  'id'                       => null
-            ],
+                    'id'                       => null,
+                ],
                 [
-                  'notifications_id'         => $notid,
-                  'mode'                     => Notification_NotificationTemplate::MODE_MAIL,
-                  'notificationtemplates_id' => $nottid
-            ]
+                    'notifications_id'         => $notid,
+                    'mode'                     => Notification_NotificationTemplate::MODE_MAIL,
+                    'notificationtemplates_id' => $nottid,
+                ]
             );
         }
 
         $DB->insertOrDie(
             "glpi_notificationtargets",
             [
-             'id'               => null,
-             'items_id'         => "19",
-             'type'             => "1",
-             'notifications_id' => $notid
-         ],
+                'id'               => null,
+                'items_id'         => "19",
+                'type'             => "1",
+                'notifications_id' => $notid,
+            ],
             "9.2 Add saved search alerts notification targets"
         );
 
@@ -1431,8 +1431,8 @@ Regards,',
         $kver = new OperatingSystemKernelVersion();
         $mapping = [];
         foreach ($DB->request(['SELECT' => ['id', 'os_kernel_version'],
-                               'FROM'   => 'glpi_computers',
-                               'NOT'   => ['os_kernel_version' => null]]) as $data) {
+            'FROM'   => 'glpi_computers',
+            'NOT'   => ['os_kernel_version' => null]]) as $data) {
             $key = md5($data['os_kernel_version']);
             if (!isset($mapping[$key])) {
                 $mapping[$key] = [];
@@ -1447,9 +1447,9 @@ Regards,',
                     "glpi_items_operatingsystems",
                     ['operatingsystemkernelversions_id' => $kver_id],
                     [
-                      'itemtype' => "Computer",
-                      'items_id' => $computers_id
-               ]
+                        'itemtype' => "Computer",
+                        'items_id' => $computers_id,
+                    ]
                 );
             }
         }
@@ -1596,11 +1596,11 @@ Regards,',
             $DB->insertOrDie(
                 "glpi_profilerights",
                 [
-                  'id'           => null,
-                  'profiles_id'  => $profrights['profiles_id'],
-                  'name'         => "certificate",
-                  'rights'       => $rightValue,
-            ],
+                    'id'           => null,
+                    'profiles_id'  => $profrights['profiles_id'],
+                    'name'         => "certificate",
+                    'rights'       => $rightValue,
+                ],
                 "9.2 add right for certificates"
             );
         }
@@ -1612,41 +1612,41 @@ Regards,',
         'use_certificates_alert',
         "integer",
         ['value' => -2,
-                          'after' => 'send_licenses_alert_before_delay']
+            'after' => 'send_licenses_alert_before_delay']
     );
     $migration->addField(
         "glpi_entities",
         'send_certificates_alert_before_delay',
         "integer",
         ['value'     => -2,
-                          'after'     => 'use_certificates_alert',
-                          'update'    => '0', // No delay for root entity
-                          'condition' => 'WHERE `id` = 0']
+            'after'     => 'use_certificates_alert',
+            'update'    => '0', // No delay for root entity
+            'condition' => 'WHERE `id` = 0']
     );
     CronTask::register(
         'Certificate',
         'certificate',
         DAY_TIMESTAMP,
         [
-          'comment' => '',
-          'mode'    => CronTask::MODE_INTERNAL
-      ]
+            'comment' => '',
+            'mode'    => CronTask::MODE_INTERNAL,
+        ]
     );
     if (!countElementsInTable('glpi_notifications', ['itemtype' => 'Certificate'])) {
         $DB->insertOrDie(
             "glpi_notifications",
             [
-              'id'              => null,
-              'name'            => "Certificates",
-              'entities_id'     => "0",
-              'itemtype'        => "Certificate",
-              'event'           => "alert",
-              'comment'         => "",
-              'is_recursive'    => "1",
-              'is_active'       => "1",
-              'date_creation'   => new \QueryExpression("NOW()"),
-              'date_mod'        => new \QueryExpression("NOW()")
-         ],
+                'id'              => null,
+                'name'            => "Certificates",
+                'entities_id'     => "0",
+                'itemtype'        => "Certificate",
+                'event'           => "alert",
+                'comment'         => "",
+                'is_recursive'    => "1",
+                'is_active'       => "1",
+                'date_creation'   => new QueryExpression("NOW()"),
+                'date_mod'        => new QueryExpression("NOW()"),
+            ],
             "9.2 Add certificate alerts notification"
         );
         $notid = $DB->insertId();
@@ -1654,30 +1654,30 @@ Regards,',
         $DB->insertOrDie(
             "glpi_notificationtemplates",
             [
-              'name'      => "Certificates alerts",
-              'itemtype'  => "Certificate",
-              'date_mod'  => new \QueryExpression("NOW()")
-         ],
+                'name'      => "Certificates alerts",
+                'itemtype'  => "Certificate",
+                'date_mod'  => new QueryExpression("NOW()"),
+            ],
             "9.2 Add certifcate alerts notification template"
         );
         $nottid = $DB->insertId();
 
         $where = [
-           'notifications_id'         => $notid,
-           'mode'                     => Notification_NotificationTemplate::MODE_MAIL,
-           'notificationtemplates_id' => $nottid
+            'notifications_id'         => $notid,
+            'mode'                     => Notification_NotificationTemplate::MODE_MAIL,
+            'notificationtemplates_id' => $nottid,
         ];
         if (!countElementsInTable('glpi_notifications_notificationtemplates', $where)) {
             $DB->updateOrInsert(
                 "glpi_notifications_notificationtemplates",
                 [
-                  'id'                       => null
-            ],
+                    'id'                       => null,
+                ],
                 [
-                  'notifications_id'         => $notid,
-                  'mode'                     => Notification_NotificationTemplate::MODE_MAIL,
-                  'notificationtemplates_id' => $nottid,
-            ]
+                    'notifications_id'         => $notid,
+                    'mode'                     => Notification_NotificationTemplate::MODE_MAIL,
+                    'notificationtemplates_id' => $nottid,
+                ]
             );
         }
 
@@ -1789,38 +1789,38 @@ Regards,',
 
     if (!countElementsInTable('glpi_devicesimcardtypes', ['name' => 'Full SIM'])) {
         $DB->insertOrDie("glpi_devicesimcardtypes", [
-           'id'              => null,
-           'name'            => "Full SIM",
-           'comment'         => null,
-           'date_mod'        => null,
-           'date_creation'   => null
+            'id'              => null,
+            'name'            => "Full SIM",
+            'comment'         => null,
+            'date_mod'        => null,
+            'date_creation'   => null,
         ]);
     }
     if (!countElementsInTable('glpi_devicesimcardtypes', ['name' => 'Mini SIM'])) {
         $DB->insertOrDie("glpi_devicesimcardtypes", [
-           'id'              => null,
-           'name'            => "Mini SIM",
-           'comment'         => null,
-           'date_mod'        => null,
-           'date_creation'   => null
+            'id'              => null,
+            'name'            => "Mini SIM",
+            'comment'         => null,
+            'date_mod'        => null,
+            'date_creation'   => null,
         ]);
     }
     if (!countElementsInTable('glpi_devicesimcardtypes', ['name' => 'Micro SIM'])) {
         $DB->insertOrDie("glpi_devicesimcardtypes", [
-           'id'              => null,
-           'name'            => "Micro SIM",
-           'comment'         => null,
-           'date_mod'        => null,
-           'date_creation'   => null
+            'id'              => null,
+            'name'            => "Micro SIM",
+            'comment'         => null,
+            'date_mod'        => null,
+            'date_creation'   => null,
         ]);
     }
     if (!countElementsInTable('glpi_devicesimcardtypes', ['name' => 'Nano SIM'])) {
         $DB->insertOrDie("glpi_devicesimcardtypes", [
-           'id'              => null,
-           'name'            => "Nano SIM",
-           'comment'         => null,
-           'date_mod'        => null,
-           'date_creation'   => null
+            'id'              => null,
+            'name'            => "Nano SIM",
+            'comment'         => null,
+            'date_mod'        => null,
+            'date_creation'   => null,
         ]);
     }
 
@@ -1894,11 +1894,11 @@ Regards,',
             $DB->insertOrDie(
                 "glpi_profilerights",
                 [
-                  'id'           => null,
-                  'profiles_id'  => $profrights['profiles_id'],
-                  'name'         => "line",
-                  'rights'       => $rightValue
-            ],
+                    'id'           => null,
+                    'profiles_id'  => $profrights['profiles_id'],
+                    'name'         => "line",
+                    'rights'       => $rightValue,
+                ],
                 "9.2 add right for line"
             );
         }
@@ -1916,11 +1916,11 @@ Regards,',
             $DB->insertOrDie(
                 "glpi_profilerights",
                 [
-                  'id'           => null,
-                  'profiles_id'  => $profrights['profiles_id'],
-                  'name'         => "lineoperator",
-                  'rights'       => $rightValue
-            ],
+                    'id'           => null,
+                    'profiles_id'  => $profrights['profiles_id'],
+                    'name'         => "lineoperator",
+                    'rights'       => $rightValue,
+                ],
                 "9.2 add right for lineoperator"
             );
         }
@@ -1938,11 +1938,11 @@ Regards,',
             $DB->insertOrDie(
                 "glpi_profilerights",
                 [
-                  'id'           => null,
-                  'profiles_id'  => $profrights['profiles_id'],
-                  'name'         => "devicesimcard_pinpuk",
-                  'rights'       => $rightValue
-            ],
+                    'id'           => null,
+                    'profiles_id'  => $profrights['profiles_id'],
+                    'name'         => "devicesimcard_pinpuk",
+                    'rights'       => $rightValue,
+                ],
                 "9.2 add right for simcards pin and puk codes"
             );
         }
@@ -1951,9 +1951,9 @@ Regards,',
     //Firmware for phones
     if ($DB->fieldExists('glpi_phones', 'firmware')) {
         $iterator = $DB->request([
-           'SELECT' => ['id', 'firmware'],
-           'FROM'   => 'glpi_phones',
-           'NOT'    => ['firmware' => null]
+            'SELECT' => ['id', 'firmware'],
+            'FROM'   => 'glpi_phones',
+            'NOT'    => ['firmware' => null],
         ]);
 
         $firmwares = [];
@@ -1964,8 +1964,8 @@ Regards,',
                     $firmwares[$row['firmware']] = $fw->getID();
                 } else {
                     $id = $fw->add([
-                       'designation'              => $DB->escape($row['firmware']),
-                       'devicefirmwaretypes_id'   => '3' //type "firmware"
+                        'designation'              => $DB->escape($row['firmware']),
+                        'devicefirmwaretypes_id'   => '3', //type "firmware"
                     ]);
                     $firmwares[$row['firmware']] = $id;
                 }
@@ -1974,9 +1974,9 @@ Regards,',
             //add link
             $item_fw = new Item_DeviceFirmware();
             $item_fw->add([
-               'itemtype'           => 'Phone',
-               'items_id'           => $row['id'],
-               'devicefirmwares_id' => $firmwares[$row['firmware']]
+                'itemtype'           => 'Phone',
+                'items_id'           => $row['id'],
+                'devicefirmwares_id' => $firmwares[$row['firmware']],
             ]);
         }
 
@@ -1990,11 +1990,11 @@ Regards,',
         while ($row = $iterator->next()) {
             $fw = new DeviceFirmware();
             $id = $fw->add([
-               'designation'              => $DB->escape($row['name']),
-               'comment'                  => $DB->escape($row['comment']),
-               'devicefirmwaretypes_id'   => 3, //type "Firmware"
-               'date_creation'            => $row['date_creation'],
-               'date_mod'                 => $row['date_mod']
+                'designation'              => $DB->escape($row['name']),
+                'comment'                  => $DB->escape($row['comment']),
+                'devicefirmwaretypes_id'   => 3, //type "Firmware"
+                'date_creation'            => $row['date_creation'],
+                'date_mod'                 => $row['date_mod'],
             ]);
             $mapping[$row['id']] = $id;
         }
@@ -2004,9 +2004,9 @@ Regards,',
             if (isset($mapping[$row['networkequipmentfirmwares_id']])) {
                 $itemdevice = new Item_DeviceFirmware();
                 $itemdevice->add([
-                   'itemtype'           => 'NetworkEquipment',
-                   'items_id'           => $row['id'],
-                   'devicefirmwares_id' => $mapping[$row['networkequipmentfirmwares_id']]
+                    'itemtype'           => 'NetworkEquipment',
+                    'items_id'           => $row['id'],
+                    'devicefirmwares_id' => $mapping[$row['networkequipmentfirmwares_id']],
                 ]);
             }
         }
@@ -2108,10 +2108,10 @@ Regards,',
     }
 
     $migration->addConfig([
-       'smtp_max_retries'   => 5,
-       'smtp_sender'        => 'NULL',
-       'from_email'         => 'NULL',
-       'from_email_name'    => 'NULL'
+        'smtp_max_retries'   => 5,
+        'smtp_sender'        => 'NULL',
+        'from_email'         => 'NULL',
+        'from_email_name'    => 'NULL',
     ]);
 
     //register telemetry crontask
@@ -2120,14 +2120,14 @@ Regards,',
         'telemetry',
         MONTH_TIMESTAMP,
         [
-          'comment'   => '',
-          'mode'      => CronTask::MODE_INTERNAL,
-          'state'     => CronTask::STATE_DISABLE
-      ]
+            'comment'   => '',
+            'mode'      => CronTask::MODE_INTERNAL,
+            'state'     => CronTask::STATE_DISABLE,
+        ]
     );
     $migration->addConfig([
-       'instance_uuid'      => Telemetry::generateInstanceUuid(),
-       'registration_uuid'  => Telemetry::generateRegistrationUuid()
+        'instance_uuid'      => Telemetry::generateInstanceUuid(),
+        'registration_uuid'  => Telemetry::generateRegistrationUuid(),
     ]);
 
     if (isIndex('glpi_authldaps', 'use_tls')) {
@@ -2202,14 +2202,14 @@ Regards,',
 
     //Fix unicity...
     $tables = [
-       'glpi_slalevels_tickets'   => ['tickets_id', 'slalevels_id'],
-       'glpi_businesscriticities' => ['businesscriticities_id', 'name'],
-       'glpi_documentcategories'  => ['documentcategories_id', 'name'],
-       'glpi_olalevels_tickets'   => ['tickets_id', 'olalevels_id'],
-       'glpi_states'              => ['states_id', 'name'],
-       'glpi_tickets_tickets'     => ['tickets_id_1', 'tickets_id_2'],
-       'glpi_tickettemplatehiddenfields'      => ['tickettemplates_id', 'num'],
-       'glpi_tickettemplatemandatoryfields'   => ['tickettemplates_id', 'num']
+        'glpi_slalevels_tickets'   => ['tickets_id', 'slalevels_id'],
+        'glpi_businesscriticities' => ['businesscriticities_id', 'name'],
+        'glpi_documentcategories'  => ['documentcategories_id', 'name'],
+        'glpi_olalevels_tickets'   => ['tickets_id', 'olalevels_id'],
+        'glpi_states'              => ['states_id', 'name'],
+        'glpi_tickets_tickets'     => ['tickets_id_1', 'tickets_id_2'],
+        'glpi_tickettemplatehiddenfields'      => ['tickettemplates_id', 'num'],
+        'glpi_tickettemplatemandatoryfields'   => ['tickettemplates_id', 'num'],
     ];
     foreach ($tables as $table => $fields) {
         $add = true;
@@ -2278,82 +2278,82 @@ Regards,',
         if (!$DB->fieldExists($tl_table, 'timeline_position')) {
             $migration->addField($tl_table, "timeline_position", "tinyint(1) NOT NULL DEFAULT '0'");
             $where = [
-               "$tl_table.tickets_id"  => new \QueryExpression(
-                   DBmysql::quoteName("glpi_tickets_users.tickets_id")
-               ),
-               "$tl_table.users_id"    => new \QueryExpression(
-                   DBmysql::quoteName("glpi_tickets_users.users_id")
-               ),
+                "$tl_table.tickets_id"  => new QueryExpression(
+                    DBmysql::quoteName("glpi_tickets_users.tickets_id")
+                ),
+                "$tl_table.users_id"    => new QueryExpression(
+                    DBmysql::quoteName("glpi_tickets_users.users_id")
+                ),
             ];
             if (!$DB->fieldExists($tl_table, 'tickets_id')) {
                 $where = [
-                   "$tl_table.itemtype"    => "Ticket",
-                   "$tl_table.items_id"    => new \QueryExpression(
-                       DBmysql::quoteName("glpi_tickets_users.tickets_id")
-                   ),
-                   "$tl_table.users_id"    => new \QueryExpression(
-                       DBmysql::quoteName("glpi_tickets_users.users_id")
-                   ),
+                    "$tl_table.itemtype"    => "Ticket",
+                    "$tl_table.items_id"    => new QueryExpression(
+                        DBmysql::quoteName("glpi_tickets_users.tickets_id")
+                    ),
+                    "$tl_table.users_id"    => new QueryExpression(
+                        DBmysql::quoteName("glpi_tickets_users.users_id")
+                    ),
                 ];
             }
 
-            $update = new \QueryExpression(
+            $update = new QueryExpression(
                 DBmysql::quoteName($tl_table) . ", " . DBmysql::quoteName("glpi_tickets_users")
             );
             $migration->addPostQuery(
                 $DB->buildUpdate(
                     $update,
                     [
-                      "$tl_table.timeline_position" => new \QueryExpression(
-                          "IF(" .
-                     DBmysql::quoteName("glpi_tickets_users.type") . " NOT IN (1,3) AND " .
-                     DBmysql::quoteName("glpi_tickets_users.type") . " IN (2), 4, 1)"
-                      )
-               ],
+                        "$tl_table.timeline_position" => new QueryExpression(
+                            "IF("
+                     . DBmysql::quoteName("glpi_tickets_users.type") . " NOT IN (1,3) AND "
+                     . DBmysql::quoteName("glpi_tickets_users.type") . " IN (2), 4, 1)"
+                        ),
+                    ],
                     $where
                 )
             );
 
             $where = [
-               "$tl_table.tickets_id"           => new \QueryExpression(
-                   DBmysql::quoteName("glpi_groups_tickets.tickets_id")
-               ),
-               "glpi_groups_users.groups_id"    => new \QueryExpression(
-                   DBmysql::quoteName("glpi_groups_tickets.groups_id")
-               ),
-               "$tl_table.users_id"             => new \QueryExpression(
-                   DBmysql::quoteName("glpi_groups_users.users_id")
-               ),
+                "$tl_table.tickets_id"           => new QueryExpression(
+                    DBmysql::quoteName("glpi_groups_tickets.tickets_id")
+                ),
+                "glpi_groups_users.groups_id"    => new QueryExpression(
+                    DBmysql::quoteName("glpi_groups_tickets.groups_id")
+                ),
+                "$tl_table.users_id"             => new QueryExpression(
+                    DBmysql::quoteName("glpi_groups_users.users_id")
+                ),
             ];
             if (!$DB->fieldExists($tl_table, 'tickets_id')) {
                 $where = [
-                   "$tl_table.itemtype"             => "Ticket",
-                   "$tl_table.items_id"             => new \QueryExpression(
-                       DBmysql::quoteName("glpi_groups_tickets.tickets_id")
-                   ),
-                   "glpi_groups_users.groups_id"    => new \QueryExpression(
-                       DBmysql::quoteName("glpi_groups_tickets.groups_id")
-                   ),
-                   "$tl_table.users_id"             => new \QueryExpression(
-                       DBmysql::quoteName("glpi_groups_users.users_id")
-                   ),
+                    "$tl_table.itemtype"             => "Ticket",
+                    "$tl_table.items_id"             => new QueryExpression(
+                        DBmysql::quoteName("glpi_groups_tickets.tickets_id")
+                    ),
+                    "glpi_groups_users.groups_id"    => new QueryExpression(
+                        DBmysql::quoteName("glpi_groups_tickets.groups_id")
+                    ),
+                    "$tl_table.users_id"             => new QueryExpression(
+                        DBmysql::quoteName("glpi_groups_users.users_id")
+                    ),
                 ];
             }
 
-            $update = new \QueryExpression(
-                DBmysql::quoteName($tl_table) . ", " . DBmysql::quoteName("glpi_groups_tickets") .
-            ", " . DBmysql::quoteName("glpi_groups_users")
+            $update = new QueryExpression(
+                DBmysql::quoteName($tl_table) . ", " . DBmysql::quoteName("glpi_groups_tickets")
+            . ", " . DBmysql::quoteName("glpi_groups_users")
             );
             $migration->addPostQuery(
                 $DB->buildUpdate(
                     $update,
                     [
-                      "$tl_table.timeline_position" => new \QueryExpression(
-                          "IF(" .
-                     DBmysql::quoteName("glpi_groups_tickets.type") . " NOT IN (1,3) AND " .
-                     DBmysql::quoteName("glpi_groups_tickets.type") . " IN (2), 4, 1)"
-                      )
-               ],
+                        "$tl_table.timeline_position" => new QueryExpression(
+                            "IF("
+                     . DBmysql::quoteName("glpi_groups_tickets.type") . " NOT IN (1,3) AND "
+                     . DBmysql::quoteName("glpi_groups_tickets.type") . " IN (2), 4, 1)"
+                        ),
+                    ],
                     $where
                 )
             );

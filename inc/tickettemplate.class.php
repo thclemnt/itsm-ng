@@ -1,5 +1,7 @@
 <?php
 
+use Glpi\Features\Clonable;
+
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
@@ -42,7 +44,7 @@ if (!defined('GLPI_ROOT')) {
 **/
 class TicketTemplate extends ITILTemplate
 {
-    use Glpi\Features\Clonable;
+    use Clonable;
 
     public $second_level_menu         = "ticket";
     public $third_level_menu          = "TicketTemplate";
@@ -55,9 +57,9 @@ class TicketTemplate extends ITILTemplate
     public function getCloneRelations(): array
     {
         return [
-           TicketTemplateHiddenField::class,
-           TicketTemplateMandatoryField::class,
-           TicketTemplatePredefinedField::class,
+            TicketTemplateHiddenField::class,
+            TicketTemplateMandatoryField::class,
+            TicketTemplatePredefinedField::class,
         ];
     }
 
@@ -65,67 +67,67 @@ class TicketTemplate extends ITILTemplate
     {
         $itil_object = new Ticket();
         $tab =  [
-           $itil_object->getSearchOptionIDByField(
-               'field',
-               'name',
-               'glpi_requesttypes'
-           )
-                                                         => 'requesttypes_id',
-           $itil_object->getSearchOptionIDByField(
-               'field',
-               'completename',
-               'glpi_locations'
-           ) => 'locations_id',
-           $itil_object->getSearchOptionIDByField(
-               'field',
-               'slas_id_tto',
-               'glpi_slas'
-           )      => 'slas_id_tto',
-           $itil_object->getSearchOptionIDByField(
-               'field',
-               'slas_id_ttr',
-               'glpi_slas'
-           )      => 'slas_id_ttr',
-           $itil_object->getSearchOptionIDByField(
-               'field',
-               'olas_id_tto',
-               'glpi_olas'
-           )      => 'olas_id_tto',
-           $itil_object->getSearchOptionIDByField(
-               'field',
-               'olas_id_ttr',
-               'glpi_olas'
-           )      => 'olas_id_ttr',
-           $itil_object->getSearchOptionIDByField(
-               'field',
-               'time_to_resolve',
-               'glpi_tickets'
-           )   => 'time_to_resolve',
-           $itil_object->getSearchOptionIDByField(
-               'field',
-               'time_to_own',
-               'glpi_tickets'
-           )   => 'time_to_own',
-           $itil_object->getSearchOptionIDByField(
-               'field',
-               'internal_time_to_resolve',
-               'glpi_tickets'
-           )   => 'internal_time_to_resolve',
-           $itil_object->getSearchOptionIDByField(
-               'field',
-               'internal_time_to_own',
-               'glpi_tickets'
-           )   => 'internal_time_to_own',
-           $itil_object->getSearchOptionIDByField(
-               'field',
-               'actiontime',
-               'glpi_tickets'
-           )   => 'actiontime',
-           $itil_object->getSearchOptionIDByField(
-               'field',
-               'global_validation',
-               'glpi_tickets'
-           )   => 'global_validation',
+            $itil_object->getSearchOptionIDByField(
+                'field',
+                'name',
+                'glpi_requesttypes'
+            )
+                                                          => 'requesttypes_id',
+            $itil_object->getSearchOptionIDByField(
+                'field',
+                'completename',
+                'glpi_locations'
+            ) => 'locations_id',
+            $itil_object->getSearchOptionIDByField(
+                'field',
+                'slas_id_tto',
+                'glpi_slas'
+            )      => 'slas_id_tto',
+            $itil_object->getSearchOptionIDByField(
+                'field',
+                'slas_id_ttr',
+                'glpi_slas'
+            )      => 'slas_id_ttr',
+            $itil_object->getSearchOptionIDByField(
+                'field',
+                'olas_id_tto',
+                'glpi_olas'
+            )      => 'olas_id_tto',
+            $itil_object->getSearchOptionIDByField(
+                'field',
+                'olas_id_ttr',
+                'glpi_olas'
+            )      => 'olas_id_ttr',
+            $itil_object->getSearchOptionIDByField(
+                'field',
+                'time_to_resolve',
+                'glpi_tickets'
+            )   => 'time_to_resolve',
+            $itil_object->getSearchOptionIDByField(
+                'field',
+                'time_to_own',
+                'glpi_tickets'
+            )   => 'time_to_own',
+            $itil_object->getSearchOptionIDByField(
+                'field',
+                'internal_time_to_resolve',
+                'glpi_tickets'
+            )   => 'internal_time_to_resolve',
+            $itil_object->getSearchOptionIDByField(
+                'field',
+                'internal_time_to_own',
+                'glpi_tickets'
+            )   => 'internal_time_to_own',
+            $itil_object->getSearchOptionIDByField(
+                'field',
+                'actiontime',
+                'glpi_tickets'
+            )   => 'actiontime',
+            $itil_object->getSearchOptionIDByField(
+                'field',
+                'global_validation',
+                'glpi_tickets'
+            )   => 'global_validation',
 
         ];
 

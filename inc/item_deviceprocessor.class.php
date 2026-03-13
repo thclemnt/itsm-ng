@@ -50,48 +50,48 @@ class Item_DeviceProcessor extends Item_Devices
     {
 
         return [
-           'frequency' => [
-              'long name'  => sprintf(
-                  __('%1$s (%2$s)'),
-                  __('Frequency'),
-                  __('MHz')
-              ),
-              'short name' => __('Frequency'),
-              'size'       => 10,
-              'id'         => 20,
-              'autocomplete' => true,
-              'formContent' => [
-                 'type' => 'number',
-                 'min' => 0,
-              ]
-           ],
-           'serial'    => parent::getSpecificities('serial'),
-           'otherserial' => parent::getSpecificities('otherserial'),
-           'locations_id' => parent::getSpecificities('locations_id'),
-           'states_id' => parent::getSpecificities('states_id'),
-           'nbcores'   => [
-              'long name'  => __('Number of cores'),
-              'short name' => __('Cores'),
-              'size'       => 2,
-              'id'         => 21,
-              'autocomplete' => true,
-              'formContent' => [
-                 'type' => 'number',
-                 'min' => 0,
-              ]
-           ],
-           'nbthreads' => [
-              'long name' => __('Number of threads'),
-              'short name' => __('Threads'),
-              'size'       => 2,
-              'id'         => 22,
-              'autocomplete' => true,
-              'formContent' => [
-                 'type' => 'number',
-                 'min' => 0,
-              ]
-           ],
-           'busID'     => parent::getSpecificities('busID')
+            'frequency' => [
+                'long name'  => sprintf(
+                    __('%1$s (%2$s)'),
+                    __('Frequency'),
+                    __('MHz')
+                ),
+                'short name' => __('Frequency'),
+                'size'       => 10,
+                'id'         => 20,
+                'autocomplete' => true,
+                'formContent' => [
+                    'type' => 'number',
+                    'min' => 0,
+                ],
+            ],
+            'serial'    => parent::getSpecificities('serial'),
+            'otherserial' => parent::getSpecificities('otherserial'),
+            'locations_id' => parent::getSpecificities('locations_id'),
+            'states_id' => parent::getSpecificities('states_id'),
+            'nbcores'   => [
+                'long name'  => __('Number of cores'),
+                'short name' => __('Cores'),
+                'size'       => 2,
+                'id'         => 21,
+                'autocomplete' => true,
+                'formContent' => [
+                    'type' => 'number',
+                    'min' => 0,
+                ],
+            ],
+            'nbthreads' => [
+                'long name' => __('Number of threads'),
+                'short name' => __('Threads'),
+                'size'       => 2,
+                'id'         => 22,
+                'autocomplete' => true,
+                'formContent' => [
+                    'type' => 'number',
+                    'min' => 0,
+                ],
+            ],
+            'busID'     => parent::getSpecificities('busID'),
         ];
     }
 }

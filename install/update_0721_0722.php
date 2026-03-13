@@ -39,171 +39,171 @@ function update0721to0722()
     global $DB;
 
     //TRANS: %s is the number of new version
-    echo "<h3>".sprintf(__('Update to %s'), '0.72.2')."</h3>";
+    echo "<h3>" . sprintf(__('Update to %s'), '0.72.2') . "</h3>";
     displayMigrationMessage("0722"); // Start
 
     // Delete state from reservation search
     $query = "DELETE
              FROM `glpi_display`
-             WHERE `type` = ".RESERVATION_TYPE."
+             WHERE `type` = " . RESERVATION_TYPE . "
                    AND `num` = 31";
     $DB->queryOrDie($query, "0.72.2 delete search of state from reservations");
 
     // Clean licences alerts
     $query = "DELETE
              FROM `glpi_alerts`
-             WHERE `device_type` = '".SOFTWARELICENSE_TYPE."'";
+             WHERE `device_type` = '" . SOFTWARELICENSE_TYPE . "'";
     $DB->queryOrDie($query, "0.72.2 delete search of state from reservations");
 
     //// Correct search.constant numbers
     $updates = [];
     // location :
     $updates[] = ['type'  => CARTRIDGEITEM_TYPE,
-                       'from'  => 3,
-                       'to'    => 34];
+        'from'  => 3,
+        'to'    => 34];
 
     $updates[] = ['type'  => CARTRIDGEITEM_TYPE,
-                       'from'  => 6,
-                       'to'    => 3];
+        'from'  => 6,
+        'to'    => 3];
 
     $updates[] = ['type'  => CONSUMABLEITEM_TYPE,
-                       'from'  => 3,
-                       'to'    => 34];
+        'from'  => 3,
+        'to'    => 34];
 
     $updates[] = ['type'  => CONSUMABLEITEM_TYPE,
-                       'from'  => 6,
-                       'to'    => 3];
+        'from'  => 6,
+        'to'    => 3];
 
     $updates[] = ['type'  => USER_TYPE,
-                       'from'  => 3,
-                       'to'    => 34];
+        'from'  => 3,
+        'to'    => 34];
 
     $updates[] = ['type'  => USER_TYPE,
-                       'from'  => 7,
-                       'to'    => 3];
+        'from'  => 7,
+        'to'    => 3];
 
     // serial / otherserial
     $updates[] = ['type'  => COMPUTER_TYPE,
-                       'from'  => 40,
-                       'to'    => 46];
+        'from'  => 40,
+        'to'    => 46];
 
     $updates[] = ['type'  => COMPUTER_TYPE,
-                       'from'  => 5,
-                       'to'    => 40];
+        'from'  => 5,
+        'to'    => 40];
 
     $updates[] = ['type'  => COMPUTER_TYPE,
-                       'from'  => 8,
-                       'to'    => 5];
+        'from'  => 8,
+        'to'    => 5];
 
     $updates[] = ['type'  => COMPUTER_TYPE,
-                       'from'  => 6,
-                       'to'    => 45];
+        'from'  => 6,
+        'to'    => 45];
 
     $updates[] = ['type'  => COMPUTER_TYPE,
-                       'from'  => 9,
-                       'to'    => 6];
+        'from'  => 9,
+        'to'    => 6];
 
     $updates[] = ['type'  => STATE_TYPE,
-                       'from'  => 9,
-                       'to'    => 6];
+        'from'  => 9,
+        'to'    => 6];
 
     $updates[] = ['type'  => STATE_TYPE,
-                       'from'  => 8,
-                       'to'    => 5];
+        'from'  => 8,
+        'to'    => 5];
 
     // Manufacturer
     $updates[] = ['type'  => CONSUMABLEITEM_TYPE,
-                       'from'  => 5,
-                       'to'    => 23];
+        'from'  => 5,
+        'to'    => 23];
 
     $updates[] = ['type'  => CARTRIDGEITEM_TYPE,
-                       'from'  => 5,
-                       'to'    => 23];
+        'from'  => 5,
+        'to'    => 23];
 
     // tech_num
     $updates[] = ['type'  => CONSUMABLEITEM_TYPE,
-                       'from'  => 7,
-                       'to'    => 24];
+        'from'  => 7,
+        'to'    => 24];
 
     $updates[] = ['type'  => CARTRIDGEITEM_TYPE,
-                       'from'  => 7,
-                       'to'    => 24];
+        'from'  => 7,
+        'to'    => 24];
 
     // date_mod
     $updates[] = ['type'  => NETWORKING_TYPE,
-                       'from'  => 9,
-                       'to'    => 19];
+        'from'  => 9,
+        'to'    => 19];
 
     $updates[] = ['type'  => PRINTER_TYPE,
-                       'from'  => 9,
-                       'to'    => 19];
+        'from'  => 9,
+        'to'    => 19];
 
     $updates[] = ['type'  => MONITOR_TYPE,
-                       'from'  => 9,
-                       'to'    => 19];
+        'from'  => 9,
+        'to'    => 19];
 
     $updates[] = ['type'  => PERIPHERAL_TYPE,
-                       'from'  => 9,
-                       'to'    => 19];
+        'from'  => 9,
+        'to'    => 19];
 
     $updates[] = ['type'  => SOFTWARE_TYPE,
-                       'from'  => 9,
-                       'to'    => 19];
+        'from'  => 9,
+        'to'    => 19];
 
     $updates[] = ['type'  => PHONE_TYPE,
-                       'from'  => 9,
-                       'to'    => 19];
+        'from'  => 9,
+        'to'    => 19];
 
     // comments
     $updates[] = ['type'  => NETWORKING_TYPE,
-                       'from'  => 10,
-                       'to'    => 16];
+        'from'  => 10,
+        'to'    => 16];
 
     $updates[] = ['type'  => PRINTER_TYPE,
-                       'from'  => 10,
-                       'to'    => 16];
+        'from'  => 10,
+        'to'    => 16];
 
     $updates[] = ['type'  => MONITOR_TYPE,
-                       'from'  => 10,
-                       'to'    => 16];
+        'from'  => 10,
+        'to'    => 16];
 
     $updates[] = ['type'  => PERIPHERAL_TYPE,
-                       'from'  => 10,
-                       'to'    => 16];
+        'from'  => 10,
+        'to'    => 16];
 
     $updates[] = ['type'  => SOFTWARE_TYPE,
-                       'from'  => 6,
-                       'to'    => 16];
+        'from'  => 6,
+        'to'    => 16];
 
     $updates[] = ['type'  => CONTACT_TYPE,
-                       'from'  => 7,
-                       'to'    => 16];
+        'from'  => 7,
+        'to'    => 16];
 
     $updates[] = ['type'  => ENTERPRISE_TYPE,
-                       'from'  => 7,
-                       'to'    => 16];
+        'from'  => 7,
+        'to'    => 16];
 
     $updates[] = ['type'  => CARTRIDGEITEM_TYPE,
-                       'from'  => 10,
-                       'to'    => 16];
+        'from'  => 10,
+        'to'    => 16];
 
     $updates[] = ['type'  => DOCUMENT_TYPE,
-                       'from'  => 6,
-                       'to'    => 16];
+        'from'  => 6,
+        'to'    => 16];
 
     $updates[] = ['type'  => USER_TYPE,
-                       'from'  => 12,
-                       'to'    => 16];
+        'from'  => 12,
+        'to'    => 16];
 
     $updates[] = ['type'  => PHONE_TYPE,
-                       'from'  => 10,
-                       'to'    => 16];
+        'from'  => 10,
+        'to'    => 16];
 
     foreach ($updates as $data) {
         $query = "UPDATE `glpi_display`
-                SET `num` = ".$data['to']."
-                WHERE `num` = ".$data['from']."
-                      AND `type` = '".$data['type']."'";
+                SET `num` = " . $data['to'] . "
+                WHERE `num` = " . $data['from'] . "
+                      AND `type` = '" . $data['type'] . "'";
         $DB->queryOrDie($query, "0.72.2 reorder search.constant");
     }
 

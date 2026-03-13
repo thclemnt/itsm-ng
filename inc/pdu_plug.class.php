@@ -96,10 +96,10 @@ class Pdu_Plug extends CommonDBRelation
         $canedit = $pdu->canEdit($ID);
 
         $items = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'pdus_id' => $pdu->getID()
-           ]
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'pdus_id' => $pdu->getID(),
+            ],
         ]);
         $link = new self();
 
@@ -118,56 +118,56 @@ class Pdu_Plug extends CommonDBRelation
 
         if ($canedit) {
             $form = [
-               'action' => Toolbox::getItemTypeFormURL(__CLASS__),
-               'buttons' => [
-                  [
-                     'type' => 'submit',
-                     'name' => 'add',
-                     'value' => _sx('button', 'Add an item'),
-                     'class' => 'btn btn-secondary'
-                  ]
-               ],
-               'content' => [
-                  __('Add an item') => [
-                     'visible' => true,
-                     'inputs' => [
-                        [
-                           'type' => 'hidden',
-                           'name' => 'pdus_id',
-                           'value' => $ID
+                'action' => Toolbox::getItemTypeFormURL(__CLASS__),
+                'buttons' => [
+                    [
+                        'type' => 'submit',
+                        'name' => 'add',
+                        'value' => _sx('button', 'Add an item'),
+                        'class' => 'btn btn-secondary',
+                    ],
+                ],
+                'content' => [
+                    __('Add an item') => [
+                        'visible' => true,
+                        'inputs' => [
+                            [
+                                'type' => 'hidden',
+                                'name' => 'pdus_id',
+                                'value' => $ID,
+                            ],
+                            __('Add a new plug') => [
+                                'type' => 'select',
+                                'name' => 'plugs_id',
+                                'values' => getOptionForItems(Plug::class),
+                                'actions' => getItemActionButtons(['info', 'add'], Plug::class),
+                            ],
+                            __('Number') => [
+                                'type' => 'number',
+                                'name' => 'number_plugs',
+                                'col_lg' => 6,
+                            ],
                         ],
-                        __('Add a new plug') => [
-                           'type' => 'select',
-                           'name' => 'plugs_id',
-                           'values' => getOptionForItems(Plug::class),
-                           'actions' => getItemActionButtons(['info', 'add'], Plug::class),
-                        ],
-                        __('Number') => [
-                           'type' => 'number',
-                           'name' => 'number_plugs',
-                           'col_lg' => 6,
-                        ],
-                     ]
-                  ]
-               ]
+                    ],
+                ],
             ];
             renderTwigForm($form);
         }
 
         if ($canedit) {
             $massiveactionparams = [
-               'container'       => 'tableForPDUPlug',
-               'display_arrow' => false,
-               'specific_actions' => [
-                  'MassiveAction:purge' => _x('button', 'Delete permanently the relation with selected elements'),
-               ],
+                'container'       => 'tableForPDUPlug',
+                'display_arrow' => false,
+                'specific_actions' => [
+                    'MassiveAction:purge' => _x('button', 'Delete permanently the relation with selected elements'),
+                ],
             ];
             Html::showMassiveActions($massiveactionparams);
         }
 
         $fields = [
-           __('Name'),
-           __('Number')
+            __('Name'),
+            __('Number'),
         ];
         $values = [];
         $massive_action = [];
@@ -175,16 +175,16 @@ class Pdu_Plug extends CommonDBRelation
             $item = new Plug();
             $item->getFromDB($row['plugs_id']);
             $values[] = [
-               $item->getLink(),
-               $row['number_plugs']
+                $item->getLink(),
+                $row['number_plugs'],
             ];
             $massive_action[] = sprintf('item[%s][%s]', self::class, $row['id']);
         }
         renderTwigTemplate('table.twig', [
-           'id' => 'tableForPDUPlug',
-           'fields' => $fields,
-           'values' => $values,
-           'massive_action' => $massive_action,
+            'id' => 'tableForPDUPlug',
+            'fields' => $fields,
+            'values' => $values,
+            'massive_action' => $massive_action,
         ]);
     }
 

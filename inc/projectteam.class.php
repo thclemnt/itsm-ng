@@ -119,8 +119,8 @@ class ProjectTeam extends CommonDBRelation
      * @deprecated 9.5
      * @since 9.2
      *
-     * @param integer $oldid        ID of the item to clone
-     * @param integer $newid        ID of the item cloned
+     * @param int $oldid        ID of the item to clone
+     * @param int $newid        ID of the item cloned
      **/
     public static function cloneProjectTeam($oldid, $newid)
     {
@@ -149,8 +149,8 @@ class ProjectTeam extends CommonDBRelation
 
         $team = [];
         $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['projects_id' => $projects_id]
+            'FROM'   => self::getTable(),
+            'WHERE'  => ['projects_id' => $projects_id],
         ]);
 
         while ($data = $iterator->next()) {

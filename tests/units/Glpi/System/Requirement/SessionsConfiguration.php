@@ -67,9 +67,9 @@ class SessionsConfiguration extends \GLPITestCase
         $this->array($this->testedInstance->getValidationMessages())
            ->isEqualTo(
                [
-                 '"session.auto_start" must be set to off.',
-                 'See .htaccess file in the ITSM-NG root for more information.',
-            ]
+                   '"session.auto_start" must be set to off.',
+                   'See .htaccess file in the ITSM-NG root for more information.',
+               ]
            );
     }
 
@@ -85,9 +85,9 @@ class SessionsConfiguration extends \GLPITestCase
         $this->array($this->testedInstance->getValidationMessages())
            ->isEqualTo(
                [
-                 '"session.use_trans_sid" must be set to off.',
-                 'See .htaccess file in the ITSM-NG root for more information.',
-            ]
+                   '"session.use_trans_sid" must be set to off.',
+                   'See .htaccess file in the ITSM-NG root for more information.',
+               ]
            );
     }
 
@@ -101,9 +101,9 @@ class SessionsConfiguration extends \GLPITestCase
         $this->array($this->testedInstance->getValidationMessages())
            ->isEqualTo(
                [
-                 '"session.auto_start" and "session.use_trans_sid" must be set to off.',
-                 'See .htaccess file in the ITSM-NG root for more information.',
-            ]
+                   '"session.auto_start" and "session.use_trans_sid" must be set to off.',
+                   'See .htaccess file in the ITSM-NG root for more information.',
+               ]
            );
     }
 }

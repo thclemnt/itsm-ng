@@ -45,11 +45,11 @@ class Change extends DbTestCase
         $computer   = getItemByTypeName('Computer', '_test_pc01');
         $change     = new \Change();
         $changes_id = $change->add([
-           'name'           => "test add from computer \'_test_pc01\'",
-           'content'        => "test add from computer \'_test_pc01\'",
-           '_add_from_item' => true,
-           '_from_itemtype' => 'Computer',
-           '_from_items_id' => $computer->getID(),
+            'name'           => "test add from computer \'_test_pc01\'",
+            'content'        => "test add from computer \'_test_pc01\'",
+            '_add_from_item' => true,
+            '_from_itemtype' => 'Computer',
+            '_from_items_id' => $computer->getID(),
         ]);
         $this->integer($changes_id)->isGreaterThan(0);
         $this->boolean($change->getFromDB($changes_id))->isTrue();
@@ -65,19 +65,19 @@ class Change extends DbTestCase
 
         $change = new \Change();
         $changes_id = $change->add([
-           'name'    => 'change with multi validators',
-           'content' => 'validation workflow',
+            'name'    => 'change with multi validators',
+            'content' => 'validation workflow',
         ]);
         $this->integer($changes_id)->isGreaterThan(0);
 
-        $users_id_itsm = (int)getItemByTypeName('User', 'itsm', true);
-        $users_id_tech = (int)getItemByTypeName('User', 'tech', true);
+        $users_id_itsm = (int) getItemByTypeName('User', 'itsm', true);
+        $users_id_tech = (int) getItemByTypeName('User', 'tech', true);
 
         $validation = new \ChangeValidation();
         $validation_id = $validation->add([
-           'changes_id'         => $changes_id,
-           'users_id_validate'  => [$users_id_itsm, $users_id_tech],
-           'comment_submission' => 'Please validate this change',
+            'changes_id'         => $changes_id,
+            'users_id_validate'  => [$users_id_itsm, $users_id_tech],
+            'comment_submission' => 'Please validate this change',
         ]);
         $this->integer($validation_id)->isGreaterThan(0);
 
@@ -87,29 +87,29 @@ class Change extends DbTestCase
         ))->isEqualTo(2);
 
         $this->boolean($change->getFromDB($changes_id))->isTrue();
-        $this->integer((int)$change->fields['global_validation'])->isEqualTo(\CommonITILValidation::WAITING);
+        $this->integer((int) $change->fields['global_validation'])->isEqualTo(\CommonITILValidation::WAITING);
 
         $this->login('itsm', 'itsm');
         $validation = new \ChangeValidation();
         $this->boolean(
             $validation->getFromDBByCrit([
-               'changes_id'         => $changes_id,
-               'users_id_validate'  => $users_id_itsm,
+                'changes_id'         => $changes_id,
+                'users_id_validate'  => $users_id_itsm,
             ])
         )->isTrue();
 
         $this->boolean(
             $validation->update([
-               'id'                 => $validation->fields['id'],
-               'changes_id'         => $changes_id,
-               'status'             => \CommonITILValidation::REFUSED,
-               'comment_validation' => 'Needs rework',
+                'id'                 => $validation->fields['id'],
+                'changes_id'         => $changes_id,
+                'status'             => \CommonITILValidation::REFUSED,
+                'comment_validation' => 'Needs rework',
             ])
         )->isTrue();
 
         $change = new \Change();
         $this->boolean($change->getFromDB($changes_id))->isTrue();
-        $this->integer((int)$change->fields['global_validation'])->isEqualTo(\CommonITILValidation::REFUSED);
+        $this->integer((int) $change->fields['global_validation'])->isEqualTo(\CommonITILValidation::REFUSED);
     }
 
     public function testStatusTransitionLifecycle()
@@ -137,28 +137,28 @@ class Change extends DbTestCase
 
         $change = new \Change();
         $changes_id = $change->add([
-           'name'    => 'change with task actiontime',
-           'content' => 'validate actiontime update from ChangeTask',
+            'name'    => 'change with task actiontime',
+            'content' => 'validate actiontime update from ChangeTask',
         ]);
         $this->integer($changes_id)->isGreaterThan(0);
 
         $task = new \ChangeTask();
         $task_id = $task->add([
-           'changes_id'       => $changes_id,
-           'content'          => 'private task',
-           'actiontime'       => 180,
-           'is_private'       => 1,
-           'users_id_tech'    => getItemByTypeName('User', 'tech', true),
+            'changes_id'       => $changes_id,
+            'content'          => 'private task',
+            'actiontime'       => 180,
+            'is_private'       => 1,
+            'users_id_tech'    => getItemByTypeName('User', 'tech', true),
         ]);
-        $this->integer((int)$task_id)->isGreaterThan(0);
+        $this->integer((int) $task_id)->isGreaterThan(0);
         $this->boolean($task->getFromDB($task_id))->isTrue();
-        $this->integer((int)$task->fields['is_private'])->isEqualTo(1);
+        $this->integer((int) $task->fields['is_private'])->isEqualTo(1);
 
         $this->boolean($change->getFromDB($changes_id))->isTrue();
-        $this->integer((int)$change->fields['actiontime'])->isEqualTo(180);
+        $this->integer((int) $change->fields['actiontime'])->isEqualTo(180);
 
         $this->boolean($task->delete(['id' => $task_id]))->isTrue();
         $this->boolean($change->getFromDB($changes_id))->isTrue();
-        $this->integer((int)$change->fields['actiontime'])->isEqualTo(0);
+        $this->integer((int) $change->fields['actiontime'])->isEqualTo(0);
     }
 }

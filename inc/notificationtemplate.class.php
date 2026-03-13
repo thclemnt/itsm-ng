@@ -1,5 +1,7 @@
 <?php
 
+use Glpi\Features\Clonable;
+
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
@@ -40,7 +42,7 @@ if (!defined('GLPI_ROOT')) {
 **/
 class NotificationTemplate extends CommonDBTM
 {
-    use Glpi\Features\Clonable;
+    use Clonable;
 
     // From CommonDBTM
     public $dohistory = true;
@@ -56,7 +58,7 @@ class NotificationTemplate extends CommonDBTM
     public function getCloneRelations(): array
     {
         return [
-           NotificationTemplateTranslation::class
+            NotificationTemplateTranslation::class,
         ];
     }
 
@@ -120,66 +122,66 @@ class NotificationTemplate extends CommonDBTM
         }
 
         $form = [
-          'action' => $this->getFormURL(),
-           'buttons' => [
-              ($this->canUpdateItem() ? [
-                 'type' => 'submit',
-                 'name' => $this->isNewID($ID) ? 'add' : 'update',
-                 'value' => $this->isNewID($ID) ? __('Add') : __('Update'),
-                 'class' => 'btn btn-secondary'
-              ] : []),
-              (!$this->isNewID($ID) && self::canPurge() ? [
-                 'type' => 'submit',
-                 'name' => 'purge',
-                 'value' => __('Delete permanently'),
-                 'class' => 'btn btn-danger'
-              ] : []),
-           ],
-           'content' => [
-              $this->getTypeName() => [
-                  'visible' => true,
-                  'inputs' => [
-                      $this->isNewID($ID) ? [] : [
-                          'type' => 'hidden',
-                          'name' => 'id',
-                          'value' => $ID
-                      ],
-                      __('Name') => [
-                          'type' => 'text',
-                          'name' => 'name',
-                          'value' => $this->fields['name'],
-                          'comment' => 1,
-                          'col_lg' => 12,
-                          'col_md' => 12,
-                      ],
-                      __('Type', 'Types', 1) => [
-                          'type' => 'select',
-                          'name' => 'itemtype',
-                          'value' => ($this->fields['itemtype'] ? $this->fields['itemtype'] : 'Ticket'),
-                          'values' => $typeValues,
-                          'comment' => 1,
-                          'col_lg' => 12,
-                          'col_md' => 12,
-                      ],
-                      __('Comments') => [
-                          'type' => 'textarea',
-                          'name' => 'comment',
-                          'value' => $this->fields['comment'],
-                          'comment' => 1,
-                          'col_lg' => 12,
-                          'col_md' => 12,
-                      ],
-                      __('CSS') => [
-                          'type' => 'textarea',
-                          'name' => 'css',
-                          'value' => $this->fields['css'],
-                          'comment' => 1,
-                          'col_lg' => 12,
-                          'col_md' => 12,
-                      ],
-                  ]
-              ]
-           ]
+            'action' => $this->getFormURL(),
+            'buttons' => [
+                ($this->canUpdateItem() ? [
+                    'type' => 'submit',
+                    'name' => $this->isNewID($ID) ? 'add' : 'update',
+                    'value' => $this->isNewID($ID) ? __('Add') : __('Update'),
+                    'class' => 'btn btn-secondary',
+                ] : []),
+                (!$this->isNewID($ID) && self::canPurge() ? [
+                    'type' => 'submit',
+                    'name' => 'purge',
+                    'value' => __('Delete permanently'),
+                    'class' => 'btn btn-danger',
+                ] : []),
+            ],
+            'content' => [
+                $this->getTypeName() => [
+                    'visible' => true,
+                    'inputs' => [
+                        $this->isNewID($ID) ? [] : [
+                            'type' => 'hidden',
+                            'name' => 'id',
+                            'value' => $ID,
+                        ],
+                        __('Name') => [
+                            'type' => 'text',
+                            'name' => 'name',
+                            'value' => $this->fields['name'],
+                            'comment' => 1,
+                            'col_lg' => 12,
+                            'col_md' => 12,
+                        ],
+                        __('Type', 'Types', 1) => [
+                            'type' => 'select',
+                            'name' => 'itemtype',
+                            'value' => ($this->fields['itemtype'] ? $this->fields['itemtype'] : 'Ticket'),
+                            'values' => $typeValues,
+                            'comment' => 1,
+                            'col_lg' => 12,
+                            'col_md' => 12,
+                        ],
+                        __('Comments') => [
+                            'type' => 'textarea',
+                            'name' => 'comment',
+                            'value' => $this->fields['comment'],
+                            'comment' => 1,
+                            'col_lg' => 12,
+                            'col_md' => 12,
+                        ],
+                        __('CSS') => [
+                            'type' => 'textarea',
+                            'name' => 'css',
+                            'value' => $this->fields['css'],
+                            'comment' => 1,
+                            'col_lg' => 12,
+                            'col_md' => 12,
+                        ],
+                    ],
+                ],
+            ],
         ];
         renderTwigForm($form);
 
@@ -192,36 +194,36 @@ class NotificationTemplate extends CommonDBTM
         $tab = [];
 
         $tab[] = [
-           'id'                 => 'common',
-           'name'               => __('Characteristics')
+            'id'                 => 'common',
+            'name'               => __('Characteristics'),
         ];
 
         $tab[] = [
-           'id'                 => '1',
-           'table'              => $this->getTable(),
-           'field'              => 'name',
-           'name'               => __('Name'),
-           'datatype'           => 'itemlink',
-           'massiveaction'      => false,
-           'autocomplete'       => true,
+            'id'                 => '1',
+            'table'              => $this->getTable(),
+            'field'              => 'name',
+            'name'               => __('Name'),
+            'datatype'           => 'itemlink',
+            'massiveaction'      => false,
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '4',
-           'table'              => $this->getTable(),
-           'field'              => 'itemtype',
-           'name'               => _n('Type', 'Types', 1),
-           'datatype'           => 'itemtypename',
-           'itemtype_list'      => 'notificationtemplates_types',
-           'massiveaction'      => false
+            'id'                 => '4',
+            'table'              => $this->getTable(),
+            'field'              => 'itemtype',
+            'name'               => _n('Type', 'Types', 1),
+            'datatype'           => 'itemtypename',
+            'itemtype_list'      => 'notificationtemplates_types',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '16',
-           'table'              => $this->getTable(),
-           'field'              => 'comment',
-           'name'               => __('Comments'),
-           'datatype'           => 'text'
+            'id'                 => '16',
+            'table'              => $this->getTable(),
+            'field'              => 'comment',
+            'name'               => __('Comments'),
+            'datatype'           => 'text',
         ];
 
         return $tab;
@@ -238,10 +240,10 @@ class NotificationTemplate extends CommonDBTM
     public static function dropdownTemplates($name, $itemtype, $value = 0)
     {
         echo self::dropdown([
-           'name'       => $name,
-           'value'     => $value,
-           'comment'   => 1,
-           'condition' => ['itemtype' => addslashes((string) $itemtype)]
+            'name'       => $name,
+            'value'     => $value,
+            'comment'   => 1,
+            'condition' => ['itemtype' => addslashes((string) $itemtype)],
         ]);
     }
 
@@ -297,7 +299,7 @@ class NotificationTemplate extends CommonDBTM
             $generated_by = __('Automatically generated by ITSM-NG');
 
             //Switch to the desired language
-            $bak_dropdowntranslations = (isset($_SESSION['glpi_dropdowntranslations']) ? $_SESSION['glpi_dropdowntranslations'] : null);
+            $bak_dropdowntranslations = ($_SESSION['glpi_dropdowntranslations'] ?? null);
             $_SESSION['glpi_dropdowntranslations'] = DropdownTranslation::getAvailableTranslations($language);
             Session::loadLanguage($language);
             $bak_language = $_SESSION["glpilanguage"];
@@ -328,8 +330,8 @@ class NotificationTemplate extends CommonDBTM
                 $template_datas['subject'] = Html::entity_decode_deep($template_datas['subject']);
                 $this->signature           = Html::entity_decode_deep($this->signature);
 
-                $lang['subject']           = $target->getSubjectPrefix($event) .
-                                              self::process($template_datas['subject'], $data);
+                $lang['subject']           = $target->getSubjectPrefix($event)
+                                              . self::process($template_datas['subject'], $data);
                 $lang['content_html']      = '';
 
                 //If no html content, then send only in text
@@ -342,10 +344,10 @@ class NotificationTemplate extends CommonDBTM
                         self::getDataForHtml($target, $data)
                     );
 
-                    $lang['content_html'] =
-                          "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"
-                        'http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd'>" .
-                          "<html>
+                    $lang['content_html']
+                          = "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"
+                        'http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd'>"
+                          . "<html>
                         <head>
                          <META http-equiv='Content-Type' content='text/html; charset=utf-8'>
                          <title>" . Html::entities_deep($lang['subject']) . "</title>
@@ -353,20 +355,20 @@ class NotificationTemplate extends CommonDBTM
                            " . $this->fields['css'] . "
                          </style>
                         </head>
-                        <body>\n" . (!empty($add_header) ? $add_header . "\n<br><br>" : '') .
-                             $template_datas['content_html'] .
-                          "<br><br>-- \n<br>" . $signature_html .
-                          "<br>$footer_string" .
-                          "<br><br>\n" . (!empty($add_footer) ? $add_footer . "\n<br><br>" : '') .
-                          "\n</body></html>";
+                        <body>\n" . (!empty($add_header) ? $add_header . "\n<br><br>" : '')
+                             . $template_datas['content_html']
+                          . "<br><br>-- \n<br>" . $signature_html
+                          . "<br>$footer_string"
+                          . "<br><br>\n" . (!empty($add_footer) ? $add_footer . "\n<br><br>" : '')
+                          . "\n</body></html>";
                 }
 
                 $lang['content_text']
-                      = (!empty($add_header) ? $add_header . "\n\n" : '') .                    Html::clean(self::process(
+                      = (!empty($add_header) ? $add_header . "\n\n" : '') . Html::clean(self::process(
                           $template_datas['content_text'],
                           $data
-                      ) . "\n\n-- \n" . $this->signature .
-                                          "\n" . Html::entity_decode_deep($generated_by)) . "\n\n" . $add_footer;
+                      ) . "\n\n-- \n" . $this->signature
+                                          . "\n" . Html::entity_decode_deep($generated_by)) . "\n\n" . $add_footer;
                 $this->templates_by_languages[$tid] = $lang;
             }
 
@@ -573,13 +575,13 @@ class NotificationTemplate extends CommonDBTM
         global $DB;
 
         $iterator = $DB->request([
-           'FROM'   => 'glpi_notificationtemplatetranslations',
-           'WHERE'  => [
-              'notificationtemplates_id' => $this->getField('id'),
-              'language'                 => [$language, '']
-           ],
-           'ORDER'  => 'language DESC',
-           'LIMIT'  => 1
+            'FROM'   => 'glpi_notificationtemplatetranslations',
+            'WHERE'  => [
+                'notificationtemplates_id' => $this->getField('id'),
+                'language'                 => [$language, ''],
+            ],
+            'ORDER'  => 'language DESC',
+            'LIMIT'  => 1,
         ]);
         if (count($iterator)) {
             return $iterator->next();
@@ -636,8 +638,8 @@ class NotificationTemplate extends CommonDBTM
 
         $this->deleteChildrenAndRelationsFromDb(
             [
-              Notification_NotificationTemplate::class,
-              NotificationTemplateTranslation::class,
+                Notification_NotificationTemplate::class,
+                NotificationTemplateTranslation::class,
             ]
         );
 

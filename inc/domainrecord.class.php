@@ -68,7 +68,7 @@ class DomainRecord extends CommonDBChild
         return countElementsInTable(
             self::getTable(),
             [
-              "domains_id"   => $item->getID(),
+                "domains_id"   => $item->getID(),
             ]
         );
     }
@@ -88,84 +88,84 @@ class DomainRecord extends CommonDBChild
         $tab = array_merge($tab, parent::rawSearchOptions());
 
         $tab[] = [
-           'id'                 => '2',
-           'table'              => 'glpi_domains',
-           'field'              => 'name',
-           'name'               => Domain::getTypeName(1),
-           'datatype'           => 'dropdown'
+            'id'                 => '2',
+            'table'              => 'glpi_domains',
+            'field'              => 'name',
+            'name'               => Domain::getTypeName(1),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '3',
-           'table'              => DomainRecordType::getTable(),
-           'field'              => 'name',
-           'name'               => DomainRecordType::getTypeName(1),
-           'datatype'           => 'dropdown'
+            'id'                 => '3',
+            'table'              => DomainRecordType::getTable(),
+            'field'              => 'name',
+            'name'               => DomainRecordType::getTypeName(1),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '4',
-           'table'              => $this->getTable(),
-           'field'              => 'ttl',
-           'name'               => __('TTL')
+            'id'                 => '4',
+            'table'              => $this->getTable(),
+            'field'              => 'ttl',
+            'name'               => __('TTL'),
         ];
 
         $tab[] = [
-           'id'                 => '11',
-           'table'              => $this->getTable(),
-           'field'              => 'data',
-           'name'               => __('Data'),
+            'id'                 => '11',
+            'table'              => $this->getTable(),
+            'field'              => 'data',
+            'name'               => __('Data'),
         ];
 
         $tab[] = [
-           'id'                 => '6',
-           'table'              => 'glpi_users',
-           'field'              => 'name',
-           'linkfield'          => 'users_id_tech',
-           'name'               => __('Technician in charge'),
-           'datatype'           => 'dropdown'
+            'id'                 => '6',
+            'table'              => 'glpi_users',
+            'field'              => 'name',
+            'linkfield'          => 'users_id_tech',
+            'name'               => __('Technician in charge'),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '7',
-           'table'              => $this->getTable(),
-           'field'              => 'date_creation',
-           'name'               => __('Creation date'),
-           'datatype'           => 'date'
+            'id'                 => '7',
+            'table'              => $this->getTable(),
+            'field'              => 'date_creation',
+            'name'               => __('Creation date'),
+            'datatype'           => 'date',
         ];
 
         $tab[] = [
-           'id'                 => '8',
-           'table'              => $this->getTable(),
-           'field'              => 'comment',
-           'name'               => __('Comments'),
-           'datatype'           => 'text'
+            'id'                 => '8',
+            'table'              => $this->getTable(),
+            'field'              => 'comment',
+            'name'               => __('Comments'),
+            'datatype'           => 'text',
         ];
 
         $tab[] = [
-           'id'                 => '9',
-           'table'              => 'glpi_groups',
-           'field'              => 'name',
-           'linkfield'          => 'groups_id_tech',
-           'name'               => __('Group in charge'),
-           'datatype'           => 'dropdown'
+            'id'                 => '9',
+            'table'              => 'glpi_groups',
+            'field'              => 'name',
+            'linkfield'          => 'groups_id_tech',
+            'name'               => __('Group in charge'),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '10',
-           'table'              => $this->getTable(),
-           'field'              => 'date_mod',
-           'massiveaction'      => false,
-           'name'               => __('Last update'),
-           'datatype'           => 'datetime'
+            'id'                 => '10',
+            'table'              => $this->getTable(),
+            'field'              => 'date_mod',
+            'massiveaction'      => false,
+            'name'               => __('Last update'),
+            'datatype'           => 'datetime',
         ];
 
         $tab[] = [
-           'id'                 => '80',
-           'table'              => 'glpi_entities',
-           'field'              => 'completename',
-           'name'               => Entity::getTypeName(1),
-           'datatype'           => 'dropdown'
+            'id'                 => '80',
+            'table'              => 'glpi_entities',
+            'field'              => 'completename',
+            'name'               => Entity::getTypeName(1),
+            'datatype'           => 'dropdown',
         ];
 
         return $tab;
@@ -259,7 +259,7 @@ class DomainRecord extends CommonDBChild
      * Prepare input for add and update
      *
      * @param array   $input Input values
-     * @param boolean $add   True when we're adding a record
+     * @param bool $add   True when we're adding a record
      *
      * @return aray|false
      */
@@ -326,69 +326,69 @@ class DomainRecord extends CommonDBChild
     public function showForm($ID, $options = [])
     {
         $form = [
-           'action' => $this->getFormURL(),
-           'itemtype' => $this::class,
-           'content' => [
-              '' => [
-                 'visible' => true,
-                 'inputs' => [
-                    Domain::getTypeName(1) => [
-                       'type' => 'select',
-                       'name' => 'domains_id',
-                       'values' => getOptionForItems(Domain::class),
-                       'value' => $this->fields['domains_id'] ?? '',
-                       'actions' => getItemActionButtons(['info', 'add'], Domain::class)
+            'action' => $this->getFormURL(),
+            'itemtype' => $this::class,
+            'content' => [
+                '' => [
+                    'visible' => true,
+                    'inputs' => [
+                        Domain::getTypeName(1) => [
+                            'type' => 'select',
+                            'name' => 'domains_id',
+                            'values' => getOptionForItems(Domain::class),
+                            'value' => $this->fields['domains_id'] ?? '',
+                            'actions' => getItemActionButtons(['info', 'add'], Domain::class),
+                        ],
+                        __('Name') => [
+                            'type' => 'text',
+                            'name' => 'name',
+                            'value' => $this->fields['name'] ?? '',
+                        ],
+                        DomainRecordType::getTypeName(1) => [
+                            'type' => 'select',
+                            'name' => 'domainrecordtypes_id',
+                            'values' => getOptionForItems(DomainRecordType::class),
+                            'value' => $this->fields['domainrecordtypes_id'] ?? '',
+                            'actions' => getItemActionButtons(['info', 'add'], DomainRecordType::class),
+                        ],
+                        __('Creation date') => [
+                            'type' => 'datetime-local',
+                            'name' => 'date_creation',
+                            'value' => $this->fields["date_creation"] ?? '',
+                        ],
+                        __('Data') => [
+                            'type' => 'text',
+                            'name' => 'data',
+                            'value' => $this->fields['data'] ?? '',
+                        ],
+                        __('Technician in charge') => [
+                            'type' => 'select',
+                            'name' => "users_id_tech",
+                            'values' => getOptionsForUsers('interface', ['entities_id' => Session::getActiveEntity()]),
+                            'value' => $this->fields["users_id_tech"] ?? '',
+                            'actions' => getItemActionButtons(['info'], User::class),
+                        ],
+                        __('Group in charge') => [
+                            'type' => 'select',
+                            'name' => "groups_id_tech",
+                            'itemtype' => Group::class,
+                            'conditions' => ['is_assign' => 1],
+                            'value' => $this->fields["groups_id_tech"] ?? '',
+                            'actions' => getItemActionButtons(['info', 'add'], Group::class),
+                        ],
+                        __('TTL') => [
+                            'type' => 'number',
+                            'name' => 'ttl',
+                            'value' => $this->fields['ttl'] ?? '',
+                        ],
+                        __('Comments') => [
+                            'type' => 'textarea',
+                            'name' => 'comment',
+                            'value' => $this->fields['comment'] ?? '',
+                        ],
                     ],
-                    __('Name') => [
-                       'type' => 'text',
-                       'name' => 'name',
-                       'value' => $this->fields['name'] ?? '',
-                    ],
-                    DomainRecordType::getTypeName(1) => [
-                       'type' => 'select',
-                       'name' => 'domainrecordtypes_id',
-                       'values' => getOptionForItems(DomainRecordType::class),
-                       'value' => $this->fields['domainrecordtypes_id'] ?? '',
-                       'actions' => getItemActionButtons(['info', 'add'], DomainRecordType::class)
-                    ],
-                    __('Creation date') => [
-                       'type' => 'datetime-local',
-                       'name' => 'date_creation',
-                       'value' => $this->fields["date_creation"] ?? '',
-                    ],
-                    __('Data') => [
-                       'type' => 'text',
-                       'name' => 'data',
-                       'value' => $this->fields['data'] ?? '',
-                    ],
-                    __('Technician in charge') => [
-                       'type' => 'select',
-                       'name' => "users_id_tech",
-                       'values' => getOptionsForUsers('interface', ['entities_id' => Session::getActiveEntity()]),
-                       'value' => $this->fields["users_id_tech"] ?? '',
-                       'actions' => getItemActionButtons(['info'], User::class),
-                    ],
-                    __('Group in charge') => [
-                       'type' => 'select',
-                       'name' => "groups_id_tech",
-                       'itemtype' => Group::class,
-                       'conditions' => ['is_assign' => 1],
-                       'value' => $this->fields["groups_id_tech"] ?? '',
-                       'actions' => getItemActionButtons(['info', 'add'], Group::class),
-                    ],
-                    __('TTL') => [
-                       'type' => 'number',
-                       'name' => 'ttl',
-                       'value' => $this->fields['ttl'] ?? '',
-                    ],
-                    __('Comments') => [
-                       'type' => 'textarea',
-                       'name' => 'comment',
-                       'value' => $this->fields['comment'] ?? '',
-                    ]
-                 ]
-              ]
-           ]
+                ],
+            ],
         ];
         renderTwigForm($form, '', $this->fields);
 
@@ -400,7 +400,7 @@ class DomainRecord extends CommonDBChild
      *
      * @param Domain $domain Domain object
      *
-     * @return void|boolean (display) Returns false if there is a rights error.
+     * @return void|bool (display) Returns false if there is a rights error.
      **/
     public static function showForDomain(Domain $domain)
     {
@@ -415,53 +415,53 @@ class DomainRecord extends CommonDBChild
         $rand    = mt_rand();
 
         $iterator = $DB->request([
-           'SELECT'    => 'record.*',
-           'FROM'      => self::getTable() . ' AS record',
-           'WHERE'     => ['domains_id' => $instID],
-           'LEFT JOIN' => [
-              DomainRecordType::getTable() . ' AS rtype'  => [
-                 'ON'  => [
-                    'rtype'  => 'id',
-                    'record' => 'domainrecordtypes_id'
-                 ]
-              ]
-           ],
-           'ORDER'     => ['rtype.name ASC', 'record.name ASC']
+            'SELECT'    => 'record.*',
+            'FROM'      => self::getTable() . ' AS record',
+            'WHERE'     => ['domains_id' => $instID],
+            'LEFT JOIN' => [
+                DomainRecordType::getTable() . ' AS rtype'  => [
+                    'ON'  => [
+                        'rtype'  => 'id',
+                        'record' => 'domainrecordtypes_id',
+                    ],
+                ],
+            ],
+            'ORDER'     => ['rtype.name ASC', 'record.name ASC'],
         ]);
 
         $number = count($iterator);
 
         if ($canedit) {
             $form = [
-               'action' => Toolbox::getItemTypeFormURL("Domain"),
-               'buttons' => [
-                  [
-                     'name' => 'addrecord',
-                     'value' => _x('button', 'Add'),
-                     'class' => 'btn btn-secondary',
-                  ]
-               ],
-               'content' => [
-                  __('Link a record') => [
-                     'visible' => true,
-                     'inputs' => [
-                        [
-                           'type' => 'hidden',
-                           'name' => 'domains_id',
-                           'value' => $instID,
+                'action' => Toolbox::getItemTypeFormURL("Domain"),
+                'buttons' => [
+                    [
+                        'name' => 'addrecord',
+                        'value' => _x('button', 'Add'),
+                        'class' => 'btn btn-secondary',
+                    ],
+                ],
+                'content' => [
+                    __('Link a record') => [
+                        'visible' => true,
+                        'inputs' => [
+                            [
+                                'type' => 'hidden',
+                                'name' => 'domains_id',
+                                'value' => $instID,
+                            ],
+                            '' => [
+                                'type' => 'select',
+                                'name' => 'domainrecords_id',
+                                'itemtype' => DomainRecord::class,
+                                'condition' => ['domains_id' => 0],
+                                'actions' => getItemActionButtons(['info', 'add'], DomainRecord::class),
+                                'col_lg' => 12,
+                                'col_md' => 12,
+                            ],
                         ],
-                        '' => [
-                           'type' => 'select',
-                           'name' => 'domainrecords_id',
-                           'itemtype' => DomainRecord::class,
-                           'condition' => ['domains_id' => 0],
-                           'actions' => getItemActionButtons(['info', 'add'], DomainRecord::class),
-                           'col_lg' => 12,
-                           'col_md' => 12,
-                        ]
-                     ]
-                  ]
-               ]
+                    ],
+                ],
 
             ];
             renderTwigForm($form);
@@ -469,16 +469,16 @@ class DomainRecord extends CommonDBChild
 
         if ($canedit && $number) {
             $massiveactionparams = [
-               'container' => 'tableForDomainRecordsDomain',
-               'display_arrow' => false,
+                'container' => 'tableForDomainRecordsDomain',
+                'display_arrow' => false,
             ];
             Html::showMassiveActions($massiveactionparams);
         }
         $fields = [
-           _n('Type', 'Types', 1),
-           __('Name'),
-           __('TTL'),
-           _n('Target', 'Targets', 1),
+            _n('Type', 'Types', 1),
+            __('Name'),
+            __('TTL'),
+            _n('Target', 'Targets', 1),
         ];
         $values = [];
         $massive_action = [];
@@ -493,18 +493,18 @@ class DomainRecord extends CommonDBChild
             $name = "<a href=\"" . $link . "?id=" . $data["id"] . "\">"
                      . self::getDisplayName($domain, $data['name']) . "$ID</a>";
             $values[] = [
-               Dropdown::getDropdownName(DomainRecordType::getTable(), $data['domainrecordtypes_id']),
-               $name,
-               $data['ttl'],
-               $data['data'],
+                Dropdown::getDropdownName(DomainRecordType::getTable(), $data['domainrecordtypes_id']),
+                $name,
+                $data['ttl'],
+                $data['data'],
             ];
             $massive_action[] = sprintf('item[%s][%s]', DomainRecord::class, $data['id']);
         }
         renderTwigTemplate('table.twig', [
-           'id' => 'tableForDomainRecordsDomain',
-           'fields' => $fields,
-           'values' => $values,
-           'massive_action' => $massive_action,
+            'id' => 'tableForDomainRecordsDomain',
+            'fields' => $fields,
+            'values' => $values,
+            'massive_action' => $massive_action,
         ]);
     }
 

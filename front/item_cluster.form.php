@@ -35,7 +35,7 @@ include('../inc/includes.php');
 
 Session::checkCentralAccess();
 
-$icl = new \Item_Cluster();
+$icl = new Item_Cluster();
 $cluster = new Cluster();
 
 if (isset($_POST['update'])) {
@@ -68,7 +68,7 @@ if (isset($_REQUEST['id'])) {
     $params['id'] = $_REQUEST['id'];
 } else {
     $params = [
-       'clusters_id'   => $_REQUEST['cluster']
+        'clusters_id'   => $_REQUEST['cluster'],
     ];
 }
 

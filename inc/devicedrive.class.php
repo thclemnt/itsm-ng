@@ -52,31 +52,31 @@ class DeviceDrive extends CommonDevice
         return array_merge(
             parent::getAdditionalFields(),
             [
-              __('Writing ability') => [
-                 'name'  => 'is_writer',
-                 'type'  => 'checkbox',
-                 'value' => $this->fields['is_writer'],
-              ],
-              __('Speed') => [
-                 'name'  => 'speed',
-                 'type'  => 'text',
-                 'value' => $this->fields['speed'],
-              ],
-              __('Interface') => [
-                 'name'  => 'interfacetypes_id',
-                 'type'  => 'select',
-                 'values' => getOptionForItems('InterfaceType'),
-                 'value' => $this->fields['interfacetypes_id'],
-                 'actions' => getItemActionButtons(['info', 'add'], 'InterfaceType'),
-              ],
-              _n('Model', 'Models', 1) => [
-                 'name'  => 'devicedrivemodels_id',
-                 'type'  => 'select',
-                 'values' => getOptionForItems('DeviceDriveModel'),
-                 'value' => $this->fields['devicedrivemodels_id'],
-                 'actions' => getItemActionButtons(['info', 'add'], 'DeviceDriveModel'),
+                __('Writing ability') => [
+                    'name'  => 'is_writer',
+                    'type'  => 'checkbox',
+                    'value' => $this->fields['is_writer'],
+                ],
+                __('Speed') => [
+                    'name'  => 'speed',
+                    'type'  => 'text',
+                    'value' => $this->fields['speed'],
+                ],
+                __('Interface') => [
+                    'name'  => 'interfacetypes_id',
+                    'type'  => 'select',
+                    'values' => getOptionForItems('InterfaceType'),
+                    'value' => $this->fields['interfacetypes_id'],
+                    'actions' => getItemActionButtons(['info', 'add'], 'InterfaceType'),
+                ],
+                _n('Model', 'Models', 1) => [
+                    'name'  => 'devicedrivemodels_id',
+                    'type'  => 'select',
+                    'values' => getOptionForItems('DeviceDriveModel'),
+                    'value' => $this->fields['devicedrivemodels_id'],
+                    'actions' => getItemActionButtons(['info', 'add'], 'DeviceDriveModel'),
 
-              ]
+                ],
             ]
         );
     }
@@ -87,36 +87,36 @@ class DeviceDrive extends CommonDevice
         $tab = parent::rawSearchOptions();
 
         $tab[] = [
-           'id'                 => '12',
-           'table'              => $this->getTable(),
-           'field'              => 'is_writer',
-           'name'               => __('Writing ability'),
-           'datatype'           => 'bool'
+            'id'                 => '12',
+            'table'              => $this->getTable(),
+            'field'              => 'is_writer',
+            'name'               => __('Writing ability'),
+            'datatype'           => 'bool',
         ];
 
         $tab[] = [
-           'id'                 => '13',
-           'table'              => $this->getTable(),
-           'field'              => 'speed',
-           'name'               => __('Speed'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '13',
+            'table'              => $this->getTable(),
+            'field'              => 'speed',
+            'name'               => __('Speed'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '14',
-           'table'              => 'glpi_interfacetypes',
-           'field'              => 'name',
-           'name'               => __('Interface'),
-           'datatype'           => 'dropdown'
+            'id'                 => '14',
+            'table'              => 'glpi_interfacetypes',
+            'field'              => 'name',
+            'name'               => __('Interface'),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '15',
-           'table'              => 'glpi_devicedrivemodels',
-           'field'              => 'name',
-           'name'               => _n('Model', 'Models', 1),
-           'datatype'           => 'dropdown'
+            'id'                 => '15',
+            'table'              => 'glpi_devicedrivemodels',
+            'field'              => 'name',
+            'name'               => _n('Model', 'Models', 1),
+            'datatype'           => 'dropdown',
         ];
 
         return $tab;
@@ -196,8 +196,8 @@ class DeviceDrive extends CommonDevice
     {
 
         return ['designation'       => 'equal',
-                     'manufacturers_id'  => 'equal',
-                     'interfacetypes_id' => 'equal'];
+            'manufacturers_id'  => 'equal',
+            'interfacetypes_id' => 'equal'];
     }
 
 

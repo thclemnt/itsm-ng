@@ -44,16 +44,16 @@ class NotificationTemplate extends DbTestCase
         global $DB;
 
         $iterator = $DB->request([
-           'SELECT' => 'notificationtemplates_id',
-           'FROM'   => \NotificationTemplateTranslation::getTable(),
-           'LIMIT'  => 1
+            'SELECT' => 'notificationtemplates_id',
+            'FROM'   => \NotificationTemplateTranslation::getTable(),
+            'LIMIT'  => 1,
         ]);
 
         $data = $iterator->next();
         $template = new \NotificationTemplate();
         $template->getFromDB($data['notificationtemplates_id']);
         $added = $template->clone();
-        $this->integer((int)$added)->isGreaterThan(0);
+        $this->integer((int) $added)->isGreaterThan(0);
 
         $clonedTemplate = new \NotificationTemplate();
         $this->boolean($clonedTemplate->getFromDB($added))->isTrue();

@@ -81,8 +81,8 @@ if (!file_exists(GLPI_CONFIG_DIR . "/config_db.php")) {
 
     //Database connection
     DBConnection::establishDBConnection(
-        (isset($USEDBREPLICATE) ? $USEDBREPLICATE : 0),
-        (isset($DBCONNECTION_REQUIRED) ? $DBCONNECTION_REQUIRED : 0)
+        ($USEDBREPLICATE ?? 0),
+        ($DBCONNECTION_REQUIRED ?? 0)
     );
 
     // *************************** Statics config options **********************
@@ -278,14 +278,14 @@ if (!file_exists(GLPI_CONFIG_DIR . "/config_db.php")) {
                       class='btn btn-secondary mb-3'>";
                     Html::closeForm();
                 } elseif ($newer === true) {
-                    echo "<p class='red'>" .
-                          __('You are trying to use ITSM-NG with outdated files compared to the version of the database. Please install the correct ITSM-NG files corresponding to the version of your database.') . "</p>";
+                    echo "<p class='red'>"
+                          . __('You are trying to use ITSM-NG with outdated files compared to the version of the database. Please install the correct ITSM-NG files corresponding to the version of your database.') . "</p>";
                 } elseif ($dev === true) {
-                    echo "<p class='red'><strong>" .
-                          __('You are trying to update to a development version from a development version. This is not supported.') . "</strong></p>";
+                    echo "<p class='red'><strong>"
+                          . __('You are trying to update to a development version from a development version. This is not supported.') . "</strong></p>";
                 } else { // for GLPI 10
-                    echo "<p class='red'><strong>" .
-                             __('Upgrade from GLPI 10 is not supported.') . "</strong></p>";
+                    echo "<p class='red'><strong>"
+                             . __('Upgrade from GLPI 10 is not supported.') . "</strong></p>";
                 }
             }
 

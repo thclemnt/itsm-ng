@@ -53,47 +53,47 @@ include_once(GLPI_ROOT . "/inc/autoload.function.php");
     // - prevent any global variables definition from current function logic.
 
     $constants = [
-       // Constants related to system paths
-       'GLPI_CONFIG_DIR'      => GLPI_ROOT . '/config', // Path for configuration files (db, security key, ...)
-       'GLPI_VAR_DIR'         => GLPI_ROOT . '/files',  // Path for all files
-       'GLPI_DOC_DIR'         => '{GLPI_VAR_DIR}', // Path for documents storage
-       'GLPI_CACHE_DIR'       => '{GLPI_VAR_DIR}/_cache', // Path for cache
-       'GLPI_CRON_DIR'        => '{GLPI_VAR_DIR}/_cron', // Path for cron storage
-       'GLPI_DUMP_DIR'        => '{GLPI_VAR_DIR}/_dumps', // Path for backup dump
-       'GLPI_GRAPH_DIR'       => '{GLPI_VAR_DIR}/_graphs', // Path for graph storage
-       'GLPI_LOCAL_I18N_DIR'  => '{GLPI_VAR_DIR}/_locales', // Path for local i18n files
-       'GLPI_LOCK_DIR'        => '{GLPI_VAR_DIR}/_lock', // Path for lock files storage (used by cron)
-       'GLPI_LOG_DIR'         => '{GLPI_VAR_DIR}/_log', // Path for log storage
-       'GLPI_PICTURE_DIR'     => '{GLPI_VAR_DIR}/_pictures', // Path for picture storage
-       'GLPI_PLUGIN_DOC_DIR'  => '{GLPI_VAR_DIR}/_plugins', // Path for plugins documents storage
-       'GLPI_RSS_DIR'         => '{GLPI_VAR_DIR}/_rss', // Path for rss storage
-       'GLPI_SESSION_DIR'     => '{GLPI_VAR_DIR}/_sessions', // Path for sessions storage
-       'GLPI_TMP_DIR'         => '{GLPI_VAR_DIR}/_tmp', // Path for temp storage
-       'GLPI_UPLOAD_DIR'      => '{GLPI_VAR_DIR}/_uploads', // Path for upload storage
+        // Constants related to system paths
+        'GLPI_CONFIG_DIR'      => GLPI_ROOT . '/config', // Path for configuration files (db, security key, ...)
+        'GLPI_VAR_DIR'         => GLPI_ROOT . '/files',  // Path for all files
+        'GLPI_DOC_DIR'         => '{GLPI_VAR_DIR}', // Path for documents storage
+        'GLPI_CACHE_DIR'       => '{GLPI_VAR_DIR}/_cache', // Path for cache
+        'GLPI_CRON_DIR'        => '{GLPI_VAR_DIR}/_cron', // Path for cron storage
+        'GLPI_DUMP_DIR'        => '{GLPI_VAR_DIR}/_dumps', // Path for backup dump
+        'GLPI_GRAPH_DIR'       => '{GLPI_VAR_DIR}/_graphs', // Path for graph storage
+        'GLPI_LOCAL_I18N_DIR'  => '{GLPI_VAR_DIR}/_locales', // Path for local i18n files
+        'GLPI_LOCK_DIR'        => '{GLPI_VAR_DIR}/_lock', // Path for lock files storage (used by cron)
+        'GLPI_LOG_DIR'         => '{GLPI_VAR_DIR}/_log', // Path for log storage
+        'GLPI_PICTURE_DIR'     => '{GLPI_VAR_DIR}/_pictures', // Path for picture storage
+        'GLPI_PLUGIN_DOC_DIR'  => '{GLPI_VAR_DIR}/_plugins', // Path for plugins documents storage
+        'GLPI_RSS_DIR'         => '{GLPI_VAR_DIR}/_rss', // Path for rss storage
+        'GLPI_SESSION_DIR'     => '{GLPI_VAR_DIR}/_sessions', // Path for sessions storage
+        'GLPI_TMP_DIR'         => '{GLPI_VAR_DIR}/_tmp', // Path for temp storage
+        'GLPI_UPLOAD_DIR'      => '{GLPI_VAR_DIR}/_uploads', // Path for upload storage
 
-       // Security constants
-       'GLPI_USE_CSRF_CHECK'            => '1',
-       'GLPI_CSRF_EXPIRES'              => '7200',
-       'GLPI_CSRF_MAX_TOKENS'           => '100',
-       'GLPI_USE_IDOR_CHECK'            => '1',
-       'GLPI_IDOR_EXPIRES'              => '7200',
-       'GLPI_ALLOW_IFRAME_IN_RICH_TEXT' => false,
+        // Security constants
+        'GLPI_USE_CSRF_CHECK'            => '1',
+        'GLPI_CSRF_EXPIRES'              => '7200',
+        'GLPI_CSRF_MAX_TOKENS'           => '100',
+        'GLPI_USE_IDOR_CHECK'            => '1',
+        'GLPI_IDOR_EXPIRES'              => '7200',
+        'GLPI_ALLOW_IFRAME_IN_RICH_TEXT' => false,
 
-       // Constants related to GLPI Project / GLPI Network external services
-       'GLPI_TELEMETRY_URI'                => 'https://telemetry.glpi-project.org', // Telemetry project URL
-       'GLPI_INSTALL_MODE'                 => is_dir(GLPI_ROOT . '/.git') ? 'GIT' : 'TARBALL', // Install mode for telemetry
-       'GLPI_NETWORK_MAIL'                 => 'glpi@teclib.com',
-       'GLPI_NETWORK_SERVICES'             => 'https://services.glpi-network.com', // GLPI Network services project URL
-       'GLPI_NETWORK_REGISTRATION_API_URL' => '{GLPI_NETWORK_SERVICES}/api/registration/',
-       // TODO set false before final release of 9.5.0 and remove this comment
-       'GLPI_USER_AGENT_EXTRA_COMMENTS'    => '', // Extra comment to add to GLPI User-Agent
+        // Constants related to GLPI Project / GLPI Network external services
+        'GLPI_TELEMETRY_URI'                => 'https://telemetry.glpi-project.org', // Telemetry project URL
+        'GLPI_INSTALL_MODE'                 => is_dir(GLPI_ROOT . '/.git') ? 'GIT' : 'TARBALL', // Install mode for telemetry
+        'GLPI_NETWORK_MAIL'                 => 'glpi@teclib.com',
+        'GLPI_NETWORK_SERVICES'             => 'https://services.glpi-network.com', // GLPI Network services project URL
+        'GLPI_NETWORK_REGISTRATION_API_URL' => '{GLPI_NETWORK_SERVICES}/api/registration/',
+        // TODO set false before final release of 9.5.0 and remove this comment
+        'GLPI_USER_AGENT_EXTRA_COMMENTS'    => '', // Extra comment to add to GLPI User-Agent
 
-       // Other constants
-       'GLPI_AJAX_DASHBOARD'         => '1',
-       'GLPI_CALDAV_IMPORT_STATE'    => 0, // external events created from a caldav client will take this state by default (0 = Planning::INFO)
-       'GLPI_DEMO_MODE'              => '0',
-       // TODO GLPI_FORCE_EMPTY_SQL_MODE need to be set to 0 after review of all sql queries
-       'GLPI_FORCE_EMPTY_SQL_MODE'   => '1', // for compatibility with mysql 5.7
+        // Other constants
+        'GLPI_AJAX_DASHBOARD'         => '1',
+        'GLPI_CALDAV_IMPORT_STATE'    => 0, // external events created from a caldav client will take this state by default (0 = Planning::INFO)
+        'GLPI_DEMO_MODE'              => '0',
+        // TODO GLPI_FORCE_EMPTY_SQL_MODE need to be set to 0 after review of all sql queries
+        'GLPI_FORCE_EMPTY_SQL_MODE'   => '1', // for compatibility with mysql 5.7
     ];
 
     // Define constants values based on server env variables (i.e. defined using apache SetEnv directive)
@@ -142,10 +142,10 @@ include_once(GLPI_ROOT . "/inc/autoload.function.php");
     // Order in this array is important (priority to first found).
     if (!defined('PLUGINS_DIRECTORIES')) {
         define('PLUGINS_DIRECTORIES', [
-           GLPI_ROOT . '/plugins',
+            GLPI_ROOT . '/plugins',
         ]);
     } elseif (!is_array(PLUGINS_DIRECTORIES)) {
-        throw new \Exception('PLUGINS_DIRECTORIES constant value must be an array');
+        throw new Exception('PLUGINS_DIRECTORIES constant value must be an array');
     }
 })();
 

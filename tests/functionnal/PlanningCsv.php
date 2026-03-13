@@ -37,14 +37,14 @@ use DbTestCase;
 
 /* Test for inc/planningcsv.class.php */
 
-class PlanningCsv extends \DbTestCase
+class PlanningCsv extends DbTestCase
 {
     protected function quoteProvider()
     {
         return [
-           ['A simple string'],
-           ['A "double quoted" string', '"A ""double quoted"" string"'],
-           ['Une chaîne accentuée']
+            ['A simple string'],
+            ['A "double quoted" string', '"A ""double quoted"" string"'],
+            ['Une chaîne accentuée'],
         ];
     }
 
@@ -74,33 +74,33 @@ class PlanningCsv extends \DbTestCase
         $end = new \DateTime();
         $end->add(new \DateInterval('P5D'));
         $fend = $end->format('Y-m-d H:i:s');
-        $rid = (int)$reminder->add([
-           'name'            => 'This is a "test"',
-           'is_planned'      => 1,
-           'begin_view_date' => $fbegin,
-           'end_view_date'   => $fend,
-           'plan'            => [
-              'begin'           => $fbegin,
-              'end'             => $fend
-           ]
+        $rid = (int) $reminder->add([
+            'name'            => 'This is a "test"',
+            'is_planned'      => 1,
+            'begin_view_date' => $fbegin,
+            'end_view_date'   => $fend,
+            'plan'            => [
+                'begin'           => $fbegin,
+                'end'             => $fend,
+            ],
         ]);
         $this->integer($rid)->isGreaterThan(0);
 
         $ticket = new \Ticket();
-        $tid = (int)$ticket->add([
-              'name'         => 'ticket title',
-              'description'  => 'a description',
-              'content'      => 'a description',
-              'entities_id'  => getItemByTypeName('Entity', '_test_root_entity', true)
+        $tid = (int) $ticket->add([
+            'name'         => 'ticket title',
+            'description'  => 'a description',
+            'content'      => 'a description',
+            'entities_id'  => getItemByTypeName('Entity', '_test_root_entity', true),
         ]);
         $this->integer($tid)->isGreaterThan(0);
         $this->boolean($ticket->isNewItem())->isFalse();
 
         $task = new \TicketTask();
         $tasksstates = [
-           \Planning::TODO,
-           \Planning::TODO,
-           \Planning::INFO
+            \Planning::TODO,
+            \Planning::TODO,
+            \Planning::INFO,
         ];
         $date = new \DateTime();
         $date->sub(new \DateInterval('P6M'));
@@ -109,15 +109,15 @@ class PlanningCsv extends \DbTestCase
             $edate = clone $date;
             $edate->add(new \DateInterval('P2D'));
             $input = [
-               'content'         => sprintf('Task with "%s" state', $taskstate),
-               'state'           => $taskstate,
-               'tickets_id'      => $tid,
-               'users_id_tech'   => \Session::getLoginUserID(),
-               'begin'           => $date->format('Y-m-d H:i:s'),
-               'end'             => $edate->format('Y-m-d H:i:s'),
-               'actiontime'      => 172800
+                'content'         => sprintf('Task with "%s" state', $taskstate),
+                'state'           => $taskstate,
+                'tickets_id'      => $tid,
+                'users_id_tech'   => \Session::getLoginUserID(),
+                'begin'           => $date->format('Y-m-d H:i:s'),
+                'end'             => $edate->format('Y-m-d H:i:s'),
+                'actiontime'      => 172800,
             ];
-            $ttid = (int)$task->add($input);
+            $ttid = (int) $task->add($input);
             $this->integer($ttid)->isGreaterThan(0);
             $this->boolean($task->getFromDB($ttid))->isTrue();
             $input['id'] = $task->fields['id'];
@@ -134,33 +134,33 @@ class PlanningCsv extends \DbTestCase
         $this->boolean($user->getFromDB(\Session::getLoginUserID()))->isTrue();
 
         $expected = [
-           [
-              'actor'     => $user->getFriendlyName(),
-              'title'     => 'This is a "test"',
-              'itemtype'  => 'Reminder',
-              'items_id'  => (string)$rid,
-              'begindate' => $fbegin,
-              'enddate'   => $fend
-           ]
+            [
+                'actor'     => $user->getFriendlyName(),
+                'title'     => 'This is a "test"',
+                'itemtype'  => 'Reminder',
+                'items_id'  => (string) $rid,
+                'begindate' => $fbegin,
+                'enddate'   => $fend,
+            ],
         ];
 
         foreach ($tasks as $input) {
             $expected[] = [
-               'actor'     => $user->getFriendlyName(),
-               'title'     => 'ticket title',
-               'itemtype'  => 'Ticket task',
-               'items_id'  => (string)$input['id'],
-               'begindate' => $input['begin'],
-               'enddate'   => $input['end']
+                'actor'     => $user->getFriendlyName(),
+                'title'     => 'ticket title',
+                'itemtype'  => 'Ticket task',
+                'items_id'  => (string) $input['id'],
+                'begindate' => $input['begin'],
+                'enddate'   => $input['end'],
             ];
         }
 
         $this->array($csv->getLines())->isEqualTo($expected);
 
-        $sexpected = "\"Actor\";\"Title\";\"Item type\";\"Item id\";\"Begin date\";\"End date\"".$csv->eol;
-        $sexpected .= "\"".$user->getFriendlyName()."\";\"This is a \"\"test\"\"\";\"Reminder\";\"$rid\";\"$fbegin\";\"$fend\"{$csv->eol}";
+        $sexpected = "\"Actor\";\"Title\";\"Item type\";\"Item id\";\"Begin date\";\"End date\"" . $csv->eol;
+        $sexpected .= "\"" . $user->getFriendlyName() . "\";\"This is a \"\"test\"\"\";\"Reminder\";\"$rid\";\"$fbegin\";\"$fend\"{$csv->eol}";
         foreach ($tasks as $input) {
-            $sexpected .= "\"".$user->getFriendlyName()."\";\"ticket title\";\"Ticket task\";\"{$input['id']}\";\"{$input['begin']}\";\"{$input['end']}\"{$csv->eol}";
+            $sexpected .= "\"" . $user->getFriendlyName() . "\";\"ticket title\";\"Ticket task\";\"{$input['id']}\";\"{$input['begin']}\";\"{$input['end']}\"{$csv->eol}";
         }
         $this->output(
             function () use ($csv) {

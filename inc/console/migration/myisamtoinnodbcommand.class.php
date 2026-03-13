@@ -49,7 +49,7 @@ class MyIsamToInnoDbCommand extends AbstractCommand
     /**
      * Error code returned when failed to migrate one table.
      *
-     * @var integer
+     * @var int
      */
     public const ERROR_TABLE_MIGRATION_FAILED = 1;
 

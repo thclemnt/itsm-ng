@@ -67,9 +67,9 @@ class CheckRequirementsCommand extends AbstractCommand
         $informations = new Table($output);
         $informations->setHeaders(
             [
-              __('Requirement'),
-              __('Status'),
-              __('Messages'),
+                __('Requirement'),
+                __('Status'),
+                __('Messages'),
             ]
         );
 
@@ -89,9 +89,9 @@ class CheckRequirementsCommand extends AbstractCommand
 
             $informations->addRow(
                 [
-                  $requirement->getTitle(),
-                  $status,
-                  $requirement->isValidated() ? '' : implode("\n", $requirement->getValidationMessages())
+                    $requirement->getTitle(),
+                    $status,
+                    $requirement->isValidated() ? '' : implode("\n", $requirement->getValidationMessages()),
                 ]
             );
         }

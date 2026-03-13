@@ -57,11 +57,11 @@ class LineType extends DbTestCase
 
         // Add
         $in = [
-              'name'                     => $this->method,
-              'comment'                  => $this->getUniqueString(),
+            'name'                     => $this->method,
+            'comment'                  => $this->getUniqueString(),
         ];
         $id = $obj->add($in);
-        $this->integer((int)$id)->isGreaterThan(0);
+        $this->integer((int) $id)->isGreaterThan(0);
         $this->boolean($obj->getFromDB($id))->isTrue();
 
         // getField methods
@@ -78,17 +78,17 @@ class LineType extends DbTestCase
 
         // Add
         $id = $obj->add([
-              'name'                     => $this->getUniqueString(),
-              'comment'                  => $this->getUniqueString(),
+            'name'                     => $this->getUniqueString(),
+            'comment'                  => $this->getUniqueString(),
         ]);
         $this->integer($id)->isGreaterThan(0);
 
         // Update
         $id = $obj->getID();
         $in = [
-              'id'                       => $id,
-              'name'                     => $this->method,
-              'comment'                  => $this->getUniqueString(),
+            'id'                       => $id,
+            'name'                     => $this->method,
+            'comment'                  => $this->getUniqueString(),
         ];
         $this->boolean($obj->update($in))->isTrue();
         $this->boolean($obj->getFromDB($id))->isTrue();
@@ -106,13 +106,13 @@ class LineType extends DbTestCase
 
         // Add
         $id = $obj->add([
-              'name'                     => $this->method,
+            'name'                     => $this->method,
         ]);
         $this->integer($id)->isGreaterThan(0);
 
         // Delete
         $in = [
-              'id'                       => $obj->getID(),
+            'id'                       => $obj->getID(),
         ];
         $this->boolean($obj->delete($in))->isTrue();
     }

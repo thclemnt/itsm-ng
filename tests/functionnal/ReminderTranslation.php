@@ -52,13 +52,13 @@ class ReminderTranslation extends DbTestCase
         $_SESSION['glpi_currenttime'] = $date;
 
         $data = [
-           'name'         => '_test_reminder01',
-           'entities_id'  => 0
+            'name'         => '_test_reminder01',
+            'entities_id'  => 0,
         ];
 
         $reminder = new \Reminder();
         $added = $reminder->add($data);
-        $this->integer((int)$added)->isGreaterThan(0);
+        $this->integer((int) $added)->isGreaterThan(0);
 
         $reminder1 = getItemByTypeName(\Reminder::getType(), '_test_reminder01');
 
@@ -71,7 +71,7 @@ class ReminderTranslation extends DbTestCase
         $nb = countElementsInTable(
             'glpi_remindertranslations'
         );
-        $this->integer((int)$nb)->isIdenticalTo(2);
+        $this->integer((int) $nb)->isIdenticalTo(2);
 
         // second, test what we retrieve
         $current_lang = $_SESSION['glpilanguage'];
@@ -97,10 +97,10 @@ class ReminderTranslation extends DbTestCase
         $trans = new \ReminderTranslation();
 
         $input = [
-           'reminders_id' => $reminder->getID(),
-           'users_id'     => getItemByTypeName('User', TU_USER, true),
-           'text'         => $text,
-           'language'     => $lang
+            'reminders_id' => $reminder->getID(),
+            'users_id'     => getItemByTypeName('User', TU_USER, true),
+            'text'         => $text,
+            'language'     => $lang,
         ];
         $transID1 = $trans->add($input);
         $this->boolean($transID1 > 0)->isTrue();

@@ -113,42 +113,42 @@ class NetworkName extends FQDNLabel
 
 
         $form = [
-           'action' => $this->getFormURL(),
-           'itemtype' => $this::class,
-           'content' => [
-              $this->getTypeName() => [
-                 'visible' => 'true',
-                 'inputs' => [
-                    __('Linked to') => [
-                       'content' => $content,
-                    ],
-                    !$this->isNewID($ID) ? [
-                       'name' => 'id',
-                       'type' => 'hidden',
-                       'value' => $ID,
-                    ] : [],
-                    __('Name') => [
-                       'name' => 'name',
-                       'type' => 'text',
-                       'value' => $this->fields['name'] ?? '',
-                    ],
-                    FQDN::getTypeName(1) => [
-                       'name' => 'fqdns_id',
-                       'type' => 'select',
-                       'values' => getOptionForItems('FQDN'),
-                       'value' => $this->fields['fqdns_id'] ?? '',
-                       'actions' => getItemActionButtons(['info', 'add'], 'FQDN'),
-                    ],
-                    IPAddress::getTypeName(Session::getPluralNumber()) => [
-                       'type' => 'multiSelect',
-                       'inputs' => [
-                          [
-                             'name' => 'current_ipaddress',
-                             'type' => 'text',
-                             'size' => 30,
-                          ],
-                       ],
-                       'getInputAdd' => <<<JS
+            'action' => $this->getFormURL(),
+            'itemtype' => $this::class,
+            'content' => [
+                $this->getTypeName() => [
+                    'visible' => 'true',
+                    'inputs' => [
+                        __('Linked to') => [
+                            'content' => $content,
+                        ],
+                        !$this->isNewID($ID) ? [
+                            'name' => 'id',
+                            'type' => 'hidden',
+                            'value' => $ID,
+                        ] : [],
+                        __('Name') => [
+                            'name' => 'name',
+                            'type' => 'text',
+                            'value' => $this->fields['name'] ?? '',
+                        ],
+                        FQDN::getTypeName(1) => [
+                            'name' => 'fqdns_id',
+                            'type' => 'select',
+                            'values' => getOptionForItems('FQDN'),
+                            'value' => $this->fields['fqdns_id'] ?? '',
+                            'actions' => getItemActionButtons(['info', 'add'], 'FQDN'),
+                        ],
+                        IPAddress::getTypeName(Session::getPluralNumber()) => [
+                            'type' => 'multiSelect',
+                            'inputs' => [
+                                [
+                                    'name' => 'current_ipaddress',
+                                    'type' => 'text',
+                                    'size' => 30,
+                                ],
+                            ],
+                            'getInputAdd' => <<<JS
                         function () {
                            if (!$('input[name="current_ipaddress"]').val()) {
                               return;
@@ -160,21 +160,21 @@ class NetworkName extends FQDNLabel
                            return {values, title};
                         }
                      JS,
-                       'values' => getOptionsWithNameForItem(
-                           'IpAddress',
-                           ['itemtype' => $this::class, 'items_id' => $this->getID()],
-                           ['_ipaddresses' => 'name']
-                       ),
+                            'values' => getOptionsWithNameForItem(
+                                'IpAddress',
+                                ['itemtype' => $this::class, 'items_id' => $this->getID()],
+                                ['_ipaddresses' => 'name']
+                            ),
+                        ],
+                        __('Comments') => [
+                            'name' => 'comment',
+                            'type' => 'textarea',
+                            'value' => $this->fields['comment'] ?? '',
+                        ],
                     ],
-                    __('Comments') => [
-                       'name' => 'comment',
-                       'type' => 'textarea',
-                       'value' => $this->fields['comment'] ?? '',
-                    ],
-                 ],
 
-              ]
-           ]
+                ],
+            ],
         ];
         // dump values of ipaddresses
         renderTwigForm($form, '', $this->fields);
@@ -187,42 +187,42 @@ class NetworkName extends FQDNLabel
         $tab = parent::rawSearchOptions();
 
         $tab[] = [
-           'id'                 => '12',
-           'table'              => 'glpi_fqdns',
-           'field'              => 'fqdn',
-           'name'               => FQDN::getTypeName(1),
-           'datatype'           => 'dropdown'
+            'id'                 => '12',
+            'table'              => 'glpi_fqdns',
+            'field'              => 'fqdn',
+            'name'               => FQDN::getTypeName(1),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '13',
-           'table'              => 'glpi_ipaddresses',
-           'field'              => 'name',
-           'name'               => IPAddress::getTypeName(1),
-           'joinparams'         => [
-              'jointype'           => 'itemtype_item'
-           ],
-           'forcegroupby'       => true,
-           'massiveaction'      => false,
-           'datatype'           => 'dropdown'
+            'id'                 => '13',
+            'table'              => 'glpi_ipaddresses',
+            'field'              => 'name',
+            'name'               => IPAddress::getTypeName(1),
+            'joinparams'         => [
+                'jointype'           => 'itemtype_item',
+            ],
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '20',
-           'table'              => $this->getTable(),
-           'field'              => 'itemtype',
-           'name'               => _n('Type', 'Types', 1),
-           'datatype'           => 'itemtype',
-           'massiveaction'      => false
+            'id'                 => '20',
+            'table'              => $this->getTable(),
+            'field'              => 'itemtype',
+            'name'               => _n('Type', 'Types', 1),
+            'datatype'           => 'itemtype',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '21',
-           'table'              => $this->getTable(),
-           'field'              => 'items_id',
-           'name'               => __('ID'),
-           'datatype'           => 'integer',
-           'massiveaction'      => false
+            'id'                 => '21',
+            'table'              => $this->getTable(),
+            'field'              => 'items_id',
+            'name'               => __('ID'),
+            'datatype'           => 'integer',
+            'massiveaction'      => false,
         ];
 
         return $tab;
@@ -236,42 +236,42 @@ class NetworkName extends FQDNLabel
     public static function rawSearchOptionsToAdd(array &$tab, array $joinparams)
     {
         $tab[] = [
-           'id'                 => '126',
-           'table'              => 'glpi_ipaddresses',
-           'field'              => 'name',
-           'name'               => __('IP'),
-           'forcegroupby'       => true,
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'jointype'  => 'mainitemtype_mainitem',
-              'condition' => 'AND NEWTABLE.`is_deleted` = 0'
-           ]
+            'id'                 => '126',
+            'table'              => 'glpi_ipaddresses',
+            'field'              => 'name',
+            'name'               => __('IP'),
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'jointype'  => 'mainitemtype_mainitem',
+                'condition' => 'AND NEWTABLE.`is_deleted` = 0',
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '127',
-           'table'              => 'glpi_networknames',
-           'field'              => 'name',
-           'name'               => self::getTypeName(Session::getPluralNumber()),
-           'forcegroupby'       => true,
-           'massiveaction'      => false,
-           'joinparams'         => $joinparams
+            'id'                 => '127',
+            'table'              => 'glpi_networknames',
+            'field'              => 'name',
+            'name'               => self::getTypeName(Session::getPluralNumber()),
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
+            'joinparams'         => $joinparams,
         ];
 
         $tab[] = [
-           'id'                 => '128',
-           'table'              => 'glpi_networkaliases',
-           'field'              => 'name',
-           'name'               => NetworkAlias::getTypeName(Session::getPluralNumber()),
-           'forcegroupby'       => true,
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'jointype'   => 'child',
-              'beforejoin' => [
-                 'table'      => 'glpi_networknames',
-                 'joinparams' => $joinparams
-              ]
-           ]
+            'id'                 => '128',
+            'table'              => 'glpi_networkaliases',
+            'field'              => 'name',
+            'name'               => NetworkAlias::getTypeName(Session::getPluralNumber()),
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'jointype'   => 'child',
+                'beforejoin' => [
+                    'table'      => 'glpi_networknames',
+                    'joinparams' => $joinparams,
+                ],
+            ],
         ];
     }
 
@@ -288,7 +288,7 @@ class NetworkName extends FQDNLabel
             && (is_array($this->input['_ipaddresses']))
         ) {
             $input = ['itemtype' => 'NetworkName',
-                           'items_id' => $this->getID()];
+                'items_id' => $this->getID()];
             foreach ($this->input['_ipaddresses'] as $id => $ip) {
                 $ipaddress     = new IPAddress();
                 $input['name'] = $ip;
@@ -335,12 +335,12 @@ class NetworkName extends FQDNLabel
                     $DB->request(
                         'glpi_ipaddresses',
                         ['itemtype' => 'NetworkName',
-                                            'items_id' => $this->getID()]
+                            'items_id' => $this->getID()]
                     ) as $data
                 ) {
                     $ip->update(['id'       => $data['id'],
-                                      'itemtype' => 'NetworkName',
-                                      'items_id' => $this->getID()]);
+                        'itemtype' => 'NetworkName',
+                        'items_id' => $this->getID()]);
                 }
             }
         }
@@ -353,8 +353,8 @@ class NetworkName extends FQDNLabel
 
         $this->deleteChildrenAndRelationsFromDb(
             [
-              IPAddress::class,
-              NetworkAlias::class,
+                IPAddress::class,
+                NetworkAlias::class,
             ]
         );
     }
@@ -365,7 +365,7 @@ class NetworkName extends FQDNLabel
      *
      * The address can be unaffected, and remain "free"
      *
-     * @param integer $items_id  the id of the item
+     * @param int $items_id  the id of the item
      * @param string  $itemtype  the type of the item
     **/
     public static function unaffectAddressesOfItem($items_id, $itemtype)
@@ -373,12 +373,12 @@ class NetworkName extends FQDNLabel
         global $DB;
 
         $iterator = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'itemtype'  => $itemtype,
-              'items_id'  => $items_id
-           ]
+            'SELECT' => 'id',
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'itemtype'  => $itemtype,
+                'items_id'  => $items_id,
+            ],
         ]);
 
         while ($networkNameID = $iterator->next()) {
@@ -392,7 +392,7 @@ class NetworkName extends FQDNLabel
      *
      * The address can be unaffected, and remain "free"
      *
-     * @param integer $networkNameID the id of the NetworkName
+     * @param int $networkNameID the id of the NetworkName
     **/
     public static function unaffectAddressByID($networkNameID)
     {
@@ -409,15 +409,15 @@ class NetworkName extends FQDNLabel
     {
         $networkName = new self();
         return $networkName->update(['id'       => $networkNameID,
-                                          'items_id' => $items_id,
-                                          'itemtype' => $itemtype]);
+            'items_id' => $items_id,
+            'itemtype' => $itemtype]);
     }
 
 
     /**
      * Get the full name (internet name) of a NetworkName
      *
-     * @param integer $ID  ID of the NetworkName
+     * @param int $ID  ID of the NetworkName
      *
      * @return string  its internet name, or empty string if invalid NetworkName
     **/
@@ -447,13 +447,13 @@ class NetworkName extends FQDNLabel
 
         if ($networkPortID > 0) {
             $iterator = $DB->request([
-               'SELECT' => 'id',
-               'FROM'   => $name->getTable(),
-               'WHERE'  => [
-                  'itemtype'     => 'NetworkPort',
-                  'items_id'     => $networkPortID,
-                  'is_deleted'   => 0
-               ]
+                'SELECT' => 'id',
+                'FROM'   => $name->getTable(),
+                'WHERE'  => [
+                    'itemtype'     => 'NetworkPort',
+                    'items_id'     => $networkPortID,
+                    'is_deleted'   => 0,
+                ],
             ]);
             $numrows = count($iterator);
 
@@ -479,41 +479,41 @@ class NetworkName extends FQDNLabel
         }
 
         return [
-           self::getTypeName() => [
-              'visible' => true,
-              'inputs' => [
-                 ($name->getID() > 0) ? [
-                    'name' => 'NetworkName_id',
-                    'type' => 'hidden',
-                    'value' => $name->getID()
-                 ] : [],
-                 ($name->getID() > 0) ? "<a href='" . $name->getLinkURL() . "'>" . self::getTypeName(1) . "</a>" : self::getTypeName(1) => [
-                    'name' => 'NetworkName_name',
-                    'type' => 'text',
-                    'value' => $name->fields['name'] ?? '',
-                 ],
-                 // '' => ($name->getID() > 0) ? [
-                 //    'content' => Html::showSimpleForm($name->getFormURL(), 'unaffect', _sx('button', 'Dissociate'),
-                 //       ['id' => $name->getID()],
-                 //       $CFG_GLPI["root_doc"].'/pics/sub_dropdown.png'),
-                 // ] : [],
-                 FQDN::getTypeName(1) => [
-                    'name' => 'NetworkName_fqdns_id',
-                    'type' => 'select',
-                    'values' => getOptionForItems(FQDN::class),
-                    'value' => $name->fields['fqdns_id'] ?? '',
-                    'actions' => getItemActionButtons(['info', 'add'], 'FQDN'),
-                 ],
-                 IPAddress::getTypeName(Session::getPluralNumber()) => [
-                    'type' => 'multiSelect',
-                    'inputs' => [
-                       [
-                          'name' => 'current_ipaddress',
-                          'type' => 'text',
-                          'size' => 30,
-                       ],
+            self::getTypeName() => [
+                'visible' => true,
+                'inputs' => [
+                    ($name->getID() > 0) ? [
+                        'name' => 'NetworkName_id',
+                        'type' => 'hidden',
+                        'value' => $name->getID(),
+                    ] : [],
+                    ($name->getID() > 0) ? "<a href='" . $name->getLinkURL() . "'>" . self::getTypeName(1) . "</a>" : self::getTypeName(1) => [
+                        'name' => 'NetworkName_name',
+                        'type' => 'text',
+                        'value' => $name->fields['name'] ?? '',
                     ],
-                    'getInputAdd' => <<<JS
+                    // '' => ($name->getID() > 0) ? [
+                    //    'content' => Html::showSimpleForm($name->getFormURL(), 'unaffect', _sx('button', 'Dissociate'),
+                    //       ['id' => $name->getID()],
+                    //       $CFG_GLPI["root_doc"].'/pics/sub_dropdown.png'),
+                    // ] : [],
+                    FQDN::getTypeName(1) => [
+                        'name' => 'NetworkName_fqdns_id',
+                        'type' => 'select',
+                        'values' => getOptionForItems(FQDN::class),
+                        'value' => $name->fields['fqdns_id'] ?? '',
+                        'actions' => getItemActionButtons(['info', 'add'], 'FQDN'),
+                    ],
+                    IPAddress::getTypeName(Session::getPluralNumber()) => [
+                        'type' => 'multiSelect',
+                        'inputs' => [
+                            [
+                                'name' => 'current_ipaddress',
+                                'type' => 'text',
+                                'size' => 30,
+                            ],
+                        ],
+                        'getInputAdd' => <<<JS
                      function () {
                         if (!$('input[name="current_ipaddress"]').val()) {
                            return;
@@ -525,14 +525,14 @@ class NetworkName extends FQDNLabel
                         return {values, title};
                      }
                   JS,
-                    'values' => getOptionsWithNameForItem(
-                        'IpAddress',
-                        ['itemtype' => self::class, 'items_id' => $name->getID()],
-                        ['NetworkName__ipaddresses' => 'name']
-                    ),
-                 ],
-              ],
-           ]
+                        'values' => getOptionsWithNameForItem(
+                            'IpAddress',
+                            ['itemtype' => self::class, 'items_id' => $name->getID()],
+                            ['NetworkName__ipaddresses' => 'name']
+                        ),
+                    ],
+                ],
+            ],
         ];
     }
 
@@ -561,8 +561,8 @@ class NetworkName extends FQDNLabel
         ) {
             $delete_all_column = $base->addHeader(
                 'delete',
-                Html::getCheckAllAsCheckbox('mass' . __CLASS__ .
-                                                                              $options['rand']),
+                Html::getCheckAllAsCheckbox('mass' . __CLASS__
+                                                                              . $options['rand']),
                 $super,
                 $father
             );
@@ -618,11 +618,11 @@ class NetworkName extends FQDNLabel
 
         $table = static::getTable();
         $criteria = [
-           'SELECT' => [
-              "$table.id"
-           ],
-           'FROM'   => $table,
-           'WHERE'  => []
+            'SELECT' => [
+                "$table.id",
+            ],
+            'FROM'   => $table,
+            'WHERE'  => [],
         ];
 
         switch ($item->getType()) {
@@ -636,73 +636,73 @@ class NetworkName extends FQDNLabel
 
                         case 'ip':
                             $criteria['LEFT JOIN'] = [
-                               'glpi_ipaddresses'   => [
-                                  'glpi_ipaddresses'   => 'items_id',
-                                  $table               => 'id', [
-                                     'AND' => [
-                                        'glpi_ipaddresses.itemtype'   => self::getType(),
-                                        'glpi_ipaddresses.is_deleted' => 0
-                                     ]
-                                  ]
-                               ]
+                                'glpi_ipaddresses'   => [
+                                    'glpi_ipaddresses'   => 'items_id',
+                                    $table               => 'id', [
+                                        'AND' => [
+                                            'glpi_ipaddresses.itemtype'   => self::getType(),
+                                            'glpi_ipaddresses.is_deleted' => 0,
+                                        ],
+                                    ],
+                                ],
                             ];
                             $criteria['ORDERBY'] = [
-                               new QueryExpression("ISNULL (" . $DB->quoteName('glpi_ipaddresses.id') . ")"),
-                               'glpi_ipaddresses.binary_3',
-                               'glpi_ipaddresses.binary_2',
-                               'glpi_ipaddresses.binary_1',
-                               'glpi_ipaddresses.binary_0'
+                                new QueryExpression("ISNULL (" . $DB->quoteName('glpi_ipaddresses.id') . ")"),
+                                'glpi_ipaddresses.binary_3',
+                                'glpi_ipaddresses.binary_2',
+                                'glpi_ipaddresses.binary_1',
+                                'glpi_ipaddresses.binary_0',
                             ];
                             break;
 
                         case 'alias':
                             $criteria['LEFT JOIN'] = [
-                               'glpi_networkaliases'   => [
-                                  'ON'  => [
-                                     'glpi_networkaliases'   => 'networknames_id',
-                                     $table                  => 'id'
-                                  ]
-                               ]
+                                'glpi_networkaliases'   => [
+                                    'ON'  => [
+                                        'glpi_networkaliases'   => 'networknames_id',
+                                        $table                  => 'id',
+                                    ],
+                                ],
                             ];
                             $criteria['ORDERBY'] = [
-                               new QueryExpression("ISNULL (" . $DB->quoteName('glpi_networkaliases.name') . ")"),
-                               'glpi_networkaliases.name'
+                                new QueryExpression("ISNULL (" . $DB->quoteName('glpi_networkaliases.name') . ")"),
+                                'glpi_networkaliases.name',
                             ];
                             break;
                     }
                 }
 
                 $criteria['WHERE'] = [
-                   "$table.fqdns_id"    => $item->fields['id'],
-                   "$table.is_deleted"  => 0
+                    "$table.fqdns_id"    => $item->fields['id'],
+                    "$table.is_deleted"  => 0,
                 ];
                 break;
 
             case 'NetworkPort':
                 $criteria['WHERE'] = [
-                   'itemtype'     => $item->getType(),
-                   'items_id'     => $item->getID(),
-                   'is_deleted'   => 0
+                    'itemtype'     => $item->getType(),
+                    'items_id'     => $item->getID(),
+                    'is_deleted'   => 0,
                 ];
                 break;
 
             case 'NetworkEquipment':
                 $criteria['INNER JOIN'] = [
-                   'glpi_networkports'  => [
-                      'ON'  => [
-                         'glpi_networkports'  => 'id',
-                         $table               => 'items_id', [
-                            'AND' => [
-                               "$table.itemtype"    => 'NetworkPort',
-                               "$table.is_deleted"  => 0
-                            ]
-                         ]
-                      ]
-                   ]
+                    'glpi_networkports'  => [
+                        'ON'  => [
+                            'glpi_networkports'  => 'id',
+                            $table               => 'items_id', [
+                                'AND' => [
+                                    "$table.itemtype"    => 'NetworkPort',
+                                    "$table.is_deleted"  => 0,
+                                ],
+                            ],
+                        ],
+                    ],
                 ];
                 $criteria['WHERE'] = [
-                   'glpi_networkports.itemtype'  => $item->getType(),
-                   'glpi_networkports.items_id'  => $item->getID()
+                    'glpi_networkports.itemtype'  => $item->getType(),
+                    'glpi_networkports.items_id'  => $item->getID(),
                 ];
                 break;
         }
@@ -806,12 +806,12 @@ class NetworkName extends FQDNLabel
             echo __('Not associated');
             echo "</td><td class='left'>";
             self::dropdown([
-               'name'      => 'addressID',
-               'condition' => ['items_id' => 0]
+                'name'      => 'addressID',
+                'condition' => ['items_id' => 0],
             ]);
             echo "</td><td class='left'>";
-            echo "<input type='submit' name='assign_address' value='" . _sx('button', 'Associate') .
-                   "' class='submit'>";
+            echo "<input type='submit' name='assign_address' value='" . _sx('button', 'Associate')
+                   . "' class='submit'>";
             echo "</td>";
             if (static::canCreate()) {
                 echo "<td class='right' width='30%'>";
@@ -847,15 +847,15 @@ class NetworkName extends FQDNLabel
             if ($item->getType() == 'FQDN') {
                 $table_options['column_links'] = ['NetworkName'
                                                              => 'javascript:reloadTab("order=name");',
-                                                       'NetworkAlias'
-                                                             => 'javascript:reloadTab("order=alias");',
-                                                       'IPAddress'
-                                                             => 'javascript:reloadTab("order=ip");'];
+                    'NetworkAlias'
+                          => 'javascript:reloadTab("order=alias");',
+                    'IPAddress'
+                          => 'javascript:reloadTab("order=ip");'];
             }
 
             $table_options['SQL_options']  = [
-               'LIMIT'  => $_SESSION['glpilist_limit'],
-               'START'  => $start
+                'LIMIT'  => $_SESSION['glpilist_limit'],
+                'START'  => $start,
             ];
 
             $canedit = false;
@@ -898,14 +898,14 @@ class NetworkName extends FQDNLabel
             if ($canedit && $number) {
                 Html::openMassiveActionsForm('mass' . __CLASS__ . $rand);
                 $massiveactionparams = ['num_displayed'    => min($_SESSION['glpilist_limit'], $number),
-                                  'container'        => 'mass' . __CLASS__ . $rand];
+                    'container'        => 'mass' . __CLASS__ . $rand];
                 Html::showMassiveActions($massiveactionparams);
             }
 
             $table->display(['display_title_for_each_group'          => false,
-                                  'display_thead'                         => false,
-                                  'display_tfoot'                         => false,
-                                  'display_header_on_foot_for_each_group' => true]);
+                'display_thead'                         => false,
+                'display_tfoot'                         => false,
+                'display_header_on_foot_for_each_group' => true]);
 
             if ($canedit && $number) {
                 $massiveactionparams['ontop'] = false;
@@ -948,42 +948,42 @@ class NetworkName extends FQDNLabel
                 return countElementsInTable(
                     'glpi_networknames',
                     ['fqdns_id'   => $item->fields["id"],
-                                             'is_deleted' => 0 ]
+                        'is_deleted' => 0 ]
                 );
 
             case 'NetworkPort':
                 return countElementsInTable(
                     'glpi_networknames',
                     ['itemtype'   => $item->getType(),
-                                            'items_id'   => $item->getID(),
-                                            'is_deleted' => 0 ]
+                        'items_id'   => $item->getID(),
+                        'is_deleted' => 0 ]
                 );
 
             case 'NetworkEquipment':
                 $result = $DB->request([
-                   'SELECT'          => ['COUNT DISTINCT' => 'glpi_networknames.id AS cpt'],
-                   'FROM'            => 'glpi_networknames',
-                   'INNER JOIN'       => [
-                      'glpi_networkports'  => [
-                         'ON' => [
-                            'glpi_networknames'  => 'items_id',
-                            'glpi_networkports'  => 'id', [
-                               'AND' => [
-                                  'glpi_networknames.itemtype' => 'NetworkPort'
-                               ]
-                            ]
-                         ]
-                      ]
-                   ],
-                   'WHERE'           => [
-                      'glpi_networkports.itemtype'     => $item->getType(),
-                      'glpi_networkports.items_id'     => $item->getID(),
-                      'glpi_networkports.is_deleted'   => 0,
-                      'glpi_networknames.is_deleted'   => 0
-                   ]
+                    'SELECT'          => ['COUNT DISTINCT' => 'glpi_networknames.id AS cpt'],
+                    'FROM'            => 'glpi_networknames',
+                    'INNER JOIN'       => [
+                        'glpi_networkports'  => [
+                            'ON' => [
+                                'glpi_networknames'  => 'items_id',
+                                'glpi_networkports'  => 'id', [
+                                    'AND' => [
+                                        'glpi_networknames.itemtype' => 'NetworkPort',
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                    'WHERE'           => [
+                        'glpi_networkports.itemtype'     => $item->getType(),
+                        'glpi_networkports.items_id'     => $item->getID(),
+                        'glpi_networkports.is_deleted'   => 0,
+                        'glpi_networknames.is_deleted'   => 0,
+                    ],
                 ])->next();
 
-                return (int)$result['cpt'];
+                return (int) $result['cpt'];
         }
     }
 

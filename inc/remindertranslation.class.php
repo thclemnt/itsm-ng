@@ -31,7 +31,6 @@
  * ---------------------------------------------------------------------
  */
 
-use Glpi\Event;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -70,7 +69,7 @@ class ReminderTranslation extends CommonDBChild
 
 
     /**
-     * @param \CommonGLPI $item
+     * @param CommonGLPI $item
      * @param int         $withtemplate
      *
      * @return array|string
@@ -133,9 +132,9 @@ class ReminderTranslation extends CommonDBChild
             echo "<script type='text/javascript' >\n";
             echo "function addTranslation" . $item->getID() . "$rand() {\n";
             $params = ['type'             => __CLASS__,
-                            'parenttype'       => get_class($item),
-                            'reminders_id' => $item->fields['id'],
-                            'id'               => -1];
+                'parenttype'       => get_class($item),
+                'reminders_id' => $item->fields['id'],
+                'id'               => -1];
             Ajax::updateItemJsCode(
                 "viewtranslation" . $item->getID() . "$rand",
                 $CFG_GLPI["root_doc"] . "/ajax/viewsubitem.php",
@@ -144,9 +143,9 @@ class ReminderTranslation extends CommonDBChild
             echo "};";
             echo "</script>\n";
 
-            echo "<div class='center'>" .
-                 "<a class='vsubmit' href='javascript:addTranslation" . $item->getID() . "$rand();'>" .
-                 __('Add a new translation') . "</a></div><br>";
+            echo "<div class='center'>"
+                 . "<a class='vsubmit' href='javascript:addTranslation" . $item->getID() . "$rand();'>"
+                 . __('Add a new translation') . "</a></div><br>";
         }
 
         $obj   = new self();
@@ -210,7 +209,7 @@ class ReminderTranslation extends CommonDBChild
     /**
      * Display translation form
      *
-     * @param integer $ID
+     * @param int $ID
      * @param array   $options
      */
     public function showForm($ID = -1, $options = [])
@@ -238,8 +237,8 @@ class ReminderTranslation extends CommonDBChild
             Dropdown::showLanguages(
                 "language",
                 ['display_none' => false,
-                                          'value'        => $_SESSION['glpilanguage'],
-                                          'used'         => self::getAlreadyTranslatedForItem($item)]
+                    'value'        => $_SESSION['glpilanguage'],
+                    'used'         => self::getAlreadyTranslatedForItem($item)]
             );
         }
         echo "</td><td colspan='2'>&nbsp;</td></tr>";
@@ -251,8 +250,8 @@ class ReminderTranslation extends CommonDBChild
             $this,
             "name",
             ['size'   => '80',
-                                       'entity' => -1,
-                                       'user'   => $this->fields["name"]]
+                'entity' => -1,
+                'user'   => $this->fields["name"]]
         );
         echo "</td></tr>\n";
 
@@ -260,9 +259,9 @@ class ReminderTranslation extends CommonDBChild
         echo "<td>" . __('Description') . "</td>";
         echo "<td colspan='3'>";
         Html::textarea(['name'              => 'text',
-                        'value'             => $this->fields["text"],
-                        'enable_richtext'   => true,
-                        'enable_fileupload' => false]);
+            'value'             => $this->fields["text"],
+            'enable_richtext'   => true,
+            'enable_fileupload' => false]);
         echo "</td></tr>\n";
 
         $this->showFormButtons($options);
@@ -282,8 +281,8 @@ class ReminderTranslation extends CommonDBChild
     {
         $obj   = new self();
         $found = $obj->find([
-           'reminders_id'   => $item->getID(),
-           'language'           => $_SESSION['glpilanguage']
+            'reminders_id'   => $item->getID(),
+            'language'           => $_SESSION['glpilanguage'],
         ]);
 
         if (
@@ -300,7 +299,7 @@ class ReminderTranslation extends CommonDBChild
     /**
      * Is kb item translation functionnality active
      *
-     * @return boolean
+     * @return bool
     **/
     public static function isReminderTranslationActive()
     {
@@ -332,7 +331,7 @@ class ReminderTranslation extends CommonDBChild
      *
      * @param Reminder $item
      *
-     * @return integer  the number of translations for this item
+     * @return int  the number of translations for this item
     **/
     public static function getNumberOfTranslationsForItem($item)
     {
@@ -358,8 +357,8 @@ class ReminderTranslation extends CommonDBChild
         $tab = [];
 
         $iterator = $DB->request([
-           'FROM'   => getTableForItemType(__CLASS__),
-           'WHERE'  => ['reminders_id' => $item->getID()]
+            'FROM'   => getTableForItemType(__CLASS__),
+            'WHERE'  => ['reminders_id' => $item->getID()],
         ]);
 
         while ($data = $iterator->next()) {

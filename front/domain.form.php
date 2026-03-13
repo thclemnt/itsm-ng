@@ -75,7 +75,7 @@ if (isset($_POST["add"])) {
     }
     Html::back();
 } elseif (isset($_POST["addrecord"])) {
-    $record = new \DomainRecord();
+    $record = new DomainRecord();
     $_POST['id'] = $_POST['domainrecords_id'];
     unset($_POST['domainrecords_id']);
     $record->check(-1, UPDATE, $_POST);
@@ -98,9 +98,9 @@ if (isset($_POST["add"])) {
 } else {
     Html::header(Domain::getTypeName(1), $_SERVER['PHP_SELF'], "management", "domain");
     $domain->display([
-       'id'           => $_GET["id"],
-       'withtemplate' => $_GET["withtemplate"],
-       'formoptions'  => "data-track-changes=true"
+        'id'           => $_GET["id"],
+        'withtemplate' => $_GET["withtemplate"],
+        'formoptions'  => "data-track-changes=true",
     ]);
 
     Html::footer();

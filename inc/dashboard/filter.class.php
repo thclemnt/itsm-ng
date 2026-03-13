@@ -34,14 +34,14 @@
 namespace Glpi\Dashboard;
 
 use CommonGLPI;
+use Group;
+use Html;
 use ITILCategory;
-use RequestType;
 use Location;
 use Manufacturer;
-use Session;
-use Html;
-use Group;
 use Plugin;
+use RequestType;
+use Session;
 use User;
 
 if (!defined('GLPI_ROOT')) {
@@ -62,14 +62,14 @@ class Filter extends CommonGLPI
     public static function getAll(): array
     {
         $filters = [
-           'dates'        => __("Creation date"),
-           'dates_mod'    => __("Last update"),
-           'itilcategory' => ITILCategory::getTypeName(Session::getPluralNumber()),
-           'requesttype'  => RequestType::getTypeName(Session::getPluralNumber()),
-           'location'     => Location::getTypeName(Session::getPluralNumber()),
-           'manufacturer' => Manufacturer::getTypeName(Session::getPluralNumber()),
-           'group_tech'   => __("Technician group"),
-           'user_tech'    => __("Technician"),
+            'dates'        => __("Creation date"),
+            'dates_mod'    => __("Last update"),
+            'itilcategory' => ITILCategory::getTypeName(Session::getPluralNumber()),
+            'requesttype'  => RequestType::getTypeName(Session::getPluralNumber()),
+            'location'     => Location::getTypeName(Session::getPluralNumber()),
+            'manufacturer' => Manufacturer::getTypeName(Session::getPluralNumber()),
+            'group_tech'   => __("Technician group"),
+            'user_tech'    => __("Technician"),
         ];
 
         $more_filters = Plugin::doHookFunction("dashboard_filters");
@@ -99,13 +99,13 @@ class Filter extends CommonGLPI
         $rand  = mt_rand();
         $label = self::getAll()[$fieldname];
         $field = Html::showDateField('filter-dates', [
-           'value'        => $values,
-           'rand'         => $rand,
-           'range'        => true,
-           'display'      => false,
-           'calendar_btn' => false,
-           'placeholder'  => $label,
-           'on_change'    => "on_change_{$rand}(selectedDates, dateStr, instance)",
+            'value'        => $values,
+            'rand'         => $rand,
+            'range'        => true,
+            'display'      => false,
+            'calendar_btn' => false,
+            'placeholder'  => $label,
+            'on_change'    => "on_change_{$rand}(selectedDates, dateStr, instance)",
         ]);
 
         $js = <<<JAVASCRIPT
@@ -139,7 +139,7 @@ JAVASCRIPT;
 
     public static function itilcategory(string $value = ""): string
     {
-        return self::dropdown($value, 'itilcategory', ItilCategory::class);
+        return self::dropdown($value, 'itilcategory', ITILCategory::class);
     }
 
     public static function requesttype(string $value = ""): string
@@ -177,16 +177,16 @@ JAVASCRIPT;
         $rand      = mt_rand();
         $label     = self::getAll()[$fieldname];
         $field     = $itemtype::dropdown([
-           'name'                => $fieldname,
-           'value'               => $value,
-           'rand'                => $rand,
-           'display'             => false,
-           'display_emptychoice' => false,
-           'emptylabel'          => '',
-           'placeholder'         => $label,
-           'on_change'           => "on_change_{$rand}()",
-           'allowClear'          => true,
-           'width'               => ''
+            'name'                => $fieldname,
+            'value'               => $value,
+            'rand'                => $rand,
+            'display'             => false,
+            'display_emptychoice' => false,
+            'emptylabel'          => '',
+            'placeholder'         => $label,
+            'on_change'           => "on_change_{$rand}()",
+            'allowClear'          => true,
+            'width'               => '',
         ] + $add_params);
 
         $js = <<<JAVASCRIPT

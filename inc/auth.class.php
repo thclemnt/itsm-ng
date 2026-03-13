@@ -62,11 +62,11 @@ class Auth extends CommonGLPI
 
     /**
      * Indicated if user was found in the directory.
-     * @var boolean
+     * @var bool
      */
     public $user_found = false;
 
-    /** @var resource|boolean LDAP connection descriptor */
+    /** @var resource|bool LDAP connection descriptor */
     public $ldap_connection;
     /** @var bool Store user LDAP dn */
     public $user_dn = false;
@@ -134,7 +134,7 @@ class Auth extends CommonGLPI
      * @param  array   $options conditions : array('name'=>'glpi')
      *                                    or array('email' => 'test at test.com')
      *
-     * @return integer {@link Auth::USER_DOESNT_EXIST}, {@link Auth::USER_EXISTS_WITHOUT_PWD} or {@link Auth::USER_EXISTS_WITH_PWD}
+     * @return int {@link Auth::USER_DOESNT_EXIST}, {@link Auth::USER_EXISTS_WITHOUT_PWD} or {@link Auth::USER_EXISTS_WITH_PWD}
      */
     public function userExists($options = [])
     {
@@ -143,11 +143,11 @@ class Auth extends CommonGLPI
         $result = $DB->request(
             'glpi_users',
             [
-              'WHERE'    => $options,
-              'LEFT JOIN' => ['glpi_useremails' => ['FKEY' => [
-                 'glpi_users'      => 'id',
-                 'glpi_useremails' => 'users_id'
-              ]]]
+                'WHERE'    => $options,
+                'LEFT JOIN' => ['glpi_useremails' => ['FKEY' => [
+                    'glpi_users'      => 'id',
+                    'glpi_useremails' => 'users_id',
+                ]]],
             ]
         );
         // Check if there is a row
@@ -177,7 +177,7 @@ class Auth extends CommonGLPI
      * @param string $login Login to try
      * @param string $pass  Password to try
      *
-     * @return boolean connection success
+     * @return bool connection success
      */
     public function connection_imap($host, $login, $pass)
     {
@@ -202,7 +202,7 @@ class Auth extends CommonGLPI
 
             $protocol = Toolbox::getMailServerProtocolInstance($config['type'], false);
             if ($protocol === null) {
-                throw new \RuntimeException(sprintf(__('Unsupported mail server type:%s.'), $config['type']));
+                throw new RuntimeException(sprintf(__('Unsupported mail server type:%s.'), $config['type']));
             }
             if ($config['validate-cert'] === false) {
                 $protocol->setNoValidateCert(true);
@@ -214,7 +214,7 @@ class Auth extends CommonGLPI
             );
 
             return $protocol->login($login, $pass);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             $this->addToError($e->getMessage());
             return false;
         } finally {
@@ -247,27 +247,27 @@ class Auth extends CommonGLPI
 
         if ($this->ldap_connection) {
             $params = [
-               'method' => AuthLDAP::IDENTIFIER_LOGIN,
-               'fields' => [
-                  AuthLDAP::IDENTIFIER_LOGIN => $ldap_method['login_field'],
-               ],
+                'method' => AuthLDAP::IDENTIFIER_LOGIN,
+                'fields' => [
+                    AuthLDAP::IDENTIFIER_LOGIN => $ldap_method['login_field'],
+                ],
             ];
             if (!empty($ldap_method['sync_field'])) {
                 $params['fields']['sync_field'] = $ldap_method['sync_field'];
             }
             try {
                 $infos = AuthLDAP::searchUserDn($this->ldap_connection, [
-                   'basedn'            => $ldap_method['basedn'],
-                   'login_field'       => $ldap_method['login_field'],
-                   'search_parameters' => $params,
-                   'user_params'       => [
-                      'method' => AuthLDAP::IDENTIFIER_LOGIN,
-                      'value'  => $login
-                   ],
-                   'condition'         => $ldap_method['condition'],
-                   'user_dn'           => $this->user_dn
+                    'basedn'            => $ldap_method['basedn'],
+                    'login_field'       => $ldap_method['login_field'],
+                    'search_parameters' => $params,
+                    'user_params'       => [
+                        'method' => AuthLDAP::IDENTIFIER_LOGIN,
+                        'value'  => $login,
+                    ],
+                    'condition'         => $ldap_method['condition'],
+                    'user_dn'           => $this->user_dn,
                 ]);
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 Toolbox::logError($e->getMessage());
                 $this->addToError(__('Unable to connect to the LDAP directory'));
                 return false;
@@ -304,7 +304,7 @@ class Auth extends CommonGLPI
      * @param string $pass Password (pain-text)
      * @param string $hash Hash
      *
-     * @return boolean
+     * @return bool
      */
     public static function checkPassword($pass, $hash)
     {
@@ -332,7 +332,7 @@ class Auth extends CommonGLPI
      *
      * @param string $hash Hash
      *
-     * @return boolean
+     * @return bool
      */
     public static function needRehash($hash)
     {
@@ -368,42 +368,42 @@ class Auth extends CommonGLPI
      * @param string $name     User Login
      * @param string $password User Password
      *
-     * @return boolean user in GLPI DB with the right password
+     * @return bool user in GLPI DB with the right password
      */
     public function connection_db($name, $password)
     {
         global $CFG_GLPI, $DB;
 
-        $pass_expiration_delay = (int)$CFG_GLPI['password_expiration_delay'];
-        $lock_delay            = (int)$CFG_GLPI['password_expiration_lock_delay'];
+        $pass_expiration_delay = (int) $CFG_GLPI['password_expiration_delay'];
+        $lock_delay            = (int) $CFG_GLPI['password_expiration_lock_delay'];
 
         // SQL query
         $result = $DB->request(
             [
-              'SELECT' => [
-                 'id',
-                 'password',
-                 new QueryExpression(
-                     sprintf(
-                         'ADDDATE(%s, INTERVAL %d DAY) AS ' . $DB->quoteName('password_expiration_date'),
-                         $DB->quoteName('password_last_update'),
-                         $pass_expiration_delay
-                     )
-                 ),
-                 new QueryExpression(
-                     sprintf(
-                         'ADDDATE(%s, INTERVAL %d DAY) AS ' . $DB->quoteName('lock_date'),
-                         $DB->quoteName('password_last_update'),
-                         $pass_expiration_delay + $lock_delay
-                     )
-                 )
-              ],
-              'FROM'   => User::getTable(),
-              'WHERE'  =>  [
-                 'name'     => $name,
-                 'authtype' => self::DB_GLPI,
-                 'auths_id' => 0,
-              ]
+                'SELECT' => [
+                    'id',
+                    'password',
+                    new QueryExpression(
+                        sprintf(
+                            'ADDDATE(%s, INTERVAL %d DAY) AS ' . $DB->quoteName('password_expiration_date'),
+                            $DB->quoteName('password_last_update'),
+                            $pass_expiration_delay
+                        )
+                    ),
+                    new QueryExpression(
+                        sprintf(
+                            'ADDDATE(%s, INTERVAL %d DAY) AS ' . $DB->quoteName('lock_date'),
+                            $DB->quoteName('password_last_update'),
+                            $pass_expiration_delay + $lock_delay
+                        )
+                    ),
+                ],
+                'FROM'   => User::getTable(),
+                'WHERE'  =>  [
+                    'name'     => $name,
+                    'authtype' => self::DB_GLPI,
+                    'auths_id' => 0,
+                ],
             ]
         );
 
@@ -421,8 +421,8 @@ class Auth extends CommonGLPI
                     $user = new User();
                     $user->update(
                         [
-                          'id'        => $row['id'],
-                          'is_active' => 0,
+                            'id'        => $row['id'],
+                            'is_active' => 0,
                         ]
                     );
                 }
@@ -436,7 +436,7 @@ class Auth extends CommonGLPI
                 // Update password if needed
                 if (self::needRehash($password_db)) {
                     $input = [
-                       'id' => $row['id'],
+                        'id' => $row['id'],
                     ];
                     // Set glpiID to allow password update
                     $_SESSION['glpiID'] = $input['id'];
@@ -459,14 +459,14 @@ class Auth extends CommonGLPI
                     $groups_id,
                     Toolbox::stripslashes_deep($this->user->fields),
                     [
-                      'type'  => Auth::DB_GLPI,
-                      'login' => $this->user->fields['name'],
-                      'email' => UserEmail::getDefaultForUser($row['id'])
+                        'type'  => Auth::DB_GLPI,
+                        'login' => $this->user->fields['name'],
+                        'email' => UserEmail::getDefaultForUser($row['id']),
                     ]
                 );
 
                 $this->user->fields = $result + [
-                   '_ruleright_process' => true,
+                    '_ruleright_process' => true,
                 ];
 
                 return true;
@@ -479,9 +479,9 @@ class Auth extends CommonGLPI
     /**
      * Try to get login of external auth method
      *
-     * @param integer $authtype external auth type (default 0)
+     * @param int $authtype external auth type (default 0)
      *
-     * @return boolean user login success
+     * @return bool user login success
      */
     public function getAlternateAuthSystemsUserLogin($authtype = 0)
     {
@@ -510,9 +510,9 @@ class Auth extends CommonGLPI
                     );
                 } else {
                     $url_base = parse_url((string) $CFG_GLPI["url_base"]);
-                    $service_base_url = $url_base["scheme"] . "://" .
-                        $url_base["host"] . (isset($url_base["port"]) ? ":" .
-                        $url_base["port"] : "");
+                    $service_base_url = $url_base["scheme"] . "://"
+                        . $url_base["host"] . (isset($url_base["port"]) ? ":"
+                        . $url_base["port"] : "");
                     phpCAS::client(
                         constant($CFG_GLPI["cas_version"]),
                         $CFG_GLPI["cas_host"],
@@ -580,7 +580,7 @@ class Auth extends CommonGLPI
                 $sslattribs = explode('/', (string) $_SERVER['SSL_CLIENT_S_DN']);
                 $sslattributes = [];
                 while ($sslattrib = next($sslattribs)) {
-                    list($key, $val)      = explode('=', $sslattrib);
+                    [$key, $val]      = explode('=', $sslattrib);
                     $sslattributes[$key] = $val;
                 }
                 if (
@@ -641,7 +641,7 @@ class Auth extends CommonGLPI
                 if ($CFG_GLPI["login_remember_time"]) {
                     $data = json_decode((string) $_COOKIE[$cookie_name], true);
                     if (count($data) === 2) {
-                        list($cookie_id, $cookie_token) = $data;
+                        [$cookie_id, $cookie_token] = $data;
 
                         $user = new User();
                         $user->getFromDB($cookie_id);
@@ -708,8 +708,8 @@ class Auth extends CommonGLPI
 
         //Return all the authentication methods in an array
         $this->authtypes = [
-           'ldap' => getAllDataFromTable('glpi_authldaps'),
-           'mail' => getAllDataFromTable('glpi_authmails')
+            'ldap' => getAllDataFromTable('glpi_authldaps'),
+            'mail' => getAllDataFromTable('glpi_authmails'),
         ];
     }
 
@@ -732,11 +732,11 @@ class Auth extends CommonGLPI
      *
      * @param string  $login_name      Login
      * @param string  $login_password  Password
-     * @param boolean $noauto          (false by default)
+     * @param bool $noauto          (false by default)
      * @param bool    $remember_me
      * @param string  $login_auth      Type of auth - id of the auth
      *
-     * @return boolean (success)
+     * @return bool (success)
      */
     public function login($login_name, $login_password, $noauto = false, $remember_me = false, $login_auth = '')
     {
@@ -757,7 +757,7 @@ class Auth extends CommonGLPI
             $authtype = self::DB_GLPI;
             $this->user->fields["authtype"] = self::DB_GLPI;
         } elseif (preg_match('/^(?<type>ldap|mail|external)-(?<id>\d+)$/', $login_auth, $auth_matches)) {
-            $this->user->fields["auths_id"] = (int)$auth_matches['id'];
+            $this->user->fields["auths_id"] = (int) $auth_matches['id'];
             if ($auth_matches['type'] == 'ldap') {
                 $authtype = self::LDAP;
             } elseif ($auth_matches['type'] == 'mail') {
@@ -819,23 +819,23 @@ class Auth extends CommonGLPI
                         if ($ds) {
                             $ldapservers_status = true;
                             $params = [
-                               'method' => AuthLDAP::IDENTIFIER_LOGIN,
-                               'fields' => [
-                                  AuthLDAP::IDENTIFIER_LOGIN => $ldap_method["login_field"],
-                               ],
+                                'method' => AuthLDAP::IDENTIFIER_LOGIN,
+                                'fields' => [
+                                    AuthLDAP::IDENTIFIER_LOGIN => $ldap_method["login_field"],
+                                ],
                             ];
                             try {
                                 $user_dn = AuthLDAP::searchUserDn($ds, [
-                                   'basedn'            => $ldap_method["basedn"],
-                                   'login_field'       => $ldap_method['login_field'],
-                                   'search_parameters' => $params,
-                                   'condition'         => $ldap_method["condition"],
-                                   'user_params'       => [
-                                      'method' => AuthLDAP::IDENTIFIER_LOGIN,
-                                      'value'  => $login_name
-                                   ],
+                                    'basedn'            => $ldap_method["basedn"],
+                                    'login_field'       => $ldap_method['login_field'],
+                                    'search_parameters' => $params,
+                                    'condition'         => $ldap_method["condition"],
+                                    'user_params'       => [
+                                        'method' => AuthLDAP::IDENTIFIER_LOGIN,
+                                        'value'  => $login_name,
+                                    ],
                                 ]);
-                            } catch (\RuntimeException $e) {
+                            } catch (RuntimeException $e) {
                                 Toolbox::logError($e->getMessage());
                                 $user_dn = false;
                             }
@@ -924,8 +924,8 @@ class Auth extends CommonGLPI
                             );
                             if ($this->ldap_connection !== false && (!$this->auth_succeded && !$this->user_found)) {
                                 $search_params = [
-                                   'name'     => addslashes((string) $login_name),
-                                   'authtype' => $this::LDAP
+                                    'name'     => addslashes((string) $login_name),
+                                    'authtype' => $this::LDAP,
                                 ];
                                 if (!empty($login_auth)) {
                                     $search_params['auths_id'] = $this->user->fields["auths_id"];
@@ -1011,9 +1011,9 @@ class Auth extends CommonGLPI
         // Log Event (if possible)
         if (!$DB->isSlave()) {
             // GET THE IP OF THE CLIENT
-            $ip = getenv("HTTP_X_FORWARDED_FOR") ?
-               Toolbox::clean_cross_side_scripting_deep(getenv("HTTP_X_FORWARDED_FOR")) :
-               getenv("REMOTE_ADDR");
+            $ip = getenv("HTTP_X_FORWARDED_FOR")
+               ? Toolbox::clean_cross_side_scripting_deep(getenv("HTTP_X_FORWARDED_FOR"))
+               : getenv("REMOTE_ADDR");
 
             if ($this->auth_succeded) {
                 if (GLPI_DEMO_MODE) {
@@ -1059,8 +1059,8 @@ class Auth extends CommonGLPI
 
             if ($token) {
                 $data = json_encode([
-                   $this->user->fields['id'],
-                   $token,
+                    $this->user->fields['id'],
+                    $token,
                 ]);
 
                 //Send cookie to browser
@@ -1093,10 +1093,10 @@ class Auth extends CommonGLPI
         global $DB;
 
         $p = [
-           'name'                => 'auths_id',
-           'value'               => 0,
-           'display'             => true,
-           'display_emptychoice' => true,
+            'name'                => 'auths_id',
+            'value'               => 0,
+            'display'             => true,
+            'display_emptychoice' => true,
         ];
 
         if (is_array($options) && count($options)) {
@@ -1106,15 +1106,15 @@ class Auth extends CommonGLPI
         }
 
         $methods = [
-           self::DB_GLPI => __('Authentication on ITSM-NG database'),
+            self::DB_GLPI => __('Authentication on ITSM-NG database'),
         ];
 
         $result = $DB->request([
-           'FROM'   => 'glpi_authldaps',
-           'COUNT'  => 'cpt',
-           'WHERE'  => [
-              'is_active' => 1
-           ]
+            'FROM'   => 'glpi_authldaps',
+            'COUNT'  => 'cpt',
+            'WHERE'  => [
+                'is_active' => 1,
+            ],
         ])->next();
 
         if ($result['cpt'] > 0) {
@@ -1123,11 +1123,11 @@ class Auth extends CommonGLPI
         }
 
         $result = $DB->request([
-           'FROM'   => 'glpi_authmails',
-           'COUNT'  => 'cpt',
-           'WHERE'  => [
-              'is_active' => 1
-           ]
+            'FROM'   => 'glpi_authmails',
+            'COUNT'  => 'cpt',
+            'WHERE'  => [
+                'is_active' => 1,
+            ],
         ])->next();
 
         if ($result['cpt'] > 0) {
@@ -1154,9 +1154,9 @@ class Auth extends CommonGLPI
     /**
      * Get name of an authentication method
      *
-     * @param integer $authtype Authentication method
-     * @param integer $auths_id Authentication method ID
-     * @param integer $link     show links to config page? (default 0)
+     * @param int $authtype Authentication method
+     * @param int $auths_id Authentication method ID
+     * @param int $link     show links to config page? (default 0)
      * @param string  $name     override the name if not empty (default '')
      *
      * @return string
@@ -1248,8 +1248,8 @@ class Auth extends CommonGLPI
      * Get all the authentication methods parameters for a specific authtype
      *  and auths_id and return it as an array
      *
-     * @param integer $authtype Authentication method
-     * @param integer $auths_id Authentication method ID
+     * @param int $authtype Authentication method
+     * @param int $auths_id Authentication method ID
      *
      * @return mixed
      */
@@ -1280,7 +1280,7 @@ class Auth extends CommonGLPI
     /**
      * Is an external authentication used?
      *
-     * @return boolean
+     * @return bool
      */
     public static function useAuthExt()
     {
@@ -1321,9 +1321,9 @@ class Auth extends CommonGLPI
     /**
      * Is an alternate auth?
      *
-     * @param integer $authtype auth type
+     * @param int $authtype auth type
      *
-     * @return boolean
+     * @return bool
      */
     public static function isAlternateAuth($authtype)
     {
@@ -1333,11 +1333,11 @@ class Auth extends CommonGLPI
     /**
      * Check alternate authentication systems
      *
-     * @param boolean $redirect        need to redirect (true) or get type of Auth system which match
+     * @param bool $redirect        need to redirect (true) or get type of Auth system which match
      *                                (false by default)
      * @param string  $redirect_string redirect string if exists (default '')
      *
-     * @return void|integer nothing if redirect is true, else Auth system ID
+     * @return void|int nothing if redirect is true, else Auth system ID
      */
     public static function checkAlternateAuthSystems($redirect = false, $redirect_string = '')
     {
@@ -1411,7 +1411,7 @@ class Auth extends CommonGLPI
      *
      * @param string $redirect redirect string if exists, if null, check in $_POST or $_GET
      *
-     * @return void|boolean nothing if redirect is true, else false
+     * @return void|bool nothing if redirect is true, else false
      */
     public static function redirectIfAuthenticated($redirect = null)
     {
@@ -1476,16 +1476,16 @@ class Auth extends CommonGLPI
                     // <- Bad idea : id not exists unable to change anything
                     // SQL query
                     $result = $DB->request([
-                       'SELECT' => 'name',
-                       'FROM' => 'glpi_authldaps',
-                       'WHERE' => ['id' => $user->getField('auths_id'), 'is_active' => 1],
+                        'SELECT' => 'name',
+                        'FROM' => 'glpi_authldaps',
+                        'WHERE' => ['id' => $user->getField('auths_id'), 'is_active' => 1],
                     ]);
 
                     if ($result->numrows() > 0) {
                         echo "<table class='tab_cadre' aria-label='Synchronisation'><tr class='tab_bg_2'><td>";
                         echo "<input type='hidden' name='id' value='" . $user->getID() . "'>";
-                        echo "<input class=submit type='submit' name='force_ldap_resynch' value='" .
-                           __s('Force synchronization') . "'>";
+                        echo "<input class=submit type='submit' name='force_ldap_resynch' value='"
+                           . __s('Force synchronization') . "'>";
                         echo "</td></tr></table>";
                     }
                     break;
@@ -1502,8 +1502,8 @@ class Auth extends CommonGLPI
             echo "<tr class='tab_bg_2'><td class='center'>";
             $rand             = self::dropdown(['name' => 'authtype']);
             $paramsmassaction = [
-               'authtype' => '__VALUE__',
-               'name'     => 'change_auth_method'
+                'authtype' => '__VALUE__',
+                'name'     => 'change_auth_method',
             ];
             Ajax::updateItemOnSelectEvent(
                 "dropdown_authtype$rand",
@@ -1524,7 +1524,7 @@ class Auth extends CommonGLPI
      *
      * @param string $login login to check
      *
-     * @return boolean
+     * @return bool
      */
     public static function isValidLogin($login)
     {
@@ -1552,10 +1552,10 @@ class Auth extends CommonGLPI
      * @since 0.83
      *
      * @param CommonGLPI $item         Item instance
-     * @param integer    $tabnum       Unused (default 0)
-     * @param integer    $withtemplate Unused (default 0)
+     * @param int    $tabnum       Unused (default 0)
+     * @param int    $withtemplate Unused (default 0)
      *
-     * @return boolean
+     * @return bool
      */
     public static function displayTabContentForItem(CommonGLPI $item, $tabnum = 1, $withtemplate = 0)
     {
@@ -1569,7 +1569,7 @@ class Auth extends CommonGLPI
     /**
      * Show form for authentication configuration.
      *
-     * @return void|boolean False if the form is not shown due to right error. Form is directly printed.
+     * @return void|bool False if the form is not shown due to right error. Form is directly printed.
      */
     public static function showOtherAuthList()
     {
@@ -1579,206 +1579,206 @@ class Auth extends CommonGLPI
             return false;
         }
         $form = [
-           'action' => $CFG_GLPI['root_doc'] . '/front/auth.others.php',
-           'buttons' => [
-              [
-                 'name' => 'update',
-                 'type' => 'submit',
-                 'value' => __('Save'),
-                 'class' => 'btn btn-secondary'
-              ],
-           ],
-           'content' => [
-              __('CAS authentication') => [
-                 'visible' => true,
-                 'inputs' => [
-                    '' => (!empty($CFG_GLPI["cas_host"])) ? [
-                       'content' => _x('authentication', 'Enabled'),
-                    ] : [],
-                    __('CAS Host') => (function_exists('curl_init') && Toolbox::canUseCAS()) ? [
-                       'type' => 'text',
-                       'name' => 'cas_host',
-                       'value' => $CFG_GLPI["cas_host"],
-                    ] : [],
-                    __('CAS Version') => (function_exists('curl_init') && Toolbox::canUseCAS()) ? [
-                       'type' => 'select',
-                       'name' => 'cas_version',
-                       'value' => $CFG_GLPI["cas_version"] ?? 'CAS_VERSION_2_0',
-                       'values' => [
-                          'CAS_VERSION_1_0' => __('Version 1'),
-                          'CAS_VERSION_2_0' => __('Version 2'),
-                          'CAS_VERSION_3_0' => __('Version 3+'),
-                       ],
-                    ] : [],
-                    _n('Port', 'Ports', 1) => (function_exists('curl_init') && Toolbox::canUseCAS()) ? [
-                       'type' => 'text',
-                       'name' => 'cas_port',
-                       'value' => $CFG_GLPI["cas_port"],
-                    ] : [],
-                    __('Root directory (optional)') => (function_exists('curl_init') && Toolbox::canUseCAS()) ? [
-                       'type' => 'text',
-                       'name' => 'cas_uri',
-                       'value' => $CFG_GLPI["cas_uri"],
-                    ] : [],
-                    __('Log out fallback URL') => (function_exists('curl_init') && Toolbox::canUseCAS()) ? [
-                       'type' => 'text',
-                       'name' => 'cas_logout',
-                       'value' => $CFG_GLPI["cas_logout"],
-                    ] : [],
-                    'curl_init ' . __('Status') => (!function_exists('curl_init')) ? [
-                       'content' => "<p class='red'>" . __("The CURL extension for your PHP parser isn't installed") . "</p>",
-                       'col_lg' => 12,
-                       'col_md' => 12,
-                    ] : [],
-                    __('Can use CAS') => (!Toolbox::canUseCAS()) ? [
-                       'content' => "<p class='red'>" . __("The CAS lib isn't available, ITSM-NG doesn't package it anymore for license compatibility issue.") . "</p>",
-                       'col_lg' => 12,
-                       'col_md' => 12,
-                    ] : [],
-                 ]
-              ],
-              __('x509 certificate authentication') => [
-                 'visible' => true,
-                 'inputs' => [
-                    'x509 ' . __('Status') => (!empty($CFG_GLPI["x509_email_field"])) ? [
-                       'content' => _x('authentication', 'Enabled'),
-                       'col_lg' => 12,
-                       'col_md' => 12,
-                    ] : [],
-                    __('Email attribute for x509 authentication') => [
-                       'type' => 'text',
-                       'name' => 'x509_email_field',
-                       'value' => $CFG_GLPI["x509_email_field"],
-                       'col_lg' => 12,
-                       'col_md' => 12,
-                    ],
-                    sprintf(__('Restrict %s field for x509 authentication (separator $)'), 'OU') => [
-                       'type' => 'text',
-                       'name' => 'x509_ou_restrict',
-                       'value' => $CFG_GLPI["x509_ou_restrict"],
-                       'col_lg' => 12,
-                       'col_md' => 12,
-                    ],
-                    sprintf(__('Restrict %s field for x509 authentication (separator $)'), 'CN') => [
-                       'type' => 'text',
-                       'name' => 'x509_cn_restrict',
-                       'value' => $CFG_GLPI["x509_cn_restrict"],
-                       'col_lg' => 12,
-                       'col_md' => 12,
-                    ],
-                    sprintf(__('Restrict %s field for x509 authentication (separator $)'), 'O') => [
-                       'type' => 'text',
-                       'name' => 'x509_o_restrict',
-                       'value' => $CFG_GLPI["x509_o_restrict"],
-                       'col_lg' => 12,
-                       'col_md' => 12,
-                    ],
-                 ]
-                 ],
-                 __('Other authentication sent in the HTTP request') => [
+            'action' => $CFG_GLPI['root_doc'] . '/front/auth.others.php',
+            'buttons' => [
+                [
+                    'name' => 'update',
+                    'type' => 'submit',
+                    'value' => __('Save'),
+                    'class' => 'btn btn-secondary',
+                ],
+            ],
+            'content' => [
+                __('CAS authentication') => [
                     'visible' => true,
                     'inputs' => [
-                       __("Status") => (!empty($CFG_GLPI["ssovariables_id"])) ? [
-                          'content' => _x('authentication', 'Enabled'),
-                          'col_lg' => 12,
-                          'col_md' => 12,
-                       ] : [],
-                       SsoVariable::getTypeName(1) => [
-                          'type' => 'select',
-                          'name' => 'ssovariables_id',
-                          'value' => $CFG_GLPI["ssovariables_id"],
-                          'values' => getOptionForItems('SsoVariable'),
-                          'actions' => getItemActionButtons(['info', 'add'], 'SsoVariable'),
-                          'col_lg' => 6,
-                       ],
-                       __('SSO logout url') => [
-                          'type' => 'text',
-                          'name' => 'ssologout_url',
-                          'value' => $CFG_GLPI["ssologout_url"],
-                          'col_lg' => 6,
-                       ],
-                       __('Remove the domain of logins like login@domain') => [
-                          'type' => 'checkbox',
-                          'name' => 'existing_auth_server_field_clean_domain',
-                          'value' => $CFG_GLPI['existing_auth_server_field_clean_domain'],
-                          'col_lg' => 6,
-                       ],
-                       __('Surname') => [
-                          'type' => 'text',
-                          'name' => 'realname_ssofield',
-                          'value' => $CFG_GLPI['realname_ssofield'],
-                          'col_lg' => 6,
-                       ],
-                       __('First name') => [
-                          'type' => 'text',
-                          'name' => 'firstname_ssofield',
-                          'value' => $CFG_GLPI['firstname_ssofield'],
-                          'col_lg' => 6,
-                       ],
-                       __('Comments') => [
-                          'type' => 'text',
-                          'name' => 'comment_ssofield',
-                          'value' => $CFG_GLPI['comment_ssofield'],
-                          'col_lg' => 6,
-                       ],
-                       __('Administrative number') => [
-                          'type' => 'text',
-                          'name' => 'registration_number_ssofield',
-                          'value' => $CFG_GLPI['registration_number_ssofield'],
-                       ],
-                       _n('Email', 'Emails', 1) => [
-                          'type' => 'text',
-                          'name' => 'email1_ssofield',
-                          'value' => $CFG_GLPI['email1_ssofield'],
-                       ],
-                       sprintf(__('%1$s %2$s'), _n('Email', 'Emails', 1), '2') => [
-                          'type' => 'text',
-                          'name' => 'email2_ssofield',
-                          'value' => $CFG_GLPI['email2_ssofield'],
-                       ],
-                       sprintf(__('%1$s %2$s'), _n('Email', 'Emails', 1), '3') => [
-                          'type' => 'text',
-                          'name' => 'email3_ssofield',
-                          'value' => $CFG_GLPI['email3_ssofield'],
-                       ],
-                       sprintf(__('%1$s %2$s'), _n('Email', 'Emails', 1), '4') => [
-                          'type' => 'text',
-                          'name' => 'email4_ssofield',
-                          'value' => $CFG_GLPI['email4_ssofield'],
-                       ],
-                       __('Phone') => [
-                          'type' => 'text',
-                          'name' => 'phone_ssofield',
-                          'value' => $CFG_GLPI['phone_ssofield'],
-                       ],
-                       __('Phone 2') => [
-                          'type' => 'text',
-                          'name' => 'phone2_ssofield',
-                          'value' => $CFG_GLPI['phone2_ssofield'],
-                       ],
-                       __('Mobile phone') => [
-                          'type' => 'text',
-                          'name' => 'mobile_ssofield',
-                          'value' => $CFG_GLPI['mobile_ssofield'],
-                       ],
-                       _x('person', 'Title') => [
-                          'type' => 'text',
-                          'name' => 'title_ssofield',
-                          'value' => $CFG_GLPI['title_ssofield'],
-                       ],
-                       __('Category') => [
-                          'type' => 'text',
-                          'name' => 'category_ssofield',
-                          'value' => $CFG_GLPI['category_ssofield'],
-                       ],
-                       __('Language') => [
-                          'type' => 'text',
-                          'name' => 'language_ssofield',
-                          'value' => $CFG_GLPI['language_ssofield'],
-                       ],
-                    ]
-                 ]
-           ],
+                        '' => (!empty($CFG_GLPI["cas_host"])) ? [
+                            'content' => _x('authentication', 'Enabled'),
+                        ] : [],
+                        __('CAS Host') => (function_exists('curl_init') && Toolbox::canUseCAS()) ? [
+                            'type' => 'text',
+                            'name' => 'cas_host',
+                            'value' => $CFG_GLPI["cas_host"],
+                        ] : [],
+                        __('CAS Version') => (function_exists('curl_init') && Toolbox::canUseCAS()) ? [
+                            'type' => 'select',
+                            'name' => 'cas_version',
+                            'value' => $CFG_GLPI["cas_version"] ?? 'CAS_VERSION_2_0',
+                            'values' => [
+                                'CAS_VERSION_1_0' => __('Version 1'),
+                                'CAS_VERSION_2_0' => __('Version 2'),
+                                'CAS_VERSION_3_0' => __('Version 3+'),
+                            ],
+                        ] : [],
+                        _n('Port', 'Ports', 1) => (function_exists('curl_init') && Toolbox::canUseCAS()) ? [
+                            'type' => 'text',
+                            'name' => 'cas_port',
+                            'value' => $CFG_GLPI["cas_port"],
+                        ] : [],
+                        __('Root directory (optional)') => (function_exists('curl_init') && Toolbox::canUseCAS()) ? [
+                            'type' => 'text',
+                            'name' => 'cas_uri',
+                            'value' => $CFG_GLPI["cas_uri"],
+                        ] : [],
+                        __('Log out fallback URL') => (function_exists('curl_init') && Toolbox::canUseCAS()) ? [
+                            'type' => 'text',
+                            'name' => 'cas_logout',
+                            'value' => $CFG_GLPI["cas_logout"],
+                        ] : [],
+                        'curl_init ' . __('Status') => (!function_exists('curl_init')) ? [
+                            'content' => "<p class='red'>" . __("The CURL extension for your PHP parser isn't installed") . "</p>",
+                            'col_lg' => 12,
+                            'col_md' => 12,
+                        ] : [],
+                        __('Can use CAS') => (!Toolbox::canUseCAS()) ? [
+                            'content' => "<p class='red'>" . __("The CAS lib isn't available, ITSM-NG doesn't package it anymore for license compatibility issue.") . "</p>",
+                            'col_lg' => 12,
+                            'col_md' => 12,
+                        ] : [],
+                    ],
+                ],
+                __('x509 certificate authentication') => [
+                    'visible' => true,
+                    'inputs' => [
+                        'x509 ' . __('Status') => (!empty($CFG_GLPI["x509_email_field"])) ? [
+                            'content' => _x('authentication', 'Enabled'),
+                            'col_lg' => 12,
+                            'col_md' => 12,
+                        ] : [],
+                        __('Email attribute for x509 authentication') => [
+                            'type' => 'text',
+                            'name' => 'x509_email_field',
+                            'value' => $CFG_GLPI["x509_email_field"],
+                            'col_lg' => 12,
+                            'col_md' => 12,
+                        ],
+                        sprintf(__('Restrict %s field for x509 authentication (separator $)'), 'OU') => [
+                            'type' => 'text',
+                            'name' => 'x509_ou_restrict',
+                            'value' => $CFG_GLPI["x509_ou_restrict"],
+                            'col_lg' => 12,
+                            'col_md' => 12,
+                        ],
+                        sprintf(__('Restrict %s field for x509 authentication (separator $)'), 'CN') => [
+                            'type' => 'text',
+                            'name' => 'x509_cn_restrict',
+                            'value' => $CFG_GLPI["x509_cn_restrict"],
+                            'col_lg' => 12,
+                            'col_md' => 12,
+                        ],
+                        sprintf(__('Restrict %s field for x509 authentication (separator $)'), 'O') => [
+                            'type' => 'text',
+                            'name' => 'x509_o_restrict',
+                            'value' => $CFG_GLPI["x509_o_restrict"],
+                            'col_lg' => 12,
+                            'col_md' => 12,
+                        ],
+                    ],
+                ],
+                __('Other authentication sent in the HTTP request') => [
+                    'visible' => true,
+                    'inputs' => [
+                        __("Status") => (!empty($CFG_GLPI["ssovariables_id"])) ? [
+                            'content' => _x('authentication', 'Enabled'),
+                            'col_lg' => 12,
+                            'col_md' => 12,
+                        ] : [],
+                        SsoVariable::getTypeName(1) => [
+                            'type' => 'select',
+                            'name' => 'ssovariables_id',
+                            'value' => $CFG_GLPI["ssovariables_id"],
+                            'values' => getOptionForItems('SsoVariable'),
+                            'actions' => getItemActionButtons(['info', 'add'], 'SsoVariable'),
+                            'col_lg' => 6,
+                        ],
+                        __('SSO logout url') => [
+                            'type' => 'text',
+                            'name' => 'ssologout_url',
+                            'value' => $CFG_GLPI["ssologout_url"],
+                            'col_lg' => 6,
+                        ],
+                        __('Remove the domain of logins like login@domain') => [
+                            'type' => 'checkbox',
+                            'name' => 'existing_auth_server_field_clean_domain',
+                            'value' => $CFG_GLPI['existing_auth_server_field_clean_domain'],
+                            'col_lg' => 6,
+                        ],
+                        __('Surname') => [
+                            'type' => 'text',
+                            'name' => 'realname_ssofield',
+                            'value' => $CFG_GLPI['realname_ssofield'],
+                            'col_lg' => 6,
+                        ],
+                        __('First name') => [
+                            'type' => 'text',
+                            'name' => 'firstname_ssofield',
+                            'value' => $CFG_GLPI['firstname_ssofield'],
+                            'col_lg' => 6,
+                        ],
+                        __('Comments') => [
+                            'type' => 'text',
+                            'name' => 'comment_ssofield',
+                            'value' => $CFG_GLPI['comment_ssofield'],
+                            'col_lg' => 6,
+                        ],
+                        __('Administrative number') => [
+                            'type' => 'text',
+                            'name' => 'registration_number_ssofield',
+                            'value' => $CFG_GLPI['registration_number_ssofield'],
+                        ],
+                        _n('Email', 'Emails', 1) => [
+                            'type' => 'text',
+                            'name' => 'email1_ssofield',
+                            'value' => $CFG_GLPI['email1_ssofield'],
+                        ],
+                        sprintf(__('%1$s %2$s'), _n('Email', 'Emails', 1), '2') => [
+                            'type' => 'text',
+                            'name' => 'email2_ssofield',
+                            'value' => $CFG_GLPI['email2_ssofield'],
+                        ],
+                        sprintf(__('%1$s %2$s'), _n('Email', 'Emails', 1), '3') => [
+                            'type' => 'text',
+                            'name' => 'email3_ssofield',
+                            'value' => $CFG_GLPI['email3_ssofield'],
+                        ],
+                        sprintf(__('%1$s %2$s'), _n('Email', 'Emails', 1), '4') => [
+                            'type' => 'text',
+                            'name' => 'email4_ssofield',
+                            'value' => $CFG_GLPI['email4_ssofield'],
+                        ],
+                        __('Phone') => [
+                            'type' => 'text',
+                            'name' => 'phone_ssofield',
+                            'value' => $CFG_GLPI['phone_ssofield'],
+                        ],
+                        __('Phone 2') => [
+                            'type' => 'text',
+                            'name' => 'phone2_ssofield',
+                            'value' => $CFG_GLPI['phone2_ssofield'],
+                        ],
+                        __('Mobile phone') => [
+                            'type' => 'text',
+                            'name' => 'mobile_ssofield',
+                            'value' => $CFG_GLPI['mobile_ssofield'],
+                        ],
+                        _x('person', 'Title') => [
+                            'type' => 'text',
+                            'name' => 'title_ssofield',
+                            'value' => $CFG_GLPI['title_ssofield'],
+                        ],
+                        __('Category') => [
+                            'type' => 'text',
+                            'name' => 'category_ssofield',
+                            'value' => $CFG_GLPI['category_ssofield'],
+                        ],
+                        __('Language') => [
+                            'type' => 'text',
+                            'name' => 'language_ssofield',
+                            'value' => $CFG_GLPI['language_ssofield'],
+                        ],
+                    ],
+                ],
+            ],
         ];
         renderTwigForm($form);
     }
@@ -1798,16 +1798,16 @@ class Auth extends CommonGLPI
         }
         if (isset($_POST["update"])) {
             $oidc_result = [
-               'Provider'     => URL::sanitizeURL(trim((string) $_POST["provider"])),
-               'ClientID'     => trim((string) $_POST["clientID"]),
-               'ClientSecret' => Toolbox::sodiumEncrypt(trim((string) $_POST["clientSecret"])),
-               'is_activate'  => $_POST["useoidc"],
-               'is_forced'    => $_POST["forceoidc"],
-               'scope'        => $_POST["scope"],
-               'proxy'        => $_POST["proxy"],
-               'cert'         => $_POST["cert"],
-               'logout'       => URL::sanitizeURL(trim((string) $_POST["logout"])),
-               'sso_link_users' => $_POST['sso_link_users'],
+                'Provider'     => URL::sanitizeURL(trim((string) $_POST["provider"])),
+                'ClientID'     => trim((string) $_POST["clientID"]),
+                'ClientSecret' => Toolbox::sodiumEncrypt(trim((string) $_POST["clientSecret"])),
+                'is_activate'  => $_POST["useoidc"],
+                'is_forced'    => $_POST["forceoidc"],
+                'scope'        => $_POST["scope"],
+                'proxy'        => $_POST["proxy"],
+                'cert'         => $_POST["cert"],
+                'logout'       => URL::sanitizeURL(trim((string) $_POST["logout"])),
+                'sso_link_users' => $_POST['sso_link_users'],
             ];
             $DB->updateOrInsert("glpi_oidc_config", $oidc_result, ['id'   => 0]);
         }
@@ -1828,78 +1828,78 @@ class Auth extends CommonGLPI
         }
 
         $form = [
-           'action' => $CFG_GLPI['root_doc'] . '/front/auth.oidc.php',
-           'buttons' => [
-              [
-                 'type' => 'submit',
-                 'name' => 'update',
-                 'value' => __s('Save'),
-                 'class' => 'btn btn-secondary',
-              ],
-              [
-                 'type' => 'submit',
-                 'name' => 'mapping',
-                 'value' => __s('Mapping'),
-                 'class' => 'btn btn-secondary'
-              ]
-           ],
-           'content' => [
-              __('Mapping of fields according to provider') => [
-                 'visible' => true,
-                 'inputs' => [
-                    __('Activate open ID connect') => [
-                       'name' => 'useoidc',
-                       'type' => 'checkbox',
-                       'value' => $oidc_db['is_activate'] ?? 0,
+            'action' => $CFG_GLPI['root_doc'] . '/front/auth.oidc.php',
+            'buttons' => [
+                [
+                    'type' => 'submit',
+                    'name' => 'update',
+                    'value' => __s('Save'),
+                    'class' => 'btn btn-secondary',
+                ],
+                [
+                    'type' => 'submit',
+                    'name' => 'mapping',
+                    'value' => __s('Mapping'),
+                    'class' => 'btn btn-secondary',
+                ],
+            ],
+            'content' => [
+                __('Mapping of fields according to provider') => [
+                    'visible' => true,
+                    'inputs' => [
+                        __('Activate open ID connect') => [
+                            'name' => 'useoidc',
+                            'type' => 'checkbox',
+                            'value' => $oidc_db['is_activate'] ?? 0,
+                        ],
+                        __('Forced connection with open ID connect') => [
+                            'name' => 'forceoidc',
+                            'type' => 'checkbox',
+                            'value' => $oidc_db['is_forced'] ?? 0,
+                        ],
+                        __('Provider') => [
+                            'name' => 'provider',
+                            'type' => 'text',
+                            'value' => $oidc_db['Provider'] ?? '',
+                        ],
+                        __('Client ID') => [
+                            'name' => 'clientID',
+                            'type' => 'text',
+                            'value' => $oidc_db['ClientID'] ?? '',
+                        ],
+                        __('Client Secret') => [
+                            'name' => 'clientSecret',
+                            'type' => 'text',
+                            'value' => $oidc_db['ClientSecret'] ?? '',
+                        ],
+                        __('Scope') => [
+                            'name' => 'scope',
+                            'type' => 'text',
+                            'value' => $oidc_db['scope'] ?? '',
+                        ],
+                        __('Proxy') => [
+                            'name' => 'proxy',
+                            'type' => 'text',
+                            'value' => $oidc_db['proxy'] ?? '',
+                        ],
+                        __('Certificate Path') => [
+                            'name' => 'cert',
+                            'type' => 'text',
+                            'value' => $oidc_db['cert'] ?? '',
+                        ],
+                        __('Logout URL') => [
+                            'name' => 'logout',
+                            'type' => 'text',
+                            'value' => $oidc_db['logout'] ?? '',
+                        ],
+                        __('Link accounts with other auth sources') => [
+                            'name' => 'sso_link_users',
+                            'type' => 'checkbox',
+                            'value' => $oidc_db['sso_link_users'] ?? 0,
+                        ],
                     ],
-                    __('Forced connection with open ID connect') => [
-                       'name' => 'forceoidc',
-                       'type' => 'checkbox',
-                       'value' => $oidc_db['is_forced'] ?? 0,
-                    ],
-                    __('Provider') => [
-                       'name' => 'provider',
-                       'type' => 'text',
-                       'value' => $oidc_db['Provider'] ?? '',
-                    ],
-                    __('Client ID') => [
-                       'name' => 'clientID',
-                       'type' => 'text',
-                       'value' => $oidc_db['ClientID'] ?? '',
-                    ],
-                    __('Client Secret') => [
-                       'name' => 'clientSecret',
-                       'type' => 'text',
-                       'value' => $oidc_db['ClientSecret'] ?? '',
-                    ],
-                    __('Scope') => [
-                       'name' => 'scope',
-                       'type' => 'text',
-                       'value' => $oidc_db['scope'] ?? '',
-                    ],
-                    __('Proxy') => [
-                       'name' => 'proxy',
-                       'type' => 'text',
-                       'value' => $oidc_db['proxy'] ?? '',
-                    ],
-                    __('Certificate Path') => [
-                       'name' => 'cert',
-                       'type' => 'text',
-                       'value' => $oidc_db['cert'] ?? '',
-                    ],
-                    __('Logout URL') => [
-                       'name' => 'logout',
-                       'type' => 'text',
-                       'value' => $oidc_db['logout'] ?? '',
-                    ],
-                    __('Link accounts with other auth sources') => [
-                       'name' => 'sso_link_users',
-                       'type' => 'checkbox',
-                       'value' => $oidc_db['sso_link_users'] ?? 0,
-                    ],
-                 ]
-              ]
-           ]
+                ],
+            ],
         ];
 
         renderTwigForm($form);
@@ -1915,18 +1915,18 @@ class Auth extends CommonGLPI
         global $DB;
 
         $elements = [
-           '_default'  => 'local',
-           'local'     => __("ITSM-NG internal database")
+            '_default'  => 'local',
+            'local'     => __("ITSM-NG internal database"),
         ];
 
         // Get LDAP
         if (Toolbox::canUseLdap()) {
             $iterator = $DB->request([
-               'FROM'   => 'glpi_authldaps',
-               'WHERE'  => [
-                  'is_active' => 1
-               ],
-               'ORDER'  => ['name']
+                'FROM'   => 'glpi_authldaps',
+                'WHERE'  => [
+                    'is_active' => 1,
+                ],
+                'ORDER'  => ['name'],
             ]);
             while ($data = $iterator->next()) {
                 $elements['ldap-' . $data['id']] = $data['name'];
@@ -1938,11 +1938,11 @@ class Auth extends CommonGLPI
 
         // GET Mail servers
         $iterator = $DB->request([
-           'FROM'   => 'glpi_authmails',
-           'WHERE'  => [
-              'is_active' => 1
-           ],
-           'ORDER'  => ['name']
+            'FROM'   => 'glpi_authmails',
+            'WHERE'  => [
+                'is_active' => 1,
+            ],
+            'ORDER'  => ['name'],
         ]);
         while ($data = $iterator->next()) {
             $elements['mail-' . $data['id']] = $data['name'];
@@ -1994,7 +1994,7 @@ class Auth extends CommonGLPI
         $cookie_lifetime = empty($cookie_value) ? time() - 3600 : time() + $CFG_GLPI['login_remember_time'];
         $cookie_path     = ini_get('session.cookie_path');
         $cookie_domain   = ini_get('session.cookie_domain');
-        $cookie_secure   = (bool)ini_get('session.cookie_secure');
+        $cookie_secure   = (bool) ini_get('session.cookie_secure');
 
         if (empty($cookie_value) && !isset($_COOKIE[$cookie_name])) {
             return;

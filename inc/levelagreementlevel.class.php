@@ -88,73 +88,73 @@ abstract class LevelAgreementLevel extends RuleTicket
         $tab = [];
 
         $tab[] = [
-           'id'                 => 'common',
-           'name'               => __('Characteristics')
+            'id'                 => 'common',
+            'name'               => __('Characteristics'),
         ];
 
         $tab[] = [
-           'id'                 => '1',
-           'table'              => static::getTable(),
-           'field'              => 'name',
-           'name'               => __('Name'),
-           'datatype'           => 'itemlink',
-           'massiveaction'      => false,
-           'autocomplete'       => true,
+            'id'                 => '1',
+            'table'              => static::getTable(),
+            'field'              => 'name',
+            'name'               => __('Name'),
+            'datatype'           => 'itemlink',
+            'massiveaction'      => false,
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '3',
-           'table'              => static::getTable(),
-           'field'              => 'name',
-           'name'               => static::getTypeName(),
-           'datatype'           => 'itemlink',
-           'massiveaction'      => false
+            'id'                 => '3',
+            'table'              => static::getTable(),
+            'field'              => 'name',
+            'name'               => static::getTypeName(),
+            'datatype'           => 'itemlink',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '4',
-           'table'              => static::getTable(),
-           'field'              => 'execution_time',
-           'name'               => __('Execution'),
-           'massiveaction'      => false,
-           'searchtype'         => 'equals',
-           'datatype'           => 'specific'
+            'id'                 => '4',
+            'table'              => static::getTable(),
+            'field'              => 'execution_time',
+            'name'               => __('Execution'),
+            'massiveaction'      => false,
+            'searchtype'         => 'equals',
+            'datatype'           => 'specific',
         ];
 
         $tab[] = [
-           'id'                 => '5',
-           'table'              => static::getTable(),
-           'field'              => 'match',
-           'name'               => __('Logical operator'),
-           'massiveaction'      => false,
-           'searchtype'         => 'equals',
-           'datatype'           => 'specific'
+            'id'                 => '5',
+            'table'              => static::getTable(),
+            'field'              => 'match',
+            'name'               => __('Logical operator'),
+            'massiveaction'      => false,
+            'searchtype'         => 'equals',
+            'datatype'           => 'specific',
         ];
 
         $tab[] = [
-           'id'                 => '8',
-           'table'              => static::getTable(),
-           'field'              => 'is_active',
-           'name'               => __('Active'),
-           'datatype'           => 'bool'
+            'id'                 => '8',
+            'table'              => static::getTable(),
+            'field'              => 'is_active',
+            'name'               => __('Active'),
+            'datatype'           => 'bool',
         ];
 
         $tab[] = [
-           'id'                 => '80',
-           'table'              => Entity::getTable(),
-           'field'              => 'completename',
-           'name'               => Entity::getTypeName(1),
-           'massiveaction'      => false,
-           'datatype'           => 'dropdown'
+            'id'                 => '80',
+            'table'              => Entity::getTable(),
+            'field'              => 'completename',
+            'name'               => Entity::getTypeName(1),
+            'massiveaction'      => false,
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '86',
-           'table'              => static::getTable(),
-           'field'              => 'is_recursive',
-           'name'               => __('Child entities'),
-           'datatype'           => 'bool',
-           'massiveaction'      => false
+            'id'                 => '86',
+            'table'              => static::getTable(),
+            'field'              => 'is_recursive',
+            'name'               => __('Child entities'),
+            'datatype'           => 'bool',
+            'massiveaction'      => false,
         ];
 
         return $tab;
@@ -241,9 +241,9 @@ abstract class LevelAgreementLevel extends RuleTicket
     public static function getExecutionTimes($options = [])
     {
         $p = [
-           'value'    => '',
-           'max_time' => 4 * DAY_TIMESTAMP,
-           'used'     => [],
+            'value'    => '',
+            'max_time' => 4 * DAY_TIMESTAMP,
+            'used'     => [],
         ];
 
         if (is_array($options) && count($options)) {
@@ -314,16 +314,16 @@ abstract class LevelAgreementLevel extends RuleTicket
      *       - max_time : max time to use
      *       - used : already used values
      *
-     * @return integer|string
+     * @return int|string
      *    integer if option display=true (random part of elements id)
      *    string if option display=false (HTML code)
     **/
     public static function dropdownExecutionTime($name, $options = [])
     {
         $p = [
-           'value'    => '',
-           'max_time' => 4 * DAY_TIMESTAMP,
-           'used'     => [],
+            'value'    => '',
+            'max_time' => 4 * DAY_TIMESTAMP,
+            'used'     => [],
         ];
 
         if (is_array($options) && count($options)) {
@@ -356,12 +356,12 @@ abstract class LevelAgreementLevel extends RuleTicket
         $result = [];
 
         $iterator = $DB->request([
-           'SELECT'          => 'execution_time',
-           'DISTINCT'        => true,
-           'FROM'            => static::getTable(),
-           'WHERE'           => [
-              static::$fkparent => $las_id
-           ]
+            'SELECT'          => 'execution_time',
+            'DISTINCT'        => true,
+            'FROM'            => static::getTable(),
+            'WHERE'           => [
+                static::$fkparent => $las_id,
+            ],
         ]);
 
         while ($data = $iterator->next()) {

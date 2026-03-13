@@ -47,7 +47,7 @@ class RuleImportComputerCollection extends RuleCollection
     /**
      * @since 0.84
      *
-     * @return boolean
+     * @return bool
     **/
     public function canList()
     {

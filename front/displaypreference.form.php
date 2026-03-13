@@ -39,7 +39,7 @@ if (!defined('GLPI_ROOT')) {
 Html::popHeader(__('Setup'), $_SERVER['PHP_SELF']);
 
 Session::checkRightsOr('search_config', [DisplayPreference::PERSONAL,
-                                              DisplayPreference::GENERAL]);
+    DisplayPreference::GENERAL]);
 
 $setupdisplay = new DisplayPreference();
 
@@ -48,7 +48,7 @@ if (isset($_POST["activate"])) {
 } elseif (isset($_POST["disable"])) {
     if ($_POST['users_id'] == Session::getLoginUserID()) {
         $setupdisplay->deleteByCriteria(['users_id' => $_POST['users_id'],
-                                                        'itemtype' => $_POST['itemtype']]);
+            'itemtype' => $_POST['itemtype']]);
     }
 } elseif (isset($_POST["add"])) {
     $setupdisplay->add($_POST);

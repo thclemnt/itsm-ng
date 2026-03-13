@@ -1,5 +1,7 @@
 <?php
 
+use Glpi\Features\Clonable;
+
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
@@ -43,7 +45,7 @@ if (!defined('GLPI_ROOT')) {
  **/
 class Cartridge extends CommonDBChild
 {
-    use Glpi\Features\Clonable;
+    use Clonable;
 
     // From CommonDBTM
     protected static $forward_entity_to = ['Infocom'];
@@ -57,7 +59,7 @@ class Cartridge extends CommonDBChild
     public function getCloneRelations(): array
     {
         return [
-           Infocom::class
+            Infocom::class,
         ];
     }
 
@@ -80,14 +82,14 @@ class Cartridge extends CommonDBChild
                 }
                 $input = $ma->getInput();
                 renderTwigTemplate('macros/wrappedInput.twig', [
-                   'title' => __('Pages'),
-                   'input' => [
-                      'type'  => 'number',
-                      'name'  => 'pages',
-                      'value' => $input['maxpages'],
-                      'col_lg' => 12,
-                      'col_md' => 12,
-                   ],
+                    'title' => __('Pages'),
+                    'input' => [
+                        'type'  => 'number',
+                        'name'  => 'pages',
+                        'value' => $input['maxpages'],
+                        'col_lg' => 12,
+                        'col_md' => 12,
+                    ],
                 ]);
                 echo Html::submit(_x('button', 'Update'), ['name' => 'massiveaction', 'class' => 'btn btn-secondary mt-3']);
                 return true;
@@ -117,8 +119,8 @@ class Cartridge extends CommonDBChild
         }
 
         return ["cartridgeitems_id" => $item->fields["id"],
-                     "entities_id"       => $item->getEntityID(),
-                     "date_in"           => date("Y-m-d")];
+            "entities_id"       => $item->getEntityID(),
+            "date_in"           => date("Y-m-d")];
     }
 
 
@@ -133,7 +135,7 @@ class Cartridge extends CommonDBChild
                     || ($this->oldvalues['pages'] == $printer->getField('last_pages_counter')))
             ) {
                 $printer->update(['id'                 => $printer->getID(),
-                                       'last_pages_counter' => $this->fields['pages'] ]);
+                    'last_pages_counter' => $this->fields['pages'] ]);
             }
         }
         parent::post_updateItem($history);
@@ -197,7 +199,7 @@ class Cartridge extends CommonDBChild
                         if ($item->can($key, UPDATE)) {
                             if (
                                 $item->update(['id' => $key,
-                                                    'pages' => $input['pages']])
+                                    'pages' => $input['pages']])
                             ) {
                                 $ma->itemDone($item->getType(), $key, MassiveAction::ACTION_OK);
                             } else {
@@ -223,7 +225,7 @@ class Cartridge extends CommonDBChild
      *
      * @since 0.85 (before name was restore)
      * @param array   $input
-     * @param integer $history
+     * @param int $history
      * @return bool
      */
     public function backToStock(array $input, $history = 1)
@@ -233,12 +235,12 @@ class Cartridge extends CommonDBChild
         $result = $DB->update(
             $this->getTable(),
             [
-              'date_out'     => 'NULL',
-              'date_use'     => 'NULL',
-              'printers_id'  => 0
+                'date_out'     => 'NULL',
+                'date_use'     => 'NULL',
+                'printers_id'  => 0,
             ],
             [
-              'id' => $input['id']
+                'id' => $input['id'],
             ]
         );
         if ($result && ($DB->affectedRows() > 0)) {
@@ -255,10 +257,10 @@ class Cartridge extends CommonDBChild
      *
      * Link the first unused cartridge of type $Tid to the printer $pID.
      *
-     * @param integer $tID ID of the cartridge
-     * @param integer $pID : ID of the printer
+     * @param int $tID ID of the cartridge
+     * @param int $pID : ID of the printer
      *
-     * @return boolean True if successful
+     * @return bool True if successful
     **/
     public function install($pID, $tID)
     {
@@ -266,13 +268,13 @@ class Cartridge extends CommonDBChild
 
         // Get first unused cartridge
         $iterator = $DB->request([
-           'SELECT' => ['id'],
-           'FROM'   => $this->getTable(),
-           'WHERE'  => [
-              'cartridgeitems_id'  => $tID,
-              'date_use'           => null
-           ],
-           'LIMIT'  => 1
+            'SELECT' => ['id'],
+            'FROM'   => $this->getTable(),
+            'WHERE'  => [
+                'cartridgeitems_id'  => $tID,
+                'date_use'           => null,
+            ],
+            'LIMIT'  => 1,
         ]);
 
         if (count($iterator)) {
@@ -282,19 +284,19 @@ class Cartridge extends CommonDBChild
             $result = $DB->update(
                 $this->getTable(),
                 [
-                  'date_use'     => date('Y-m-d'),
-                  'printers_id'  => $pID
+                    'date_use'     => date('Y-m-d'),
+                    'printers_id'  => $pID,
                 ],
                 [
-                  'id'        => $cID,
-                  'date_use'  => null
+                    'id'        => $cID,
+                    'date_use'  => null,
                 ]
             );
             if ($result && ($DB->affectedRows() > 0)) {
                 $changes = [
-                   '0',
-                   '',
-                   __('Installing a cartridge'),
+                    '0',
+                    '',
+                    __('Installing a cartridge'),
                 ];
                 Log::history($pID, 'Printer', $changes, 0, Log::HISTORY_LOG_SIMPLE_MESSAGE);
                 return true;
@@ -309,9 +311,9 @@ class Cartridge extends CommonDBChild
     /**
      * Unlink a cartridge from a printer by cartridge ID.
      *
-     * @param integer $ID ID of the cartridge
+     * @param int $ID ID of the cartridge
      *
-     * @return boolean
+     * @return bool
     **/
     public function uninstall($ID)
     {
@@ -327,10 +329,10 @@ class Cartridge extends CommonDBChild
             $result = $DB->update(
                 $this->getTable(),
                 [
-                  'date_out'  => date('Y-m-d')
+                    'date_out'  => date('Y-m-d'),
                 ] + $toadd,
                 [
-                  'id'  => $ID
+                    'id'  => $ID,
                 ]
             );
 
@@ -339,9 +341,9 @@ class Cartridge extends CommonDBChild
                 && ($DB->affectedRows() > 0)
             ) {
                 $changes = [
-                   '0',
-                   '',
-                   __('Uninstalling a cartridge'),
+                    '0',
+                    '',
+                    __('Uninstalling a cartridge'),
                 ];
                 Log::history(
                     $this->getField("printers_id"),
@@ -361,9 +363,9 @@ class Cartridge extends CommonDBChild
     /**
      * Print the cartridge count HTML array for the cartridge item $tID
      *
-     * @param integer         $tID      ID of the cartridge item
-     * @param integer         $alarm_threshold Alarm threshold value
-     * @param integer|boolean $nohtml          True if the return value should be without HTML tags (default 0/false)
+     * @param int         $tID      ID of the cartridge item
+     * @param int         $alarm_threshold Alarm threshold value
+     * @param int|bool $nohtml          True if the return value should be without HTML tags (default 0/false)
      *
      * @return string String to display
     **/
@@ -389,10 +391,10 @@ class Cartridge extends CommonDBChild
             //       use the nohtml option as a fallback.
             if (!$nohtml) {
                 $fields = [
-                   __('Total'),
-                   _nx('cartridge', 'New', 'New', $unused),
-                   _nx('cartridge', 'Used', 'Used', $used),
-                   _nx('cartridge', 'Worn', 'Worn', $old),
+                    __('Total'),
+                    _nx('cartridge', 'New', 'New', $unused),
+                    _nx('cartridge', 'Used', 'Used', $used),
+                    _nx('cartridge', 'Worn', 'Worn', $old),
                 ];
                 $values = [ [$total, $unused, $used, $old], ];
                 renderTwigTemplate('table.twig', [ 'fields' => $fields, 'values' => $values, 'minimal' => true]);
@@ -423,8 +425,8 @@ class Cartridge extends CommonDBChild
      *
      * @since 0.85
      *
-     * @param integer         $pID    ID of the printer
-     * @param integer|boolean $nohtml True if the return value should be without HTML tags (default 0/false)
+     * @param int         $pID    ID of the printer
+     * @param int|bool $nohtml True if the return value should be without HTML tags (default 0/false)
      *
      * @return string String to display
     **/
@@ -470,18 +472,18 @@ class Cartridge extends CommonDBChild
     /**
      * Count the total number of cartridges for the cartridge item $tID.
      *
-     * @param integer $tID ID of cartridge item.
+     * @param int $tID ID of cartridge item.
      *
-     * @return integer Number of cartridges counted.
+     * @return int Number of cartridges counted.
     **/
     public static function getTotalNumber($tID)
     {
         global $DB;
 
         $row = $DB->request([
-           'FROM'   => self::getTable(),
-           'COUNT'  => 'cpt',
-           'WHERE'  => ['cartridgeitems_id' => $tID]
+            'FROM'   => self::getTable(),
+            'COUNT'  => 'cpt',
+            'WHERE'  => ['cartridgeitems_id' => $tID],
         ])->next();
         return $row['cpt'];
     }
@@ -492,47 +494,47 @@ class Cartridge extends CommonDBChild
      *
      * @since 0.85
      *
-     * @param integer $pID ID of the printer.
+     * @param int $pID ID of the printer.
      *
-     * @return integer Number of cartridges counted.
+     * @return int Number of cartridges counted.
     **/
     public static function getTotalNumberForPrinter($pID)
     {
         global $DB;
 
         $row = $DB->request([
-           'FROM'   => self::getTable(),
-           'COUNT'  => 'cpt',
-           'WHERE'  => ['printers_id' => $pID]
+            'FROM'   => self::getTable(),
+            'COUNT'  => 'cpt',
+            'WHERE'  => ['printers_id' => $pID],
         ])->next();
-        return (int)$row['cpt'];
+        return (int) $row['cpt'];
     }
 
 
     /**
      * Count the number of used cartridges for the cartridge item $tID.
      *
-     * @param integer $tID ID of the cartridge item.
+     * @param int $tID ID of the cartridge item.
      *
-     * @return integer Number of used cartridges counted.
+     * @return int Number of used cartridges counted.
     **/
     public static function getUsedNumber($tID)
     {
         global $DB;
 
         $row = $DB->request([
-           'SELECT' => ['id'],
-           'COUNT'  => 'cpt',
-           'FROM'   => 'glpi_cartridges',
-           'WHERE'  => [
-              'cartridgeitems_id'  => $tID,
-              'date_out'           => null,
-              'NOT'                => [
-                 'date_use'  => null
-              ]
-           ]
+            'SELECT' => ['id'],
+            'COUNT'  => 'cpt',
+            'FROM'   => 'glpi_cartridges',
+            'WHERE'  => [
+                'cartridgeitems_id'  => $tID,
+                'date_out'           => null,
+                'NOT'                => [
+                    'date_use'  => null,
+                ],
+            ],
         ])->next();
-        return (int)$row['cpt'];
+        return (int) $row['cpt'];
     }
 
 
@@ -541,22 +543,22 @@ class Cartridge extends CommonDBChild
      *
      * @since 0.85
      *
-     * @param integer $pID ID of the printer.
+     * @param int $pID ID of the printer.
      *
-     * @return integer Number of used cartridge counted.
+     * @return int Number of used cartridge counted.
     **/
     public static function getUsedNumberForPrinter($pID)
     {
         global $DB;
 
         $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'printers_id'  => $pID,
-              'date_out'     => null,
-              'NOT'          => ['date_use' => null]
-           ]
+            'COUNT'  => 'cpt',
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'printers_id'  => $pID,
+                'date_out'     => null,
+                'NOT'          => ['date_use' => null],
+            ],
         ])->next();
         return $result['cpt'];
     }
@@ -565,21 +567,21 @@ class Cartridge extends CommonDBChild
     /**
      * Count the number of old cartridges for the cartridge item $tID.
      *
-     * @param integer $tID ID of the cartridge item.
+     * @param int $tID ID of the cartridge item.
      *
-     * @return integer Number of old cartridges counted.
+     * @return int Number of old cartridges counted.
     **/
     public static function getOldNumber($tID)
     {
         global $DB;
 
         $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'cartridgeitems_id'  => $tID,
-              'NOT'                => ['date_out' => null]
-           ]
+            'COUNT'  => 'cpt',
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'cartridgeitems_id'  => $tID,
+                'NOT'                => ['date_out' => null],
+            ],
         ])->next();
         return $result['cpt'];
     }
@@ -592,19 +594,19 @@ class Cartridge extends CommonDBChild
      *
      * @param $pID integer: printer identifier.
      *
-     * @return integer : number of old cartridge counted.
+     * @return int : number of old cartridge counted.
     **/
     public static function getOldNumberForPrinter($pID)
     {
         global $DB;
 
         $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'printers_id'  => $pID,
-              'NOT'          => ['date_out' => null]
-           ]
+            'COUNT'  => 'cpt',
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'printers_id'  => $pID,
+                'NOT'          => ['date_out' => null],
+            ],
         ])->next();
         return $result['cpt'];
     }
@@ -615,19 +617,19 @@ class Cartridge extends CommonDBChild
      *
      * @param $tID integer: cartridge item identifier.
      *
-     * @return integer : number of cartridge unused counted.
+     * @return int : number of cartridge unused counted.
     **/
     public static function getUnusedNumber($tID)
     {
         global $DB;
 
         $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'cartridgeitems_id'  => $tID,
-              'date_use'           => null
-           ]
+            'COUNT'  => 'cpt',
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'cartridgeitems_id'  => $tID,
+                'date_use'           => null,
+            ],
         ])->next();
         return $result['cpt'];
     }
@@ -658,9 +660,9 @@ class Cartridge extends CommonDBChild
      * Print out the cartridges of a defined type
      *
      * @param CartridgeItem   $cartitem  The cartridge item
-     * @param boolean|integer $show_old  Show old cartridges or not (default 0/false)
+     * @param bool|int $show_old  Show old cartridges or not (default 0/false)
      *
-     * @return boolean|void
+     * @return bool|void
     **/
     public static function showForCartridgeItem(CartridgeItem $cartitem, $show_old = 0)
     {
@@ -674,17 +676,17 @@ class Cartridge extends CommonDBChild
 
         $where = ['glpi_cartridges.cartridgeitems_id' => $tID];
         $order = [
-           'glpi_cartridges.date_use ASC',
-           'glpi_cartridges.date_out DESC',
-           'glpi_cartridges.date_in'
+            'glpi_cartridges.date_use ASC',
+            'glpi_cartridges.date_out DESC',
+            'glpi_cartridges.date_in',
         ];
 
         if (!$show_old) { // NEW
             $where['glpi_cartridges.date_out'] = null;
             $order = [
-               'glpi_cartridges.date_out ASC',
-               'glpi_cartridges.date_use ASC',
-               'glpi_cartridges.date_in'
+                'glpi_cartridges.date_out ASC',
+                'glpi_cartridges.date_use ASC',
+                'glpi_cartridges.date_in',
             ];
         } else { //OLD
             $where['NOT'] = ['glpi_cartridges.date_out' => null];
@@ -696,23 +698,23 @@ class Cartridge extends CommonDBChild
         $nb_pages_printed = 0;
 
         $iterator = $DB->request([
-           'SELECT' => [
-              'glpi_cartridges.*',
-              'glpi_printers.id AS printID',
-              'glpi_printers.name AS printname',
-              'glpi_printers.init_pages_counter'
-           ],
-           'FROM'   => self::gettable(),
-           'LEFT JOIN' => [
-              'glpi_printers'   => [
-                 'FKEY'   => [
-                    self::getTable()  => 'printers_id',
-                    'glpi_printers'   => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => $where,
-           'ORDER'     => $order
+            'SELECT' => [
+                'glpi_cartridges.*',
+                'glpi_printers.id AS printID',
+                'glpi_printers.name AS printname',
+                'glpi_printers.init_pages_counter',
+            ],
+            'FROM'   => self::gettable(),
+            'LEFT JOIN' => [
+                'glpi_printers'   => [
+                    'FKEY'   => [
+                        self::getTable()  => 'printers_id',
+                        'glpi_printers'   => 'id',
+                    ],
+                ],
+            ],
+            'WHERE'     => $where,
+            'ORDER'     => $order,
         ]);
 
         $number = count($iterator);
@@ -720,18 +722,18 @@ class Cartridge extends CommonDBChild
         $massiveActionId = 'tableForCartridgeCartridges' . rand();
         if ($canedit && $number) {
             $actions = [
-               'purge' => _x('button', 'Delete permanently'),
-               'Infocom' . MassiveAction::CLASS_ACTION_SEPARATOR . 'activate'
-                  => __('Enable the financial and administrative information')
+                'purge' => _x('button', 'Delete permanently'),
+                'Infocom' . MassiveAction::CLASS_ACTION_SEPARATOR . 'activate'
+                   => __('Enable the financial and administrative information'),
             ];
             if (!$show_old) {
                 $actions['Cartridge' . MassiveAction::CLASS_ACTION_SEPARATOR . 'backtostock']
                       = __('Back to stock');
             }
             $massiveactionparams = [
-               'specific_actions' => $actions,
-               'container'        => $massiveActionId,
-               'display_arrow' => false,
+                'specific_actions' => $actions,
+                'container'        => $massiveActionId,
+                'display_arrow' => false,
             ];
             Html::showMassiveActions($massiveactionparams);
         }
@@ -742,11 +744,11 @@ class Cartridge extends CommonDBChild
         }
 
         $fields = [
-           __('ID'),
-           _x('item', 'State'),
-           __('Add date'),
-           __('Use date'),
-           __('Used on'),
+            __('ID'),
+            _x('item', 'State'),
+            __('Add date'),
+            __('Use date'),
+            __('Used on'),
         ];
         if ($show_old) {
             $fields[] = __('End date');
@@ -818,10 +820,10 @@ class Cartridge extends CommonDBChild
         }
 
         renderTwigTemplate('table.twig', [
-           'id' => $massiveActionId,
-           'fields' => $fields,
-           'values' => $values,
-           'massive_action' => $massive_action,
+            'id' => $massiveActionId,
+            'fields' => $fields,
+            'values' => $values,
+            'massive_action' => $massive_action,
         ]);
     }
 
@@ -831,7 +833,7 @@ class Cartridge extends CommonDBChild
      *
      * @param $cartitem  CartridgeItem object
      *
-     * @return boolean|void
+     * @return bool|void
     **/
     public static function showAddForm(CartridgeItem $cartitem)
     {
@@ -842,33 +844,33 @@ class Cartridge extends CommonDBChild
         }
         if ($ID > 0) {
             $form = [
-               'action' => static::getFormURL(),
-               'buttons' => [
-                  [
-                     'value' => __s('Add cartridges'),
-                     'name' => 'add',
-                     'class' => 'btn btn-secondary',
-                  ]
-               ],
-               'content' => [
-                  '' => [
-                     'visible' => true,
-                     'inputs' => [
-                        [
-                           'type' => 'hidden',
-                           'name' => 'cartridgeitems_id',
-                           'value' => $ID,
+                'action' => static::getFormURL(),
+                'buttons' => [
+                    [
+                        'value' => __s('Add cartridges'),
+                        'name' => 'add',
+                        'class' => 'btn btn-secondary',
+                    ],
+                ],
+                'content' => [
+                    '' => [
+                        'visible' => true,
+                        'inputs' => [
+                            [
+                                'type' => 'hidden',
+                                'name' => 'cartridgeitems_id',
+                                'value' => $ID,
+                            ],
+                            __('Number') => [
+                                'type' => 'number',
+                                'name' => 'to_add',
+                                'value' => 1,
+                                'min' => 1,
+                                'max' => 100,
+                            ],
                         ],
-                        __('Number') => [
-                           'type' => 'number',
-                           'name' => 'to_add',
-                           'value' => 1,
-                           'min' => 1,
-                           'max' => 100,
-                        ]
-                     ]
-                  ]
-               ]
+                    ],
+                ],
             ];
             renderTwigForm($form);
         }
@@ -881,9 +883,9 @@ class Cartridge extends CommonDBChild
      * @since 0.84 (before showInstalled)
      *
      * @param Printer         $printer Printer object
-     * @param boolean|integer $old     Old cartridges or not? (default 0/false)
+     * @param bool|int $old     Old cartridges or not? (default 0/false)
      *
-     * @return boolean|void
+     * @return bool|void
     **/
     public static function showForPrinter(Printer $printer, $old = 0)
     {
@@ -903,39 +905,39 @@ class Cartridge extends CommonDBChild
             $where['glpi_cartridges.date_out'] = null;
         }
         $iterator = $DB->request([
-           'SELECT'    => [
-              'glpi_cartridgeitems.id AS tID',
-              'glpi_cartridgeitems.is_deleted',
-              'glpi_cartridgeitems.ref AS ref',
-              'glpi_cartridgeitems.name AS type',
-              'glpi_cartridges.id',
-              'glpi_cartridges.pages AS pages',
-              'glpi_cartridges.date_use AS date_use',
-              'glpi_cartridges.date_out AS date_out',
-              'glpi_cartridges.date_in AS date_in',
-              'glpi_cartridgeitemtypes.name AS typename'
-           ],
-           'FROM'      => self::getTable(),
-           'LEFT JOIN' => [
-              'glpi_cartridgeitems'      => [
-                 'FKEY'   => [
-                    self::getTable()        => 'cartridgeitems_id',
-                    'glpi_cartridgeitems'   => 'id'
-                 ]
-              ],
-              'glpi_cartridgeitemtypes'  => [
-                 'FKEY'   => [
-                    'glpi_cartridgeitems'      => 'cartridgeitemtypes_id',
-                    'glpi_cartridgeitemtypes'  => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => $where,
-           'ORDER'     => [
-              'glpi_cartridges.date_out ASC',
-              'glpi_cartridges.date_use DESC',
-              'glpi_cartridges.date_in',
-           ]
+            'SELECT'    => [
+                'glpi_cartridgeitems.id AS tID',
+                'glpi_cartridgeitems.is_deleted',
+                'glpi_cartridgeitems.ref AS ref',
+                'glpi_cartridgeitems.name AS type',
+                'glpi_cartridges.id',
+                'glpi_cartridges.pages AS pages',
+                'glpi_cartridges.date_use AS date_use',
+                'glpi_cartridges.date_out AS date_out',
+                'glpi_cartridges.date_in AS date_in',
+                'glpi_cartridgeitemtypes.name AS typename',
+            ],
+            'FROM'      => self::getTable(),
+            'LEFT JOIN' => [
+                'glpi_cartridgeitems'      => [
+                    'FKEY'   => [
+                        self::getTable()        => 'cartridgeitems_id',
+                        'glpi_cartridgeitems'   => 'id',
+                    ],
+                ],
+                'glpi_cartridgeitemtypes'  => [
+                    'FKEY'   => [
+                        'glpi_cartridgeitems'      => 'cartridgeitemtypes_id',
+                        'glpi_cartridgeitemtypes'  => 'id',
+                    ],
+                ],
+            ],
+            'WHERE'     => $where,
+            'ORDER'     => [
+                'glpi_cartridges.date_out ASC',
+                'glpi_cartridges.date_use DESC',
+                'glpi_cartridges.date_in',
+            ],
         ]);
 
         $number = count($iterator);
@@ -943,42 +945,42 @@ class Cartridge extends CommonDBChild
         if ($canedit && !$old) {
             $options = CartridgeItem::dropdownForPrinter($printer);
             $form = [
-               'action' => static::getFormURL(),
-               'buttons' => [
-                  $options ? [
-                     'value' => _sx('button', 'Install'),
-                     'name' => 'install',
-                     'class' => 'btn btn-secondary',
-                  ] : []
-               ],
-               'content' => [
-                  '' => [
-                     'visible' => true,
-                     'inputs' => $options ? [
-                        [
-                           'type' => 'hidden',
-                           'name' => 'printers_id',
-                           'value' => $instID,
+                'action' => static::getFormURL(),
+                'buttons' => [
+                    $options ? [
+                        'value' => _sx('button', 'Install'),
+                        'name' => 'install',
+                        'class' => 'btn btn-secondary',
+                    ] : [],
+                ],
+                'content' => [
+                    '' => [
+                        'visible' => true,
+                        'inputs' => $options ? [
+                            [
+                                'type' => 'hidden',
+                                'name' => 'printers_id',
+                                'value' => $instID,
+                            ],
+                            CartridgeItem::getTypeName() => [
+                                'type' => 'select',
+                                'name' => 'cartridgeitems_id',
+                                'values' => $options,
+                            ],
+                            __('Number') => [
+                                'type' => 'number',
+                                'name' => 'nbcart',
+                                'value' => 1,
+                                'min' => 1,
+                                'max' => 5,
+                            ],
+                        ] : [
+                            '' => [
+                                'content' => __('No cartridge available'),
+                            ],
                         ],
-                        CartridgeItem::getTypeName() => [
-                           'type' => 'select',
-                           'name' => 'cartridgeitems_id',
-                           'values' => $options
-                        ],
-                        __('Number') => [
-                           'type' => 'number',
-                           'name' => 'nbcart',
-                           'value' => 1,
-                           'min' => 1,
-                           'max' => 5,
-                        ]
-                     ] : [
-                        '' => [
-                           'content' => __('No cartridge available'),
-                        ]
-                     ]
-                  ]
-               ]
+                    ],
+                ],
             ];
             renderTwigForm($form);
         }
@@ -990,31 +992,31 @@ class Cartridge extends CommonDBChild
             if (!$old) {
                 $actions = [__CLASS__ . MassiveAction::CLASS_ACTION_SEPARATOR . 'uninstall'
                 => __('End of life'),
-                __CLASS__ . MassiveAction::CLASS_ACTION_SEPARATOR . 'backtostock'
-                => __('Back to stock')
+                    __CLASS__ . MassiveAction::CLASS_ACTION_SEPARATOR . 'backtostock'
+                    => __('Back to stock'),
                 ];
             } else {
                 $actions = [__CLASS__ . MassiveAction::CLASS_ACTION_SEPARATOR . 'updatepages'
                 => __('Update printer counter'),
-                'purge' => _x('button', 'Delete permanently')];
+                    'purge' => _x('button', 'Delete permanently')];
             }
             $massiveactionparams = [
-               'specific_actions' => $actions,
-               'container'        => $massiveActionContainerId,
-               'extraparams'      => [
-                  'maxpages' => $printer->fields['last_pages_counter']
-               ],
-               'display_arrow' => false,
+                'specific_actions' => $actions,
+                'container'        => $massiveActionContainerId,
+                'extraparams'      => [
+                    'maxpages' => $printer->fields['last_pages_counter'],
+                ],
+                'display_arrow' => false,
             ];
             Html::showMassiveActions($massiveactionparams);
         }
 
         $fields = [
-           __('ID'),
-           _n('Cartridge model', 'Cartridge models', 1),
-           _n('Cartridge type', 'Cartridge types', 1),
-           __('Add date'),
-           __('Use date'),
+            __('ID'),
+            _n('Cartridge model', 'Cartridge models', 1),
+            _n('Cartridge type', 'Cartridge types', 1),
+            __('Add date'),
+            __('Use date'),
         ];
         if ($old != 0) {
             $fields[] = __('End date');
@@ -1035,15 +1037,15 @@ class Cartridge extends CommonDBChild
             $date_in    = Html::convDate($data["date_in"]);
             $date_use   = Html::convDate($data["date_use"]);
             $date_out   = Html::convDate($data["date_out"]);
-            $viewitemjs = ($canedit ? "style='cursor:pointer' onClick=\"viewEditCartridge" . $cart_id .
-                           "$rand();\"" : '');
+            $viewitemjs = ($canedit ? "style='cursor:pointer' onClick=\"viewEditCartridge" . $cart_id
+                           . "$rand();\"" : '');
             $newValue = [
-               $data['id'],
-               "<a href=\"" . CartridgeItem::getFormURLWithID($data["tID"]) . "\">" .
-               sprintf(__('%1$s - %2$s'), $data["type"], $data["ref"]) . "</a>",
-               $typename,
-               $date_in,
-               $date_use,
+                $data['id'],
+                "<a href=\"" . CartridgeItem::getFormURLWithID($data["tID"]) . "\">"
+                . sprintf(__('%1$s - %2$s'), $data["type"], $data["ref"]) . "</a>",
+                $typename,
+                $date_in,
+                $date_use,
             ];
             $tmp_dbeg       = explode("-", (string) $data["date_in"]);
             $tmp_dend       = explode("-", (string) $data["date_use"]);
@@ -1071,29 +1073,29 @@ class Cartridge extends CommonDBChild
            ? __('Used cartridges')
            : __('Worn cartridges')) . "</p>";
         renderTwigTemplate('table.twig', [
-           'id' => $massiveActionContainerId,
-           'fields' => $fields,
-           'values' => $values,
-           'massive_action' => $massive_action,
+            'id' => $massiveActionContainerId,
+            'fields' => $fields,
+            'values' => $values,
+            'massive_action' => $massive_action,
         ]);
 
         if ($old) { // Print average
             $fields = [
-               __('Average time in stock'),
-               __('Average time in use'),
-               __('Average number of printed pages'),
+                __('Average time in stock'),
+                __('Average time in use'),
+                __('Average number of printed pages'),
             ];
             $values = [
-               ($number > 0) ? [
-                  round($stock_time / $number / 60 / 60 / 24 / 30.5, 1),
-                  round($use_time / $number / 60 / 60 / 24 / 30.5, 1),
-                  round($pages_printed / ($nb_pages_printed ? $nb_pages_printed : 1)),
-               ] : [],
+                ($number > 0) ? [
+                    round($stock_time / $number / 60 / 60 / 24 / 30.5, 1),
+                    round($use_time / $number / 60 / 60 / 24 / 30.5, 1),
+                    round($pages_printed / ($nb_pages_printed ? $nb_pages_printed : 1)),
+                ] : [],
             ];
             renderTwigTemplate('table.twig', [
-               'fields' => $fields,
-               'values' => $values,
-               'minimal' => true,
+                'fields' => $fields,
+                'values' => $values,
+                'minimal' => true,
             ]);
         }
     }
@@ -1103,11 +1105,11 @@ class Cartridge extends CommonDBChild
      * Show form for Cartridge
      * @since 0.84
      *
-     * @param integer $ID       Id of the cartridge
+     * @param int $ID       Id of the cartridge
      * @param array   $options  Array of possible options:
      *     - parent Object : the printers where the cartridge is used
      *
-     * @return boolean False if there was a rights issue. Otherwise, returns true.
+     * @return bool False if there was a rights issue. Otherwise, returns true.
      */
     public function showForm($ID, $options = [])
     {
@@ -1136,8 +1138,8 @@ class Cartridge extends CommonDBChild
         echo "<td>" . _n('Printer', 'Printers', 1) . "</td><td>";
         echo $printer->getLink();
         echo "<input type='hidden' name='printers_id' value='" . $this->getField('printers_id') . "'>\n";
-        echo "<input type='hidden' name='cartridgeitems_id' value='" .
-               $this->getField('cartridgeitems_id') . "'>\n";
+        echo "<input type='hidden' name='cartridgeitems_id' value='"
+               . $this->getField('cartridgeitems_id') . "'>\n";
         echo "</td>\n";
         echo "<td>" . _n('Cartridge model', 'Cartridge models', 1) . "</td>";
         echo "<td>" . $cartitem->getLink() . "</td></tr>\n";
@@ -1149,9 +1151,9 @@ class Cartridge extends CommonDBChild
         echo "<td>" . __('Use date') . "</td><td>";
         if ($is_used && !$is_old) {
             Html::showDateField("date_use", ['value'      => $this->fields["date_use"],
-                                                  'maybeempty' => false,
-                                                  'canedit'    => true,
-                                                  'min'        => $this->fields["date_in"]]);
+                'maybeempty' => false,
+                'canedit'    => true,
+                'min'        => $this->fields["date_in"]]);
         } else {
             echo Html::convDate($this->fields["date_use"]);
         }
@@ -1161,9 +1163,9 @@ class Cartridge extends CommonDBChild
             echo "<tr class='tab_bg_1'>";
             echo "<td>" . __('End date') . "</td><td>";
             Html::showDateField("date_out", ['value'      => $this->fields["date_out"],
-                                                  'maybeempty' => false,
-                                                  'canedit'    => true,
-                                                  'min'        => $this->fields["date_use"]]);
+                'maybeempty' => false,
+                'canedit'    => true,
+                'min'        => $this->fields["date_use"]]);
             echo "</td>";
             echo "<td>" . __('Printer counter') . "</td><td>";
             echo "<input type='text' name='pages' value=\"" . $this->fields['pages'] . "\">";
@@ -1178,7 +1180,7 @@ class Cartridge extends CommonDBChild
     /**
      * Get notification parameters by entity
      *
-     * @param integer $entity The entity (default 0)
+     * @param int $entity The entity (default 0)
      * @return array Array of notification parameters
      */
     public static function getNotificationParameters($entity = 0)
@@ -1187,9 +1189,9 @@ class Cartridge extends CommonDBChild
 
         //Look for parameters for this entity
         $iterator = $DB->request([
-           'SELECT' => ['cartridges_alert_repeat'],
-           'FROM'   => 'glpi_entities',
-           'WHERE'  => ['id' => $entity]
+            'SELECT' => ['cartridges_alert_repeat'],
+            'FROM'   => 'glpi_entities',
+            'WHERE'  => ['id' => $entity],
         ]);
 
         if (!count($iterator)) {
@@ -1233,7 +1235,7 @@ class Cartridge extends CommonDBChild
     /**
      * Count the number of cartridges associated with the given cartridge item.
      * @param CartridgeItem $item CartridgeItem object
-     * @return integer
+     * @return int
      */
     public static function countForCartridgeItem(CartridgeItem $item)
     {
@@ -1245,7 +1247,7 @@ class Cartridge extends CommonDBChild
     /**
      * Count the number of cartridges associated with the given printer.
      * @param Printer $item Printer object
-     * @return integer
+     * @return int
      */
     public static function countForPrinter(Printer $item)
     {

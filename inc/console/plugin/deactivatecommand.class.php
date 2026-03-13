@@ -103,7 +103,7 @@ class DeactivateCommand extends AbstractPluginCommand
      *
      * @param string  $directory
      *
-     * @return boolean
+     * @return bool
      */
     private function canRunDeactivateMethod($directory)
     {
@@ -153,10 +153,10 @@ class DeactivateCommand extends AbstractPluginCommand
         $choices = [];
         $plugin_iterator = $this->db->request(
             [
-              'FROM'  => Plugin::getTable(),
-              'WHERE' => [
-                 'state' => Plugin::ACTIVATED
-              ]
+                'FROM'  => Plugin::getTable(),
+                'WHERE' => [
+                    'state' => Plugin::ACTIVATED,
+                ],
             ]
         );
         foreach ($plugin_iterator as $plugin) {

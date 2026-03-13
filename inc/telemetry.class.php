@@ -50,13 +50,13 @@ class Telemetry extends CommonGLPI
     public static function getTelemetryInfos(bool $hide_sensitive_data = false): array
     {
         $data = [
-           'glpi'   => self::grabGlpiInfos($hide_sensitive_data),
-           'system' => [
-              'db'           => self::grabDbInfos($hide_sensitive_data),
-              'web_server'   => self::grabWebserverInfos($hide_sensitive_data),
-              'php'          => self::grabPhpInfos($hide_sensitive_data),
-              'os'           => self::grabOsInfos($hide_sensitive_data)
-           ]
+            'glpi'   => self::grabGlpiInfos($hide_sensitive_data),
+            'system' => [
+                'db'           => self::grabDbInfos($hide_sensitive_data),
+                'web_server'   => self::grabWebserverInfos($hide_sensitive_data),
+                'php'          => self::grabPhpInfos($hide_sensitive_data),
+                'os'           => self::grabOsInfos($hide_sensitive_data),
+            ],
         ];
 
         return $data;
@@ -72,37 +72,37 @@ class Telemetry extends CommonGLPI
         global $CFG_GLPI;
 
         $glpi = [
-           'uuid'               => $hide_sensitive_data ? 'REDACTED' : self::getInstanceUuid(),
-           'version'            => $hide_sensitive_data ? 'REDACTED' : ITSM_VERSION,
-           'plugins'            => [],
-           'default_language'   => $CFG_GLPI['language'],
-           'install_mode'       => GLPI_INSTALL_MODE,
-           'usage'              => [
-              'avg_entities'          => self::getAverage('Entity'),
-              'avg_computers'         => self::getAverage('Computer'),
-              'avg_networkequipments' => self::getAverage('NetworkEquipment'),
-              'avg_tickets'           => self::getAverage('Ticket'),
-              'avg_problems'          => self::getAverage('Problem'),
-              'avg_changes'           => self::getAverage('Change'),
-              'avg_projects'          => self::getAverage('Project'),
-              'avg_users'             => self::getAverage('User'),
-              'avg_groups'            => self::getAverage('Group'),
-              'ldap_enabled'          => AuthLDAP::useAuthLdap(),
-              'mailcollector_enabled' => (MailCollector::countActiveCollectors() > 0),
-              'notifications_modes'   => []
-           ]
+            'uuid'               => $hide_sensitive_data ? 'REDACTED' : self::getInstanceUuid(),
+            'version'            => $hide_sensitive_data ? 'REDACTED' : ITSM_VERSION,
+            'plugins'            => [],
+            'default_language'   => $CFG_GLPI['language'],
+            'install_mode'       => GLPI_INSTALL_MODE,
+            'usage'              => [
+                'avg_entities'          => self::getAverage('Entity'),
+                'avg_computers'         => self::getAverage('Computer'),
+                'avg_networkequipments' => self::getAverage('NetworkEquipment'),
+                'avg_tickets'           => self::getAverage('Ticket'),
+                'avg_problems'          => self::getAverage('Problem'),
+                'avg_changes'           => self::getAverage('Change'),
+                'avg_projects'          => self::getAverage('Project'),
+                'avg_users'             => self::getAverage('User'),
+                'avg_groups'            => self::getAverage('Group'),
+                'ldap_enabled'          => AuthLDAP::useAuthLdap(),
+                'mailcollector_enabled' => (MailCollector::countActiveCollectors() > 0),
+                'notifications_modes'   => [],
+            ],
         ];
 
         $plugins = new Plugin();
         foreach ($plugins->getList(['directory', 'version']) as $plugin) {
             $glpi['plugins'][] = [
-               'key'       => $plugin['directory'],
-               'version'   => $hide_sensitive_data ? 'REDACTED' : $plugin['version']
+                'key'       => $plugin['directory'],
+                'version'   => $hide_sensitive_data ? 'REDACTED' : $plugin['version'],
             ];
         }
 
         if ($CFG_GLPI['use_notifications']) {
-            foreach (array_keys(\Notification_NotificationTemplate::getModes()) as $mode) {
+            foreach (array_keys(Notification_NotificationTemplate::getModes()) as $mode) {
                 if ($CFG_GLPI['notifications_' . $mode]) {
                     $glpi['usage']['notifications'][] = $mode;
                 }
@@ -124,17 +124,17 @@ class Telemetry extends CommonGLPI
         $dbinfos = $DB->getInfo();
 
         $size_res = $DB->request([
-           'SELECT' => new \QueryExpression("ROUND(SUM(data_length + index_length) / 1024 / 1024, 1) AS dbsize"),
-           'FROM'   => 'information_schema.tables',
-           'WHERE'  => ['table_schema' => $DB->dbdefault]
+            'SELECT' => new QueryExpression("ROUND(SUM(data_length + index_length) / 1024 / 1024, 1) AS dbsize"),
+            'FROM'   => 'information_schema.tables',
+            'WHERE'  => ['table_schema' => $DB->dbdefault],
         ])->next();
 
         $db = [
-           'engine'    => $dbinfos['Server Software'],
-           'version'   => $hide_sensitive_data ? 'REDACTED' : $dbinfos['Server Version'],
-           'size'      => $size_res['dbsize'],
-           'log_size'  => '',
-           'sql_mode'  => $dbinfos['Server SQL Mode']
+            'engine'    => $dbinfos['Server Software'],
+            'version'   => $hide_sensitive_data ? 'REDACTED' : $dbinfos['Server Version'],
+            'size'      => $size_res['dbsize'],
+            'log_size'  => '',
+            'sql_mode'  => $dbinfos['Server SQL Mode'],
         ];
 
         return $db;
@@ -150,8 +150,8 @@ class Telemetry extends CommonGLPI
         global $CFG_GLPI;
 
         $server = [
-           'engine'  => '',
-           'version' => '',
+            'engine'  => '',
+            'version' => '',
         ];
 
         if (!filter_var(gethostbyname(parse_url((string) $CFG_GLPI['url_base'], PHP_URL_HOST)), FILTER_VALIDATE_IP)) {
@@ -189,16 +189,16 @@ class Telemetry extends CommonGLPI
     public static function grabPhpInfos($hide_sensitive_data = false)
     {
         $php = [
-           'version'   => $hide_sensitive_data ? 'REDACTED' : str_replace(PHP_EXTRA_VERSION, '', PHP_VERSION),
-           'modules'   => get_loaded_extensions(),
-           'setup'     => [
-              'max_execution_time'    => ini_get('max_execution_time'),
-              'memory_limit'          => ini_get('memory_limit'),
-              'post_max_size'         => ini_get('post_max_size'),
-              'safe_mode'             => ini_get('safe_mode'),
-              'session'               => ini_get('session.save_handler'),
-              'upload_max_filesize'   => ini_get('upload_max_filesize')
-           ]
+            'version'   => $hide_sensitive_data ? 'REDACTED' : str_replace(PHP_EXTRA_VERSION, '', PHP_VERSION),
+            'modules'   => get_loaded_extensions(),
+            'setup'     => [
+                'max_execution_time'    => ini_get('max_execution_time'),
+                'memory_limit'          => ini_get('memory_limit'),
+                'post_max_size'         => ini_get('post_max_size'),
+                'safe_mode'             => ini_get('safe_mode'),
+                'session'               => ini_get('session.save_handler'),
+                'upload_max_filesize'   => ini_get('upload_max_filesize'),
+            ],
         ];
 
         return $php;
@@ -216,9 +216,9 @@ class Telemetry extends CommonGLPI
             $distro = preg_replace('/\s+$/S', '', file_get_contents('/etc/redhat-release'));
         }
         $os = [
-           'family'       => php_uname('s'),
-           'distribution' => ($distro ?: ''),
-           'version'      => $hide_sensitive_data ? 'REDACTED' : php_uname('r')
+            'family'       => php_uname('s'),
+            'distribution' => ($distro ?: ''),
+            'version'      => $hide_sensitive_data ? 'REDACTED' : php_uname('r'),
         ];
         return $os;
     }
@@ -233,7 +233,7 @@ class Telemetry extends CommonGLPI
      */
     public static function getAverage($itemtype)
     {
-        $count = (int)countElementsInTable(getTableForItemType($itemtype));
+        $count = (int) countElementsInTable(getTableForItemType($itemtype));
 
         if ($count <= 500) {
             return '0-500';
@@ -278,8 +278,8 @@ class Telemetry extends CommonGLPI
 
         $url = GLPI_TELEMETRY_URI . '/telemetry';
         $opts = [
-           CURLOPT_POSTFIELDS      => $infos,
-           CURLOPT_HTTPHEADER      => ['Content-Type:application/json']
+            CURLOPT_POSTFIELDS      => $infos,
+            CURLOPT_HTTPHEADER      => ['Content-Type:application/json'],
         ];
 
         $errstr = null;
@@ -406,18 +406,18 @@ class Telemetry extends CommonGLPI
     /**
      * Is telemetry currently enabled
      *
-     * @return boolean
+     * @return bool
      */
     public static function isEnabled()
     {
         global $DB;
         $iterator = $DB->request([
-           'SELECT' => ['state'],
-           'FROM'   => 'glpi_crontasks',
-           'WHERE'  => [
-              'name'   => 'telemetry',
-              'state' => 1
-           ]
+            'SELECT' => ['state'],
+            'FROM'   => 'glpi_crontasks',
+            'WHERE'  => [
+                'name'   => 'telemetry',
+                'state' => 1,
+            ],
 
         ]);
         return count($iterator) > 0;
@@ -432,7 +432,7 @@ class Telemetry extends CommonGLPI
     public static function showTelemetry()
     {
         $out = "<h4><input type='checkbox' checked='checked' value='1' name='send_stats' id='send_stats'/>";
-        $out .= "<label for='send_stats'>" . __('Send "usage statistics"')  . "</label></h4>";
+        $out .= "<label for='send_stats'>" . __('Send "usage statistics"') . "</label></h4>";
         $out .= "<p><strong>" . __("We need your help to improve ITSM-NG and the plugins ecosystem!") . "</strong></p>";
         $out .= __("Once sent, usage statistics are aggregated and made available to a broad range of ITSM-NG developers.") . "</p>";
         $out .= "<p>" . __("Let us know your usage to improve future versions of ITSM-NG and its plugins!") . "</p>";
@@ -451,11 +451,11 @@ class Telemetry extends CommonGLPI
         $out = "<hr/>";
         $out .= "<h4>" . __('Reference your ITSM-NG') . "</h4>";
         $out .= "<p>" . sprintf(
-            __("Besides, if you appreciate GLPI and its community, " .
-            "please take a minute to reference your organization by filling %1\$s."),
+            __("Besides, if you appreciate GLPI and its community, "
+            . "please take a minute to reference your organization by filling %1\$s."),
             sprintf(
-                "<a href='" . GLPI_TELEMETRY_URI . "/reference?showmodal&uuid=" .
-                self::getRegistrationUuid() . "' target='_blank'>%1\$s</a>",
+                "<a href='" . GLPI_TELEMETRY_URI . "/reference?showmodal&uuid="
+                . self::getRegistrationUuid() . "' target='_blank'>%1\$s</a>",
                 __('the following form')
             )
         ) . "</p>";

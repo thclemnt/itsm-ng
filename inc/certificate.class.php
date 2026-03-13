@@ -1,5 +1,7 @@
 <?php
 
+use Glpi\Features\Clonable;
+
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
@@ -44,7 +46,7 @@ if (!defined('GLPI_ROOT')) {
  */
 class Certificate extends CommonDBTM
 {
-    use Glpi\Features\Clonable;
+    use Clonable;
 
     public $dohistory           = true;
     public static $rightname           = "certificate";
@@ -53,10 +55,10 @@ class Certificate extends CommonDBTM
     public function getCloneRelations(): array
     {
         return [
-           Infocom::class,
-           Contract_Item::class,
-           Document_Item::class,
-           KnowbaseItem_Item::class
+            Infocom::class,
+            Contract_Item::class,
+            Document_Item::class,
+            KnowbaseItem_Item::class,
         ];
     }
 
@@ -73,7 +75,7 @@ class Certificate extends CommonDBTM
 
         $this->deleteChildrenAndRelationsFromDb(
             [
-              Certificate_Item::class,
+                Certificate_Item::class,
             ]
         );
     }
@@ -84,265 +86,265 @@ class Certificate extends CommonDBTM
         $tab = [];
 
         $tab[] = [
-           'id'                 => 'common',
-           'name'               => __('Characteristics')
+            'id'                 => 'common',
+            'name'               => __('Characteristics'),
         ];
 
         $tab[] = [
-           'id'                 => '1',
-           'table'              => $this->getTable(),
-           'field'              => 'name',
-           'name'               => __('Name'),
-           'datatype'           => 'itemlink',
-           'massiveaction'      => false, // implicit key==1
-           'autocomplete'       => true,
+            'id'                 => '1',
+            'table'              => $this->getTable(),
+            'field'              => 'name',
+            'name'               => __('Name'),
+            'datatype'           => 'itemlink',
+            'massiveaction'      => false, // implicit key==1
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '2',
-           'table'              => $this->getTable(),
-           'field'              => 'id',
-           'name'               => __('ID'),
-           'massiveaction'      => false, // implicit field is id
-           'datatype'           => 'number'
+            'id'                 => '2',
+            'table'              => $this->getTable(),
+            'field'              => 'id',
+            'name'               => __('ID'),
+            'massiveaction'      => false, // implicit field is id
+            'datatype'           => 'number',
         ];
 
         $tab[] = [
-           'id'                 => '5',
-           'table'              => $this->getTable(),
-           'field'              => 'serial',
-           'name'               => __('Serial number'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '5',
+            'table'              => $this->getTable(),
+            'field'              => 'serial',
+            'name'               => __('Serial number'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '6',
-           'table'              => $this->getTable(),
-           'field'              => 'otherserial',
-           'name'               => __('Inventory number'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '6',
+            'table'              => $this->getTable(),
+            'field'              => 'otherserial',
+            'name'               => __('Inventory number'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab = array_merge($tab, Location::rawSearchOptionsToAdd());
 
         $tab[] = [
-           'id'                 => '7',
-           'table'              => 'glpi_certificatetypes',
-           'field'              => 'name',
-           'name'               => _n('Type', 'Types', 1),
-           'datatype'           => 'dropdown'
+            'id'                 => '7',
+            'table'              => 'glpi_certificatetypes',
+            'field'              => 'name',
+            'name'               => _n('Type', 'Types', 1),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '8',
-           'table'              => $this->getTable(),
-           'field'              => 'dns_suffix',
-           'name'               => __('DNS suffix'),
-           'autocomplete'       => true,
+            'id'                 => '8',
+            'table'              => $this->getTable(),
+            'field'              => 'dns_suffix',
+            'name'               => __('DNS suffix'),
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '9',
-           'table'              => $this->getTable(),
-           'field'              => 'is_autosign',
-           'name'               => __('Self-signed'),
-           'datatype'           => 'bool'
+            'id'                 => '9',
+            'table'              => $this->getTable(),
+            'field'              => 'is_autosign',
+            'name'               => __('Self-signed'),
+            'datatype'           => 'bool',
         ];
 
         $tab[] = [
-           'id'                 => '10',
-           'table'              => $this->getTable(),
-           'field'              => 'date_expiration',
-           'name'               => __('Expiration date'),
-           'datatype'           => 'date',
-           'maybefuture'        => true,
+            'id'                 => '10',
+            'table'              => $this->getTable(),
+            'field'              => 'date_expiration',
+            'name'               => __('Expiration date'),
+            'datatype'           => 'date',
+            'maybefuture'        => true,
         ];
 
         $tab[] = [
-           'id'                 => '11',
-           'table'              => $this->getTable(),
-           'field'              => 'command',
-           'name'               => __('Command used'),
-           'datatype'           => 'text'
+            'id'                 => '11',
+            'table'              => $this->getTable(),
+            'field'              => 'command',
+            'name'               => __('Command used'),
+            'datatype'           => 'text',
         ];
 
         $tab[] = [
-           'id'                 => '12',
-           'table'              => $this->getTable(),
-           'field'              => 'certificate_request',
-           'name'               => __('Certificate request (CSR)'),
-           'datatype'           => 'text'
+            'id'                 => '12',
+            'table'              => $this->getTable(),
+            'field'              => 'certificate_request',
+            'name'               => __('Certificate request (CSR)'),
+            'datatype'           => 'text',
         ];
 
         $tab[] = [
-           'id'                 => '13',
-           'table'              => $this->getTable(),
-           'field'              => 'certificate_item',
-           'name'               => self::getTypeName(1),
-           'datatype'           => 'text'
+            'id'                 => '13',
+            'table'              => $this->getTable(),
+            'field'              => 'certificate_item',
+            'name'               => self::getTypeName(1),
+            'datatype'           => 'text',
         ];
 
         $tab[] = [
-           'id'                 => '14',
-           'table'              => 'glpi_certificates_items',
-           'field'              => 'items_id',
-           'name'               => _n('Associated item', 'Associated items', Session::getPluralNumber()),
-           'nosearch'           => true,
-           'massiveaction'      => false,
-           'forcegroupby'       => true,
-           'additionalfields'   => ['itemtype'],
-           'joinparams'         => ['jointype' => 'child']
+            'id'                 => '14',
+            'table'              => 'glpi_certificates_items',
+            'field'              => 'items_id',
+            'name'               => _n('Associated item', 'Associated items', Session::getPluralNumber()),
+            'nosearch'           => true,
+            'massiveaction'      => false,
+            'forcegroupby'       => true,
+            'additionalfields'   => ['itemtype'],
+            'joinparams'         => ['jointype' => 'child'],
         ];
 
         $tab[] = [
-           'id'                 => '15',
-           'table'              => $this->getTable(),
-           'field'              => 'comment',
-           'name'               => __('Comments'),
-           'datatype'           => 'text'
+            'id'                 => '15',
+            'table'              => $this->getTable(),
+            'field'              => 'comment',
+            'name'               => __('Comments'),
+            'datatype'           => 'text',
         ];
 
         $tab[] = [
-           'id'                 => '16',
-           'table'              => $this->getTable(),
-           'field'              => 'contact',
-           'name'               => __('Alternate username'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '16',
+            'table'              => $this->getTable(),
+            'field'              => 'contact',
+            'name'               => __('Alternate username'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '17',
-           'table'              => $this->getTable(),
-           'field'              => 'contact_num',
-           'name'               => __('Alternate username number'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '17',
+            'table'              => $this->getTable(),
+            'field'              => 'contact_num',
+            'name'               => __('Alternate username number'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '18',
-           'table'              => $this->getTable(),
-           'field'              => 'dns_name',
-           'name'               => __('DNS name'),
-           'autocomplete'       => true,
+            'id'                 => '18',
+            'table'              => $this->getTable(),
+            'field'              => 'dns_name',
+            'name'               => __('DNS name'),
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '19',
-           'table'              => $this->getTable(),
-           'field'              => 'date_mod',
-           'name'               => __('Last update'),
-           'datatype'           => 'datetime',
-           'massiveaction'      => false
+            'id'                 => '19',
+            'table'              => $this->getTable(),
+            'field'              => 'date_mod',
+            'name'               => __('Last update'),
+            'datatype'           => 'datetime',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '23',
-           'table'              => 'glpi_manufacturers',
-           'field'              => 'name',
-           'name'               => Manufacturer::getTypeName(1),
-           'datatype'           => 'dropdown'
+            'id'                 => '23',
+            'table'              => 'glpi_manufacturers',
+            'field'              => 'name',
+            'name'               => Manufacturer::getTypeName(1),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '24',
-           'table'              => 'glpi_users',
-           'field'              => 'name',
-           'linkfield'          => 'users_id_tech',
-           'name'               => __('Technician in charge of the hardware'),
-           'datatype'           => 'dropdown',
-           'right'              => 'own_ticket'
+            'id'                 => '24',
+            'table'              => 'glpi_users',
+            'field'              => 'name',
+            'linkfield'          => 'users_id_tech',
+            'name'               => __('Technician in charge of the hardware'),
+            'datatype'           => 'dropdown',
+            'right'              => 'own_ticket',
         ];
 
         $tab[] = [
-           'id'                 => '31',
-           'table'              => 'glpi_states',
-           'field'              => 'completename',
-           'name'               => __('Status'),
-           'datatype'           => 'dropdown',
-           'condition'          => ['is_visible_certificate' => 1]
+            'id'                 => '31',
+            'table'              => 'glpi_states',
+            'field'              => 'completename',
+            'name'               => __('Status'),
+            'datatype'           => 'dropdown',
+            'condition'          => ['is_visible_certificate' => 1],
         ];
 
         $tab[] = [
-           'id'                 => '49',
-           'table'              => 'glpi_groups',
-           'field'              => 'completename',
-           'linkfield'          => 'groups_id_tech',
-           'name'               => __('Group in charge of the hardware'),
-           'condition'          => ['is_assign' => 1],
-           'datatype'           => 'dropdown'
+            'id'                 => '49',
+            'table'              => 'glpi_groups',
+            'field'              => 'completename',
+            'linkfield'          => 'groups_id_tech',
+            'name'               => __('Group in charge of the hardware'),
+            'condition'          => ['is_assign' => 1],
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '61',
-           'table'              => $this->getTable(),
-           'field'              => 'template_name',
-           'name'               => __('Template name'),
-           'datatype'           => 'text',
-           'massiveaction'      => false,
-           'nosearch'           => true,
-           'nodisplay'          => true,
-           'autocomplete'       => true,
+            'id'                 => '61',
+            'table'              => $this->getTable(),
+            'field'              => 'template_name',
+            'name'               => __('Template name'),
+            'datatype'           => 'text',
+            'massiveaction'      => false,
+            'nosearch'           => true,
+            'nodisplay'          => true,
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '70',
-           'table'              => 'glpi_users',
-           'field'              => 'name',
-           'name'               => User::getTypeName(1),
-           'datatype'           => 'dropdown',
-           'right'              => 'all'
+            'id'                 => '70',
+            'table'              => 'glpi_users',
+            'field'              => 'name',
+            'name'               => User::getTypeName(1),
+            'datatype'           => 'dropdown',
+            'right'              => 'all',
         ];
 
         $tab[] = [
-           'id'                 => '71',
-           'table'              => 'glpi_groups',
-           'field'              => 'completename',
-           'name'               => Group::getTypeName(1),
-           'condition'          => ['is_itemgroup' => 1],
-           'datatype'           => 'dropdown'
+            'id'                 => '71',
+            'table'              => 'glpi_groups',
+            'field'              => 'completename',
+            'name'               => Group::getTypeName(1),
+            'condition'          => ['is_itemgroup' => 1],
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '72',
-           'table'              => 'glpi_certificates_items',
-           'field'              => 'id',
-           'name'               => _x('quantity', 'Number of associated items'),
-           'forcegroupby'       => true,
-           'usehaving'          => true,
-           'datatype'           => 'count',
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'jointype'           => 'child'
-           ]
+            'id'                 => '72',
+            'table'              => 'glpi_certificates_items',
+            'field'              => 'id',
+            'name'               => _x('quantity', 'Number of associated items'),
+            'forcegroupby'       => true,
+            'usehaving'          => true,
+            'datatype'           => 'count',
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'jointype'           => 'child',
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '80',
-           'table'              => 'glpi_entities',
-           'field'              => 'completename',
-           'name'               => Entity::getTypeName(1),
-           'datatype'           => 'dropdown'
+            'id'                 => '80',
+            'table'              => 'glpi_entities',
+            'field'              => 'completename',
+            'name'               => Entity::getTypeName(1),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '86',
-           'table'              => $this->getTable(),
-           'field'              => 'is_recursive',
-           'name'               => __('Child entities'),
-           'datatype'           => 'bool'
+            'id'                 => '86',
+            'table'              => $this->getTable(),
+            'field'              => 'is_recursive',
+            'name'               => __('Child entities'),
+            'datatype'           => 'bool',
         ];
 
         $tab[] = [
-           'id'                 => '121',
-           'table'              => $this->getTable(),
-           'field'              => 'date_creation',
-           'name'               => __('Creation date'),
-           'datatype'           => 'datetime',
-           'massiveaction'      => false
+            'id'                 => '121',
+            'table'              => $this->getTable(),
+            'field'              => 'date_creation',
+            'name'               => __('Creation date'),
+            'datatype'           => 'datetime',
+            'massiveaction'      => false,
         ];
 
         // add objectlock search options
@@ -362,90 +364,90 @@ class Certificate extends CommonDBTM
         }
 
         $joinparams = [
-           'beforejoin'         => [
-              'table'              => Certificate_Item::getTable(),
-              'joinparams'         => [
-                 'jointype'           => 'itemtype_item',
-                 'specific_itemtype'  => $itemtype
-              ]
-           ]
+            'beforejoin'         => [
+                'table'              => Certificate_Item::getTable(),
+                'joinparams'         => [
+                    'jointype'           => 'itemtype_item',
+                    'specific_itemtype'  => $itemtype,
+                ],
+            ],
         ];
 
         $tab[] = [
-           'id'                 => 'certificate',
-           'name'               => $name
+            'id'                 => 'certificate',
+            'name'               => $name,
         ];
 
         $tab[] = [
-           'id'                 => '1300',
-           'table'              => self::getTable(),
-           'field'              => 'name',
-           'name'               => __('Name'),
-           'datatype'           => 'itemlink',
-           'forcegroupby'       => true,
-           'massiveaction'      => false,
-           'joinparams'         => $joinparams
+            'id'                 => '1300',
+            'table'              => self::getTable(),
+            'field'              => 'name',
+            'name'               => __('Name'),
+            'datatype'           => 'itemlink',
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
+            'joinparams'         => $joinparams,
         ];
 
         $tab[] = [
-           'id'                 => '1301',
-           'table'              => self::getTable(),
-           'field'              => 'serial',
-           'datatype'           => 'string',
-           'name'               => __('Serial number'),
-           'forcegroupby'       => true,
-           'massiveaction'      => false,
-           'joinparams'         => $joinparams
+            'id'                 => '1301',
+            'table'              => self::getTable(),
+            'field'              => 'serial',
+            'datatype'           => 'string',
+            'name'               => __('Serial number'),
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
+            'joinparams'         => $joinparams,
         ];
 
         $tab[] = [
-           'id'                 => '1302',
-           'table'              => self::getTable(),
-           'field'              => 'otherserial',
-           'datatype'           => 'string',
-           'name'               => __('Inventory number'),
-           'forcegroupby'       => true,
-           'massiveaction'      => false,
-           'joinparams'         => $joinparams
+            'id'                 => '1302',
+            'table'              => self::getTable(),
+            'field'              => 'otherserial',
+            'datatype'           => 'string',
+            'name'               => __('Inventory number'),
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
+            'joinparams'         => $joinparams,
         ];
 
         $tab[] = [
-           'id'                 => '1304',
-           'table'              => CertificateType::getTable(),
-           'field'              => 'name',
-           'datatype'           => 'dropdown',
-           'name'               => _n('Type', 'Types', 1),
-           'forcegroupby'       => true,
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'beforejoin'         => [
-                 'table'              => self::getTable(),
-                 'joinparams'         => $joinparams
-              ]
-           ]
+            'id'                 => '1304',
+            'table'              => CertificateType::getTable(),
+            'field'              => 'name',
+            'datatype'           => 'dropdown',
+            'name'               => _n('Type', 'Types', 1),
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'beforejoin'         => [
+                    'table'              => self::getTable(),
+                    'joinparams'         => $joinparams,
+                ],
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '1305',
-           'table'              => self::getTable(),
-           'field'              => 'comment',
-           'name'               => __('Comments'),
-           'forcegroupby'       => true,
-           'datatype'           => 'text',
-           'massiveaction'      => false,
-           'joinparams'         => $joinparams
+            'id'                 => '1305',
+            'table'              => self::getTable(),
+            'field'              => 'comment',
+            'name'               => __('Comments'),
+            'forcegroupby'       => true,
+            'datatype'           => 'text',
+            'massiveaction'      => false,
+            'joinparams'         => $joinparams,
         ];
 
         $tab[] = [
-           'id'                 => '1306',
-           'table'              => self::getTable(),
-           'field'              => 'date_expiration',
-           'name'               => __('Expiration'),
-           'forcegroupby'       => true,
-           'datatype'           => 'date',
-           'emptylabel'         => __('Never expire'),
-           'massiveaction'      => false,
-           'joinparams'         => $joinparams
+            'id'                 => '1306',
+            'table'              => self::getTable(),
+            'field'              => 'date_expiration',
+            'name'               => __('Expiration'),
+            'forcegroupby'       => true,
+            'datatype'           => 'date',
+            'emptylabel'         => __('Never expire'),
+            'massiveaction'      => false,
+            'joinparams'         => $joinparams,
         ];
 
         return $tab;
@@ -498,134 +500,134 @@ class Certificate extends CommonDBTM
     public function showForm($ID)
     {
         $form = [
-           'action' => Toolbox::getItemTypeFormURL('certificate'),
-           'itemtype' => $this::class,
-           'content' => [
-              __('Certificate') => [
-                 'visible' => true,
-                 'inputs' => [
-                    $this->isNewID($ID) ? [] : [
-                       'type' => 'hidden',
-                       'name' => 'id',
-                       'value' => $ID
+            'action' => Toolbox::getItemTypeFormURL('certificate'),
+            'itemtype' => $this::class,
+            'content' => [
+                __('Certificate') => [
+                    'visible' => true,
+                    'inputs' => [
+                        $this->isNewID($ID) ? [] : [
+                            'type' => 'hidden',
+                            'name' => 'id',
+                            'value' => $ID,
+                        ],
+                        __('Name') => [
+                            'name' => 'name',
+                            'type' => 'text',
+                            'value' => $this->fields['name'] ?? '',
+                        ],
+                        __('Location') => [
+                            'name' => 'locations_id',
+                            'type' => 'select',
+                            'itemtype' => Location::class,
+                            'value' => $this->fields['locations_id'] ?? '',
+                            'actions' => getItemActionButtons(['info', 'add'], "Location"),
+                        ],
+                        __('Technician in charge of the hardware') => [
+                            'name' => 'users_id_tech',
+                            'type' => 'select',
+                            'values' => getOptionsForUsers('own_ticket', ['entities_id' => $this->fields['entities_id']  ?? '']),
+                            'value' => $this->fields['users_id_tech'] ?? '',
+                            'actions' => getItemActionButtons(['info'], "User"),
+                        ],
+                        __('Types') => [
+                            'name' => 'certificatetypes_id',
+                            'type' => 'select',
+                            'values' => getOptionForItems("CertificateType"),
+                            'value' => $this->fields['certificatetypes_id'] ?? '',
+                            'actions' => getItemActionButtons(['info', 'add'], "CertificateType"),
+                        ],
+                        __('Manufacturer') . ' (' . __('Root CA') . ')' => [
+                            'name' => 'manufacturers_id',
+                            'type' => 'select',
+                            'values' => getOptionForItems("Manufacturer"),
+                            'value' => $this->fields['manufacturers_id'] ?? '',
+                            'actions' => getItemActionButtons(['info', 'add'], "Manufacturer"),
+                        ],
+                        __('Serial number') => [
+                            'name' => 'serial',
+                            'type' => 'text',
+                            'value' => $this->fields['serial'] ?? '',
+                        ],
+                        __('Inventory number') => [
+                            'name' => 'otherserial',
+                            'type' => 'text',
+                            'value' => $this->fields['otherserial'] ?? '',
+                        ],
+                        __('Group in charge of the hardware') => [
+                            'name' => 'groups_id_tech',
+                            'type' => 'select',
+                            'values' => getOptionForItems("Group"),
+                            'value' => $this->fields['groups_id_tech'] ?? '',
+                            'actions' => getItemActionButtons(['info', 'add'], "Group"),
+                        ],
+                        __('User') => [
+                            'name' => 'users_id',
+                            'type' => 'select',
+                            'values' => getOptionForItems("User"),
+                            'value' => $this->fields['users_id'] ?? '',
+                            'actions' => getItemActionButtons(['info'], "User"),
+                        ],
+                        __('Group') => [
+                            'name' => 'groups_id',
+                            'type' => 'select',
+                            'values' => getOptionForItems("Group"),
+                            'value' => $this->fields['groups_id'] ?? '',
+                            'actions' => getItemActionButtons(['info', 'add'], "Group"),
+                        ],
+                        __('Alternate username number') => [
+                            'name' => 'contact_num',
+                            'type' => 'text',
+                            'value' => $this->fields['contact_num'] ?? '',
+                        ],
+                        __('Alternate username') => [
+                            'name' => 'contact',
+                            'type' => 'text',
+                            'value' => $this->fields['contact'] ?? '',
+                        ],
+                        __('Self-signed') => [
+                            'name' => 'is_autosign',
+                            'type' => 'checkbox',
+                            'value' => $this->fields['is_autosign'] ?? '',
+                        ],
+                        __('DNS name') => [
+                            'name' => 'dns_name',
+                            'type' => 'text',
+                            'value' => $this->fields['dns_name'] ?? '',
+                        ],
+                        __('DNS suffix') => [
+                            'name' => 'dns_suffix',
+                            'type' => 'text',
+                            'value' => $this->fields['dns_suffix'] ?? '',
+                        ],
+                        __('Comments') => [
+                            'name' => 'comment',
+                            'type' => 'textarea',
+                            'value' => $this->fields['comment'] ?? '',
+                        ],
+                        __('Expiration date') => [
+                            'name' => 'date_expiration',
+                            'type' => 'date',
+                            'value' => $this->fields['date_expiration'] ?? '',
+                        ],
+                        __('Command used') => [
+                            'name' => 'command',
+                            'type' => 'textarea',
+                            'value' => $this->fields['command'] ?? '',
+                        ],
+                        __('Certificate request (CSR)') => [
+                            'name' => 'certificate_request',
+                            'type' => 'textarea',
+                            'value' => $this->fields['certificate_request'] ?? '',
+                        ],
+                        __('Certificat') => [
+                            'name' => 'certificate_item',
+                            'type' => 'textarea',
+                            'value' => $this->fields['certificate_item'] ?? '',
+                        ],
                     ],
-                    __('Name') => [
-                       'name' => 'name',
-                       'type' => 'text',
-                       'value' => $this->fields['name'] ?? '',
-                    ],
-                    __('Location') => [
-                       'name' => 'locations_id',
-                       'type' => 'select',
-                       'itemtype' => Location::class,
-                       'value' => $this->fields['locations_id'] ?? '',
-                       'actions' => getItemActionButtons(['info', 'add'], "Location"),
-                    ],
-                    __('Technician in charge of the hardware') => [
-                       'name' => 'users_id_tech',
-                       'type' => 'select',
-                       'values' => getOptionsForUsers('own_ticket', ['entities_id' => $this->fields['entities_id']  ?? '']),
-                       'value' => $this->fields['users_id_tech'] ?? '',
-                       'actions' => getItemActionButtons(['info'], "User"),
-                    ],
-                    __('Types') => [
-                       'name' => 'certificatetypes_id',
-                       'type' => 'select',
-                       'values' => getOptionForItems("CertificateType"),
-                       'value' => $this->fields['certificatetypes_id'] ?? '',
-                       'actions' => getItemActionButtons(['info', 'add'], "CertificateType"),
-                    ],
-                    __('Manufacturer') . ' (' .  __('Root CA') . ')' => [
-                       'name' => 'manufacturers_id',
-                       'type' => 'select',
-                       'values' => getOptionForItems("Manufacturer"),
-                       'value' => $this->fields['manufacturers_id'] ?? '',
-                       'actions' => getItemActionButtons(['info', 'add'], "Manufacturer"),
-                    ],
-                    __('Serial number') => [
-                       'name' => 'serial',
-                       'type' => 'text',
-                       'value' => $this->fields['serial'] ?? '',
-                    ],
-                    __('Inventory number') => [
-                       'name' => 'otherserial',
-                       'type' => 'text',
-                       'value' => $this->fields['otherserial'] ?? '',
-                    ],
-                    __('Group in charge of the hardware') => [
-                       'name' => 'groups_id_tech',
-                       'type' => 'select',
-                       'values' => getOptionForItems("Group"),
-                       'value' => $this->fields['groups_id_tech'] ?? '',
-                       'actions' => getItemActionButtons(['info', 'add'], "Group"),
-                    ],
-                    __('User') => [
-                       'name' => 'users_id',
-                       'type' => 'select',
-                       'values' => getOptionForItems("User"),
-                       'value' => $this->fields['users_id'] ?? '',
-                       'actions' => getItemActionButtons(['info'], "User"),
-                    ],
-                    __('Group') => [
-                       'name' => 'groups_id',
-                       'type' => 'select',
-                       'values' => getOptionForItems("Group"),
-                       'value' => $this->fields['groups_id'] ?? '',
-                       'actions' => getItemActionButtons(['info', 'add'], "Group"),
-                    ],
-                    __('Alternate username number') => [
-                       'name' => 'contact_num',
-                       'type' => 'text',
-                       'value' => $this->fields['contact_num'] ?? '',
-                    ],
-                    __('Alternate username') => [
-                       'name' => 'contact',
-                       'type' => 'text',
-                       'value' => $this->fields['contact'] ?? '',
-                    ],
-                    __('Self-signed') => [
-                       'name' => 'is_autosign',
-                       'type' => 'checkbox',
-                       'value' => $this->fields['is_autosign'] ?? '',
-                    ],
-                    __('DNS name') => [
-                       'name' => 'dns_name',
-                       'type' => 'text',
-                       'value' => $this->fields['dns_name'] ?? '',
-                    ],
-                    __('DNS suffix') => [
-                       'name' => 'dns_suffix',
-                       'type' => 'text',
-                       'value' => $this->fields['dns_suffix'] ?? '',
-                    ],
-                    __('Comments') => [
-                       'name' => 'comment',
-                       'type' => 'textarea',
-                       'value' => $this->fields['comment'] ?? '',
-                    ],
-                    __('Expiration date') => [
-                       'name' => 'date_expiration',
-                       'type' => 'date',
-                       'value' => $this->fields['date_expiration'] ?? '',
-                    ],
-                    __('Command used') => [
-                       'name' => 'command',
-                       'type' => 'textarea',
-                       'value' => $this->fields['command'] ?? '',
-                    ],
-                    __('Certificate request (CSR)') => [
-                       'name' => 'certificate_request',
-                       'type' => 'textarea',
-                       'value' => $this->fields['certificate_request'] ?? '',
-                    ],
-                    __('Certificat') => [
-                       'name' => 'certificate_item',
-                       'type' => 'textarea',
-                       'value' => $this->fields['certificate_item'] ?? '',
-                    ],
-                 ]
-              ]
-           ]
+                ],
+            ],
         ];
         renderTwigForm($form, '', $this->fields);
 
@@ -668,20 +670,20 @@ class Certificate extends CommonDBTM
         switch ($ma->getAction()) {
             case __CLASS__ . MassiveAction::CLASS_ACTION_SEPARATOR . 'install':
                 Dropdown::showSelectItemFromItemtypes([
-                   'items_id_name' => 'item_item',
-                   'itemtype_name' => 'typeitem',
-                   'itemtypes'     => self::getTypes(true),
-                   'checkright'   => true
+                    'items_id_name' => 'item_item',
+                    'itemtype_name' => 'typeitem',
+                    'itemtypes'     => self::getTypes(true),
+                    'checkright'   => true,
                 ]);
                 echo Html::submit(_x('button', 'Post'), ['name' => 'massiveaction']);
                 return true;
                 break;
             case __CLASS__ . MassiveAction::CLASS_ACTION_SEPARATOR . 'uninstall':
                 Dropdown::showSelectItemFromItemtypes([
-                   'items_id_name' => 'item_item',
-                   'itemtype_name' => 'typeitem',
-                   'itemtypes'     => self::getTypes(true),
-                   'checkright'    => true
+                    'items_id_name' => 'item_item',
+                    'itemtype_name' => 'typeitem',
+                    'itemtypes'     => self::getTypes(true),
+                    'checkright'    => true,
                 ]);
                 echo Html::submit(_x('button', 'Post'), ['name' => 'massiveaction']);
                 return true;
@@ -713,9 +715,9 @@ class Certificate extends CommonDBTM
                 $input = $ma->getInput();
                 foreach ($ids as $id) {
                     $input = [
-                       'certificates_id' => $input['certificates_id'],
-                       'items_id'        => $id,
-                       'itemtype'        => $item->getType()
+                        'certificates_id' => $input['certificates_id'],
+                        'items_id'        => $id,
+                        'itemtype'        => $item->getType(),
                     ];
                     if ($certif_item->can(-1, UPDATE, $input)) {
                         if ($certif_item->add($input)) {
@@ -735,9 +737,9 @@ class Certificate extends CommonDBTM
                 foreach ($ids as $key) {
                     if ($item->can($key, UPDATE)) {
                         $values = [
-                           'certificates_id' => $key,
-                           'items_id' => $input["item_item"],
-                           'itemtype' => $input['typeitem']
+                            'certificates_id' => $key,
+                            'items_id' => $input["item_item"],
+                            'itemtype' => $input['typeitem'],
                         ];
                         if ($certif_item->add($values)) {
                             $ma->itemDone($item->getType(), $key, MassiveAction::ACTION_OK);
@@ -768,7 +770,7 @@ class Certificate extends CommonDBTM
     /**
      * Type than could be linked to a certificate
      *
-     * @param boolean $all Get all possible types or only allowed ones
+     * @param bool $all Get all possible types or only allowed ones
      *
      * @return array of types
      **/
@@ -806,7 +808,7 @@ class Certificate extends CommonDBTM
      *
      * @param CronTask $task CronTask to log, if NULL display (default NULL)
      *
-     * @return integer 0 : nothing to do 1 : done with success
+     * @return int 0 : nothing to do 1 : done with success
      **/
     public static function cronCertificate($task = null)
     {
@@ -824,38 +826,38 @@ class Certificate extends CommonDBTM
             // Check licenses
             $result = $DB->request(
                 [
-                  'SELECT'    => [
-                     'glpi_certificates.*',
-                  ],
-                  'FROM'      => self::getTable(),
-                  'LEFT JOIN' => [
-                     'glpi_alerts' => [
-                        'FKEY'   => [
-                           'glpi_alerts'       => 'items_id',
-                           'glpi_certificates' => 'id',
-                           [
-                              'AND' => [
-                                 'glpi_alerts.itemtype' => __CLASS__,
-                                 'glpi_alerts.type'     => Alert::END,
-                              ],
-                           ],
-                        ]
-                     ]
-                  ],
-                  'WHERE'     => [
-                     'glpi_alerts.date'              => null,
-                     'glpi_certificates.is_deleted'  => 0,
-                     'glpi_certificates.is_template' => 0,
-                     [
-                        'NOT' => ['glpi_certificates.date_expiration' => null],
-                     ],
-                     [
-                        'RAW' => [
-                           'DATEDIFF(' . DBmysql::quoteName('glpi_certificates.date_expiration') . ', CURDATE())' => ['<', $before]
-                        ]
-                     ],
-                     'glpi_certificates.entities_id' => $entity,
-                  ],
+                    'SELECT'    => [
+                        'glpi_certificates.*',
+                    ],
+                    'FROM'      => self::getTable(),
+                    'LEFT JOIN' => [
+                        'glpi_alerts' => [
+                            'FKEY'   => [
+                                'glpi_alerts'       => 'items_id',
+                                'glpi_certificates' => 'id',
+                                [
+                                    'AND' => [
+                                        'glpi_alerts.itemtype' => __CLASS__,
+                                        'glpi_alerts.type'     => Alert::END,
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                    'WHERE'     => [
+                        'glpi_alerts.date'              => null,
+                        'glpi_certificates.is_deleted'  => 0,
+                        'glpi_certificates.is_template' => 0,
+                        [
+                            'NOT' => ['glpi_certificates.date_expiration' => null],
+                        ],
+                        [
+                            'RAW' => [
+                                'DATEDIFF(' . DBmysql::quoteName('glpi_certificates.date_expiration') . ', CURDATE())' => ['<', $before],
+                            ],
+                        ],
+                        'glpi_certificates.entities_id' => $entity,
+                    ],
                 ]
             );
 
@@ -876,8 +878,8 @@ class Certificate extends CommonDBTM
             if (!empty($items)) {
                 $alert   = new Alert();
                 $options = [
-                   'entities_id'  => $entity,
-                   'certificates' => $items,
+                    'entities_id'  => $entity,
+                    'certificates' => $items,
                 ];
 
                 if (NotificationEvent::raiseEvent('alert', new self(), $options)) {
@@ -895,8 +897,8 @@ class Certificate extends CommonDBTM
                     }
 
                     $input = [
-                       'type'     => Alert::END,
-                       'itemtype' => __CLASS__,
+                        'type'     => Alert::END,
+                        'itemtype' => __CLASS__,
                     ];
 
                     // add alerts

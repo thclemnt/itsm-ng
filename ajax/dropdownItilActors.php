@@ -56,25 +56,25 @@ if (isset($_POST["type"])
                     }
                 }
 
-                $options = ['name'        => '_itil_'.$_POST["actortype"].'[users_id]',
-                                 'entity'      => $_POST['entity_restrict'],
-                                 'right'       => $right,
-                                 'rand'        => $rand,
-                                 'ldap_import' => true];
+                $options = ['name'        => '_itil_' . $_POST["actortype"] . '[users_id]',
+                    'entity'      => $_POST['entity_restrict'],
+                    'right'       => $right,
+                    'rand'        => $rand,
+                    'ldap_import' => true];
 
                 if ($CFG_GLPI["notifications_mailing"]) {
                     $paramscomment = ['value' => '__VALUE__',
-                       'allow_email' => $withemail,
-                       'field' => "_itil_" . $_POST["actortype"],
-                       'use_notification' => $_POST["use_notif"]];
+                        'allow_email' => $withemail,
+                        'field' => "_itil_" . $_POST["actortype"],
+                        'use_notification' => $_POST["use_notif"]];
                     // Fix rand value
                     $options['rand'] = $rand;
                     if ($withemail) {
                         $options['toupdate'] = [
-                           'value_fieldname' => 'value',
-                           'to_update'       => "notif_user_$rand",
-                           'url'             => $CFG_GLPI["root_doc"] . "/ajax/uemailUpdate.php",
-                           'moreparams'      => $paramscomment
+                            'value_fieldname' => 'value',
+                            'to_update'       => "notif_user_$rand",
+                            'url'             => $CFG_GLPI["root_doc"] . "/ajax/uemailUpdate.php",
+                            'moreparams'      => $paramscomment,
                         ];
                     }
                 }
@@ -86,10 +86,10 @@ if (isset($_POST["type"])
                         $toupdate[] = $options['toupdate'];
                     }
                     $toupdate[] = ['value_fieldname' => 'value',
-                                        'to_update'       => "countassign_$rand",
-                                        'url'             => $CFG_GLPI["root_doc"].
-                                                                 "/ajax/ticketassigninformation.php",
-                                        'moreparams'      => ['users_id_assign' => '__VALUE__']];
+                        'to_update'       => "countassign_$rand",
+                        'url'             => $CFG_GLPI["root_doc"]
+                                                 . "/ajax/ticketassigninformation.php",
+                        'moreparams'      => ['users_id_assign' => '__VALUE__']];
                     $options['toupdate'] = $toupdate;
                 }
 
@@ -106,7 +106,7 @@ if (isset($_POST["type"])
                         'entities_id' => $options['entity'],
                     ],
                 ]));
-                $url = isset($options['toupdate']['url']) ? $options['toupdate']['url'] : $options['toupdate'][0]['url'];
+                $url = $options['toupdate']['url'] ?? $options['toupdate'][0]['url'];
                 echo <<<HTML
                 <script type="text/javascript">
                 $('#{$options['name']}').on('change', function() {
@@ -129,18 +129,18 @@ if (isset($_POST["type"])
                 if ($CFG_GLPI["notifications_mailing"]) {
                     echo "<br><span id='notif_user_$rand'>";
                     if ($withemail) {
-                        echo __('Email followup').'&nbsp;';
+                        echo __('Email followup') . '&nbsp;';
                         renderTwigTemplate('macros/input.twig', [
-                           'type' => 'checkbox',
-                           'name' => '_itil_'.$_POST["actortype"].'[use_notification]',
-                           'value' => $_POST["use_notif"],
-                           'aria-label' => __('Use notifications'),
+                            'type' => 'checkbox',
+                            'name' => '_itil_' . $_POST["actortype"] . '[use_notification]',
+                            'value' => $_POST["use_notif"],
+                            'aria-label' => __('Use notifications'),
                         ]);
                         echo '<br>' . _n('Email', 'Emails', 1);
                         renderTwigTemplate('macros/input.twig', [
-                           'type' => 'text',
-                           'name' => '_itil_'.$_POST["actortype"].'[alternative_email]',
-                           'aria-label' => __('Alternative email'),
+                            'type' => 'text',
+                            'name' => '_itil_' . $_POST["actortype"] . '[alternative_email]',
+                            'aria-label' => __('Alternative email'),
                         ]);
                     }
                     echo "</span>";
@@ -157,19 +157,19 @@ if (isset($_POST["type"])
                 }
 
                 $param = [
-                   'name'      => '_itil_'.$_POST["actortype"].'[groups_id]',
-                   'entity'    => $_POST['entity_restrict'],
-                   'condition' => $cond,
-                   'rand'      => $rand
+                    'name'      => '_itil_' . $_POST["actortype"] . '[groups_id]',
+                    'entity'    => $_POST['entity_restrict'],
+                    'condition' => $cond,
+                    'rand'      => $rand,
                 ];
                 if (($_POST["itemtype"] == 'Ticket')
                     && ($_POST["actortype"] == 'assign')) {
                     $param['toupdate'] = ['value_fieldname' => 'value',
-                                               'to_update'       => "countgroupassign_$rand",
-                                               'url'             => $CFG_GLPI["root_doc"].
-                                                                       "/ajax/ticketassigninformation.php",
-                                               'moreparams'      => ['groups_id_assign'
-                                                                             => '__VALUE__']];
+                        'to_update'       => "countgroupassign_$rand",
+                        'url'             => $CFG_GLPI["root_doc"]
+                                                . "/ajax/ticketassigninformation.php",
+                        'moreparams'      => ['groups_id_assign'
+                                                      => '__VALUE__']];
                 }
 
                 $rand = mt_rand();
@@ -194,23 +194,23 @@ if (isset($_POST["type"])
                 break;
 
             case "supplier":
-                $options = ['name'      => '_itil_'.$_POST["actortype"].'[suppliers_id]',
-                                 'entity'    => $_POST['entity_restrict'],
-                                 'rand'      => $rand];
+                $options = ['name'      => '_itil_' . $_POST["actortype"] . '[suppliers_id]',
+                    'entity'    => $_POST['entity_restrict'],
+                    'rand'      => $rand];
                 if ($CFG_GLPI["notifications_mailing"]) {
                     $paramscomment = ['value'       => '__VALUE__',
-                                           'allow_email' => $withemail,
-                                           'field'       => '_itil_'.$_POST["actortype"],
-                                           'typefield'   => "supplier",
-                                           'use_notification' => $_POST["use_notif"]];
+                        'allow_email' => $withemail,
+                        'field'       => '_itil_' . $_POST["actortype"],
+                        'typefield'   => "supplier",
+                        'use_notification' => $_POST["use_notif"]];
                     // Fix rand value
                     $options['rand']     = $rand;
                     if ($withemail) {
                         $options['toupdate'] = [
-                           'value_fieldname' => 'value',
-                           'to_update'       => "notif_supplier_$rand",
-                           'url'             => $CFG_GLPI["root_doc"] . "/ajax/uemailUpdate.php",
-                           'moreparams'      => $paramscomment
+                            'value_fieldname' => 'value',
+                            'to_update'       => "notif_supplier_$rand",
+                            'url'             => $CFG_GLPI["root_doc"] . "/ajax/uemailUpdate.php",
+                            'moreparams'      => $paramscomment,
                         ];
                     }
                 }
@@ -220,10 +220,10 @@ if (isset($_POST["type"])
                         $toupdate[] = $options['toupdate'];
                     }
                     $toupdate[] = ['value_fieldname' => 'value',
-                                        'to_update'       => "countassign_$rand",
-                                        'url'             => $CFG_GLPI["root_doc"].
-                                                                 "/ajax/ticketassigninformation.php",
-                                        'moreparams'      => ['suppliers_id_assign' => '__VALUE__']];
+                        'to_update'       => "countassign_$rand",
+                        'url'             => $CFG_GLPI["root_doc"]
+                                                 . "/ajax/ticketassigninformation.php",
+                        'moreparams'      => ['suppliers_id_assign' => '__VALUE__']];
                     $options['toupdate'] = $toupdate;
                 }
 
@@ -247,19 +247,19 @@ if (isset($_POST["type"])
                 if ($CFG_GLPI["notifications_mailing"]) {
                     echo "<br><span id='notif_supplier_$rand'>";
                     if ($withemail) {
-                        echo __('Email followup').'&nbsp;';
+                        echo __('Email followup') . '&nbsp;';
                         renderTwigTemplate('macros/input.twig', [
-                           'type' => 'checkbox',
-                           'name' => '_itil_'.$_POST["actortype"].'[use_notification]',
-                           'value' => $_POST["use_notif"],
-                           'aria-label' => __('Use notifications'),
+                            'type' => 'checkbox',
+                            'name' => '_itil_' . $_POST["actortype"] . '[use_notification]',
+                            'value' => $_POST["use_notif"],
+                            'aria-label' => __('Use notifications'),
                         ]);
                         echo '<br>';
                         printf(
                             __('%1$s: %2$s'),
                             _n('Email', 'Emails', 1),
-                            "<input type='text' size='25' name='_itil_".$_POST["actortype"].
-                                 "[alternative_email]'>"
+                            "<input type='text' size='25' name='_itil_" . $_POST["actortype"]
+                                 . "[alternative_email]'>"
                         );
                     }
                     echo "</span>";

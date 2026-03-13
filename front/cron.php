@@ -49,8 +49,8 @@ if (!isCommandLine()) {
     //The advantage of using background-image is that cron is called in a separate
     //request and thus does not slow down output of the main page as it would if called
     //from there.
-    $image = pack("H*", "47494638396118001800800000ffffff00000021f90401000000002c0000000" .
-                        "018001800000216848fa9cbed0fa39cb4da8bb3debcfb0f86e248965301003b");
+    $image = pack("H*", "47494638396118001800800000ffffff00000021f90401000000002c0000000"
+                        . "018001800000216848fa9cbed0fa39cb4da8bb3debcfb0f86e248965301003b");
     header("Content-Type: image/gif");
     header("Content-Length: " . strlen($image));
     header("Cache-Control: no-cache,no-store");

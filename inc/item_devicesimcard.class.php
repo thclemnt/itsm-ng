@@ -59,118 +59,118 @@ class Item_DeviceSimcard extends Item_Devices
     public static function getSpecificities($specif = '')
     {
         return [
-           'serial'         => parent::getSpecificities('serial'),
-           'otherserial'    => parent::getSpecificities('otherserial'),
-           'locations_id'   => parent::getSpecificities('locations_id'),
-           'states_id'      => parent::getSpecificities('states_id'),
-           'pin'            => [
-              'long name'  => __('PIN code'),
-              'short name' => __('PIN code'),
-              'size'       => 20,
-              'id'         => 15,
-              'datatype'   => 'text',
-              'right'      => 'devicesimcard_pinpuk',
-              'nosearch'   => true,
-              'nodisplay'  => true,
-              'protected'  => true,
-              'formContent' => [
-                 'type' => 'password',
-                 'canSee' => Session::haveRight('devicesimcard_pinpuk', READ),
-              ]
-           ],
-           'pin2'            => [
-              'long name'  => __('PIN2 code'),
-              'short name' => __('PIN2 code'),
-              'size'       => 20,
-              'id'         => 16,
-              'datatype'   => 'string',
-              'right'      => 'devicesimcard_pinpuk',
-              'nosearch'   => true,
-              'nodisplay'  => true,
-              'protected'  => true,
-              'formContent' => [
-                 'type' => 'password',
-                 'canSee' => Session::haveRight('devicesimcard_pinpuk', READ),
-              ]
-           ],
-           'puk'             => [
-              'long name'  => __('PUK code'),
-              'short name' => __('PUK code'),
-              'size'       => 20,
-              'id'         => 17,
-              'datatype'   => 'string',
-              'right'      => 'devicesimcard_pinpuk',
-              'nosearch'   => true,
-              'nodisplay'  => true,
-              'protected'  => true,
-              'formContent' => [
-                 'type' => 'password',
-                 'canSee' => Session::haveRight('devicesimcard_pinpuk', READ),
-              ]
-           ],
-           'puk2'            => [
-              'long name'  => __('PUK2 code'),
-              'short name' => __('PUK2 code'),
-              'size'       => 20,
-              'id'         => 18,
-              'datatype'   => 'string',
-              'right'      => 'devicesimcard_pinpuk',
-              'nosearch'   => true,
-              'nodisplay'  => true,
-              'protected'  => true,
-              'formContent' => [
-                 'type' => 'password',
-                 'canSee' => Session::haveRight('devicesimcard_pinpuk', READ),
-              ]
-           ],
-           'lines_id'        => [
-              'long name'  => Line::getTypeName(1),
-              'short name' => Line::getTypeName(1),
-              'size'       => 20,
-              'id'         => 19,
-              'datatype'   => 'dropdown',
-              'formContent' => [
-                 'type' => 'select',
-                 'values' => getItemByEntity(Line::class, Session::getActiveEntity()),
-                 'actions' => getItemActionButtons(['info'], Line::class),
-              ]
-           ],
-           'msin'           => [
-              'long name'  => __('Mobile Subscriber Identification Number'),
-              'short name' => __('MSIN'),
-              'size'       => 20,
-              'id'         => 20,
-              'datatype'   => 'string',
-              'tooltip'    => __('MSIN is the last 8 or 10 digits of IMSI'),
-              'autocomplete' => true,
-              'formContent' => [
-                 'type' => 'text',
-                 'title' => __('MSIN is the last 8 or 10 digits of IMSI')
-              ]
-           ],
-           'users_id'        => [
-              'long name'  => User::getTypeName(1),
-              'short name' => User::getTypeName(1),
-              'size'       => 20,
-              'id'         => 21,
-              'datatype'   => 'dropdown',
-              'dropdown_options' => ['right' => 'all'],
-              'formContent' => [
-                 'type' => 'select',
-                 'values' => getOptionsForUsers('all'),
-              ]
-           ],
-           'groups_id'        => [
-              'long name'  => Group::getTypeName(1),
-              'short name' => Group::getTypeName(1),
-              'size'       => 20,
-              'id'         => 22,
-              'datatype'   => 'dropdown',
-              'formContent' => [
-                 'type' => 'select',
-                 'values' => getItemByEntity(Group::class, Session::getActiveEntity()),
-              ]
-           ],
+            'serial'         => parent::getSpecificities('serial'),
+            'otherserial'    => parent::getSpecificities('otherserial'),
+            'locations_id'   => parent::getSpecificities('locations_id'),
+            'states_id'      => parent::getSpecificities('states_id'),
+            'pin'            => [
+                'long name'  => __('PIN code'),
+                'short name' => __('PIN code'),
+                'size'       => 20,
+                'id'         => 15,
+                'datatype'   => 'text',
+                'right'      => 'devicesimcard_pinpuk',
+                'nosearch'   => true,
+                'nodisplay'  => true,
+                'protected'  => true,
+                'formContent' => [
+                    'type' => 'password',
+                    'canSee' => Session::haveRight('devicesimcard_pinpuk', READ),
+                ],
+            ],
+            'pin2'            => [
+                'long name'  => __('PIN2 code'),
+                'short name' => __('PIN2 code'),
+                'size'       => 20,
+                'id'         => 16,
+                'datatype'   => 'string',
+                'right'      => 'devicesimcard_pinpuk',
+                'nosearch'   => true,
+                'nodisplay'  => true,
+                'protected'  => true,
+                'formContent' => [
+                    'type' => 'password',
+                    'canSee' => Session::haveRight('devicesimcard_pinpuk', READ),
+                ],
+            ],
+            'puk'             => [
+                'long name'  => __('PUK code'),
+                'short name' => __('PUK code'),
+                'size'       => 20,
+                'id'         => 17,
+                'datatype'   => 'string',
+                'right'      => 'devicesimcard_pinpuk',
+                'nosearch'   => true,
+                'nodisplay'  => true,
+                'protected'  => true,
+                'formContent' => [
+                    'type' => 'password',
+                    'canSee' => Session::haveRight('devicesimcard_pinpuk', READ),
+                ],
+            ],
+            'puk2'            => [
+                'long name'  => __('PUK2 code'),
+                'short name' => __('PUK2 code'),
+                'size'       => 20,
+                'id'         => 18,
+                'datatype'   => 'string',
+                'right'      => 'devicesimcard_pinpuk',
+                'nosearch'   => true,
+                'nodisplay'  => true,
+                'protected'  => true,
+                'formContent' => [
+                    'type' => 'password',
+                    'canSee' => Session::haveRight('devicesimcard_pinpuk', READ),
+                ],
+            ],
+            'lines_id'        => [
+                'long name'  => Line::getTypeName(1),
+                'short name' => Line::getTypeName(1),
+                'size'       => 20,
+                'id'         => 19,
+                'datatype'   => 'dropdown',
+                'formContent' => [
+                    'type' => 'select',
+                    'values' => getItemByEntity(Line::class, Session::getActiveEntity()),
+                    'actions' => getItemActionButtons(['info'], Line::class),
+                ],
+            ],
+            'msin'           => [
+                'long name'  => __('Mobile Subscriber Identification Number'),
+                'short name' => __('MSIN'),
+                'size'       => 20,
+                'id'         => 20,
+                'datatype'   => 'string',
+                'tooltip'    => __('MSIN is the last 8 or 10 digits of IMSI'),
+                'autocomplete' => true,
+                'formContent' => [
+                    'type' => 'text',
+                    'title' => __('MSIN is the last 8 or 10 digits of IMSI'),
+                ],
+            ],
+            'users_id'        => [
+                'long name'  => User::getTypeName(1),
+                'short name' => User::getTypeName(1),
+                'size'       => 20,
+                'id'         => 21,
+                'datatype'   => 'dropdown',
+                'dropdown_options' => ['right' => 'all'],
+                'formContent' => [
+                    'type' => 'select',
+                    'values' => getOptionsForUsers('all'),
+                ],
+            ],
+            'groups_id'        => [
+                'long name'  => Group::getTypeName(1),
+                'short name' => Group::getTypeName(1),
+                'size'       => 20,
+                'id'         => 22,
+                'datatype'   => 'dropdown',
+                'formContent' => [
+                    'type' => 'select',
+                    'values' => getItemByEntity(Group::class, Session::getActiveEntity()),
+                ],
+            ],
         ];
     }
 

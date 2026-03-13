@@ -160,7 +160,7 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
     /**
      * Check if current user can comment on KB entries
      *
-     * @return boolean
+     * @return bool
      */
     public function canComment()
     {
@@ -172,7 +172,7 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
      *
      * @since 0.84
      *
-     * @param boolean $full  path or relative one
+     * @param bool $full  path or relative one
     **/
     public static function getSearchURL($full = true)
     {
@@ -189,7 +189,7 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
     /**
      * Get the form page URL for the current classe
      *
-     * @param boolean $full  path or relative one
+     * @param bool $full  path or relative one
     **/
     public static function getFormURL($full = true)
     {
@@ -295,9 +295,9 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
         $this->input = $this->addFiles(
             $this->input,
             [
-              'force_update'  => true,
-              'content_field' => 'answer',
-              'name'          => 'answer',
+                'force_update'  => true,
+                'content_field' => 'answer',
+                'name'          => 'answer',
             ]
         );
 
@@ -359,9 +359,9 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
 
         if (isset($this->input['_do_item_link']) && $this->input['_do_item_link'] == 1) {
             $params = [
-               'knowbaseitems_id' => $this->getID(),
-               'itemtype'         => $this->input['_itemtype'],
-               'items_id'         => $this->input['_items_id']
+                'knowbaseitems_id' => $this->getID(),
+                'itemtype'         => $this->input['_itemtype'],
+                'items_id'         => $this->input['_items_id'],
             ];
             $kb_item_item = new KnowbaseItem_Item();
             $kb_item_item->add($params);
@@ -402,12 +402,12 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
 
         $this->deleteChildrenAndRelationsFromDb(
             [
-              Entity_KnowbaseItem::class,
-              Group_KnowbaseItem::class,
-              KnowbaseItem_Item::class,
-              KnowbaseItem_Profile::class,
-              KnowbaseItem_User::class,
-              KnowbaseItemTranslation::class,
+                Entity_KnowbaseItem::class,
+                Group_KnowbaseItem::class,
+                KnowbaseItem_Item::class,
+                KnowbaseItem_Profile::class,
+                KnowbaseItem_User::class,
+                KnowbaseItemTranslation::class,
             ]
         );
 
@@ -425,7 +425,7 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
      *
      * @since 0.83
      *
-     * @return Boolean
+     * @return bool
     **/
     public function isPubliclyVisible()
     {
@@ -465,7 +465,7 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
     *
     * @since 0.83
     *
-    * @param boolean $forceall  force all joins
+    * @param bool $forceall  force all joins
     *
     * @return string joins to add
     **/
@@ -480,7 +480,7 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
         unset($criteria['WHERE']);
         $criteria['FROM'] = self::getTable();
 
-        $it = new \DBmysqlIterator(null);
+        $it = new DBmysqlIterator(null);
         $it->buildQuery($criteria);
         $sql = $it->getSql();
         $sql = str_replace(
@@ -509,7 +509,7 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
         unset($criteria['LEFT JOIN']);
         $criteria['FROM'] = self::getTable();
 
-        $it = new \DBmysqlIterator(null);
+        $it = new DBmysqlIterator(null);
         $it->buildQuery($criteria);
         $sql = $it->getSql();
         $sql = str_replace(
@@ -531,7 +531,7 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
      *
      * @since 9.2
      *
-     * @param boolean $forceall force all joins (false by default)
+     * @param bool $forceall force all joins (false by default)
      *
      * @return array
      */
@@ -548,50 +548,50 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
 
         $where = [];
         $join = [
-           'glpi_knowbaseitems_users' => [
-              'ON' => [
-                 'glpi_knowbaseitems_users' => 'knowbaseitems_id',
-                 'glpi_knowbaseitems'       => 'id'
-              ]
-           ]
+            'glpi_knowbaseitems_users' => [
+                'ON' => [
+                    'glpi_knowbaseitems_users' => 'knowbaseitems_id',
+                    'glpi_knowbaseitems'       => 'id',
+                ],
+            ],
         ];
         if ($forceall || $has_session_groups) {
             $join['glpi_groups_knowbaseitems'] = [
-               'ON' => [
-                  'glpi_groups_knowbaseitems' => 'knowbaseitems_id',
-                  'glpi_knowbaseitems'       => 'id'
-               ]
+                'ON' => [
+                    'glpi_groups_knowbaseitems' => 'knowbaseitems_id',
+                    'glpi_knowbaseitems'       => 'id',
+                ],
             ];
         }
         if ($forceall || $has_active_profile) {
             $join['glpi_knowbaseitems_profiles'] = [
-               'ON' => [
-                  'glpi_knowbaseitems_profiles' => 'knowbaseitems_id',
-                  'glpi_knowbaseitems'       => 'id'
-               ]
+                'ON' => [
+                    'glpi_knowbaseitems_profiles' => 'knowbaseitems_id',
+                    'glpi_knowbaseitems'       => 'id',
+                ],
             ];
         }
         if ($forceall || $has_active_entity || $is_public_faq_context) {
             $join['glpi_entities_knowbaseitems'] = [
-               'ON' => [
-                  'glpi_entities_knowbaseitems' => 'knowbaseitems_id',
-                  'glpi_knowbaseitems'       => 'id'
-               ]
+                'ON' => [
+                    'glpi_entities_knowbaseitems' => 'knowbaseitems_id',
+                    'glpi_knowbaseitems'       => 'id',
+                ],
             ];
         }
 
         if (Session::haveRight(self::$rightname, self::KNOWBASEADMIN)) {
             return [
-               'LEFT JOIN' => $join,
-               'WHERE' => [],
+                'LEFT JOIN' => $join,
+                'WHERE' => [],
             ];
         }
 
         // Users
         if (Session::getLoginUserID()) {
             $where['OR'] = [
-                  'glpi_knowbaseitems.users_id'       => Session::getLoginUserID(),
-                  'glpi_knowbaseitems_users.users_id' => Session::getLoginUserID(),
+                'glpi_knowbaseitems.users_id'       => Session::getLoginUserID(),
+                'glpi_knowbaseitems_users.users_id' => Session::getLoginUserID(),
             ];
 
             // public faq
@@ -600,17 +600,17 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
             }
         } elseif ($is_public_faq_context) {
             $where = [
-               "glpi_knowbaseitems.is_faq" => 1,
+                "glpi_knowbaseitems.is_faq" => 1,
             ];
             if (Session::isMultiEntitiesMode()) {
                 $where += [
-                   "glpi_entities_knowbaseitems.entities_id" => 0,
-                   "glpi_entities_knowbaseitems.is_recursive" => 1,
+                    "glpi_entities_knowbaseitems.entities_id" => 0,
+                    "glpi_entities_knowbaseitems.is_recursive" => 1,
                 ];
             }
         } else {
             $where = [
-               0
+                0,
             ];
         }
         // Groups
@@ -618,12 +618,12 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
             if (Session::getLoginUserID()) {
                 $restrict = getEntitiesRestrictCriteria('glpi_groups_knowbaseitems', '', '', true, true);
                 $where['OR'][] = [
-                   'glpi_groups_knowbaseitems.groups_id' => count($_SESSION["glpigroups"])
-                                                             ? $_SESSION["glpigroups"]
-                                                             : [-1],
-                   'OR' => [
-                      'glpi_groups_knowbaseitems.entities_id' => ['<', '0'],
-                   ] + $restrict
+                    'glpi_groups_knowbaseitems.groups_id' => count($_SESSION["glpigroups"])
+                                                              ? $_SESSION["glpigroups"]
+                                                              : [-1],
+                    'OR' => [
+                        'glpi_groups_knowbaseitems.entities_id' => ['<', '0'],
+                    ] + $restrict,
                 ];
             }
         }
@@ -632,11 +632,11 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
         if ($forceall || $has_active_profile) {
             if (Session::getLoginUserID()) {
                 $where['OR'][] = [
-                   'glpi_knowbaseitems_profiles.profiles_id' => $_SESSION["glpiactiveprofile"]['id'],
-                   'OR' => [
-                      'glpi_knowbaseitems_profiles.entities_id' => ['<', '0'],
-                      getEntitiesRestrictCriteria('glpi_knowbaseitems_profiles', '', '', true, true)
-                   ]
+                    'glpi_knowbaseitems_profiles.profiles_id' => $_SESSION["glpiactiveprofile"]['id'],
+                    'OR' => [
+                        'glpi_knowbaseitems_profiles.entities_id' => ['<', '0'],
+                        getEntitiesRestrictCriteria('glpi_knowbaseitems_profiles', '', '', true, true),
+                    ],
                 ];
             }
         }
@@ -706,9 +706,9 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
         $this->input = $this->addFiles(
             $this->input,
             [
-              'force_update'  => true,
-              'content_field' => 'answer',
-              'name'          => 'answer',
+                'force_update'  => true,
+                'content_field' => 'answer',
+                'name'          => 'answer',
             ]
         );
 
@@ -716,7 +716,7 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
         $this->input = $this->addFiles(
             $this->input,
             [
-              'force_update'  => true,
+                'force_update'  => true,
             ]
         );
     }
@@ -759,11 +759,11 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
                     $this->fields['name']   = $item->getField('name');
                     $solution = new ITILSolution();
                     $solution->getFromDBByCrit([
-                       'itemtype'     => $item->getType(),
-                       'items_id'     => $item->getID(),
-                       [
-                          'NOT' => ['status'       => CommonITILValidation::REFUSED]
-                       ]
+                        'itemtype'     => $item->getType(),
+                        'items_id'     => $item->getID(),
+                        [
+                            'NOT' => ['status'       => CommonITILValidation::REFUSED],
+                        ],
                     ]);
                     $this->fields['answer'] = $solution->getField('content');
                     if ($item->isField('itilcategories_id')) {
@@ -783,137 +783,137 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
         }
 
         $form = [
-           'action' => self::getFormURL(),
-           'itemtype' => $this::class,
-           'content' => [
-              [
-                 'visible' => false,
-                 'inputs' => [
-                    !self::isNewID($ID) && $ID > 0 ? [
-                       'type' => 'hidden',
-                       'name' => 'id',
-                       'value' => $ID,
-                    ] : [],
-                    [
-                       'type' => 'hidden',
-                       'name' => 'users_id',
-                       'value' => Session::getLoginUserID(),
+            'action' => self::getFormURL(),
+            'itemtype' => $this::class,
+            'content' => [
+                [
+                    'visible' => false,
+                    'inputs' => [
+                        !self::isNewID($ID) && $ID > 0 ? [
+                            'type' => 'hidden',
+                            'name' => 'id',
+                            'value' => $ID,
+                        ] : [],
+                        [
+                            'type' => 'hidden',
+                            'name' => 'users_id',
+                            'value' => Session::getLoginUserID(),
+                        ],
+                        ($item != null) ? (function () use ($options, $item) {
+                            $itemobj = getItemForItemtype($options['item_itemtype']);
+                            if ($itemobj && $itemobj->getFromDB($options['item_items_id'])) {
+                                return [
+                                    'type' => 'hidden',
+                                    'name' => '_itemtype',
+                                    'value' => $itemobj->getType(),
+                                ];
+                            }
+                            return [];
+                        })() : [],
+                        ($item != null) ? (function () use ($options, $item) {
+                            $itemobj = getItemForItemtype($options['item_itemtype']);
+                            if ($itemobj && $itemobj->getFromDB($options['item_items_id'])) {
+                                return [
+                                    'type' => 'hidden',
+                                    'name' => '_items_id',
+                                    'value' => $itemobj->getID(),
+                                ];
+                            }
+                            return [];
+                        })() : [],
                     ],
-                    ($item != null) ? (function () use ($options, $item) {
-                        $itemobj = getItemForItemtype($options['item_itemtype']);
-                        if ($itemobj && $itemobj->getFromDB($options['item_items_id'])) {
-                            return [
-                                'type' => 'hidden',
-                                'name' => '_itemtype',
-                                'value' => $itemobj->getType(),
-                            ];
-                        }
-                        return [];
-                    })() : [],
-                    ($item != null) ? (function () use ($options, $item) {
-                        $itemobj = getItemForItemtype($options['item_itemtype']);
-                        if ($itemobj && $itemobj->getFromDB($options['item_items_id'])) {
-                            return [
-                                'type' => 'hidden',
-                                'name' => '_items_id',
-                                'value' => $itemobj->getID(),
-                            ];
-                        }
-                        return [];
-                    })() : [],
-                 ]
-              ],
-              self::getTypeName(1) => [
-                 'visible' => true,
-                 'inputs' => [
-                    __('Category name') => [
-                       'type' => 'select',
-                       'name' => 'knowbaseitemcategories_id',
-                       'values' => getOptionForItems('KnowbaseItemCategory'),
-                       'value' => $this->fields["knowbaseitemcategories_id"],
-                    ],
-                    __('Created on:') => $this->fields["date"] ? [
-                       'content' =>  Html::convDateTime($this->fields["date"]),
-                    ] : [],
-                    __('Last update on:') => $this->fields["date_mod"] ? [
-                       'content' =>  Html::convDateTime($this->fields["date_mod"]),
-                    ] : [],
-                    __('Put this item in the FAQ') => Session::haveRight(
-                        self::$rightname,
-                        self::PUBLISHFAQ
-                    ) ? [
-                       'type' => 'checkbox',
-                       'name' => 'is_faq',
-                       'value' => $this->fields["is_faq"],
-                    ] : [
-                       'content' => $this->fields["is_faq"] ? __('This item is part of the FAQ')
-                                                            : __('This item is not part of the FAQ'),
-                    ],
-                    __('Writer') => $this->fields["users_id"] ? [
-                       'content' => getUserName($this->fields["users_id"], $showuserlink),
-                    ] : [],
-                    __('Views') => $ID ? [
-                       'content' => sprintf(
-                           _n('%d view', '%d views', $this->fields["view"]),
-                           $this->fields["view"]
-                       ),
-                    ] : [],
-                    __('Add link') => ($item != null) ? (function () use ($options, $item) {
-                        $itemobj = getItemForItemtype($options['item_itemtype']);
-                        if ($itemobj && $itemobj->getFromDB($options['item_items_id'])) {
-                            return [
-                                'type' => 'checkbox',
-                                'name' => '_do_item_link',
-                                'value' => 1,
-                                'after' => sprintf(
-                                    __('link with %1$s'),
-                                    $itemobj->getLink()
-                                ),
-                            ];
-                        }
-                        return [];
-                    })() : [],
-                    __('Visible since') => [
-                       'type' => 'datetime-local',
-                       'name' => 'begin_date',
-                       'value' => $this->fields["begin_date"],
-                       'col_lg' => 6,
-                    ],
-                    __('Visible until') => [
-                       'type' => 'datetime-local',
-                       'name' => 'end_date',
-                       'value' => $this->fields["end_date"],
-                       'col_lg' => 6,
-                    ],
-                    __('Subject') => [
-                       'type' => 'textarea',
-                       'name' => 'name',
-                       'value' => $this->fields["name"],
-                       'col_lg' => 12,
-                       'col_md' => 12,
-                       'rows' => 1,
-                    ],
-                    __('Content') => [
-                       'type' => 'richtextarea',
-                       'name' => 'answer',
-                       'value' => $this->fields["answer"],
-                       'rows' => 10,
-                       'col_lg' => 12,
-                       'col_md' => 12,
-                    ],
-                    __('Type') => self::isNewID($ID) ? [
-                       'type' => 'select',
-                       'name' => '_visibility[_type]',
-                       'id' => 'selectForType',
-                       'values' => [ Dropdown::EMPTY_VALUE,
-                          'Entity' => 'Entity',
-                          'Group' => 'Group',
-                          'Profile' => 'Profile',
-                          'User' => 'User'
-                       ],
-                       'col_lg' => 6,
-                       'hooks' => [
-                          'change' => <<<JS
+                ],
+                self::getTypeName(1) => [
+                    'visible' => true,
+                    'inputs' => [
+                        __('Category name') => [
+                            'type' => 'select',
+                            'name' => 'knowbaseitemcategories_id',
+                            'values' => getOptionForItems('KnowbaseItemCategory'),
+                            'value' => $this->fields["knowbaseitemcategories_id"],
+                        ],
+                        __('Created on:') => $this->fields["date"] ? [
+                            'content' =>  Html::convDateTime($this->fields["date"]),
+                        ] : [],
+                        __('Last update on:') => $this->fields["date_mod"] ? [
+                            'content' =>  Html::convDateTime($this->fields["date_mod"]),
+                        ] : [],
+                        __('Put this item in the FAQ') => Session::haveRight(
+                            self::$rightname,
+                            self::PUBLISHFAQ
+                        ) ? [
+                            'type' => 'checkbox',
+                            'name' => 'is_faq',
+                            'value' => $this->fields["is_faq"],
+                        ] : [
+                            'content' => $this->fields["is_faq"] ? __('This item is part of the FAQ')
+                                                                 : __('This item is not part of the FAQ'),
+                        ],
+                        __('Writer') => $this->fields["users_id"] ? [
+                            'content' => getUserName($this->fields["users_id"], $showuserlink),
+                        ] : [],
+                        __('Views') => $ID ? [
+                            'content' => sprintf(
+                                _n('%d view', '%d views', $this->fields["view"]),
+                                $this->fields["view"]
+                            ),
+                        ] : [],
+                        __('Add link') => ($item != null) ? (function () use ($options, $item) {
+                            $itemobj = getItemForItemtype($options['item_itemtype']);
+                            if ($itemobj && $itemobj->getFromDB($options['item_items_id'])) {
+                                return [
+                                    'type' => 'checkbox',
+                                    'name' => '_do_item_link',
+                                    'value' => 1,
+                                    'after' => sprintf(
+                                        __('link with %1$s'),
+                                        $itemobj->getLink()
+                                    ),
+                                ];
+                            }
+                            return [];
+                        })() : [],
+                        __('Visible since') => [
+                            'type' => 'datetime-local',
+                            'name' => 'begin_date',
+                            'value' => $this->fields["begin_date"],
+                            'col_lg' => 6,
+                        ],
+                        __('Visible until') => [
+                            'type' => 'datetime-local',
+                            'name' => 'end_date',
+                            'value' => $this->fields["end_date"],
+                            'col_lg' => 6,
+                        ],
+                        __('Subject') => [
+                            'type' => 'textarea',
+                            'name' => 'name',
+                            'value' => $this->fields["name"],
+                            'col_lg' => 12,
+                            'col_md' => 12,
+                            'rows' => 1,
+                        ],
+                        __('Content') => [
+                            'type' => 'richtextarea',
+                            'name' => 'answer',
+                            'value' => $this->fields["answer"],
+                            'rows' => 10,
+                            'col_lg' => 12,
+                            'col_md' => 12,
+                        ],
+                        __('Type') => self::isNewID($ID) ? [
+                            'type' => 'select',
+                            'name' => '_visibility[_type]',
+                            'id' => 'selectForType',
+                            'values' => [ Dropdown::EMPTY_VALUE,
+                                'Entity' => 'Entity',
+                                'Group' => 'Group',
+                                'Profile' => 'Profile',
+                                'User' => 'User',
+                            ],
+                            'col_lg' => 6,
+                            'hooks' => [
+                                'change' => <<<JS
                         var type = jQuery(this).val();
                         $("#selectForEntity").prop("disabled", type == 0);
                         $("#checkboxForChildEntities").prop("disabled", type == 0);
@@ -957,33 +957,33 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
                            }
                         });
                         JS,
-                       ]
-                    ] : [],
-                    __('Target') => self::isNewID($ID) ? [
-                       'type' => 'select',
-                       'id' => "selectForTarget",
-                       'col_lg' => 6,
-                       'disabled' => '',
-                    ] : [],
-                    __('Entity') => self::isNewID($ID) ? [
-                       'type' => 'select',
-                       'id' => "selectForEntity",
-                       'name' => '_visibility[entities_id]',
-                       'values' => getOptionForItems(Entity::class),
-                       'value' => Session::getActiveEntity(),
-                       'disabled' => '',
-                       'col_lg' => 6,
-                    ] : [],
-                    __('Child entities') => self::isNewID($ID) ? [
-                       'type' => 'checkbox',
-                       'name' => '_visibility[is_recursive]',
-                       'id' => "checkboxForChildEntities",
-                       'disabled' => '',
-                       'col_lg' => 6,
-                    ] : [],
-                 ]
-              ]
-           ]
+                            ],
+                        ] : [],
+                        __('Target') => self::isNewID($ID) ? [
+                            'type' => 'select',
+                            'id' => "selectForTarget",
+                            'col_lg' => 6,
+                            'disabled' => '',
+                        ] : [],
+                        __('Entity') => self::isNewID($ID) ? [
+                            'type' => 'select',
+                            'id' => "selectForEntity",
+                            'name' => '_visibility[entities_id]',
+                            'values' => getOptionForItems(Entity::class),
+                            'value' => Session::getActiveEntity(),
+                            'disabled' => '',
+                            'col_lg' => 6,
+                        ] : [],
+                        __('Child entities') => self::isNewID($ID) ? [
+                            'type' => 'checkbox',
+                            'name' => '_visibility[is_recursive]',
+                            'id' => "checkboxForChildEntities",
+                            'disabled' => '',
+                            'col_lg' => 6,
+                        ] : [],
+                    ],
+                ],
+            ],
         ];
         renderTwigForm($form, '', $this->fields);
 
@@ -1003,10 +1003,10 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
         $DB->update(
             $this->getTable(),
             [
-              'is_faq' => 1
+                'is_faq' => 1,
             ],
             [
-              'id' => $this->fields['id']
+                'id' => $this->fields['id'],
             ]
         );
     }
@@ -1024,10 +1024,10 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
         $DB->update(
             'glpi_knowbaseitems',
             [
-              'view'   => new \QueryExpression($DB->quoteName('view') . ' + 1')
+                'view'   => new QueryExpression($DB->quoteName('view') . ' + 1'),
             ],
             [
-              'id' => $this->getID()
+                'id' => $this->getID(),
             ]
         );
     }
@@ -1051,7 +1051,7 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
         }
 
         $default_options = [
-           'display' => true,
+            'display' => true,
         ];
         $options = array_merge($default_options, $options);
 
@@ -1075,9 +1075,9 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
             $knowbaseitemcategories_id
         );
 
-        $tmp = "<a href='" . $this->getSearchURL() .
-               "?knowbaseitemcategories_id=$knowbaseitemcategories_id&forcetab=Knowbase$2'>" .
-               $fullcategoryname . "</a>";
+        $tmp = "<a href='" . $this->getSearchURL()
+               . "?knowbaseitemcategories_id=$knowbaseitemcategories_id&forcetab=Knowbase$2'>"
+               . $fullcategoryname . "</a>";
         $out .= "<table class='tab_cadre_fixe' aria-label='Category'>";
         $out .= "<tr><th colspan='4'>" . sprintf(__('%1$s: %2$s'), __('Category'), $tmp);
         $out .= "</th></tr>";
@@ -1181,8 +1181,8 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
         echo "<form aria-label='Search Form' method='get' action='" . $this->getSearchURL() . "'>";
         echo "<table class='tab_cadre_fixe' aria-label='Search Form'>";
         echo "<tr class='tab_bg_2'><td class='right' width='50%'>";
-        echo "<input type='text' size='50' name='contains' value=\"" .
-               Html::cleanInputText(stripslashes((string) $params["contains"])) . "\"></td>";
+        echo "<input type='text' size='50' name='contains' value=\""
+               . Html::cleanInputText(stripslashes((string) $params["contains"])) . "\"></td>";
         echo "<td class='left'>";
         echo "<input type='submit' value=\"" . _sx('button', 'Search') . "\" class='submit'></td></tr>";
         echo "</table>";
@@ -1286,7 +1286,7 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
         echo "<table class='tab_cadre_fixe' aria-label='Manage Form'>";
         echo "<tr class='tab_bg_2'><td class='right' width='50%'>";
         $values = ['myunpublished' => __('My unpublished articles'),
-                        'allmy'         => __('All my articles')];
+            'allmy'         => __('All my articles')];
         if (Session::haveRight(self::$rightname, self::KNOWBASEADMIN)) {
             $values['allunpublished'] = __('All unpublished articles');
             $values['allpublished'] = __('All published articles');
@@ -1315,21 +1315,21 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
         global $DB;
 
         $criteria = [
-           'SELECT' => [
-              'glpi_knowbaseitems.*',
-              'glpi_knowbaseitemcategories.completename AS category',
-              new QueryExpression(
-                  'COUNT(' . $DB->quoteName('glpi_knowbaseitems_users.id') . ')' .
-                    ' + COUNT(' . $DB->quoteName('glpi_groups_knowbaseitems.id') . ')' .
-                    ' + COUNT(' . $DB->quoteName('glpi_knowbaseitems_profiles.id') . ')' .
-                    ' + COUNT(' . $DB->quoteName('glpi_entities_knowbaseitems.id') . ') AS ' .
-                    $DB->quoteName('visibility_count')
-              )
-           ],
-           'FROM'   => 'glpi_knowbaseitems',
-           'WHERE'     => [], //to be filled
-           'LEFT JOIN' => [], //to be filled
-           'GROUPBY'   => ['glpi_knowbaseitems.id', 'glpi_knowbaseitemcategories.completename']
+            'SELECT' => [
+                'glpi_knowbaseitems.*',
+                'glpi_knowbaseitemcategories.completename AS category',
+                new QueryExpression(
+                    'COUNT(' . $DB->quoteName('glpi_knowbaseitems_users.id') . ')'
+                      . ' + COUNT(' . $DB->quoteName('glpi_groups_knowbaseitems.id') . ')'
+                      . ' + COUNT(' . $DB->quoteName('glpi_knowbaseitems_profiles.id') . ')'
+                      . ' + COUNT(' . $DB->quoteName('glpi_entities_knowbaseitems.id') . ') AS '
+                      . $DB->quoteName('visibility_count')
+                ),
+            ],
+            'FROM'   => 'glpi_knowbaseitems',
+            'WHERE'     => [], //to be filled
+            'LEFT JOIN' => [], //to be filled
+            'GROUPBY'   => ['glpi_knowbaseitems.id', 'glpi_knowbaseitemcategories.completename'],
         ];
 
         // Lists kb Items
@@ -1371,14 +1371,14 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
             && (countElementsInTable('glpi_knowbaseitemtranslations') > 0)
         ) {
             $criteria['LEFT JOIN']['glpi_knowbaseitemtranslations'] = [
-               'ON'  => [
-                  'glpi_knowbaseitems'             => 'id',
-                  'glpi_knowbaseitemtranslations'  => 'knowbaseitems_id', [
-                     'AND'                            => [
-                        'glpi_knowbaseitemtranslations.language' => $_SESSION['glpilanguage']
-                     ]
-                  ]
-               ]
+                'ON'  => [
+                    'glpi_knowbaseitems'             => 'id',
+                    'glpi_knowbaseitemtranslations'  => 'knowbaseitems_id', [
+                        'AND'                            => [
+                            'glpi_knowbaseitemtranslations.language' => $_SESSION['glpilanguage'],
+                        ],
+                    ],
+                ],
             ];
             $criteria['SELECT'][] = 'glpi_knowbaseitemtranslations.name AS transname';
             $criteria['SELECT'][] = 'glpi_knowbaseitemtranslations.answer AS transanswer';
@@ -1428,8 +1428,8 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
                         && (countElementsInTable('glpi_knowbaseitemtranslations') > 0)
                     ) {
                         $addscore = [
-                           'glpi_knowbaseitemtranslations.name',
-                           'glpi_knowbaseitemtranslations.answer'
+                            'glpi_knowbaseitemtranslations.name',
+                            'glpi_knowbaseitemtranslations.answer',
                         ];
                     }
 
@@ -1446,21 +1446,21 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
                     $criteria['SELECT'][] = new QueryExpression($expr);
 
                     $ors = [
-                       new QueryExpression(
-                           "MATCH(" . $DB->quoteName('glpi_knowbaseitems.name') . ",
+                        new QueryExpression(
+                            "MATCH(" . $DB->quoteName('glpi_knowbaseitems.name') . ",
                         " . $DB->quoteName('glpi_knowbaseitems.answer') . ")
                         AGAINST(" . $DB->quote($search_wilcard) . " IN BOOLEAN MODE)"
-                       )
+                        ),
                     ];
 
                     if (!empty($addscore)) {
                         foreach ($addscore as $addscore_field) {
                             $ors[] = [
-                               'NOT' => [$addscore_field => null],
-                               new QueryExpression(
-                                   "MATCH(" . $DB->quoteName($addscore_field) . ")
+                                'NOT' => [$addscore_field => null],
+                                new QueryExpression(
+                                    "MATCH(" . $DB->quoteName($addscore_field) . ")
                               AGAINST(" . $DB->quote($search_wilcard) . " IN BOOLEAN MODE)"
-                               )
+                                ),
                             ];
                         }
                     }
@@ -1471,17 +1471,17 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
 
                     // Add visibility date
                     $visibility_crit = [
-                       [
-                          'OR'  => [
-                             ['glpi_knowbaseitems.begin_date'  => null],
-                             ['glpi_knowbaseitems.begin_date'  => ['<', new QueryExpression('NOW()')]]
-                          ]
-                       ], [
-                          'OR'  => [
-                             ['glpi_knowbaseitems.end_date'    => null],
-                             ['glpi_knowbaseitems.end_date'    => ['>', new QueryExpression('NOW()')]]
-                          ]
-                       ]
+                        [
+                            'OR'  => [
+                                ['glpi_knowbaseitems.begin_date'  => null],
+                                ['glpi_knowbaseitems.begin_date'  => ['<', new QueryExpression('NOW()')]],
+                            ],
+                        ], [
+                            'OR'  => [
+                                ['glpi_knowbaseitems.end_date'    => null],
+                                ['glpi_knowbaseitems.end_date'    => ['>', new QueryExpression('NOW()')]],
+                            ],
+                        ],
                     ];
                     $search_where[] = $visibility_crit;
 
@@ -1489,28 +1489,28 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
 
                     // preliminar query to allow alternate search if no result with fulltext
                     $search_criteria = [
-                       'COUNT'     => 'cpt',
-                       'LEFT JOIN' => $criteria['LEFT JOIN'],
-                       'FROM'      => 'glpi_knowbaseitems',
-                       'WHERE'     => $search_where
+                        'COUNT'     => 'cpt',
+                        'LEFT JOIN' => $criteria['LEFT JOIN'],
+                        'FROM'      => 'glpi_knowbaseitems',
+                        'WHERE'     => $search_where,
                     ];
                     $search_iterator = $DB->request($search_criteria);
                     $numrows_search = $search_iterator->next()['cpt'];
 
                     if ($numrows_search <= 0) {// not result this fulltext try with alternate search
                         $search1 = [/* 1 */   '/\\\"/',
-                                         /* 2 */   "/\+/",
-                                         /* 3 */   "/\*/",
-                                         /* 4 */   "/~/",
-                                         /* 5 */   "/</",
-                                         /* 6 */   "/>/",
-                                         /* 7 */   "/\(/",
-                                         /* 8 */   "/\)/",
-                                         /* 9 */   "/\-/"];
+                            /* 2 */   "/\+/",
+                            /* 3 */   "/\*/",
+                            /* 4 */   "/~/",
+                            /* 5 */   "/</",
+                            /* 6 */   "/>/",
+                            /* 7 */   "/\(/",
+                            /* 8 */   "/\)/",
+                            /* 9 */   "/\-/"];
                         $contains = preg_replace($search1, "", (string) $params["contains"]);
                         $ors = [
-                           ["glpi_knowbaseitems.name"     => ['LIKE', Search::makeTextSearchValue($contains)]],
-                           ["glpi_knowbaseitems.answer"   => ['LIKE', Search::makeTextSearchValue($contains)]]
+                            ["glpi_knowbaseitems.name"     => ['LIKE', Search::makeTextSearchValue($contains)]],
+                            ["glpi_knowbaseitems.answer"   => ['LIKE', Search::makeTextSearchValue($contains)]],
                         ];
                         if (
                             KnowbaseItemTranslation::isKbTranslationActive()
@@ -1534,16 +1534,16 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
                 if (!Session::haveRight(self::$rightname, self::KNOWBASEADMIN)) {
                     // Add visibility date
                     $criteria['WHERE'][] = [
-                       'OR'  => [
-                          ['glpi_knowbaseitems.begin_date' => null],
-                          ['glpi_knowbaseitems.begin_date' => ['<', new QueryExpression('NOW()')]]
-                       ]
+                        'OR'  => [
+                            ['glpi_knowbaseitems.begin_date' => null],
+                            ['glpi_knowbaseitems.begin_date' => ['<', new QueryExpression('NOW()')]],
+                        ],
                     ];
                     $criteria['WHERE'][] = [
-                       'OR'  => [
-                          ['glpi_knowbaseitems.end_date' => null],
-                          ['glpi_knowbaseitems.end_date' => ['>', new QueryExpression('NOW()')]]
-                       ]
+                        'OR'  => [
+                            ['glpi_knowbaseitems.end_date' => null],
+                            ['glpi_knowbaseitems.end_date' => ['>', new QueryExpression('NOW()')]],
+                        ],
                     ];
                 }
 
@@ -1552,10 +1552,10 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
         }
 
         $criteria['LEFT JOIN']['glpi_knowbaseitemcategories'] = [
-           'ON'  => [
-              'glpi_knowbaseitemcategories' => 'id',
-              'glpi_knowbaseitems'          => 'knowbaseitemcategories_id'
-           ]
+            'ON'  => [
+                'glpi_knowbaseitemcategories' => 'id',
+                'glpi_knowbaseitems'          => 'knowbaseitemcategories_id',
+            ],
         ];
 
         return $criteria;
@@ -1636,8 +1636,8 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
             ($rows > $list_limit)
             && !isset($_GET['export_all'])
         ) {
-            $criteria['START'] = (int)$params['start'];
-            $criteria['LIMIT'] = (int)$list_limit;
+            $criteria['START'] = (int) $params['start'];
+            $criteria['LIMIT'] = (int) $list_limit;
             $main_iterator = $DBread->request($criteria);
             $numrows = count($main_iterator);
         }
@@ -1651,16 +1651,16 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
             }
 
             // Pager
-            $parameters = "start=" . $params["start"] . "&amp;knowbaseitemcategories_id=" .
-                           $params['knowbaseitemcategories_id'] . "&amp;contains=" .
-                           $params["contains"] . "&amp;is_faq=" . $params['faq'];
+            $parameters = "start=" . $params["start"] . "&amp;knowbaseitemcategories_id="
+                           . $params['knowbaseitemcategories_id'] . "&amp;contains="
+                           . $params["contains"] . "&amp;is_faq=" . $params['faq'];
 
             if (
                 isset($options['item_itemtype'])
                   && isset($options['item_items_id'])
             ) {
-                $parameters .= "&amp;item_items_id=" . $options['item_items_id'] . "&amp;item_itemtype=" .
-                                  $options['item_itemtype'];
+                $parameters .= "&amp;item_items_id=" . $options['item_items_id'] . "&amp;item_itemtype="
+                                  . $options['item_itemtype'];
             }
 
             $pager_url = "";
@@ -1758,8 +1758,8 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
                     echo Search::showItem(
                         $output_type,
                         "<div class='kb'>$toadd <i class='fa fa-fw $fa_class' title='$fa_title'></i> <a $href>" . Html::resume_text($name, 80) . "</a></div>
-                                       <div class='kb_resume'>" .
-                                            Html::resume_text(
+                                       <div class='kb_resume'>"
+                                            . Html::resume_text(
                                                 Html::clean(Toolbox::unclean_cross_side_scripting_deep($answer)),
                                                 600
                                             ) . "</div>",
@@ -1806,8 +1806,8 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
                 }
 
                 if ($output_type == Search::HTML_OUTPUT) {
-                    $cathref = $ki->getSearchURL() . "?knowbaseitemcategories_id=" .
-                                $data["knowbaseitemcategories_id"] . '&amp;forcetab=Knowbase$2';
+                    $cathref = $ki->getSearchURL() . "?knowbaseitemcategories_id="
+                                . $data["knowbaseitemcategories_id"] . '&amp;forcetab=Knowbase$2';
                     $categ   = "<a class='kb-category'"
                        . " href='$cathref'"
                        . " data-category-id='" . $data["knowbaseitemcategories_id"] . "'"
@@ -1819,12 +1819,12 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
                     echo "<td class='center'>";
                     $j = 0;
                     $iterator = $DBread->request([
-                       'FIELDS' => 'documents_id',
-                       'FROM'   => 'glpi_documents_items',
-                       'WHERE'  => [
-                          'items_id'  => $data["id"],
-                          'itemtype'  => 'KnowbaseItem'
-                       ] + getEntitiesRestrictCriteria('', '', '', true)
+                        'FIELDS' => 'documents_id',
+                        'FROM'   => 'glpi_documents_items',
+                        'WHERE'  => [
+                            'items_id'  => $data["id"],
+                            'itemtype'  => 'KnowbaseItem',
+                        ] + getEntitiesRestrictCriteria('', '', '', true),
                     ]);
                     while ($docs = $iterator->next()) {
                         $doc = new Document();
@@ -1845,10 +1845,10 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
                 ) {
                     $forcetab = $options['item_itemtype'] . '$1';
                     $item_itemtype = $options['item_itemtype'];
-                    $content = "<a href='" . $item_itemtype::getFormURLWithID($options['item_items_id']) .
-                                   "&amp;load_kb_sol=" . $data['id'] .
-                                   "&amp;forcetab=" . $forcetab . "'>" .
-                                   __('Use as a solution') . "</a>";
+                    $content = "<a href='" . $item_itemtype::getFormURLWithID($options['item_items_id'])
+                                   . "&amp;load_kb_sol=" . $data['id']
+                                   . "&amp;forcetab=" . $forcetab . "'>"
+                                   . __('Use as a solution') . "</a>";
                     echo Search::showItem($output_type, $content, $item_num, $row_num);
                 }
 
@@ -1896,11 +1896,11 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
         $faq = !Session::haveRight(self::$rightname, READ);
 
         $criteria = [
-           'SELECT'    => ['glpi_knowbaseitems.*'],
-           'DISTINCT'  => true,
-           'FROM'      => self::getTable(),
-           'WHERE'     => [],
-           'LIMIT'     => 10
+            'SELECT'    => ['glpi_knowbaseitems.*'],
+            'DISTINCT'  => true,
+            'FROM'      => self::getTable(),
+            'WHERE'     => [],
+            'LIMIT'     => 10,
         ];
 
         if ($type == "recent") {
@@ -1933,26 +1933,26 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
 
         // Only published
         $criteria['WHERE'][] = [
-           'NOT'  => [
-              'glpi_entities_knowbaseitems.entities_id' => null,
-              'glpi_knowbaseitems_profiles.profiles_id' => null,
-              'glpi_groups_knowbaseitems.groups_id'     => null,
-              'glpi_knowbaseitems_users.users_id'       => null
-           ]
+            'NOT'  => [
+                'glpi_entities_knowbaseitems.entities_id' => null,
+                'glpi_knowbaseitems_profiles.profiles_id' => null,
+                'glpi_groups_knowbaseitems.groups_id'     => null,
+                'glpi_knowbaseitems_users.users_id'       => null,
+            ],
         ];
 
         // Add visibility date
         $criteria['WHERE'][] = [
-           'OR'  => [
-              ['glpi_knowbaseitems.begin_date' => null],
-              ['glpi_knowbaseitems.begin_date' => ['<', new QueryExpression('NOW()')]]
-           ]
+            'OR'  => [
+                ['glpi_knowbaseitems.begin_date' => null],
+                ['glpi_knowbaseitems.begin_date' => ['<', new QueryExpression('NOW()')]],
+            ],
         ];
         $criteria['WHERE'][] = [
-           'OR'  => [
-              ['glpi_knowbaseitems.end_date'   => null],
-              ['glpi_knowbaseitems.end_date'   => ['>', new QueryExpression('NOW()')]]
-           ]
+            'OR'  => [
+                ['glpi_knowbaseitems.end_date'   => null],
+                ['glpi_knowbaseitems.end_date'   => ['>', new QueryExpression('NOW()')]],
+            ],
         ];
 
         if ($faq) { // FAQ
@@ -1964,14 +1964,14 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
             && (countElementsInTable('glpi_knowbaseitemtranslations') > 0)
         ) {
             $criteria['LEFT JOIN']['glpi_knowbaseitemtranslations'] = [
-               'ON'  => [
-                  'glpi_knowbaseitems'             => 'id',
-                  'glpi_knowbaseitemtranslations'  => 'knowbaseitems_id', [
-                     'AND'                            => [
-                        'glpi_knowbaseitemtranslations.language' => $_SESSION['glpilanguage']
-                     ]
-                  ]
-               ]
+                'ON'  => [
+                    'glpi_knowbaseitems'             => 'id',
+                    'glpi_knowbaseitemtranslations'  => 'knowbaseitems_id', [
+                        'AND'                            => [
+                            'glpi_knowbaseitemtranslations.language' => $_SESSION['glpilanguage'],
+                        ],
+                    ],
+                ],
             ];
             $criteria['SELECT'][] = 'glpi_knowbaseitemtranslations.name AS transname';
             $criteria['SELECT'][] = 'glpi_knowbaseitemtranslations.answer AS transanswer';
@@ -1993,8 +1993,8 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
                     echo "<i class='fa fa-fw fa-question-circle faq' title='" . __("This item is part of the FAQ") . "'></i>";
                 }
                 echo Html::link(Html::resume_text($name, 80), KnowbaseItem::getFormURLWithID($data["id"]), [
-                   'class' => $data['is_faq'] ? 'faq' : 'knowbase',
-                   'title' => $data['is_faq'] ? __s("This item is part of the FAQ") : ''
+                    'class' => $data['is_faq'] ? 'faq' : 'knowbase',
+                    'title' => $data['is_faq'] ? __s("This item is part of the FAQ") : '',
                 ]);
                 echo "</div></td></tr>";
             }
@@ -2008,103 +2008,103 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
         $tab = [];
 
         $tab[] = [
-           'id'                 => 'common',
-           'name'               => __('Characteristics')
+            'id'                 => 'common',
+            'name'               => __('Characteristics'),
         ];
 
         $tab[] = [
-           'id'                 => '2',
-           'table'              => $this->getTable(),
-           'field'              => 'id',
-           'name'               => __('ID'),
-           'massiveaction'      => false,
-           'datatype'           => 'number'
+            'id'                 => '2',
+            'table'              => $this->getTable(),
+            'field'              => 'id',
+            'name'               => __('ID'),
+            'massiveaction'      => false,
+            'datatype'           => 'number',
         ];
 
         $tab[] = [
-           'id'                 => '4',
-           'table'              => 'glpi_knowbaseitemcategories',
-           'field'              => 'name',
-           'name'               => __('Category'),
-           'datatype'           => 'dropdown'
+            'id'                 => '4',
+            'table'              => 'glpi_knowbaseitemcategories',
+            'field'              => 'name',
+            'name'               => __('Category'),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '5',
-           'table'              => $this->getTable(),
-           'field'              => 'date',
-           'name'               => _n('Date', 'Dates', 1),
-           'datatype'           => 'datetime',
-           'massiveaction'      => false
+            'id'                 => '5',
+            'table'              => $this->getTable(),
+            'field'              => 'date',
+            'name'               => _n('Date', 'Dates', 1),
+            'datatype'           => 'datetime',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '6',
-           'table'              => $this->getTable(),
-           'field'              => 'name',
-           'name'               => __('Subject'),
-           'datatype'           => 'text'
+            'id'                 => '6',
+            'table'              => $this->getTable(),
+            'field'              => 'name',
+            'name'               => __('Subject'),
+            'datatype'           => 'text',
         ];
 
         $tab[] = [
-           'id'                 => '7',
-           'table'              => $this->getTable(),
-           'field'              => 'answer',
-           'name'               => __('Content'),
-           'datatype'           => 'text',
-           'htmltext'           => true
+            'id'                 => '7',
+            'table'              => $this->getTable(),
+            'field'              => 'answer',
+            'name'               => __('Content'),
+            'datatype'           => 'text',
+            'htmltext'           => true,
         ];
 
         $tab[] = [
-           'id'                 => '8',
-           'table'              => $this->getTable(),
-           'field'              => 'is_faq',
-           'name'               => __('FAQ item'),
-           'datatype'           => 'bool'
+            'id'                 => '8',
+            'table'              => $this->getTable(),
+            'field'              => 'is_faq',
+            'name'               => __('FAQ item'),
+            'datatype'           => 'bool',
         ];
 
         $tab[] = [
-           'id'                 => '9',
-           'table'              => $this->getTable(),
-           'field'              => 'view',
-           'name'               => _n('View', 'Views', Session::getPluralNumber()),
-           'datatype'           => 'integer',
-           'massiveaction'      => false
+            'id'                 => '9',
+            'table'              => $this->getTable(),
+            'field'              => 'view',
+            'name'               => _n('View', 'Views', Session::getPluralNumber()),
+            'datatype'           => 'integer',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '10',
-           'table'              => $this->getTable(),
-           'field'              => 'begin_date',
-           'name'               => __('Visibility start date'),
-           'datatype'           => 'datetime'
+            'id'                 => '10',
+            'table'              => $this->getTable(),
+            'field'              => 'begin_date',
+            'name'               => __('Visibility start date'),
+            'datatype'           => 'datetime',
         ];
 
         $tab[] = [
-           'id'                 => '11',
-           'table'              => $this->getTable(),
-           'field'              => 'end_date',
-           'name'               => __('Visibility end date'),
-           'datatype'           => 'datetime'
+            'id'                 => '11',
+            'table'              => $this->getTable(),
+            'field'              => 'end_date',
+            'name'               => __('Visibility end date'),
+            'datatype'           => 'datetime',
         ];
 
         $tab[] = [
-           'id'                 => '19',
-           'table'              => $this->getTable(),
-           'field'              => 'date_mod',
-           'name'               => __('Last update'),
-           'datatype'           => 'datetime',
-           'massiveaction'      => false
+            'id'                 => '19',
+            'table'              => $this->getTable(),
+            'field'              => 'date_mod',
+            'name'               => __('Last update'),
+            'datatype'           => 'datetime',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '70',
-           'table'              => 'glpi_users',
-           'field'              => 'name',
-           'name'               => User::getTypeName(1),
-           'massiveaction'      => false,
-           'datatype'           => 'dropdown',
-           'right'              => 'all'
+            'id'                 => '70',
+            'table'              => 'glpi_users',
+            'field'              => 'name',
+            'name'               => User::getTypeName(1),
+            'massiveaction'      => false,
+            'datatype'           => 'dropdown',
+            'right'              => 'all',
         ];
 
         // add objectlock search options
@@ -2156,11 +2156,11 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
             $title = str_replace(
                 ['%tag', '%attrs', '%slug', '%title', '%icon'],
                 [
-                  $matches[1],
-                  $matches[2],
-                  Toolbox::slugify($matches[3]),
-                  $matches[3],
-                  '<svg aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"/></svg>'
+                    $matches[1],
+                    $matches[2],
+                    Toolbox::slugify($matches[3]),
+                    $matches[3],
+                    '<svg aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"/></svg>',
                 ],
                 $tpl
             );
@@ -2188,9 +2188,9 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
     /**
      * Reverts item contents to specified revision
      *
-     * @param integer $revid Revision ID
+     * @param int $revid Revision ID
      *
-     * @return boolean
+     * @return bool
      */
     public function revertTo($revid)
     {
@@ -2198,9 +2198,9 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
         $revision->getFromDB($revid);
 
         $values = [
-           'id'     => $this->getID(),
-           'name'   => addslashes((string) $revision->fields['name']),
-           'answer' => addslashes((string) $revision->fields['answer'])
+            'id'     => $this->getID(),
+            'name'   => addslashes((string) $revision->fields['name']),
+            'answer' => addslashes((string) $revision->fields['answer']),
         ];
 
         if ($this->update($values)) {
@@ -2235,9 +2235,9 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
         }
 
         $ids = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['knowbaseitemcategories_id' => $category_id],
+            'SELECT' => 'id',
+            'FROM'   => self::getTable(),
+            'WHERE'  => ['knowbaseitemcategories_id' => $category_id],
         ]);
 
         // Get array of ids

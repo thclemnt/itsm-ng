@@ -86,21 +86,21 @@ class NotificationTargetConsumableItem extends NotificationTarget
     {
 
         $tags = ['consumable.action'    => _n('Event', 'Events', 1),
-                      'consumable.reference' => __('Reference'),
-                      'consumable.item'      => ConsumableItem::getTypeName(1),
-                      'consumable.remaining' => __('Remaining'),
-                      'consumable.entity'    => Entity::getTypeName(1)];
+            'consumable.reference' => __('Reference'),
+            'consumable.item'      => ConsumableItem::getTypeName(1),
+            'consumable.remaining' => __('Remaining'),
+            'consumable.entity'    => Entity::getTypeName(1)];
 
         foreach ($tags as $tag => $label) {
             $this->addTagToList(['tag'   => $tag,
-                                      'label' => $label,
-                                      'value' => true]);
+                'label' => $label,
+                'value' => true]);
         }
 
         $this->addTagToList(['tag'     => 'consumables',
-                                  'label'   => __('Device list'),
-                                  'value'   => false,
-                                  'foreach' => true]);
+            'label'   => __('Device list'),
+            'value'   => false,
+            'foreach' => true]);
 
         asort($this->tag_descriptions);
     }

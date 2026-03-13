@@ -43,24 +43,24 @@ class Contract_Supplier extends DbTestCase
 
         $contract = new \Contract();
         $contract_id = $contract->add([
-           'name'        => 'contract-supplier-' . $this->getUniqueString(),
-           'entities_id' => 0,
+            'name'        => 'contract-supplier-' . $this->getUniqueString(),
+            'entities_id' => 0,
         ]);
-        $this->integer((int)$contract_id)->isGreaterThan(0);
+        $this->integer((int) $contract_id)->isGreaterThan(0);
 
         $supplier_id = getItemByTypeName('Supplier', '_suplier01_name', true);
-        $this->integer((int)$supplier_id)->isGreaterThan(0);
+        $this->integer((int) $supplier_id)->isGreaterThan(0);
 
         $relation = new \Contract_Supplier();
         $relation_id = $relation->add([
-           'contracts_id' => $contract_id,
-           'suppliers_id' => $supplier_id,
+            'contracts_id' => $contract_id,
+            'suppliers_id' => $supplier_id,
         ]);
-        $this->integer((int)$relation_id)->isGreaterThan(0);
+        $this->integer((int) $relation_id)->isGreaterThan(0);
         $this->boolean($relation->getFromDB($relation_id))->isTrue();
 
         $this->boolean($relation->delete(['id' => $relation_id]))->isTrue();
-        $this->integer((int)countElementsInTable(
+        $this->integer((int) countElementsInTable(
             \Contract_Supplier::getTable(),
             [
                 'contracts_id' => $contract_id,

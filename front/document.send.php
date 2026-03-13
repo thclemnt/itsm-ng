@@ -53,7 +53,7 @@ if (isset($_GET['docid'])) { // docid for document
         ) {
             Html::displayErrorAndDie(__('File is altered (bad checksum)'), true); // Doc alterated
         } else {
-            $context = isset($_GET['context']) ? $_GET['context'] : null;
+            $context = $_GET['context'] ?? null;
             $doc->send($context);
         }
     } else {

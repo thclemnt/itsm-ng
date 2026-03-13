@@ -57,7 +57,7 @@ foreach ($msg as $k => $v) {
 }
 echo '</h1><div class="gears">';
 $i = 0;
-$lettres = array('a','b','c','d','e','f');
+$lettres = ['a','b','c','d','e','f'];
 while ($i <= 2) {
     echo '<div class="gear ' . $lettres[$i] . '">
   <div class="bar"></div>

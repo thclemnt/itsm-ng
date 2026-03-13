@@ -70,11 +70,11 @@ class Domain extends CommonDropdown
         $record = new DomainRecord();
 
         $iterator = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => $record->getTable(),
-           'WHERE'  => [
-              'domains_id'   => $this->fields['id']
-           ]
+            'SELECT' => 'id',
+            'FROM'   => $record->getTable(),
+            'WHERE'  => [
+                'domains_id'   => $this->fields['id'],
+            ],
         ]);
         while ($row = $iterator->next()) {
             $row['_linked_purge'] = 1; //flag call when we remove a record from a domain
@@ -87,128 +87,128 @@ class Domain extends CommonDropdown
         $tab = [];
 
         $tab[] = [
-           'id'                 => 'common',
-           'name'               => self::getTypeName(2)
+            'id'                 => 'common',
+            'name'               => self::getTypeName(2),
         ];
 
         $tab[] = [
-           'id'                 => '1',
-           'table'              => $this->getTable(),
-           'field'              => 'name',
-           'name'               => __('Name'),
-           'datatype'           => 'itemlink',
-           'itemlink_type'      => $this->getType(),
+            'id'                 => '1',
+            'table'              => $this->getTable(),
+            'field'              => 'name',
+            'name'               => __('Name'),
+            'datatype'           => 'itemlink',
+            'itemlink_type'      => $this->getType(),
         ];
 
         $tab[] = [
-           'id'                 => '2',
-           'table'              => 'glpi_domaintypes',
-           'field'              => 'name',
-           'name'               => _n('Type', 'Types', 1),
-           'datatype'           => 'dropdown'
+            'id'                 => '2',
+            'table'              => 'glpi_domaintypes',
+            'field'              => 'name',
+            'name'               => _n('Type', 'Types', 1),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '3',
-           'table'              => 'glpi_users',
-           'field'              => 'name',
-           'linkfield'          => 'users_id_tech',
-           'name'               => __('Technician in charge'),
-           'datatype'           => 'dropdown'
+            'id'                 => '3',
+            'table'              => 'glpi_users',
+            'field'              => 'name',
+            'linkfield'          => 'users_id_tech',
+            'name'               => __('Technician in charge'),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '5',
-           'table'              => $this->getTable(),
-           'field'              => 'date_creation',
-           'name'               => __('Creation date'),
-           'datatype'           => 'date'
+            'id'                 => '5',
+            'table'              => $this->getTable(),
+            'field'              => 'date_creation',
+            'name'               => __('Creation date'),
+            'datatype'           => 'date',
         ];
 
         $tab[] = [
-           'id'                 => '6',
-           'table'              => $this->getTable(),
-           'field'              => 'date_expiration',
-           'name'               => __('Expiration date'),
-           'datatype'           => 'date'
+            'id'                 => '6',
+            'table'              => $this->getTable(),
+            'field'              => 'date_expiration',
+            'name'               => __('Expiration date'),
+            'datatype'           => 'date',
         ];
 
         $tab[] = [
-           'id'                 => '7',
-           'table'              => $this->getTable(),
-           'field'              => 'comment',
-           'name'               => __('Comments'),
-           'datatype'           => 'text'
+            'id'                 => '7',
+            'table'              => $this->getTable(),
+            'field'              => 'comment',
+            'name'               => __('Comments'),
+            'datatype'           => 'text',
         ];
 
         $tab[] = [
-           'id'                 => '8',
-           'table'              => 'glpi_domains_items',
-           'field'              => 'items_id',
-           'nosearch'           => true,
-           'massiveaction'      => false,
-           'name'               => _n('Associated item', 'Associated items', Session::getPluralNumber()),
-           'forcegroupby'       => true,
-           'joinparams'         => [
-              'jointype'           => 'child'
-           ]
+            'id'                 => '8',
+            'table'              => 'glpi_domains_items',
+            'field'              => 'items_id',
+            'nosearch'           => true,
+            'massiveaction'      => false,
+            'name'               => _n('Associated item', 'Associated items', Session::getPluralNumber()),
+            'forcegroupby'       => true,
+            'joinparams'         => [
+                'jointype'           => 'child',
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '9',
-           'table'              => $this->getTable(),
-           'field'              => 'others',
-           'name'               => __('Others')
+            'id'                 => '9',
+            'table'              => $this->getTable(),
+            'field'              => 'others',
+            'name'               => __('Others'),
         ];
 
         $tab[] = [
-           'id'                 => '10',
-           'table'              => 'glpi_groups',
-           'field'              => 'name',
-           'linkfield'          => 'groups_id_tech',
-           'name'               => __('Group in charge'),
-           'condition'          => ['is_assign' => 1],
-           'datatype'           => 'dropdown'
+            'id'                 => '10',
+            'table'              => 'glpi_groups',
+            'field'              => 'name',
+            'linkfield'          => 'groups_id_tech',
+            'name'               => __('Group in charge'),
+            'condition'          => ['is_assign' => 1],
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '12',
-           'table'              => $this->getTable(),
-           'field'              => 'date_mod',
-           'massiveaction'      => false,
-           'name'               => __('Last update'),
-           'datatype'           => 'datetime'
+            'id'                 => '12',
+            'table'              => $this->getTable(),
+            'field'              => 'date_mod',
+            'massiveaction'      => false,
+            'name'               => __('Last update'),
+            'datatype'           => 'datetime',
         ];
 
         $tab[] = [
-           'id'                 => '18',
-           'table'              => $this->getTable(),
-           'field'              => 'is_recursive',
-           'name'               => __('Child entities'),
-           'datatype'           => 'bool'
+            'id'                 => '18',
+            'table'              => $this->getTable(),
+            'field'              => 'is_recursive',
+            'name'               => __('Child entities'),
+            'datatype'           => 'bool',
         ];
 
         $tab[] = [
-           'id'                 => '30',
-           'table'              => $this->getTable(),
-           'field'              => 'id',
-           'name'               => __('ID'),
-           'datatype'           => 'number'
+            'id'                 => '30',
+            'table'              => $this->getTable(),
+            'field'              => 'id',
+            'name'               => __('ID'),
+            'datatype'           => 'number',
         ];
 
         $tab[] = [
-           'id'                 => '80',
-           'table'              => 'glpi_entities',
-           'field'              => 'completename',
-           'name'               => Entity::getTypeName(1),
-           'datatype'           => 'dropdown'
+            'id'                 => '80',
+            'table'              => 'glpi_entities',
+            'field'              => 'completename',
+            'name'               => Entity::getTypeName(1),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '81',
-           'table'              => 'glpi_entities',
-           'field'              => 'entities_id',
-           'name'               => __('Entity-ID')
+            'id'                 => '81',
+            'table'              => 'glpi_entities',
+            'field'              => 'entities_id',
+            'name'               => __('Entity-ID'),
         ];
 
         return $tab;
@@ -221,46 +221,46 @@ class Domain extends CommonDropdown
         if (in_array($itemtype, Domain::getTypes(true))) {
             if (Session::haveRight("domain", READ)) {
                 $tab[] = [
-                   'id'                 => 'domain',
-                   'name'               => self::getTypeName(Session::getPluralNumber())
+                    'id'                 => 'domain',
+                    'name'               => self::getTypeName(Session::getPluralNumber()),
                 ];
 
                 $tab[] = [
-                   'id'                 => '205',
-                   'table'              => Domain::getTable(),
-                   'field'              => 'name',
-                   'name'               => __('Name'),
-                   'forcegroupby'       => true,
-                   'datatype'           => 'itemlink',
-                   'itemlink_type'      => 'Domain',
-                   'massiveaction'      => false,
-                   'joinparams'         => [
-                      'beforejoin' => [
-                         'table'      => Domain_Item::getTable(),
-                         'joinparams' => ['jointype' => 'itemtype_item']
-                      ]
-                   ]
+                    'id'                 => '205',
+                    'table'              => Domain::getTable(),
+                    'field'              => 'name',
+                    'name'               => __('Name'),
+                    'forcegroupby'       => true,
+                    'datatype'           => 'itemlink',
+                    'itemlink_type'      => 'Domain',
+                    'massiveaction'      => false,
+                    'joinparams'         => [
+                        'beforejoin' => [
+                            'table'      => Domain_Item::getTable(),
+                            'joinparams' => ['jointype' => 'itemtype_item'],
+                        ],
+                    ],
                 ];
 
                 $tab[] = [
-                   'id'                 => '206',
-                   'table'              => DomainType::getTable(),
-                   'field'              => 'name',
-                   'name'               => DomainType::getTypeName(1),
-                   'forcegroupby'       => true,
-                   'datatype'           => 'dropdown',
-                   'massiveaction'      => false,
-                   'joinparams'         => [
-                      'beforejoin' => [
-                         'table'      => Domain::getTable(),
-                         'joinparams'         => [
-                            'beforejoin' => [
-                               'table'      => Domain_Item::getTable(),
-                               'joinparams' => ['jointype' => 'itemtype_item']
-                            ]
-                         ]
-                      ]
-                   ]
+                    'id'                 => '206',
+                    'table'              => DomainType::getTable(),
+                    'field'              => 'name',
+                    'name'               => DomainType::getTypeName(1),
+                    'forcegroupby'       => true,
+                    'datatype'           => 'dropdown',
+                    'massiveaction'      => false,
+                    'joinparams'         => [
+                        'beforejoin' => [
+                            'table'      => Domain::getTable(),
+                            'joinparams'         => [
+                                'beforejoin' => [
+                                    'table'      => Domain_Item::getTable(),
+                                    'joinparams' => ['jointype' => 'itemtype_item'],
+                                ],
+                            ],
+                        ],
+                    ],
                 ];
             }
         }
@@ -314,66 +314,66 @@ class Domain extends CommonDropdown
     public function showForm($ID, $options = [])
     {
         $form = [
-           'action' => Toolbox::getItemTypeFormURL('domain'),
-           'itemtype' => self::class,
-           'content' => [
-              __('Domain') => [
-                 'visible' => true,
-                 'inputs' => [
-                    $this->isNewID($ID) ? [] : [
-                       'type' => 'hidden',
-                       'name' => 'id',
-                       'value' => $ID
+            'action' => Toolbox::getItemTypeFormURL('domain'),
+            'itemtype' => self::class,
+            'content' => [
+                __('Domain') => [
+                    'visible' => true,
+                    'inputs' => [
+                        $this->isNewID($ID) ? [] : [
+                            'type' => 'hidden',
+                            'name' => 'id',
+                            'value' => $ID,
+                        ],
+                        __('Name') => [
+                            'name' => 'name',
+                            'type' => 'text',
+                            'value' => $this->fields['name'] ?? '',
+                        ],
+                        __('Creation date') => [
+                            'name' => 'date_creation',
+                            'type' => 'datetime-local',
+                            'value' => $this->fields['date_creation'] ?? '',
+                        ],
+                        __('Expiration date') => [
+                            'name' => 'date_expiration',
+                            'type' => 'datetime-local',
+                            'value' => $this->fields['date_expiration'] ?? '',
+                        ],
+                        __('Group in charge') => [
+                            'name' => 'groups_id_tech',
+                            'type' => 'select',
+                            'itemtype' => Group::class,
+                            'value' => $this->fields['groups_id_tech'] ?? '',
+                            'actions' => getItemActionButtons(['info', 'add'], "Group"),
+                        ],
+                        __('Others') => [
+                            'name' => 'others',
+                            'type' => 'text',
+                            'value' => $this->fields['others'] ?? '',
+                        ],
+                        __('Types') => [
+                            'name' => 'domaintypes_id',
+                            'type' => 'select',
+                            'values' => getOptionForItems("DomainType"),
+                            'value' => $this->fields['domaintypes_id'] ?? '',
+                            'actions' => getItemActionButtons(['info', 'add'], "DomainType"),
+                        ],
+                        __('Technician in charge') => [
+                            'name' => 'users_id_tech',
+                            'type' => 'select',
+                            'values' => getOptionsForUsers('own_ticket', ['entities_id' => $this->fields['entities_id']  ?? '']),
+                            'value' => $this->fields['users_id_tech'] ?? '',
+                            'actions' => getItemActionButtons(['info', 'add'], "DomainType"),
+                        ],
+                        __('Comments') => [
+                            'name' => 'comment',
+                            'type' => 'textarea',
+                            'value' => $this->fields['comment'] ?? '',
+                        ],
                     ],
-                    __('Name') => [
-                       'name' => 'name',
-                       'type' => 'text',
-                       'value' => $this->fields['name'] ?? '',
-                    ],
-                    __('Creation date') => [
-                       'name' => 'date_creation',
-                       'type' => 'datetime-local',
-                       'value' => $this->fields['date_creation'] ?? '',
-                    ],
-                    __('Expiration date') => [
-                       'name' => 'date_expiration',
-                       'type' => 'datetime-local',
-                       'value' => $this->fields['date_expiration'] ?? '',
-                    ],
-                    __('Group in charge') => [
-                       'name' => 'groups_id_tech',
-                       'type' => 'select',
-                       'itemtype' => Group::class,
-                       'value' => $this->fields['groups_id_tech'] ?? '',
-                       'actions' => getItemActionButtons(['info', 'add'], "Group"),
-                    ],
-                    __('Others') => [
-                       'name' => 'others',
-                       'type' => 'text',
-                       'value' => $this->fields['others'] ?? '',
-                    ],
-                    __('Types') => [
-                       'name' => 'domaintypes_id',
-                       'type' => 'select',
-                       'values' => getOptionForItems("DomainType"),
-                       'value' => $this->fields['domaintypes_id'] ?? '',
-                       'actions' => getItemActionButtons(['info', 'add'], "DomainType"),
-                    ],
-                    __('Technician in charge') => [
-                       'name' => 'users_id_tech',
-                       'type' => 'select',
-                       'values' => getOptionsForUsers('own_ticket', ['entities_id' => $this->fields['entities_id']  ?? '']),
-                       'value' => $this->fields['users_id_tech'] ?? '',
-                       'actions' => getItemActionButtons(['info', 'add'], "DomainType"),
-                    ],
-                    __('Comments') => [
-                       'name' => 'comment',
-                       'type' => 'textarea',
-                       'value' => $this->fields['comment'] ?? '',
-                    ]
-                 ]
-              ]
-           ]
+                ],
+            ],
         ];
 
         renderTwigForm($form, '', $this->fields);
@@ -399,10 +399,10 @@ class Domain extends CommonDropdown
         global $DB;
 
         $p = [
-           'name'    => 'domains_id',
-           'entity'  => '',
-           'used'    => [],
-           'display' => true,
+            'name'    => 'domains_id',
+            'entity'  => '',
+            'used'    => [],
+            'display' => true,
         ];
 
         if (is_array($options) && count($options)) {
@@ -414,7 +414,7 @@ class Domain extends CommonDropdown
         $rand = mt_rand();
 
         $where = [
-           'glpi_domains.is_deleted'  => 0
+            'glpi_domains.is_deleted'  => 0,
         ] + getEntitiesRestrictCriteria(self::getTable(), '', $p['entity'], true);
 
         if (count($p['used'])) {
@@ -422,8 +422,8 @@ class Domain extends CommonDropdown
         }
 
         $iterator = $DB->request([
-           'FROM'      => self::getTable(),
-           'WHERE'     => $where
+            'FROM'      => self::getTable(),
+            'WHERE'     => $where,
         ]);
 
         $values = [0 => Dropdown::EMPTY_VALUE];
@@ -435,9 +435,9 @@ class Domain extends CommonDropdown
             'domains_id',
             $values,
             [
-              'width'   => '30%',
-              'rand'    => $rand,
-              'display' => false
+                'width'   => '30%',
+                'rand'    => $rand,
+                'display' => false,
             ]
         );
 
@@ -469,25 +469,25 @@ class Domain extends CommonDropdown
         switch ($ma->getAction()) {
             case 'add_item':
                 self::dropdownDomains([]);
-                echo "&nbsp;" .
-                   Html::submit(_x('button', 'Post'), ['name' => 'massiveaction']);
+                echo "&nbsp;"
+                   . Html::submit(_x('button', 'Post'), ['name' => 'massiveaction']);
                 return true;
             case "install":
                 Dropdown::showSelectItemFromItemtypes([
-                   'items_id_name' => 'item_item',
-                   'itemtype_name' => 'typeitem',
-                   'itemtypes'     => self::getTypes(true),
-                   'checkright'    => true,
+                    'items_id_name' => 'item_item',
+                    'itemtype_name' => 'typeitem',
+                    'itemtypes'     => self::getTypes(true),
+                    'checkright'    => true,
                 ]);
                 echo Html::submit(_x('button', 'Post'), ['name' => 'massiveaction']);
                 return true;
                 break;
             case "uninstall":
                 Dropdown::showSelectItemFromItemtypes([
-                   'items_id_name' => 'item_item',
-                   'itemtype_name' => 'typeitem',
-                   'itemtypes'     => self::getTypes(true),
-                   'checkright'    => true,
+                    'items_id_name' => 'item_item',
+                    'itemtype_name' => 'typeitem',
+                    'itemtypes'     => self::getTypes(true),
+                    'checkright'    => true,
                 ]);
                 echo Html::submit(_x('button', 'Post'), ['name' => 'massiveaction']);
                 return true;
@@ -508,9 +508,9 @@ class Domain extends CommonDropdown
                 $input = $ma->getInput();
                 foreach ($ids as $id) {
                     $input = [
-                       'domains_id' => $input['domains_id'],
-                       'items_id'                  => $id,
-                       'itemtype'                  => $item->getType()
+                        'domains_id' => $input['domains_id'],
+                        'items_id'                  => $id,
+                        'itemtype'                  => $item->getType(),
                     ];
                     if ($domain_item->can(-1, UPDATE, $input)) {
                         if ($domain_item->add($input)) {
@@ -529,9 +529,9 @@ class Domain extends CommonDropdown
                 foreach ($ids as $key) {
                     if ($item->can($key, UPDATE)) {
                         $values = [
-                           'domains_id' => $key,
-                           'items_id'                  => $input["item_item"],
-                           'itemtype'                  => $input['typeitem']
+                            'domains_id' => $key,
+                            'items_id'                  => $input["item_item"],
+                            'itemtype'                  => $input['typeitem'],
                         ];
                         if ($domain_item->add($values)) {
                             $ma->itemDone($item->getType(), $key, MassiveAction::ACTION_OK);
@@ -582,7 +582,7 @@ class Domain extends CommonDropdown
         switch ($name) {
             case 'DomainsAlert':
                 return [
-                   'description' => __('Expired or expiring domains')
+                    'description' => __('Expired or expiring domains'),
                 ];
                 break;
         }
@@ -592,7 +592,7 @@ class Domain extends CommonDropdown
     /**
      * Criteria for expired domains
      *
-     * @param integer $entities_id Entity ID
+     * @param int $entities_id Entity ID
      *
      * @return array
      */
@@ -602,21 +602,21 @@ class Domain extends CommonDropdown
 
         $delay = Entity::getUsedConfig('send_domains_alert_expired_delay', $entities_id);
         return [
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'NOT' => ['date_expiration' => null],
-              'entities_id'  => $entities_id,
-              'is_deleted'   => 0,
-              new QueryExpression("DATEDIFF(CURDATE(), " . $DB->quoteName('date_expiration') . ") > $delay"),
-              new QueryExpression("DATEDIFF(CURDATE(), " . $DB->quoteName('date_expiration') . ") > 0")
-           ]
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'NOT' => ['date_expiration' => null],
+                'entities_id'  => $entities_id,
+                'is_deleted'   => 0,
+                new QueryExpression("DATEDIFF(CURDATE(), " . $DB->quoteName('date_expiration') . ") > $delay"),
+                new QueryExpression("DATEDIFF(CURDATE(), " . $DB->quoteName('date_expiration') . ") > 0"),
+            ],
         ];
     }
 
     /**
      * Criteria for domains closed expiries
      *
-     * @param integer $entities_id Entity ID
+     * @param int $entities_id Entity ID
      *
      * @return array
      */
@@ -626,14 +626,14 @@ class Domain extends CommonDropdown
 
         $delay = Entity::getUsedConfig('send_domains_alert_close_expiries_delay', $entities_id);
         return [
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'NOT' => ['date_expiration' => null],
-              'entities_id'  => $entities_id,
-              'is_deleted'   => 0,
-              new QueryExpression("DATEDIFF(CURDATE(), " . $DB->quoteName('date_expiration') . ") > -$delay"),
-              new QueryExpression("DATEDIFF(CURDATE(), " . $DB->quoteName('date_expiration') . ") < 0")
-           ]
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'NOT' => ['date_expiration' => null],
+                'entities_id'  => $entities_id,
+                'is_deleted'   => 0,
+                new QueryExpression("DATEDIFF(CURDATE(), " . $DB->quoteName('date_expiration') . ") > -$delay"),
+                new QueryExpression("DATEDIFF(CURDATE(), " . $DB->quoteName('date_expiration') . ") < 0"),
+            ],
         ];
     }
 
@@ -661,8 +661,8 @@ class Domain extends CommonDropdown
             $query_whichexpire = self::closeExpiriesDomainsCriteria($entity);
 
             $querys = [
-               Alert::NOTICE => $query_whichexpire,
-               Alert::END => $query_expired
+                Alert::NOTICE => $query_whichexpire,
+                Alert::END => $query_expired,
             ];
 
             $domain_infos    = [];
@@ -672,8 +672,8 @@ class Domain extends CommonDropdown
                 $domain_infos[$type] = [];
                 $iterator = $DB->request($query);
                 while ($data = $iterator->next()) {
-                    $message                        = $data["name"] . ": " .
-                       Html::convDate($data["date_expiration"]) . "<br>\n";
+                    $message                        = $data["name"] . ": "
+                       . Html::convDate($data["date_expiration"]) . "<br>\n";
                     $domain_infos[$type][$entity][] = $data;
 
                     if (!isset($domain_messages[$type][$entity])) {
@@ -690,8 +690,8 @@ class Domain extends CommonDropdown
                             ($type == Alert::NOTICE ? "DomainsWhichExpire" : "ExpiredDomains"),
                             new Domain(),
                             [
-                            'entities_id' => $entity,
-                            'domains'     => $domains
+                                'entities_id' => $entity,
+                                'domains'     => $domains,
                             ]
                         )
                     ) {
@@ -769,12 +769,12 @@ class Domain extends CommonDropdown
         global $DB;
 
         $iterator = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'id'              => $used,
-              'domaintypes_id'  => $domaintype
-           ]
+            'SELECT' => 'id',
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'id'              => $used,
+                'domaintypes_id'  => $domaintype,
+            ],
         ]);
 
         $used = [];
@@ -788,8 +788,8 @@ class Domain extends CommonDropdown
     {
         $links = [];
         if (static::canView()) {
-            $rooms = "<i class=\"fa fa-clipboard-list pointer\" title=\"" . DomainRecord::getTypeName(Session::getPluralNumber()) .
-               "\"></i><span class=\"sr-only\">" . DomainRecord::getTypeName(Session::getPluralNumber()) . "</span>";
+            $rooms = "<i class=\"fa fa-clipboard-list pointer\" title=\"" . DomainRecord::getTypeName(Session::getPluralNumber())
+               . "\"></i><span class=\"sr-only\">" . DomainRecord::getTypeName(Session::getPluralNumber()) . "</span>";
             $links[$rooms] = DomainRecord::getSearchURL(false);
         }
         if (count($links)) {
@@ -802,14 +802,14 @@ class Domain extends CommonDropdown
     {
         if (static::canView()) {
             return [
-               'domainrecord' => [
-                  'title' => DomainRecord::getTypeName(Session::getPluralNumber()),
-                  'page'  => DomainRecord::getSearchURL(false),
-                  'links' => [
-                     'add'    => '/front/domainrecord.form.php',
-                     'search' => '/front/domainrecord.php',
-                  ]
-               ]
+                'domainrecord' => [
+                    'title' => DomainRecord::getTypeName(Session::getPluralNumber()),
+                    'page'  => DomainRecord::getSearchURL(false),
+                    'links' => [
+                        'add'    => '/front/domainrecord.form.php',
+                        'search' => '/front/domainrecord.php',
+                    ],
+                ],
             ];
         }
     }

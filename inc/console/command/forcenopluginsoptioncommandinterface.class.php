@@ -42,7 +42,7 @@ interface ForceNoPluginsOptionCommandInterface
     /**
      * Defines whether or not command prevents plugins to be loaded.
      *
-     * @return boolean
+     * @return bool
      */
     public function getNoPluginsOptionValue();
 }

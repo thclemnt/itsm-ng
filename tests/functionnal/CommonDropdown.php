@@ -150,7 +150,7 @@ abstract class CommonDropdown extends DbTestCase
         $this->newTestedInstance();
 
         $this->integer(
-            (int)$this->testedInstance->add([])
+            (int) $this->testedInstance->add([])
         )->isGreaterThan(0);
         $this->boolean(
             $this->testedInstance->getFromDB($this->testedInstance->getID())
@@ -163,7 +163,7 @@ abstract class CommonDropdown extends DbTestCase
            ->string['date_creation']->isNotEqualTo('');
 
         $this->integer(
-            (int)$this->testedInstance->add(['name' => 'Tested name'])
+            (int) $this->testedInstance->add(['name' => 'Tested name'])
         )->isGreaterThan(0);
         $this->boolean(
             $this->testedInstance->getFromDB($this->testedInstance->getID())
@@ -176,10 +176,10 @@ abstract class CommonDropdown extends DbTestCase
            ->string['date_creation']->isNotEqualTo('');
 
         $this->integer(
-            (int)$this->testedInstance->add([
-              'name'      => 'Another name',
-              'comment'   => 'A comment on an object'
-         ])
+            (int) $this->testedInstance->add([
+                'name'      => 'Another name',
+                'comment'   => 'A comment on an object',
+            ])
         )->isGreaterThan(0);
         $this->boolean(
             $this->testedInstance->getFromDB($this->testedInstance->getID())
@@ -194,9 +194,9 @@ abstract class CommonDropdown extends DbTestCase
 
         $this->boolean(
             $this->testedInstance->update([
-              'id'     => $this->testedInstance->getID(),
-              'name'   => 'Changed name'
-         ])
+                'id'     => $this->testedInstance->getID(),
+                'name'   => 'Changed name',
+            ])
         )->isTrue();
         $this->boolean(
             $this->testedInstance->getFromDB($this->testedInstance->getID())

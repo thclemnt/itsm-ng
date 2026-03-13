@@ -58,99 +58,99 @@ abstract class CommonDCModelDropdown extends CommonDropdown
         $fields = [];
         if ($DB->fieldExists($this->getTable(), 'product_number')) {
             $fields[__('Product Number')] = [
-               'name'   => 'product_number',
-               'type'   => 'text',
-               'value' => $this->fields['product_number'],
+                'name'   => 'product_number',
+                'type'   => 'text',
+                'value' => $this->fields['product_number'],
             ];
         }
 
         if ($DB->fieldExists($this->getTable(), 'weight')) {
             $fields[__('Weight')] = [
-               'name'   => 'weight',
-               'type'   => 'number',
-               'min' => 0,
-               'max' => 1000,
-               'value' => $this->fields['weight'],
+                'name'   => 'weight',
+                'type'   => 'number',
+                'min' => 0,
+                'max' => 1000,
+                'value' => $this->fields['weight'],
             ];
         }
 
         if ($DB->fieldExists($this->getTable(), 'required_units')) {
             $fields[__('Required units')] = [
-               'name'   => 'required_units',
-               'type'   => 'number',
-               'min'    => 1,
-               'value'  => $this->fields['required_units'],
+                'name'   => 'required_units',
+                'type'   => 'number',
+                'min'    => 1,
+                'value'  => $this->fields['required_units'],
             ];
         }
 
         if ($DB->fieldExists($this->getTable(), 'depth')) {
             $fields[__('Depth')] = [
-               'name'   => 'depth',
-               'type'   => 'select',
-               'values' => [
-                  '1'      => __('1'),
-                  '0.5'    => __('1/2'),
-                  '0.33'   => __('1/3'),
-                  '0.25'   => __('1/4')
-               ],
-               'value' => $this->fields['depth'],
+                'name'   => 'depth',
+                'type'   => 'select',
+                'values' => [
+                    '1'      => __('1'),
+                    '0.5'    => __('1/2'),
+                    '0.33'   => __('1/3'),
+                    '0.25'   => __('1/4'),
+                ],
+                'value' => $this->fields['depth'],
             ];
         }
 
         if ($DB->fieldExists($this->getTable(), 'power_connections')) {
             $fields[__('Power connections')] = [
-               'name'   => 'power_connections',
-               'type'   => 'number',
-               'min' => 0,
-               'max' => 1000,
-               'value' => $this->fields['power_connections'],
+                'name'   => 'power_connections',
+                'type'   => 'number',
+                'min' => 0,
+                'max' => 1000,
+                'value' => $this->fields['power_connections'],
             ];
         }
 
         if ($DB->fieldExists($this->getTable(), 'power_consumption')) {
             $fields[__('Power consumption')] = [
-               'name'   => 'power_consumption',
-               'type'   => 'number',
-               'after'   => __('watts'),
-               'min' => 0,
-               'html'   => true
+                'name'   => 'power_consumption',
+                'type'   => 'number',
+                'after'   => __('watts'),
+                'min' => 0,
+                'html'   => true,
             ];
         }
 
         if ($DB->fieldExists($this->getTable(), 'max_power')) {
             $fields[__('Max. power (in watts)')] = [
-               'name'   => 'max_power',
-               'type'   => 'number',
-               'after'   => __('watts'),
-               'min' => 0,
-               'html'   => true
+                'name'   => 'max_power',
+                'type'   => 'number',
+                'after'   => __('watts'),
+                'min' => 0,
+                'html'   => true,
             ];
         }
 
         if ($DB->fieldExists($this->getTable(), 'is_half_rack')) {
             $fields[__('Is half rack')] = [
-               'name'   => 'is_half_rack',
-               'type'   => 'checkbox',
+                'name'   => 'is_half_rack',
+                'type'   => 'checkbox',
             ];
         }
 
         if ($DB->fieldExists($this->getTable(), 'picture_front')) {
             $fields[__('Front picture')] = [
-               'name'   => 'picture_front',
-               'type'   => 'imageUpload',
-               'id'     => rand(),
-               'accept' => 'image/*',
-               'value'  => $this->fields['picture_front']
+                'name'   => 'picture_front',
+                'type'   => 'imageUpload',
+                'id'     => rand(),
+                'accept' => 'image/*',
+                'value'  => $this->fields['picture_front'],
             ];
         }
 
         if ($DB->fieldExists($this->getTable(), 'picture_rear')) {
             $fields[__('Rear picture')] = [
-               'name'   => 'picture_rear',
-               'type'   => 'imageUpload',
-               'id'     => rand(),
-               'accept' => 'image/*',
-               'value'  => $this->fields['picture_rear']
+                'name'   => 'picture_rear',
+                'type'   => 'imageUpload',
+                'id'     => rand(),
+                'accept' => 'image/*',
+                'value'  => $this->fields['picture_rear'],
             ];
         }
 
@@ -165,96 +165,96 @@ abstract class CommonDCModelDropdown extends CommonDropdown
 
         if ($DB->fieldExists($table, 'product_number')) {
             $options[] = [
-               'id'    => '130',
-               'table' => $table,
-               'field' => 'product_number',
-               'name'  => __('Product Number'),
-               'autocomplete' => true,
+                'id'    => '130',
+                'table' => $table,
+                'field' => 'product_number',
+                'name'  => __('Product Number'),
+                'autocomplete' => true,
             ];
         }
 
         if ($DB->fieldExists($table, 'weight')) {
             $options[] = [
-               'id'       => '131',
-               'table'    => $table,
-               'field'    => 'weight',
-               'name'     => __('Weight'),
-               'datatype' => 'decimal'
+                'id'       => '131',
+                'table'    => $table,
+                'field'    => 'weight',
+                'name'     => __('Weight'),
+                'datatype' => 'decimal',
             ];
         }
 
         if ($DB->fieldExists($table, 'required_units')) {
             $options[] = [
-               'id'       => '132',
-               'table'    => $table,
-               'field'    => 'required_units',
-               'name'     => __('Required units'),
-               'datatype' => 'number'
+                'id'       => '132',
+                'table'    => $table,
+                'field'    => 'required_units',
+                'name'     => __('Required units'),
+                'datatype' => 'number',
             ];
         }
 
         if ($DB->fieldExists($table, 'depth')) {
             $options[] = [
-               'id'       => '133',
-               'table'    => $table,
-               'field'    => 'depth',
-               'name'     => __('Depth'),
+                'id'       => '133',
+                'table'    => $table,
+                'field'    => 'depth',
+                'name'     => __('Depth'),
             ];
         }
 
         if ($DB->fieldExists($table, 'power_connections')) {
             $options[] = [
-               'id'       => '134',
-               'table'    => $table,
-               'field'    => 'power_connections',
-               'name'     => __('Power connections'),
-               'datatype' => 'number'
+                'id'       => '134',
+                'table'    => $table,
+                'field'    => 'power_connections',
+                'name'     => __('Power connections'),
+                'datatype' => 'number',
             ];
         }
 
         if ($DB->fieldExists($table, 'power_consumption')) {
             $options[] = [
-               'id'       => '135',
-               'table'    => $table,
-               'field'    => 'power_consumption',
-               'name'     => __('Power consumption'),
-               'datatype' => 'decimal'
+                'id'       => '135',
+                'table'    => $table,
+                'field'    => 'power_consumption',
+                'name'     => __('Power consumption'),
+                'datatype' => 'decimal',
             ];
         }
 
         if ($DB->fieldExists($table, 'is_half_rack')) {
             $options[] = [
-               'id'       => '136',
-               'table'    => $table,
-               'field'    => 'is_half_rack',
-               'name'     => __('Is half rack'),
-               'datatype' => 'bool'
+                'id'       => '136',
+                'table'    => $table,
+                'field'    => 'is_half_rack',
+                'name'     => __('Is half rack'),
+                'datatype' => 'bool',
             ];
         }
 
         if ($DB->fieldExists($table, 'picture_front')) {
             $options[] = [
-               'id'            => '137',
-               'table'         => $table,
-               'field'         => 'picture_front',
-               'name'          => __('Front picture'),
-               'datatype'      => 'specific',
-               'nosearch'      => true,
-               'massiveaction' => true,
-               'nosort'        => true,
+                'id'            => '137',
+                'table'         => $table,
+                'field'         => 'picture_front',
+                'name'          => __('Front picture'),
+                'datatype'      => 'specific',
+                'nosearch'      => true,
+                'massiveaction' => true,
+                'nosort'        => true,
             ];
         }
 
         if ($DB->fieldExists($table, 'picture_rear')) {
             $options[] = [
-               'id'            => '138',
-               'table'         => $table,
-               'field'         => 'picture_rear',
-               'name'          => __('Rear picture'),
-               'datatype'      => 'specific',
-               'nosearch'      => true,
-               'massiveaction' => true,
-               'nosort'        => true,
+                'id'            => '138',
+                'table'         => $table,
+                'field'         => 'picture_rear',
+                'name'          => __('Rear picture'),
+                'datatype'      => 'specific',
+                'nosearch'      => true,
+                'massiveaction' => true,
+                'nosort'        => true,
             ];
         }
 
@@ -271,8 +271,8 @@ abstract class CommonDCModelDropdown extends CommonDropdown
             case 'picture_rear':
                 if (isset($options['html']) && $options['html']) {
                     return Html::image(Toolbox::getPictureUrl($values[$field]), [
-                       'alt'   => $options['searchopt']['name'],
-                       'style' => 'height: 30px;',
+                        'alt'   => $options['searchopt']['name'],
+                        'style' => 'height: 30px;',
                     ]);
                 }
         }
@@ -346,18 +346,18 @@ abstract class CommonDCModelDropdown extends CommonDropdown
                 Dropdown::showFromArray(
                     $field['name'],
                     [
-                      '1'      => __('1'),
-                      '0.5'    => __('1/2'),
-                      '0.33'   => __('1/3'),
-                      '0.25'   => __('1/4')
+                        '1'      => __('1'),
+                        '0.5'    => __('1/2'),
+                        '0.33'   => __('1/3'),
+                        '0.25'   => __('1/4'),
                     ],
                     [
-                      'value'                 => $this->fields[$field['name']]
+                        'value'                 => $this->fields[$field['name']],
                     ]
                 );
                 break;
             default:
-                throw new \RuntimeException("Unknown {$field['type']}");
+                throw new RuntimeException("Unknown {$field['type']}");
         }
     }
 }

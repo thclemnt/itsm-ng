@@ -60,15 +60,15 @@ class Rule extends DbTestCase
     {
         $rule = new \Rule();
         $rules_id = $rule->add([
-           'name'        => 'Ignore import',
-           'is_active'   => 1,
-           'entities_id' => 0,
-           'sub_type'    => 'RuleDictionnarySoftware',
-           'match'       => \Rule::AND_MATCHING,
-           'condition'   => 0,
-           'description' => ''
+            'name'        => 'Ignore import',
+            'is_active'   => 1,
+            'entities_id' => 0,
+            'sub_type'    => 'RuleDictionnarySoftware',
+            'match'       => \Rule::AND_MATCHING,
+            'condition'   => 0,
+            'description' => '',
         ]);
-        $this->integer((int)$rules_id)->isGreaterThan(0);
+        $this->integer((int) $rules_id)->isGreaterThan(0);
 
         $obj = \Rule::getRuleObjectByID($rules_id);
         $this->object($obj)->isInstanceOf('RuleDictionnarySoftware');
@@ -83,9 +83,9 @@ class Rule extends DbTestCase
 
         $conditions = \RuleTicket::getConditionsArray();
         $this->array($conditions)->isIdenticalTo([
-           1 => "Add",
-           2 => "Update",
-           3 => "Add / Update"
+            1 => "Add",
+            2 => "Update",
+            3 => "Add / Update",
         ]);
     }
 
@@ -201,40 +201,40 @@ class Rule extends DbTestCase
         $action     = new \RuleAction();
 
         $rules_id = $rule->add(['name'        => 'Ignore import',
-                                'is_active'   => 1,
-                                'entities_id' => 0,
-                                'sub_type'    => 'RuleDictionnarySoftware',
-                                'match'       => \Rule::OR_MATCHING,
-                                'condition'   => 0,
-                                'description' => ''
-                             ]);
-        $this->integer((int)$rules_id)->isGreaterThan(0);
+            'is_active'   => 1,
+            'entities_id' => 0,
+            'sub_type'    => 'RuleDictionnarySoftware',
+            'match'       => \Rule::OR_MATCHING,
+            'condition'   => 0,
+            'description' => '',
+        ]);
+        $this->integer((int) $rules_id)->isGreaterThan(0);
 
         $this->integer(
-            (int)$criteria->add([
-              'rules_id'  => $rules_id,
-              'criteria'  => 'name',
-              'condition' => \Rule::PATTERN_IS,
-              'pattern'   => 'Mozilla Firefox 52'
-         ])
+            (int) $criteria->add([
+                'rules_id'  => $rules_id,
+                'criteria'  => 'name',
+                'condition' => \Rule::PATTERN_IS,
+                'pattern'   => 'Mozilla Firefox 52',
+            ])
         )->isGreaterThan(0);
 
         $this->integer(
-            (int)$criteria->add([
-              'rules_id'  => $rules_id,
-              'criteria'  => 'name',
-              'condition' => \Rule::PATTERN_IS,
-              'pattern'   => 'Mozilla Firefox 53'
-         ])
+            (int) $criteria->add([
+                'rules_id'  => $rules_id,
+                'criteria'  => 'name',
+                'condition' => \Rule::PATTERN_IS,
+                'pattern'   => 'Mozilla Firefox 53',
+            ])
         )->isGreaterThan(0);
 
         $this->integer(
-            (int)$action->add([
-              'rules_id'    => $rules_id,
-              'action_type' => 'assign',
-              'field'       => '_ignore_import',
-              'value'       => '1'
-         ])
+            (int) $action->add([
+                'rules_id'    => $rules_id,
+                'action_type' => 'assign',
+                'field'       => '_ignore_import',
+                'value'       => '1',
+            ])
         )->isGreaterThan(0);
 
         $this->boolean($rule->getRuleWithCriteriasAndActions($rules_id))->isTrue();
@@ -290,60 +290,60 @@ class Rule extends DbTestCase
     {
         $ruleTicket = new \RuleTicket();
         $this->string($ruleTicket->getCriteriaName('locations_id'))->isIdenticalTo('Ticket location');
-        $this->string($ruleTicket->getCriteriaName('location'))->isIdenticalTo(__('Unavailable')."&nbsp;");
+        $this->string($ruleTicket->getCriteriaName('location'))->isIdenticalTo(__('Unavailable') . "&nbsp;");
     }
 
     protected function actionsNamesProvider()
     {
         return [
-           [\Location::getTypeName(1)               , 'locations_id'],
-           ["&nbsp;"                     , 'location'],
-           [_n('Type', 'Types', 1)                   , 'type'],
-           [__('Category')               , 'itilcategories_id'],
-           [_n('Requester', 'Requesters', 1)              , '_users_id_requester'],
-           [_n('Requester group', 'Requester groups', 1)        , '_groups_id_requester'],
-           [__('Technician')             , '_users_id_assign'],
-           [__('Technician group')       , '_groups_id_assign'],
-           [__('Assigned to a supplier') , '_suppliers_id_assign'],
-           [_n('Watcher', 'Watchers', 1)                , '_users_id_observer'],
-           [_n('Watcher group', 'Watcher groups', 1)          , '_groups_id_observer'],
-           [__('Urgency')                , 'urgency'],
-           [__('Impact')                 , 'impact'],
-           [__('Priority')               , 'priority'],
-           [__('Status')                 , 'status'],
-           [_n(
-               'Associated element',
-               'Associated elements',
-               2
-           )  , 'affectobject'],
-           [sprintf(
-               __('%1$s %2$s'),
-               __('SLA'),
-               __('Time to resolve')
-           ) , 'slas_id_ttr'],
-           [sprintf(
-               __('%1$s %2$s'),
-               __('SLA'),
-               __('Time to own')
-           )     , 'slas_id_tto'],
-           [sprintf(
-               __('%1$s - %2$s'),
-               __('Send an approval request'),
-               \User::getTypeName(1)
-           )            , 'users_id_validate'],
-           [sprintf(
-               __('%1$s - %2$s'),
-               __('Send an approval request'),
-               \Group::getTypeName(1)
-           )           , 'groups_id_validate'],
-           [sprintf(
-               __('%1$s - %2$s'),
-               __('Send an approval request'),
-               __('Minimum validation required')
-           ) , 'validation_percent'],
-           [__('Approval request to requester group manager') , 'users_id_validate_requester_supervisor'],
-           [__('Approval request to technician group manager') , 'users_id_validate_assign_supervisor'],
-           [\RequestType::getTypeName(1), 'requesttypes_id']
+            [\Location::getTypeName(1), 'locations_id'],
+            ["&nbsp;", 'location'],
+            [_n('Type', 'Types', 1), 'type'],
+            [__('Category'), 'itilcategories_id'],
+            [_n('Requester', 'Requesters', 1), '_users_id_requester'],
+            [_n('Requester group', 'Requester groups', 1), '_groups_id_requester'],
+            [__('Technician'), '_users_id_assign'],
+            [__('Technician group'), '_groups_id_assign'],
+            [__('Assigned to a supplier'), '_suppliers_id_assign'],
+            [_n('Watcher', 'Watchers', 1), '_users_id_observer'],
+            [_n('Watcher group', 'Watcher groups', 1), '_groups_id_observer'],
+            [__('Urgency'), 'urgency'],
+            [__('Impact'), 'impact'],
+            [__('Priority'), 'priority'],
+            [__('Status'), 'status'],
+            [_n(
+                'Associated element',
+                'Associated elements',
+                2
+            ), 'affectobject'],
+            [sprintf(
+                __('%1$s %2$s'),
+                __('SLA'),
+                __('Time to resolve')
+            ), 'slas_id_ttr'],
+            [sprintf(
+                __('%1$s %2$s'),
+                __('SLA'),
+                __('Time to own')
+            ), 'slas_id_tto'],
+            [sprintf(
+                __('%1$s - %2$s'),
+                __('Send an approval request'),
+                \User::getTypeName(1)
+            ), 'users_id_validate'],
+            [sprintf(
+                __('%1$s - %2$s'),
+                __('Send an approval request'),
+                \Group::getTypeName(1)
+            ), 'groups_id_validate'],
+            [sprintf(
+                __('%1$s - %2$s'),
+                __('Send an approval request'),
+                __('Minimum validation required')
+            ), 'validation_percent'],
+            [__('Approval request to requester group manager'), 'users_id_validate_requester_supervisor'],
+            [__('Approval request to technician group manager'), 'users_id_validate_assign_supervisor'],
+            [\RequestType::getTypeName(1), 'requesttypes_id'],
         ];
     }
 
@@ -356,10 +356,7 @@ class Rule extends DbTestCase
         $this->string($ruleTicket->getActionName($field))->isIdenticalTo($label);
     }
 
-    public function testProcess()
-    {
-
-    }
+    public function testProcess() {}
 
     public function testPrepareInputDataForProcess()
     {
@@ -376,35 +373,35 @@ class Rule extends DbTestCase
         $action     = new \RuleAction();
 
         $rules_id = $rule->add(['name'        => 'Ignore import',
-                                'is_active'   => 1,
-                                'entities_id' => 0,
-                                'sub_type'    => 'RuleDictionnarySoftware',
-                                'match'       => \Rule::OR_MATCHING,
-                                'condition'   => 0,
-                                'description' => ''
-                               ]);
-        $this->integer((int)$rules_id)->isGreaterThan(0);
+            'is_active'   => 1,
+            'entities_id' => 0,
+            'sub_type'    => 'RuleDictionnarySoftware',
+            'match'       => \Rule::OR_MATCHING,
+            'condition'   => 0,
+            'description' => '',
+        ]);
+        $this->integer((int) $rules_id)->isGreaterThan(0);
 
         $criterion_1 = $criteria->add(['rules_id'  => $rules_id,
-                        'criteria'  => 'name',
-                        'condition' => \Rule::PATTERN_IS,
-                        'pattern'   => 'Mozilla Firefox 52'
-                       ]);
-        $this->integer((int)$criterion_1)->isGreaterThan(0);
+            'criteria'  => 'name',
+            'condition' => \Rule::PATTERN_IS,
+            'pattern'   => 'Mozilla Firefox 52',
+        ]);
+        $this->integer((int) $criterion_1)->isGreaterThan(0);
 
         $criterion_2 = $criteria->add(['rules_id'  => $rules_id,
-                        'criteria'  => 'name',
-                        'condition' => \Rule::PATTERN_IS,
-                        'pattern'   => 'Mozilla Firefox 53'
-                       ]);
-        $this->integer((int)$criterion_2)->isGreaterThan(0);
+            'criteria'  => 'name',
+            'condition' => \Rule::PATTERN_IS,
+            'pattern'   => 'Mozilla Firefox 53',
+        ]);
+        $this->integer((int) $criterion_2)->isGreaterThan(0);
 
         $action_1 = $action->add(['rules_id'    => $rules_id,
-                      'action_type' => 'assign',
-                      'field'       => '_ignore_import',
-                      'value'       => '1'
-                     ]);
-        $this->integer((int)$action_1)->isGreaterThan(0);
+            'action_type' => 'assign',
+            'field'       => '_ignore_import',
+            'value'       => '1',
+        ]);
+        $this->integer((int) $action_1)->isGreaterThan(0);
 
         $this->boolean($rule->getFromDB($rules_id))->isTrue();
         $rule->cleanDBonPurge();
@@ -418,7 +415,7 @@ class Rule extends DbTestCase
         $rule     = new \RuleRight();
         //Add a new rule
         $rules_id = $rule->add(['name' => 'MyRule', 'is_active' => 1]);
-        $this->integer((int)$rules_id)->isGreaterThan(0);
+        $this->integer((int) $rules_id)->isGreaterThan(0);
         $this->boolean($rule->getFromDB($rules_id))->isTrue();
         //Check that an uuid has been generated
         $this->string($rule->fields['uuid'])->isNotEmpty();
@@ -427,7 +424,7 @@ class Rule extends DbTestCase
 
         //Add a rule and provide an uuid
         $rules_id = $rule->add(['name' => 'MyRule', 'uuid' => '12345']);
-        $this->integer((int)$rules_id)->isGreaterThan(0);
+        $this->integer((int) $rules_id)->isGreaterThan(0);
         $this->boolean($rule->getFromDB($rules_id))->isTrue();
         //Check that the uuid has been added as it is, and has not been overriden
         $this->string($rule->fields['uuid'])->isIdenticalTo('12345');
@@ -441,9 +438,9 @@ class Rule extends DbTestCase
 
         //Testing condition CONTAIN
         $input    = ['criteria'  => 'location',
-                     'condition'   => \Rule::PATTERN_CONTAIN,
-                     'pattern' => '_loc'
-                    ];
+            'condition'   => \Rule::PATTERN_CONTAIN,
+            'pattern' => '_loc',
+        ];
         //The criterion doesn't exists
         $result   = $rule->getMinimalCriteriaText($input);
         $expected = "<td >Unavailable&nbsp;</td><td >contains</td><td >_loc</td>";
@@ -531,17 +528,17 @@ class Rule extends DbTestCase
     {
         $rule = new \RuleSoftwareCategory();
         $input = ['field' => 'softwarecategories_id',
-                  'action_type' => 'assign',
-                  'value' => 1
-                 ];
+            'action_type' => 'assign',
+            'value' => 1,
+        ];
         $result = $rule->getMinimalActionText($input);
         $expected = "<td >Category</td><td >Assign</td><td >FUSION</td>";
         $this->string($result)->isIdenticalTo($expected);
 
         $input = ['field' => '_import_category',
-                  'action_type' => 'assign',
-                  'value' => 1
-                 ];
+            'action_type' => 'assign',
+            'value' => 1,
+        ];
         $result = $rule->getMinimalActionText($input);
         $expected = "<td >Import category from inventory tool</td><td >Assign</td><td >Yes</td>";
         $this->string($result)->isIdenticalTo($expected);
@@ -573,8 +570,8 @@ class Rule extends DbTestCase
         $this->string($rule->fields['name'])->isIdenticalTo('One user assignation');
 
         $relations = [
-           \RuleAction::class => 1,
-           \RuleCriteria::class  => 3
+            \RuleAction::class => 1,
+            \RuleCriteria::class  => 3,
         ];
 
         foreach ($relations as $relation => $expected) {
@@ -608,8 +605,8 @@ class Rule extends DbTestCase
         //create a software rule
         $first_rule = new \RuleSoftwareCategory();
         $add = $first_rule->add([
-           'sub_type'  => 'RuleSoftwareCategory',
-           'name'      => 'my test rule'
+            'sub_type'  => 'RuleSoftwareCategory',
+            'name'      => 'my test rule',
         ]);
         $this->integer($add)->isGreaterThan(0);
         $first_rule = new \RuleSoftwareCategory();
@@ -618,8 +615,8 @@ class Rule extends DbTestCase
 
         $second_rule = new \RuleSoftwareCategory();
         $add = $second_rule->add([
-           'sub_type'  => 'RuleSoftwareCategory',
-           'name'      => 'my other test rule'
+            'sub_type'  => 'RuleSoftwareCategory',
+            'name'      => 'my other test rule',
         ]);
         $this->integer($add)->isGreaterThan(0);
         $second_rule = new \RuleSoftwareCategory();
@@ -650,11 +647,11 @@ class Rule extends DbTestCase
                 $conditions = $rulecriteria->getConditions($class, $key);
                 foreach (array_keys($conditions) as $condition) {
                     $rulecriteria->fields = [
-                       'id'        => 1,
-                       'rules_id'  => 1,
-                       'criteria'  => $key,
-                       'condition' => $condition,
-                       'pattern'   => in_array($condition, [\Rule::REGEX_MATCH,  \Rule::REGEX_NOT_MATCH]) ? '/1/' : 1,
+                        'id'        => 1,
+                        'rules_id'  => 1,
+                        'criteria'  => $key,
+                        'condition' => $condition,
+                        'pattern'   => in_array($condition, [\Rule::REGEX_MATCH,  \Rule::REGEX_NOT_MATCH]) ? '/1/' : 1,
                     ];
 
                     $results      = [];

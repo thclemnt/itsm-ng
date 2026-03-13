@@ -62,10 +62,10 @@ class Profile_Reminder extends CommonDBRelation
 
         $prof  = [];
         $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'reminders_id' => $reminders_id
-           ]
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'reminders_id' => $reminders_id,
+            ],
         ]);
 
         while ($data = $iterator->next()) {

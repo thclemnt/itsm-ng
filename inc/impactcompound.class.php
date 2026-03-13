@@ -38,6 +38,4 @@ if (!defined('GLPI_ROOT')) {
 /**
  * @since 9.5.0
  */
-class ImpactCompound extends CommonDBTM
-{
-}
+class ImpactCompound extends CommonDBTM {}

@@ -31,7 +31,6 @@
  * ---------------------------------------------------------------------
  */
 
-use Glpi\Event;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -229,10 +228,10 @@ class SpecialStatus extends CommonTreeDropdown
         if (isset($_POST["update"])) {
             $before = Ticket::getAllStatusArray(false, true);
             $status_db = [
-               'name'   => $_POST["name"],
-               'weight'   => $_POST["weight"],
-               'is_active'  => $_POST["is_active"],
-               'color'  => $_POST["color"]
+                'name'   => $_POST["name"],
+                'weight'   => $_POST["weight"],
+                'is_active'  => $_POST["is_active"],
+                'color'  => $_POST["color"],
             ];
             $DB->updateOrInsert("glpi_specialstatuses", $status_db, ['id'   => 0]);
             Session::addMessageAfterRedirect(

@@ -115,12 +115,12 @@ if (isset($_POST["add"])) {
 } elseif (isset($_POST['addme_observer'])) {
     $change->check($_POST['changes_id'], READ);
     $input = array_merge(Toolbox::addslashes_deep($change->fields), [
-       'id' => $_POST['changes_id'],
-       '_itil_observer' => [
-          '_type' => "user",
-          'users_id' => Session::getLoginUserID(),
-          'use_notification' => 1,
-       ]
+        'id' => $_POST['changes_id'],
+        '_itil_observer' => [
+            '_type' => "user",
+            'users_id' => Session::getLoginUserID(),
+            'use_notification' => 1,
+        ],
     ]);
     $change->update($input);
     Event::log(
@@ -137,9 +137,9 @@ if (isset($_POST["add"])) {
 
     $change->check($_POST['changes_id'], READ);
     $input = ['changes_id'       => $_POST['changes_id'],
-                   'users_id'         => Session::getLoginUserID(),
-                   'use_notification' => 1,
-                   'type'             => CommonITILActor::ASSIGN];
+        'users_id'         => Session::getLoginUserID(),
+        'use_notification' => 1,
+        'type'             => CommonITILActor::ASSIGN];
     $change_user->add($input);
     Event::log(
         $_POST['changes_id'],
@@ -151,14 +151,14 @@ if (isset($_POST["add"])) {
     );
     Html::redirect(Change::getFormURLWithID($_POST['changes_id']));
 } elseif (isset($_POST['delete_document'])) {
-    $change->getFromDB((int)$_POST['changes_id']);
+    $change->getFromDB((int) $_POST['changes_id']);
     $doc = new Document();
     $doc->getFromDB(intval($_POST['documents_id']));
     if ($doc->can($doc->getID(), UPDATE)) {
         $document_item = new Document_Item();
         $found_document_items = $document_item->find([
-           $change->getAssociatedDocumentsCriteria(),
-           'documents_id' => $doc->getID()
+            $change->getAssociatedDocumentsCriteria(),
+            'documents_id' => $doc->getID(),
         ]);
         foreach ($found_document_items as $item) {
             $document_item->delete(Toolbox::addslashes_deep($item), true);
@@ -174,8 +174,8 @@ if (isset($_POST["add"])) {
             'savetokb',
             KnowbaseItem::getFormURL() . '?_in_modal=1&item_itemtype=Change&item_items_id=' . $_GET['id'],
             [
-              'title'         => __('Save solution to the knowledge base'),
-              'reloadonclose' => false,
+                'title'         => __('Save solution to the knowledge base'),
+                'reloadonclose' => false,
             ]
         );
         echo Html::scriptBlock('$(function() {' . Html::jsGetElementbyID('savetokb') . '.dialog("open"); });');

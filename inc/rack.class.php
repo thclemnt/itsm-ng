@@ -1,5 +1,7 @@
 <?php
 
+use Glpi\Features\DCBreadcrumb;
+
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
@@ -40,7 +42,7 @@ if (!defined('GLPI_ROOT')) {
  **/
 class Rack extends CommonDBTM
 {
-    use Glpi\Features\DCBreadcrumb;
+    use DCBreadcrumb;
 
     public const FRONT    = 0;
     public const REAR     = 1;
@@ -152,182 +154,182 @@ class Rack extends CommonDBTM
 
         $title = __('New element') . ' ' . self::getTypeName(1);
         $form = [
-           'action' => $CFG_GLPI['root_doc'] . '/front/rack.form.php',
-           'buttons' => [
-              isset($this->fields["is_deleted"]) && $this->fields["is_deleted"] == 1 && self::canDelete() ? [
-                'type' => 'submit',
-                'name' => 'restore',
-                'value' => __('Restore'),
-                'class' => 'btn btn-secondary'
-              ] : ($this->canUpdateItem() ? [
-                'type' => 'submit',
-                'name' => $isNew ? 'add' : 'update',
-                'value' => $isNew ? __('Add') : __('Update'),
-                'class' => 'btn btn-secondary'
-              ] : []),
-              !$isNew && !$this->isDeleted() && $this->canDeleteItem() ? [
-                'type' => 'submit',
-                'name' => 'delete',
-                'value' => __('Put in trashbin'),
-                'class' => 'btn btn-danger'
-              ] : (!$isNew && self::canPurge() ? [
-                'type' => 'submit',
-                'name' => 'purge',
-                'value' => __('Delete permanently'),
-                'class' => 'btn btn-danger'
-              ] : []),
+            'action' => $CFG_GLPI['root_doc'] . '/front/rack.form.php',
+            'buttons' => [
+                isset($this->fields["is_deleted"]) && $this->fields["is_deleted"] == 1 && self::canDelete() ? [
+                    'type' => 'submit',
+                    'name' => 'restore',
+                    'value' => __('Restore'),
+                    'class' => 'btn btn-secondary',
+                ] : ($this->canUpdateItem() ? [
+                    'type' => 'submit',
+                    'name' => $isNew ? 'add' : 'update',
+                    'value' => $isNew ? __('Add') : __('Update'),
+                    'class' => 'btn btn-secondary',
+                ] : []),
+                !$isNew && !$this->isDeleted() && $this->canDeleteItem() ? [
+                    'type' => 'submit',
+                    'name' => 'delete',
+                    'value' => __('Put in trashbin'),
+                    'class' => 'btn btn-danger',
+                ] : (!$isNew && self::canPurge() ? [
+                    'type' => 'submit',
+                    'name' => 'purge',
+                    'value' => __('Delete permanently'),
+                    'class' => 'btn btn-danger',
+                ] : []),
             ],
-           'content' => [
-              $title => [
-                 'inputs' => [
-                    __("Name") => [
-                       'name' => 'name',
-                       'type' => 'text',
-                       'value' => $this->fields['name'],
+            'content' => [
+                $title => [
+                    'inputs' => [
+                        __("Name") => [
+                            'name' => 'name',
+                            'type' => 'text',
+                            'value' => $this->fields['name'],
+                        ],
+                        __("Status") => [
+                            'name' => 'states_id',
+                            'type' => 'select',
+                            'itemtype' => State::class,
+                            'conditions' => ['is_visible_computer' => 1, 'entities_id' => $this->fields['entities_id']],
+                            'value' => $this->fields['states_id'],
+                            'actions' => getItemActionButtons(['info', 'add'], "State"),
+                        ],
+                        __("Location") => [
+                            'name' => 'locations_id',
+                            'id' => 'locations_id_dropdown',
+                            'type' => 'select',
+                            'itemtype' => Location::class,
+                            'value' => $this->fields['locations_id'],
+                            'actions' => getItemActionButtons(['info', 'add'], "Location"),
+                        ],
+                        __("Type") => [
+                            'name' => 'racktypes_id',
+                            'type' => 'select',
+                            'values' => getOptionForItems('RackType'),
+                            'value' => $this->fields['racktypes_id'],
+                            'actions' => getItemActionButtons(['info', 'add'], "RackType"),
+                        ],
+                        __("Technician in charge of the hardware") => [
+                            'name' => 'users_id_tech',
+                            'type' => 'select',
+                            'values' => getOptionsForUsers('own_ticket', ['entities_id' => $this->fields['entities_id']]),
+                            'value' => $this->fields['users_id_tech'],
+                            'actions' => getItemActionButtons(['info'], "User"),
+                        ],
+                        __("Manufacturer") => [
+                            'name' => 'manufacturers_id',
+                            'type' => 'select',
+                            'values' => getOptionForItems('Manufacturer'),
+                            'value' => $this->fields['manufacturers_id'],
+                            'actions' => getItemActionButtons(['info', 'add'], "Manufacturer"),
+                        ],
+                        __("Group in charge of the hardware") => [
+                            'name' => 'groups_id_tech',
+                            'type' => 'select',
+                            'itemtype' => Group::class,
+                            'conditions' => ['is_assign' => 1],
+                            'value' => $this->fields['groups_id_tech'],
+                            'actions' => getItemActionButtons(['info', 'add'], "Group"),
+                        ],
+                        __("Model") => [
+                            'name' => 'rackmodels_id',
+                            'type' => 'select',
+                            'values' => getOptionForItems('RackModel'),
+                            'value' => $this->fields['rackmodels_id'],
+                            'actions' => getItemActionButtons(['info', 'add'], "RackModel"),
+                        ],
+                        __("Serial number") => [
+                            'name' => 'serial',
+                            'type' => 'text',
+                            'value' => $this->fields['serial'],
+                        ], // DOES NOT TAKE INTO ACCOUNT AUTOCOMPLETION FIELD
+                        __("Inventory/Asset number") => [
+                            'name' => 'otherserial',
+                            'type' => 'text',
+                            'value' => $this->fields['otherserial'],
+                        ], // DOES NOT TAKE INTO ACCOUNT AUTOCOMPLETION FIELD
+                        __("Server room") => [
+                            'name' => 'dcrooms_id',
+                            'type' => 'select',
+                            'id' => 'dcrooms_dropdown_id',
+                            'itemtype' => DCRoom::class,
+                            'value' => $this->fields['dcrooms_id'],
+                            'hooks' => [
+                                'change' => $loadDcPositionHook,
+                            ],
+                            'init' => $loadDcPositionHook,
+                        ],
+                        __("Position in room") => [
+                            'name' => 'position',
+                            'id' => 'room_position_dropdown',
+                            'type' => 'select',
+                            'values' => [$positions ? $positions : 0 => '-----'],
+                            'value' => $this->fields['position'],
+                        ],
+                        __("Door orientation in room") => [
+                            'name' => 'room_orientation',
+                            'type' => 'select',
+                            'values' => [
+                                self::ROOM_O_NORTH => __('North'),
+                                self::ROOM_O_EAST => __('East'),
+                                self::ROOM_O_SOUTH => __('South'),
+                                self::ROOM_O_WEST => __('West'),
+                            ],
+                            'value' => $this->fields['room_orientation'],
+                        ],
+                        __("Number of units") => [
+                            'name' => 'number_units',
+                            'type' => 'number',
+                            'value' => $this->fields['number_units'] ? $this->fields['number_units'] : 42,
+                            'min' => 1,
+                            'max' => 100,
+                            'step' => 1,
+                            'after' => __('U'),
+                        ],
+                        __("Width") => [
+                            'name' => 'width',
+                            'type' => 'text',
+                            'value' => $this->fields['width'],
+                        ],
+                        __("Height") => [
+                            'name' => 'height',
+                            'type' => 'text',
+                            'value' => $this->fields['height'],
+                        ],
+                        __("Depth") => [
+                            'name' => 'depth',
+                            'type' => 'text',
+                            'value' => $this->fields['depth'],
+                        ],
+                        __("Max. power (in watts)") => [
+                            'name' => 'max_power',
+                            'type' => 'text',
+                            'value' => $this->fields['max_power'],
+                        ],
+                        __("Measured power (in watts)") => [
+                            'name' => 'mesured_power',
+                            'type' => 'text',
+                            'value' => $this->fields['mesured_power'],
+                        ],
+                        __("Max. weight") => [
+                            'name' => 'max_weight',
+                            'type' => 'text',
+                            'value' => $this->fields['max_weight'],
+                        ],
+                        __("Background color") => [
+                            'name' => 'bgcolor',
+                            'type' => 'color',
+                            'value' => $this->fields['bgcolor'],
+                        ],
+                        __("Comments") => [
+                            'name' => 'comment',
+                            'type' => 'textarea',
+                            'value' => $this->fields['comment'],
+                        ],
                     ],
-                    __("Status") => [
-                       'name' => 'states_id',
-                       'type' => 'select',
-                       'itemtype' => State::class,
-                       'conditions' => ['is_visible_computer' => 1, 'entities_id' => $this->fields['entities_id']],
-                       'value' => $this->fields['states_id'],
-                       'actions' => getItemActionButtons(['info', 'add'], "State"),
-                    ],
-                    __("Location") => [
-                       'name' => 'locations_id',
-                       'id' => 'locations_id_dropdown',
-                       'type' => 'select',
-                       'itemtype' => Location::class,
-                       'value' => $this->fields['locations_id'],
-                       'actions' => getItemActionButtons(['info', 'add'], "Location"),
-                    ],
-                    __("Type") => [
-                       'name' => 'racktypes_id',
-                       'type' => 'select',
-                       'values' => getOptionForItems('RackType'),
-                       'value' => $this->fields['racktypes_id'],
-                       'actions' => getItemActionButtons(['info', 'add'], "RackType"),
-                    ],
-                    __("Technician in charge of the hardware") => [
-                       'name' => 'users_id_tech',
-                       'type' => 'select',
-                       'values' => getOptionsForUsers('own_ticket', ['entities_id' => $this->fields['entities_id']]),
-                       'value' => $this->fields['users_id_tech'],
-                       'actions' => getItemActionButtons(['info'], "User"),
-                    ],
-                    __("Manufacturer") => [
-                       'name' => 'manufacturers_id',
-                       'type' => 'select',
-                       'values' => getOptionForItems('Manufacturer'),
-                       'value' => $this->fields['manufacturers_id'],
-                       'actions' => getItemActionButtons(['info', 'add'], "Manufacturer"),
-                    ],
-                    __("Group in charge of the hardware") => [
-                       'name' => 'groups_id_tech',
-                       'type' => 'select',
-                       'itemtype' => Group::class,
-                       'conditions' => ['is_assign' => 1],
-                       'value' => $this->fields['groups_id_tech'],
-                       'actions' => getItemActionButtons(['info', 'add'], "Group"),
-                    ],
-                    __("Model") => [
-                       'name' => 'rackmodels_id',
-                       'type' => 'select',
-                       'values' => getOptionForItems('RackModel'),
-                       'value' => $this->fields['rackmodels_id'],
-                       'actions' => getItemActionButtons(['info', 'add'], "RackModel"),
-                    ],
-                    __("Serial number") => [
-                       'name' => 'serial',
-                       'type' => 'text',
-                       'value' => $this->fields['serial'],
-                    ], // DOES NOT TAKE INTO ACCOUNT AUTOCOMPLETION FIELD
-                    __("Inventory/Asset number") => [
-                       'name' => 'otherserial',
-                       'type' => 'text',
-                       'value' => $this->fields['otherserial'],
-                    ], // DOES NOT TAKE INTO ACCOUNT AUTOCOMPLETION FIELD
-                    __("Server room") => [
-                       'name' => 'dcrooms_id',
-                       'type' => 'select',
-                       'id' => 'dcrooms_dropdown_id',
-                       'itemtype' => DCRoom::class,
-                       'value' => $this->fields['dcrooms_id'],
-                       'hooks' => [
-                          'change' => $loadDcPositionHook
-                       ],
-                       'init' => $loadDcPositionHook
-                    ],
-                    __("Position in room") => [
-                       'name' => 'position',
-                       'id' => 'room_position_dropdown',
-                       'type' => 'select',
-                       'values' => [$positions ? $positions : 0 => '-----'],
-                       'value' => $this->fields['position'],
-                    ],
-                    __("Door orientation in room") => [
-                       'name' => 'room_orientation',
-                       'type' => 'select',
-                       'values' => [
-                          self::ROOM_O_NORTH => __('North'),
-                          self::ROOM_O_EAST => __('East'),
-                          self::ROOM_O_SOUTH => __('South'),
-                          self::ROOM_O_WEST => __('West'),
-                       ],
-                       'value' => $this->fields['room_orientation']
-                    ],
-                    __("Number of units") => [
-                       'name' => 'number_units',
-                       'type' => 'number',
-                       'value' => $this->fields['number_units'] ? $this->fields['number_units'] : 42,
-                       'min' => 1,
-                       'max' => 100,
-                       'step' => 1,
-                       'after' => __('U'),
-                    ],
-                    __("Width") => [
-                       'name' => 'width',
-                       'type' => 'text',
-                       'value' => $this->fields['width'],
-                    ],
-                    __("Height") => [
-                       'name' => 'height',
-                       'type' => 'text',
-                       'value' => $this->fields['height'],
-                    ],
-                    __("Depth") => [
-                       'name' => 'depth',
-                       'type' => 'text',
-                       'value' => $this->fields['depth'],
-                    ],
-                    __("Max. power (in watts)") => [
-                       'name' => 'max_power',
-                       'type' => 'text',
-                       'value' => $this->fields['max_power'],
-                    ],
-                    __("Measured power (in watts)") => [
-                       'name' => 'mesured_power',
-                       'type' => 'text',
-                       'value' => $this->fields['mesured_power'],
-                    ],
-                    __("Max. weight") => [
-                       'name' => 'max_weight',
-                       'type' => 'text',
-                       'value' => $this->fields['max_weight'],
-                    ],
-                    __("Background color") => [
-                       'name' => 'bgcolor',
-                       'type' => 'color',
-                       'value' => $this->fields['bgcolor'],
-                    ],
-                    __("Comments") => [
-                       'name' => 'comment',
-                       'type' => 'textarea',
-                       'value' => $this->fields['comment'],
-                    ],
-                 ]
-              ]
-           ]
+                ],
+            ],
         ];
 
         renderTwigForm($form, '', $this->fields);
@@ -340,147 +342,147 @@ class Rack extends CommonDBTM
         $tab = parent::rawSearchOptions();
 
         $tab[] = [
-           'id'                 => '2',
-           'table'              => $this->getTable(),
-           'field'              => 'id',
-           'name'               => __('ID'),
-           'massiveaction'      => false, // implicit field is id
-           'datatype'           => 'number'
+            'id'                 => '2',
+            'table'              => $this->getTable(),
+            'field'              => 'id',
+            'name'               => __('ID'),
+            'massiveaction'      => false, // implicit field is id
+            'datatype'           => 'number',
         ];
 
         $tab = array_merge($tab, Location::rawSearchOptionsToAdd());
 
         $tab[] = [
-           'id'                 => '4',
-           'table'              => 'glpi_racktypes',
-           'field'              => 'name',
-           'name'               => _n('Type', 'Types', 1),
-           'datatype'           => 'dropdown'
+            'id'                 => '4',
+            'table'              => 'glpi_racktypes',
+            'field'              => 'name',
+            'name'               => _n('Type', 'Types', 1),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '40',
-           'table'              => 'glpi_rackmodels',
-           'field'              => 'name',
-           'name'               => _n('Model', 'Models', 1),
-           'datatype'           => 'dropdown'
+            'id'                 => '40',
+            'table'              => 'glpi_rackmodels',
+            'field'              => 'name',
+            'name'               => _n('Model', 'Models', 1),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '31',
-           'table'              => 'glpi_states',
-           'field'              => 'completename',
-           'name'               => __('Status'),
-           'datatype'           => 'dropdown',
-           'condition'          => ['is_visible_rack' => 1]
+            'id'                 => '31',
+            'table'              => 'glpi_states',
+            'field'              => 'completename',
+            'name'               => __('Status'),
+            'datatype'           => 'dropdown',
+            'condition'          => ['is_visible_rack' => 1],
         ];
 
         $tab[] = [
-           'id'                 => '5',
-           'table'              => $this->getTable(),
-           'field'              => 'serial',
-           'name'               => __('Serial number'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '5',
+            'table'              => $this->getTable(),
+            'field'              => 'serial',
+            'name'               => __('Serial number'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '6',
-           'table'              => $this->getTable(),
-           'field'              => 'otherserial',
-           'name'               => __('Inventory number'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '6',
+            'table'              => $this->getTable(),
+            'field'              => 'otherserial',
+            'name'               => __('Inventory number'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '7',
-           'table'              => DCRoom::getTable(),
-           'field'              => 'name',
-           'name'               => DCRoom::getTypeName(1),
-           'datatype'           => 'dropdown'
+            'id'                 => '7',
+            'table'              => DCRoom::getTable(),
+            'field'              => 'name',
+            'name'               => DCRoom::getTypeName(1),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '8',
-           'table'              => $this->getTable(),
-           'field'              => 'number_units',
-           'name'               => __('Number of units'),
-           'datatype'           => 'number'
+            'id'                 => '8',
+            'table'              => $this->getTable(),
+            'field'              => 'number_units',
+            'name'               => __('Number of units'),
+            'datatype'           => 'number',
         ];
 
         $tab[] = [
-           'id'                 => '16',
-           'table'              => $this->getTable(),
-           'field'              => 'comment',
-           'name'               => __('Comments'),
-           'datatype'           => 'text'
+            'id'                 => '16',
+            'table'              => $this->getTable(),
+            'field'              => 'comment',
+            'name'               => __('Comments'),
+            'datatype'           => 'text',
         ];
 
         $tab[] = [
-           'id'                 => '19',
-           'table'              => $this->getTable(),
-           'field'              => 'date_mod',
-           'name'               => __('Last update'),
-           'datatype'           => 'datetime',
-           'massiveaction'      => false
+            'id'                 => '19',
+            'table'              => $this->getTable(),
+            'field'              => 'date_mod',
+            'name'               => __('Last update'),
+            'datatype'           => 'datetime',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '121',
-           'table'              => $this->getTable(),
-           'field'              => 'date_creation',
-           'name'               => __('Creation date'),
-           'datatype'           => 'datetime',
-           'massiveaction'      => false
+            'id'                 => '121',
+            'table'              => $this->getTable(),
+            'field'              => 'date_creation',
+            'name'               => __('Creation date'),
+            'datatype'           => 'datetime',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '23',
-           'table'              => 'glpi_manufacturers',
-           'field'              => 'name',
-           'name'               => Manufacturer::getTypeName(1),
-           'datatype'           => 'dropdown'
+            'id'                 => '23',
+            'table'              => 'glpi_manufacturers',
+            'field'              => 'name',
+            'name'               => Manufacturer::getTypeName(1),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '24',
-           'table'              => 'glpi_users',
-           'field'              => 'name',
-           'linkfield'          => 'users_id_tech',
-           'name'               => __('Technician in charge of the hardware'),
-           'datatype'           => 'dropdown',
-           'right'              => 'own_ticket'
+            'id'                 => '24',
+            'table'              => 'glpi_users',
+            'field'              => 'name',
+            'linkfield'          => 'users_id_tech',
+            'name'               => __('Technician in charge of the hardware'),
+            'datatype'           => 'dropdown',
+            'right'              => 'own_ticket',
         ];
 
         $tab[] = [
-           'id'                 => '49',
-           'table'              => 'glpi_groups',
-           'field'              => 'completename',
-           'linkfield'          => 'groups_id_tech',
-           'name'               => __('Group in charge of the hardware'),
-           'condition'          => ['is_assign' => 1],
-           'datatype'           => 'dropdown'
+            'id'                 => '49',
+            'table'              => 'glpi_groups',
+            'field'              => 'completename',
+            'linkfield'          => 'groups_id_tech',
+            'name'               => __('Group in charge of the hardware'),
+            'condition'          => ['is_assign' => 1],
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '61',
-           'table'              => $this->getTable(),
-           'field'              => 'template_name',
-           'name'               => __('Template name'),
-           'datatype'           => 'text',
-           'massiveaction'      => false,
-           'nosearch'           => true,
-           'nodisplay'          => true,
-           'autocomplete'       => true,
+            'id'                 => '61',
+            'table'              => $this->getTable(),
+            'field'              => 'template_name',
+            'name'               => __('Template name'),
+            'datatype'           => 'text',
+            'massiveaction'      => false,
+            'nosearch'           => true,
+            'nodisplay'          => true,
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '80',
-           'table'              => 'glpi_entities',
-           'field'              => 'completename',
-           'name'               => Entity::getTypeName(1),
-           'datatype'           => 'dropdown'
+            'id'                 => '80',
+            'table'              => 'glpi_entities',
+            'field'              => 'completename',
+            'name'               => Entity::getTypeName(1),
+            'datatype'           => 'dropdown',
         ];
 
         $tab = array_merge($tab, Notepad::rawSearchOptionsToAdd());
@@ -500,8 +502,8 @@ class Rack extends CommonDBTM
                     $nb = countElementsInTable(
                         self::getTable(),
                         [
-                          'dcrooms_id'   => $item->getID(),
-                          'is_deleted'   => 0
+                            'dcrooms_id'   => $item->getID(),
+                            'is_deleted'   => 0,
                         ]
                     );
                 }
@@ -545,11 +547,11 @@ class Rack extends CommonDBTM
         $canedit = $room->canEdit($room_id);
 
         $racks = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'dcrooms_id'   => $room->getID(),
-              'is_deleted'   => 0
-           ]
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'dcrooms_id'   => $room->getID(),
+                'is_deleted'   => 0,
+            ],
         ]);
 
         Session::initNavigateListItems(
@@ -579,8 +581,8 @@ class Rack extends CommonDBTM
             if ($canedit) {
                 Html::openMassiveActionsForm('mass' . __CLASS__ . $rand);
                 $massiveactionparams = [
-                   'num_displayed'   => min($_SESSION['glpilist_limit'], count($racks)),
-                   'container'       => 'mass' . __CLASS__ . $rand
+                    'num_displayed'   => min($_SESSION['glpilist_limit'], count($racks)),
+                    'container'       => 'mass' . __CLASS__ . $rand,
                 ];
                 Html::showMassiveActions($massiveactionparams);
             }
@@ -641,7 +643,7 @@ class Rack extends CommonDBTM
             $x = $y = 0;
             $coord = explode(',', (string) $item['position']);
             if (is_array($coord) && count($coord) == 2) {
-                list($x, $y) = $coord;
+                [$x, $y] = $coord;
                 $item['_x'] = $x - 1;
                 $item['_y'] = $y - 1;
             } else {
@@ -948,9 +950,9 @@ JAVASCRIPT;
         }
 
         $where = [
-           'dcrooms_id'   => $input['dcrooms_id'],
-           'position'     => $input['position'],
-           'is_deleted'   => false
+            'dcrooms_id'   => $input['dcrooms_id'],
+            'position'     => $input['position'],
+            'is_deleted'   => false,
         ];
 
         if (!$this->isNewItem()) {
@@ -984,10 +986,10 @@ JAVASCRIPT;
         global $DB;
 
         $iterator = $DB->request([
-           'FROM'   => Item_Rack::getTable(),
-           'WHERE'  => [
-              'racks_id'   => $this->getID()
-           ]
+            'FROM'   => Item_Rack::getTable(),
+            'WHERE'  => [
+                'racks_id'   => $this->getID(),
+            ],
         ]);
 
         $filled = [];
@@ -1016,8 +1018,8 @@ JAVASCRIPT;
             ) {
                 while (--$units >= 0) {
                     $content_filled = [
-                       self::POS_LEFT    => [0, 0, 0, 0],
-                       self::POS_RIGHT   => [0, 0, 0, 0]
+                        self::POS_LEFT    => [0, 0, 0, 0],
+                        self::POS_RIGHT   => [0, 0, 0, 0],
                     ];
 
                     if (isset($filled[$position + $units])) {
@@ -1074,8 +1076,8 @@ JAVASCRIPT;
 
         $this->deleteChildrenAndRelationsFromDb(
             [
-              Item_Rack::class,
-              PDU_Rack::class,
+                Item_Rack::class,
+                PDU_Rack::class,
             ]
         );
     }
@@ -1102,20 +1104,20 @@ JAVASCRIPT;
                   style='background-color: $bgcolor;
                         color: $fgcolor;'>
                <a href='" . $rack->getLinkURL() . "'
-                  style='color: $fgcolor'>" .
-                    $cell['name'] . "</a>
+                  style='color: $fgcolor'>"
+                    . $cell['name'] . "</a>
                <span class='tipcontent'>
                   <span>
-                     <label>" . __('name') . ":</label>" .
-                       $cell['name'] . "
+                     <label>" . __('name') . ":</label>"
+                       . $cell['name'] . "
                   </span>
                   <span>
-                     <label>" . __('serial') . ":</label>" .
-                       $cell['serial'] . "
+                     <label>" . __('serial') . ":</label>"
+                       . $cell['serial'] . "
                   </span>
                   <span>
-                     <label>" . __('Inventory number') . ":</label>" .
-                       $cell['otherserial'] . "
+                     <label>" . __('Inventory number') . ":</label>"
+                       . $cell['otherserial'] . "
                   </span>
                </span>
             </div><!-- // .grid-stack-item-content -->

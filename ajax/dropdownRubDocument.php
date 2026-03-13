@@ -47,12 +47,12 @@ if (isset($_POST["rubdoc"])) {
     // Clean used array
     if (isset($_POST['used']) && is_array($_POST['used']) && (count($_POST['used']) > 0)) {
         $iterator = $DB->request([
-           'SELECT' => ['id'],
-           'FROM'   => 'glpi_documents',
-           'WHERE'  => [
-              'id'                    => $_POST['used'],
-              'documentcategories_id' => (int)$_POST['rubdoc']
-           ]
+            'SELECT' => ['id'],
+            'FROM'   => 'glpi_documents',
+            'WHERE'  => [
+                'id'                    => $_POST['used'],
+                'documentcategories_id' => (int) $_POST['rubdoc'],
+            ],
         ]);
 
         while ($data = $iterator->next()) {
@@ -66,7 +66,7 @@ if (isset($_POST["rubdoc"])) {
     $values = getItemByEntity(
         Document::class,
         intval($_POST['entity']),
-        ['glpi_documents.documentcategories_id' => (int)$_POST["rubdoc"]]
+        ['glpi_documents.documentcategories_id' => (int) $_POST["rubdoc"]]
     );
     foreach ($used as $id) {
         unset($values[$id]);

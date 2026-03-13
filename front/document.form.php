@@ -46,8 +46,8 @@ $doc          = new Document();
 if (isset($_POST["add"])) {
     $doc->check(-1, CREATE, $_POST);
     if (
-        isset($_POST['files']) && isset($_POST['entities_id']) &&
-        isset($_POST['is_recursive']) && isset($_POST['documentcategories_id'])
+        isset($_POST['files']) && isset($_POST['entities_id'])
+        && isset($_POST['is_recursive']) && isset($_POST['documentcategories_id'])
     ) {
         $files = json_decode(stripslashes($_POST['files']), true);
         foreach ($files as $file) {
@@ -136,8 +136,8 @@ if (isset($_POST["add"])) {
 } else {
     Html::header(Document::getTypeName(Session::getPluralNumber()), $_SERVER['PHP_SELF'], "management", "document");
     $doc->display([
-       'id'           => $_GET["id"],
-       'formoptions'  => "data-track-changes=true"
+        'id'           => $_GET["id"],
+        'formoptions'  => "data-track-changes=true",
     ]);
     Html::footer();
 }

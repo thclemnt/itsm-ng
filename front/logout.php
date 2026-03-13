@@ -1,5 +1,7 @@
 <?php
 
+use Jumbojett\OpenIDConnectClient;
+
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
@@ -111,7 +113,7 @@ if (isset($_SESSION["itsm_is_oidc"]) && $_SESSION["itsm_is_oidc"] == 1) {
     }
 
     if (isset($oidc_db)) {
-        $oidc = new Jumbojett\OpenIDConnectClient($oidc_db['Provider'], $oidc_db['ClientID'], $oidc_db['ClientSecret']);
+        $oidc = new OpenIDConnectClient($oidc_db['Provider'], $oidc_db['ClientID'], $oidc_db['ClientSecret']);
         if (is_array($oidc_db['scope'])) {
             $oidc->addScope($oidc_db['scope']);
         }

@@ -48,19 +48,19 @@ class DeviceNetworkCard extends DbTestCase
             'designation' => $designation,
             'bandwidth'   => '1000',
         ]);
-        $this->integer((int)$id_1)->isGreaterThan(0);
+        $this->integer((int) $id_1)->isGreaterThan(0);
 
         $id_2 = $obj->import([
             'designation' => $designation,
             'bandwidth'   => '1000',
         ]);
-        $this->integer((int)$id_2)->isEqualTo((int)$id_1);
+        $this->integer((int) $id_2)->isEqualTo((int) $id_1);
 
         $id_3 = $obj->import([
             'designation' => $designation,
             'bandwidth'   => '100',
         ]);
-        $this->integer((int)$id_3)->isGreaterThan(0);
-        $this->integer((int)$id_3)->isNotEqualTo((int)$id_1);
+        $this->integer((int) $id_3)->isGreaterThan(0);
+        $this->integer((int) $id_3)->isNotEqualTo((int) $id_1);
     }
 }

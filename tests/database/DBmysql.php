@@ -90,8 +90,8 @@ class DBmysql extends \GLPITestCase
 
         $expected = "UPDATE `glpi_tickets` SET `date_mod` = '2019-01-01 12:00:00', `users_id` = '2' WHERE `id` = '1'";
         $built = $DB->buildUpdate('glpi_tickets', [
-           'date_mod'  => '2019-01-01 12:00:00',
-           'users_id'  => 2
+            'date_mod'  => '2019-01-01 12:00:00',
+            'users_id'  => 2,
         ], ['id' => 1]);
         $this->string($built)->isIdenticalTo($expected);
 
@@ -100,22 +100,22 @@ class DBmysql extends \GLPITestCase
         $expected .= " LEFT JOIN `glpi_computertypes` ON (`glpi_computers`.`computertypes_id` = `glpi_computertypes`.`id`)";
         $expected .= " SET `glpi_computers`.`name` = '_join_computer1' WHERE `glpi_locations`.`name` = 'test' AND `glpi_computertypes`.`name` = 'laptop'";
         $built = $DB->buildUpdate('glpi_computers', ['glpi_computers.name' => '_join_computer1'], [
-           'glpi_locations.name' => 'test',
-           'glpi_computertypes.name' => 'laptop'
+            'glpi_locations.name' => 'test',
+            'glpi_computertypes.name' => 'laptop',
         ], [
-           'LEFT JOIN' => [
-              'glpi_locations' => [
-                 'ON' => [
-                    'glpi_computers'    => 'locations_id',
-                    'glpi_locations'  => 'id'
-                 ]
-              ], 'glpi_computertypes' => [
-                 'ON' => [
-                    'glpi_computers'    => 'computertypes_id',
-                    'glpi_computertypes'  => 'id'
-                 ]
-              ]
-           ]
+            'LEFT JOIN' => [
+                'glpi_locations' => [
+                    'ON' => [
+                        'glpi_computers'    => 'locations_id',
+                        'glpi_locations'  => 'id',
+                    ],
+                ], 'glpi_computertypes' => [
+                    'ON' => [
+                        'glpi_computers'    => 'computertypes_id',
+                        'glpi_computertypes'  => 'id',
+                    ],
+                ],
+            ],
         ]);
         $this->string($built)->isIdenticalTo($expected);
     }
@@ -133,22 +133,22 @@ class DBmysql extends \GLPITestCase
         $expected .= " LEFT JOIN `glpi_computertypes` ON (`glpi_computers`.`computertypes_id` = `glpi_computertypes`.`id`)";
         $expected .= " WHERE `glpi_locations`.`name` = 'test' AND `glpi_computertypes`.`name` = 'laptop'";
         $built = $DB->buildDelete('glpi_computers', [
-           'glpi_locations.name' => 'test',
-           'glpi_computertypes.name' => 'laptop'
+            'glpi_locations.name' => 'test',
+            'glpi_computertypes.name' => 'laptop',
         ], [
-           'LEFT JOIN' => [
-              'glpi_locations' => [
-                 'ON' => [
-                    'glpi_computers'    => 'locations_id',
-                    'glpi_locations'  => 'id'
-                 ]
-              ], 'glpi_computertypes' => [
-                 'ON' => [
-                    'glpi_computers'    => 'computertypes_id',
-                    'glpi_computertypes'  => 'id'
-                 ]
-              ]
-           ]
+            'LEFT JOIN' => [
+                'glpi_locations' => [
+                    'ON' => [
+                        'glpi_computers'    => 'locations_id',
+                        'glpi_locations'  => 'id',
+                    ],
+                ], 'glpi_computertypes' => [
+                    'ON' => [
+                        'glpi_computers'    => 'computertypes_id',
+                        'glpi_computertypes'  => 'id',
+                    ],
+                ],
+            ],
         ]);
         $this->string($built)->isIdenticalTo($expected);
     }

@@ -57,24 +57,24 @@ class ITILFollowupTemplate extends CommonDropdown
     public function getAdditionalFields()
     {
         return [
-           __('Content') => [
-              'name'  => 'content',
-              'type'  => 'richtextarea',
-              'value' => $this->fields['content'],
-              'col_lg' => 12,
-              'col_md' => 12,
-           ],
-           __('Source of followup') => [
-              'name'  => 'requesttypes_id',
-              'type'  => 'select',
-              'values' => getOptionForItems('RequestType'),
-              'value' => $this->fields['requesttypes_id']
-           ],
-           __('Private') => [
-              'name'  => 'is_private',
-              'type'  => 'checkbox',
-              'value' => $this->fields['is_private']
-           ]
+            __('Content') => [
+                'name'  => 'content',
+                'type'  => 'richtextarea',
+                'value' => $this->fields['content'],
+                'col_lg' => 12,
+                'col_md' => 12,
+            ],
+            __('Source of followup') => [
+                'name'  => 'requesttypes_id',
+                'type'  => 'select',
+                'values' => getOptionForItems('RequestType'),
+                'value' => $this->fields['requesttypes_id'],
+            ],
+            __('Private') => [
+                'name'  => 'is_private',
+                'type'  => 'checkbox',
+                'value' => $this->fields['is_private'],
+            ],
         ];
     }
 
@@ -84,28 +84,28 @@ class ITILFollowupTemplate extends CommonDropdown
         $tab = parent::rawSearchOptions();
 
         $tab[] = [
-           'id'                 => '4',
-           'name'               => __('Content'),
-           'field'              => 'content',
-           'table'              => self::getTable(),
-           'datatype'           => 'text',
-           'htmltext'           => true
+            'id'                 => '4',
+            'name'               => __('Content'),
+            'field'              => 'content',
+            'table'              => self::getTable(),
+            'datatype'           => 'text',
+            'htmltext'           => true,
         ];
 
         $tab[] = [
-           'id'                 => '5',
-           'name'               => __('Source of followup'),
-           'field'              => 'name',
-           'table'              => getTableForItemType('RequestType'),
-           'datatype'           => 'dropdown'
+            'id'                 => '5',
+            'name'               => __('Source of followup'),
+            'field'              => 'name',
+            'table'              => getTableForItemType('RequestType'),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '6',
-           'name'               => __('Private'),
-           'field'              => 'is_private',
-           'table'              => self::getTable(),
-           'datatype'           => 'bool'
+            'id'                 => '6',
+            'name'               => __('Private'),
+            'field'              => 'is_private',
+            'table'              => self::getTable(),
+            'datatype'           => 'bool',
         ];
 
         return $tab;

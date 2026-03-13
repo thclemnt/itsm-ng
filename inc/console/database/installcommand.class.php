@@ -39,40 +39,41 @@ if (!defined('GLPI_ROOT')) {
 
 use DB;
 use GLPIKey;
-use Toolbox;
 use Symfony\Component\Console\Exception\RuntimeException;
+use Symfony\Component\Console\Helper\QuestionHelper;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Question\ConfirmationQuestion;
+use Toolbox;
 
 class InstallCommand extends AbstractConfigureCommand
 {
     /**
      * Error code returned when failing to create database.
      *
-     * @var integer
+     * @var int
      */
     public const ERROR_DB_CREATION_FAILED = 5;
 
     /**
      * Error code returned when trying to install and having a DB already containing glpi_* tables.
      *
-     * @var integer
+     * @var int
      */
     public const ERROR_DB_ALREADY_CONTAINS_TABLES = 6;
 
     /**
      * Error code returned when failing to create database schema.
      *
-     * @var integer
+     * @var int
      */
     public const ERROR_SCHEMA_CREATION_FAILED = 7;
 
     /**
      * Error code returned when failing to create encryption key file.
      *
-     * @var integer
+     * @var int
      */
     public const ERROR_CANNOT_CREATE_ENCRYPTION_KEY_FILE = 8;
 
@@ -117,7 +118,7 @@ class InstallCommand extends AbstractConfigureCommand
             && $this->isInputContainingConfigValues($input, $output)
             && !$input->getOption('reconfigure')
         ) {
-            /** @var \Symfony\Component\Console\Helper\QuestionHelper $question_helper */
+            /** @var QuestionHelper $question_helper */
             $question_helper = $this->getHelper('question');
             $reconfigure = $question_helper->ask(
                 $input,
@@ -314,7 +315,7 @@ class InstallCommand extends AbstractConfigureCommand
      * @param InputInterface $input
      * @param OutputInterface $output
      *
-     * @return boolean
+     * @return bool
      */
     private function shouldSetDBConfig(InputInterface $input, OutputInterface $output)
     {
@@ -328,17 +329,17 @@ class InstallCommand extends AbstractConfigureCommand
      * @param InputInterface $input
      * @param OutputInterface $output
      *
-     * @return boolean
+     * @return bool
      */
     private function isInputContainingConfigValues(InputInterface $input, OutputInterface $output)
     {
 
         $config_options = [
-           'db-host',
-           'db-port',
-           'db-name',
-           'db-user',
-           'db-password',
+            'db-host',
+            'db-port',
+            'db-name',
+            'db-user',
+            'db-password',
         ];
         foreach ($config_options as $option) {
             $default_value = $this->getDefinition()->getOption($option)->getDefault();

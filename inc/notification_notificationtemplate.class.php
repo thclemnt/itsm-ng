@@ -114,7 +114,7 @@ class Notification_NotificationTemplate extends CommonDBRelation
      * Print the notification templates
      *
      * @param Notification $notif        Notification object
-     * @param boolean      $withtemplate Template or basic item (default '')
+     * @param bool      $withtemplate Template or basic item (default '')
      *
      * @return void
      **/
@@ -150,15 +150,15 @@ class Notification_NotificationTemplate extends CommonDBRelation
         }
 
         $fields = [
-          'id' => __('ID'),
-          'name' => static::getTypeName(1),
-          'mode' => __('Mode'),
+            'id' => __('ID'),
+            'name' => static::getTypeName(1),
+            'mode' => __('Mode'),
         ];
         $values = [];
 
         $iterator = $DB->request([
-           'FROM'   => self::gettable(),
-           'WHERE'  => ['notifications_id' => $ID]
+            'FROM'   => self::gettable(),
+            'WHERE'  => ['notifications_id' => $ID],
         ]);
         $notiftpl = new self();
         while ($data = $iterator->next()) {
@@ -169,14 +169,14 @@ class Notification_NotificationTemplate extends CommonDBRelation
             $tpl_link = $tpl->getLink();
             if (empty($tpl_link)) {
                 $tpl_link = "<i class='fa fa-exclamation-triangle red' aria-hidden='true'></i>&nbsp;
-                            <a href='" . $notiftpl->getLinkUrl() . "'>" .
-                   __("No template selected") .
-                   "</a>";
+                            <a href='" . $notiftpl->getLinkUrl() . "'>"
+                   . __("No template selected")
+                   . "</a>";
             }
             $mode = self::getMode($data['mode']);
-            $mode = $mode === NOT_AVAILABLE ?
-                "{$data['mode']} ($mode)" :
-                $mode['label'];
+            $mode = $mode === NOT_AVAILABLE
+                ? "{$data['mode']} ($mode)"
+                : $mode['label'];
             $values[] = [
                 'id' => $notiftpl->getID(),
                 'name' => $tpl_link,
@@ -184,8 +184,8 @@ class Notification_NotificationTemplate extends CommonDBRelation
             ];
         }
         renderTwigTemplate('table.twig', [
-           'fields' => $fields,
-           'values' => $values,
+            'fields' => $fields,
+            'values' => $values,
         ]);
     }
 
@@ -194,7 +194,7 @@ class Notification_NotificationTemplate extends CommonDBRelation
      * Print associated notifications
      *
      * @param NotificationTemplate $template     Notification template object
-     * @param boolean              $withtemplate Template or basic item (default '')
+     * @param bool              $withtemplate Template or basic item (default '')
      *
      * @return void
      */
@@ -214,8 +214,8 @@ class Notification_NotificationTemplate extends CommonDBRelation
         echo "<div class='center'>";
 
         $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['notificationtemplates_id' => $ID]
+            'FROM'   => self::getTable(),
+            'WHERE'  => ['notificationtemplates_id' => $ID],
         ]);
 
         echo "<table class='tab_cadre_fixehov' aria-label='Notification'>";
@@ -279,9 +279,9 @@ class Notification_NotificationTemplate extends CommonDBRelation
 
         echo NotificationTemplate::getTypeName(1) . "<br>";
         echo NotificationTemplate::dropdown([
-           'name'       => 'notificationtemplates_id',
-           'value'     => 0,
-           'comment'   => 1,
+            'name'       => 'notificationtemplates_id',
+            'value'     => 0,
+            'comment'   => 1,
         ]);
         echo "<br><br>";
 
@@ -298,7 +298,7 @@ class Notification_NotificationTemplate extends CommonDBRelation
     /**
      * Print the form
      *
-     * @param integer $ID      ID of the item
+     * @param int $ID      ID of the item
      * @param array   $options array
      *     - target for the Form
      *     - computers_id ID of the computer for add process
@@ -384,8 +384,8 @@ class Notification_NotificationTemplate extends CommonDBRelation
 
         self::getModes();
         $CFG_GLPI['notifications_modes'][$mode] = [
-           'label'  => $label,
-           'from'   => $from
+            'label'  => $label,
+            'from'   => $from,
         ];
     }
 
@@ -401,19 +401,19 @@ class Notification_NotificationTemplate extends CommonDBRelation
         global $CFG_GLPI;
 
         $core_modes = [
-           self::MODE_MAIL      => [
-              'label'  => _n('Email', 'Emails', 1),
-              'from'   => 'core'
-           ],
-           self::MODE_AJAX      => [
-              'label'  => __('Browser'),
-              'from'   => 'core'
-           ],
-           self::MODE_CHAT      => [
-              'label'  =>  'Chat',
-              'from'   =>  'core'
-           ]
-           /*self::MODE_WEBSOCKET => [
+            self::MODE_MAIL      => [
+                'label'  => _n('Email', 'Emails', 1),
+                'from'   => 'core',
+            ],
+            self::MODE_AJAX      => [
+                'label'  => __('Browser'),
+                'from'   => 'core',
+            ],
+            self::MODE_CHAT      => [
+                'label'  =>  'Chat',
+                'from'   =>  'core',
+            ],
+            /*self::MODE_WEBSOCKET => [
               'label'  => __('Websocket'),
               'from'   => 'core'
            ],
@@ -532,7 +532,7 @@ class Notification_NotificationTemplate extends CommonDBRelation
     /**
      * Check if at least one mode is currently enabled
      *
-     * @return boolean
+     * @return bool
      */
     public static function hasActiveMode()
     {

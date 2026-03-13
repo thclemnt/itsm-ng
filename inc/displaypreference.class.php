@@ -59,12 +59,12 @@ class DisplayPreference extends CommonDBTM
         global $DB;
 
         $result = $DB->request([
-           'SELECT' => ['MAX' => 'rank AS maxrank'],
-           'FROM'   => $this->getTable(),
-           'WHERE'  => [
-              'itemtype'  => $input['itemtype'],
-              'users_id'  => $input['users_id']
-           ]
+            'SELECT' => ['MAX' => 'rank AS maxrank'],
+            'FROM'   => $this->getTable(),
+            'WHERE'  => [
+                'itemtype'  => $input['itemtype'],
+                'users_id'  => $input['users_id'],
+            ],
         ])->next();
         $input['rank'] = $result['maxrank'] + 1;
         return $input;
@@ -87,7 +87,7 @@ class DisplayPreference extends CommonDBTM
                         if ($input['users_id'] == Session::getLoginUserID()) {
                             if (
                                 $item->deleteByCriteria(['users_id' => $input['users_id'],
-                                                              'itemtype' => $id])
+                                    'itemtype' => $id])
                             ) {
                                 $ma->itemDone($item->getType(), $id, MassiveAction::ACTION_OK);
                             } else {
@@ -112,7 +112,7 @@ class DisplayPreference extends CommonDBTM
      * Get display preference for a user for an itemtype
      *
      * @param string  $itemtype  itemtype
-     * @param integer $user_id   user ID
+     * @param int $user_id   user ID
      *
      * @return array
     **/
@@ -121,15 +121,15 @@ class DisplayPreference extends CommonDBTM
         global $DB;
 
         $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'itemtype'  => $itemtype,
-              'OR'        => [
-                 ['users_id' => $user_id],
-                 ['users_id' => 0]
-              ]
-           ],
-           'ORDER'  => ['users_id', 'rank']
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'itemtype'  => $itemtype,
+                'OR'        => [
+                    ['users_id' => $user_id],
+                    ['users_id' => 0],
+                ],
+            ],
+            'ORDER'  => ['users_id', 'rank'],
         ]);
 
         $default_prefs = [];
@@ -161,11 +161,11 @@ class DisplayPreference extends CommonDBTM
         }
 
         $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'itemtype'  => $input['itemtype'],
-              'users_id'  => 0
-           ]
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'itemtype'  => $input['itemtype'],
+                'users_id'  => 0,
+            ],
         ]);
 
         if (count($iterator)) {
@@ -213,9 +213,9 @@ class DisplayPreference extends CommonDBTM
 
         // Get current item
         $result = $DB->request([
-           'SELECT' => 'rank',
-           'FROM'   => $this->getTable(),
-           'WHERE'  => ['id' => $input['id']]
+            'SELECT' => 'rank',
+            'FROM'   => $this->getTable(),
+            'WHERE'  => ['id' => $input['id']],
         ])->next();
         $rank1  = $result['rank'];
 
@@ -238,14 +238,14 @@ class DisplayPreference extends CommonDBTM
         }
 
         $result = $DB->request([
-           'SELECT' => ['id', 'rank'],
-           'FROM'   => $this->getTable(),
-           'WHERE'  => [
-              'itemtype'  => $input['itemtype'],
-              'users_id'  => $input["users_id"]
-           ] + $where,
-           'ORDER'  => $order,
-           'LIMIT'  => 1
+            'SELECT' => ['id', 'rank'],
+            'FROM'   => $this->getTable(),
+            'WHERE'  => [
+                'itemtype'  => $input['itemtype'],
+                'users_id'  => $input["users_id"],
+            ] + $where,
+            'ORDER'  => $order,
+            'LIMIT'  => 1,
         ])->next();
 
         $rank2  = $result['rank'];
@@ -272,7 +272,7 @@ class DisplayPreference extends CommonDBTM
      * @param string $target    form target
      * @param string $itemtype  item type
      *
-     * @return void|boolean (display) Returns false if there is a rights error.
+     * @return void|bool (display) Returns false if there is a rights error.
     **/
     public function showFormPerso($target, $itemtype)
     {
@@ -292,12 +292,12 @@ class DisplayPreference extends CommonDBTM
         $personal_write = Session::haveRight(self::$rightname, self::PERSONAL);
         // Defined items
         $iterator = $DB->request([
-           'FROM'   => $this->getTable(),
-           'WHERE'  => [
-              'itemtype'  => $itemtype,
-              'users_id'  => $IDuser
-           ],
-           'ORDER'  => 'rank'
+            'FROM'   => $this->getTable(),
+            'WHERE'  => [
+                'itemtype'  => $itemtype,
+                'users_id'  => $IDuser,
+            ],
+            'ORDER'  => 'rank',
         ]);
         $numrows = count($iterator);
 
@@ -373,12 +373,12 @@ class DisplayPreference extends CommonDBTM
                             [
                                 'type' => 'hidden',
                                 'name' => 'itemtype',
-                                'value' => $itemtype
+                                'value' => $itemtype,
                             ],
                             [
                                 'type' => 'hidden',
                                 'name' => 'users_id',
-                                'value' => $IDuser
+                                'value' => $IDuser,
                             ],
                             '' => $values ? [
                                 'type' => 'select',
@@ -393,9 +393,9 @@ class DisplayPreference extends CommonDBTM
                                 'col_lg' => 12,
                                 'col_md' => 12,
                             ] : [],
-                        ]
-                    ]
-                ]
+                        ],
+                    ],
+                ],
             ];
             renderTwigForm($form);
         }
@@ -411,12 +411,12 @@ class DisplayPreference extends CommonDBTM
                             [
                                 'type' => 'hidden',
                                 'name' => 'itemtype',
-                                'value' => $itemtype
+                                'value' => $itemtype,
                             ],
                             [
                                 'type' => 'hidden',
                                 'name' => 'users_id',
-                                'value' => $IDuser
+                                'value' => $IDuser,
                             ],
                             '' => [
                                 'content' => '<div class="d-flex align-items-center justify-content-end gap-2">'
@@ -427,10 +427,10 @@ class DisplayPreference extends CommonDBTM
                                     . '</div>',
                                 'col_lg' => 12,
                                 'col_md' => 12,
-                            ]
-                        ]
-                    ]
-                ]
+                            ],
+                        ],
+                    ],
+                ],
             ];
             renderTwigForm($form);
         }
@@ -439,11 +439,11 @@ class DisplayPreference extends CommonDBTM
             'name' => __('Name'),
             'up' => '<i class="fa fa-arrow-up" aria-hidden="true"></i>',
             'down' => '<i class="fa fa-arrow-down" aria-hidden="true"></i>',
-            'close' => '<i class="fa fa-times" aria-hidden="true"></i>'
+            'close' => '<i class="fa fa-times" aria-hidden="true"></i>',
         ];
 
         $values = [
-            ['name' => $searchopt[1]["name"],]
+            ['name' => $searchopt[1]["name"],],
         ];
         if (
             Session::isMultiEntitiesMode()
@@ -523,7 +523,7 @@ class DisplayPreference extends CommonDBTM
      * @param string $target    form target
      * @param string $itemtype  item type
      *
-     * @return void|boolean (display) Returns false if there is a rights error.
+     * @return void|bool (display) Returns false if there is a rights error.
     **/
     public function showFormGlobal($target, $itemtype)
     {
@@ -544,12 +544,12 @@ class DisplayPreference extends CommonDBTM
 
         // Defined items
         $iterator = $DB->request([
-           'FROM'   => $this->getTable(),
-           'WHERE'  => [
-              'itemtype'  => $itemtype,
-              'users_id'  => $IDuser
-           ],
-           'ORDER'  => 'rank'
+            'FROM'   => $this->getTable(),
+            'WHERE'  => [
+                'itemtype'  => $itemtype,
+                'users_id'  => $IDuser,
+            ],
+            'ORDER'  => 'rank',
         ]);
         $numrows = count($iterator);
 
@@ -575,50 +575,50 @@ class DisplayPreference extends CommonDBTM
             $buttonLabel = _sx('button', 'Add');
 
             $form = [
-               'action' => $target,
-               'buttons' => [[]],
-               'content' => [
-                  '' => [
-                     'visible' => true,
-                     'inputs' => [
-                        [
-                           'type' => 'hidden',
-                           'name' => 'itemtype',
-                           'value' => $itemtype
-                        ],
-                        [
-                           'type' => 'hidden',
-                           'name' => 'users_id',
-                           'value' => $IDuser
-                        ],
-                        '' => $values ? [
-                           'type' => 'select',
-                           'name' => 'num',
-                           'style' => 'width: 100%;',
-                           'values' => $values,
-                           'after' => <<<HTML
+                'action' => $target,
+                'buttons' => [[]],
+                'content' => [
+                    '' => [
+                        'visible' => true,
+                        'inputs' => [
+                            [
+                                'type' => 'hidden',
+                                'name' => 'itemtype',
+                                'value' => $itemtype,
+                            ],
+                            [
+                                'type' => 'hidden',
+                                'name' => 'users_id',
+                                'value' => $IDuser,
+                            ],
+                            '' => $values ? [
+                                'type' => 'select',
+                                'name' => 'num',
+                                'style' => 'width: 100%;',
+                                'values' => $values,
+                                'after' => <<<HTML
                            <button type="submit" name="add" value="1" class="btn btn-sm btn-secondary">
                                $buttonLabel
                            </button>
                         HTML,
-                           'col_lg' => 12,
-                           'col_md' => 12,
-                        ] : [],
-                     ]
-                  ]
-               ]
+                                'col_lg' => 12,
+                                'col_md' => 12,
+                            ] : [],
+                        ],
+                    ],
+                ],
             ];
             renderTwigForm($form);
         };
 
         $fields = [
-           'name' => __('Name'),
-           'up' => '<i class="fa fa-arrow-up" aria-hidden="true"></i>',
-           'down' => '<i class="fa fa-arrow-down" aria-hidden="true"></i>',
-           'close' => '<i class="fa fa-times" aria-hidden="true"></i>'
+            'name' => __('Name'),
+            'up' => '<i class="fa fa-arrow-up" aria-hidden="true"></i>',
+            'down' => '<i class="fa fa-arrow-down" aria-hidden="true"></i>',
+            'close' => '<i class="fa fa-times" aria-hidden="true"></i>',
         ];
         $values = [
-           ['name' => $searchopt[1]["name"],]
+            ['name' => $searchopt[1]["name"],],
         ];
         if (Session::isMultiEntitiesMode()) {
             $values[] = ['name' => $searchopt[80]["name"]];
@@ -680,9 +680,9 @@ class DisplayPreference extends CommonDBTM
             $i++;
         }
         renderTwigTemplate('table.twig', [
-           'fields' => $fields,
-           'values' => $values,
-           'minimal' => true,
+            'fields' => $fields,
+            'values' => $values,
+            'minimal' => true,
         ]);
     }
 
@@ -699,13 +699,13 @@ class DisplayPreference extends CommonDBTM
         $url = Toolbox::getItemTypeFormURL(__CLASS__);
 
         $iterator = $DB->request([
-           'SELECT'  => ['itemtype'],
-           'COUNT'   => 'nb',
-           'FROM'    => self::getTable(),
-           'WHERE'   => [
-              'users_id'  => $users_id
-           ],
-           'GROUPBY' => 'itemtype'
+            'SELECT'  => ['itemtype'],
+            'COUNT'   => 'nb',
+            'FROM'    => self::getTable(),
+            'WHERE'   => [
+                'users_id'  => $users_id,
+            ],
+            'GROUPBY' => 'itemtype',
         ]);
 
         if (count($iterator) > 0) {
@@ -713,16 +713,16 @@ class DisplayPreference extends CommonDBTM
             echo "<div class='spaced'>";
             Html::openMassiveActionsForm('mass' . __CLASS__ . $rand);
             $massiveactionparams = ['width'            => 400,
-                              'height'           => 200,
-                              'container'        => 'mass' . __CLASS__ . $rand,
-                              'specific_actions' => [__CLASS__ . MassiveAction::CLASS_ACTION_SEPARATOR . 'delete_for_user'
-                                                          => _x('button', 'Delete permanently')],
-                              'extraparams'      => ['massive_action_fields' => ['users_id']]];
+                'height'           => 200,
+                'container'        => 'mass' . __CLASS__ . $rand,
+                'specific_actions' => [__CLASS__ . MassiveAction::CLASS_ACTION_SEPARATOR . 'delete_for_user'
+                                            => _x('button', 'Delete permanently')],
+                'extraparams'      => ['massive_action_fields' => ['users_id']]];
 
             Html::showMassiveActions($massiveactionparams);
 
             echo Html::hidden('users_id', ['value'                 => $users_id,
-                                                'data-glpicore-ma-tags' => 'common']);
+                'data-glpicore-ma-tags' => 'common']);
             echo "<table class='tab_cadre_fixe' aria-label='List of Items with Actions'>";
             echo "<tr>";
             echo "<th width='10'>";
@@ -824,10 +824,10 @@ class DisplayPreference extends CommonDBTM
 
         //TRANS: short for : Search result user display
         $values[self::PERSONAL]  = ['short' => __('User display'),
-                                         'long'  => __('Search result user display')];
+            'long'  => __('Search result user display')];
         //TRANS: short for : Search result default display
         $values[self::GENERAL]  =  ['short' => __('Default display'),
-                                         'long'  => __('Search result default display')];
+            'long'  => __('Search result default display')];
 
         return $values;
     }

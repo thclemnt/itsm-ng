@@ -86,6 +86,6 @@ if (isset($_POST["add"])) {
 Html::header(__('Transfer'), '', 'admin', 'rule', 'transfer');
 
 $transfer->display(['id'     => $_GET["id"],
-                         'target' => $transfer->getFormURL()]);
+    'target' => $transfer->getFormURL()]);
 
 Html::footer();

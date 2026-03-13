@@ -44,26 +44,26 @@ class Supplier_Ticket extends DbTestCase
 
         $supplier = new \Supplier();
         $supplier_id = $supplier->add([
-           'name'        => 'supplier-ticket-' . $this->getUniqueString(),
-           'entities_id' => 0,
-           'email'       => 'supplier-ticket-' . mt_rand(1000, 9999) . '@example.com',
+            'name'        => 'supplier-ticket-' . $this->getUniqueString(),
+            'entities_id' => 0,
+            'email'       => 'supplier-ticket-' . mt_rand(1000, 9999) . '@example.com',
         ]);
-        $this->integer((int)$supplier_id)->isGreaterThan(0);
+        $this->integer((int) $supplier_id)->isGreaterThan(0);
 
         $ticket = new \Ticket();
         $ticket_id = $ticket->add([
-           'name'    => 'ticket-' . $this->getUniqueString(),
-           'content' => 'content-' . $this->getUniqueString(),
+            'name'    => 'ticket-' . $this->getUniqueString(),
+            'content' => 'content-' . $this->getUniqueString(),
         ]);
-        $this->integer((int)$ticket_id)->isGreaterThan(0);
+        $this->integer((int) $ticket_id)->isGreaterThan(0);
 
         $relation = new \Supplier_Ticket();
         $relation_id = $relation->add([
-           'tickets_id'   => $ticket_id,
-           'suppliers_id' => $supplier_id,
-           'type'         => CommonITILActor::ASSIGN,
+            'tickets_id'   => $ticket_id,
+            'suppliers_id' => $supplier_id,
+            'type'         => CommonITILActor::ASSIGN,
         ]);
-        $this->integer((int)$relation_id)->isGreaterThan(0);
+        $this->integer((int) $relation_id)->isGreaterThan(0);
 
         $this->boolean($relation->isSupplierEmail($ticket_id, $supplier->fields['email']))->isTrue();
         $this->boolean($relation->isSupplierEmail($ticket_id, 'no-match@example.com'))->isFalse();

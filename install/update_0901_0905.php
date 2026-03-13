@@ -54,8 +54,8 @@ function update0901to0905()
         // rename new tables if exists ?
         if ($DB->tableExists($new_table)) {
             $migration->dropTable("backup_$new_table");
-            $migration->displayWarning("$new_table table already exists. ".
-                                       "A backup have been done to backup_$new_table.");
+            $migration->displayWarning("$new_table table already exists. "
+                                       . "A backup have been done to backup_$new_table.");
             $backup_tables = true;
             $query         = $migration->renameTable("$new_table", "backup_$new_table");
         }
@@ -70,8 +70,8 @@ function update0901to0905()
     // fix https://github.com/glpi-project/glpi/issues/820
     // remove empty suppliers in tickets
     $DB->delete("glpi_suppliers_tickets", [
-       'suppliers_id'       => 0,
-       'alternative_email'  => ""
+        'suppliers_id'       => 0,
+        'alternative_email'  => "",
     ]);
 
     // ************ Keep it at the end **************

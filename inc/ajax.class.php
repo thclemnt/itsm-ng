@@ -63,13 +63,13 @@ class Ajax
         global $CFG_GLPI;
 
         $param = ['width'           => 800,
-                       'height'          => 400,
-                       'modal'           => true,
-                       'container'       => '',
-                       'title'           => '',
-                       'extraparams'     => [],
-                       'display'         => true,
-                       'js_modal_fields' => ''];
+            'height'          => 400,
+            'modal'           => true,
+            'container'       => '',
+            'title'           => '',
+            'extraparams'     => [],
+            'display'         => true,
+            'js_modal_fields' => ''];
 
         if (count($options)) {
             foreach ($options as $key => $val) {
@@ -150,13 +150,13 @@ class Ajax
         global $CFG_GLPI;
 
         $param = [
-           'title'     => '',
-           'position'  => 'right',
-           'url'       => '',
-           'display'   => true,
-           'icon'      => false,
-           'icon_url'  => false,
-           'icon_txt'  => false
+            'title'     => '',
+            'position'  => 'right',
+            'url'       => '',
+            'display'   => true,
+            'icon'      => false,
+            'icon_url'  => false,
+            'icon_txt'  => false,
         ];
 
         if (count($options)) {
@@ -169,8 +169,8 @@ class Ajax
 
         $out  =  "<script type='text/javascript'>\n";
         $out .= "$(function() {";
-        $out .= "$('<div id=\'$name\' class=\'slidepanel on{$param['position']}\'><div class=\"header\">" .
-           "<button type=\'button\' class=\'close ui-button ui-widget ui-state-default ui-corner-all ui-button-icon-only ui-dialog-titlebar-close\' title=\'" . __s('Close') . "\'><span class=\'ui-button-icon-primary ui-icon ui-icon-closethick\'></span><span class=\'ui-button-text\'>" . __('Close') . "</span></button>";
+        $out .= "$('<div id=\'$name\' class=\'slidepanel on{$param['position']}\'><div class=\"header\">"
+           . "<button type=\'button\' class=\'close ui-button ui-widget ui-state-default ui-corner-all ui-button-icon-only ui-dialog-titlebar-close\' title=\'" . __s('Close') . "\'><span class=\'ui-button-icon-primary ui-icon ui-icon-closethick\'></span><span class=\'ui-button-text\'>" . __('Close') . "</span></button>";
 
         if ($param['icon']) {
             $icon = "<img class=\'icon\' src=\'{$CFG_GLPI['root_doc']}{$param['icon']}\' alt=\'{$param['icon_txt']}\' title=\'{$param['icon_txt']}\'/>";
@@ -252,11 +252,11 @@ class Ajax
     {
 
         $param = ['width'     => 800,
-                       'height'    => 400,
-                       'modal'     => true,
-                       'container' => '',
-                       'title'     => '',
-                       'display'   => true];
+            'height'    => 400,
+            'modal'     => true,
+            'container' => '',
+            'title'     => '',
+            'display'   => true];
 
         if (count($options)) {
             foreach ($options as $key => $val) {
@@ -314,11 +314,11 @@ class Ajax
         global $CFG_GLPI;
 
         $param = ['width'         => 1050,
-                       'height'        => 500,
-                       'modal'         => true,
-                       'title'         => '',
-                       'display'       => true,
-                       'reloadonclose' => false];
+            'height'        => 500,
+            'modal'         => true,
+            'title'         => '',
+            'display'       => true,
+            'reloadonclose' => false];
 
         if (count($options)) {
             foreach ($options as $key => $val) {
@@ -373,7 +373,7 @@ class Ajax
      *                                                                   url    => 'url_toload',
      *                                                                   params => 'url_params')...
      * @param string  $type             itemtype for active tab
-     * @param integer $ID               ID of element for active tab (default 0)
+     * @param int $ID               ID of element for active tab (default 0)
      * @param string  $orientation      orientation of tabs (default vertical may also be horizontal)
      * @param array   $options          Display options
      *
@@ -418,8 +418,8 @@ class Ajax
                 if ($key == $active_tabs) {
                     $selected_tab = $current;
                 }
-                echo "<li><a title=\"" .
-                     str_replace(["<sup class='tab_nb'>", '</sup>'], '', $val['title']) . "\" ";
+                echo "<li><a title=\""
+                     . str_replace(["<sup class='tab_nb'>", '</sup>'], '', $val['title']) . "\" ";
                 echo " href='" . $val['url'] . (isset($val['params']) ? '?' . $val['params'] : '') . "'>";
                 // extract sup information
                 // $title = '';
@@ -475,10 +475,10 @@ class Ajax
                      console.log(e);
                      if (e.statusText != 'abort') {
                         ui.panel.html(
-                           '<div class=\'error\'><h3>" .
-                              addslashes(__('An error occured loading contents!'))  . "</h3><p>" .
-                              addslashes(__('Please check ITSM-NG logs or contact your administrator.'))  .
-                              "<br/>" . addslashes(__('or')) . " <a href=\'#\' onclick=\'return reloadTab()\'>" . addslashes(__('try to reload'))  . "</a></p></div>'
+                           '<div class=\'error\'><h3>"
+                              . addslashes(__('An error occured loading contents!')) . "</h3><p>"
+                              . addslashes(__('Please check ITSM-NG logs or contact your administrator.'))
+                              . "<br/>" . addslashes(__('or')) . " <a href=\'#\' onclick=\'return reloadTab()\'>" . addslashes(__('try to reload')) . "</a></p></div>'
                         );
                      }
                   });
@@ -562,10 +562,10 @@ class Ajax
      * @param string  $url          Url to get datas to update the item
      * @param array   $parameters   of parameters to send to ajax URL
      * @param array   $events       of the observed events (default 'change')
-     * @param integer $minsize      minimum size of data to update content (default -1)
-     * @param integer $buffertime   minimum time to wait before reload (default -1)
+     * @param int $minsize      minimum size of data to update content (default -1)
+     * @param int $buffertime   minimum time to wait before reload (default -1)
      * @param array   $forceloadfor of content which must force update content
-     * @param boolean $display      display or get string (default true)
+     * @param bool $display      display or get string (default true)
      *
      * @return void|string (see $display)
      */
@@ -610,7 +610,7 @@ class Ajax
      * @param string  $toupdate   id of the item to update
      * @param string  $url        Url to get datas to update the item
      * @param array   $parameters of parameters to send to ajax URL
-     * @param boolean $display    display or get string (default true)
+     * @param bool $display    display or get string (default true)
      *
      * @return void|string (see $display)
      */
@@ -643,10 +643,10 @@ class Ajax
      * @param string  $toupdate     id of the item to update
      * @param string  $url          Url to get datas to update the item
      * @param array   $parameters   of parameters to send to ajax URL
-     * @param integer $minsize      minimum size of data to update content (default -1)
-     * @param integer $buffertime   minimum time to wait before reload (default -1)
+     * @param int $minsize      minimum size of data to update content (default -1)
+     * @param int $buffertime   minimum time to wait before reload (default -1)
      * @param array   $forceloadfor of content which must force update content
-     * @param boolean $display      display or get string (default true)
+     * @param bool $display      display or get string (default true)
      *
      * @return void|string (see $display)
      */
@@ -693,10 +693,10 @@ class Ajax
      * @param string  $url          Url to get datas to update the item
      * @param array   $parameters   of parameters to send to ajax URL
      * @param array   $events       of the observed events (default 'change')
-     * @param integer $minsize      minimum size of data to update content (default -1)
-     * @param integer $buffertime   minimum time to wait before reload (default -1)
+     * @param int $minsize      minimum size of data to update content (default -1)
+     * @param int $buffertime   minimum time to wait before reload (default -1)
      * @param array   $forceloadfor of content which must force update content
-     * @param boolean $display      display or get string (default true)
+     * @param bool $display      display or get string (default true)
      *
      * @return void|string (see $display)
      */
@@ -774,7 +774,7 @@ class Ajax
      *               (need value_fieldname, to_update,
      *                url (@see Ajax::updateItemOnSelectEvent for information)
      *                and may have moreparams)
-     * @param boolean $display display or get string (default true)
+     * @param bool $display display or get string (default true)
      *
      * @return void|string (see $display)
      */
@@ -849,7 +849,7 @@ class Ajax
      * @param string|array $toobserve  id of another item used to get value in case of __VALUE__ used or array    of id to get value in case of __VALUE#__ used (default '')
      *                               or
      *                      array    of id to get value in case of __VALUE#__ used (default '')
-     * @param boolean      $display    display or get string (default true)
+     * @param bool      $display    display or get string (default true)
      *
      * @return void|string (see $display)
      */
@@ -916,7 +916,7 @@ class Ajax
      * @param array   $parameters of parameters to send to ajax URL
      * @param string  $toobserve  id of another item used to get value in case of __VALUE__ used
      *                               (default '')
-     * @param boolean $display    display or get string (default true)
+     * @param bool $display    display or get string (default true)
      *
      * @return void|string (see $display)
      */

@@ -95,7 +95,7 @@ class NotificationChatSetting extends NotificationSetting
             CHAT_ROCKET     => __('Rocket chat'),
             CHAT_SLACK      => __('Slack'),
             CHAT_TEAMS      => __('Teams'),
-            CHAT_ZULIP      => __('Zulip')
+            CHAT_ZULIP      => __('Zulip'),
         ];
 
         $types = [
@@ -103,7 +103,7 @@ class NotificationChatSetting extends NotificationSetting
             'entity'   => __("Entity"),
             'group'    => __("Group"),
             'location' => __("Location"),
-            'category' => __("ITIL category")
+            'category' => __("ITIL category"),
         ];
 
         $form = [
@@ -113,8 +113,8 @@ class NotificationChatSetting extends NotificationSetting
                     'name'   => 'update',
                     'value'  => _sx('button', 'Save'),
                     'class'  => 'btn btn-secondary',
-                    'type'   => 'submit'
-                ]
+                    'type'   => 'submit',
+                ],
             ],
             'content' => [
                 __('Chat notifications') => [
@@ -161,7 +161,7 @@ class NotificationChatSetting extends NotificationSetting
                                         $('[name=value_category]').attr('disabled', false);
                                     }
                                 JS,
-                            ]
+                            ],
                         ],
                         Group::getTypeName(1) => [
                             'type'  => 'select',
@@ -196,8 +196,8 @@ class NotificationChatSetting extends NotificationSetting
                             'name'  => 'id',
                             'value' => '1',
                         ],
-                    ]
-                ]
+                    ],
+                ],
             ],
         ];
         renderTwigForm($form);

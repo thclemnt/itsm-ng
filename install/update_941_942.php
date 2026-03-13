@@ -51,14 +51,14 @@ function update941to942()
         $DB->buildUpdate(
             'glpi_configs',
             [
-              'value' => new \QueryExpression(
-                  'TRIM(TRAILING ' . $DB->quoteValue('/') . ' FROM ' . $DB->quoteName('value') . ')'
-              )
-         ],
+                'value' => new QueryExpression(
+                    'TRIM(TRAILING ' . $DB->quoteValue('/') . ' FROM ' . $DB->quoteName('value') . ')'
+                ),
+            ],
             [
-              'context' => 'core',
-              'name'    => 'url_base'
-         ]
+                'context' => 'core',
+                'name'    => 'url_base',
+            ]
         )
     );
     /* /Remove trailing slash from 'url_base' config */
@@ -78,21 +78,21 @@ function update941to942()
     $missing_param_pattern = '(document\.send\.php\?docid=[0-9]+)(' . implode('|', $quotes_possible_exp) . ')';
 
     $itil_mappings = [
-       'Change' => [
-          'itil_table' => 'glpi_changes',
-          'itil_fkey'  => 'changes_id',
-          'task_table' => 'glpi_changetasks',
-       ],
-       'Problem' => [
-          'itil_table' => 'glpi_problems',
-          'itil_fkey'  => 'problems_id',
-          'task_table' => 'glpi_problemtasks',
-       ],
-       'Ticket' => [
-          'itil_table' => 'glpi_tickets',
-          'itil_fkey'  => 'tickets_id',
-          'task_table' => 'glpi_tickettasks',
-       ],
+        'Change' => [
+            'itil_table' => 'glpi_changes',
+            'itil_fkey'  => 'changes_id',
+            'task_table' => 'glpi_changetasks',
+        ],
+        'Problem' => [
+            'itil_table' => 'glpi_problems',
+            'itil_fkey'  => 'problems_id',
+            'task_table' => 'glpi_problemtasks',
+        ],
+        'Ticket' => [
+            'itil_table' => 'glpi_tickets',
+            'itil_fkey'  => 'tickets_id',
+            'task_table' => 'glpi_tickettasks',
+        ],
     ];
 
     $fix_content_fct = function ($content, $itil_id, $itil_fkey) use ($missing_param_pattern) {
@@ -112,13 +112,13 @@ function update941to942()
         foreach (['glpi_itilfollowups', 'glpi_itilsolutions'] as $itil_element_table) {
             $elements_to_fix = $DB->request(
                 [
-                  'SELECT'    => ['id', 'items_id', 'content'],
-                  'FROM'      => $itil_element_table,
-                  'WHERE'     => [
-                     'itemtype' => $itil_type,
-                     'content'  => ['REGEXP', $DB->escape($missing_param_pattern)],
-                  ]
-            ]
+                    'SELECT'    => ['id', 'items_id', 'content'],
+                    'FROM'      => $itil_element_table,
+                    'WHERE'     => [
+                        'itemtype' => $itil_type,
+                        'content'  => ['REGEXP', $DB->escape($missing_param_pattern)],
+                    ],
+                ]
             );
             foreach ($elements_to_fix as $data) {
                 $data['content'] = $DB->escape($fix_content_fct($data['content'], $data['items_id'], $itil_fkey));
@@ -129,12 +129,12 @@ function update941to942()
         // Fix tasks
         $tasks_to_fix = $DB->request(
             [
-              'SELECT'    => ['id', $itil_fkey, 'content'],
-              'FROM'      => $task_table,
-              'WHERE'     => [
-                 'content'  => ['REGEXP', $DB->escape($missing_param_pattern)],
-              ]
-         ]
+                'SELECT'    => ['id', $itil_fkey, 'content'],
+                'FROM'      => $task_table,
+                'WHERE'     => [
+                    'content'  => ['REGEXP', $DB->escape($missing_param_pattern)],
+                ],
+            ]
         );
         foreach ($tasks_to_fix as $data) {
             $data['content'] = $DB->escape($fix_content_fct($data['content'], $data[$itil_fkey], $itil_fkey));

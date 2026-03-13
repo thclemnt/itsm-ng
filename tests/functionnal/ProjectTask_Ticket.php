@@ -43,44 +43,44 @@ class ProjectTask_Ticket extends DbTestCase
 
         $project = new \Project();
         $project_id = $project->add([
-           'name' => 'projecttask-ticket-project-' . $this->getUniqueString(),
+            'name' => 'projecttask-ticket-project-' . $this->getUniqueString(),
         ]);
-        $this->integer((int)$project_id)->isGreaterThan(0);
+        $this->integer((int) $project_id)->isGreaterThan(0);
 
         $project_task = new \ProjectTask();
         $task_id = $project_task->add([
-           'name'                    => 'projecttask-ticket-task-' . $this->getUniqueString(),
-           'projects_id'             => $project_id,
-           'projecttasktemplates_id' => 0,
+            'name'                    => 'projecttask-ticket-task-' . $this->getUniqueString(),
+            'projects_id'             => $project_id,
+            'projecttasktemplates_id' => 0,
         ]);
-        $this->integer((int)$task_id)->isGreaterThan(0);
+        $this->integer((int) $task_id)->isGreaterThan(0);
 
         $ticket_1 = new \Ticket();
         $ticket_1_id = $ticket_1->add([
-           'name'       => 'projecttask-ticket-1-' . $this->getUniqueString(),
-           'content'    => 'content',
-           'actiontime' => 120,
+            'name'       => 'projecttask-ticket-1-' . $this->getUniqueString(),
+            'content'    => 'content',
+            'actiontime' => 120,
         ]);
-        $this->integer((int)$ticket_1_id)->isGreaterThan(0);
+        $this->integer((int) $ticket_1_id)->isGreaterThan(0);
 
         $ticket_2 = new \Ticket();
         $ticket_2_id = $ticket_2->add([
-           'name'       => 'projecttask-ticket-2-' . $this->getUniqueString(),
-           'content'    => 'content',
-           'actiontime' => 60,
+            'name'       => 'projecttask-ticket-2-' . $this->getUniqueString(),
+            'content'    => 'content',
+            'actiontime' => 60,
         ]);
-        $this->integer((int)$ticket_2_id)->isGreaterThan(0);
+        $this->integer((int) $ticket_2_id)->isGreaterThan(0);
 
         $relation = new \ProjectTask_Ticket();
-        $this->integer((int)$relation->add([
-           'projecttasks_id' => $task_id,
-           'tickets_id'      => $ticket_1_id,
+        $this->integer((int) $relation->add([
+            'projecttasks_id' => $task_id,
+            'tickets_id'      => $ticket_1_id,
         ]))->isGreaterThan(0);
-        $this->integer((int)$relation->add([
-           'projecttasks_id' => $task_id,
-           'tickets_id'      => $ticket_2_id,
+        $this->integer((int) $relation->add([
+            'projecttasks_id' => $task_id,
+            'tickets_id'      => $ticket_2_id,
         ]))->isGreaterThan(0);
 
-        $this->integer((int)\ProjectTask_Ticket::getTicketsTotalActionTime($task_id))->isEqualTo(180);
+        $this->integer((int) \ProjectTask_Ticket::getTicketsTotalActionTime($task_id))->isEqualTo(180);
     }
 }

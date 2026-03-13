@@ -56,14 +56,14 @@ class ImpactItem extends CommonDBTM
         global $DB;
 
         $it = $DB->request([
-           'SELECT' => [
-              'glpi_impactitems.id',
-           ],
-           'FROM' => self::getTable(),
-           'WHERE'  => [
-              'glpi_impactitems.itemtype' => get_class($item),
-              'glpi_impactitems.items_id' => $item->fields['id'],
-           ]
+            'SELECT' => [
+                'glpi_impactitems.id',
+            ],
+            'FROM' => self::getTable(),
+            'WHERE'  => [
+                'glpi_impactitems.itemtype' => get_class($item),
+                'glpi_impactitems.items_id' => $item->fields['id'],
+            ],
         ]);
 
         $res = $it->next();
@@ -73,8 +73,8 @@ class ImpactItem extends CommonDBTM
             $id = $res['id'];
         } elseif (!$res && $create_if_missing) {
             $id = $impact_item->add([
-               'itemtype' => get_class($item),
-               'items_id' => $item->fields['id']
+                'itemtype' => get_class($item),
+                'items_id' => $item->fields['id'],
             ]);
         } else {
             return false;

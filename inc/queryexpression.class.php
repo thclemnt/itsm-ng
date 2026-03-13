@@ -50,7 +50,7 @@ class QueryExpression
     public function __construct($expression)
     {
         if (empty($expression)) {
-            throw new \RuntimeException('Cannot build an empty expression');
+            throw new RuntimeException('Cannot build an empty expression');
         }
         $this->expression = $expression;
     }

@@ -103,9 +103,9 @@ abstract class CommonITILActor extends CommonDBRelation
 
         $users = [];
         $iterator = $DB->request([
-           'FROM'   => $this->getTable(),
-           'WHERE'  => [static::getItilObjectForeignKey() => $items_id],
-           'ORDER'  => 'id ASC'
+            'FROM'   => $this->getTable(),
+            'WHERE'  => [static::getItilObjectForeignKey() => $items_id],
+            'ORDER'  => 'id ASC',
         ]);
         while ($data = $iterator->next()) {
             $users[$data['type']][] = $data;
@@ -123,13 +123,13 @@ abstract class CommonITILActor extends CommonDBRelation
         global $DB;
 
         $iterator = $DB->request([
-           'FROM'   => $this->getTable(),
-           'WHERE'  => [
-              static::getItilObjectForeignKey()   => $items_id,
-              'alternative_email'                 => $email
-           ],
-           'START'  => 0,
-           'LIMIT'  => 1
+            'FROM'   => $this->getTable(),
+            'WHERE'  => [
+                static::getItilObjectForeignKey()   => $items_id,
+                'alternative_email'                 => $email,
+            ],
+            'START'  => 0,
+            'LIMIT'  => 1,
         ]);
         if (count($iterator) > 0) {
             return true;
@@ -222,8 +222,8 @@ abstract class CommonITILActor extends CommonDBRelation
                 ['value'   => $this->fields['alternative_email']]
             );
         } else {
-            echo "<input type='text' size='40' name='alternative_email' value='" .
-                   $this->fields['alternative_email'] . "'>";
+            echo "<input type='text' size='40' name='alternative_email' value='"
+                   . $this->fields['alternative_email'] . "'>";
         }
         echo "</td></tr>";
 
@@ -287,8 +287,8 @@ abstract class CommonITILActor extends CommonDBRelation
         if (empty($this->fields['alternative_email'])) {
             $this->fields['alternative_email'] = $default_email;
         }
-        echo "<input type='text' size='40' name='alternative_email' value='" .
-               $this->fields['alternative_email'] . "'>";
+        echo "<input type='text' size='40' name='alternative_email' value='"
+               . $this->fields['alternative_email'] . "'>";
         echo "</td></tr>";
 
         echo "<tr class='tab_bg_2'>";
@@ -323,7 +323,7 @@ abstract class CommonITILActor extends CommonDBRelation
                     $status = $item->fields['status'];
                 }
                 $item->update(['id'     => $this->fields[static::getItilObjectForeignKey()],
-                                    'status' => $status]);
+                    'status' => $status]);
             } else {
                 $item->updateDateMod($this->fields[static::getItilObjectForeignKey()]);
 
@@ -413,8 +413,8 @@ abstract class CommonITILActor extends CommonDBRelation
                 && in_array(CommonITILObject::ASSIGNED, array_keys($item->getAllStatusArray()))
             ) {
                 $item->update(['id'               => $item->getID(),
-                               'status'           => CommonITILObject::ASSIGNED,
-                               '_from_assignment' => true]);
+                    'status'           => CommonITILObject::ASSIGNED,
+                    '_from_assignment' => true]);
             }
 
             // raise notification for this actor addition

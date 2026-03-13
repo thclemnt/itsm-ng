@@ -57,14 +57,14 @@ class DeviceSimcard extends DbTestCase
 
         // Add
         $in = [
-              'designation'              => $this->method,
-              'manufacturers_id'         => $this->getUniqueInteger(),
-              'devicesimcardtypes_id'    => $this->getUniqueInteger(),
-              'voltage'                  => $this->getUniqueInteger(),
-              'allow_voip'               => '1'
+            'designation'              => $this->method,
+            'manufacturers_id'         => $this->getUniqueInteger(),
+            'devicesimcardtypes_id'    => $this->getUniqueInteger(),
+            'voltage'                  => $this->getUniqueInteger(),
+            'allow_voip'               => '1',
         ];
         $id = $obj->add($in);
-        $this->integer((int)$id)->isGreaterThan(0);
+        $this->integer((int) $id)->isGreaterThan(0);
         $this->boolean($obj->getFromDB($id))->isTrue();
 
         // getField methods
@@ -81,18 +81,18 @@ class DeviceSimcard extends DbTestCase
 
         // Add
         $id = $obj->add([
-              'designation' => $this->getUniqueString(),
+            'designation' => $this->getUniqueString(),
         ]);
         $this->integer($id)->isGreaterThan(0);
 
         // Update
         $in = [
-              'id'                       => $id,
-              'designation'              => $this->method,
-              'manufacturers_id'         => $this->getUniqueInteger(),
-              'devicesimcardtypes_id'    => $this->getUniqueInteger(),
-              'voltage'                  => $this->getUniqueInteger(),
-              'allow_voip'               => '1'
+            'id'                       => $id,
+            'designation'              => $this->method,
+            'manufacturers_id'         => $this->getUniqueInteger(),
+            'devicesimcardtypes_id'    => $this->getUniqueInteger(),
+            'voltage'                  => $this->getUniqueInteger(),
+            'allow_voip'               => '1',
         ];
         $this->boolean($obj->update($in))->isTrue();
         $this->boolean($obj->getFromDB($id))->isTrue();
@@ -110,13 +110,13 @@ class DeviceSimcard extends DbTestCase
 
         // Add
         $id = $obj->add([
-              'designation' => $this->method,
+            'designation' => $this->method,
         ]);
         $this->integer($id)->isGreaterThan(0);
 
         // Delete
         $in = [
-              'id'                       => $obj->getID(),
+            'id'                       => $obj->getID(),
         ];
         $this->boolean($obj->delete($in))->isTrue();
     }

@@ -63,9 +63,9 @@ if (
 ) {
     $SQL_TOTAL_REQUEST    = 0;
     $DEBUG_SQL = [
-       'queries' => [],
-       'errors'  => [],
-       'times'   => [],
+        'queries' => [],
+        'errors'  => [],
+        'times'   => [],
     ];
     $DEBUG_AUTOLOAD       = [];
 }
@@ -106,7 +106,7 @@ if (isset($AJAX_INCLUDE)) {
 if (!isset($PLUGINS_INCLUDED)) {
     // PLugin already included
     $PLUGINS_INCLUDED = 1;
-    $PLUGINS_EXCLUDED = isset($PLUGINS_EXCLUDED) ? $PLUGINS_EXCLUDED : [];
+    $PLUGINS_EXCLUDED ??= [];
     $LOADED_PLUGINS   = [];
     $plugin           = new Plugin();
     $plugin->init(true, $PLUGINS_EXCLUDED);

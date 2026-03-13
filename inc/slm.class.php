@@ -62,7 +62,7 @@ class SLM extends CommonDBTM
     /**
      * Force calendar of the SLM if value -1: calendar of the entity
      *
-     * @param integer $calendars_id calendars_id of the ticket
+     * @param int $calendars_id calendars_id of the ticket
      **/
     public function setTicketCalendar($calendars_id)
     {
@@ -90,8 +90,8 @@ class SLM extends CommonDBTM
 
         $this->deleteChildrenAndRelationsFromDb(
             [
-              SLA::class,
-              OLA::class,
+                SLA::class,
+                OLA::class,
             ]
         );
     }
@@ -99,45 +99,45 @@ class SLM extends CommonDBTM
     /**
      * Print the slm form
      *
-     * @param integer $ID ID of the item
+     * @param int $ID ID of the item
      *
-     * @return boolean item found
+     * @return bool item found
      **/
     public function showForm($ID)
     {
         $form = [
-           'action' => Toolbox::getItemTypeFormURL('slm'),
-           'itemtype' => $this->getType(),
-           'content' => [
-              __('Niveau de services') => [
-                 'visible' => true,
-                 'inputs' => [
-                    $this->isNewID($ID) ? [] : [
-                       'type' => 'hidden',
-                       'name' => 'id',
-                       'value' => $ID
+            'action' => Toolbox::getItemTypeFormURL('slm'),
+            'itemtype' => $this->getType(),
+            'content' => [
+                __('Niveau de services') => [
+                    'visible' => true,
+                    'inputs' => [
+                        $this->isNewID($ID) ? [] : [
+                            'type' => 'hidden',
+                            'name' => 'id',
+                            'value' => $ID,
+                        ],
+                        __('Name') => [
+                            'name' => 'name',
+                            'type' => 'text',
+                            'value' => $this->fields['name'] ?? '',
+                        ],
+                        __('Calendar') => [
+                            'name' => 'calendars_id',
+                            'type' => 'select',
+                            'values' => [-1 => __('Calendar of the ticket'), 0 => __('24/7')]
+                                + getItemByEntity(Calendar::class, Session::getActiveEntity()),
+                            'value' => $this->fields['calendars_id'] ?? '',
+                            'actions' => getItemActionButtons(['info', 'add'], "Calendar"),
+                        ],
+                        __('Comments') => [
+                            'name' => 'comment',
+                            'type' => 'textarea',
+                            'value' => $this->fields['comment'] ?? '',
+                        ],
                     ],
-                    __('Name') => [
-                       'name' => 'name',
-                       'type' => 'text',
-                       'value' => $this->fields['name'] ?? '',
-                    ],
-                    __('Calendar') => [
-                       'name' => 'calendars_id',
-                       'type' => 'select',
-                       'values' => [-1 => __('Calendar of the ticket'), 0 => __('24/7')] +
-                           getItemByEntity(Calendar::class, Session::getActiveEntity()),
-                       'value' => $this->fields['calendars_id'] ?? '',
-                       'actions' => getItemActionButtons(['info', 'add'], "Calendar"),
-                    ],
-                    __('Comments') => [
-                       'name' => 'comment',
-                       'type' => 'textarea',
-                       'value' => $this->fields['comment'] ?? '',
-                    ],
-                 ]
-              ]
-           ]
+                ],
+            ],
         ];
         renderTwigForm($form, '', $this->fields);
 
@@ -150,43 +150,43 @@ class SLM extends CommonDBTM
         $tab = [];
 
         $tab[] = [
-           'id'                 => 'common',
-           'name'               => __('Characteristics')
+            'id'                 => 'common',
+            'name'               => __('Characteristics'),
         ];
 
         $tab[] = [
-           'id'                 => '1',
-           'table'              => $this->getTable(),
-           'field'              => 'name',
-           'name'               => __('Name'),
-           'datatype'           => 'itemlink',
-           'massiveaction'      => false,
-           'autocomplete'       => true,
+            'id'                 => '1',
+            'table'              => $this->getTable(),
+            'field'              => 'name',
+            'name'               => __('Name'),
+            'datatype'           => 'itemlink',
+            'massiveaction'      => false,
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '2',
-           'table'              => $this->getTable(),
-           'field'              => 'id',
-           'name'               => __('ID'),
-           'massiveaction'      => false,
-           'datatype'           => 'number'
+            'id'                 => '2',
+            'table'              => $this->getTable(),
+            'field'              => 'id',
+            'name'               => __('ID'),
+            'massiveaction'      => false,
+            'datatype'           => 'number',
         ];
 
         $tab[] = [
-           'id'                 => '4',
-           'table'              => 'glpi_calendars',
-           'field'              => 'name',
-           'name'               => _n('Calendar', 'Calendars', 1),
-           'datatype'           => 'dropdown'
+            'id'                 => '4',
+            'table'              => 'glpi_calendars',
+            'field'              => 'name',
+            'name'               => _n('Calendar', 'Calendars', 1),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '16',
-           'table'              => $this->getTable(),
-           'field'              => 'comment',
-           'name'               => __('Comments'),
-           'datatype'           => 'text'
+            'id'                 => '16',
+            'table'              => $this->getTable(),
+            'field'              => 'comment',
+            'name'               => __('Comments'),
+            'datatype'           => 'text',
         ];
 
         return $tab;

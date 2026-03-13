@@ -64,13 +64,13 @@ class Supplier extends CommonDBTM
 
         $this->deleteChildrenAndRelationsFromDb(
             [
-              Change_Supplier::class,
-              Contact_Supplier::class,
-              Contract_Supplier::class,
-              Problem_Supplier::class,
-              ProjectTaskTeam::class,
-              ProjectTeam::class,
-              Supplier_Ticket::class,
+                Change_Supplier::class,
+                Contact_Supplier::class,
+                Contract_Supplier::class,
+                Problem_Supplier::class,
+                ProjectTaskTeam::class,
+                ProjectTeam::class,
+                Supplier_Ticket::class,
             ]
         );
 
@@ -114,95 +114,95 @@ class Supplier extends CommonDBTM
     {
 
         $form = [
-           'action' => Toolbox::getItemTypeFormURL('supplier'),
-           'buttons' => [
-              [
-                 'type' => 'submit',
-                 'name' => $this->isNewID($ID) ? 'add' : 'update',
-                 'value' => $this->isNewID($ID) ? __('Add') : __('Update'),
-                 'class' => 'btn btn-secondary',
-              ],
-              $this->isNewID($ID) ? [] : [
-                 'type' => 'submit',
-                 'name' => 'delete',
-                 'value' => __('Put in trashbin'),
-                 'class' => 'btn btn-secondary'
-              ]
-           ],
-           'content' => [
-              __('Supplier') => [
-                 'visible' => true,
-                 'inputs' => [
-                    $this->isNewID($ID) ? [] : [
-                       'type' => 'hidden',
-                       'name' => 'id',
-                       'value' => $ID
+            'action' => Toolbox::getItemTypeFormURL('supplier'),
+            'buttons' => [
+                [
+                    'type' => 'submit',
+                    'name' => $this->isNewID($ID) ? 'add' : 'update',
+                    'value' => $this->isNewID($ID) ? __('Add') : __('Update'),
+                    'class' => 'btn btn-secondary',
+                ],
+                $this->isNewID($ID) ? [] : [
+                    'type' => 'submit',
+                    'name' => 'delete',
+                    'value' => __('Put in trashbin'),
+                    'class' => 'btn btn-secondary',
+                ],
+            ],
+            'content' => [
+                __('Supplier') => [
+                    'visible' => true,
+                    'inputs' => [
+                        $this->isNewID($ID) ? [] : [
+                            'type' => 'hidden',
+                            'name' => 'id',
+                            'value' => $ID,
+                        ],
+                        __('Name') => [
+                            'name' => 'name',
+                            'type' => 'text',
+                            'value' => $this->fields['name'],
+                        ],
+                        __('Phone') => [
+                            'name' => 'phonenumber',
+                            'type' => 'text',
+                            'value' => $this->fields['phonenumber'],
+                        ],
+                        __('Fax') => [
+                            'name' => 'fax',
+                            'type' => 'text',
+                            'value' => $this->fields['fax'],
+                        ],
+                        __('Website') => [
+                            'name' => 'website',
+                            'type' => 'text',
+                            'value' => $this->fields['website'],
+                        ],
+                        __('Email') => [
+                            'name' => 'email',
+                            'type' => 'text',
+                            'value' => $this->fields['email'],
+                        ],
+                        __('Address') => [
+                            'name' => 'address',
+                            'type' => 'textarea',
+                            'value' => $this->fields['address'],
+                        ],
+                        __('Postal code') => [
+                            'name' => 'postcode',
+                            'type' => 'text',
+                            'value' => $this->fields['postcode'],
+                        ],
+                        __('Town') => [
+                            'name' => 'town',
+                            'type' => 'text',
+                            'value' => $this->fields['town'],
+                        ],
+                        __('Country') => [
+                            'name' => 'country',
+                            'type' => 'text',
+                            'value' => $this->fields['country'],
+                        ],
+                        __('Third party type') => [
+                            'name' => 'suppliertypes_id',
+                            'type' => 'select',
+                            'values' => getOptionForItems(SupplierType::class),
+                            'actions' => getItemActionButtons(['info', 'add'], "SupplierType"),
+                            'value' => $this->fields['suppliertypes_id'],
+                        ],
+                        __('Comment') => [
+                            'name' => 'comment',
+                            'type' => 'textarea',
+                            'value' => $this->fields['comment'],
+                        ],
+                        __('Active') => [
+                            'name' => 'is_active',
+                            'type' => 'checkbox',
+                            'value' => $this->fields['is_active'],
+                        ],
                     ],
-                    __('Name') => [
-                       'name' => 'name',
-                       'type' => 'text',
-                       'value' => $this->fields['name'],
-                    ],
-                    __('Phone') => [
-                       'name' => 'phonenumber',
-                       'type' => 'text',
-                       'value' => $this->fields['phonenumber'],
-                    ],
-                    __('Fax') => [
-                       'name' => 'fax',
-                       'type' => 'text',
-                       'value' => $this->fields['fax'],
-                    ],
-                    __('Website') => [
-                       'name' => 'website',
-                       'type' => 'text',
-                       'value' => $this->fields['website'],
-                    ],
-                    __('Email') => [
-                       'name' => 'email',
-                       'type' => 'text',
-                       'value' => $this->fields['email'],
-                    ],
-                    __('Address') => [
-                       'name' => 'address',
-                       'type' => 'textarea',
-                       'value' => $this->fields['address'],
-                    ],
-                    __('Postal code') => [
-                       'name' => 'postcode',
-                       'type' => 'text',
-                       'value' => $this->fields['postcode'],
-                    ],
-                    __('Town') => [
-                       'name' => 'town',
-                       'type' => 'text',
-                       'value' => $this->fields['town']
-                    ],
-                    __('Country') => [
-                       'name' => 'country',
-                       'type' => 'text',
-                       'value' => $this->fields['country']
-                    ],
-                    __('Third party type') => [
-                       'name' => 'suppliertypes_id',
-                       'type' => 'select',
-                       'values' => getOptionForItems(SupplierType::class),
-                       'actions' => getItemActionButtons(['info', 'add'], "SupplierType"),
-                       'value' => $this->fields['suppliertypes_id']
-                    ],
-                    __('Comment') => [
-                       'name' => 'comment',
-                       'type' => 'textarea',
-                       'value' => $this->fields['comment']
-                    ],
-                    __('Active') => [
-                       'name' => 'is_active',
-                       'type' => 'checkbox',
-                       'value' => $this->fields['is_active']
-                    ]
-                 ]
-              ]
-           ]
+                ],
+            ],
         ];
         renderTwigForm($form);
 
@@ -238,133 +238,133 @@ class Supplier extends CommonDBTM
         $tab = [];
 
         $tab[] = [
-           'id'                 => 'common',
-           'name'               => __('Characteristics')
+            'id'                 => 'common',
+            'name'               => __('Characteristics'),
         ];
 
         $tab[] = [
-           'id'                 => '1',
-           'table'              => $this->getTable(),
-           'field'              => 'name',
-           'name'               => __('Name'),
-           'datatype'           => 'itemlink',
-           'massiveaction'      => false,
-           'autocomplete'       => true,
+            'id'                 => '1',
+            'table'              => $this->getTable(),
+            'field'              => 'name',
+            'name'               => __('Name'),
+            'datatype'           => 'itemlink',
+            'massiveaction'      => false,
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '2',
-           'table'              => $this->getTable(),
-           'field'              => 'id',
-           'name'               => __('ID'),
-           'massiveaction'      => false,
-           'datatype'           => 'number'
+            'id'                 => '2',
+            'table'              => $this->getTable(),
+            'field'              => 'id',
+            'name'               => __('ID'),
+            'massiveaction'      => false,
+            'datatype'           => 'number',
         ];
 
         $tab[] = [
-           'id'                 => '3',
-           'table'              => $this->getTable(),
-           'field'              => 'address',
-           'name'               => __('Address'),
-           'datatype'           => 'text'
+            'id'                 => '3',
+            'table'              => $this->getTable(),
+            'field'              => 'address',
+            'name'               => __('Address'),
+            'datatype'           => 'text',
         ];
 
         $tab[] = [
-           'id'                 => '10',
-           'table'              => $this->getTable(),
-           'field'              => 'fax',
-           'name'               => __('Fax'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '10',
+            'table'              => $this->getTable(),
+            'field'              => 'fax',
+            'name'               => __('Fax'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '11',
-           'table'              => $this->getTable(),
-           'field'              => 'town',
-           'name'               => __('City'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '11',
+            'table'              => $this->getTable(),
+            'field'              => 'town',
+            'name'               => __('City'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '14',
-           'table'              => $this->getTable(),
-           'field'              => 'postcode',
-           'name'               => __('Postal code'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '14',
+            'table'              => $this->getTable(),
+            'field'              => 'postcode',
+            'name'               => __('Postal code'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '12',
-           'table'              => $this->getTable(),
-           'field'              => 'state',
-           'name'               => _x('location', 'State'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '12',
+            'table'              => $this->getTable(),
+            'field'              => 'state',
+            'name'               => _x('location', 'State'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '13',
-           'table'              => $this->getTable(),
-           'field'              => 'country',
-           'name'               => __('Country'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '13',
+            'table'              => $this->getTable(),
+            'field'              => 'country',
+            'name'               => __('Country'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '4',
-           'table'              => $this->getTable(),
-           'field'              => 'website',
-           'name'               => __('Website'),
-           'datatype'           => 'weblink',
-           'autocomplete'       => true,
+            'id'                 => '4',
+            'table'              => $this->getTable(),
+            'field'              => 'website',
+            'name'               => __('Website'),
+            'datatype'           => 'weblink',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '5',
-           'table'              => $this->getTable(),
-           'field'              => 'phonenumber',
-           'name'               => Phone::getTypeName(1),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '5',
+            'table'              => $this->getTable(),
+            'field'              => 'phonenumber',
+            'name'               => Phone::getTypeName(1),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '6',
-           'table'              => $this->getTable(),
-           'field'              => 'email',
-           'name'               => _n('Email', 'Emails', 1),
-           'datatype'           => 'email',
-           'autocomplete'       => true,
+            'id'                 => '6',
+            'table'              => $this->getTable(),
+            'field'              => 'email',
+            'name'               => _n('Email', 'Emails', 1),
+            'datatype'           => 'email',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '9',
-           'table'              => 'glpi_suppliertypes',
-           'field'              => 'name',
-           'name'               => SupplierType::getTypeName(1),
-           'datatype'           => 'dropdown'
+            'id'                 => '9',
+            'table'              => 'glpi_suppliertypes',
+            'field'              => 'name',
+            'name'               => SupplierType::getTypeName(1),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '19',
-           'table'              => $this->getTable(),
-           'field'              => 'date_mod',
-           'name'               => __('Last update'),
-           'datatype'           => 'datetime',
-           'massiveaction'      => false
+            'id'                 => '19',
+            'table'              => $this->getTable(),
+            'field'              => 'date_mod',
+            'name'               => __('Last update'),
+            'datatype'           => 'datetime',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '121',
-           'table'              => $this->getTable(),
-           'field'              => 'date_creation',
-           'name'               => __('Creation date'),
-           'datatype'           => 'datetime',
-           'massiveaction'      => false
+            'id'                 => '121',
+            'table'              => $this->getTable(),
+            'field'              => 'date_creation',
+            'name'               => __('Creation date'),
+            'datatype'           => 'datetime',
+            'massiveaction'      => false,
         ];
 
         if ($_SESSION["glpinames_format"] == User::FIRSTNAME_BEFORE) {
@@ -376,66 +376,66 @@ class Supplier extends CommonDBTM
         }
 
         $tab[] = [
-           'id'                 => '8',
-           'table'              => 'glpi_contacts',
-           'field'              => 'completename',
-           'name'               => _n('Associated contact', 'Associated contacts', Session::getPluralNumber()),
-           'forcegroupby'       => true,
-           'datatype'           => 'itemlink',
-           'massiveaction'      => false,
-           'computation'        => "CONCAT(" . $DB->quoteName("TABLE.$name1") . ", ' ', " . $DB->quoteName("TABLE.$name2") . ")",
-           'computationgroupby' => true,
-           'joinparams'         => [
-              'beforejoin'         => [
-                 'table'              => 'glpi_contacts_suppliers',
-                 'joinparams'         => [
-                    'jointype'           => 'child'
-                 ]
-              ]
-           ]
+            'id'                 => '8',
+            'table'              => 'glpi_contacts',
+            'field'              => 'completename',
+            'name'               => _n('Associated contact', 'Associated contacts', Session::getPluralNumber()),
+            'forcegroupby'       => true,
+            'datatype'           => 'itemlink',
+            'massiveaction'      => false,
+            'computation'        => "CONCAT(" . $DB->quoteName("TABLE.$name1") . ", ' ', " . $DB->quoteName("TABLE.$name2") . ")",
+            'computationgroupby' => true,
+            'joinparams'         => [
+                'beforejoin'         => [
+                    'table'              => 'glpi_contacts_suppliers',
+                    'joinparams'         => [
+                        'jointype'           => 'child',
+                    ],
+                ],
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '16',
-           'table'              => $this->getTable(),
-           'field'              => 'comment',
-           'name'               => __('Comments'),
-           'datatype'           => 'text'
+            'id'                 => '16',
+            'table'              => $this->getTable(),
+            'field'              => 'comment',
+            'name'               => __('Comments'),
+            'datatype'           => 'text',
         ];
 
         $tab[] = [
-           'id'                 => '80',
-           'table'              => 'glpi_entities',
-           'field'              => 'completename',
-           'name'               => Entity::getTypeName(1),
-           'massiveaction'      => false,
-           'datatype'           => 'dropdown'
+            'id'                 => '80',
+            'table'              => 'glpi_entities',
+            'field'              => 'completename',
+            'name'               => Entity::getTypeName(1),
+            'massiveaction'      => false,
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '86',
-           'table'              => $this->getTable(),
-           'field'              => 'is_recursive',
-           'name'               => __('Child entities'),
-           'datatype'           => 'bool'
+            'id'                 => '86',
+            'table'              => $this->getTable(),
+            'field'              => 'is_recursive',
+            'name'               => __('Child entities'),
+            'datatype'           => 'bool',
         ];
 
         $tab[] = [
-           'id'                 => '29',
-           'table'              => 'glpi_contracts',
-           'field'              => 'name',
-           'name'               => _n('Associated contract', 'Associated contracts', Session::getPluralNumber()),
-           'forcegroupby'       => true,
-           'datatype'           => 'itemlink',
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'beforejoin'         => [
-                 'table'              => 'glpi_contracts_suppliers',
-                 'joinparams'         => [
-                    'jointype'           => 'child'
-                 ]
-              ]
-           ]
+            'id'                 => '29',
+            'table'              => 'glpi_contracts',
+            'field'              => 'name',
+            'name'               => _n('Associated contract', 'Associated contracts', Session::getPluralNumber()),
+            'forcegroupby'       => true,
+            'datatype'           => 'itemlink',
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'beforejoin'         => [
+                    'table'              => 'glpi_contracts_suppliers',
+                    'joinparams'         => [
+                        'jointype'           => 'child',
+                    ],
+                ],
+            ],
         ];
 
         // add objectlock search options
@@ -465,14 +465,14 @@ class Supplier extends CommonDBTM
 
         if (!empty($this->fields['website'])) {
             $ret .= "<a href='" . Toolbox::formatOutputWebLink($this->fields['website']) . "' target='_blank'>
-                  <img src='" . $CFG_GLPI["root_doc"] . "/pics/web.png' class='middle' alt=\"" .
-               __s('Web') . "\" title=\"" . __s('Web') . "\"></a>&nbsp;&nbsp;";
+                  <img src='" . $CFG_GLPI["root_doc"] . "/pics/web.png' class='middle' alt=\""
+               . __s('Web') . "\" title=\"" . __s('Web') . "\"></a>&nbsp;&nbsp;";
         }
 
         if ($this->can($this->fields['id'], READ)) {
             $ret .= "<a href='" . Supplier::getFormURLWithID($this->fields['id']) . "'>
-                  <img src='" . $CFG_GLPI["root_doc"] . "/pics/edit.png' class='middle' alt=\"" .
-               __s('Update') . "\" title=\"" . __s('Update') . "\"></a>";
+                  <img src='" . $CFG_GLPI["root_doc"] . "/pics/edit.png' class='middle' alt=\""
+               . __s('Update') . "\" title=\"" . __s('Update') . "\"></a>";
         }
         return $ret;
     }
@@ -527,25 +527,25 @@ class Supplier extends CommonDBTM
                 $itemtable = getTableForItemType($itemtype);
 
                 $criteria = [
-                   'SELECT'       => [],
-                   'FROM'         => 'glpi_infocoms',
-                   'INNER JOIN'   => [
-                      $itemtable  => [
-                         'ON' => [
-                            'glpi_infocoms'   => 'items_id',
-                            $itemtable        => 'id'
-                         ]
-                      ]
-                   ]
+                    'SELECT'       => [],
+                    'FROM'         => 'glpi_infocoms',
+                    'INNER JOIN'   => [
+                        $itemtable  => [
+                            'ON' => [
+                                'glpi_infocoms'   => 'items_id',
+                                $itemtable        => 'id',
+                            ],
+                        ],
+                    ],
                 ];
 
                 // Set $linktype for entity restriction AND link to search engine
                 if ($itemtype == 'Cartridge') {
                     $criteria['INNER JOIN']['glpi_cartridgeitems'] = [
-                       'ON' => [
-                          'glpi_cartridgeitems'   => 'id',
-                          'glpi_cartridges'       => 'cartridgeitems_id'
-                       ]
+                        'ON' => [
+                            'glpi_cartridgeitems'   => 'id',
+                            'glpi_cartridges'       => 'cartridgeitems_id',
+                        ],
                     ];
 
                     $linktype  = 'CartridgeItem';
@@ -554,10 +554,10 @@ class Supplier extends CommonDBTM
 
                 if ($itemtype == 'Consumable') {
                     $criteria['INNER JOIN']['glpi_consumableitems'] = [
-                       'ON' => [
-                          'glpi_consumableitems'  => 'id',
-                          'glpi_consumables'      => 'cartridgeitems_id'
-                       ]
+                        'ON' => [
+                            'glpi_consumableitems'  => 'id',
+                            'glpi_consumables'      => 'cartridgeitems_id',
+                        ],
                     ];
 
                     $linktype  = 'ConsumableItem';
@@ -566,10 +566,10 @@ class Supplier extends CommonDBTM
 
                 if ($itemtype == 'Item_DeviceControl') {
                     $criteria['INNER JOIN']['glpi_devicecontrols'] = [
-                       'ON' => [
-                          'glpi_items_devicecontrols'   => 'devicecontrols_id',
-                          'glpi_devicecontrols'         => 'id'
-                       ]
+                        'ON' => [
+                            'glpi_items_devicecontrols'   => 'devicecontrols_id',
+                            'glpi_devicecontrols'         => 'id',
+                        ],
                     ];
 
                     $linktype = 'DeviceControl';
@@ -579,19 +579,19 @@ class Supplier extends CommonDBTM
                 $linktable = getTableForItemType($linktype);
 
                 $criteria['SELECT'] = [
-                   'glpi_infocoms.entities_id',
-                   $linktype::getNameField(),
-                   "$itemtable.*"
+                    'glpi_infocoms.entities_id',
+                    $linktype::getNameField(),
+                    "$itemtable.*",
                 ];
 
                 $criteria['WHERE'] = [
-                   'glpi_infocoms.itemtype'      => $itemtype,
-                   'glpi_infocoms.suppliers_id'  => $instID,
+                    'glpi_infocoms.itemtype'      => $itemtype,
+                    'glpi_infocoms.suppliers_id'  => $instID,
                 ] + getEntitiesRestrictCriteria($linktable);
 
                 $criteria['ORDERBY'] = [
-                   'glpi_infocoms.entities_id',
-                   "$linktable." . $linktype::getNameField()
+                    'glpi_infocoms.entities_id',
+                    "$linktable." . $linktype::getNameField(),
                 ];
 
                 $iterator = $DB->request($criteria);
@@ -606,22 +606,22 @@ class Supplier extends CommonDBTM
                     echo "<td class='center'>" . $title . "</td>";
                     echo "<td class='center' colspan='2'>";
                     $opt = [
-                       'order'      => 'ASC',
-                       'is_deleted' => 0,
-                       'reset'      => 'reset',
-                       'start'      => 0,
-                       'sort'       => 80,
-                       'criteria'   => [0 => [
-                          'value'      => '$$$$' . $instID,
-                          'searchtype' => 'contains',
-                          'field'      => 53
-                       ]]
+                        'order'      => 'ASC',
+                        'is_deleted' => 0,
+                        'reset'      => 'reset',
+                        'start'      => 0,
+                        'sort'       => 80,
+                        'criteria'   => [0 => [
+                            'value'      => '$$$$' . $instID,
+                            'searchtype' => 'contains',
+                            'field'      => 53,
+                        ]],
                     ];
                     $link = $linktype::getSearchURL();
                     $link .= (strpos((string) $link, '?') ? '&amp;' : '?');
 
-                    echo "<a href='$link" .
-                       Toolbox::append_params($opt) . "'>" . __('Device list') . "</a></td>";
+                    echo "<a href='$link"
+                       . Toolbox::append_params($opt) . "'>" . __('Device list') . "</a></td>";
 
                     echo "<td class='center'>-</td><td class='center'>-</td></tr>";
                 } elseif ($nb) {
@@ -654,10 +654,10 @@ class Supplier extends CommonDBTM
                         echo "<td class='center";
                         echo ((isset($data['is_deleted']) && $data['is_deleted']) ? " tab_bg_2_2'" : "'") . ">";
                         echo $name . "</td>";
-                        echo "<td class='center'>" .
-                           (isset($data["serial"]) ? "" . $data["serial"] . "" : "-") . "</td>";
-                        echo "<td class='center'>" .
-                           (isset($data["otherserial"]) ? "" . $data["otherserial"] . "" : "-") . "</td>";
+                        echo "<td class='center'>"
+                           . (isset($data["serial"]) ? "" . $data["serial"] . "" : "-") . "</td>";
+                        echo "<td class='center'>"
+                           . (isset($data["otherserial"]) ? "" . $data["otherserial"] . "" : "-") . "</td>";
                         echo "</tr>";
                     }
                 }
@@ -683,9 +683,9 @@ class Supplier extends CommonDBTM
         global $DB;
 
         $suppliers = $DB->request([
-           'SELECT' => ["id"],
-           'FROM' => 'glpi_suppliers',
-           'WHERE' => ['email' => $email]
+            'SELECT' => ["id"],
+            'FROM' => 'glpi_suppliers',
+            'WHERE' => ['email' => $email],
         ]);
 
         return $suppliers;

@@ -34,12 +34,11 @@
 namespace tests\units\Glpi\Api;
 
 use APIBaseClass;
+use GuzzleHttp;
+use GuzzleHttp\Exception\ClientException;
 use Itsmng\Tests\Web\Deprecated\Computer_SoftwareLicense;
 use Itsmng\Tests\Web\Deprecated\Computer_SoftwareVersion;
 use Itsmng\Tests\Web\Deprecated\TicketFollowup;
-use GuzzleHttp;
-use GuzzleHttp\Exception\ClientException;
-use ITILFollowup;
 
 /* Test for inc/api/api.class.php */
 
@@ -64,7 +63,7 @@ class APIRest extends APIBaseClass
         $this->variable($file_updated)->isNotIdenticalTo(false);
 
         $this->http_client = new GuzzleHttp\Client();
-        $this->base_uri    = trim((string) $CFG_GLPI['url_base_api'], "/")."/";
+        $this->base_uri    = trim((string) $CFG_GLPI['url_base_api'], "/") . "/";
 
         parent::beforeTestMethod($method);
     }
@@ -111,7 +110,7 @@ class APIRest extends APIBaseClass
         if (in_array($verb, ['get', 'post', 'delete', 'put', 'options', 'patch'])) {
             try {
                 return $this->http_client->{$verb}(
-                    $this->base_uri.$relative_uri,
+                    $this->base_uri . $relative_uri,
                     $params
                 );
             } catch (\Exception $e) {
@@ -131,30 +130,28 @@ class APIRest extends APIBaseClass
             $expected_codes = [$expected_codes];
         }
 
-        $verb         = isset($params['verb'])
-                          ? $params['verb']
-                          : 'GET';
+        $verb         = $params['verb']
+                          ?? 'GET';
 
         $resource_path  = parse_url((string) $resource, PHP_URL_PATH);
         $resource_query = parse_url((string) $resource, PHP_URL_QUERY);
 
         $relative_uri = (!in_array($resource_path, ['getItem', 'getItems', 'createItems',
-                                               'updateItems', 'deleteItems'])
-                           ? $resource_path.'/'
-                           : '').
-                        (isset($params['parent_itemtype'])
-                           ? $params['parent_itemtype'].'/'
-                           : '').
-                        (isset($params['parent_id'])
-                           ? $params['parent_id'].'/'
-                           : '').
-                        (isset($params['itemtype'])
-                           ? $params['itemtype'].'/'
-                           : '').
-                        (isset($params['id'])
-                           ? $params['id']
-                           : '').
-                        (!empty($resource_query)
+            'updateItems', 'deleteItems'])
+                           ? $resource_path . '/'
+                           : '')
+                        . (isset($params['parent_itemtype'])
+                           ? $params['parent_itemtype'] . '/'
+                           : '')
+                        . (isset($params['parent_id'])
+                           ? $params['parent_id'] . '/'
+                           : '')
+                        . (isset($params['itemtype'])
+                           ? $params['itemtype'] . '/'
+                           : '')
+                        . ($params['id']
+                           ?? '')
+                        . (!empty($resource_query)
                            ? '?' . $resource_query
                            : '');
 
@@ -215,10 +212,10 @@ class APIRest extends APIBaseClass
             'OPTIONS',
             '',
             ['headers' => [
-                                               'Origin' => "http://localhost",
-                                               'Access-Control-Request-Method'  => 'GET',
-                                               'Access-Control-Request-Headers' => 'X-Requested-With'
-                                           ]]
+                'Origin' => "http://localhost",
+                'Access-Control-Request-Method'  => 'GET',
+                'Access-Control-Request-Headers' => 'X-Requested-With',
+            ]]
         );
 
         $this->variable($res)->isNotNull();
@@ -285,8 +282,8 @@ class APIRest extends APIBaseClass
         // retrieve personnal token of TU_USER user
         $user = new \User();
         $uid = getItemByTypeName('User', TU_USER, true);
-        $this->boolean((bool)$user->getFromDB($uid))->isTrue();
-        $token = isset($user->fields['api_token']) ? $user->fields['api_token'] : "";
+        $this->boolean((bool) $user->getFromDB($uid))->isTrue();
+        $token = $user->fields['api_token'] ?? "";
         if (empty($token)) {
             $token = $user->getAuthToken('api_token');
         }
@@ -295,8 +292,8 @@ class APIRest extends APIBaseClass
             'GET',
             'initSession?get_full_session=true',
             ['headers' => [
-                                               'Authorization' => "user_token $token"
-                                           ]]
+                'Authorization' => "user_token $token",
+            ]]
         );
 
         $this->variable($res)->isNotNull();
@@ -320,10 +317,10 @@ class APIRest extends APIBaseClass
         $data = $this->query(
             'getItems',
             ['itemtype'        => 'badEndpoint',
-                              'parent_id'       => 0,
-                              'parent_itemtype' => 'Entity',
-                              'headers'         => [
-                              'Session-Token' => $this->session_token]],
+                'parent_id'       => 0,
+                'parent_itemtype' => 'Entity',
+                'headers'         => [
+                    'Session-Token' => $this->session_token]],
             400,
             'ERROR_RESOURCE_NOT_FOUND_NOR_COMMONDBTM'
         );
@@ -340,13 +337,13 @@ class APIRest extends APIBaseClass
         $data = $this->query(
             'updateItems',
             ['itemtype' => 'Computer',
-                              'id'       => $computers_id,
-                              'verb'     => 'PUT',
-                              'headers'  => [
-                                 'Session-Token' => $this->session_token],
-                              'json'     => [
-                                 'input' => [
-                                    'serial' => "abcdefg"]]]
+                'id'       => $computers_id,
+                'verb'     => 'PUT',
+                'headers'  => [
+                    'Session-Token' => $this->session_token],
+                'json'     => [
+                    'input' => [
+                        'serial' => "abcdefg"]]]
         );
 
         $this->variable($data)->isNotFalse();
@@ -358,10 +355,10 @@ class APIRest extends APIBaseClass
         $this->array($computer)
            ->hasKey($computers_id)
            ->hasKey('message');
-        $this->boolean((bool)$computer[$computers_id])->isTrue();
+        $this->boolean((bool) $computer[$computers_id])->isTrue();
 
         $computer = new \Computer();
-        $this->boolean((bool)$computer->getFromDB($computers_id))->isTrue();
+        $this->boolean((bool) $computer->getFromDB($computers_id))->isTrue();
         $this->string($computer->fields['serial'])->isIdenticalTo('abcdefg');
     }
 
@@ -379,28 +376,28 @@ class APIRest extends APIBaseClass
         $data = $this->query(
             'createItems',
             ['verb'      => 'POST',
-                              'itemtype'  => 'Document',
-                              'headers'   => [
-                                'Session-Token' => $this->session_token
-                              ],
-                              'multipart' => [
-                                // the document part
-                                [
-                                   'name'     => 'uploadManifest',
-                                   'contents' => json_encode([
-                                      'input' => [
-                                         'name'       => $document_name,
-                                         '_filename'  => [$filename],
-                                      ]
-                                   ])
-                                ],
-                                // the FILE part
-                                [
-                                   'name'     => 'filename[]',
-                                   'contents' => $filecontent,
-                                   'filename' => $filename
-                                ]
-                              ]],
+                'itemtype'  => 'Document',
+                'headers'   => [
+                    'Session-Token' => $this->session_token,
+                ],
+                'multipart' => [
+                    // the document part
+                    [
+                        'name'     => 'uploadManifest',
+                        'contents' => json_encode([
+                            'input' => [
+                                'name'       => $document_name,
+                                '_filename'  => [$filename],
+                            ],
+                        ]),
+                    ],
+                    // the FILE part
+                    [
+                        'name'     => 'filename[]',
+                        'contents' => $filecontent,
+                        'filename' => $filename,
+                    ],
+                ]],
             201
         );
 
@@ -409,10 +406,10 @@ class APIRest extends APIBaseClass
            ->hasKey('message');
         $documents_id = $data['id'];
         $this->boolean(is_numeric($documents_id))->isTrue();
-        $this->integer((int)$documents_id)->isGreaterThan(0);
+        $this->integer((int) $documents_id)->isGreaterThan(0);
 
         $document        = new \Document();
-        $this->boolean((bool)$document->getFromDB($documents_id));
+        $this->boolean((bool) $document->getFromDB($documents_id));
 
         $this->array($document->fields)->hasKeys(['name', 'filename', 'filepath']);
         if (is_string($document->fields['name']) && $document->fields['name'] !== '') {
@@ -437,9 +434,9 @@ class APIRest extends APIBaseClass
         $data = $this->query(
             'updateItems',
             ['itemtype' => 'Computer',
-                    'verb'     => 'PUT',
-                    'headers'  => ['Session-Token' => $this->session_token],
-                    'json'     => []],
+                'verb'     => 'PUT',
+                'headers'  => ['Session-Token' => $this->session_token],
+                'json'     => []],
             400,
             'ERROR_JSON_PAYLOAD_INVALID'
         );
@@ -456,23 +453,23 @@ class APIRest extends APIBaseClass
         $ticketTMF = new \TicketTemplateMandatoryField();
 
         $tt_id = $ticketTemplate->add([
-           'entities_id' => getItemByTypeName('Entity', '_test_child_1', true),
-           'name'        => 'test'
+            'entities_id' => getItemByTypeName('Entity', '_test_child_1', true),
+            'name'        => 'test',
         ]);
-        $this->boolean((bool)$tt_id)->isTrue();
+        $this->boolean((bool) $tt_id)->isTrue();
 
         $ttmf_id = $ticketTMF->add([
-           'tickettemplates_id' => $tt_id,
-           'num'                => 7
+            'tickettemplates_id' => $tt_id,
+            'num'                => 7,
         ]);
-        $this->boolean((bool)$ttmf_id)->isTrue();
+        $this->boolean((bool) $ttmf_id)->isTrue();
 
         $data = $this->query(
             'getItems',
             ['query'     => [
-                                 'searchText' => ['tickettemplates_id' => "^".$tt_id."$"]],
-                              'itemtype'   => 'TicketTemplateMandatoryField',
-                              'headers'    => ['Session-Token' => $this->session_token]],
+                'searchText' => ['tickettemplates_id' => "^" . $tt_id . "$"]],
+                'itemtype'   => 'TicketTemplateMandatoryField',
+                'headers'    => ['Session-Token' => $this->session_token]],
             200
         );
         if (isset($data['headers'])) {
@@ -504,8 +501,8 @@ class APIRest extends APIBaseClass
 
         // Set a pic URL
         $success = $user->update([
-           'id'      => $id,
-           '_picture' => [$pic],
+            'id'      => $id,
+            '_picture' => [$pic],
         ]);
         $this->boolean($success)->isTrue();
         $this->boolean($user->getFromDB($id))->isTrue();
@@ -543,8 +540,8 @@ class APIRest extends APIBaseClass
 
         // Remove pic URL
         $success = $user->update([
-           'id'             => $id,
-           '_blank_picture' => true,
+            'id'             => $id,
+            '_blank_picture' => true,
         ]);
         $this->boolean($success)->isTrue();
 
@@ -556,9 +553,9 @@ class APIRest extends APIBaseClass
     protected function deprecatedProvider()
     {
         return [
-           ['provider' => TicketFollowup::class],
-           ['provider' => Computer_SoftwareVersion::class],
-           ['provider' => Computer_SoftwareLicense::class],
+            ['provider' => TicketFollowup::class],
+            ['provider' => Computer_SoftwareVersion::class],
+            ['provider' => Computer_SoftwareLicense::class],
         ];
     }
 
@@ -582,7 +579,7 @@ class APIRest extends APIBaseClass
 
         // Call API
         $data = $this->query("$deprecated_itemtype/$item_id", [
-           'headers' => $headers,
+            'headers' => $headers,
         ], 200);
         $this->array($data)
            ->hasSize(count($deprecated_fields) + 1) // + 1 for headers
@@ -612,7 +609,7 @@ class APIRest extends APIBaseClass
 
         // Call API
         $data = $this->query("$deprecated_itemtype", [
-           'headers' => $headers,
+            'headers' => $headers,
         ], [200, 206]);
         $this->array($data);
         unset($data["headers"]);
@@ -644,9 +641,9 @@ class APIRest extends APIBaseClass
 
         // Call API
         $data = $this->query("$deprecated_itemtype", [
-           'headers' => $headers,
-           'verb'    => "POST",
-           'json'    => ['input' => $input]
+            'headers' => $headers,
+            'verb'    => "POST",
+            'json'    => ['input' => $input],
         ], 201);
 
         $this->integer($data['id']);
@@ -681,9 +678,9 @@ class APIRest extends APIBaseClass
 
         // Call API
         $this->query("$deprecated_itemtype/$item_id", [
-           'headers' => $headers,
-           'verb'    => "PUT",
-           'json'    => ['input' => $update_input]
+            'headers' => $headers,
+            'verb'    => "PUT",
+            'json'    => ['input' => $update_input],
         ], 200);
 
         // Check expected values
@@ -716,8 +713,8 @@ class APIRest extends APIBaseClass
 
         // Call API
         $this->query("$deprecated_itemtype/$item_id?force_purge=1", [
-           'headers' => $headers,
-           'verb'    => "DELETE",
+            'headers' => $headers,
+            'verb'    => "DELETE",
         ], 200, "", true);
 
         $this->boolean($item->getFromDB($item_id))->isFalse();
@@ -734,7 +731,7 @@ class APIRest extends APIBaseClass
         $headers = ['Session-Token' => $this->session_token];
 
         $data = $this->query("listSearchOptions/$deprecated_itemtype/", [
-           'headers' => $headers,
+            'headers' => $headers,
         ]);
 
         $expected = file_get_contents(

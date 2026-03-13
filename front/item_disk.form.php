@@ -81,8 +81,8 @@ if (isset($_POST["add"])) {
     $itemtype = $disk->fields['itemtype'];
     $item = new $itemtype();
     $item->getFromDB($disk->fields['items_id']);
-    Html::redirect($itemtype::getFormURLWithID($disk->fields['items_id']) .
-                   ($item->fields['is_template'] ? "&withtemplate=1" : ""));
+    Html::redirect($itemtype::getFormURLWithID($disk->fields['items_id'])
+                   . ($item->fields['is_template'] ? "&withtemplate=1" : ""));
 } elseif (isset($_POST["update"])) {
     $disk->check($_POST["id"], UPDATE);
 
@@ -109,9 +109,9 @@ if (isset($_POST["add"])) {
     }
     Html::header(Item_Disk::getTypeName(Session::getPluralNumber()), $_SERVER['PHP_SELF'], "assets", $itemtype);
     $disk->display([
-       'id'        => $_GET["id"],
-       'items_id'  => $_GET["items_id"],
-       'itemtype'  => $_GET['itemtype']
+        'id'        => $_GET["id"],
+        'items_id'  => $_GET["items_id"],
+        'itemtype'  => $_GET['itemtype'],
     ]);
     Html::footer();
 }

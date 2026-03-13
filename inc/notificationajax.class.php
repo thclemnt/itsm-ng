@@ -46,12 +46,12 @@ class NotificationAjax implements NotificationInterface
      * @param mixed $value   The data to check (may differ for every notification mode)
      * @param array $options Optionnal special options (may be needed)
      *
-     * @return boolean
+     * @return bool
     **/
     public static function check($value, $options = [])
     {
         //waiting for a user ID
-        $value = (int)$value;
+        $value = (int) $value;
         return $value > 0;
     }
 
@@ -59,14 +59,14 @@ class NotificationAjax implements NotificationInterface
     {
         $instance = new self();
         return $instance->sendNotification([
-           '_itemtype'                   => 'NotificationAjax',
-           '_items_id'                   => 1,
-           '_notificationtemplates_id'   => 0,
-           '_entities_id'                => 0,
-           'fromname'                    => 'TEST',
-           'subject'                     => 'Test notification',
-           'content_text'                => "Hello, this is a test notification.",
-           'to'                          => Session::getLoginUserID()
+            '_itemtype'                   => 'NotificationAjax',
+            '_items_id'                   => 1,
+            '_notificationtemplates_id'   => 0,
+            '_entities_id'                => 0,
+            'fromname'                    => 'TEST',
+            'subject'                     => 'Test notification',
+            'content_text'                => "Hello, this is a test notification.",
+            'to'                          => Session::getLoginUserID(),
         ]);
     }
 
@@ -123,30 +123,30 @@ class NotificationAjax implements NotificationInterface
         $return = [];
         if ($CFG_GLPI['notifications_ajax']) {
             $iterator = $DB->request([
-               'FROM'   => 'glpi_queuednotifications',
-               'WHERE'  => [
-                  'is_deleted'   => false,
-                  'recipient'    => Session::getLoginUserID(),
-                  'mode'         => Notification_NotificationTemplate::MODE_AJAX
-               ]
+                'FROM'   => 'glpi_queuednotifications',
+                'WHERE'  => [
+                    'is_deleted'   => false,
+                    'recipient'    => Session::getLoginUserID(),
+                    'mode'         => Notification_NotificationTemplate::MODE_AJAX,
+                ],
             ]);
 
             if ($iterator->numrows()) {
                 while ($row = $iterator->next()) {
                     $url = null;
                     if (
-                        $row['itemtype'] != 'NotificationAjax' &&
-                        method_exists($row['itemtype'], 'getFormURL')
+                        $row['itemtype'] != 'NotificationAjax'
+                        && method_exists($row['itemtype'], 'getFormURL')
                     ) {
                         $item = new $row['itemtype']();
                         $url = $item->getFormURL(false) . "?id={$row['items_id']}";
                     }
 
                     $return[] = [
-                       'id'     => $row['id'],
-                       'title'  => $row['name'],
-                       'body'   => $row['body_text'],
-                       'url'    => $url
+                        'id'     => $row['id'],
+                        'title'  => $row['name'],
+                        'body'   => $row['body_text'],
+                        'url'    => $url,
                     ];
                 }
             }
@@ -162,7 +162,7 @@ class NotificationAjax implements NotificationInterface
     /**
      * Mark raised notification as deleted
      *
-     * @param integer $id Notification id
+     * @param int $id Notification id
      *
      * @return void
      */
@@ -174,12 +174,12 @@ class NotificationAjax implements NotificationInterface
         $DB->update(
             'glpi_queuednotifications',
             [
-              'sent_time'    => $now,
-              'is_deleted'   => 1
+                'sent_time'    => $now,
+                'is_deleted'   => 1,
             ],
             [
-              'id'        => $id,
-              'recipient' => Session::getLoginUserID()
+                'id'        => $id,
+                'recipient' => Session::getLoginUserID(),
             ]
         );
     }

@@ -64,7 +64,7 @@ class Infocom extends CommonDBChild
      *
      * @param string|object $item  an object or a string
      *
-     * @return boolean true if $object is an object that can have Infocom
+     * @return bool true if $object is an object that can have Infocom
      *
     **/
     public static function canApplyOn($item)
@@ -150,7 +150,7 @@ class Infocom extends CommonDBChild
                         $nb = countElementsInTable(
                             'glpi_infocoms',
                             ['itemtype' => $item->getType(),
-                                                    'items_id' => $item->getID()]
+                                'items_id' => $item->getID()]
                         );
                     }
                     return self::createTabEntry(__('Management'), $nb);
@@ -189,8 +189,8 @@ class Infocom extends CommonDBChild
         return countElementsInTable(
             'glpi_infocoms',
             [
-              'suppliers_id' => $item->getField('id'),
-              'NOT' => ['itemtype' => ['ConsumableItem', 'CartridgeItem', 'Software']]
+                'suppliers_id' => $item->getField('id'),
+                'NOT' => ['itemtype' => ['ConsumableItem', 'CartridgeItem', 'Software']],
             ] + getEntitiesRestrictCriteria('glpi_infocoms', '', $_SESSION['glpiactiveentities'])
         );
     }
@@ -244,17 +244,17 @@ class Infocom extends CommonDBChild
      * Retrieve an item from the database for a device
      *
      * @param string  $itemtype  type of the device to retrieve infocom
-     * @param integer $ID        ID of the device to retrieve infocom
+     * @param int $ID        ID of the device to retrieve infocom
      *
-     * @return boolean true if succeed else false
+     * @return bool true if succeed else false
     **/
     public function getFromDBforDevice($itemtype, $ID)
     {
 
         if (
             $this->getFromDBByCrit([
-            $this->getTable() . '.items_id'  => $ID,
-            $this->getTable() . '.itemtype'  => $itemtype
+                $this->getTable() . '.items_id'  => $ID,
+                $this->getTable() . '.itemtype'  => $itemtype,
             ])
         ) {
             return true;
@@ -295,7 +295,7 @@ class Infocom extends CommonDBChild
         $infocom = new self();
         $infocom->getFromDB($changes['id']);
         $tmp           = ['itemtype' => $itemtype,
-                               'items_id' => $changes['id']];
+            'items_id' => $changes['id']];
         $add_or_update = false;
 
         //For each date that can be automatically filled
@@ -381,11 +381,11 @@ class Infocom extends CommonDBChild
     {
 
         return ['autofill_buy_date'         => 'buy_date',
-                     'autofill_use_date'         => 'use_date',
-                     'autofill_delivery_date'    => 'delivery_date',
-                     'autofill_warranty_date'    => 'warranty_date',
-                     'autofill_order_date'       => 'order_date',
-                     'autofill_decommission_date' => 'decommission_date'];
+            'autofill_use_date'         => 'use_date',
+            'autofill_delivery_date'    => 'delivery_date',
+            'autofill_warranty_date'    => 'warranty_date',
+            'autofill_order_date'       => 'order_date',
+            'autofill_decommission_date' => 'decommission_date'];
     }
 
 
@@ -473,7 +473,7 @@ class Infocom extends CommonDBChild
      *
      * @param CronTask $task to log, if NULL use display (default NULL)
      *
-     * @return integer 0 : nothing to do 1 : done with success
+     * @return int 0 : nothing to do 1 : done with success
     **/
     public static function cronInfocom($task = null)
     {
@@ -492,35 +492,35 @@ class Infocom extends CommonDBChild
             $before    = Entity::getUsedConfig('send_infocoms_alert_before_delay', $entity);
             $table = self::getTable();
             $iterator = $DB->request([
-               'SELECT'    => "$table.*",
-               'FROM'      => $table,
-               'LEFT JOIN'  => [
-                  'glpi_alerts'  => [
-                     'ON' => [
-                        'glpi_alerts'  => 'items_id',
-                        $table         => 'id', [
-                           'AND' => [
-                              'glpi_alerts.itemtype'  => self::getType(),
-                              'glpi_alerts.type'      => Alert::END
-                           ]
-                        ]
-                     ]
-                  ]
-               ],
-               'WHERE'     => [
-                  new \QueryExpression(
-                      '(' . $DB->quoteName('glpi_infocoms.alert') . ' & ' . pow(2, Alert::END) . ') > 0'
-                  ),
-                  "$table.entities_id"       => $entity,
-                  "$table.warranty_duration" => ['>', 0],
-                  'NOT'                      => ["$table.warranty_date" => null],
-                  new \QueryExpression(
-                      'DATEDIFF(ADDDATE(' . $DB->quoteName('glpi_infocoms.warranty_date') . ', INTERVAL (' .
-                      $DB->quoteName('glpi_infocoms.warranty_duration') . ') MONTH), CURDATE() ) <= ' .
-                      $DB->quoteValue($before)
-                  ),
-                  'glpi_alerts.date'         => null
-               ]
+                'SELECT'    => "$table.*",
+                'FROM'      => $table,
+                'LEFT JOIN'  => [
+                    'glpi_alerts'  => [
+                        'ON' => [
+                            'glpi_alerts'  => 'items_id',
+                            $table         => 'id', [
+                                'AND' => [
+                                    'glpi_alerts.itemtype'  => self::getType(),
+                                    'glpi_alerts.type'      => Alert::END,
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+                'WHERE'     => [
+                    new QueryExpression(
+                        '(' . $DB->quoteName('glpi_infocoms.alert') . ' & ' . pow(2, Alert::END) . ') > 0'
+                    ),
+                    "$table.entities_id"       => $entity,
+                    "$table.warranty_duration" => ['>', 0],
+                    'NOT'                      => ["$table.warranty_date" => null],
+                    new QueryExpression(
+                        'DATEDIFF(ADDDATE(' . $DB->quoteName('glpi_infocoms.warranty_date') . ', INTERVAL ('
+                        . $DB->quoteName('glpi_infocoms.warranty_duration') . ') MONTH), CURDATE() ) <= '
+                        . $DB->quoteValue($before)
+                    ),
+                    'glpi_alerts.date'         => null,
+                ],
             ]);
 
             while ($data = $iterator->next()) {
@@ -557,7 +557,7 @@ class Infocom extends CommonDBChild
         foreach ($items_infos as $entity => $items) {
             if (
                 NotificationEvent::raiseEvent("alert", new self(), ['entities_id' => $entity,
-                                                                         'items'       => $items])
+                    'items'       => $items])
             ) {
                 $message     = $items_messages[$entity];
                 $cron_status = 1;
@@ -607,7 +607,7 @@ class Infocom extends CommonDBChild
      *
      * @since 0.84 (before in alert.class)
      *
-     * @param integer|string|null $val if not set, ask for all values, else for 1 value (default NULL)
+     * @param int|string|null $val if not set, ask for all values, else for 1 value (default NULL)
      *
      * @return array|string
     **/
@@ -666,21 +666,21 @@ class Infocom extends CommonDBChild
      * Dropdown of amortissement type for infocoms
      *
      * @param string  $name      select name
-     * @param integer $value     default value (default 0)
-     * @param boolean $display   display or get string (true by default)
+     * @param int $value     default value (default 0)
+     * @param bool $display   display or get string (true by default)
     **/
     public static function dropdownAmortType($name, $value = 0, $display = true)
     {
 
         $values = [2 => __('Linear'),
-                        1 => __('Decreasing')];
+            1 => __('Decreasing')];
 
         return Dropdown::showFromArray(
             $name,
             $values,
             ['value'               => $value,
-                                             'display'             => $display,
-                                             'display_emptychoice' => true]
+                'display'             => $display,
+                'display_emptychoice' => true]
         );
     }
 
@@ -688,7 +688,7 @@ class Infocom extends CommonDBChild
     /**
      * Get amortissement type name for infocoms
      *
-     * @param integer $value status ID
+     * @param int $value status ID
     **/
     public static function getAmortTypeName($value)
     {
@@ -764,12 +764,12 @@ class Infocom extends CommonDBChild
         }
 
         $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => 'glpi_infocoms',
-           'WHERE'  => [
-              'itemtype'  => $itemtype,
-              'items_id'  => $device_id
-           ]
+            'COUNT'  => 'cpt',
+            'FROM'   => 'glpi_infocoms',
+            'WHERE'  => [
+                'itemtype'  => $itemtype,
+                'items_id'  => $device_id,
+            ],
         ])->next();
 
         $add    = "add";
@@ -788,8 +788,8 @@ class Infocom extends CommonDBChild
                </span>";
             Ajax::createIframeModalWindow(
                 'infocom' . $itemtype . $device_id,
-                Infocom::getFormURL() .
-                                             "?itemtype=$itemtype&items_id=$device_id",
+                Infocom::getFormURL()
+                                             . "?itemtype=$itemtype&items_id=$device_id",
                 ['height' => 600]
             );
         }
@@ -805,7 +805,7 @@ class Infocom extends CommonDBChild
      * @param number $buydate     Buy date
      * @param number $usedate     Date of use
      *
-     * @return array|boolean
+     * @return array|bool
      */
     public static function linearAmortise($value, $duration, $fiscaldate, $buydate = '', $usedate = '')
     {
@@ -814,10 +814,10 @@ class Infocom extends CommonDBChild
 
         try {
             if ($fiscaldate == '') {
-                throw new \RuntimeException('Empty date');
+                throw new RuntimeException('Empty date');
             }
-            $fiscaldate = new \DateTime($fiscaldate, new DateTimeZone($TZ));
-        } catch (\Exception $e) {
+            $fiscaldate = new DateTime($fiscaldate, new DateTimeZone($TZ));
+        } catch (Exception $e) {
             Session::addMessageAfterRedirect(
                 __('Please fill you fiscal year date in preferences.'),
                 false,
@@ -829,14 +829,14 @@ class Infocom extends CommonDBChild
         //get begin date. Work on use date if provided.
         try {
             if ($buydate == '' && $usedate == '') {
-                throw new \RuntimeException('Empty date');
+                throw new RuntimeException('Empty date');
             }
             if ($usedate != '') {
-                $usedate = new \DateTime($usedate, new DateTimeZone($TZ));
+                $usedate = new DateTime($usedate, new DateTimeZone($TZ));
             } else {
-                $usedate = new \DateTime($buydate, new DateTimeZone($TZ));
+                $usedate = new DateTime($buydate, new DateTimeZone($TZ));
             }
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             Session::addMessageAfterRedirect(
                 __('Please fill either buy or use date in preferences.'),
                 false,
@@ -845,7 +845,7 @@ class Infocom extends CommonDBChild
             return false;
         }
 
-        $now = new \DateTime('now', new DateTimeZone($TZ));
+        $now = new DateTime('now', new DateTimeZone($TZ));
 
         $elapsed_years = $now->format('Y') - $usedate->format('Y');
 
@@ -858,7 +858,7 @@ class Infocom extends CommonDBChild
         for ($i = 0; $i <= $elapsed_years; ++$i) {
             $begin_value      = $value;
             $current_annuity  = $annuity;
-            $fiscal_end       = new \DateTime(
+            $fiscal_end       = new DateTime(
                 $fiscaldate->format('d-m-') . ($usedate->format('Y') + $i),
                 new DateTimeZone($TZ)
             );
@@ -884,9 +884,9 @@ class Infocom extends CommonDBChild
             }
 
             $years[$usedate->format('Y') + $i] = [
-               'start_value'  => (float)$begin_value,
-               'value'        => $value,
-               'annuity'      => $current_annuity
+                'start_value'  => (float) $begin_value,
+                'value'        => $value,
+                'annuity'      => $current_annuity,
             ];
         }
 
@@ -898,9 +898,9 @@ class Infocom extends CommonDBChild
      * To not rewrite all the old method.
      *
      * @param array $values New format amortise values
-     * @param boolean $current True to get only current year, false to get the whole array
+     * @param bool $current True to get only current year, false to get the whole array
      *
-     * @return array|double
+     * @return array|float
      */
     public static function mapOldAmortiseFormat($values, $current = true)
     {
@@ -910,10 +910,10 @@ class Infocom extends CommonDBChild
         }
 
         $old = [
-           'annee'     => [],
-           'annuite'   => [],
-           'vcnetdeb'  => [],
-           'vcnetfin'  => []
+            'annee'     => [],
+            'annuite'   => [],
+            'vcnetdeb'  => [],
+            'vcnetfin'  => [],
         ];
         foreach ($values as $year => $value) {
             $old['annee'][]      = $year;
@@ -928,7 +928,7 @@ class Infocom extends CommonDBChild
     /**
      * Calculate amortissement for an item
      *
-     * @param integer $type_amort    type d'amortisssment "lineaire=2" ou "degressif=1"
+     * @param int $type_amort    type d'amortisssment "lineaire=2" ou "degressif=1"
      * @param number  $va            valeur d'acquisition
      * @param number  $duree         duree d'amortissement
      * @param number  $coef          coefficient d'amortissement
@@ -1123,14 +1123,14 @@ class Infocom extends CommonDBChild
                 !strpos((string) $_SERVER['PHP_SELF'], "infocoms-show")
                 && in_array($item->getType(), self::getExcludedTypes())
             ) {
-                echo "<div class='firstbloc center'>" .
-                      __('For this type of item, the financial and administrative information are only a model for the items which you should add.') .
-                     "</div>";
+                echo "<div class='firstbloc center'>"
+                      . __('For this type of item, the financial and administrative information are only a model for the items which you should add.')
+                     . "</div>";
             }
             if (!$ic->getFromDBforDevice($item->getType(), $dev_ID)) {
                 $input = ['itemtype'    => $item->getType(),
-                               'items_id'    => $dev_ID,
-                               'entities_id' => $item->getEntityID()];
+                    'items_id'    => $dev_ID,
+                    'entities_id' => $item->getEntityID()];
 
                 if (
                     $ic->can(-1, CREATE, $input)
@@ -1146,7 +1146,7 @@ class Infocom extends CommonDBChild
                         'add',
                         __('Enable the financial and administrative information'),
                         ['itemtype' => $item->getType(),
-                                                'items_id' => $dev_ID]
+                            'items_id' => $dev_ID]
                     );
                     echo "</td></tr></table></div>";
                 }
@@ -1154,230 +1154,230 @@ class Infocom extends CommonDBChild
                 $canedit = ($ic->canEdit($ic->fields['id']) && ($withtemplate != 2));
                 if ($canedit) {
                     $form = [
-                       'action' => Infocom::getFormURL(),
-                       'buttons' => [
-                          Session::haveRight(self::$rightname, UPDATE) ? [
-                             'type' => 'submit',
-                             'name' => 'update',
-                             'value' => __('Save'),
-                             'class' => 'btn btn-secondary'
-                          ] : [],
-                          (Session::haveRight(self::$rightname, PURGE)) ? [
-                             'type' => 'submit',
-                             'name' => 'purge',
-                             'value' => _sx('button', 'Delete permanently'),
-                             'class' => 'btn btn-secondary'
-                             ] : []
-                       ],
-                       'content' => [
-                          [
-                             'visible' => false,
-                             'inputs' => [
-                                'id' => [
-                                   'type' => 'hidden',
-                                   'name' => 'id',
-                                   'value' => $ic->fields['id']
-                                ],
-                             ]
-                          ],
-                          __('Asset lifecycle') => [
-                             'visible' => true,
-                             'inputs' => [
-                                __('Order date') => [
-                                   'type' => 'date',
-                                   'name' => 'order_date',
-                                   'value' => $ic->fields["order_date"],
-                                   (($withtemplate == 2) ? 'disabled' : '') => true
-                                ],
-                                __('Date of purchase') => [
-                                   'type' => 'date',
-                                   'name' => 'buy_date',
-                                   'value' => $ic->fields["buy_date"],
-                                   (($withtemplate == 2) ? 'disabled' : '') => true
-                                ],
-                                __('Delivery date') => [
-                                   'type' => 'date',
-                                   'name' => 'delivery_date',
-                                   'value' => $ic->fields["delivery_date"],
-                                   (($withtemplate == 2) ? 'disabled' : '') => true
-                                ],
-                                __('Startup date') => [
-                                   'type' => 'date',
-                                   'name' => 'use_date',
-                                   'value' => $ic->fields["use_date"],
-                                   (($withtemplate == 2) ? 'disabled' : '') => true
-                                ],
-                                __('Date of last physical inventory') => [
-                                   'type' => 'date',
-                                   'name' => 'inventory_date',
-                                   'value' => $ic->fields["inventory_date"],
-                                   (($withtemplate == 2) ? 'disabled' : '') => true
-                                ],
-                                __('Decommission date') => [
-                                   'type' => 'datetime-local',
-                                   'name' => 'decommission_date',
-                                   'value' => $ic->fields["decommission_date"],
-                                   (($withtemplate == 2) ? 'disabled' : '') => true
-                                ]
-                             ]
-                          ],
-                          __('Financial and administrative information') => [
-                             'visible' => true,
-                             'inputs' => [
-                                __('Supplier') => $withtemplate != 2 ? [
-                                   'type' => 'select',
-                                   'name' => 'suppliers_id',
-                                   'itemtype' => Supplier::class,
-                                   'condition' => ['entities_id' => $ic->fields["entities_id"]],
-                                   'value' => $ic->fields["suppliers_id"],
-                                   'actions' => getItemActionButtons(['info'], 'Supplier')
-                                ] : [
-                                   'content' => Dropdown::getDropdownName("glpi_suppliers", $ic->fields["suppliers_id"])
-                                ],
-                                Budget::getTypeName(1) => Budget::canView() ? [
-                                   'type' => 'select',
-                                   'name' => 'budgets_id',
-                                   'itemtype' => Budget::class,
-                                   'value' => $ic->fields["budgets_id"],
-                                   'actions' => getItemActionButtons(['info', 'add'], 'Budget')
-                                ] : [],
-                                __('Order number') => [
-                                   'type' => 'text',
-                                   'name' => 'order_number',
-                                   'value' => $ic->fields["order_number"],
-                                ],
-                                __('Immobilization number') => [
-                                   'type' => 'text',
-                                   'name' => 'immo_number',
-                                   'value' => $ic->fields["immo_number"],
-                                ],
-                                __('Invoice number') => [
-                                   'type' => 'text',
-                                   'name' => 'bill',
-                                   'value' => $ic->fields["bill"],
-                                ],
-                                __('Delivery form') => [
-                                   'type' => 'text',
-                                   'name' => 'delivery_number',
-                                   'value' => $ic->fields["delivery_number"],
-                                ],
-                                _x('price', 'Value') => [
-                                   'type' => 'text',
-                                   'name' => 'value',
-                                   'value' => Html::formatNumber($ic->fields["value"], true),
-                                ],
-                                __('Warranty extension value') => [
-                                   'type' => 'text',
-                                   'name' => 'warranty_value',
-                                   'value' => Html::formatNumber($ic->fields["warranty_value"], true),
-                                ],
-                                __('Account net value') => [
-                                   'content' => Html::formatNumber(self::Amort(
-                                       $ic->fields["sink_type"],
-                                       $ic->fields["value"],
-                                       $ic->fields["sink_time"],
-                                       $ic->fields["sink_coeff"],
-                                       $ic->fields["buy_date"],
-                                       $ic->fields["use_date"],
-                                       $date_tax,
-                                       "n"
-                                   ))
-                                ],
-                                __('Comments') => [
-                                   'type' => 'textarea',
-                                   'name' => 'comment',
-                                   'value' => $ic->fields["comment"],
-                                ],
-                                __('Amortization type') => $withtemplate != 2 ? [
-                                    'type' => 'select',
-                                    'name' => 'sink_type',
-                                    'values' => [
-                                        '' => '-----',
-                                        2 => __('Linear'),
-                                        1 => __('Decreasing')
+                        'action' => Infocom::getFormURL(),
+                        'buttons' => [
+                            Session::haveRight(self::$rightname, UPDATE) ? [
+                                'type' => 'submit',
+                                'name' => 'update',
+                                'value' => __('Save'),
+                                'class' => 'btn btn-secondary',
+                            ] : [],
+                            (Session::haveRight(self::$rightname, PURGE)) ? [
+                                'type' => 'submit',
+                                'name' => 'purge',
+                                'value' => _sx('button', 'Delete permanently'),
+                                'class' => 'btn btn-secondary',
+                            ] : [],
+                        ],
+                        'content' => [
+                            [
+                                'visible' => false,
+                                'inputs' => [
+                                    'id' => [
+                                        'type' => 'hidden',
+                                        'name' => 'id',
+                                        'value' => $ic->fields['id'],
                                     ],
-                                    'value' => $ic->fields["sink_type"],
-                                ] : [
-                                    'content' => self::getAmortTypeName($ic->fields["sink_type"])
                                 ],
-                                __('Amortization duration') => $withtemplate != 2 ? [
-                                   'type' => 'number',
-                                   'name' => 'sink_time',
-                                   'min' => 0,
-                                   'max' => 15,
-                                   'step' => 1,
-                                   'after' => __('years'),
-                                   'value' => $ic->fields["sink_time"],
-                                ] : [
-                                   _n('%d year', '%d years', $ic->fields["sink_time"]), $ic->fields["sink_time"]
+                            ],
+                            __('Asset lifecycle') => [
+                                'visible' => true,
+                                'inputs' => [
+                                    __('Order date') => [
+                                        'type' => 'date',
+                                        'name' => 'order_date',
+                                        'value' => $ic->fields["order_date"],
+                                        (($withtemplate == 2) ? 'disabled' : '') => true,
+                                    ],
+                                    __('Date of purchase') => [
+                                        'type' => 'date',
+                                        'name' => 'buy_date',
+                                        'value' => $ic->fields["buy_date"],
+                                        (($withtemplate == 2) ? 'disabled' : '') => true,
+                                    ],
+                                    __('Delivery date') => [
+                                        'type' => 'date',
+                                        'name' => 'delivery_date',
+                                        'value' => $ic->fields["delivery_date"],
+                                        (($withtemplate == 2) ? 'disabled' : '') => true,
+                                    ],
+                                    __('Startup date') => [
+                                        'type' => 'date',
+                                        'name' => 'use_date',
+                                        'value' => $ic->fields["use_date"],
+                                        (($withtemplate == 2) ? 'disabled' : '') => true,
+                                    ],
+                                    __('Date of last physical inventory') => [
+                                        'type' => 'date',
+                                        'name' => 'inventory_date',
+                                        'value' => $ic->fields["inventory_date"],
+                                        (($withtemplate == 2) ? 'disabled' : '') => true,
+                                    ],
+                                    __('Decommission date') => [
+                                        'type' => 'datetime-local',
+                                        'name' => 'decommission_date',
+                                        'value' => $ic->fields["decommission_date"],
+                                        (($withtemplate == 2) ? 'disabled' : '') => true,
+                                    ],
                                 ],
-                                __('Amortization coefficient') => [
-                                   'type' => 'text',
-                                   'name' => 'sink_coeff',
-                                   'value' => $ic->fields["sink_coeff"],
+                            ],
+                            __('Financial and administrative information') => [
+                                'visible' => true,
+                                'inputs' => [
+                                    __('Supplier') => $withtemplate != 2 ? [
+                                        'type' => 'select',
+                                        'name' => 'suppliers_id',
+                                        'itemtype' => Supplier::class,
+                                        'condition' => ['entities_id' => $ic->fields["entities_id"]],
+                                        'value' => $ic->fields["suppliers_id"],
+                                        'actions' => getItemActionButtons(['info'], 'Supplier'),
+                                    ] : [
+                                        'content' => Dropdown::getDropdownName("glpi_suppliers", $ic->fields["suppliers_id"]),
+                                    ],
+                                    Budget::getTypeName(1) => Budget::canView() ? [
+                                        'type' => 'select',
+                                        'name' => 'budgets_id',
+                                        'itemtype' => Budget::class,
+                                        'value' => $ic->fields["budgets_id"],
+                                        'actions' => getItemActionButtons(['info', 'add'], 'Budget'),
+                                    ] : [],
+                                    __('Order number') => [
+                                        'type' => 'text',
+                                        'name' => 'order_number',
+                                        'value' => $ic->fields["order_number"],
+                                    ],
+                                    __('Immobilization number') => [
+                                        'type' => 'text',
+                                        'name' => 'immo_number',
+                                        'value' => $ic->fields["immo_number"],
+                                    ],
+                                    __('Invoice number') => [
+                                        'type' => 'text',
+                                        'name' => 'bill',
+                                        'value' => $ic->fields["bill"],
+                                    ],
+                                    __('Delivery form') => [
+                                        'type' => 'text',
+                                        'name' => 'delivery_number',
+                                        'value' => $ic->fields["delivery_number"],
+                                    ],
+                                    _x('price', 'Value') => [
+                                        'type' => 'text',
+                                        'name' => 'value',
+                                        'value' => Html::formatNumber($ic->fields["value"], true),
+                                    ],
+                                    __('Warranty extension value') => [
+                                        'type' => 'text',
+                                        'name' => 'warranty_value',
+                                        'value' => Html::formatNumber($ic->fields["warranty_value"], true),
+                                    ],
+                                    __('Account net value') => [
+                                        'content' => Html::formatNumber(self::Amort(
+                                            $ic->fields["sink_type"],
+                                            $ic->fields["value"],
+                                            $ic->fields["sink_time"],
+                                            $ic->fields["sink_coeff"],
+                                            $ic->fields["buy_date"],
+                                            $ic->fields["use_date"],
+                                            $date_tax,
+                                            "n"
+                                        )),
+                                    ],
+                                    __('Comments') => [
+                                        'type' => 'textarea',
+                                        'name' => 'comment',
+                                        'value' => $ic->fields["comment"],
+                                    ],
+                                    __('Amortization type') => $withtemplate != 2 ? [
+                                        'type' => 'select',
+                                        'name' => 'sink_type',
+                                        'values' => [
+                                            '' => '-----',
+                                            2 => __('Linear'),
+                                            1 => __('Decreasing'),
+                                        ],
+                                        'value' => $ic->fields["sink_type"],
+                                    ] : [
+                                        'content' => self::getAmortTypeName($ic->fields["sink_type"]),
+                                    ],
+                                    __('Amortization duration') => $withtemplate != 2 ? [
+                                        'type' => 'number',
+                                        'name' => 'sink_time',
+                                        'min' => 0,
+                                        'max' => 15,
+                                        'step' => 1,
+                                        'after' => __('years'),
+                                        'value' => $ic->fields["sink_time"],
+                                    ] : [
+                                        _n('%d year', '%d years', $ic->fields["sink_time"]), $ic->fields["sink_time"],
+                                    ],
+                                    __('Amortization coefficient') => [
+                                        'type' => 'text',
+                                        'name' => 'sink_coeff',
+                                        'value' => $ic->fields["sink_coeff"],
+                                    ],
+                                    __('TCO (value + tracking cost)') => !in_array($item->getType(), self::getExcludedTypes() + [
+                                        'Cartridge', 'Consumable',
+                                        'SoftwareLicense']) ? [
+                                            'content' => self::showTco($item->getField('ticket_tco'), $ic->fields["value"]),
+                                        ] : [],
+                                    __('Monthly TCO') => !in_array($item->getType(), self::getExcludedTypes() + [
+                                        'Cartridge', 'Consumable',
+                                        'SoftwareLicense']) ? [
+                                            'content' => self::showTco(
+                                                $item->getField('ticket_tco'),
+                                                $ic->fields["value"],
+                                                $ic->fields["buy_date"]
+                                            ),
+                                        ] : [],
+                                    _n('Business criticity', 'Business criticities', 1) => [
+                                        'type' => 'select',
+                                        'name' => 'businesscriticities_id',
+                                        'itemtype' => BusinessCriticity::class,
+                                        'value' => $ic->fields["businesscriticities_id"],
+                                        'actions' => getItemActionButtons(['info', 'add'], 'BusinessCriticity'),
+                                    ],
                                 ],
-                                __('TCO (value + tracking cost)') => !in_array($item->getType(), self::getExcludedTypes() + [
-                                   'Cartridge', 'Consumable',
-                                   'SoftwareLicense']) ? [
-                                      'content' => self::showTco($item->getField('ticket_tco'), $ic->fields["value"])
-                                   ] : [],
-                                   __('Monthly TCO') => !in_array($item->getType(), self::getExcludedTypes() + [
-                                   'Cartridge', 'Consumable',
-                                   'SoftwareLicense']) ? [
-                                      'content' => self::showTco(
-                                          $item->getField('ticket_tco'),
-                                          $ic->fields["value"],
-                                          $ic->fields["buy_date"]
-                                      )
-                                   ] : [],
-                                   _n('Business criticity', 'Business criticities', 1) => [
-                                   'type' => 'select',
-                                   'name' => 'businesscriticities_id',
-                                   'itemtype' => BusinessCriticity::class,
-                                   'value' => $ic->fields["businesscriticities_id"],
-                                   'actions' => getItemActionButtons(['info', 'add'], 'BusinessCriticity')
+                            ],
+                            __('Start date of warranty') => [
+                                'type' => 'date',
+                                'name' => 'warranty_date',
+                                'value' => $ic->fields["warranty_date"],
+                                $withtemplate == 2 ? 'disabled' : '' => true,
+                            ],
+                            __('Warranty information') => [
+                                'visible' => true,
+                                'inputs' => [
+                                    __('Warranty duration') => $withtemplate == 2 ? [
+                                        'content' => $ic->fields["warranty_duration"] == -1 ? __('Lifelong')
+                                                : sprintf(
+                                                    _n('%d month', '%d months', $ic->fields["warranty_duration"]),
+                                                    $ic->fields["warranty_duration"]
+                                                ),
+                                    ] : [
+                                        'type' => 'number',
+                                        'name' => 'warranty_duration',
+                                        'min' => -1,
+                                        'max' => 120,
+                                        'step' => 1,
+                                        'unit' => 'month',
+                                        'after' => '(-1 = ' . __('Lifelong') . ')',
+                                        'value' => $ic->fields["warranty_duration"],
+                                    ],
+                                    __('Warranty information') => [
+                                        'type' => 'text',
+                                        'name' => 'warranty_info',
+                                        'value' => $ic->fields["warranty_info"],
+                                    ],
+                                    __('Alarms on financial and administrative information') => $CFG_GLPI['use_notifications'] ? [
+                                        'type' => 'select',
+                                        'name' => 'alert',
+                                        'values' => self::getAlertName(),
+                                        'value' => $ic->fields["alert"],
+                                    ] : [],
                                 ],
-                                ]
-                             ],
-                             __('Start date of warranty') => [
-                           'type' => 'date',
-                           'name' => 'warranty_date',
-                           'value' => $ic->fields["warranty_date"],
-                           $withtemplate == 2 ? 'disabled' : '' => true
-                          ],
-                             __('Warranty information') => [
-                          'visible' => true,
-                          'inputs' => [
-                           __('Warranty duration') => $withtemplate == 2 ? [
-                              'content' => $ic->fields["warranty_duration"] == -1 ? __('Lifelong') :
-                                      sprintf(
-                                          _n('%d month', '%d months', $ic->fields["warranty_duration"]),
-                                          $ic->fields["warranty_duration"]
-                                      ),
-                           ] : [
-                              'type' => 'number',
-                              'name' => 'warranty_duration',
-                              'min' => -1,
-                              'max' => 120,
-                              'step' => 1,
-                              'unit' => 'month',
-                              'after' => '(-1 = ' . __('Lifelong') . ')',
-                              'value' => $ic->fields["warranty_duration"],
-                           ],
-                           __('Warranty information') => [
-                              'type' => 'text',
-                              'name' => 'warranty_info',
-                              'value' => $ic->fields["warranty_info"],
-                           ],
-                           __('Alarms on financial and administrative information') => $CFG_GLPI['use_notifications'] ? [
-                              'type' => 'select',
-                              'name' => 'alert',
-                              'values' => self::getAlertName(),
-                              'value' => $ic->fields["alert"],
-                           ] : [],
-                          ]
-                          ]
-                       ]
+                            ],
+                        ],
                     ];
 
                     ob_start();
@@ -1406,292 +1406,292 @@ class Infocom extends CommonDBChild
             case 'CartridgeItem':
                 // Return the infocom linked to the license, not the template linked to the software
                 $beforejoin        = ['table'      => 'glpi_cartridges',
-                                           'joinparams' => ['jointype' => 'child']];
+                    'joinparams' => ['jointype' => 'child']];
                 $specific_itemtype = 'Cartridge';
                 break;
 
             case 'ConsumableItem':
                 // Return the infocom linked to the license, not the template linked to the software
                 $beforejoin        = ['table'      => 'glpi_consumables',
-                                           'joinparams' => ['jointype' => 'child']];
+                    'joinparams' => ['jointype' => 'child']];
                 $specific_itemtype = 'Consumable';
                 break;
         }
 
         $joinparams        = ['jointype'          => 'itemtype_item',
-                                   'specific_itemtype' => $specific_itemtype];
+            'specific_itemtype' => $specific_itemtype];
         $complexjoinparams = [];
         if (count($beforejoin)) {
             $complexjoinparams['beforejoin'][] = $beforejoin;
             $joinparams['beforejoin']          = $beforejoin;
         }
         $complexjoinparams['beforejoin'][] = ['table'      => 'glpi_infocoms',
-                                                   'joinparams' => $joinparams];
+            'joinparams' => $joinparams];
 
         $tab = [];
 
         $tab[] = [
-           'id'                 => 'financial',
-           'name'               => __('Financial and administrative information')
+            'id'                 => 'financial',
+            'name'               => __('Financial and administrative information'),
         ];
 
         $tab[] = [
-           'id'                 => '25',
-           'table'              => 'glpi_infocoms',
-           'field'              => 'immo_number',
-           'name'               => __('Immobilization number'),
-           'forcegroupby'       => true,
-           'joinparams'         => $joinparams,
-           'datatype'           => 'string'
+            'id'                 => '25',
+            'table'              => 'glpi_infocoms',
+            'field'              => 'immo_number',
+            'name'               => __('Immobilization number'),
+            'forcegroupby'       => true,
+            'joinparams'         => $joinparams,
+            'datatype'           => 'string',
         ];
 
         $tab[] = [
-           'id'                 => '26',
-           'table'              => 'glpi_infocoms',
-           'field'              => 'order_number',
-           'name'               => __('Order number'),
-           'forcegroupby'       => true,
-           'joinparams'         => $joinparams,
-           'datatype'           => 'string'
+            'id'                 => '26',
+            'table'              => 'glpi_infocoms',
+            'field'              => 'order_number',
+            'name'               => __('Order number'),
+            'forcegroupby'       => true,
+            'joinparams'         => $joinparams,
+            'datatype'           => 'string',
         ];
 
         $tab[] = [
-           'id'                 => '27',
-           'table'              => 'glpi_infocoms',
-           'field'              => 'delivery_number',
-           'name'               => __('Delivery form'),
-           'forcegroupby'       => true,
-           'joinparams'         => $joinparams,
-           'datatype'           => 'string'
+            'id'                 => '27',
+            'table'              => 'glpi_infocoms',
+            'field'              => 'delivery_number',
+            'name'               => __('Delivery form'),
+            'forcegroupby'       => true,
+            'joinparams'         => $joinparams,
+            'datatype'           => 'string',
         ];
 
         $tab[] = [
-           'id'                 => '28',
-           'table'              => 'glpi_infocoms',
-           'field'              => 'bill',
-           'name'               => __('Invoice number'),
-           'forcegroupby'       => true,
-           'joinparams'         => $joinparams,
-           'datatype'           => 'string'
+            'id'                 => '28',
+            'table'              => 'glpi_infocoms',
+            'field'              => 'bill',
+            'name'               => __('Invoice number'),
+            'forcegroupby'       => true,
+            'joinparams'         => $joinparams,
+            'datatype'           => 'string',
         ];
 
         $tab[] = [
-           'id'                 => '37',
-           'table'              => 'glpi_infocoms',
-           'field'              => 'buy_date',
-           'name'               => __('Date of purchase'),
-           'datatype'           => 'date',
-           'forcegroupby'       => true,
-           'joinparams'         => $joinparams
+            'id'                 => '37',
+            'table'              => 'glpi_infocoms',
+            'field'              => 'buy_date',
+            'name'               => __('Date of purchase'),
+            'datatype'           => 'date',
+            'forcegroupby'       => true,
+            'joinparams'         => $joinparams,
         ];
 
         $tab[] = [
-           'id'                 => '38',
-           'table'              => 'glpi_infocoms',
-           'field'              => 'use_date',
-           'name'               => __('Startup date'),
-           'datatype'           => 'date',
-           'forcegroupby'       => true,
-           'joinparams'         => $joinparams
+            'id'                 => '38',
+            'table'              => 'glpi_infocoms',
+            'field'              => 'use_date',
+            'name'               => __('Startup date'),
+            'datatype'           => 'date',
+            'forcegroupby'       => true,
+            'joinparams'         => $joinparams,
         ];
 
         $tab[] = [
-           'id'                 => '142',
-           'table'              => 'glpi_infocoms',
-           'field'              => 'delivery_date',
-           'name'               => __('Delivery date'),
-           'datatype'           => 'date',
-           'forcegroupby'       => true,
-           'joinparams'         => $joinparams
+            'id'                 => '142',
+            'table'              => 'glpi_infocoms',
+            'field'              => 'delivery_date',
+            'name'               => __('Delivery date'),
+            'datatype'           => 'date',
+            'forcegroupby'       => true,
+            'joinparams'         => $joinparams,
         ];
 
         $tab[] = [
-           'id'                 => '124',
-           'table'              => 'glpi_infocoms',
-           'field'              => 'order_date',
-           'name'               => __('Order date'),
-           'datatype'           => 'date',
-           'forcegroupby'       => true,
-           'joinparams'         => $joinparams
+            'id'                 => '124',
+            'table'              => 'glpi_infocoms',
+            'field'              => 'order_date',
+            'name'               => __('Order date'),
+            'datatype'           => 'date',
+            'forcegroupby'       => true,
+            'joinparams'         => $joinparams,
         ];
 
         $tab[] = [
-           'id'                 => '123',
-           'table'              => 'glpi_infocoms',
-           'field'              => 'warranty_date',
-           'name'               => __('Start date of warranty'),
-           'datatype'           => 'date',
-           'forcegroupby'       => true,
-           'joinparams'         => $joinparams
+            'id'                 => '123',
+            'table'              => 'glpi_infocoms',
+            'field'              => 'warranty_date',
+            'name'               => __('Start date of warranty'),
+            'datatype'           => 'date',
+            'forcegroupby'       => true,
+            'joinparams'         => $joinparams,
         ];
 
         $tab[] = [
-           'id'                 => '125',
-           'table'              => 'glpi_infocoms',
-           'field'              => 'inventory_date',
-           'name'               => __('Date of last physical inventory'),
-           'datatype'           => 'date',
-           'forcegroupby'       => true,
-           'joinparams'         => $joinparams
+            'id'                 => '125',
+            'table'              => 'glpi_infocoms',
+            'field'              => 'inventory_date',
+            'name'               => __('Date of last physical inventory'),
+            'datatype'           => 'date',
+            'forcegroupby'       => true,
+            'joinparams'         => $joinparams,
         ];
 
         $tab[] = [
-           'id'                 => '50',
-           'table'              => 'glpi_budgets',
-           'field'              => 'name',
-           'datatype'           => 'dropdown',
-           'name'               => Budget::getTypeName(1),
-           'forcegroupby'       => true,
-           'joinparams'         => $complexjoinparams
+            'id'                 => '50',
+            'table'              => 'glpi_budgets',
+            'field'              => 'name',
+            'datatype'           => 'dropdown',
+            'name'               => Budget::getTypeName(1),
+            'forcegroupby'       => true,
+            'joinparams'         => $complexjoinparams,
         ];
 
         $tab[] = [
-           'id'                 => '51',
-           'table'              => 'glpi_infocoms',
-           'field'              => 'warranty_duration',
-           'name'               => __('Warranty duration'),
-           'forcegroupby'       => true,
-           'joinparams'         => $joinparams,
-           'datatype'           => 'number',
-           'unit'               => 'month',
-           'max'                => '120',
-           'toadd'              => [
-              '-1'                 => __('Lifelong')
-           ]
+            'id'                 => '51',
+            'table'              => 'glpi_infocoms',
+            'field'              => 'warranty_duration',
+            'name'               => __('Warranty duration'),
+            'forcegroupby'       => true,
+            'joinparams'         => $joinparams,
+            'datatype'           => 'number',
+            'unit'               => 'month',
+            'max'                => '120',
+            'toadd'              => [
+                '-1'                 => __('Lifelong'),
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '52',
-           'table'              => 'glpi_infocoms',
-           'field'              => 'warranty_info',
-           'name'               => __('Warranty information'),
-           'forcegroupby'       => true,
-           'joinparams'         => $joinparams,
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '52',
+            'table'              => 'glpi_infocoms',
+            'field'              => 'warranty_info',
+            'name'               => __('Warranty information'),
+            'forcegroupby'       => true,
+            'joinparams'         => $joinparams,
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '120',
-           'table'              => 'glpi_infocoms',
-           'field'              => 'end_warranty',
-           'name'               => __('Warranty expiration date'),
-           'datatype'           => 'date_delay',
-           'datafields'         => [
-              '1'                  => 'warranty_date',
-              '2'                  => 'warranty_duration'
-           ],
-           'searchunit'         => 'MONTH',
-           'delayunit'          => 'MONTH',
-           'forcegroupby'       => true,
-           'massiveaction'      => false,
-           'joinparams'         => $joinparams
+            'id'                 => '120',
+            'table'              => 'glpi_infocoms',
+            'field'              => 'end_warranty',
+            'name'               => __('Warranty expiration date'),
+            'datatype'           => 'date_delay',
+            'datafields'         => [
+                '1'                  => 'warranty_date',
+                '2'                  => 'warranty_duration',
+            ],
+            'searchunit'         => 'MONTH',
+            'delayunit'          => 'MONTH',
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
+            'joinparams'         => $joinparams,
         ];
 
         $tab[] = [
-           'id'                 => '53',
-           'table'              => 'glpi_suppliers',
-           'field'              => 'name',
-           'datatype'           => 'dropdown',
-           'name'               => Supplier::getTypeName(1),
-           'forcegroupby'       => true,
-           'joinparams'         => $complexjoinparams
+            'id'                 => '53',
+            'table'              => 'glpi_suppliers',
+            'field'              => 'name',
+            'datatype'           => 'dropdown',
+            'name'               => Supplier::getTypeName(1),
+            'forcegroupby'       => true,
+            'joinparams'         => $complexjoinparams,
         ];
 
         $tab[] = [
-           'id'                 => '54',
-           'table'              => 'glpi_infocoms',
-           'field'              => 'value',
-           'name'               => _x('price', 'Value'),
-           'datatype'           => 'decimal',
-           'forcegroupby'       => true,
-           'joinparams'         => $joinparams
+            'id'                 => '54',
+            'table'              => 'glpi_infocoms',
+            'field'              => 'value',
+            'name'               => _x('price', 'Value'),
+            'datatype'           => 'decimal',
+            'forcegroupby'       => true,
+            'joinparams'         => $joinparams,
         ];
 
         $tab[] = [
-           'id'                 => '55',
-           'table'              => 'glpi_infocoms',
-           'field'              => 'warranty_value',
-           'name'               => __('Warranty extension value'),
-           'datatype'           => 'decimal',
-           'forcegroupby'       => true,
-           'joinparams'         => $joinparams
+            'id'                 => '55',
+            'table'              => 'glpi_infocoms',
+            'field'              => 'warranty_value',
+            'name'               => __('Warranty extension value'),
+            'datatype'           => 'decimal',
+            'forcegroupby'       => true,
+            'joinparams'         => $joinparams,
         ];
 
         $tab[] = [
-           'id'                 => '56',
-           'table'              => 'glpi_infocoms',
-           'field'              => 'sink_time',
-           'name'               => __('Amortization duration'),
-           'forcegroupby'       => true,
-           'joinparams'         => $joinparams,
-           'datatype'           => 'number',
-           'max'                => '15',
-           'unit'               => 'year'
+            'id'                 => '56',
+            'table'              => 'glpi_infocoms',
+            'field'              => 'sink_time',
+            'name'               => __('Amortization duration'),
+            'forcegroupby'       => true,
+            'joinparams'         => $joinparams,
+            'datatype'           => 'number',
+            'max'                => '15',
+            'unit'               => 'year',
         ];
 
         $tab[] = [
-           'id'                 => '57',
-           'table'              => 'glpi_infocoms',
-           'field'              => 'sink_type',
-           'name'               => __('Amortization type'),
-           'forcegroupby'       => true,
-           'joinparams'         => $joinparams,
-           'datatype'           => 'specific',
-           'searchequalsonfield' => 'specific',
-           'searchtype'         => ['equals', 'notequals']
+            'id'                 => '57',
+            'table'              => 'glpi_infocoms',
+            'field'              => 'sink_type',
+            'name'               => __('Amortization type'),
+            'forcegroupby'       => true,
+            'joinparams'         => $joinparams,
+            'datatype'           => 'specific',
+            'searchequalsonfield' => 'specific',
+            'searchtype'         => ['equals', 'notequals'],
         ];
 
         $tab[] = [
-           'id'                 => '58',
-           'table'              => 'glpi_infocoms',
-           'field'              => 'sink_coeff',
-           'name'               => __('Amortization coefficient'),
-           'forcegroupby'       => true,
-           'joinparams'         => $joinparams,
-           'datatype'           => 'decimal',
-           'autocomplete'       => true,
+            'id'                 => '58',
+            'table'              => 'glpi_infocoms',
+            'field'              => 'sink_coeff',
+            'name'               => __('Amortization coefficient'),
+            'forcegroupby'       => true,
+            'joinparams'         => $joinparams,
+            'datatype'           => 'decimal',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '59',
-           'table'              => 'glpi_infocoms',
-           'field'              => 'alert',
-           'name'               => __('Email alarms'),
-           'forcegroupby'       => true,
-           'joinparams'         => $joinparams,
-           'datatype'           => 'specific'
+            'id'                 => '59',
+            'table'              => 'glpi_infocoms',
+            'field'              => 'alert',
+            'name'               => __('Email alarms'),
+            'forcegroupby'       => true,
+            'joinparams'         => $joinparams,
+            'datatype'           => 'specific',
         ];
 
         $tab[] = [
-           'id'                 => '122',
-           'table'              => 'glpi_infocoms',
-           'field'              => 'comment',
-           'name'               => __('Comments on financial and administrative information'),
-           'datatype'           => 'text',
-           'forcegroupby'       => true,
-           'joinparams'         => $joinparams
+            'id'                 => '122',
+            'table'              => 'glpi_infocoms',
+            'field'              => 'comment',
+            'name'               => __('Comments on financial and administrative information'),
+            'datatype'           => 'text',
+            'forcegroupby'       => true,
+            'joinparams'         => $joinparams,
         ];
 
         $tab[] = [
-           'id'                 => '173',
-           'table'              => 'glpi_businesscriticities',
-           'field'              => 'completename',
-           'name'               => _n('Business criticity', 'Business criticities', 1),
-           'datatype'           => 'dropdown',
-           'forcegroupby'       => true,
-           'joinparams'         => $complexjoinparams
+            'id'                 => '173',
+            'table'              => 'glpi_businesscriticities',
+            'field'              => 'completename',
+            'name'               => _n('Business criticity', 'Business criticities', 1),
+            'datatype'           => 'dropdown',
+            'forcegroupby'       => true,
+            'joinparams'         => $complexjoinparams,
         ];
 
         $tab[] = [
-           'id'                 => '159',
-           'table'              => 'glpi_infocoms',
-           'field'              => 'decommission_date',
-           'name'               => __('Decommission date'),
-           'datatype'           => 'date',
-           'maybefuture'        => true,
-           'forcegroupby'       => true,
-           'joinparams'         => $joinparams
+            'id'                 => '159',
+            'table'              => 'glpi_infocoms',
+            'field'              => 'decommission_date',
+            'name'               => __('Decommission date'),
+            'datatype'           => 'date',
+            'maybefuture'        => true,
+            'forcegroupby'       => true,
+            'joinparams'         => $joinparams,
         ];
 
         return $tab;
@@ -1703,246 +1703,246 @@ class Infocom extends CommonDBChild
         $tab = [];
 
         $tab[] = [
-           'id'                 => 'common',
-           'name'               => __('Characteristics')
+            'id'                 => 'common',
+            'name'               => __('Characteristics'),
         ];
 
         $tab[] = [
-           'id'                 => '2',
-           'table'              => $this->getTable(),
-           'field'              => 'id',
-           'name'               => __('ID'),
-           'massiveaction'      => false,
-           'datatype'           => 'number'
+            'id'                 => '2',
+            'table'              => $this->getTable(),
+            'field'              => 'id',
+            'name'               => __('ID'),
+            'massiveaction'      => false,
+            'datatype'           => 'number',
         ];
 
         $tab[] = [
-           'id'                 => '4',
-           'table'              => $this->getTable(),
-           'field'              => 'buy_date',
-           'name'               => __('Date of purchase'),
-           'datatype'           => 'date'
+            'id'                 => '4',
+            'table'              => $this->getTable(),
+            'field'              => 'buy_date',
+            'name'               => __('Date of purchase'),
+            'datatype'           => 'date',
         ];
 
         $tab[] = [
-           'id'                 => '5',
-           'table'              => $this->getTable(),
-           'field'              => 'use_date',
-           'name'               => __('Startup date'),
-           'datatype'           => 'date'
+            'id'                 => '5',
+            'table'              => $this->getTable(),
+            'field'              => 'use_date',
+            'name'               => __('Startup date'),
+            'datatype'           => 'date',
         ];
 
         $tab[] = [
-           'id'                 => '24',
-           'table'              => $this->getTable(),
-           'field'              => 'delivery_date',
-           'name'               => __('Delivery date'),
-           'datatype'           => 'date',
-           'forcegroupby'       => true
+            'id'                 => '24',
+            'table'              => $this->getTable(),
+            'field'              => 'delivery_date',
+            'name'               => __('Delivery date'),
+            'datatype'           => 'date',
+            'forcegroupby'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '23',
-           'table'              => $this->getTable(),
-           'field'              => 'order_date',
-           'name'               => __('Order date'),
-           'datatype'           => 'date',
-           'forcegroupby'       => true
+            'id'                 => '23',
+            'table'              => $this->getTable(),
+            'field'              => 'order_date',
+            'name'               => __('Order date'),
+            'datatype'           => 'date',
+            'forcegroupby'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '25',
-           'table'              => $this->getTable(),
-           'field'              => 'warranty_date',
-           'name'               => __('Start date of warranty'),
-           'datatype'           => 'date',
-           'forcegroupby'       => true
+            'id'                 => '25',
+            'table'              => $this->getTable(),
+            'field'              => 'warranty_date',
+            'name'               => __('Start date of warranty'),
+            'datatype'           => 'date',
+            'forcegroupby'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '27',
-           'table'              => $this->getTable(),
-           'field'              => 'inventory_date',
-           'name'               => __('Date of last physical inventory'),
-           'datatype'           => 'date',
-           'forcegroupby'       => true
+            'id'                 => '27',
+            'table'              => $this->getTable(),
+            'field'              => 'inventory_date',
+            'name'               => __('Date of last physical inventory'),
+            'datatype'           => 'date',
+            'forcegroupby'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '28',
-           'table'              => $this->getTable(),
-           'field'              => 'decommission_date',
-           'name'               => __('Decommission date'),
-           'maybefuture'        => true,
-           'datatype'           => 'date',
-           'forcegroupby'       => true
+            'id'                 => '28',
+            'table'              => $this->getTable(),
+            'field'              => 'decommission_date',
+            'name'               => __('Decommission date'),
+            'maybefuture'        => true,
+            'datatype'           => 'date',
+            'forcegroupby'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '6',
-           'table'              => $this->getTable(),
-           'field'              => 'warranty_duration',
-           'name'               => __('Warranty duration'),
-           'datatype'           => 'number',
-           'unit'               => 'month',
-           'max'                => '120',
-           'toadd'              => [
-              '-1'                 => __('Lifelong')
-           ]
+            'id'                 => '6',
+            'table'              => $this->getTable(),
+            'field'              => 'warranty_duration',
+            'name'               => __('Warranty duration'),
+            'datatype'           => 'number',
+            'unit'               => 'month',
+            'max'                => '120',
+            'toadd'              => [
+                '-1'                 => __('Lifelong'),
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '7',
-           'table'              => $this->getTable(),
-           'field'              => 'warranty_info',
-           'name'               => __('Warranty information'),
-           'datatype'           => 'string'
+            'id'                 => '7',
+            'table'              => $this->getTable(),
+            'field'              => 'warranty_info',
+            'name'               => __('Warranty information'),
+            'datatype'           => 'string',
         ];
 
         $tab[] = [
-           'id'                 => '8',
-           'table'              => $this->getTable(),
-           'field'              => 'warranty_value',
-           'name'               => __('Warranty extension value'),
-           'datatype'           => 'decimal'
+            'id'                 => '8',
+            'table'              => $this->getTable(),
+            'field'              => 'warranty_value',
+            'name'               => __('Warranty extension value'),
+            'datatype'           => 'decimal',
         ];
 
         $tab[] = [
-           'id'                 => '9',
-           'table'              => 'glpi_suppliers',
-           'field'              => 'name',
-           'name'               => Supplier::getTypeName(1),
-           'datatype'           => 'dropdown'
+            'id'                 => '9',
+            'table'              => 'glpi_suppliers',
+            'field'              => 'name',
+            'name'               => Supplier::getTypeName(1),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '10',
-           'table'              => $this->getTable(),
-           'field'              => 'order_number',
-           'name'               => __('Order number'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '10',
+            'table'              => $this->getTable(),
+            'field'              => 'order_number',
+            'name'               => __('Order number'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '11',
-           'table'              => $this->getTable(),
-           'field'              => 'delivery_number',
-           'name'               => __('Delivery form'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '11',
+            'table'              => $this->getTable(),
+            'field'              => 'delivery_number',
+            'name'               => __('Delivery form'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '12',
-           'table'              => $this->getTable(),
-           'field'              => 'immo_number',
-           'name'               => __('Immobilization number'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '12',
+            'table'              => $this->getTable(),
+            'field'              => 'immo_number',
+            'name'               => __('Immobilization number'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '13',
-           'table'              => $this->getTable(),
-           'field'              => 'value',
-           'name'               => _x('price', 'Value'),
-           'datatype'           => 'decimal'
+            'id'                 => '13',
+            'table'              => $this->getTable(),
+            'field'              => 'value',
+            'name'               => _x('price', 'Value'),
+            'datatype'           => 'decimal',
         ];
 
         $tab[] = [
-           'id'                 => '14',
-           'table'              => $this->getTable(),
-           'field'              => 'sink_time',
-           'name'               => __('Amortization duration'),
-           'datatype'           => 'number',
-           'max'                => '15',
-           'unit'               => 'year'
+            'id'                 => '14',
+            'table'              => $this->getTable(),
+            'field'              => 'sink_time',
+            'name'               => __('Amortization duration'),
+            'datatype'           => 'number',
+            'max'                => '15',
+            'unit'               => 'year',
         ];
 
         $tab[] = [
-           'id'                 => '15',
-           'table'              => $this->getTable(),
-           'field'              => 'sink_type',
-           'name'               => __('Amortization type'),
-           'datatype'           => 'specific',
-           'searchtype'         => ['equals', 'notequals']
+            'id'                 => '15',
+            'table'              => $this->getTable(),
+            'field'              => 'sink_type',
+            'name'               => __('Amortization type'),
+            'datatype'           => 'specific',
+            'searchtype'         => ['equals', 'notequals'],
         ];
 
         $tab[] = [
-           'id'                 => '16',
-           'table'              => $this->getTable(),
-           'field'              => 'comment',
-           'name'               => __('Comments'),
-           'datatype'           => 'text'
+            'id'                 => '16',
+            'table'              => $this->getTable(),
+            'field'              => 'comment',
+            'name'               => __('Comments'),
+            'datatype'           => 'text',
         ];
 
         $tab[] = [
-           'id'                 => '17',
-           'table'              => $this->getTable(),
-           'field'              => 'sink_coeff',
-           'name'               => __('Amortization coefficient'),
-           'datatype'           => 'decimal'
+            'id'                 => '17',
+            'table'              => $this->getTable(),
+            'field'              => 'sink_coeff',
+            'name'               => __('Amortization coefficient'),
+            'datatype'           => 'decimal',
         ];
 
         $tab[] = [
-           'id'                 => '18',
-           'table'              => $this->getTable(),
-           'field'              => 'bill',
-           'name'               => __('Invoice number'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '18',
+            'table'              => $this->getTable(),
+            'field'              => 'bill',
+            'name'               => __('Invoice number'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '19',
-           'table'              => 'glpi_budgets',
-           'field'              => 'name',
-           'name'               => Budget::getTypeName(1),
-           'datatype'           => 'itemlink'
+            'id'                 => '19',
+            'table'              => 'glpi_budgets',
+            'field'              => 'name',
+            'name'               => Budget::getTypeName(1),
+            'datatype'           => 'itemlink',
         ];
 
         $tab[] = [
-           'id'                 => '20',
-           'table'              => $this->getTable(),
-           'field'              => 'itemtype',
-           'name'               => _n('Type', 'Types', 1),
-           'datatype'           => 'itemtype',
-           'massiveaction'      => false
+            'id'                 => '20',
+            'table'              => $this->getTable(),
+            'field'              => 'itemtype',
+            'name'               => _n('Type', 'Types', 1),
+            'datatype'           => 'itemtype',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '21',
-           'table'              => $this->getTable(),
-           'field'              => 'items_id',
-           'name'               => __('ID'),
-           'datatype'           => 'integer',
-           'massiveaction'      => false
+            'id'                 => '21',
+            'table'              => $this->getTable(),
+            'field'              => 'items_id',
+            'name'               => __('ID'),
+            'datatype'           => 'integer',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '22',
-           'table'              => $this->getTable(),
-           'field'              => 'alert',
-           'name'               => __('Alarms on financial and administrative information'),
-           'datatype'           => 'integer'
+            'id'                 => '22',
+            'table'              => $this->getTable(),
+            'field'              => 'alert',
+            'name'               => __('Alarms on financial and administrative information'),
+            'datatype'           => 'integer',
         ];
 
         $tab[] = [
-           'id'                 => '80',
-           'table'              => 'glpi_entities',
-           'field'              => 'completename',
-           'name'               => Entity::getTypeName(1),
-           'massiveaction'      => false,
-           'datatype'           => 'dropdown'
+            'id'                 => '80',
+            'table'              => 'glpi_entities',
+            'field'              => 'completename',
+            'name'               => Entity::getTypeName(1),
+            'massiveaction'      => false,
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '86',
-           'table'              => $this->getTable(),
-           'field'              => 'is_recursive',
-           'name'               => __('Child entities'),
-           'datatype'           => 'bool'
+            'id'                 => '86',
+            'table'              => $this->getTable(),
+            'field'              => 'is_recursive',
+            'name'               => __('Child entities'),
+            'datatype'           => 'bool',
         ];
 
         return $tab;
@@ -1956,9 +1956,9 @@ class Infocom extends CommonDBChild
     {
 
         $item = ['item_name'          => '',
-                      'warrantyexpiration' => '',
-                      'itemtype'           => $this->fields['itemtype'],
-                      'items_id'           => $this->fields['items_id']];
+            'warrantyexpiration' => '',
+            'itemtype'           => $this->fields['itemtype'],
+            'items_id'           => $this->fields['items_id']];
 
         $options['entities_id'] = $this->getEntityID();
         $options['items']       = [$item];
@@ -1972,8 +1972,8 @@ class Infocom extends CommonDBChild
      * @deprecated 9.5
      *
      * @param string  $itemtype     itemtype of the item
-     * @param integer $oldid        ID of the item to clone
-     * @param integer $newid        ID of the item cloned
+     * @param int $oldid        ID of the item to clone
+     * @param int $newid        ID of the item cloned
      * @param string  $newitemtype  itemtype of the new item (= $itemtype if empty) (default '')
     **/
     public static function cloneItem($itemtype, $oldid, $newid, $newitemtype = '')
@@ -1999,12 +1999,12 @@ class Infocom extends CommonDBChild
                 );
             }
             $date_fields = [
-               'buy_date',
-               'delivery_date',
-               'inventory_date',
-               'order_date',
-               'use_date',
-               'warranty_date',
+                'buy_date',
+                'delivery_date',
+                'inventory_date',
+                'order_date',
+                'use_date',
+                'warranty_date',
             ];
             foreach ($date_fields as $f) {
                 if (empty($input[$f])) {
@@ -2023,10 +2023,10 @@ class Infocom extends CommonDBChild
      * Get date using a begin date and a period in month
      *
      * @param string  $from          begin date
-     * @param integer $addwarranty   period in months
-     * @param integer $deletenotice  period in months of notice (default 0)
-     * @param boolean $color         if show expire date in red color (false by default)
-     * @param boolean $auto_renew
+     * @param int $addwarranty   period in months
+     * @param int $deletenotice  period in months of notice (default 0)
+     * @param bool $color         if show expire date in red color (false by default)
+     * @param bool $auto_renew
      *
      * @return string expiration date
     **/
@@ -2075,8 +2075,8 @@ class Infocom extends CommonDBChild
             Infocom::canApplyOn($itemtype)
             && static::canCreate()
         ) {
-            $actions[$action_name] = "<i class='ma-icon far fa-money-bill-alt' aria-hidden='true'></i>" .
-                                     __('Enable the financial and administrative information');
+            $actions[$action_name] = "<i class='ma-icon far fa-money-bill-alt' aria-hidden='true'></i>"
+                                     . __('Enable the financial and administrative information');
         }
     }
 
@@ -2095,7 +2095,7 @@ class Infocom extends CommonDBChild
                     foreach ($ids as $key) {
                         if (!$ic->getFromDBforDevice($itemtype, $key)) {
                             $input = ['itemtype' => $itemtype,
-                                           'items_id' => $key];
+                                'items_id' => $key];
                             if ($ic->can(-1, CREATE, $input)) {
                                 if ($ic->add($input)) {
                                     $ma->itemDone($item->getType(), $key, MassiveAction::ACTION_OK);
@@ -2162,13 +2162,13 @@ class Infocom extends CommonDBChild
         global $DB;
 
         $types_iterator = $DB->request([
-           'SELECT'          => 'itemtype',
-           'DISTINCT'        => true,
-           'FROM'            => 'glpi_infocoms',
-           'WHERE'           => [
-              'NOT'          => ['itemtype' => self::getExcludedTypes()]
-           ] + $where,
-           'ORDER'           => 'itemtype'
+            'SELECT'          => 'itemtype',
+            'DISTINCT'        => true,
+            'FROM'            => 'glpi_infocoms',
+            'WHERE'           => [
+                'NOT'          => ['itemtype' => self::getExcludedTypes()],
+            ] + $where,
+            'ORDER'           => 'itemtype',
         ]);
         return $types_iterator;
     }

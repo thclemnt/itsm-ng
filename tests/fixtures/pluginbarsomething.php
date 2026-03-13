@@ -35,8 +35,5 @@ namespace GlpiPlugin\Bar;
 
 class Something extends \CommonDBTM
 {
-    public function __construct(array $param)
-    {
-
-    }
+    public function __construct(array $param) {}
 }

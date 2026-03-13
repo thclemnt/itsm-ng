@@ -51,30 +51,30 @@ class DeviceFirmware extends CommonDevice
         return array_merge(
             parent::getAdditionalFields(),
             [
-              _n('Type', 'Types', 1) => [
-                 'name'  => 'devicefirmwaretypes_id',
-                 'type'  => 'select',
-                 'values' => getOptionForItems('DeviceFirmwareType'),
-                 'value' => $this->fields['devicefirmwaretypes_id'],
-                 'actions' => getItemActionButtons(['info', 'add'], 'DeviceFirmwareType')
-              ],
-              __('Installation date') => [
-                 'name'   => 'date',
-                 'type'   => 'date',
-                 'value' => $this->fields['date']
-              ],
-              _n('Version', 'Versions', 1) => [
-                 'name'   => 'version',
-                 'type'   => 'text',
-                 'value' => $this->fields['version']
-              ],
-              _n('Model', 'Models', 1) => [
-                 'name'   => 'devicefirmwaremodels_id',
-                 'type'   => 'select',
-                 'values' => getOptionForItems('DeviceFirmwareModel'),
-                 'value' => $this->fields['devicefirmwaremodels_id'],
-                 'actions' => getItemActionButtons(['info', 'add'], 'DeviceFirmwareModel')
-              ]
+                _n('Type', 'Types', 1) => [
+                    'name'  => 'devicefirmwaretypes_id',
+                    'type'  => 'select',
+                    'values' => getOptionForItems('DeviceFirmwareType'),
+                    'value' => $this->fields['devicefirmwaretypes_id'],
+                    'actions' => getItemActionButtons(['info', 'add'], 'DeviceFirmwareType'),
+                ],
+                __('Installation date') => [
+                    'name'   => 'date',
+                    'type'   => 'date',
+                    'value' => $this->fields['date'],
+                ],
+                _n('Version', 'Versions', 1) => [
+                    'name'   => 'version',
+                    'type'   => 'text',
+                    'value' => $this->fields['version'],
+                ],
+                _n('Model', 'Models', 1) => [
+                    'name'   => 'devicefirmwaremodels_id',
+                    'type'   => 'select',
+                    'values' => getOptionForItems('DeviceFirmwareModel'),
+                    'value' => $this->fields['devicefirmwaremodels_id'],
+                    'actions' => getItemActionButtons(['info', 'add'], 'DeviceFirmwareModel'),
+                ],
             ]
         );
     }
@@ -85,35 +85,35 @@ class DeviceFirmware extends CommonDevice
         $tab = parent::rawSearchOptions();
 
         $tab[] = [
-           'id'                 => '11',
-           'table'              => $this->getTable(),
-           'field'              => 'date',
-           'name'               => __('Installation date'),
-           'datatype'           => 'date'
+            'id'                 => '11',
+            'table'              => $this->getTable(),
+            'field'              => 'date',
+            'name'               => __('Installation date'),
+            'datatype'           => 'date',
         ];
 
         $tab[] = [
-           'id'                 => '12',
-           'table'              => 'glpi_devicefirmwaremodels',
-           'field'              => 'name',
-           'name'               => _n('Model', 'Models', 1),
-           'datatype'           => 'dropdown'
+            'id'                 => '12',
+            'table'              => 'glpi_devicefirmwaremodels',
+            'field'              => 'name',
+            'name'               => _n('Model', 'Models', 1),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '13',
-           'table'              => 'glpi_devicefirmwaretypes',
-           'field'              => 'name',
-           'name'               => _n('Type', 'Types', 1),
-           'datatype'           => 'dropdown'
+            'id'                 => '13',
+            'table'              => 'glpi_devicefirmwaretypes',
+            'field'              => 'name',
+            'name'               => _n('Type', 'Types', 1),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '14',
-           'table'              => 'glpi_devicefirmwares',
-           'field'              => 'version',
-           'name'               => _n('Version', 'Versions', 1),
-           'autocomplete'       => true,
+            'id'                 => '14',
+            'table'              => 'glpi_devicefirmwares',
+            'field'              => 'version',
+            'name'               => _n('Version', 'Versions', 1),
+            'autocomplete'       => true,
         ];
 
         return $tab;
@@ -187,10 +187,10 @@ class DeviceFirmware extends CommonDevice
     {
 
         return [
-           'designation'              => 'equal',
-           'devicefirmwaretypes_id'   => 'equal',
-           'manufacturers_id'         => 'equal',
-           'version'                  => 'equal'
+            'designation'              => 'equal',
+            'devicefirmwaretypes_id'   => 'equal',
+            'manufacturers_id'         => 'equal',
+            'version'                  => 'equal',
         ];
     }
 

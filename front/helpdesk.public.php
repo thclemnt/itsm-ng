@@ -76,7 +76,7 @@ if (
         Session::haveRight('followup', ITILFollowup::SEEPUBLIC)
         || Session::haveRight('task', TicketTask::SEEPUBLIC)
         || Session::haveRightsOr('ticketvalidation', [TicketValidation::VALIDATEREQUEST,
-                                                           TicketValidation::VALIDATEINCIDENT])
+            TicketValidation::VALIDATEINCIDENT])
     ) {
         Html::redirect($CFG_GLPI['root_doc'] . "/front/ticket.php");
     } elseif (Session::haveRight('reservation', ReservationItem::RESERVEANITEM)) {

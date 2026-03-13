@@ -44,27 +44,27 @@ if (!isset($_GET["id"])) {
 Report::title();
 
 $form = [
-   'action' => $_SERVER['PHP_SELF'],
-   'buttons' => [
-      [
-         'value' => __s('Display report'),
-         'class' => 'btn btn-secondary',
-      ]
-   ],
-   'content' => [
-      '' => [
-         'visible' => true,
-         'inputs' => [
-            '' => [
-               'type' => 'select',
-               'name' => 'id',
-               'values' => getOptionsForUsers('reservation'),
-               'col_lg' => 12,
-               'col_md' => 12,
-            ]
-         ]
-      ]
-   ]
+    'action' => $_SERVER['PHP_SELF'],
+    'buttons' => [
+        [
+            'value' => __s('Display report'),
+            'class' => 'btn btn-secondary',
+        ],
+    ],
+    'content' => [
+        '' => [
+            'visible' => true,
+            'inputs' => [
+                '' => [
+                    'type' => 'select',
+                    'name' => 'id',
+                    'values' => getOptionsForUsers('reservation'),
+                    'col_lg' => 12,
+                    'col_md' => 12,
+                ],
+            ],
+        ],
+    ],
 ];
 renderTwigForm($form);
 

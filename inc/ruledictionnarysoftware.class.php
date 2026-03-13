@@ -116,7 +116,7 @@ class RuleDictionnarySoftware extends Rule
 
         $actions['version']['name']               = _n('Version', 'Versions', 1);
         $actions['version']['force_actions']      = ['assign','regex_result',
-                                                          'append_regex_result'];
+            'append_regex_result'];
 
         $actions['manufacturer']['name']          = __('Publisher');
         $actions['manufacturer']['table']         = 'glpi_manufacturers';
@@ -166,7 +166,7 @@ class RuleDictionnarySoftware extends Rule
         //this field as a criteria
         foreach ($this->actions as $action) {
             if ($action->fields["action_type"] == "append_regex_result") {
-                $value = (isset($fields[$action->fields['field']]) ? $fields[$action->fields['field']] : '');
+                $value = ($fields[$action->fields['field']] ?? '');
                 //Get actions for this type of rule
                 $actions = $this->getActions();
 

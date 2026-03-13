@@ -42,6 +42,7 @@ use DBConnection;
 use Glpi\Console\AbstractCommand;
 use Glpi\Console\Command\ForceNoPluginsOptionCommandInterface;
 use Symfony\Component\Console\Exception\InvalidArgumentException;
+use Symfony\Component\Console\Helper\QuestionHelper;
 use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -54,42 +55,42 @@ abstract class AbstractConfigureCommand extends AbstractCommand implements Force
     /**
      * Error code returned if DB configuration is aborted by user.
      *
-     * @var integer
+     * @var int
      */
     public const ABORTED_BY_USER = -1;
 
     /**
      * Error code returned if DB configuration succeed.
      *
-     * @var integer
+     * @var int
      */
     public const SUCCESS = 0;
 
     /**
      * Error code returned if DB connection initialization fails.
      *
-     * @var integer
+     * @var int
      */
     public const ERROR_DB_CONNECTION_FAILED = 1;
 
     /**
      * Error code returned if DB engine is unsupported.
      *
-     * @var integer
+     * @var int
      */
     public const ERROR_DB_ENGINE_UNSUPPORTED = 2;
 
     /**
      * Error code returned when trying to configure and having a DB config already set.
      *
-     * @var integer
+     * @var int
      */
     public const ERROR_DB_CONFIG_ALREADY_SET = 3;
 
     /**
      * Error code returned when failing to save database configuration file.
      *
-     * @var integer
+     * @var int
      */
     public const ERROR_DB_CONFIG_FILE_NOT_SAVED = 4;
 
@@ -153,15 +154,15 @@ abstract class AbstractConfigureCommand extends AbstractCommand implements Force
     {
 
         $questions = [
-           'db-name'     => new Question(__('Database name:'), ''), // Required
-           'db-user'     => new Question(__('Database user:'), ''), // Required
-           'db-password' => new Question(__('Database password:'), ''), // Prompt if null (passed without value)
+            'db-name'     => new Question(__('Database name:'), ''), // Required
+            'db-user'     => new Question(__('Database user:'), ''), // Required
+            'db-password' => new Question(__('Database password:'), ''), // Prompt if null (passed without value)
         ];
         $questions['db-password']->setHidden(true); // Make password input hidden
 
         foreach ($questions as $name => $question) {
             if (null === $input->getOption($name)) {
-                /** @var \Symfony\Component\Console\Helper\QuestionHelper $question_helper */
+                /** @var QuestionHelper $question_helper */
                 $question_helper = $this->getHelper('question');
                 $value = $question_helper->ask($input, $output, $question);
                 $input->setOption($name, $value);
@@ -278,7 +279,7 @@ abstract class AbstractConfigureCommand extends AbstractCommand implements Force
     /**
      * Check if DB is already configured.
      *
-     * @return boolean
+     * @return bool
      */
     protected function isDbAlreadyConfigured()
     {
@@ -329,7 +330,7 @@ abstract class AbstractConfigureCommand extends AbstractCommand implements Force
      * @param string $db_name DB name
      * @param string $db_user DB username
      *
-     * @return boolean
+     * @return bool
      */
     protected function askForDbConfigConfirmation(
         InputInterface $input,
@@ -350,7 +351,7 @@ abstract class AbstractConfigureCommand extends AbstractCommand implements Force
             return true;
         }
 
-        /** @var \Symfony\Component\Console\Helper\QuestionHelper $question_helper */
+        /** @var QuestionHelper $question_helper */
         $question_helper = $this->getHelper('question');
         return $question_helper->ask(
             $input,

@@ -79,12 +79,12 @@ class RuleTicket extends Rule
     {
 
         return [static::ONADD                   => __('Add'),
-                     static::ONUPDATE                => __('Update'),
-                     static::ONADD | static::ONUPDATE  => sprintf(
-                         __('%1$s / %2$s'),
-                         __('Add'),
-                         __('Update')
-                     )];
+            static::ONUPDATE                => __('Update'),
+            static::ONADD | static::ONUPDATE  => sprintf(
+                __('%1$s / %2$s'),
+                __('Add'),
+                __('Update')
+            )];
     }
 
 
@@ -109,9 +109,9 @@ class RuleTicket extends Rule
         }
         if ($showwarning) {
             echo "<table class='tab_cadre_fixe' aria-label='Urgency or impact used in actions'>";
-            echo "<tr class='tab_bg_2'><td>" .
-                  __('Urgency or impact used in actions, think to add Priority: recompute action if needed.') .
-                  "</td></tr>\n";
+            echo "<tr class='tab_bg_2'><td>"
+                  . __('Urgency or impact used in actions, think to add Priority: recompute action if needed.')
+                  . "</td></tr>\n";
             echo "</table><br>";
         }
     }
@@ -318,8 +318,8 @@ class RuleTicket extends Rule
 
                     case 'compute':
                         // Value could be not set (from test)
-                        $urgency = (isset($output['urgency']) ? $output['urgency'] : 3);
-                        $impact  = (isset($output['impact']) ? $output['impact'] : 3);
+                        $urgency = ($output['urgency'] ?? 3);
+                        $impact  = ($output['impact'] ?? 3);
                         // Apply priority_matrix from config
                         $output['priority'] = Ticket::computePriority($urgency, $impact);
                         break;
@@ -633,11 +633,11 @@ class RuleTicket extends Rule
         $criterias['olas_id_tto']['condition']                = ['glpi_olas.type' => SLM::TTO];
 
         $criterias['_date_creation_calendars_id'] = [
-           'name'            => __("Creation date is a working hour in calendar"),
-           'table'           => Calendar::getTable(),
-           'field'           => 'name',
-           'linkfield'       => '_date_creation_calendars_id',
-           'type'            => 'dropdown',
+            'name'            => __("Creation date is a working hour in calendar"),
+            'table'           => Calendar::getTable(),
+            'field'           => 'name',
+            'linkfield'       => '_date_creation_calendars_id',
+            'type'            => 'dropdown',
         ];
 
         return $criterias;
@@ -734,7 +734,7 @@ class RuleTicket extends Rule
         $actions['affectobject']['name']                      = _n('Associated element', 'Associated elements', Session::getPluralNumber());
         $actions['affectobject']['type']                      = 'text';
         $actions['affectobject']['force_actions']             = ['affectbyip', 'affectbyfqdn',
-                                                                      'affectbymac'];
+            'affectbymac'];
 
         $actions['slas_id_ttr']['table']                      = 'glpi_slas';
         $actions['slas_id_ttr']['field']                      = 'name';
@@ -858,7 +858,7 @@ class RuleTicket extends Rule
         $values = parent::getRights();
         //TRANS: short for : Business rules for ticket (entity parent)
         $values[self::PARENT] = ['short' => __('Parent business'),
-                                      'long'  => __('Business rules for ticket (entity parent)')];
+            'long'  => __('Business rules for ticket (entity parent)')];
 
         return $values;
     }

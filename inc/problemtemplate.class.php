@@ -1,5 +1,7 @@
 <?php
 
+use Glpi\Features\Clonable;
+
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
@@ -42,7 +44,7 @@ if (!defined('GLPI_ROOT')) {
 **/
 class ProblemTemplate extends ITILTemplate
 {
-    use Glpi\Features\Clonable;
+    use Clonable;
 
     public $second_level_menu         = "problem";
     public $third_level_menu          = "ProblemTemplate";
@@ -55,9 +57,9 @@ class ProblemTemplate extends ITILTemplate
     public function getCloneRelations(): array
     {
         return [
-           ProblemTemplateHiddenField::class,
-           ProblemTemplateMandatoryField::class,
-           ProblemTemplatePredefinedField::class,
+            ProblemTemplateHiddenField::class,
+            ProblemTemplateMandatoryField::class,
+            ProblemTemplatePredefinedField::class,
         ];
     }
 }

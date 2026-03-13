@@ -74,8 +74,8 @@ class KnowbaseItem_Item extends CommonDBRelation
                     $nb = countElementsInTable(
                         'glpi_knowbaseitems_items',
                         [
-                          'itemtype' => $item::getType(),
-                          'items_id' => $item->getId()
+                            'itemtype' => $item::getType(),
+                            'items_id' => $item->getId(),
                         ]
                     );
                 }
@@ -128,8 +128,8 @@ class KnowbaseItem_Item extends CommonDBRelation
             $number = countElementsInTable(
                 'glpi_knowbaseitems_items',
                 [
-                  'itemtype' => $item::getType(),
-                  'items_id' => $item_id
+                    'itemtype' => $item::getType(),
+                    'items_id' => $item_id,
                 ]
             );
         }
@@ -158,49 +158,49 @@ class KnowbaseItem_Item extends CommonDBRelation
             }
             asort($options);
             $form = [
-               'action' => self::getFormActionURL(),
-               'buttons' => [
-                  [
-                     'type' => 'submit',
-                     'name' => 'add',
-                     'value' => _sx('button', 'Add'),
-                     'class' => 'btn btn-secondary'
-                  ]
-               ],
-               'content' => [
-                  [
-                     'visible' => false,
-                     'inputs' => [
-                        $item_type == KnowbaseItem::getType() ? [
-                           'type' => 'hidden',
-                           'name' => 'knowbaseitems_id',
-                           'value' => $item_id,
-                        ] :
-                        [
-                           'type' => 'hidden',
-                           'name' => 'itemtype',
-                           'value' => $item_type,
-                        ],
-                        $item_type != KnowbaseItem::getType() ? [
-                           'type' => 'hidden',
-                           'name' => 'items_id',
-                           'value' => $item_id,
-                        ] : [
-                        ]
+                'action' => self::getFormActionURL(),
+                'buttons' => [
+                    [
+                        'type' => 'submit',
+                        'name' => 'add',
+                        'value' => _sx('button', 'Add'),
+                        'class' => 'btn btn-secondary',
+                    ],
+                ],
+                'content' => [
+                    [
+                        'visible' => false,
+                        'inputs' => [
+                            $item_type == KnowbaseItem::getType() ? [
+                                'type' => 'hidden',
+                                'name' => 'knowbaseitems_id',
+                                'value' => $item_id,
+                            ]
+                            : [
+                                'type' => 'hidden',
+                                'name' => 'itemtype',
+                                'value' => $item_type,
+                            ],
+                            $item_type != KnowbaseItem::getType() ? [
+                                'type' => 'hidden',
+                                'name' => 'items_id',
+                                'value' => $item_id,
+                            ] : [
+                            ],
 
-                     ]
-                  ],
-                  ($item_type == KnowbaseItem::getType()) ? __('Add a linked item') : __('Link a knowledge base entry') => [
-                     'visible' => true,
-                     'inputs' => [
-                        __('Link') => ($item_type == KnowbaseItem::getType()) ? [
-                           'type' => 'select',
-                           'id' => 'selectForItemTypeKnowbaseItem',
-                           'name' => 'itemtype',
-                           'values' => [Dropdown::EMPTY_VALUE] + $options,
-                           'col_lg' => 6,
-                           'hooks' => [
-                              'change' => <<<JS
+                        ],
+                    ],
+                    ($item_type == KnowbaseItem::getType()) ? __('Add a linked item') : __('Link a knowledge base entry') => [
+                        'visible' => true,
+                        'inputs' => [
+                            __('Link') => ($item_type == KnowbaseItem::getType()) ? [
+                                'type' => 'select',
+                                'id' => 'selectForItemTypeKnowbaseItem',
+                                'name' => 'itemtype',
+                                'values' => [Dropdown::EMPTY_VALUE] + $options,
+                                'col_lg' => 6,
+                                'hooks' => [
+                                    'change' => <<<JS
                            var itemtype = $(this).val();
                            if (itemtype == 0) {
                               $('#selectForItemKnowbaseItem').prop('disabled', true);
@@ -241,37 +241,37 @@ class KnowbaseItem_Item extends CommonDBRelation
                               }
                            });
                            JS,
-                           ]
-                        ] : [
-                           'type' => 'select',
-                           'name' => 'knowbaseitems_id',
-                           'values' => getOptionForItems(
-                               KnowbaseItem::class,
-                               (isset(KnowbaseItem::getVisibilityCriteria()['WHERE'])
-                                 && count(KnowbaseItem::getVisibilityCriteria()['WHERE']))
-                                    ? KnowbaseItem::getVisibilityCriteria()['WHERE'] : [],
-                           ),
-                           'value' => '',
+                                ],
+                            ] : [
+                                'type' => 'select',
+                                'name' => 'knowbaseitems_id',
+                                'values' => getOptionForItems(
+                                    KnowbaseItem::class,
+                                    (isset(KnowbaseItem::getVisibilityCriteria()['WHERE'])
+                                      && count(KnowbaseItem::getVisibilityCriteria()['WHERE']))
+                                         ? KnowbaseItem::getVisibilityCriteria()['WHERE'] : [],
+                                ),
+                                'value' => '',
+                            ],
+                            '' => ($item_type == KnowbaseItem::getType()) ? [
+                                'type' => 'select',
+                                'id' => 'selectForItemKnowbaseItem',
+                                'disabled' => '',
+                                'name' => 'items_id',
+                                'col_lg' => 6,
+                            ] : [],
                         ],
-                        '' => ($item_type == KnowbaseItem::getType()) ? [
-                           'type' => 'select',
-                           'id' => 'selectForItemKnowbaseItem',
-                           'disabled' => '',
-                           'name' => 'items_id',
-                           'col_lg' => 6,
-                        ] : [],
-                     ]
-                  ]
-               ]
+                    ],
+                ],
             ];
             renderTwigForm($form);
         }
 
         // No Events in database
         if ($number < 1) {
-            $no_txt = ($item_type == KnowbaseItem::getType()) ?
-               __('No linked items') :
-               __('No knowledge base entries linked');
+            $no_txt = ($item_type == KnowbaseItem::getType())
+               ? __('No linked items')
+               : __('No knowledge base entries linked');
             echo "<div class='center'>";
             echo "<table class='tab_cadre_fixe' aria-label='Base Item'>";
             echo "<tr><th>$no_txt</th></tr>";
@@ -285,20 +285,20 @@ class KnowbaseItem_Item extends CommonDBRelation
         $massiveActionContainerId = 'tableForKnowbaseItem_Item' . $rand;
         if ($canedit) {
             $massiveactionparams = [
-               'num_displayed' => min($_SESSION['glpilist_limit'], $number),
-               'container' => $massiveActionContainerId,
-               'specific_actions' => [
-                  'MassiveAction:purge' => _x('button', 'Delete permanently the relation with selected elements'),
-               ],
-               'display_arrow' => false,
+                'num_displayed' => min($_SESSION['glpilist_limit'], $number),
+                'container' => $massiveActionContainerId,
+                'specific_actions' => [
+                    'MassiveAction:purge' => _x('button', 'Delete permanently the relation with selected elements'),
+                ],
+                'display_arrow' => false,
             ];
             Html::showMassiveActions($massiveactionparams);
         }
         $fields = [
-           _n('Type', 'Types', 1),
-           _n('Item', 'Items', 1),
-           __('Creation date'),
-           __('Update date')
+            _n('Type', 'Types', 1),
+            _n('Item', 'Items', 1),
+            __('Creation date'),
+            __('Update date'),
         ];
         $values = [];
         $massive_action = [];
@@ -329,18 +329,18 @@ class KnowbaseItem_Item extends CommonDBRelation
             }
 
             $values[] = [
-               $type,
-               "<a href=\"$link\">$name</a>",
-               Html::convDateTime($linked_item->fields[$createdate]),
-               Html::convDateTime($linked_item->fields['date_mod'])
+                $type,
+                "<a href=\"$link\">$name</a>",
+                Html::convDateTime($linked_item->fields[$createdate]),
+                Html::convDateTime($linked_item->fields['date_mod']),
             ];
             $massive_action[] = sprintf("item[%s][%s]", self::class, $data['id']);
         }
         renderTwigTemplate('table.twig', [
-           'id' => $massiveActionContainerId,
-           'fields' => $fields,
-           'values' => $values,
-           'massive_action' => $massive_action,
+            'id' => $massiveActionContainerId,
+            'fields' => $fields,
+            'values' => $values,
+            'massive_action' => $massive_action,
         ]);
     }
 
@@ -361,11 +361,11 @@ class KnowbaseItem_Item extends CommonDBRelation
         $checkright = true;
 
         $rand = Dropdown::showSelectItemFromItemtypes([
-           'items_id_name'   => $name,
-           'entity_restrict' => $entity_restrict,
-           'itemtypes'       => $CFG_GLPI['kb_types'],
-           'onlyglobal'      => $onlyglobal,
-           'checkright'      => $checkright
+            'items_id_name'   => $name,
+            'entity_restrict' => $entity_restrict,
+            'itemtypes'       => $CFG_GLPI['kb_types'],
+            'onlyglobal'      => $onlyglobal,
+            'checkright'      => $checkright,
         ]);
 
         return $rand;
@@ -375,9 +375,9 @@ class KnowbaseItem_Item extends CommonDBRelation
      * Retrieve items for a knowbase item
      *
      * @param CommonDBTM $item      CommonDBTM object
-     * @param integer    $start     first line to retrieve (default 0)
-     * @param integer    $limit     max number of line to retrive (0 for all) (default 0)
-     * @param boolean    $used      whether to retrieve data for "used" records
+     * @param int    $start     first line to retrieve (default 0)
+     * @param int    $limit     max number of line to retrive (0 for all) (default 0)
+     * @param bool    $used      whether to retrieve data for "used" records
      *
      * @return array of linked items
     **/
@@ -386,30 +386,30 @@ class KnowbaseItem_Item extends CommonDBRelation
         global $DB;
 
         $criteria = [
-           'FROM'      => ['glpi_knowbaseitems_items'],
-           'FIELDS'    => ['glpi_knowbaseitems_items' => '*'],
-           'INNER JOIN' => [
-              'glpi_knowbaseitems' => [
-                 'ON'  => [
-                    'glpi_knowbaseitems_items' => 'knowbaseitems_id',
-                    'glpi_knowbaseitems'       => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [],
-           'ORDER'     => ['itemtype', 'items_id DESC'],
-           'GROUPBY'   => [
-              'glpi_knowbaseitems_items.id',
-              'glpi_knowbaseitems_items.knowbaseitems_id',
-               'glpi_knowbaseitems_items.itemtype',
-               'glpi_knowbaseitems_items.items_id',
-               'glpi_knowbaseitems_items.date_creation',
-               'glpi_knowbaseitems_items.date_mod'
-           ]
+            'FROM'      => ['glpi_knowbaseitems_items'],
+            'FIELDS'    => ['glpi_knowbaseitems_items' => '*'],
+            'INNER JOIN' => [
+                'glpi_knowbaseitems' => [
+                    'ON'  => [
+                        'glpi_knowbaseitems_items' => 'knowbaseitems_id',
+                        'glpi_knowbaseitems'       => 'id',
+                    ],
+                ],
+            ],
+            'WHERE'     => [],
+            'ORDER'     => ['itemtype', 'items_id DESC'],
+            'GROUPBY'   => [
+                'glpi_knowbaseitems_items.id',
+                'glpi_knowbaseitems_items.knowbaseitems_id',
+                'glpi_knowbaseitems_items.itemtype',
+                'glpi_knowbaseitems_items.items_id',
+                'glpi_knowbaseitems_items.date_creation',
+                'glpi_knowbaseitems_items.date_mod',
+            ],
         ];
         $where = [];
 
-        $items_id  = (int)$item->getField('id');
+        $items_id  = (int) $item->getField('id');
 
         if ($item::getType() == KnowbaseItem::getType()) {
             $id_field = 'glpi_knowbaseitems_items.knowbaseitems_id';
@@ -426,10 +426,10 @@ class KnowbaseItem_Item extends CommonDBRelation
             $where[] = ['glpi_knowbaseitems_items.itemtype' => $item::getType()];
             if (count($where)) {
                 $criteria['INNER JOIN'][$item->getTable()] = [
-                   'ON' => [
-                      'glpi_knowbaseitems_items' => 'items_id',
-                      $item->getTable()          => 'id'
-                   ]
+                    'ON' => [
+                        'glpi_knowbaseitems_items' => 'items_id',
+                        $item->getTable()          => 'id',
+                    ],
                 ];
             }
         }
@@ -464,8 +464,8 @@ class KnowbaseItem_Item extends CommonDBRelation
      * @since 9.2
      *
      * @param string  $itemtype     itemtype of the item
-     * @param integer $oldid        ID of the item to clone
-     * @param integer $newid        ID of the item cloned
+     * @param int $oldid        ID of the item to clone
+     * @param int $newid        ID of the item cloned
      * @param string  $newitemtype  itemtype of the new item (= $itemtype if empty) (default '')
     **/
     public static function cloneItem($itemtype, $oldid, $newid, $newitemtype = '')
@@ -478,19 +478,19 @@ class KnowbaseItem_Item extends CommonDBRelation
         }
 
         $iterator = $DB->request([
-           'FROM'   => 'glpi_knowbaseitems_items',
-           'FIELDS' => 'knowbaseitems_id',
-           'WHERE'  => [
-              'items_id'  => $oldid,
-              'itemtype'  => $itemtype
-           ]
+            'FROM'   => 'glpi_knowbaseitems_items',
+            'FIELDS' => 'knowbaseitems_id',
+            'WHERE'  => [
+                'items_id'  => $oldid,
+                'itemtype'  => $itemtype,
+            ],
         ]);
 
         while ($data = $iterator->next()) {
             $kb_link = new self();
             $kb_link->add(['knowbaseitems_id' => $data['knowbaseitems_id'],
-                                     'itemtype'    => $newitemtype,
-                                     'items_id'    => $newid]);
+                'itemtype'    => $newitemtype,
+                'items_id'    => $newid]);
         }
     }
 
@@ -516,8 +516,8 @@ class KnowbaseItem_Item extends CommonDBRelation
             $action_prefix = __CLASS__ . MassiveAction::CLASS_ACTION_SEPARATOR;
 
             $actions[$action_prefix . 'add']
-               = "<i class='ma-icon fas fa-book' aria-hidden='true'></i>" .
-                 _x('button', 'Link knowledgebase article');
+               = "<i class='ma-icon fas fa-book' aria-hidden='true'></i>"
+                 . _x('button', 'Link knowledgebase article');
         }
 
         parent::getMassiveActionsForItemtype($actions, $itemtype, $is_deleted, $checkitem);
@@ -525,9 +525,9 @@ class KnowbaseItem_Item extends CommonDBRelation
 
     private static function getFormActionURL()
     {
-        if (isset($_SESSION['glpiactiveprofile']) &&
-            isset($_SESSION['glpiactiveprofile']['interface']) &&
-            $_SESSION['glpiactiveprofile']['interface'] == 'helpdesk') {
+        if (isset($_SESSION['glpiactiveprofile'])
+            && isset($_SESSION['glpiactiveprofile']['interface'])
+            && $_SESSION['glpiactiveprofile']['interface'] == 'helpdesk') {
 
             global $CFG_GLPI;
             return $CFG_GLPI['root_doc'] . '/plugins/formcreator/front/knowbaseitem_item.form.php';

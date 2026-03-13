@@ -43,37 +43,37 @@ class ProjectTaskTemplate extends DbTestCase
 
         $state = new \ProjectState();
         $state_id = $state->add([
-           'name' => 'project-task-template-state-' . $this->getUniqueString(),
+            'name' => 'project-task-template-state-' . $this->getUniqueString(),
         ]);
-        $this->integer((int)$state_id)->isGreaterThan(0);
+        $this->integer((int) $state_id)->isGreaterThan(0);
 
         $type = new \ProjectTaskType();
         $type_id = $type->add([
-           'name' => 'project-task-template-type-' . $this->getUniqueString(),
+            'name' => 'project-task-template-type-' . $this->getUniqueString(),
         ]);
-        $this->integer((int)$type_id)->isGreaterThan(0);
+        $this->integer((int) $type_id)->isGreaterThan(0);
 
         $obj = new \ProjectTaskTemplate();
         $id = $obj->add([
-           'name'                => 'project-task-template-' . $this->getUniqueString(),
-           'projectstates_id'    => $state_id,
-           'projecttasktypes_id' => $type_id,
-           'percent_done'        => 15,
-           'is_milestone'        => 1,
+            'name'                => 'project-task-template-' . $this->getUniqueString(),
+            'projectstates_id'    => $state_id,
+            'projecttasktypes_id' => $type_id,
+            'percent_done'        => 15,
+            'is_milestone'        => 1,
         ]);
-        $this->integer((int)$id)->isGreaterThan(0);
+        $this->integer((int) $id)->isGreaterThan(0);
         $this->boolean($obj->getFromDB($id))->isTrue();
-        $this->integer((int)$obj->getField('projectstates_id'))->isEqualTo($state_id);
-        $this->integer((int)$obj->getField('projecttasktypes_id'))->isEqualTo($type_id);
+        $this->integer((int) $obj->getField('projectstates_id'))->isEqualTo($state_id);
+        $this->integer((int) $obj->getField('projecttasktypes_id'))->isEqualTo($type_id);
 
         $this->boolean($obj->update([
-           'id'                  => $id,
-           'percent_done'        => 90,
-           'is_milestone'        => 0,
+            'id'                  => $id,
+            'percent_done'        => 90,
+            'is_milestone'        => 0,
         ]))->isTrue();
         $this->boolean($obj->getFromDB($id))->isTrue();
-        $this->integer((int)$obj->getField('percent_done'))->isEqualTo(90);
-        $this->integer((int)$obj->getField('is_milestone'))->isEqualTo(0);
+        $this->integer((int) $obj->getField('percent_done'))->isEqualTo(90);
+        $this->integer((int) $obj->getField('is_milestone'))->isEqualTo(0);
 
         $this->boolean($obj->delete(['id' => $id]))->isTrue();
     }

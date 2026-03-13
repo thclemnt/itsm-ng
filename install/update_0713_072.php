@@ -38,7 +38,7 @@ function update0713to072()
     global $DB;
 
     //TRANS: %s is the number of new version
-    echo "<h3>".sprintf(__('Update to %s'), '0.72')."</h3>";
+    echo "<h3>" . sprintf(__('Update to %s'), '0.72') . "</h3>";
     displayMigrationMessage("072"); // Start
 
     if (!$DB->fieldExists("glpi_networking", "recursive", false)) {
@@ -67,25 +67,25 @@ function update0713to072()
 
     // Clean datetime fields
     $date_fields = ['glpi_docs.date_mod',
-                         'glpi_event_log.date',
-                         'glpi_monitors.date_mod',
-                         'glpi_networking.date_mod',
-                         'glpi_ocs_link.last_update',
-                         'glpi_peripherals.date_mod',
-                         'glpi_phones.date_mod',
-                         'glpi_printers.date_mod',
-                         'glpi_reservation_resa.begin',
-                         'glpi_reservation_resa.end',
-                         'glpi_tracking.closedate',
-                         'glpi_tracking_planning.begin',
-                         'glpi_tracking_planning.end',
-                         'glpi_users.last_login',
-                         'glpi_users.date_mod'];
+        'glpi_event_log.date',
+        'glpi_monitors.date_mod',
+        'glpi_networking.date_mod',
+        'glpi_ocs_link.last_update',
+        'glpi_peripherals.date_mod',
+        'glpi_phones.date_mod',
+        'glpi_printers.date_mod',
+        'glpi_reservation_resa.begin',
+        'glpi_reservation_resa.end',
+        'glpi_tracking.closedate',
+        'glpi_tracking_planning.begin',
+        'glpi_tracking_planning.end',
+        'glpi_users.last_login',
+        'glpi_users.date_mod'];
 
     foreach ($date_fields as $tablefield) {
         displayMigrationMessage("072", "Date format (1) ($tablefield)");
 
-        list($table, $field) = explode('.', $tablefield);
+        [$table, $field] = explode('.', $tablefield);
         if ($DB->fieldExists($table, $field, false)) {
             $query = "ALTER TABLE `$table`
                    CHANGE `$field` `$field` DATETIME NULL";
@@ -112,7 +112,7 @@ function update0713to072()
     foreach ($date_fields as $tablefield) {
         displayMigrationMessage("072", "Date format (2) ($tablefield)");
 
-        list($table, $field) = explode('.', $tablefield);
+        [$table, $field] = explode('.', $tablefield);
         if ($DB->fieldExists($table, $field, false)) {
             $query = "UPDATE `$table`
                    SET `$field` = NULL
@@ -123,10 +123,10 @@ function update0713to072()
 
     // Clean date fields
     $date_fields = ['glpi_infocoms.buy_date',
-                         'glpi_infocoms.use_date'];
+        'glpi_infocoms.use_date'];
 
     foreach ($date_fields as $tablefield) {
-        list($table, $field) = explode('.', $tablefield);
+        [$table, $field] = explode('.', $tablefield);
         if ($DB->fieldExists($table, $field, false)) {
             $query = "ALTER TABLE `$table`
                    CHANGE `$field` `$field` DATE NULL";
@@ -143,7 +143,7 @@ function update0713to072()
     $date_fields[] = "glpi_licenses.expire";
 
     foreach ($date_fields as $tablefield) {
-        list($table, $field) = explode('.', $tablefield);
+        [$table, $field] = explode('.', $tablefield);
         if ($DB->fieldExists($table, $field, false)) {
             $query = "UPDATE `$table`
                    SET `$field` = NULL
@@ -248,7 +248,7 @@ function update0713to072()
         // Update Infocoms to device_type 9999
         $query = "UPDATE `glpi_infocoms`
                 SET `device_type` = '9999'
-                WHERE `device_type` = '".SOFTWARELICENSE_TYPE."'";
+                WHERE `device_type` = '" . SOFTWARELICENSE_TYPE . "'";
         $DB->queryOrDie($query, "0.72 prepare infocoms for update softwares");
 
         // Foreach software
@@ -284,7 +284,7 @@ function update0713to072()
                                LEFT JOIN `glpi_infocoms`
                                   ON (`glpi_infocoms`.`device_type` = '9999'
                                       AND `glpi_infocoms`.`FK_device` = `glpi_licenses`.`ID`)
-                               WHERE `sID` = '".$soft['ID']."'
+                               WHERE `sID` = '" . $soft['ID'] . "'
                                ORDER BY `ID`";
 
                 if ($result_vers = $DB->query($query_versions)) {
@@ -296,7 +296,7 @@ function update0713to072()
                             // init : count installations
                             $query_count = "SELECT COUNT(*)
                                      FROM `glpi_inst_software`
-                                     WHERE `vID` = '".$vers['ID']."'";
+                                     WHERE `vID` = '" . $vers['ID'] . "'";
 
                             if ($result_count = $DB->query($query_count)) {
                                 $install_count = $DB->result($result_count, 0, 0);
@@ -306,8 +306,8 @@ function update0713to072()
                             // 1 - Is version already exists ?
                             $query_search_version = "SELECT *
                                               FROM `glpi_softwareversions`
-                                              WHERE `sID` = '".$soft['ID']."'
-                                                    AND `name` = '".$vers['version']."'";
+                                              WHERE `sID` = '" . $soft['ID'] . "'
+                                                    AND `name` = '" . $vers['version'] . "'";
 
                             if ($result_searchvers = $DB->query($query_search_version)) {
                                 // Version already exists : update inst_software
@@ -316,30 +316,30 @@ function update0713to072()
                                     $vers_ID    = $found_vers['ID'];
 
                                     $query = "UPDATE `glpi_inst_software`
-                                     SET `vID` = '".$found_vers['ID']."'
-                                     WHERE `vID` = '".$vers['ID']."'";
+                                     SET `vID` = '" . $found_vers['ID'] . "'
+                                     WHERE `vID` = '" . $vers['ID'] . "'";
                                     $DB->query($query);
 
                                 } else {
                                     // Re Create new entry
                                     $query = "INSERT INTO `glpi_softwareversions`
-                                            SELECT `ID`, `sID`, '".$soft["state"]."', `version`,''
+                                            SELECT `ID`, `sID`, '" . $soft["state"] . "', `version`,''
                                             FROM `glpi_licenses`
-                                            WHERE `ID` = '".$vers_ID."'";
+                                            WHERE `ID` = '" . $vers_ID . "'";
                                     $DB->query($query);
 
                                     // Transfert History for this version
-                                    $findstr = " (v. ".$vers['version'].")"; // Log event format in 0.71
+                                    $findstr = " (v. " . $vers['version'] . ")"; // Log event format in 0.71
                                     $findlen = Toolbox::strlen($findstr);
 
                                     $DB->query("UPDATE `glpi_history`
-                                      SET `FK_glpi_device` = '".$vers_ID."',
-                                          `device_type` = '". SOFTWAREVERSION_TYPE."'
-                                      WHERE `FK_glpi_device` = '".$soft['ID']."'
-                                            AND `device_type` = '". SOFTWARE_TYPE."'
-                                            AND ((`linked_action` = '".Log::HISTORY_INSTALL_SOFTWARE."'
+                                      SET `FK_glpi_device` = '" . $vers_ID . "',
+                                          `device_type` = '" . SOFTWAREVERSION_TYPE . "'
+                                      WHERE `FK_glpi_device` = '" . $soft['ID'] . "'
+                                            AND `device_type` = '" . SOFTWARE_TYPE . "'
+                                            AND ((`linked_action` = '" . Log::HISTORY_INSTALL_SOFTWARE . "'
                                                    AND RIGHT(new_value, $findlen) = '$findstr')
-                                                 OR (`linked_action` = '".Log::HISTORY_UNINSTALL_SOFTWARE."'
+                                                 OR (`linked_action` = '" . Log::HISTORY_UNINSTALL_SOFTWARE . "'
                                                       AND RIGHT(old_value, $findlen) = '$findstr'))");
                                 }
                                 $DB->freeResult($result_searchvers);
@@ -360,14 +360,14 @@ function update0713to072()
                                     $query_search_lic = "SELECT `ID`
                                                 FROM `glpi_softwarelicenses`
                                                 WHERE `buy_version` = '$vers_ID'
-                                                      AND `serial` = '".$vers['serial']."'
-                                                      AND `FK_computers` = '".$vers['oem_computer']."'
-                                                      AND `comments` = '".$vers['comments']."'";
+                                                      AND `serial` = '" . $vers['serial'] . "'
+                                                      AND `FK_computers` = '" . $vers['oem_computer'] . "'
+                                                      AND `comments` = '" . $vers['comments'] . "'";
 
                                     if (empty($vers['expire'])) {
                                         $query .= " AND `expire` IS NULL";
                                     } else {
-                                        $query .= " AND `expire` = '".$vers['expire']."'";
+                                        $query .= " AND `expire` = '" . $vers['expire'] . "'";
                                     }
 
                                     if ($result_searchlic = $DB->query($query_search_lic)) {
@@ -392,7 +392,7 @@ function update0713to072()
                                     if (empty($vers['expire'])) {
                                         $vers['expire'] = 'NULL';
                                     } else {
-                                        $vers['expire'] = "'".$vers['expire']."'";
+                                        $vers['expire'] = "'" . $vers['expire'] . "'";
                                     }
 
                                     $query = "INSERT INTO `glpi_softwarelicenses`
@@ -402,22 +402,22 @@ function update0713to072()
                                              `use_version`, `expire`,
                                              `FK_computers` ,
                                              `comments`)
-                                     VALUES ('".$soft['ID']."', '".$soft["FK_entities"]."',
-                                             $install_count, 0, '".$vers['serial']."',
-                                             '".addslashes($vers['serial'])."' , '$vers_ID',
-                                             '$vers_ID', ".$vers['expire'].",
-                                             '".$vers['oem_computer']."',
-                                             '".addslashes($vers['comments'])."')";
+                                     VALUES ('" . $soft['ID'] . "', '" . $soft["FK_entities"] . "',
+                                             $install_count, 0, '" . $vers['serial'] . "',
+                                             '" . addslashes($vers['serial']) . "' , '$vers_ID',
+                                             '$vers_ID', " . $vers['expire'] . ",
+                                             '" . $vers['oem_computer'] . "',
+                                             '" . addslashes($vers['comments']) . "')";
 
                                     if ($DB->query($query)) {
                                         $lic_ID = $DB->insertId();
                                         // Update infocoms link
                                         if (!empty($vers['infocomID'])) {
                                             $query = "UPDATE `glpi_infocoms`
-                                           SET `device_type` = '".SOFTWARELICENSE_TYPE."',
+                                           SET `device_type` = '" . SOFTWARELICENSE_TYPE . "',
                                                `FK_device` = '$lic_ID'
                                            WHERE `device_type` = '9999'
-                                                 AND `FK_device` = '".$vers['ID']."'";
+                                                 AND `FK_device` = '" . $vers['ID'] . "'";
                                             $DB->query($query);
                                         }
                                     }
@@ -431,10 +431,10 @@ function update0713to072()
                 // Clean History for this software (old versions no more installed)
                 $DB->query("DELETE
                         FROM `glpi_history`
-                        WHERE `FK_glpi_device` = '".$soft['ID']."'
-                              AND `device_type` = '". SOFTWARE_TYPE."'
-                              AND (`linked_action` = '".Log::HISTORY_INSTALL_SOFTWARE."'
-                                   OR `linked_action` = '".Log::HISTORY_UNINSTALL_SOFTWARE."')");
+                        WHERE `FK_glpi_device` = '" . $soft['ID'] . "'
+                              AND `device_type` = '" . SOFTWARE_TYPE . "'
+                              AND (`linked_action` = '" . Log::HISTORY_INSTALL_SOFTWARE . "'
+                                   OR `linked_action` = '" . Log::HISTORY_UNINSTALL_SOFTWARE . "')");
             } // For
         } // Each Software
 
@@ -444,7 +444,7 @@ function update0713to072()
         // Drop alerts on licenses : 2 = Alert::END
         $query = "DELETE
                 FROM `glpi_alerts`
-                WHERE `glpi_alerts`.`device_type` = '".SOFTWARELICENSE_TYPE."'
+                WHERE `glpi_alerts`.`device_type` = '" . SOFTWARELICENSE_TYPE . "'
                       AND `glpi_alerts`.`type` = '2'";
         $DB->queryOrDie($query, "0.72 clean alerts for licenses infocoms");
 
@@ -453,49 +453,49 @@ function update0713to072()
     // Change software search pref
     $query = "SELECT DISTINCT `FK_users`
              FROM `glpi_display`
-             WHERE `type` = '".SOFTWARE_TYPE."'";
+             WHERE `type` = '" . SOFTWARE_TYPE . "'";
 
     if ($result = $DB->query($query)) {
         if ($DB->numrows($result) > 0) {
             while ($data = $DB->fetchAssoc($result)) {
                 $query = "SELECT max(`rank`)
                       FROM `glpi_display`
-                      WHERE `FK_users` = '".$data['FK_users']."'
-                            AND `type` = '".SOFTWARE_TYPE."'";
+                      WHERE `FK_users` = '" . $data['FK_users'] . "'
+                            AND `type` = '" . SOFTWARE_TYPE . "'";
                 $result  = $DB->query($query);
                 $rank    = $DB->result($result, 0, 0);
                 $rank++;
 
                 $query = "SELECT *
                       FROM `glpi_display`
-                      WHERE `FK_users` = '".$data['FK_users']."'
+                      WHERE `FK_users` = '" . $data['FK_users'] . "'
                             AND `num` = '72'
-                            AND `type` = '".SOFTWARE_TYPE."'";
+                            AND `type` = '" . SOFTWARE_TYPE . "'";
 
                 if ($result2 = $DB->query($query)) {
                     if ($DB->numrows($result2) == 0) {
                         $query = "INSERT INTO `glpi_display`
                                    (`type` ,`num` ,`rank` ,
                                     `FK_users`)
-                            VALUES ('".SOFTWARE_TYPE."', '72', '".$rank++."',
-                                    '".$data['FK_users']."')";
+                            VALUES ('" . SOFTWARE_TYPE . "', '72', '" . $rank++ . "',
+                                    '" . $data['FK_users'] . "')";
                         $DB->query($query);
                     }
                 }
 
                 $query = "SELECT *
                       FROM `glpi_display`
-                      WHERE `FK_users` = '".$data['FK_users']."'
+                      WHERE `FK_users` = '" . $data['FK_users'] . "'
                             AND `num` = '163'
-                            AND `type` = '".SOFTWARE_TYPE."'";
+                            AND `type` = '" . SOFTWARE_TYPE . "'";
 
                 if ($result2 = $DB->query($query)) {
                     if ($DB->numrows($result2) == 0) {
                         $query = "INSERT INTO `glpi_display`
                                    (`type` ,`num` ,`rank` ,
                                     `FK_users`)
-                            VALUES ('".SOFTWARE_TYPE."', '163', '".$rank++."',
-                                    '".$data['FK_users']."');";
+                            VALUES ('" . SOFTWARE_TYPE . "', '163', '" . $rank++ . "',
+                                    '" . $data['FK_users'] . "');";
                         $DB->query($query);
                     }
                 }
@@ -653,7 +653,7 @@ function update0713to072()
         $DB->queryOrDie($query, "0.72 create glpi_dropdown_filesystems table");
 
         $fstype = ['ext', 'ext2', 'ext3', 'ext4', 'FAT', 'FAT32', 'VFAT', 'HFS', 'HPFS', 'HTFS',
-                        'JFS', 'JFS2', 'NFS', 'NTFS', 'ReiserFS', 'SMBFS', 'UDF', 'UFS', 'XFS', 'ZFS'];
+            'JFS', 'JFS2', 'NFS', 'NTFS', 'ReiserFS', 'SMBFS', 'UDF', 'UFS', 'XFS', 'ZFS'];
         foreach ($fstype as $fs) {
             $query = "INSERT INTO `glpi_dropdown_filesystems`
                          (`name`)
@@ -734,7 +734,7 @@ function update0713to072()
                     if ($newID = update_importDropdown("glpi_dropdown_interface", $data['OLDNAME'])) {
                         $query2 = "UPDATE `glpi_device_gfxcard`
                              SET `FK_interface` = '$newID'
-                             WHERE `interface` = '".$data['OLDNAME']."'";
+                             WHERE `interface` = '" . $data['OLDNAME'] . "'";
                         $DB->queryOrDie($query2, "0.72 update glpi_device_gfxcard set new interface value");
                     }
                 }
@@ -1014,8 +1014,8 @@ function update0713to072()
 
         if ($DB->result($result, 0, "cpt") > 0) {
             echo "<div class='center spaced'>";
-            echo "<span class='red'>LDAP Criteria (AD)Distinguishedname must be removed.<br>".
-                  "As it is used in one or more LDAP rules, you need to remove it manually</span>";
+            echo "<span class='red'>LDAP Criteria (AD)Distinguishedname must be removed.<br>"
+                  . "As it is used in one or more LDAP rules, you need to remove it manually</span>";
             echo "</div><br>";
         } else {
             //Delete If (AD) DistinguishedName criteria

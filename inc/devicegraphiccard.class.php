@@ -52,47 +52,47 @@ class DeviceGraphicCard extends CommonDevice
         return array_merge(
             parent::getAdditionalFields(),
             [
-              __('Chipset') => [
-                 'name'  => 'chipset',
-                 'type'  => 'text',
-                 'value' => $this->fields['chipset'],
-              ],
-              __('Memory by default') => [
-                 'name'  => 'memory_default',
-                 'type'  => 'number',
-                 'value' => $this->fields['memory_default'],
-                 'after'  => __('Mio'),
-              ],
-              __('Interface') => [
-                 'name'  => 'interfacetypes_id',
-                 'type'  => 'select',
-                 'values' => getOptionForItems('InterfaceType'),
-                 'value' => $this->fields['interfacetypes_id'],
-                 'actions' => getItemActionButtons(['info', 'add'], 'InterfaceType'),
-              ],
-              _n('Model', 'Models', 1) => [
-                 'name'  => 'devicegraphiccardmodels_id',
-                 'type'  => 'select',
-                 'values' => getOptionForItems('DeviceGraphicCardModel'),
-                 'value' => $this->fields['devicegraphiccardmodels_id'],
-                 'actions' => getItemActionButtons(['info', 'add'], 'DeviceGraphicCardModel'),
-              ],
-              RegisteredID::getTypeName(Session::getPluralNumber()) => [
-                 'name'  => 'none',
-                 'type'  => 'multiSelect',
-                 'inputs' => [
-                    [
-                       'name' => 'current_registeredID_type',
-                       'type' => 'select',
-                       'values' => array_merge([ Dropdown::EMPTY_VALUE ], RegisteredID::getRegisteredIDTypes()),
+                __('Chipset') => [
+                    'name'  => 'chipset',
+                    'type'  => 'text',
+                    'value' => $this->fields['chipset'],
+                ],
+                __('Memory by default') => [
+                    'name'  => 'memory_default',
+                    'type'  => 'number',
+                    'value' => $this->fields['memory_default'],
+                    'after'  => __('Mio'),
+                ],
+                __('Interface') => [
+                    'name'  => 'interfacetypes_id',
+                    'type'  => 'select',
+                    'values' => getOptionForItems('InterfaceType'),
+                    'value' => $this->fields['interfacetypes_id'],
+                    'actions' => getItemActionButtons(['info', 'add'], 'InterfaceType'),
+                ],
+                _n('Model', 'Models', 1) => [
+                    'name'  => 'devicegraphiccardmodels_id',
+                    'type'  => 'select',
+                    'values' => getOptionForItems('DeviceGraphicCardModel'),
+                    'value' => $this->fields['devicegraphiccardmodels_id'],
+                    'actions' => getItemActionButtons(['info', 'add'], 'DeviceGraphicCardModel'),
+                ],
+                RegisteredID::getTypeName(Session::getPluralNumber()) => [
+                    'name'  => 'none',
+                    'type'  => 'multiSelect',
+                    'inputs' => [
+                        [
+                            'name' => 'current_registeredID_type',
+                            'type' => 'select',
+                            'values' => array_merge([ Dropdown::EMPTY_VALUE ], RegisteredID::getRegisteredIDTypes()),
+                        ],
+                        [
+                            'name' => 'current_registeredID',
+                            'type' => 'text',
+                            'size' => 30,
+                        ],
                     ],
-                    [
-                       'name' => 'current_registeredID',
-                       'type' => 'text',
-                       'size' => 30,
-                    ],
-                 ],
-                 'getInputAdd' => <<<JS
+                    'getInputAdd' => <<<JS
                   function () {
                      if (!$('input[name="current_registeredID"]').val()) {
                         return;
@@ -105,14 +105,14 @@ class DeviceGraphicCard extends CommonDevice
                      return {values, title};
                   }
                JS,
-                 'values' => getOptionsWithNameForItem(
-                     'RegisteredID',
-                     ['itemtype' => $this::class, 'items_id' => $this->getID()],
-                     ['_registeredID_type' => 'device_type', '_registeredID' => 'name']
-                 ),
-                 'col_lg' => 12,
-                 'col_md' => 12,
-              ],
+                    'values' => getOptionsWithNameForItem(
+                        'RegisteredID',
+                        ['itemtype' => $this::class, 'items_id' => $this->getID()],
+                        ['_registeredID_type' => 'device_type', '_registeredID' => 'name']
+                    ),
+                    'col_lg' => 12,
+                    'col_md' => 12,
+                ],
             ]
         );
     }
@@ -123,37 +123,37 @@ class DeviceGraphicCard extends CommonDevice
         $tab = parent::rawSearchOptions();
 
         $tab[] = [
-           'id'                 => '11',
-           'table'              => $this->getTable(),
-           'field'              => 'chipset',
-           'name'               => __('Chipset'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '11',
+            'table'              => $this->getTable(),
+            'field'              => 'chipset',
+            'name'               => __('Chipset'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '12',
-           'table'              => $this->getTable(),
-           'field'              => 'memory_default',
-           'name'               => __('Memory by default'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '12',
+            'table'              => $this->getTable(),
+            'field'              => 'memory_default',
+            'name'               => __('Memory by default'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '14',
-           'table'              => 'glpi_interfacetypes',
-           'field'              => 'name',
-           'name'               => __('Interface'),
-           'datatype'           => 'dropdown'
+            'id'                 => '14',
+            'table'              => 'glpi_interfacetypes',
+            'field'              => 'name',
+            'name'               => __('Interface'),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '15',
-           'table'              => 'glpi_devicegraphiccardmodels',
-           'field'              => 'name',
-           'name'               => _n('Model', 'Models', 1),
-           'datatype'           => 'dropdown'
+            'id'                 => '15',
+            'table'              => 'glpi_devicegraphiccardmodels',
+            'field'              => 'name',
+            'name'               => _n('Model', 'Models', 1),
+            'datatype'           => 'dropdown',
         ];
 
         return $tab;
@@ -248,8 +248,8 @@ class DeviceGraphicCard extends CommonDevice
     {
 
         return ['designation'       => 'equal',
-                     'manufacturers_id'  => 'equal',
-                     'interfacetypes_id' => 'equal'];
+            'manufacturers_id'  => 'equal',
+            'interfacetypes_id' => 'equal'];
     }
 
     public static function rawSearchOptionsToAdd($itemtype, $main_joinparams)
@@ -257,19 +257,19 @@ class DeviceGraphicCard extends CommonDevice
         $tab = [];
 
         $tab[] = [
-           'id'                 => '13',
-           'table'              => 'glpi_devicegraphiccards',
-           'field'              => 'designation',
-           'name'               => static::getTypeName(1),
-           'forcegroupby'       => true,
-           'massiveaction'      => false,
-           'datatype'           => 'string',
-           'joinparams'         => [
-              'beforejoin'         => [
-                 'table'              => 'glpi_items_devicegraphiccards',
-                 'joinparams'         => $main_joinparams
-              ]
-           ]
+            'id'                 => '13',
+            'table'              => 'glpi_devicegraphiccards',
+            'field'              => 'designation',
+            'name'               => static::getTypeName(1),
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
+            'datatype'           => 'string',
+            'joinparams'         => [
+                'beforejoin'         => [
+                    'table'              => 'glpi_items_devicegraphiccards',
+                    'joinparams'         => $main_joinparams,
+                ],
+            ],
         ];
 
         return $tab;

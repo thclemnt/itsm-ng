@@ -59,100 +59,100 @@ class ProjectTaskTemplate extends CommonDropdown
     {
 
         return [
-           _x('item', 'State') => [
-              'name'  => 'projectstates_id',
-              'type'  => 'select',
-              'values' => getOptionForItems('ProjectState'),
-              'value' => $this->fields['projectstates_id'],
-              'actions' => getItemActionButtons(['info', 'add'], 'ProjectState')
-           ],
-           _n('Type', 'Types', 1) => [
-              'name'  => 'projecttasktypes_id',
-              'type'  => 'select',
-              'values' => getOptionForItems('ProjectTaskType'),
-              'value' => $this->fields['projecttasktypes_id'],
-              'actions' => getItemActionButtons(['info', 'add'], 'ProjectTaskType')
-           ],
-           __('As child of') => [
-              'name'  => 'projecttasks_id',
-              'type'  => 'select',
-              'itemtype' => ProjectTask::class,
-              'condition' => ['AND' => ['NOT' => ['id' => $this->getID()], 'is_template' => 1]],
-              'value' => $this->fields['projecttasks_id'],
-              'actions' => getItemActionButtons(['info', 'add'], 'ProjectTask')
-           ],
-           __('Percent done') => [
-              'name'  => 'percent_done',
-              'type'  => 'number',
-              'min' => 0,
-              'max' => 100,
-              'step' => 1,
-              'value' => $this->fields['percent_done'],
-              'after' => '%'
-           ],
-           __('Milestone') => [
-              'name'  => 'is_milestone',
-              'type'  => 'checkbox',
-              'value' => $this->fields['is_milestone'],
-           ],
-           __('Planned start date') => [
-              'name'  => 'plan_start_date',
-              'type'  => 'datetime-local',
-              'value' => $this->fields['plan_start_date'],
-              'col_lg' => 6
-           ],
-           __('Real start date') => [
-              'name'  => 'real_start_date',
-              'type'  => 'datetime-local',
-              'value' => $this->fields['real_start_date'],
-              'col_lg' => 6
-           ],
-           __('Planned end date') => [
-              'name'  => 'plan_end_date',
-              'type' => 'datetime-local',
-              'value' => $this->fields['plan_end_date'],
-              'col_lg' => 6
-           ],
-           __('Real end date') => [
-              'name'  => 'real_end_date',
-              'type'  => 'datetime-local',
-              'value' => $this->fields['real_end_date'],
-              'col_lg' => 6
-           ],
-           __('Planned duration') => [
-              'name'  => 'planned_duration',
-              'type'  => 'select',
-              'values' => [Dropdown::EMPTY_VALUE] + Timezone::GetTimeStamp([
-                 'min'   => 0,
-                 'max'   => 100 * HOUR_TIMESTAMP,
-                 'step'  => HOUR_TIMESTAMP,
-                 'addfirstminutes' => true,
-                 'inhours'         => true
-              ]),
-              'value' => $this->fields['planned_duration'],
-              'col_lg' => 6
-           ],
-           __('Effective duration') => [
-              'name'  => 'effective_duration',
-              'type'  => 'select',
-              'values' => [],
-              'values' => [Dropdown::EMPTY_VALUE] + Timezone::GetTimeStamp([
-                 'min'   => 0,
-                 'max'   => 100 * HOUR_TIMESTAMP,
-                 'step'  => HOUR_TIMESTAMP,
-                 'addfirstminutes' => true,
-                 'inhours'         => true
-              ]),
-              'value' => $this->fields['effective_duration'],
-              'col_lg' => 6
-           ],
-           __('Description') => [
-              'name'  => 'description',
-              'type'  => 'richtextarea',
-              'value' => $this->fields['description'],
-              'col_lg' => 12,
-              'col_md' => 12,
-           ],
+            _x('item', 'State') => [
+                'name'  => 'projectstates_id',
+                'type'  => 'select',
+                'values' => getOptionForItems('ProjectState'),
+                'value' => $this->fields['projectstates_id'],
+                'actions' => getItemActionButtons(['info', 'add'], 'ProjectState'),
+            ],
+            _n('Type', 'Types', 1) => [
+                'name'  => 'projecttasktypes_id',
+                'type'  => 'select',
+                'values' => getOptionForItems('ProjectTaskType'),
+                'value' => $this->fields['projecttasktypes_id'],
+                'actions' => getItemActionButtons(['info', 'add'], 'ProjectTaskType'),
+            ],
+            __('As child of') => [
+                'name'  => 'projecttasks_id',
+                'type'  => 'select',
+                'itemtype' => ProjectTask::class,
+                'condition' => ['AND' => ['NOT' => ['id' => $this->getID()], 'is_template' => 1]],
+                'value' => $this->fields['projecttasks_id'],
+                'actions' => getItemActionButtons(['info', 'add'], 'ProjectTask'),
+            ],
+            __('Percent done') => [
+                'name'  => 'percent_done',
+                'type'  => 'number',
+                'min' => 0,
+                'max' => 100,
+                'step' => 1,
+                'value' => $this->fields['percent_done'],
+                'after' => '%',
+            ],
+            __('Milestone') => [
+                'name'  => 'is_milestone',
+                'type'  => 'checkbox',
+                'value' => $this->fields['is_milestone'],
+            ],
+            __('Planned start date') => [
+                'name'  => 'plan_start_date',
+                'type'  => 'datetime-local',
+                'value' => $this->fields['plan_start_date'],
+                'col_lg' => 6,
+            ],
+            __('Real start date') => [
+                'name'  => 'real_start_date',
+                'type'  => 'datetime-local',
+                'value' => $this->fields['real_start_date'],
+                'col_lg' => 6,
+            ],
+            __('Planned end date') => [
+                'name'  => 'plan_end_date',
+                'type' => 'datetime-local',
+                'value' => $this->fields['plan_end_date'],
+                'col_lg' => 6,
+            ],
+            __('Real end date') => [
+                'name'  => 'real_end_date',
+                'type'  => 'datetime-local',
+                'value' => $this->fields['real_end_date'],
+                'col_lg' => 6,
+            ],
+            __('Planned duration') => [
+                'name'  => 'planned_duration',
+                'type'  => 'select',
+                'values' => [Dropdown::EMPTY_VALUE] + Timezone::GetTimeStamp([
+                    'min'   => 0,
+                    'max'   => 100 * HOUR_TIMESTAMP,
+                    'step'  => HOUR_TIMESTAMP,
+                    'addfirstminutes' => true,
+                    'inhours'         => true,
+                ]),
+                'value' => $this->fields['planned_duration'],
+                'col_lg' => 6,
+            ],
+            __('Effective duration') => [
+                'name'  => 'effective_duration',
+                'type'  => 'select',
+                'values' => [],
+                'values' => [Dropdown::EMPTY_VALUE] + Timezone::GetTimeStamp([
+                    'min'   => 0,
+                    'max'   => 100 * HOUR_TIMESTAMP,
+                    'step'  => HOUR_TIMESTAMP,
+                    'addfirstminutes' => true,
+                    'inhours'         => true,
+                ]),
+                'value' => $this->fields['effective_duration'],
+                'col_lg' => 6,
+            ],
+            __('Description') => [
+                'name'  => 'description',
+                'type'  => 'richtextarea',
+                'value' => $this->fields['description'],
+                'col_lg' => 12,
+                'col_md' => 12,
+            ],
         ];
     }
 
@@ -162,99 +162,99 @@ class ProjectTaskTemplate extends CommonDropdown
         $tab = parent::rawSearchOptions();
 
         $tab[] = [
-           'id'       => '4',
-           'name'     => _x('item', 'State'),
-           'field'    => 'name',
-           'table'    => 'glpi_projectstates',
-           'datatype' => 'dropdown',
+            'id'       => '4',
+            'name'     => _x('item', 'State'),
+            'field'    => 'name',
+            'table'    => 'glpi_projectstates',
+            'datatype' => 'dropdown',
         ];
 
         $tab[] = [
-           'id'       => '5',
-           'name'     => _n('Type', 'Types', 1),
-           'field'    => 'name',
-           'table'    => 'glpi_projecttasktypes',
-           'datatype' => 'dropdown',
+            'id'       => '5',
+            'name'     => _n('Type', 'Types', 1),
+            'field'    => 'name',
+            'table'    => 'glpi_projecttasktypes',
+            'datatype' => 'dropdown',
         ];
 
         $tab[] = [
-           'id'       => '6',
-           'name'     => __('As child of'),
-           'field'    => 'name',
-           'table'    => 'glpi_projects',
-           'datatype' => 'itemlink',
+            'id'       => '6',
+            'name'     => __('As child of'),
+            'field'    => 'name',
+            'table'    => 'glpi_projects',
+            'datatype' => 'itemlink',
         ];
 
         $tab[] = [
-           'id'       => '7',
-           'name'     => __('Percent done'),
-           'field'    => 'percent_done',
-           'table'    => $this->getTable(),
-           'datatype' => 'percent',
+            'id'       => '7',
+            'name'     => __('Percent done'),
+            'field'    => 'percent_done',
+            'table'    => $this->getTable(),
+            'datatype' => 'percent',
         ];
 
         $tab[] = [
-           'id'       => '8',
-           'name'     => __('Milestone'),
-           'field'    => 'is_milestone',
-           'table'    => $this->getTable(),
-           'datatype' => 'bool',
+            'id'       => '8',
+            'name'     => __('Milestone'),
+            'field'    => 'is_milestone',
+            'table'    => $this->getTable(),
+            'datatype' => 'bool',
         ];
 
         $tab[] = [
-           'id'       => '9',
-           'name'     => __('Planned start date'),
-           'field'    => 'plan_start_date',
-           'table'    => $this->getTable(),
-           'datatype' => 'datetime',
+            'id'       => '9',
+            'name'     => __('Planned start date'),
+            'field'    => 'plan_start_date',
+            'table'    => $this->getTable(),
+            'datatype' => 'datetime',
         ];
 
         $tab[] = [
-           'id'       => '10',
-           'name'     => __('Real start date'),
-           'field'    => 'real_start_date',
-           'table'    => $this->getTable(),
-           'datatype' => 'datetime',
+            'id'       => '10',
+            'name'     => __('Real start date'),
+            'field'    => 'real_start_date',
+            'table'    => $this->getTable(),
+            'datatype' => 'datetime',
         ];
 
         $tab[] = [
-           'id'       => '11',
-           'name'     => __('Planned end date'),
-           'field'    => 'plan_end_date',
-           'table'    => $this->getTable(),
-           'datatype' => 'datetime',
+            'id'       => '11',
+            'name'     => __('Planned end date'),
+            'field'    => 'plan_end_date',
+            'table'    => $this->getTable(),
+            'datatype' => 'datetime',
         ];
 
         $tab[] = [
-           'id'       => '12',
-           'name'     => __('Real end date'),
-           'field'    => 'real_end_date',
-           'table'    => $this->getTable(),
-           'datatype' => 'datetime',
+            'id'       => '12',
+            'name'     => __('Real end date'),
+            'field'    => 'real_end_date',
+            'table'    => $this->getTable(),
+            'datatype' => 'datetime',
         ];
 
         $tab[] = [
-           'id'       => '13',
-           'name'     => __('Planned duration'),
-           'field'    => 'planned_duration',
-           'table'    => $this->getTable(),
-           'datatype' => 'actiontime',
+            'id'       => '13',
+            'name'     => __('Planned duration'),
+            'field'    => 'planned_duration',
+            'table'    => $this->getTable(),
+            'datatype' => 'actiontime',
         ];
 
         $tab[] = [
-           'id'       => '14',
-           'name'     => __('Effective duration'),
-           'field'    => 'effective_duration',
-           'table'    => $this->getTable(),
-           'datatype' => 'actiontime',
+            'id'       => '14',
+            'name'     => __('Effective duration'),
+            'field'    => 'effective_duration',
+            'table'    => $this->getTable(),
+            'datatype' => 'actiontime',
         ];
 
         $tab[] = [
-           'id'       => '15',
-           'name'     => __('Description'),
-           'field'    => 'description',
-           'table'    => $this->getTable(),
-           'datatype' => 'textarea',
+            'id'       => '15',
+            'name'     => __('Description'),
+            'field'    => 'description',
+            'table'    => $this->getTable(),
+            'datatype' => 'textarea',
         ];
 
         return $tab;
@@ -267,20 +267,20 @@ class ProjectTaskTemplate extends CommonDropdown
         switch ($field['type']) {
             case 'percent_done':
                 Dropdown::showNumber("percent_done", ['value' => $this->fields['percent_done'],
-                                                      'min'   => 0,
-                                                      'max'   => 100,
-                                                      'step'  => 5,
-                                                      'unit'  => '%']);
+                    'min'   => 0,
+                    'max'   => 100,
+                    'step'  => 5,
+                    'unit'  => '%']);
                 break;
             case 'actiontime':
                 Dropdown::showTimeStamp(
                     $field["name"],
                     ['min'             => 0,
-                                         'max'             => 100 * HOUR_TIMESTAMP,
-                                         'step'            => HOUR_TIMESTAMP,
-                                         'value'           => $this->fields[$field["name"]],
-                                         'addfirstminutes' => true,
-                                         'inhours'         => true]
+                        'max'             => 100 * HOUR_TIMESTAMP,
+                        'step'            => HOUR_TIMESTAMP,
+                        'value'           => $this->fields[$field["name"]],
+                        'addfirstminutes' => true,
+                        'inhours'         => true]
                 );
                 break;
         }

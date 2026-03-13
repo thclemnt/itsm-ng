@@ -92,7 +92,7 @@ class CartridgeItem_PrinterModel extends CommonDBRelation
      *
      * @param $item   CartridgeItem object
      *
-     * @return boolean|void
+     * @return bool|void
     **/
     public static function showForCartridgeItem(CartridgeItem $item)
     {
@@ -120,35 +120,35 @@ class CartridgeItem_PrinterModel extends CommonDBRelation
                 unset($options[$cartridge]);
             };
             $form = [
-               'action' => Toolbox::getItemTypeFormURL(__CLASS__),
-               'buttons' => [
-                  [
-                     'type' => 'submit',
-                     'name' => 'add',
-                     'value' => _sx('button', 'Add an item'),
-                     'class' => 'btn btn-secondary'
-                  ]
-               ],
-               'content' => [
-                  __('Add a compatible printer model') => [
-                     'visible' => true,
-                     'inputs' => [
-                        [
-                           'type' => 'hidden',
-                           'name' => 'cartridgeitems_id',
-                           'value' => $instID
+                'action' => Toolbox::getItemTypeFormURL(__CLASS__),
+                'buttons' => [
+                    [
+                        'type' => 'submit',
+                        'name' => 'add',
+                        'value' => _sx('button', 'Add an item'),
+                        'class' => 'btn btn-secondary',
+                    ],
+                ],
+                'content' => [
+                    __('Add a compatible printer model') => [
+                        'visible' => true,
+                        'inputs' => [
+                            [
+                                'type' => 'hidden',
+                                'name' => 'cartridgeitems_id',
+                                'value' => $instID,
+                            ],
+                            '' => [
+                                'type' => 'select',
+                                'name' => 'printermodels_id',
+                                'values' => $options,
+                                'col_lg' => 12,
+                                'col_md' => 12,
+                                'actions' => getItemActionButtons(['info', 'add'], PrinterModel::class),
+                            ],
                         ],
-                        '' => [
-                           'type' => 'select',
-                           'name' => 'printermodels_id',
-                           'values' => $options,
-                           'col_lg' => 12,
-                           'col_md' => 12,
-                           'actions' => getItemActionButtons(['info', 'add'], PrinterModel::class)
-                        ],
-                     ]
-                  ]
-               ]
+                    ],
+                ],
             ];
             renderTwigForm($form);
         }
@@ -156,12 +156,12 @@ class CartridgeItem_PrinterModel extends CommonDBRelation
         if ($number) {
             if ($canedit) {
                 $massiveactionparams = [
-                   'num_displayed' => min($_SESSION['glpilist_limit'], count($used)),
-                   'container'     => 'tableForCartidgeItemPrinterModel',
-                   'display_arrow' => false,
-                   'specific_actions' => [
-                      'MassiveAction:purge' => _x('button', 'Delete permanently the relation with selected elements'),
-                   ],
+                    'num_displayed' => min($_SESSION['glpilist_limit'], count($used)),
+                    'container'     => 'tableForCartidgeItemPrinterModel',
+                    'display_arrow' => false,
+                    'specific_actions' => [
+                        'MassiveAction:purge' => _x('button', 'Delete permanently the relation with selected elements'),
+                    ],
                 ];
                 Html::showMassiveActions($massiveactionparams);
             }
@@ -170,24 +170,24 @@ class CartridgeItem_PrinterModel extends CommonDBRelation
             $massive_action = [];
             foreach ($datas as $data) {
                 $opt = [
-                   'is_deleted' => 0,
-                   'criteria'   => [
-                      [
-                         'field'      => 40, // printer model
-                         'searchtype' => 'equals',
-                         'value'      => $data["id"],
-                      ]
-                   ]
+                    'is_deleted' => 0,
+                    'criteria'   => [
+                        [
+                            'field'      => 40, // printer model
+                            'searchtype' => 'equals',
+                            'value'      => $data["id"],
+                        ],
+                    ],
                 ];
                 $url = Printer::getSearchURL() . "?" . Toolbox::append_params($opt, '&amp;');
                 $values[] = ["<a href='" . $url . "'>" . $data["name"]];
                 $massive_action[] = sprintf('item[%s][%s]', self::class, $data['linkid']);
             }
             renderTwigTemplate('table.twig', [
-               'id' => 'tableForCartidgeItemPrinterModel',
-               'fields' => $fields,
-               'values' => $values,
-               'massive_action' => $massive_action,
+                'id' => 'tableForCartidgeItemPrinterModel',
+                'fields' => $fields,
+                'values' => $values,
+                'massive_action' => $massive_action,
             ]);
         }
     }

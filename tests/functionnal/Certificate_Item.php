@@ -49,67 +49,67 @@ class Certificate_Item extends DbTestCase
         $cert = new \Certificate();
 
         $input = [
-           'name'        => 'Test certificate',
-           'entities_id' => $root_entity_id,
+            'name'        => 'Test certificate',
+            'entities_id' => $root_entity_id,
         ];
-        $cid1 = (int)$cert->add($input);
+        $cid1 = (int) $cert->add($input);
         $this->integer($cid1)->isGreaterThan(0);
 
         $input = [
-           'name'        => 'Test certificate 2',
-           'entities_id' => $root_entity_id,
+            'name'        => 'Test certificate 2',
+            'entities_id' => $root_entity_id,
         ];
-        $cid2 = (int)$cert->add($input);
+        $cid2 = (int) $cert->add($input);
         $this->integer($cid2)->isGreaterThan(0);
 
         $input = [
-           'name'        => 'Test certificate 3',
-           'entities_id' => $root_entity_id,
+            'name'        => 'Test certificate 3',
+            'entities_id' => $root_entity_id,
         ];
-        $cid3 = (int)$cert->add($input);
+        $cid3 = (int) $cert->add($input);
         $this->integer($cid3)->isGreaterThan(0);
 
         $input = [
-           'name'        => 'Test certificate 4',
-           'entities_id' => $root_entity_id,
+            'name'        => 'Test certificate 4',
+            'entities_id' => $root_entity_id,
         ];
-        $cid4 = (int)$cert->add($input);
+        $cid4 = (int) $cert->add($input);
         $this->integer($cid4)->isGreaterThan(0);
 
         $computer = getItemByTypeName('Computer', '_test_pc01');
         $printer = getItemByTypeName('Printer', '_test_printer_all');
 
         $input = [
-           'certificates_id' => $cid1,
-           'itemtype'        => 'Computer',
-           'items_id'        => $computer->getID()
+            'certificates_id' => $cid1,
+            'itemtype'        => 'Computer',
+            'items_id'        => $computer->getID(),
         ];
         $this->integer(
-            (int)$this->testedInstance->add($input)
+            (int) $this->testedInstance->add($input)
         )->isGreaterThan(0);
 
         $input['certificates_id'] = $cid2;
         $this->integer(
-            (int)$this->testedInstance->add($input)
+            (int) $this->testedInstance->add($input)
         )->isGreaterThan(0);
 
         $input['certificates_id'] = $cid3;
         $this->integer(
-            (int)$this->testedInstance->add($input)
+            (int) $this->testedInstance->add($input)
         )->isGreaterThan(0);
 
         $input = [
-           'certificates_id' => $cid1,
-           'itemtype'        => 'Printer',
-           'items_id'        => $printer->getID()
+            'certificates_id' => $cid1,
+            'itemtype'        => 'Printer',
+            'items_id'        => $printer->getID(),
         ];
         $this->integer(
-            (int)$this->testedInstance->add($input)
+            (int) $this->testedInstance->add($input)
         )->isGreaterThan(0);
 
         $input['certificates_id'] = $cid4;
         $this->integer(
-            (int)$this->testedInstance->add($input)
+            (int) $this->testedInstance->add($input)
         )->isGreaterThan(0);
 
         $list_items = iterator_to_array($this->testedInstance->getListForItem($computer));
@@ -131,8 +131,8 @@ class Certificate_Item extends DbTestCase
 
         $list_types = iterator_to_array($this->testedInstance->getDistinctTypes($cid1));
         $expected = [
-           ['itemtype' => 'Computer'],
-           ['itemtype' => 'Printer']
+            ['itemtype' => 'Computer'],
+            ['itemtype' => 'Printer'],
         ];
         $this->array($list_types)->isIdenticalTo($expected);
 

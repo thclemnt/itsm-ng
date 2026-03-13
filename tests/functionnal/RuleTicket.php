@@ -34,7 +34,6 @@
 namespace tests\units;
 
 use CommonITILActor;
-use CommonITILValidation;
 use DbTestCase;
 use Group_User;
 use Ticket_User;
@@ -61,21 +60,21 @@ class RuleTicket extends DbTestCase
     public function testDefaultRuleExists()
     {
         $this->integer(
-            (int)countElementsInTable(
+            (int) countElementsInTable(
                 'glpi_rules',
                 [
-                 'name' => 'Ticket location from item',
-                 'is_active' => 0
-            ]
+                    'name' => 'Ticket location from item',
+                    'is_active' => 0,
+                ]
             )
         )->isIdenticalTo(1);
         $this->integer(
-            (int)countElementsInTable(
+            (int) countElementsInTable(
                 'glpi_rules',
                 [
-                 'name' => 'Ticket location from use',
-                 'is_active' => 1
-            ]
+                    'name' => 'Ticket location from use',
+                    'is_active' => 1,
+                ]
             )
         )->isIdenticalTo(0);
     }
@@ -90,23 +89,23 @@ class RuleTicket extends DbTestCase
         // test create ticket (trigger on title)
         $ticket = new \Ticket();
         $tickets_id = $ticket->add($ticket_input = [
-           'name'    => "test ticket, will trigger on rule (title)",
-           'content' => "test"
+            'name'    => "test ticket, will trigger on rule (title)",
+            'content' => "test",
         ]);
         $this->checkInput($ticket, $tickets_id, $ticket_input);
-        $this->integer((int)$ticket->getField('urgency'))->isEqualTo(5);
+        $this->integer((int) $ticket->getField('urgency'))->isEqualTo(5);
 
         // test create ticket (trigger on user assign)
         $ticket = new \Ticket();
         $tickets_id = $ticket->add($ticket_input = [
-           'name'             => "test ticket, will trigger on rule (user)",
-           'content'          => "test",
-           '_users_id_assign' => getItemByTypeName('User', "tech", true)
+            'name'             => "test ticket, will trigger on rule (user)",
+            'content'          => "test",
+            '_users_id_assign' => getItemByTypeName('User', "tech", true),
         ]);
         // _users_id_assign is stored in glpi_tickets_users table, so remove it
         unset($ticket_input['_users_id_assign']);
         $this->checkInput($ticket, $tickets_id, $ticket_input);
-        $this->integer((int)$ticket->getField('urgency'))->isEqualTo(5);
+        $this->integer((int) $ticket->getField('urgency'))->isEqualTo(5);
     }
 
     public function testTriggerUpdate()
@@ -122,44 +121,44 @@ class RuleTicket extends DbTestCase
         // test create ticket (for check triggering on title after update)
         $ticket = new \Ticket();
         $tickets_id = $ticket->add($ticket_input = [
-           'name'    => "test ticket, will not trigger on rule",
-           'content' => "test"
+            'name'    => "test ticket, will not trigger on rule",
+            'content' => "test",
         ]);
         $this->checkInput($ticket, $tickets_id, $ticket_input);
-        $this->integer((int)$ticket->getField('urgency'))->isEqualTo(3);
+        $this->integer((int) $ticket->getField('urgency'))->isEqualTo(3);
 
         // update ticket title and trigger rule on title updating
         $ticket->update([
-           'id'   => $tickets_id,
-           'name' => 'test ticket, will trigger on rule (title)'
+            'id'   => $tickets_id,
+            'name' => 'test ticket, will trigger on rule (title)',
         ]);
         $ticket->getFromDB($tickets_id);
-        $this->integer((int)$ticket->getField('urgency'))->isEqualTo(5);
+        $this->integer((int) $ticket->getField('urgency'))->isEqualTo(5);
 
         // test create ticket (for check triggering on actor after update)
         $ticket = new \Ticket();
         $tickets_id = $ticket->add($ticket_input = [
-           'name'    => "test ticket, will not trigger on rule (actor)",
-           'content' => "test"
+            'name'    => "test ticket, will not trigger on rule (actor)",
+            'content' => "test",
         ]);
         $this->checkInput($ticket, $tickets_id, $ticket_input);
-        $this->integer((int)$ticket->getField('urgency'))->isEqualTo(3);
+        $this->integer((int) $ticket->getField('urgency'))->isEqualTo(3);
 
         // update ticket title and trigger rule on actor addition
         $ticket->update([
-           'id'           => $tickets_id,
-           'content'      => "updated",
-           '_lgd'         => true,
-           '_itil_assign' => [
-              '_type'    => 'user',
-              'users_id' => $users_id
-           ]
+            'id'           => $tickets_id,
+            'content'      => "updated",
+            '_lgd'         => true,
+            '_itil_assign' => [
+                '_type'    => 'user',
+                'users_id' => $users_id,
+            ],
         ]);
         $ticket->getFromDB($tickets_id);
-        $ticket_user = new \Ticket_User();
+        $ticket_user = new Ticket_User();
         $actors = $ticket_user->getActors($tickets_id);
-        $this->integer((int)$actors[2][1]['users_id'])->isEqualTo($users_id);
-        $this->integer((int)$ticket->getField('urgency'))->isEqualTo(5);
+        $this->integer((int) $actors[2][1]['users_id'])->isEqualTo($users_id);
+        $this->integer((int) $ticket->getField('urgency'))->isEqualTo(5);
     }
 
     private function _createTestTriggerRule($condition)
@@ -169,33 +168,33 @@ class RuleTicket extends DbTestCase
         $ruleaction = new \RuleAction();
 
         $ruletid = $ruleticket->add($ruletinput = [
-           'name'         => "test rule add",
-           'match'        => 'OR',
-           'is_active'    => 1,
-           'sub_type'     => 'RuleTicket',
-           'condition'    => $condition,
-           'is_recursive' => 1
+            'name'         => "test rule add",
+            'match'        => 'OR',
+            'is_active'    => 1,
+            'sub_type'     => 'RuleTicket',
+            'condition'    => $condition,
+            'is_recursive' => 1,
         ]);
         $this->checkInput($ruleticket, $ruletid, $ruletinput);
         $crit_id = $rulecrit->add($crit_input = [
-           'rules_id'  => $ruletid,
-           'criteria'  => 'name',
-           'condition' => \Rule::PATTERN_CONTAIN,
-           'pattern'   => "trigger on rule (title)"
+            'rules_id'  => $ruletid,
+            'criteria'  => 'name',
+            'condition' => \Rule::PATTERN_CONTAIN,
+            'pattern'   => "trigger on rule (title)",
         ]);
         $this->checkInput($rulecrit, $crit_id, $crit_input);
         $crit_id = $rulecrit->add($crit_input = [
-           'rules_id'  => $ruletid,
-           'criteria'  => '_users_id_assign',
-           'condition' => \Rule::PATTERN_IS,
-           'pattern'   => getItemByTypeName('User', "tech", true)
+            'rules_id'  => $ruletid,
+            'criteria'  => '_users_id_assign',
+            'condition' => \Rule::PATTERN_IS,
+            'pattern'   => getItemByTypeName('User', "tech", true),
         ]);
         $this->checkInput($rulecrit, $crit_id, $crit_input);
         $act_id = $ruleaction->add($act_input = [
-           'rules_id'    => $ruletid,
-           'action_type' => 'assign',
-           'field'       => 'urgency',
-           'value'       => 5
+            'rules_id'    => $ruletid,
+            'action_type' => 'assign',
+            'field'       => 'urgency',
+            'value'       => 5,
         ]);
         $this->checkInput($ruleaction, $act_id, $act_input);
     }
@@ -213,49 +212,49 @@ class RuleTicket extends DbTestCase
         $ruleaction = new \RuleAction();
 
         $ruletid = $ruleticket->add($ruletinput = [
-           'name'         => 'test status criterion',
-           'match'        => 'AND',
-           'is_active'    => 1,
-           'sub_type'     => 'RuleTicket',
-           'condition'    => \RuleTicket::ONADD,
-           'is_recursive' => 1,
+            'name'         => 'test status criterion',
+            'match'        => 'AND',
+            'is_active'    => 1,
+            'sub_type'     => 'RuleTicket',
+            'condition'    => \RuleTicket::ONADD,
+            'is_recursive' => 1,
         ]);
         $this->checkInput($ruleticket, $ruletid, $ruletinput);
 
         $crit_id = $rulecrit->add($crit_input = [
-           'rules_id'  => $ruletid,
-           'criteria'  => 'status',
-           'condition' => \Rule::PATTERN_IS,
-           'pattern'   => \Ticket::INCOMING,
+            'rules_id'  => $ruletid,
+            'criteria'  => 'status',
+            'condition' => \Rule::PATTERN_IS,
+            'pattern'   => \Ticket::INCOMING,
         ]);
         $this->checkInput($rulecrit, $crit_id, $crit_input);
 
         $crit_id = $rulecrit->add($crit_input = [
-           'rules_id'  => $ruletid,
-           'criteria'  => '_users_id_assign',
-           'condition' => \Rule::PATTERN_IS,
-           'pattern'   => getItemByTypeName('User', 'tech', true)
+            'rules_id'  => $ruletid,
+            'criteria'  => '_users_id_assign',
+            'condition' => \Rule::PATTERN_IS,
+            'pattern'   => getItemByTypeName('User', 'tech', true),
         ]);
         $this->checkInput($rulecrit, $crit_id, $crit_input);
 
         $act_id = $ruleaction->add($act_input = [
-           'rules_id'    => $ruletid,
-           'action_type' => 'assign',
-           'field'       => 'status',
-           'value'       => \Ticket::WAITING,
+            'rules_id'    => $ruletid,
+            'action_type' => 'assign',
+            'field'       => 'status',
+            'value'       => \Ticket::WAITING,
         ]);
         $this->checkInput($ruleaction, $act_id, $act_input);
 
         // Check ticket that trigger rule on creation
         $ticket = new \Ticket();
         $tickets_id = $ticket->add($ticket_input = [
-           'name'             => 'change status to waiting if new and assigned to tech',
-           'content'          => 'test',
-           '_users_id_assign' => getItemByTypeName('User', 'tech', true)
+            'name'             => 'change status to waiting if new and assigned to tech',
+            'content'          => 'test',
+            '_users_id_assign' => getItemByTypeName('User', 'tech', true),
         ]);
         unset($ticket_input['_users_id_assign']); // _users_id_assign is stored in glpi_tickets_users table, so remove it
         $this->checkInput($ticket, $tickets_id, $ticket_input);
-        $this->integer((int)$ticket->getField('status'))->isEqualTo(\Ticket::WAITING);
+        $this->integer((int) $ticket->getField('status'))->isEqualTo(\Ticket::WAITING);
     }
 
     /**
@@ -271,50 +270,50 @@ class RuleTicket extends DbTestCase
         $ruleaction = new \RuleAction();
 
         $ruletid = $ruleticket->add($ruletinput = [
-           'name'         => 'test assign new actor and keep new status',
-           'match'        => 'OR',
-           'is_active'    => 1,
-           'sub_type'     => 'RuleTicket',
-           'condition'    => \RuleTicket::ONADD | \RuleTicket::ONUPDATE,
-           'is_recursive' => 1,
+            'name'         => 'test assign new actor and keep new status',
+            'match'        => 'OR',
+            'is_active'    => 1,
+            'sub_type'     => 'RuleTicket',
+            'condition'    => \RuleTicket::ONADD | \RuleTicket::ONUPDATE,
+            'is_recursive' => 1,
         ]);
         $this->checkInput($ruleticket, $ruletid, $ruletinput);
 
         $crit_id = $rulecrit->add($crit_input = [
-           'rules_id'  => $ruletid,
-           'criteria'  => 'name',
-           'condition' => \Rule::PATTERN_CONTAIN,
-           'pattern'   => 'assign to tech',
+            'rules_id'  => $ruletid,
+            'criteria'  => 'name',
+            'condition' => \Rule::PATTERN_CONTAIN,
+            'pattern'   => 'assign to tech',
         ]);
         $this->checkInput($rulecrit, $crit_id, $crit_input);
 
         $act_id = $ruleaction->add($act_input = [
-           'rules_id'    => $ruletid,
-           'action_type' => 'assign',
-           'field'       => '_users_id_assign',
-           'value'       => getItemByTypeName('User', 'tech', true),
+            'rules_id'    => $ruletid,
+            'action_type' => 'assign',
+            'field'       => '_users_id_assign',
+            'value'       => getItemByTypeName('User', 'tech', true),
         ]);
         $this->checkInput($ruleaction, $act_id, $act_input);
 
         $act_id = $ruleaction->add($act_input = [
-           'rules_id'    => $ruletid,
-           'action_type' => 'assign',
-           'field'       => 'status',
-           'value'       => \Ticket::INCOMING,
+            'rules_id'    => $ruletid,
+            'action_type' => 'assign',
+            'field'       => 'status',
+            'value'       => \Ticket::INCOMING,
         ]);
         $this->checkInput($ruleaction, $act_id, $act_input);
 
         // Check ticket that trigger rule on creation
         $ticket = new \Ticket();
         $tickets_id = $ticket->add($ticket_input = [
-           'name'    => 'assign to tech (on creation)',
-           'content' => 'test'
+            'name'    => 'assign to tech (on creation)',
+            'content' => 'test',
         ]);
         $this->checkInput($ticket, $tickets_id, $ticket_input);
-        $this->integer((int)$ticket->getField('status'))->isEqualTo(\Ticket::INCOMING);
+        $this->integer((int) $ticket->getField('status'))->isEqualTo(\Ticket::INCOMING);
         $this->integer(countElementsInTable(
-            \Ticket_User::getTable(),
-            ['tickets_id' => $tickets_id, 'type' => \CommonITILActor::ASSIGN]
+            Ticket_User::getTable(),
+            ['tickets_id' => $tickets_id, 'type' => CommonITILActor::ASSIGN]
         ))->isEqualTo(1);
 
         // Remove assign self as default tech from session
@@ -324,26 +323,26 @@ class RuleTicket extends DbTestCase
         // Check ticket that trigger rule on update
         $ticket = new \Ticket();
         $tickets_id = $ticket->add($ticket_input = [
-           'name'    => 'some ticket',
-           'content' => 'test'
+            'name'    => 'some ticket',
+            'content' => 'test',
         ]);
         $this->checkInput($ticket, $tickets_id, $ticket_input);
-        $this->integer((int)$ticket->getField('status'))->isEqualTo(\Ticket::INCOMING);
+        $this->integer((int) $ticket->getField('status'))->isEqualTo(\Ticket::INCOMING);
         $this->integer(countElementsInTable(
-            \Ticket_User::getTable(),
-            ['tickets_id' => $tickets_id, 'type' => \CommonITILActor::ASSIGN]
+            Ticket_User::getTable(),
+            ['tickets_id' => $tickets_id, 'type' => CommonITILActor::ASSIGN]
         ))->isEqualTo(0);
 
         $this->boolean($ticket->update([
-           'id'      => $tickets_id,
-           'name'    => 'assign to tech (on update)',
-           'content' => 'test'
+            'id'      => $tickets_id,
+            'name'    => 'assign to tech (on update)',
+            'content' => 'test',
         ]))->isTrue();
         $this->boolean($ticket->getFromDB($tickets_id))->isTrue();
-        $this->integer((int)$ticket->getField('status'))->isEqualTo(\Ticket::INCOMING);
+        $this->integer((int) $ticket->getField('status'))->isEqualTo(\Ticket::INCOMING);
         $this->integer(countElementsInTable(
-            \Ticket_User::getTable(),
-            ['tickets_id' => $tickets_id, 'type' => \CommonITILActor::ASSIGN]
+            Ticket_User::getTable(),
+            ['tickets_id' => $tickets_id, 'type' => CommonITILActor::ASSIGN]
         ))->isEqualTo(1);
 
         // Restore assign self as default tech in session
@@ -357,20 +356,20 @@ class RuleTicket extends DbTestCase
         // Create ITILCategory with code
         $ITILCategoryForAdd = new \ITILCategory();
         $ITILCategoryForAddId = $ITILCategoryForAdd->add($categoryinput = [
-           "name" => "ITIL Category",
-           "code" => "itil_category_for_add",
+            "name" => "ITIL Category",
+            "code" => "itil_category_for_add",
         ]);
 
-        $this->integer((int)$ITILCategoryForAddId)->isGreaterThan(0);
+        $this->integer((int) $ITILCategoryForAddId)->isGreaterThan(0);
 
         // Create ITILCategory with code
         $ITILCategoryForUpdate = new \ITILCategory();
         $ITILCategoryForUpdateId = $ITILCategoryForUpdate->add($categoryinput = [
-           "name" => "ITIL Category",
-           "code" => "itil_category_for_update",
+            "name" => "ITIL Category",
+            "code" => "itil_category_for_update",
         ]);
 
-        $this->integer((int)$ITILCategoryForUpdateId)->isGreaterThan(0);
+        $this->integer((int) $ITILCategoryForUpdateId)->isGreaterThan(0);
 
         // Create rule
         $ruleticket = new \RuleTicket();
@@ -378,49 +377,49 @@ class RuleTicket extends DbTestCase
         $ruleaction = new \RuleAction();
 
         $ruletid = $ruleticket->add($ruletinput = [
-           'name'         => 'test to assign ITILCategory',
-           'match'        => 'OR',
-           'is_active'    => 1,
-           'sub_type'     => 'RuleTicket',
-           'condition'    => \RuleTicket::ONADD | \RuleTicket::ONUPDATE,
-           'is_recursive' => 1,
+            'name'         => 'test to assign ITILCategory',
+            'match'        => 'OR',
+            'is_active'    => 1,
+            'sub_type'     => 'RuleTicket',
+            'condition'    => \RuleTicket::ONADD | \RuleTicket::ONUPDATE,
+            'is_recursive' => 1,
         ]);
         $this->checkInput($ruleticket, $ruletid, $ruletinput);
 
         $crit_id = $rulecrit->add($crit_input = [
-           'rules_id'  => $ruletid,
-           'criteria'  => 'content',
-           'condition' => \Rule::REGEX_MATCH,
-           'pattern'   => '/#(.*?)#/',
+            'rules_id'  => $ruletid,
+            'criteria'  => 'content',
+            'condition' => \Rule::REGEX_MATCH,
+            'pattern'   => '/#(.*?)#/',
         ]);
         $this->checkInput($rulecrit, $crit_id, $crit_input);
 
         $act_id = $ruleaction->add($act_input = [
-           'rules_id'    => $ruletid,
-           'action_type' => 'regex_result',
-           'field'       => '_affect_itilcategory_by_code',
-           'value'       => '#0',
+            'rules_id'    => $ruletid,
+            'action_type' => 'regex_result',
+            'field'       => '_affect_itilcategory_by_code',
+            'value'       => '#0',
         ]);
         $this->checkInput($ruleaction, $act_id, $act_input);
 
         // Check ticket that trigger rule on add
         $ticket = new \Ticket();
         $tickets_id = $ticket->add($ticket_input = [
-           'name'    => 'some ticket (on insert)',
-           'content' => 'some text #itil_category_for_add# some text'
+            'name'    => 'some ticket (on insert)',
+            'content' => 'some text #itil_category_for_add# some text',
         ]);
 
         $this->checkInput($ticket, $tickets_id, $ticket_input);
-        $this->integer((int)$ticket->getField('itilcategories_id'))->isEqualTo($ITILCategoryForAddId);
+        $this->integer((int) $ticket->getField('itilcategories_id'))->isEqualTo($ITILCategoryForAddId);
 
         $this->boolean($ticket->update($ticket_input = [
-           'id'      => $tickets_id,
-           'name'    => 'some ticket (on update)',
-           'content' => 'some text #itil_category_for_update# some text'
+            'id'      => $tickets_id,
+            'name'    => 'some ticket (on update)',
+            'content' => 'some text #itil_category_for_update# some text',
         ]))->isTrue();
 
         $this->checkInput($ticket, $tickets_id, $ticket_input);
-        $this->integer((int)$ticket->getField('itilcategories_id'))->isEqualTo($ITILCategoryForUpdateId);
+        $this->integer((int) $ticket->getField('itilcategories_id'))->isEqualTo($ITILCategoryForUpdateId);
 
     }
 
@@ -431,9 +430,9 @@ class RuleTicket extends DbTestCase
         // Create solution template
         $solutionTemplate = new \SolutionTemplate();
         $solutionTemplate_id = $solutionTemplate->add($solutionInput = [
-           'content' => Toolbox::addslashes_deep("content of solution template  white ' quote")
+            'content' => Toolbox::addslashes_deep("content of solution template  white ' quote"),
         ]);
-        $this->integer((int)$solutionTemplate_id)->isGreaterThan(0);
+        $this->integer((int) $solutionTemplate_id)->isGreaterThan(0);
 
         // Create rule
         $ruleticket = new \RuleTicket();
@@ -441,57 +440,57 @@ class RuleTicket extends DbTestCase
         $ruleaction = new \RuleAction();
 
         $ruletid = $ruleticket->add($ruletinput = [
-           'name'         => "test to assign ITILSolution",
-           'match'        => 'OR',
-           'is_active'    => 1,
-           'sub_type'     => 'RuleTicket',
-           'condition'    => \RuleTicket::ONUPDATE,
-           'is_recursive' => 1,
+            'name'         => "test to assign ITILSolution",
+            'match'        => 'OR',
+            'is_active'    => 1,
+            'sub_type'     => 'RuleTicket',
+            'condition'    => \RuleTicket::ONUPDATE,
+            'is_recursive' => 1,
         ]);
         $this->checkInput($ruleticket, $ruletid, $ruletinput);
 
         $crit_id = $rulecrit->add($crit_input = [
-           'rules_id'  => $ruletid,
-           'criteria'  => 'content',
-           'condition' => \Rule::REGEX_MATCH,
-           'pattern'   => '/(.*?)/',
+            'rules_id'  => $ruletid,
+            'criteria'  => 'content',
+            'condition' => \Rule::REGEX_MATCH,
+            'pattern'   => '/(.*?)/',
         ]);
         $this->checkInput($rulecrit, $crit_id, $crit_input);
 
         $act_id = $ruleaction->add($act_input = [
-           'rules_id'    => $ruletid,
-           'action_type' => 'assign',
-           'field'       => 'solution_template',
-           'value'       => $solutionTemplate_id,
+            'rules_id'    => $ruletid,
+            'action_type' => 'assign',
+            'field'       => 'solution_template',
+            'value'       => $solutionTemplate_id,
         ]);
         $this->checkInput($ruleaction, $act_id, $act_input);
 
         $ticket = new \Ticket();
         $tickets_id = $ticket->add($ticket_input = [
-           'name'    => 'some ticket',
-           'content' => 'some text some text'
+            'name'    => 'some ticket',
+            'content' => 'some text some text',
         ]);
 
         $this->checkInput($ticket, $tickets_id, $ticket_input);
-        $this->integer((int)$tickets_id)->isGreaterThan(0);
+        $this->integer((int) $tickets_id)->isGreaterThan(0);
 
         // update ticket content and trigger rule on content updating
         $ticket->update([
-           'id'   => $tickets_id,
-           'content' => 'test ticket, will trigger on rule (content)'
+            'id'   => $tickets_id,
+            'content' => 'test ticket, will trigger on rule (content)',
         ]);
 
         //load ITILSolution
         $itilSolution = new \ITILSolution();
         $this->boolean($itilSolution->getFromDBByCrit(['items_id'            => $tickets_id,
-                                                     'itemtype'              => 'Ticket',
-                                                     'content'               => Toolbox::addslashes_deep("content of solution template  white ' quote")]))->isTrue();
+            'itemtype'              => 'Ticket',
+            'content'               => Toolbox::addslashes_deep("content of solution template  white ' quote")]))->isTrue();
 
-        $this->integer((int)$itilSolution->getID())->isGreaterThan(0);
+        $this->integer((int) $itilSolution->getID())->isGreaterThan(0);
 
         //reload and check ticket status
         $ticket->getFromDB($tickets_id);
-        $this->integer((int)$ticket->getField('status'))->isEqualTo(\CommonITILObject::SOLVED);
+        $this->integer((int) $ticket->getField('status'))->isEqualTo(\CommonITILObject::SOLVED);
 
     }
 
@@ -502,16 +501,16 @@ class RuleTicket extends DbTestCase
         //create new group1
         $group1 = new \Group();
         $group_id1 = $group1->add($group_input1 = [
-           "name" => "group1",
-           "is_requester" => true
+            "name" => "group1",
+            "is_requester" => true,
         ]);
         $this->checkInput($group1, $group_id1, $group_input1);
 
         //create new group2
         $group2 = new \Group();
         $group_id2 = $group2->add($group_input2 = [
-           "name" => "group2",
-           "is_requester" => true
+            "name" => "group2",
+            "is_requester" => true,
         ]);
         $this->checkInput($group2, $group_id2, $group_input2);
 
@@ -521,67 +520,67 @@ class RuleTicket extends DbTestCase
         $ruleaction = new \RuleAction();
 
         $ruletid = $ruleticket->add($ruletinput = [
-           'name'         => 'test add group on add',
-           'match'        => 'AND',
-           'is_active'    => 1,
-           'sub_type'     => 'RuleTicket',
-           'condition'    => \RuleTicket::ONADD,
-           'is_recursive' => 1,
+            'name'         => 'test add group on add',
+            'match'        => 'AND',
+            'is_active'    => 1,
+            'sub_type'     => 'RuleTicket',
+            'condition'    => \RuleTicket::ONADD,
+            'is_recursive' => 1,
         ]);
         $this->checkInput($ruleticket, $ruletid, $ruletinput);
 
         //create criteria to check
         $crit_id = $rulecrit->add($crit_input = [
-           'rules_id'  => $ruletid,
-           'criteria'  => 'content',
-           'condition' => \Rule::PATTERN_EXISTS,
-           'pattern'   => 1,
+            'rules_id'  => $ruletid,
+            'criteria'  => 'content',
+            'condition' => \Rule::PATTERN_EXISTS,
+            'pattern'   => 1,
         ]);
         $this->checkInput($rulecrit, $crit_id, $crit_input);
 
         //create action to add group as group requester
         $action_id = $ruleaction->add($action_input = [
-           'rules_id'    => $ruletid,
-           'action_type' => 'add',
-           'field'       => '_groups_id_requester',
-           'value'       => $group_id1,
+            'rules_id'    => $ruletid,
+            'action_type' => 'add',
+            'field'       => '_groups_id_requester',
+            'value'       => $group_id1,
         ]);
         $this->checkInput($ruleaction, $action_id, $action_input);
 
         //create rule for assign
         $ruletid_assign = $ruleticket->add($ruletinput_assign = [
-           'name'         => 'test assign group on add',
-           'match'        => 'AND',
-           'is_active'    => 1,
-           'sub_type'     => 'RuleTicket',
-           'condition'    => \RuleTicket::ONADD,
-           'is_recursive' => 1,
+            'name'         => 'test assign group on add',
+            'match'        => 'AND',
+            'is_active'    => 1,
+            'sub_type'     => 'RuleTicket',
+            'condition'    => \RuleTicket::ONADD,
+            'is_recursive' => 1,
         ]);
         $this->checkInput($ruleticket, $ruletid_assign, $ruletinput_assign);
 
         //create criteria to check
         $crit_id_assign = $rulecrit->add($crit_input_assing = [
-           'rules_id'  => $ruletid_assign,
-           'criteria'  => 'content',
-           'condition' => \Rule::PATTERN_EXISTS,
-           'pattern'   => 1,
+            'rules_id'  => $ruletid_assign,
+            'criteria'  => 'content',
+            'condition' => \Rule::PATTERN_EXISTS,
+            'pattern'   => 1,
         ]);
         $this->checkInput($rulecrit, $crit_id_assign, $crit_input_assing);
 
         //create action to assign group as group requester
         $action_id_assign = $ruleaction->add($action_input_assign = [
-           'rules_id'    => $ruletid_assign,
-           'action_type' => 'assign',
-           'field'       => '_groups_id_requester',
-           'value'       => $group_id2,
+            'rules_id'    => $ruletid_assign,
+            'action_type' => 'assign',
+            'field'       => '_groups_id_requester',
+            'value'       => $group_id2,
         ]);
         $this->checkInput($ruleaction, $action_id_assign, $action_input_assign);
 
         // Create ticket
         $ticket = new \Ticket();
         $tickets_id = $ticket->add($ticket_input = [
-           'name'             => 'when assigning delete groups to add',
-           'content'          => 'test',
+            'name'             => 'when assigning delete groups to add',
+            'content'          => 'test',
         ]);
         $this->checkInput($ticket, $tickets_id, $ticket_input);
 
@@ -589,20 +588,20 @@ class RuleTicket extends DbTestCase
         $ticketGroup = new \Group_Ticket();
         $this->boolean(
             $ticketGroup->getFromDBByCrit([
-              'tickets_id'         => $tickets_id,
-              'groups_id'          => $group_id1,
-              'type'               => \CommonITILActor::REQUESTER
-         ])
+                'tickets_id'         => $tickets_id,
+                'groups_id'          => $group_id1,
+                'type'               => CommonITILActor::REQUESTER,
+            ])
         )->isFalse();
 
         //load TicketGroup2 (expected true)
         $ticketGroup = new \Group_Ticket();
         $this->boolean(
             $ticketGroup->getFromDBByCrit([
-              'tickets_id'         => $tickets_id,
-              'groups_id'          => $group_id2,
-              'type'               => \CommonITILActor::REQUESTER
-         ])
+                'tickets_id'         => $tickets_id,
+                'groups_id'          => $group_id2,
+                'type'               => CommonITILActor::REQUESTER,
+            ])
         )->isTrue();
     }
 
@@ -616,38 +615,38 @@ class RuleTicket extends DbTestCase
         $ruleaction = new \RuleAction();
 
         $ruletid = $ruleticket->add($ruletinput = [
-           'name'         => 'test group requester criterion',
-           'match'        => 'AND',
-           'is_active'    => 1,
-           'sub_type'     => 'RuleTicket',
-           'condition'    => \RuleTicket::ONADD,
-           'is_recursive' => 1,
+            'name'         => 'test group requester criterion',
+            'match'        => 'AND',
+            'is_active'    => 1,
+            'sub_type'     => 'RuleTicket',
+            'condition'    => \RuleTicket::ONADD,
+            'is_recursive' => 1,
         ]);
         $this->checkInput($ruleticket, $ruletid, $ruletinput);
 
         //create criteria to check if group requester already define
         $crit_id = $rulecrit->add($crit_input = [
-           'rules_id'  => $ruletid,
-           'criteria'  => '_groups_id_requester',
-           'condition' => \Rule::PATTERN_DOES_NOT_EXISTS,
-           'pattern'   => 1,
+            'rules_id'  => $ruletid,
+            'criteria'  => '_groups_id_requester',
+            'condition' => \Rule::PATTERN_DOES_NOT_EXISTS,
+            'pattern'   => 1,
         ]);
         $this->checkInput($rulecrit, $crit_id, $crit_input);
 
         //create action to put default user group as group requester
         $action_id = $ruleaction->add($action_input = [
-           'rules_id'    => $ruletid,
-           'action_type' => 'defaultfromuser',
-           'field'       => '_groups_id_requester',
-           'value'       => 1,
+            'rules_id'    => $ruletid,
+            'action_type' => 'defaultfromuser',
+            'field'       => '_groups_id_requester',
+            'value'       => 1,
         ]);
         $this->checkInput($ruleaction, $action_id, $action_input);
 
         //create new group
         $group = new \Group();
         $group_id = $group->add($group_input = [
-           "name" => "group1",
-           "is_requester" => true
+            "name" => "group1",
+            "is_requester" => true,
         ]);
         $this->checkInput($group, $group_id, $group_input);
 
@@ -658,8 +657,8 @@ class RuleTicket extends DbTestCase
         //add user to group
         $group_user = new Group_User();
         $group_user_id = $group_user->add($group_user_input = [
-           "groups_id" => $group_id,
-           "users_id"  => $user->fields['id']
+            "groups_id" => $group_id,
+            "users_id"  => $user->fields['id'],
         ]);
         $this->checkInput($group_user, $group_user_id, $group_user_input);
 
@@ -670,9 +669,9 @@ class RuleTicket extends DbTestCase
         // Check ticket that trigger rule on creation
         $ticket = new \Ticket();
         $tickets_id = $ticket->add($ticket_input = [
-           'name'             => 'Add group requester if requester have default group',
-           'content'          => 'test',
-           '_users_id_requester' => $user->fields['id']
+            'name'             => 'Add group requester if requester have default group',
+            'content'          => 'test',
+            '_users_id_requester' => $user->fields['id'],
         ]);
         unset($ticket_input['_users_id_requester']); // _users_id_requester is stored in glpi_tickets_users table, so remove it
         $this->checkInput($ticket, $tickets_id, $ticket_input);
@@ -681,10 +680,10 @@ class RuleTicket extends DbTestCase
         $ticketGroup = new \Group_Ticket();
         $this->boolean(
             $ticketGroup->getFromDBByCrit([
-              'tickets_id'         => $tickets_id,
-              'groups_id'          => $group_id,
-              'type'               => \CommonITILActor::REQUESTER
-         ])
+                'tickets_id'         => $tickets_id,
+                'groups_id'          => $group_id,
+                'type'               => CommonITILActor::REQUESTER,
+            ])
         )->isTrue();
     }
 
@@ -698,47 +697,47 @@ class RuleTicket extends DbTestCase
         $ruleaction = new \RuleAction();
 
         $ruletid = $ruleticket->add($ruletinput = [
-           'name'         => 'test group requester from user on update',
-           'match'        => 'AND',
-           'is_active'    => 1,
-           'sub_type'     => 'RuleTicket',
-           'condition'    => \RuleTicket::ONUPDATE,
-           'is_recursive' => 1,
+            'name'         => 'test group requester from user on update',
+            'match'        => 'AND',
+            'is_active'    => 1,
+            'sub_type'     => 'RuleTicket',
+            'condition'    => \RuleTicket::ONUPDATE,
+            'is_recursive' => 1,
         ]);
         $this->checkInput($ruleticket, $ruletid, $ruletinput);
 
         //create criteria to check an update
         $crit_id = $rulecrit->add($crit_input = [
-           'rules_id'  => $ruletid,
-           'criteria'  => 'content',
-           'condition' => \Rule::PATTERN_EXISTS,
-           'pattern'   => 1,
+            'rules_id'  => $ruletid,
+            'criteria'  => 'content',
+            'condition' => \Rule::PATTERN_EXISTS,
+            'pattern'   => 1,
         ]);
         $this->checkInput($rulecrit, $crit_id, $crit_input);
 
         //create action to put default user group as group requester
         $action_id = $ruleaction->add($action_input = [
-           'rules_id'    => $ruletid,
-           'action_type' => 'defaultfromuser',
-           'field'       => '_groups_id_requester',
-           'value'       => 1,
+            'rules_id'    => $ruletid,
+            'action_type' => 'defaultfromuser',
+            'field'       => '_groups_id_requester',
+            'value'       => 1,
         ]);
         $this->checkInput($ruleaction, $action_id, $action_input);
 
         //create action to put user location as ticket location
         $action_id = $ruleaction->add($action_input = [
-           'rules_id'    => $ruletid,
-           'action_type' => 'fromuser',
-           'field'       => 'locations_id',
-           'value'       => 1,
+            'rules_id'    => $ruletid,
+            'action_type' => 'fromuser',
+            'field'       => 'locations_id',
+            'value'       => 1,
         ]);
         $this->checkInput($ruleaction, $action_id, $action_input);
 
         //create new group
         $group = new \Group();
         $group_id = $group->add($group_input = [
-           "name" => "group1",
-           "is_requester" => true
+            "name" => "group1",
+            "is_requester" => true,
         ]);
         $this->checkInput($group, $group_id, $group_input);
 
@@ -749,8 +748,8 @@ class RuleTicket extends DbTestCase
         //add user to group
         $group_user = new Group_User();
         $group_user_id = $group_user->add($group_user_input = [
-           "groups_id" => $group_id,
-           "users_id"  => $user->fields['id']
+            "groups_id" => $group_id,
+            "users_id"  => $user->fields['id'],
         ]);
         $this->checkInput($group_user, $group_user_id, $group_user_input);
 
@@ -761,7 +760,7 @@ class RuleTicket extends DbTestCase
         //create new location
         $location = new \Location();
         $location_id = $location->add($location_input = [
-           "name" => "location1",
+            "name" => "location1",
         ]);
         $this->checkInput($location, $location_id, $location_input);
 
@@ -772,9 +771,9 @@ class RuleTicket extends DbTestCase
         // Create ticket
         $ticket = new \Ticket();
         $tickets_id = $ticket->add($ticket_input = [
-           'name'             => 'Add group requester if requester have default group',
-           'content'          => 'test',
-           '_users_id_requester' => $user->fields['id']
+            'name'             => 'Add group requester if requester have default group',
+            'content'          => 'test',
+            '_users_id_requester' => $user->fields['id'],
         ]);
         unset($ticket_input['_users_id_requester']); // _users_id_requester is stored in glpi_tickets_users table, so remove it
         $this->checkInput($ticket, $tickets_id, $ticket_input);
@@ -786,16 +785,16 @@ class RuleTicket extends DbTestCase
         $ticketGroup = new \Group_Ticket();
         $this->boolean(
             $ticketGroup->getFromDBByCrit([
-              'tickets_id'         => $tickets_id,
-              'groups_id'          => $group_id,
-              'type'               => \CommonITILActor::REQUESTER
-         ])
+                'tickets_id'         => $tickets_id,
+                'groups_id'          => $group_id,
+                'type'               => CommonITILActor::REQUESTER,
+            ])
         )->isFalse();
 
         //Update ticket to trigger rule
         $ticket->update($ticket_input = [
-           'id' => $tickets_id,
-           'content' => 'test on update'
+            'id' => $tickets_id,
+            'content' => 'test on update',
         ]);
         $this->checkInput($ticket, $tickets_id, $ticket_input);
 
@@ -803,10 +802,10 @@ class RuleTicket extends DbTestCase
         $ticketGroup = new \Group_Ticket();
         $this->boolean(
             $ticketGroup->getFromDBByCrit([
-              'tickets_id'         => $tickets_id,
-              'groups_id'          => $group_id,
-              'type'               => \CommonITILActor::REQUESTER
-         ])
+                'tickets_id'         => $tickets_id,
+                'groups_id'          => $group_id,
+                'type'               => CommonITILActor::REQUESTER,
+            ])
         )->isTrue();
 
         //locations_id must be set to
@@ -825,47 +824,47 @@ class RuleTicket extends DbTestCase
         $ruleaction = new \RuleAction();
 
         $ruletid = $ruleticket->add($ruletinput = [
-           'name'         => 'test category code',
-           'match'        => 'AND',
-           'is_active'    => 1,
-           'sub_type'     => 'RuleTicket',
-           'condition'    => \RuleTicket::ONADD,
-           'is_recursive' => 1,
+            'name'         => 'test category code',
+            'match'        => 'AND',
+            'is_active'    => 1,
+            'sub_type'     => 'RuleTicket',
+            'condition'    => \RuleTicket::ONADD,
+            'is_recursive' => 1,
         ]);
         $this->checkInput($ruleticket, $ruletid, $ruletinput);
 
         // Create criteria to check if category code is R
         $crit_id = $rulecrit->add($crit_input = [
-           'rules_id'  => $ruletid,
-           'criteria'  => 'itilcategories_id_code',
-           'condition' => \Rule::PATTERN_IS,
-           'pattern'   => 'R',
+            'rules_id'  => $ruletid,
+            'criteria'  => 'itilcategories_id_code',
+            'condition' => \Rule::PATTERN_IS,
+            'pattern'   => 'R',
         ]);
         $this->checkInput($rulecrit, $crit_id, $crit_input);
 
         // Create action to put impact to very low
         $action_id = $ruleaction->add($action_input = [
-           'rules_id'    => $ruletid,
-           'action_type' => 'assign',
-           'field'       => 'impact',
-           'value'       => 1,
+            'rules_id'    => $ruletid,
+            'action_type' => 'assign',
+            'field'       => 'impact',
+            'value'       => 1,
         ]);
         $this->checkInput($ruleaction, $action_id, $action_input);
 
         // Create new group
         $category = new \ITILCategory();
         $category_id = $category->add($category_input = [
-           "name" => "group1",
-           "code" => "R"
+            "name" => "group1",
+            "code" => "R",
         ]);
         $this->checkInput($category, $category_id, $category_input);
 
         // Check ticket that trigger rule on creation
         $ticket = new \Ticket();
         $tickets_id = $ticket->add($ticket_input = [
-           'name'              => 'test category code',
-           'content'           => 'test category code',
-           'itilcategories_id' => $category_id
+            'name'              => 'test category code',
+            'content'           => 'test category code',
+            'itilcategories_id' => $category_id,
         ]);
         $this->checkInput($ticket, $tickets_id, $ticket_input);
 
@@ -875,9 +874,9 @@ class RuleTicket extends DbTestCase
 
         // Create another ticket that doesn't match the rule
         $tickets_id = $ticket->add($ticket_input = [
-           'name'              => 'test category code',
-           'content'           => 'test category code',
-           'itilcategories_id' => 0
+            'name'              => 'test category code',
+            'content'           => 'test category code',
+            'itilcategories_id' => 0,
         ]);
         $this->checkInput($ticket, $tickets_id, $ticket_input);
 
@@ -895,40 +894,40 @@ class RuleTicket extends DbTestCase
         $ruleaction = new \RuleAction();
 
         $ruletid = $ruleticket->add($ruletinput = [
-           'name'         => 'test x-priority',
-           'match'        => 'AND',
-           'is_active'    => 1,
-           'sub_type'     => 'RuleTicket',
-           'condition'    => \RuleTicket::ONADD,
-           'is_recursive' => 1,
+            'name'         => 'test x-priority',
+            'match'        => 'AND',
+            'is_active'    => 1,
+            'sub_type'     => 'RuleTicket',
+            'condition'    => \RuleTicket::ONADD,
+            'is_recursive' => 1,
         ]);
         $this->checkInput($ruleticket, $ruletid, $ruletinput);
 
         $crit_id = $rulecrit->add($crit_input = [
-           'rules_id'  => $ruletid,
-           'criteria'  => '_x-priority',
-           'condition' => \Rule::PATTERN_IS,
-           'pattern'   => '1',
+            'rules_id'  => $ruletid,
+            'criteria'  => '_x-priority',
+            'condition' => \Rule::PATTERN_IS,
+            'pattern'   => '1',
         ]);
         $this->checkInput($rulecrit, $crit_id, $crit_input);
 
         // Create action to put priority to very high
         $action_id = $ruleaction->add($action_input = [
-           'rules_id'    => $ruletid,
-           'action_type' => 'assign',
-           'field'       => 'priority',
-           'value'       => 5,
+            'rules_id'    => $ruletid,
+            'action_type' => 'assign',
+            'field'       => 'priority',
+            'value'       => 5,
         ]);
         $this->checkInput($ruleaction, $action_id, $action_input);
 
         // Create ticket with "x-priority" = 1 in "_head" property
         $ticket = new \Ticket();
         $tickets_id = $ticket->add([
-           'name'              => 'test x-priority header',
-           'content'           => 'test x-priority header',
-           '_head'             => [
-              'x-priority' => '1'
-           ]
+            'name'              => 'test x-priority header',
+            'content'           => 'test x-priority header',
+            '_head'             => [
+                'x-priority' => '1',
+            ],
         ]);
 
         // Verify ticket has priority 5
@@ -937,11 +936,11 @@ class RuleTicket extends DbTestCase
 
         // Retest ticket with different x-priority
         $tickets_id = $ticket->add([
-           'name'              => 'test x-priority header',
-           'content'           => 'test x-priority header',
-           '_head'             => [
-              'x-priority' => '2'
-           ]
+            'name'              => 'test x-priority header',
+            'content'           => 'test x-priority header',
+            '_head'             => [
+                'x-priority' => '2',
+            ],
         ]);
 
         // Verify ticket does not have priority 5
@@ -962,44 +961,44 @@ class RuleTicket extends DbTestCase
 
         $append_pattern = 'append-only-' . $this->getUniqueString();
         $rule_append_id = $ruleticket->add($rule_append_input = [
-           'name'         => 'append rule ' . $append_pattern,
-           'match'        => 'AND',
-           'is_active'    => 1,
-           'sub_type'     => 'RuleTicket',
-           'condition'    => \RuleTicket::ONADD,
-           'is_recursive' => 1,
+            'name'         => 'append rule ' . $append_pattern,
+            'match'        => 'AND',
+            'is_active'    => 1,
+            'sub_type'     => 'RuleTicket',
+            'condition'    => \RuleTicket::ONADD,
+            'is_recursive' => 1,
         ]);
         $this->checkInput($ruleticket, $rule_append_id, $rule_append_input);
 
         $crit_id = $rulecrit->add($crit_input = [
-           'rules_id'  => $rule_append_id,
-           'criteria'  => 'name',
-           'condition' => \Rule::PATTERN_CONTAIN,
-           'pattern'   => $append_pattern,
+            'rules_id'  => $rule_append_id,
+            'criteria'  => 'name',
+            'condition' => \Rule::PATTERN_CONTAIN,
+            'pattern'   => $append_pattern,
         ]);
         $this->checkInput($rulecrit, $crit_id, $crit_input);
 
         $act_id = $ruleaction->add($act_input = [
-           'rules_id'    => $rule_append_id,
-           'action_type' => 'append',
-           'field'       => '_users_id_assign',
-           'value'       => $users_id_first,
+            'rules_id'    => $rule_append_id,
+            'action_type' => 'append',
+            'field'       => '_users_id_assign',
+            'value'       => $users_id_first,
         ]);
         $this->checkInput($ruleaction, $act_id, $act_input);
 
         $act_id = $ruleaction->add($act_input = [
-           'rules_id'    => $rule_append_id,
-           'action_type' => 'append',
-           'field'       => '_users_id_assign',
-           'value'       => $users_id_second,
+            'rules_id'    => $rule_append_id,
+            'action_type' => 'append',
+            'field'       => '_users_id_assign',
+            'value'       => $users_id_second,
         ]);
         $this->checkInput($ruleaction, $act_id, $act_input);
 
         $rule_append = new \RuleTicket();
         $this->boolean($rule_append->getRuleWithCriteriasAndActions($rule_append_id, 1, 1))->isTrue();
         $input = [
-           'name'    => $append_pattern,
-           'content' => 'test'
+            'name'    => $append_pattern,
+            'content' => 'test',
         ];
         $output = [];
         $params = [];
@@ -1012,59 +1011,59 @@ class RuleTicket extends DbTestCase
 
         $assign_pattern = 'append-assign-' . $this->getUniqueString();
         $rule_assign_id = $ruleticket->add($rule_assign_input = [
-           'name'         => 'assign rule ' . $assign_pattern,
-           'match'        => 'AND',
-           'is_active'    => 1,
-           'sub_type'     => 'RuleTicket',
-           'condition'    => \RuleTicket::ONADD,
-           'is_recursive' => 1,
+            'name'         => 'assign rule ' . $assign_pattern,
+            'match'        => 'AND',
+            'is_active'    => 1,
+            'sub_type'     => 'RuleTicket',
+            'condition'    => \RuleTicket::ONADD,
+            'is_recursive' => 1,
         ]);
         $this->checkInput($ruleticket, $rule_assign_id, $rule_assign_input);
 
         $crit_id = $rulecrit->add($crit_input = [
-           'rules_id'  => $rule_assign_id,
-           'criteria'  => 'name',
-           'condition' => \Rule::PATTERN_CONTAIN,
-           'pattern'   => $assign_pattern,
+            'rules_id'  => $rule_assign_id,
+            'criteria'  => 'name',
+            'condition' => \Rule::PATTERN_CONTAIN,
+            'pattern'   => $assign_pattern,
         ]);
         $this->checkInput($rulecrit, $crit_id, $crit_input);
 
         $act_id = $ruleaction->add($act_input = [
-           'rules_id'    => $rule_assign_id,
-           'action_type' => 'append',
-           'field'       => '_users_id_assign',
-           'value'       => $users_id_first,
+            'rules_id'    => $rule_assign_id,
+            'action_type' => 'append',
+            'field'       => '_users_id_assign',
+            'value'       => $users_id_first,
         ]);
         $this->checkInput($ruleaction, $act_id, $act_input);
 
         $act_id = $ruleaction->add($act_input = [
-           'rules_id'    => $rule_assign_id,
-           'action_type' => 'append',
-           'field'       => '_users_id_assign',
-           'value'       => $users_id_second,
+            'rules_id'    => $rule_assign_id,
+            'action_type' => 'append',
+            'field'       => '_users_id_assign',
+            'value'       => $users_id_second,
         ]);
         $this->checkInput($ruleaction, $act_id, $act_input);
 
         $act_id = $ruleaction->add($act_input = [
-           'rules_id'    => $rule_assign_id,
-           'action_type' => 'assign',
-           'field'       => '_users_id_assign',
-           'value'       => $users_id_first,
+            'rules_id'    => $rule_assign_id,
+            'action_type' => 'assign',
+            'field'       => '_users_id_assign',
+            'value'       => $users_id_first,
         ]);
         $this->checkInput($ruleaction, $act_id, $act_input);
 
         $rule_assign = new \RuleTicket();
         $this->boolean($rule_assign->getRuleWithCriteriasAndActions($rule_assign_id, 1, 1))->isTrue();
         $input = [
-           'name'    => $assign_pattern,
-           'content' => 'test'
+            'name'    => $assign_pattern,
+            'content' => 'test',
         ];
         $output = [];
         $params = [];
         $rule_assign->process($input, $output, $params);
 
         $this->array($output)->notHasKey('_additional_assigns');
-        $this->integer((int)$output['_users_id_assign'])->isEqualTo($users_id_first);
+        $this->integer((int) $output['_users_id_assign'])->isEqualTo($users_id_first);
     }
 
     public function testStatusAssignmentSetsDoNotComputeStatus()
@@ -1077,43 +1076,43 @@ class RuleTicket extends DbTestCase
 
         $pattern = 'status-flag-' . $this->getUniqueString();
         $rules_id = $ruleticket->add($rule_input = [
-           'name'         => 'status flag ' . $pattern,
-           'match'        => 'AND',
-           'is_active'    => 1,
-           'sub_type'     => 'RuleTicket',
-           'condition'    => \RuleTicket::ONADD,
-           'is_recursive' => 1,
+            'name'         => 'status flag ' . $pattern,
+            'match'        => 'AND',
+            'is_active'    => 1,
+            'sub_type'     => 'RuleTicket',
+            'condition'    => \RuleTicket::ONADD,
+            'is_recursive' => 1,
         ]);
         $this->checkInput($ruleticket, $rules_id, $rule_input);
 
         $crit_id = $rulecrit->add($crit_input = [
-           'rules_id'  => $rules_id,
-           'criteria'  => 'name',
-           'condition' => \Rule::PATTERN_CONTAIN,
-           'pattern'   => $pattern,
+            'rules_id'  => $rules_id,
+            'criteria'  => 'name',
+            'condition' => \Rule::PATTERN_CONTAIN,
+            'pattern'   => $pattern,
         ]);
         $this->checkInput($rulecrit, $crit_id, $crit_input);
 
         $act_id = $ruleaction->add($act_input = [
-           'rules_id'    => $rules_id,
-           'action_type' => 'assign',
-           'field'       => 'status',
-           'value'       => \Ticket::INCOMING,
+            'rules_id'    => $rules_id,
+            'action_type' => 'assign',
+            'field'       => 'status',
+            'value'       => \Ticket::INCOMING,
         ]);
         $this->checkInput($ruleaction, $act_id, $act_input);
 
         $rule_instance = new \RuleTicket();
         $this->boolean($rule_instance->getRuleWithCriteriasAndActions($rules_id, 1, 1))->isTrue();
         $input = [
-           'name'    => $pattern,
-           'content' => 'test'
+            'name'    => $pattern,
+            'content' => 'test',
         ];
         $output = [];
         $params = [];
         $rule_instance->process($input, $output, $params);
 
         $this->boolean($output['_rule_process'])->isTrue();
-        $this->integer((int)$output['status'])->isEqualTo(\Ticket::INCOMING);
+        $this->integer((int) $output['status'])->isEqualTo(\Ticket::INCOMING);
         $this->boolean($output['_do_not_compute_status'])->isTrue();
     }
 
@@ -1127,64 +1126,64 @@ class RuleTicket extends DbTestCase
 
         $pattern = 'priority-recompute-' . $this->getUniqueString();
         $rules_id = $ruleticket->add($rule_input = [
-           'name'         => 'priority recompute ' . $pattern,
-           'match'        => 'AND',
-           'is_active'    => 1,
-           'sub_type'     => 'RuleTicket',
-           'condition'    => \RuleTicket::ONADD,
-           'is_recursive' => 1,
+            'name'         => 'priority recompute ' . $pattern,
+            'match'        => 'AND',
+            'is_active'    => 1,
+            'sub_type'     => 'RuleTicket',
+            'condition'    => \RuleTicket::ONADD,
+            'is_recursive' => 1,
         ]);
         $this->checkInput($ruleticket, $rules_id, $rule_input);
 
         $crit_id = $rulecrit->add($crit_input = [
-           'rules_id'  => $rules_id,
-           'criteria'  => 'name',
-           'condition' => \Rule::PATTERN_CONTAIN,
-           'pattern'   => $pattern,
+            'rules_id'  => $rules_id,
+            'criteria'  => 'name',
+            'condition' => \Rule::PATTERN_CONTAIN,
+            'pattern'   => $pattern,
         ]);
         $this->checkInput($rulecrit, $crit_id, $crit_input);
 
         $act_id = $ruleaction->add($act_input = [
-           'rules_id'    => $rules_id,
-           'action_type' => 'assign',
-           'field'       => 'urgency',
-           'value'       => 5,
+            'rules_id'    => $rules_id,
+            'action_type' => 'assign',
+            'field'       => 'urgency',
+            'value'       => 5,
         ]);
         $this->checkInput($ruleaction, $act_id, $act_input);
 
         $act_id = $ruleaction->add($act_input = [
-           'rules_id'    => $rules_id,
-           'action_type' => 'assign',
-           'field'       => 'impact',
-           'value'       => 1,
+            'rules_id'    => $rules_id,
+            'action_type' => 'assign',
+            'field'       => 'impact',
+            'value'       => 1,
         ]);
         $this->checkInput($ruleaction, $act_id, $act_input);
 
         $act_id = $ruleaction->add($act_input = [
-           'rules_id'    => $rules_id,
-           'action_type' => 'compute',
-           'field'       => 'priority',
-           'value'       => 1,
+            'rules_id'    => $rules_id,
+            'action_type' => 'compute',
+            'field'       => 'priority',
+            'value'       => 1,
         ]);
         $this->checkInput($ruleaction, $act_id, $act_input);
 
         $rule_instance = new \RuleTicket();
         $this->boolean($rule_instance->getRuleWithCriteriasAndActions($rules_id, 1, 1))->isTrue();
         $input = [
-           'name'     => $pattern,
-           'content'  => 'test'
+            'name'     => $pattern,
+            'content'  => 'test',
         ];
         $output = [
-           'priority' => 1,
+            'priority' => 1,
         ];
         $params = [];
         $rule_instance->process($input, $output, $params);
 
         $expected_priority = \Ticket::computePriority(5, 1);
         $this->boolean($output['_rule_process'])->isTrue();
-        $this->integer((int)$output['urgency'])->isEqualTo(5);
-        $this->integer((int)$output['impact'])->isEqualTo(1);
-        $this->integer((int)$output['priority'])->isEqualTo($expected_priority);
+        $this->integer((int) $output['urgency'])->isEqualTo(5);
+        $this->integer((int) $output['impact'])->isEqualTo(1);
+        $this->integer((int) $output['priority'])->isEqualTo($expected_priority);
     }
 
     public function testSlaOlaAssignmentAddsShadowFields()
@@ -1193,24 +1192,24 @@ class RuleTicket extends DbTestCase
 
         $sla_action = new \RuleAction();
         $sla_action->fields = [
-           'action_type' => 'assign',
-           'field'       => 'slas_id_ttr',
-           'value'       => 123,
+            'action_type' => 'assign',
+            'field'       => 'slas_id_ttr',
+            'value'       => 123,
         ];
 
         $ola_action = new \RuleAction();
         $ola_action->fields = [
-           'action_type' => 'assign',
-           'field'       => 'olas_id_tto',
-           'value'       => 456,
+            'action_type' => 'assign',
+            'field'       => 'olas_id_tto',
+            'value'       => 456,
         ];
 
         $rule->actions = [$sla_action, $ola_action];
         $output = $rule->executeActions([], []);
 
-        $this->integer((int)$output['slas_id_ttr'])->isEqualTo(123);
-        $this->integer((int)$output['_slas_id_ttr'])->isEqualTo(123);
-        $this->integer((int)$output['olas_id_tto'])->isEqualTo(456);
-        $this->integer((int)$output['_olas_id_tto'])->isEqualTo(456);
+        $this->integer((int) $output['slas_id_ttr'])->isEqualTo(123);
+        $this->integer((int) $output['_slas_id_ttr'])->isEqualTo(123);
+        $this->integer((int) $output['olas_id_tto'])->isEqualTo(456);
+        $this->integer((int) $output['_olas_id_tto'])->isEqualTo(456);
     }
 }

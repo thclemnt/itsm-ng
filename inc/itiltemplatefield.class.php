@@ -116,7 +116,7 @@ abstract class ITILTemplateField extends CommonDBChild
      * @since 0.83
      *
      * @param ITILTemplate $tt           ITIL Template
-     * @param boolean      $withtemplate Template or basic item (default 0)
+     * @param bool      $withtemplate Template or basic item (default 0)
      *
      * @return void
     **/
@@ -129,7 +129,7 @@ abstract class ITILTemplateField extends CommonDBChild
      * @param ITILTemplate $tt   ITIL Template
      * @param string       $name Field name to look for
      *
-     * @return integer|false
+     * @return int|false
      */
     public function getFieldNum(ITILTemplate $tt, $name)
     {

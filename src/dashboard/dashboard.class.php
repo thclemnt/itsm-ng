@@ -32,7 +32,7 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
-class Dashboard extends \CommonDBTM
+class Dashboard extends CommonDBTM
 {
     public static $rightname = 'dashboard';
 
@@ -71,51 +71,51 @@ class Dashboard extends \CommonDBTM
         Html::requireJs('charts');
 
         $form = [
-           'action' => $this->getFormURL(),
-           'content' => [
-              __('General') => [
-                 'visible' => true,
-                 'inputs' => [
-                    __('Name') => [
-                       'type' => 'text',
-                       'name' => 'name',
-                       'value' => $this->fields['name'] ?? '',
-                       'required' => true,
+            'action' => $this->getFormURL(),
+            'content' => [
+                __('General') => [
+                    'visible' => true,
+                    'inputs' => [
+                        __('Name') => [
+                            'type' => 'text',
+                            'name' => 'name',
+                            'value' => $this->fields['name'] ?? '',
+                            'required' => true,
+                        ],
+                        __('Profile') => [
+                            'type' => 'select',
+                            'id' => 'ProfileDropdownForDashboard',
+                            'name' => 'profileId',
+                            'value' => $this->fields['profileId'] ?? '',
+                            'values' => getOptionForItems(Profile::class),
+                            'required' => true,
+                        ],
+                        __('User') => [
+                            'type' => 'select',
+                            'id' => 'UserDropdownForDashboard',
+                            'name' => 'userId',
+                            'value' => $this->fields['userId'] ?? '',
+                            'values' => getItemByEntity(User::class, Session::getActiveEntity()),
+                            'required' => true,
+                        ],
                     ],
-                    __('Profile') => [
-                       'type' => 'select',
-                       'id' => 'ProfileDropdownForDashboard',
-                       'name' => 'profileId',
-                       'value' => $this->fields['profileId'] ?? '',
-                       'values' => getOptionForItems(Profile::class),
-                       'required' => true,
+                ],
+                "Hidden" => [
+                    'visible' => false,
+                    'inputs' => [
+                        [
+                            'type' => 'hidden',
+                            'name' => isset($ID) ? 'update' : 'add',
+                            'value' => 'true',
+                        ],
+                        $this->isNewID($ID) ? [] : [
+                            'type' => 'hidden',
+                            'name' => 'id',
+                            'value' => $ID,
+                        ],
                     ],
-                    __('User') => [
-                       'type' => 'select',
-                       'id' => 'UserDropdownForDashboard',
-                       'name' => 'userId',
-                       'value' => $this->fields['userId'] ?? '',
-                       'values' => getItemByEntity(User::class, Session::getActiveEntity()),
-                       'required' => true,
-                    ],
-                 ]
-              ],
-              "Hidden" => [
-                 'visible' => false,
-                 'inputs' => [
-                    [
-                       'type' => 'hidden',
-                       'name' => isset($ID) ? 'update' : 'add',
-                       'value' => 'true',
-                    ],
-                    $this->isNewID($ID) ? [] : [
-                       'type' => 'hidden',
-                       'name' => 'id',
-                       'value' => $ID,
-                    ],
-                 ]
-              ]
-           ]
+                ],
+            ],
         ];
         renderTwigForm($form);
         if ($ID) {
@@ -175,19 +175,19 @@ class Dashboard extends \CommonDBTM
             JS;
                 ob_start();
                 renderTwigTemplate('macros/wrappedInput.twig', [
-                   'title' => __('Itemtype'),
-                   'input' => [
-                      'type' => 'select',
-                      'id' => 'ItemTypeDropdownForDashboard',
-                      'values' => $values,
-                      'value' => array_key_first($values),
-                      'col_lg' => 12,
-                      'col_md' => 12,
-                      'init' => $jsUpdate,
-                      'hooks' => [
-                         'change' => $jsUpdate,
-                      ]
-                   ]
+                    'title' => __('Itemtype'),
+                    'input' => [
+                        'type' => 'select',
+                        'id' => 'ItemTypeDropdownForDashboard',
+                        'values' => $values,
+                        'value' => array_key_first($values),
+                        'col_lg' => 12,
+                        'col_md' => 12,
+                        'init' => $jsUpdate,
+                        'hooks' => [
+                            'change' => $jsUpdate,
+                        ],
+                    ],
                 ]);
                 $twig_vars['dataSelection'] = ob_get_clean();
             };
@@ -253,10 +253,10 @@ class Dashboard extends \CommonDBTM
     {
         $dashboard = json_decode((string) $this->fields['content'], true) ?? [];
         $widget = [
-           'title' => $title,
-           'filters' => $filters,
-           'icon' => $icon,
-           'format' => $format,
+            'title' => $title,
+            'filters' => $filters,
+            'icon' => $icon,
+            'format' => $format,
         ];
 
         $this->placeWidgetAtCoord($dashboard, $widget, $coords);

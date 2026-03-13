@@ -108,8 +108,8 @@ class SlaLevel extends LevelAgreementLevel
             self::dropdownExecutionTime(
                 'execution_time',
                 ['max_time' => $delay,
-                                         'used'     => self::getAlreadyUsedExecutionTime($sla->fields['id']),
-                                         'type'     => $sla->fields['type']]
+                    'used'     => self::getAlreadyUsedExecutionTime($sla->fields['id']),
+                    'type'     => $sla->fields['type']]
             );
 
             echo "</td><td class='center'>" . __('Active') . "</td><td>";
@@ -124,11 +124,11 @@ class SlaLevel extends LevelAgreementLevel
         }
 
         $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'slas_id'   => $ID
-           ],
-           'ORDER'  => 'execution_time'
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'slas_id'   => $ID,
+            ],
+            'ORDER'  => 'execution_time',
         ]);
         $numrows = count($iterator);
 
@@ -136,7 +136,7 @@ class SlaLevel extends LevelAgreementLevel
         if ($canedit && $numrows) {
             Html::openMassiveActionsForm('mass' . __CLASS__ . $rand);
             $massiveactionparams = ['num_displayed'  => min($_SESSION['glpilist_limit'], $numrows),
-                                         'container'      => 'mass' . __CLASS__ . $rand];
+                'container'      => 'mass' . __CLASS__ . $rand];
             Html::showMassiveActions($massiveactionparams);
         }
 
@@ -183,8 +183,8 @@ class SlaLevel extends LevelAgreementLevel
                            ? Html::timestampToString($data["execution_time"], false)
                            : ($sla->fields['type'] == 1
                                  ? __('Time to own')
-                                 : __('Time to resolve'))) .
-                 "</td>";
+                                 : __('Time to resolve')))
+                 . "</td>";
             echo "<td>" . Dropdown::getYesNo($data["is_active"]) . "</td>";
             echo "</tr>";
 
@@ -260,13 +260,13 @@ class SlaLevel extends LevelAgreementLevel
         self::dropdownExecutionTime(
             'execution_time',
             ['max_time'
-                                               => $delay,
-                                          'used'
-                                               => self::getAlreadyUsedExecutionTime($sla->fields['id']),
-                                          'value'
-                                               => $this->fields['execution_time'],
-                                          'type'
-                                               => $sla->fields['type']]
+                      => $delay,
+                'used'
+                     => self::getAlreadyUsedExecutionTime($sla->fields['id']),
+                'value'
+                     => $this->fields['execution_time'],
+                'type'
+                     => $sla->fields['type']]
         );
         echo "</td></tr>\n";
 
@@ -294,14 +294,14 @@ class SlaLevel extends LevelAgreementLevel
         global $DB;
 
         $iterator = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'slas_id'   => $slas_id,
-              'is_active' => 1
-           ],
-           'ORDER'  => 'execution_time ASC',
-           'LIMIT'  => 1
+            'SELECT' => 'id',
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'slas_id'   => $slas_id,
+                'is_active' => 1,
+            ],
+            'ORDER'  => 'execution_time ASC',
+            'LIMIT'  => 1,
         ]);
 
         if ($result = $iterator->next()) {
@@ -324,25 +324,25 @@ class SlaLevel extends LevelAgreementLevel
         global $DB;
 
         $iterator = $DB->request([
-           'SELECT' => 'execution_time',
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['id' => $slalevels_id]
+            'SELECT' => 'execution_time',
+            'FROM'   => self::getTable(),
+            'WHERE'  => ['id' => $slalevels_id],
         ]);
 
         if ($result = $iterator->next()) {
             $execution_time = $result['execution_time'];
 
             $lvl_iterator = $DB->request([
-               'SELECT' => 'id',
-               'FROM'   => self::getTable(),
-               'WHERE'  => [
-                  'slas_id'         => $slas_id,
-                  'is_active'       => 1,
-                  'id'              => ['<>', $slalevels_id],
-                  'execution_time'  => ['>', $execution_time]
-               ],
-               'ORDER'  => 'execution_time ASC',
-               'LIMIT'  => 1
+                'SELECT' => 'id',
+                'FROM'   => self::getTable(),
+                'WHERE'  => [
+                    'slas_id'         => $slas_id,
+                    'is_active'       => 1,
+                    'id'              => ['<>', $slalevels_id],
+                    'execution_time'  => ['>', $execution_time],
+                ],
+                'ORDER'  => 'execution_time ASC',
+                'LIMIT'  => 1,
             ]);
 
             if ($result = $lvl_iterator->next()) {

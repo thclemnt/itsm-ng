@@ -36,12 +36,12 @@ namespace Glpi;
 use Ajax;
 use CommonDBTM;
 use CronTask;
+use DBConnection;
 use Document;
 use Html;
+use Infocom;
 use Session;
 use Toolbox;
-use Infocom;
-use DBConnection;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -81,10 +81,10 @@ class Event extends CommonDBTM
                 $message_type = "[" . $this->fields['type'] . " " . $this->fields['id'] . "] ";
             }
 
-            $full_message = "[" . $this->fields['service'] . "] " .
-                            $message_type .
-                            $this->fields['level'] . ": " .
-                            Toolbox::stripslashes_deep($this->fields['message']) . "\n";
+            $full_message = "[" . $this->fields['service'] . "] "
+                            . $message_type
+                            . $this->fields['level'] . ": "
+                            . Toolbox::stripslashes_deep($this->fields['message']) . "\n";
 
             Toolbox::logInFile("event", $full_message);
         }
@@ -108,11 +108,11 @@ class Event extends CommonDBTM
         global $DB;
 
         $input = ['items_id' => intval($items_id),
-                       'type'     => $DB->escape($type),
-                       'date'     => $_SESSION["glpi_currenttime"],
-                       'service'  => $DB->escape($service),
-                       'level'    => intval($level),
-                       'message'  => $DB->escape($event)];
+            'type'     => $DB->escape($type),
+            'date'     => $_SESSION["glpi_currenttime"],
+            'service'  => $DB->escape($service),
+            'level'    => intval($level),
+            'message'  => $DB->escape($event)];
         $tmp = new self();
         return $tmp->add($input);
     }
@@ -123,7 +123,7 @@ class Event extends CommonDBTM
      *
      * @param $day integer
      *
-     * @return integer number of events deleted
+     * @return int number of events deleted
     **/
     public static function cleanOld($day)
     {
@@ -134,7 +134,7 @@ class Event extends CommonDBTM
         $DB->delete(
             'glpi_events',
             [
-              new \QueryExpression("UNIX_TIMESTAMP(date) < UNIX_TIMESTAMP()-$secs")
+                new \QueryExpression("UNIX_TIMESTAMP(date) < UNIX_TIMESTAMP()-$secs"),
             ]
         );
         return $DB->affectedRows();
@@ -155,26 +155,26 @@ class Event extends CommonDBTM
         }
 
         $logItemtype = ['system'      => __('System'),
-                             'devices'     => _n('Component', 'Components', Session::getPluralNumber()),
-                             'planning'    => __('Planning'),
-                             'reservation' => _n('Reservation', 'Reservations', Session::getPluralNumber()),
-                             'dropdown'    => _n('Dropdown', 'Dropdowns', Session::getPluralNumber()),
-                             'rules'       => _n('Rule', 'Rules', Session::getPluralNumber())];
+            'devices'     => _n('Component', 'Components', Session::getPluralNumber()),
+            'planning'    => __('Planning'),
+            'reservation' => _n('Reservation', 'Reservations', Session::getPluralNumber()),
+            'dropdown'    => _n('Dropdown', 'Dropdowns', Session::getPluralNumber()),
+            'rules'       => _n('Rule', 'Rules', Session::getPluralNumber())];
 
         $logService = ['inventory'    => __('Assets'),
-                            'tracking'     => _n('Ticket', 'Tickets', Session::getPluralNumber()),
-                            'maintain'     => __('Assistance'),
-                            'planning'     => __('Planning'),
-                            'tools'        => __('Tools'),
-                            'financial'    => __('Management'),
-                            'login'        => _n('Connection', 'Connections', 1),
-                            'setup'        => __('Setup'),
-                            'security'     => __('Security'),
-                            'reservation'  => _n('Reservation', 'Reservations', Session::getPluralNumber()),
-                            'cron'         => CronTask::getTypeName(Session::getPluralNumber()),
-                            'document'     => Document::getTypeName(Session::getPluralNumber()),
-                            'notification' => _n('Notification', 'Notifications', Session::getPluralNumber()),
-                            'plugin'       => _n('Plugin', 'Plugins', Session::getPluralNumber())];
+            'tracking'     => _n('Ticket', 'Tickets', Session::getPluralNumber()),
+            'maintain'     => __('Assistance'),
+            'planning'     => __('Planning'),
+            'tools'        => __('Tools'),
+            'financial'    => __('Management'),
+            'login'        => _n('Connection', 'Connections', 1),
+            'setup'        => __('Setup'),
+            'security'     => __('Security'),
+            'reservation'  => _n('Reservation', 'Reservations', Session::getPluralNumber()),
+            'cron'         => CronTask::getTypeName(Session::getPluralNumber()),
+            'document'     => Document::getTypeName(Session::getPluralNumber()),
+            'notification' => _n('Notification', 'Notifications', Session::getPluralNumber()),
+            'plugin'       => _n('Plugin', 'Plugins', Session::getPluralNumber())];
 
         return [$logItemtype, $logService];
     }
@@ -193,8 +193,8 @@ class Event extends CommonDBTM
         } else {
             switch ($type) {
                 case "rules":
-                    echo "<a href=\"" . $CFG_GLPI["root_doc"] . "/front/rule.generic.form.php?id=" .
-                          $items_id . "\">" . $items_id . "</a>";
+                    echo "<a href=\"" . $CFG_GLPI["root_doc"] . "/front/rule.generic.form.php?id="
+                          . $items_id . "\">" . $items_id . "</a>";
                     break;
 
                 case "infocom":
@@ -213,8 +213,8 @@ class Event extends CommonDBTM
                     break;
 
                 case "reservationitem":
-                    echo "<a href=\"" . $CFG_GLPI["root_doc"] . "/front/reservation.php?reservationitems_id=" .
-                          $items_id . "\">" . $items_id . "</a>";
+                    echo "<a href=\"" . $CFG_GLPI["root_doc"] . "/front/reservation.php?reservationitems_id="
+                          . $items_id . "\">" . $items_id . "</a>";
                     break;
 
                 default:
@@ -246,7 +246,7 @@ class Event extends CommonDBTM
         global $DB, $CFG_GLPI;
 
         // Show events from $result in table form
-        list($logItemtype, $logService) = self::logArray();
+        [$logItemtype, $logService] = self::logArray();
 
         // define default sorting
         $usersearch = "";
@@ -256,10 +256,10 @@ class Event extends CommonDBTM
 
         // Query Database
         $iterator = $DB->request([
-           'FROM'   => 'glpi_events',
-           'WHERE'  => ['message' => ['LIKE', $usersearch . '%']],
-           'ORDER'  => 'date DESC',
-           'LIMIT'  => (int)$_SESSION['glpilist_limit']
+            'FROM'   => 'glpi_events',
+            'WHERE'  => ['message' => ['LIKE', $usersearch . '%']],
+            'ORDER'  => 'date DESC',
+            'LIMIT'  => (int) $_SESSION['glpilist_limit'],
         ]);
 
         // Number of results
@@ -280,8 +280,8 @@ class Event extends CommonDBTM
         echo "<br><div class='spaced'><table class='tab_cadre' aria-label='Last Event'>";
         echo "<tr><th colspan='5'>";
         //TRANS: %d is the number of item to display
-        echo "<p class='table-title'><a href=\"" . $CFG_GLPI["root_doc"] . "/front/event.php\">" .
-               sprintf(__('Last %d events'), $_SESSION['glpilist_limit']) . "</a></p>";
+        echo "<p class='table-title'><a href=\"" . $CFG_GLPI["root_doc"] . "/front/event.php\">"
+               . sprintf(__('Last %d events'), $_SESSION['glpilist_limit']) . "</a></p>";
         echo "</th></tr>";
 
         echo "<tr><th>" . __('Source') . "</th>";
@@ -312,7 +312,7 @@ class Event extends CommonDBTM
             echo "<td>";
             self::displayItemLogID($type, $items_id);
             echo "</td><td>" . Html::convDateTime($date) . "</td>";
-            echo "<td>" . (isset($logService[$service]) ? $logService[$service] : '');
+            echo "<td>" . ($logService[$service] ?? '');
             echo "</td><td>" . $message . "</td></tr>";
 
             $i++;
@@ -330,22 +330,22 @@ class Event extends CommonDBTM
      * @param string  $target  where to go when complete
      * @param string  $order   order by clause occurences (eg: ) (default 'DESC')
      * @param string  $sort    order by clause occurences (eg: date) (defaut 'date')
-     * @param integer $start   (default 0)
+     * @param int $start   (default 0)
     **/
     public static function showList($target, $order = 'DESC', $sort = 'date', $start = 0)
     {
         $DBread = DBConnection::getReadConnection();
 
         // Show events from $result in table form
-        list($logItemtype, $logService) = self::logArray();
+        [$logItemtype, $logService] = self::logArray();
 
         // Columns of the Table
         $items = ["type"     => [__('Source'), ""],
-                       "items_id" => [__('ID'), ""],
-                       "date"     => [_n('Date', 'Dates', 1), ""],
-                       "service"  => [__('Service'), "width='8%'"],
-                       "level"    => [__('Level'), "width='8%'"],
-                       "message"  => [__('Message'), "width='50%'"]];
+            "items_id" => [__('ID'), ""],
+            "date"     => [_n('Date', 'Dates', 1), ""],
+            "service"  => [__('Service'), "width='8%'"],
+            "level"    => [__('Level'), "width='8%'"],
+            "message"  => [__('Message'), "width='50%'"]];
 
         // define default sorting
         if (!isset($items[$sort])) {
@@ -357,10 +357,10 @@ class Event extends CommonDBTM
 
         // Query Database
         $iterator = $DBread->request([
-           'FROM'   => 'glpi_events',
-           'ORDER'  => "$sort $order",
-           'START'  => (int)$start,
-           'LIMIT'  => (int)$_SESSION['glpilist_limit']
+            'FROM'   => 'glpi_events',
+            'ORDER'  => "$sort $order",
+            'START'  => (int) $start,
+            'LIMIT'  => (int) $_SESSION['glpilist_limit'],
         ]);
 
         // Number of results
@@ -389,8 +389,8 @@ class Event extends CommonDBTM
             if ($sort == $field) {
                 echo " class='order_$order' ";
             }
-            echo "><a href='$target?sort=$field&amp;order=" . (($order == "ASC") ? "DESC" : "ASC") . "'>" . $args[0] .
-                 "</a></th>";
+            echo "><a href='$target?sort=$field&amp;order=" . (($order == "ASC") ? "DESC" : "ASC") . "'>" . $args[0]
+                 . "</a></th>";
         }
         echo "</tr>";
 
@@ -418,7 +418,7 @@ class Event extends CommonDBTM
             echo "<td class='center b'>";
             self::displayItemLogID($type, $items_id);
             echo "</td><td>" . Html::convDateTime($date) . "</td>";
-            echo "<td class='center'>" . (isset($logService[$service]) ? $logService[$service] : $service);
+            echo "<td class='center'>" . ($logService[$service] ?? $service);
             echo "</td><td class='center'>" . $level . "</td><td>" . $message . "</td></tr>";
 
             $i++;

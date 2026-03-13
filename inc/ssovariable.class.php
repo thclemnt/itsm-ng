@@ -77,12 +77,12 @@ class SsoVariable extends CommonDropdown
         parent::cleanRelationData();
 
         if ($this->isUsedInAuth()) {
-            $newval = (isset($this->input['_replace_by']) ? $this->input['_replace_by'] : 0);
+            $newval = ($this->input['_replace_by'] ?? 0);
 
             Config::setConfigurationValues(
                 'core',
                 [
-                  'ssovariables_id' => $newval,
+                    'ssovariables_id' => $newval,
                 ]
             );
         }
@@ -103,7 +103,7 @@ class SsoVariable extends CommonDropdown
     /**
      * Check if variable is used in auth process.
      *
-     * @return boolean
+     * @return bool
      */
     private function isUsedInAuth()
     {

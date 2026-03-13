@@ -47,11 +47,11 @@ class Item_Cluster extends DbTestCase
     protected function computersProvider()
     {
         return [
-           [
-              'name'   => 'SRV-NUX-1',
-           ], [
-              'name'   => 'SRV-NUX-2',
-           ]
+            [
+                'name'   => 'SRV-NUX-1',
+            ], [
+                'name'   => 'SRV-NUX-2',
+            ],
         ];
     }
 
@@ -66,7 +66,7 @@ class Item_Cluster extends DbTestCase
         foreach ($this->computersProvider() as $row) {
             $row['entities_id'] = 0;
             $this->integer(
-                (int)$computer->add($row)
+                (int) $computer->add($row)
             )->isGreaterThan(0);
         }
     }
@@ -83,11 +83,11 @@ class Item_Cluster extends DbTestCase
         $cluster = new \Cluster();
 
         $this->integer(
-            (int)$cluster->add([
-              'name'         => 'Test cluster',
-              'uuid'         => 'ytreza',
-              'entities_id'  => 0
-         ])
+            (int) $cluster->add([
+                'name'         => 'Test cluster',
+                'uuid'         => 'ytreza',
+                'entities_id'  => 0,
+            ])
         )->isGreaterThan(0);
 
         $icl = new \Item_Cluster();
@@ -98,10 +98,10 @@ class Item_Cluster extends DbTestCase
         //try to add without required field
         $icl->getEmpty();
         $this->integer(
-            (int)$icl->add([
-              'itemtype'     => 'Computer',
-              'items_id'     => $SRVNUX1
-         ])
+            (int) $icl->add([
+                'itemtype'     => 'Computer',
+                'items_id'     => $SRVNUX1,
+            ])
         )->isIdenticalTo(0);
 
         $this->hasSessionMessages(ERROR, ['A cluster is required']);
@@ -109,10 +109,10 @@ class Item_Cluster extends DbTestCase
         //try to add without required field
         $icl->getEmpty();
         $this->integer(
-            (int)$icl->add([
-              'clusters_id'  => $cluster->fields['id'],
-              'items_id'     => $SRVNUX1
-         ])
+            (int) $icl->add([
+                'clusters_id'  => $cluster->fields['id'],
+                'items_id'     => $SRVNUX1,
+            ])
         )->isIdenticalTo(0);
 
         $this->hasSessionMessages(ERROR, ['An item type is required']);
@@ -120,10 +120,10 @@ class Item_Cluster extends DbTestCase
         //try to add without required field
         $icl->getEmpty();
         $this->integer(
-            (int)$icl->add([
-              'clusters_id'  => $cluster->fields['id'],
-              'itemtype'     => 'Computer',
-         ])
+            (int) $icl->add([
+                'clusters_id'  => $cluster->fields['id'],
+                'itemtype'     => 'Computer',
+            ])
         )->isIdenticalTo(0);
 
         $this->hasSessionMessages(ERROR, ['An item is required']);
@@ -131,29 +131,29 @@ class Item_Cluster extends DbTestCase
         //try to add without error
         $icl->getEmpty();
         $this->integer(
-            (int)$icl->add([
-              'clusters_id'  => $cluster->fields['id'],
-              'itemtype'     => 'Computer',
-              'items_id'     => $SRVNUX1
-         ])
+            (int) $icl->add([
+                'clusters_id'  => $cluster->fields['id'],
+                'itemtype'     => 'Computer',
+                'items_id'     => $SRVNUX1,
+            ])
         )->isGreaterThan(0);
 
         //Add another item in cluster
         $icl->getEmpty();
         $this->integer(
-            (int)$icl->add([
-              'clusters_id'  => $cluster->fields['id'],
-              'itemtype'     => 'Computer',
-              'items_id'     => $SRVNUX2
-         ])
+            (int) $icl->add([
+                'clusters_id'  => $cluster->fields['id'],
+                'itemtype'     => 'Computer',
+                'items_id'     => $SRVNUX2,
+            ])
         )->isGreaterThan(0);
 
         global $DB;
         $items = $DB->request([
-           'FROM'   => $icl->getTable(),
-           'WHERE'  => [
-              'clusters_id' => $cluster->fields['id']
-           ]
+            'FROM'   => $icl->getTable(),
+            'WHERE'  => [
+                'clusters_id' => $cluster->fields['id'],
+            ],
         ]);
         $this->array(iterator_to_array($items))->hasSize(2);
     }

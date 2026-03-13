@@ -53,7 +53,7 @@ class CronTaskLog extends CommonDBTM
      * @param $id     integer  ID of the CronTask
      * @param $days   integer  number of day to keep
      *
-     * @return integer number of events deleted
+     * @return int number of events deleted
     **/
     public static function cleanOld($id, $days)
     {
@@ -64,8 +64,8 @@ class CronTaskLog extends CommonDBTM
         $result = $DB->delete(
             'glpi_crontasklogs',
             [
-              'crontasks_id' => $id,
-              new \QueryExpression("UNIX_TIMESTAMP(" . $DB->quoteName("date") . ") < UNIX_TIMESTAMP()-$secs")
+                'crontasks_id' => $id,
+                new QueryExpression("UNIX_TIMESTAMP(" . $DB->quoteName("date") . ") < UNIX_TIMESTAMP()-$secs"),
             ]
         );
 
@@ -86,7 +86,7 @@ class CronTaskLog extends CommonDBTM
                         $nb =  countElementsInTable(
                             $this->getTable(),
                             ['crontasks_id' => $item->getID(),
-                                                     'state'        => self::STATE_STOP ]
+                                'state'        => self::STATE_STOP ]
                         );
                     }
                     $ong[2] = self::createTabEntry(_n('Log', 'Logs', Session::getPluralNumber()), $nb);

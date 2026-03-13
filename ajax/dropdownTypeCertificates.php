@@ -54,8 +54,8 @@ if (
         $DB->request(
             'glpi_certificates',
             ['id'                  => $_POST['used'],
-                           'certificatetypes_id' => $_POST['certificatetype']
-                          ]
+                'certificatetypes_id' => $_POST['certificatetype'],
+            ]
         ) as $data
     ) {
         $used[$data['id']] = $data['id'];
@@ -65,9 +65,9 @@ if (
 Dropdown::show(
     'Certificate',
     ['name'      => $_POST['name'],
-                'used'      => $used,
-                'width'     => '50%',
-                'entity'    => $_POST['entity'],
-                'rand'      => $_POST['rand'],
-               ]
+        'used'      => $used,
+        'width'     => '50%',
+        'entity'    => $_POST['entity'],
+        'rand'      => $_POST['rand'],
+    ]
 );

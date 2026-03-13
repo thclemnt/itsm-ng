@@ -170,8 +170,8 @@ class XML
                             $FieldName = "data";
                             $Attributes = " fieldname=\"" . $FieldsVector[$j] . "\"";
                     }
-                    fputs($fp, "         <" . $FieldName . $Attributes . ">" .
-                          Toolbox::encodeInUtf8(htmlspecialchars((string) $row[$j])) . "</" . $FieldName . ">\n");
+                    fputs($fp, "         <" . $FieldName . $Attributes . ">"
+                          . Toolbox::encodeInUtf8(htmlspecialchars((string) $row[$j])) . "</" . $FieldName . ">\n");
                 }
                 fputs($fp, "      </row>\n");
             }

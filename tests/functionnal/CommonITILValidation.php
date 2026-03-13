@@ -45,49 +45,49 @@ class CommonITILValidation extends DbTestCase
 
         /** Create a group with two users */
         $group = new \Group();
-        $gid = (int)$group->add([
-           'name'   => 'Test group'
+        $gid = (int) $group->add([
+            'name'   => 'Test group',
         ]);
         $this->integer($gid)->isGreaterThan(0);
 
         $uid1 = getItemByTypeName('User', 'itsm', true);
         $uid2 = getItemByTypeName('User', 'tech', true);
         $user = new \User();
-        $uid3 = (int)$user->add([
-           'name'   => 'approval'
+        $uid3 = (int) $user->add([
+            'name'   => 'approval',
         ]);
         $this->integer($uid3)->isGreaterThan(0);
         $profile = new \Profile_User();
         $this->integer(
-            (int)$profile->add([
-              'users_id'     => $uid3,
-              'profiles_id'  => getItemByTypeName('Profile', 'admin', true),
-              'entities_id'  => 0
-         ])
+            (int) $profile->add([
+                'users_id'     => $uid3,
+                'profiles_id'  => getItemByTypeName('Profile', 'admin', true),
+                'entities_id'  => 0,
+            ])
         )->isGreaterThan(0);
 
         $guser = new \Group_User();
         $this->integer(
-            (int)$guser->add([
-              'groups_id' => $gid,
-              'users_id'  => $uid1
-         ])
+            (int) $guser->add([
+                'groups_id' => $gid,
+                'users_id'  => $uid1,
+            ])
         )->isGreaterThan(0);
 
         $guser = new \Group_User();
         $this->integer(
-            (int)$guser->add([
-              'groups_id' => $gid,
-              'users_id'  => $uid2
-         ])
+            (int) $guser->add([
+                'groups_id' => $gid,
+                'users_id'  => $uid2,
+            ])
         )->isGreaterThan(0);
 
         $guser = new \Group_User();
         $this->integer(
-            (int)$guser->add([
-              'groups_id' => $gid,
-              'users_id'  => $uid3
-         ])
+            (int) $guser->add([
+                'groups_id' => $gid,
+                'users_id'  => $uid3,
+            ])
         )->isGreaterThan(0);
 
         /** Create a rule on ticket creation and update that will
@@ -98,40 +98,40 @@ class CommonITILValidation extends DbTestCase
         $ruleaction = new \RuleAction();
 
         $ruletid = $ruleticket->add($ruletinput = [
-           'name'         => "test rule add",
-           'match'        => 'AND',
-           'is_active'    => 1,
-           'sub_type'     => 'RuleTicket',
-           'condition'    => $condition,
-           'is_recursive' => 1
+            'name'         => "test rule add",
+            'match'        => 'AND',
+            'is_active'    => 1,
+            'sub_type'     => 'RuleTicket',
+            'condition'    => $condition,
+            'is_recursive' => 1,
         ]);
         $this->checkInput($ruleticket, $ruletid, $ruletinput);
 
         $crit_id = $rulecrit->add($crit_input = [
-           'rules_id'  => $ruletid,
-           'criteria'  => '_groups_id_assign',
-           'condition' => \Rule::PATTERN_IS,
-           'pattern'   => $gid
+            'rules_id'  => $ruletid,
+            'criteria'  => '_groups_id_assign',
+            'condition' => \Rule::PATTERN_IS,
+            'pattern'   => $gid,
         ]);
         $this->checkInput($rulecrit, $crit_id, $crit_input);
 
         $act_id = $ruleaction->add($act_input = [
-           'rules_id'    => $ruletid,
-           'action_type' => 'add_validation',
-           'field'       => 'groups_id_validate',
-           'value'       => $gid
+            'rules_id'    => $ruletid,
+            'action_type' => 'add_validation',
+            'field'       => 'groups_id_validate',
+            'value'       => $gid,
         ]);
         $this->checkInput($ruleaction, $act_id, $act_input);
 
         /** Create a ticket, no approval requested */
         $ticket = new \Ticket();
         $tickets_id = $ticket->add($ticket_input = [
-           'name'    => "test ticket, will not trigger on rule",
-           'content' => "test"
+            'name'    => "test ticket, will not trigger on rule",
+            'content' => "test",
         ]);
         $tid = $tickets_id; //keep trace of this one
         $this->checkInput($ticket, $tickets_id, $ticket_input);
-        $this->integer((int)$ticket->getField('global_validation'))->isEqualTo(\CommonITILValidation::NONE);
+        $this->integer((int) $ticket->getField('global_validation'))->isEqualTo(\CommonITILValidation::NONE);
 
         $this->integer(countElementsInTable(
             \TicketValidation::getTable(),
@@ -141,9 +141,9 @@ class CommonITILValidation extends DbTestCase
         /** Create a ticket, approval requested */
         $ticket = new \Ticket();
         $tickets_id = $ticket->add($ticket_input = [
-           'name'               => "test ticket, approval will be added",
-           'content'            => "test",
-           '_groups_id_assign'  => $gid
+            'name'               => "test ticket, approval will be added",
+            'content'            => "test",
+            '_groups_id_assign'  => $gid,
         ]);
         unset($ticket_input['_groups_id_assign']);
         $this->checkInput($ticket, $tickets_id, $ticket_input);
@@ -153,19 +153,19 @@ class CommonITILValidation extends DbTestCase
             ['tickets_id' => $tickets_id]
         ))->isEqualTo(2);
 
-        $this->integer((int)$ticket->getField('global_validation'))->isEqualTo(\CommonITILValidation::WAITING);
+        $this->integer((int) $ticket->getField('global_validation'))->isEqualTo(\CommonITILValidation::WAITING);
 
         $ticket->getFromDB($tid);
-        $this->integer((int)$ticket->getField('global_validation'))->isEqualTo(\CommonITILValidation::NONE);
+        $this->integer((int) $ticket->getField('global_validation'))->isEqualTo(\CommonITILValidation::NONE);
 
         // update ticket title and trigger rule on title updating
         $this->boolean(
             $ticket->update([
-              'id'                 => $tid,
-              'name'               => 'test ticket, approval will be also added',
-              '_itil_assign'       => ['_type' => 'group', 'groups_id' => $gid],
-              'global_validation'  => \CommonITILValidation::NONE
-         ])
+                'id'                 => $tid,
+                'name'               => 'test ticket, approval will be also added',
+                '_itil_assign'       => ['_type' => 'group', 'groups_id' => $gid],
+                'global_validation'  => \CommonITILValidation::NONE,
+            ])
         )->isTrue();
 
         $this->integer(countElementsInTable(
@@ -174,7 +174,7 @@ class CommonITILValidation extends DbTestCase
         ))->isEqualTo(2);
 
         $this->boolean($ticket->getFromDB($tid))->isTrue();
-        $this->integer((int)$ticket->getField('global_validation'))->isEqualTo(\CommonITILValidation::WAITING);
+        $this->integer((int) $ticket->getField('global_validation'))->isEqualTo(\CommonITILValidation::WAITING);
 
         $this->login('itsm', 'itsm');
         $ticket->getFromDB($tid);
@@ -182,35 +182,35 @@ class CommonITILValidation extends DbTestCase
         $validation = new \TicketValidation();
         $this->boolean(
             $validation->getFromDBByCrit([
-              'tickets_id'         => $tid,
-              'users_id_validate'  => getItemByTypeName('User', 'itsm', true)
-         ])
+                'tickets_id'         => $tid,
+                'users_id_validate'  => getItemByTypeName('User', 'itsm', true),
+            ])
         )->isTrue();
 
         $this->boolean(
             $validation->update([
-              'id'           => $validation->fields['id'],
-              'tickets_id'   => $tid,
-              'status'       => \CommonITILValidation::ACCEPTED
-         ])
+                'id'           => $validation->fields['id'],
+                'tickets_id'   => $tid,
+                'status'       => \CommonITILValidation::ACCEPTED,
+            ])
         )->isTrue();
 
         $this->boolean($ticket->getFromDB($tid))->isTrue();
-        $this->integer((int)$ticket->getField('global_validation'))->isEqualTo(\CommonITILValidation::ACCEPTED);
+        $this->integer((int) $ticket->getField('global_validation'))->isEqualTo(\CommonITILValidation::ACCEPTED);
 
         //refuse other one
         $validation = new \TicketValidation();
         $this->boolean(
             $validation->getFromDBByCrit([
-              'tickets_id'         => $tickets_id,
-              'users_id_validate'  => getItemByTypeName('User', 'itsm', true)
-         ])
+                'tickets_id'         => $tickets_id,
+                'users_id_validate'  => getItemByTypeName('User', 'itsm', true),
+            ])
         )->isTrue();
 
         $res = $validation->update([
-           'id'           => $validation->fields['id'],
-           'tickets_id'   => $tickets_id,
-           'status'       => \CommonITILValidation::REFUSED
+            'id'           => $validation->fields['id'],
+            'tickets_id'   => $tickets_id,
+            'status'       => \CommonITILValidation::REFUSED,
         ]);
 
         $this->hasSessionMessages(ERROR, ['If approval is denied, specify a reason.']);
@@ -218,24 +218,24 @@ class CommonITILValidation extends DbTestCase
 
         $this->boolean(
             $validation->update([
-              'id'                 => $validation->fields['id'],
-              'tickets_id'         => $tickets_id,
-              'status'             => \CommonITILValidation::REFUSED,
-              'comment_validation' => 'Meh'
-         ])
+                'id'                 => $validation->fields['id'],
+                'tickets_id'         => $tickets_id,
+                'status'             => \CommonITILValidation::REFUSED,
+                'comment_validation' => 'Meh',
+            ])
         )->isTrue();
 
         $this->boolean($ticket->getFromDB($tickets_id))->isTrue();
-        $this->integer((int)$ticket->getField('global_validation'))->isEqualTo(\CommonITILValidation::REFUSED);
+        $this->integer((int) $ticket->getField('global_validation'))->isEqualTo(\CommonITILValidation::REFUSED);
 
         //require 100% for global status to be changed
         /** Create a ticket, approval requested */
         $ticket = new \Ticket();
         $tickets_id = $ticket->add($ticket_input = [
-           'name'               => "test ticket, approval will be added",
-           'content'            => "test",
-           '_groups_id_assign'  => $gid,
-           'validation_percent' => 100
+            'name'               => "test ticket, approval will be added",
+            'content'            => "test",
+            '_groups_id_assign'  => $gid,
+            'validation_percent' => 100,
         ]);
         unset($ticket_input['_groups_id_assign']);
         $this->checkInput($ticket, $tickets_id, $ticket_input);
@@ -245,7 +245,7 @@ class CommonITILValidation extends DbTestCase
             ['tickets_id' => $tickets_id]
         ))->isEqualTo(2);
 
-        $this->integer((int)$ticket->getField('global_validation'))->isEqualTo(\CommonITILValidation::WAITING);
+        $this->integer((int) $ticket->getField('global_validation'))->isEqualTo(\CommonITILValidation::WAITING);
 
         /* FIXME: works well from UI, but not from here
         $this->login('glpi', 'glpi');
@@ -277,18 +277,18 @@ class CommonITILValidation extends DbTestCase
 
         $ticket = new \Ticket();
         $tickets_id = $ticket->add([
-           'name'    => 'validation access test',
-           'content' => 'validator vs non-validator',
+            'name'    => 'validation access test',
+            'content' => 'validator vs non-validator',
         ]);
-        $this->integer((int)$tickets_id)->isGreaterThan(0);
+        $this->integer((int) $tickets_id)->isGreaterThan(0);
 
         $validation = new \TicketValidation();
         $validation_id = $validation->add([
-           'tickets_id'         => $tickets_id,
-           'users_id_validate'  => getItemByTypeName('User', 'tech', true),
-           'comment_submission' => 'please validate',
+            'tickets_id'         => $tickets_id,
+            'users_id_validate'  => getItemByTypeName('User', 'tech', true),
+            'comment_submission' => 'please validate',
         ]);
-        $this->integer((int)$validation_id)->isGreaterThan(0);
+        $this->integer((int) $validation_id)->isGreaterThan(0);
 
         $this->login('tech', 'tech');
         $this->boolean(\TicketValidation::canValidate($tickets_id))->isTrue();
@@ -300,93 +300,93 @@ class CommonITILValidation extends DbTestCase
     protected function testComputeValidationProvider(): array
     {
         return [
-           // 100% validation required
-           [
-              'accepted'           => 0,
-              'refused'            => 0,
-              'validation_percent' => 100,
-              'result'             => \CommonITILValidation::WAITING,
-           ],
-           [
-              'accepted'           => 10,
-              'refused'            => 0,
-              'validation_percent' => 100,
-              'result'             => \CommonITILValidation::WAITING,
-           ],
-           [
-              'accepted'           => 90,
-              'refused'            => 0,
-              'validation_percent' => 100,
-              'result'             => \CommonITILValidation::WAITING,
-           ],
-           [
-              'accepted'           => 100,
-              'refused'            => 0,
-              'validation_percent' => 100,
-              'result'             => \CommonITILValidation::ACCEPTED,
-           ],
-           [
-              'accepted'           => 0,
-              'refused'            => 10,
-              'validation_percent' => 100,
-              'result'             => \CommonITILValidation::REFUSED,
-           ],
-           // 50% validation required
-           [
-              'accepted'           => 0,
-              'refused'            => 0,
-              'validation_percent' => 50,
-              'result'             => \CommonITILValidation::WAITING,
-           ],
-           [
-              'accepted'           => 10,
-              'refused'            => 0,
-              'validation_percent' => 50,
-              'result'             => \CommonITILValidation::WAITING,
-           ],
-           [
-              'accepted'           => 50,
-              'refused'            => 0,
-              'validation_percent' => 50,
-              'result'             => \CommonITILValidation::ACCEPTED,
-           ],
-           [
-              'accepted'           => 0,
-              'refused'            => 10,
-              'validation_percent' => 50,
-              'result'             => \CommonITILValidation::WAITING,
-           ],
-           [
-              'accepted'           => 0,
-              'refused'            => 50,
-              'validation_percent' => 50,
-              'result'             => \CommonITILValidation::WAITING,
-           ],
-           [
-              'accepted'           => 0,
-              'refused'            => 60,
-              'validation_percent' => 50,
-              'result'             => \CommonITILValidation::REFUSED,
-           ],
-           // 0% validation required
-           [
-              'accepted'           => 0,
-              'refused'            => 0,
-              'validation_percent' => 0,
-              'result'             => \CommonITILValidation::WAITING,
-           ],
-           [
-              'accepted'           => 10,
-              'refused'            => 0,
-              'validation_percent' => 0,
-              'result'             => \CommonITILValidation::ACCEPTED,
-           ],
-           [
-              'accepted'           => 0,
-              'refused'            => 10,
-              'validation_percent' => 0,
-              'result'             => \CommonITILValidation::REFUSED,
-           ],
+            // 100% validation required
+            [
+                'accepted'           => 0,
+                'refused'            => 0,
+                'validation_percent' => 100,
+                'result'             => \CommonITILValidation::WAITING,
+            ],
+            [
+                'accepted'           => 10,
+                'refused'            => 0,
+                'validation_percent' => 100,
+                'result'             => \CommonITILValidation::WAITING,
+            ],
+            [
+                'accepted'           => 90,
+                'refused'            => 0,
+                'validation_percent' => 100,
+                'result'             => \CommonITILValidation::WAITING,
+            ],
+            [
+                'accepted'           => 100,
+                'refused'            => 0,
+                'validation_percent' => 100,
+                'result'             => \CommonITILValidation::ACCEPTED,
+            ],
+            [
+                'accepted'           => 0,
+                'refused'            => 10,
+                'validation_percent' => 100,
+                'result'             => \CommonITILValidation::REFUSED,
+            ],
+            // 50% validation required
+            [
+                'accepted'           => 0,
+                'refused'            => 0,
+                'validation_percent' => 50,
+                'result'             => \CommonITILValidation::WAITING,
+            ],
+            [
+                'accepted'           => 10,
+                'refused'            => 0,
+                'validation_percent' => 50,
+                'result'             => \CommonITILValidation::WAITING,
+            ],
+            [
+                'accepted'           => 50,
+                'refused'            => 0,
+                'validation_percent' => 50,
+                'result'             => \CommonITILValidation::ACCEPTED,
+            ],
+            [
+                'accepted'           => 0,
+                'refused'            => 10,
+                'validation_percent' => 50,
+                'result'             => \CommonITILValidation::WAITING,
+            ],
+            [
+                'accepted'           => 0,
+                'refused'            => 50,
+                'validation_percent' => 50,
+                'result'             => \CommonITILValidation::WAITING,
+            ],
+            [
+                'accepted'           => 0,
+                'refused'            => 60,
+                'validation_percent' => 50,
+                'result'             => \CommonITILValidation::REFUSED,
+            ],
+            // 0% validation required
+            [
+                'accepted'           => 0,
+                'refused'            => 0,
+                'validation_percent' => 0,
+                'result'             => \CommonITILValidation::WAITING,
+            ],
+            [
+                'accepted'           => 10,
+                'refused'            => 0,
+                'validation_percent' => 0,
+                'result'             => \CommonITILValidation::ACCEPTED,
+            ],
+            [
+                'accepted'           => 0,
+                'refused'            => 10,
+                'validation_percent' => 0,
+                'result'             => \CommonITILValidation::REFUSED,
+            ],
         ];
     }
 

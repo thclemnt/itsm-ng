@@ -1,5 +1,7 @@
 <?php
 
+use Glpi\Features\DCBreadcrumb;
+
 /**
  * ---------------------------------------------------------------------
  * GLPI - Gestionnaire Libre de Parc Informatique
@@ -40,7 +42,7 @@ if (!defined('GLPI_ROOT')) {
 **/
 class DCRoom extends CommonDBTM
 {
-    use Glpi\Features\DCBreadcrumb;
+    use DCBreadcrumb;
 
     // From CommonDBTM
     public $dohistory                   = true;
@@ -75,40 +77,40 @@ class DCRoom extends CommonDBTM
     {
         global $CFG_GLPI;
         $form = [
-           'action' => self::getFormURL(),
-           'itemtype' => $this::class,
-           'content' => [
-              $this->getTypeName() => [
-                  'visible' => true,
-                  'inputs' => [
-                      $this->isNewID($ID) ? [] : [
-                          'type' => 'hidden',
-                          'name' => 'id',
-                          'value' => $ID
-                      ],
-                      __('Name') => [
-                          'type' => 'text',
-                          'name' => 'name',
-                          'value' => $this->fields["name"] ?? $options['name'] ?? '',
-                          'size' => 50,
-                          'max' => 255,
-                          'comment' => false
-                      ],
-                      Location::getTypeName(1) => [
-                          'type' => 'select',
-                          'id' => 'dropdown_locations_id',
-                          'name' => 'locations_id',
-                          'value' => $this->fields["locations_id"] ?? $options['locations_id'] ?? 0,
-                          'values' => getOptionForItems(Location::class),
-                      ],
-                      Datacenter::getTypeName(1) => [
-                          'type' => 'select',
-                          'id' => 'dropdown_datacenters_id',
-                          'name' => 'datacenters_id',
-                          'value' => $this->fields["datacenters_id"] ?? $options['datacenters_id'] ?? 0,
-                          'values' => getOptionForItems(Datacenter::class),
-                          'hooks' => [
-                              'change' => <<<JS
+            'action' => self::getFormURL(),
+            'itemtype' => $this::class,
+            'content' => [
+                $this->getTypeName() => [
+                    'visible' => true,
+                    'inputs' => [
+                        $this->isNewID($ID) ? [] : [
+                            'type' => 'hidden',
+                            'name' => 'id',
+                            'value' => $ID,
+                        ],
+                        __('Name') => [
+                            'type' => 'text',
+                            'name' => 'name',
+                            'value' => $this->fields["name"] ?? $options['name'] ?? '',
+                            'size' => 50,
+                            'max' => 255,
+                            'comment' => false,
+                        ],
+                        Location::getTypeName(1) => [
+                            'type' => 'select',
+                            'id' => 'dropdown_locations_id',
+                            'name' => 'locations_id',
+                            'value' => $this->fields["locations_id"] ?? $options['locations_id'] ?? 0,
+                            'values' => getOptionForItems(Location::class),
+                        ],
+                        Datacenter::getTypeName(1) => [
+                            'type' => 'select',
+                            'id' => 'dropdown_datacenters_id',
+                            'name' => 'datacenters_id',
+                            'value' => $this->fields["datacenters_id"] ?? $options['datacenters_id'] ?? 0,
+                            'values' => getOptionForItems(Datacenter::class),
+                            'hooks' => [
+                                'change' => <<<JS
                             var datacenter = $(this).val();
                             $.ajax({
                                 url: "{$CFG_GLPI['root_doc']}/ajax/dropdownLocation.php",
@@ -128,39 +130,39 @@ class DCRoom extends CommonDBTM
 
                                 }
                             });
-                            JS
-                          ]
-                      ],
-                      __('Number of columns') => [
-                          'type' => 'number',
-                          'name' => 'vis_cols',
-                          'value' => $this->fields["vis_cols"] ?? $options['vis_cols'] ?? 1,
-                          'min' => 1,
-                          'max' => 100,
-                          'step' => 1,
-                          'col_lg' => 6,
-                      ],
-                      __('Number of rows') => [
-                          'type' => 'number',
-                          'name' => 'vis_rows',
-                          'value' => $this->fields["vis_rows"] ?? $options['vis_rows'] ?? 1,
-                          'min' => 1,
-                          'max' => 100,
-                          'step' => 1,
-                          'col_lg' => 6,
-                      ],
-                      __('Background picture (blueprint)') => [
-                          'type' => 'imageUpload',
-                          'id' => 'blueprintImagePick',
-                          'name' => 'blueprint',
-                          'accept' => 'image/*',
-                          'value' => $this->fields["blueprint"] ?? '',
-                          'col_lg' => 12,
-                          'col_md' => 12,
-                      ]
-                  ]
-              ]
-           ]
+                            JS,
+                            ],
+                        ],
+                        __('Number of columns') => [
+                            'type' => 'number',
+                            'name' => 'vis_cols',
+                            'value' => $this->fields["vis_cols"] ?? $options['vis_cols'] ?? 1,
+                            'min' => 1,
+                            'max' => 100,
+                            'step' => 1,
+                            'col_lg' => 6,
+                        ],
+                        __('Number of rows') => [
+                            'type' => 'number',
+                            'name' => 'vis_rows',
+                            'value' => $this->fields["vis_rows"] ?? $options['vis_rows'] ?? 1,
+                            'min' => 1,
+                            'max' => 100,
+                            'step' => 1,
+                            'col_lg' => 6,
+                        ],
+                        __('Background picture (blueprint)') => [
+                            'type' => 'imageUpload',
+                            'id' => 'blueprintImagePick',
+                            'name' => 'blueprint',
+                            'accept' => 'image/*',
+                            'value' => $this->fields["blueprint"] ?? '',
+                            'col_lg' => 12,
+                            'col_md' => 12,
+                        ],
+                    ],
+                ],
+            ],
         ];
         renderTwigForm($form, '', $this->fields);
         return true;
@@ -226,79 +228,79 @@ class DCRoom extends CommonDBTM
         $tab = [];
 
         $tab[] = [
-           'id'                 => 'common',
-           'name'               => __('Characteristics')
+            'id'                 => 'common',
+            'name'               => __('Characteristics'),
         ];
 
         $tab[] = [
-           'id'                 => '1',
-           'table'              => $this->getTable(),
-           'field'              => 'name',
-           'name'               => __('Name'),
-           'datatype'           => 'itemlink',
-           'massiveaction'      => false, // implicit key==1
-           'autocomplete'       => true,
+            'id'                 => '1',
+            'table'              => $this->getTable(),
+            'field'              => 'name',
+            'name'               => __('Name'),
+            'datatype'           => 'itemlink',
+            'massiveaction'      => false, // implicit key==1
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '2',
-           'table'              => $this->getTable(),
-           'field'              => 'id',
-           'name'               => __('ID'),
-           'massiveaction'      => false, // implicit field is id
-           'datatype'           => 'number'
+            'id'                 => '2',
+            'table'              => $this->getTable(),
+            'field'              => 'id',
+            'name'               => __('ID'),
+            'massiveaction'      => false, // implicit field is id
+            'datatype'           => 'number',
         ];
 
         $tab = array_merge($tab, Location::rawSearchOptionsToAdd());
 
         $tab[] = [
-           'id'                 => '4',
-           'table'              => Datacenter::getTable(),
-           'field'              => 'name',
-           'name'               => Datacenter::getTypeName(1),
-           'datatype'           => 'dropdown'
+            'id'                 => '4',
+            'table'              => Datacenter::getTable(),
+            'field'              => 'name',
+            'name'               => Datacenter::getTypeName(1),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '5',
-           'table'              => $this->getTable(),
-           'field'              => 'vis_cols',
-           'name'               => __('Number of columns'),
-           'datatype'           => 'number'
+            'id'                 => '5',
+            'table'              => $this->getTable(),
+            'field'              => 'vis_cols',
+            'name'               => __('Number of columns'),
+            'datatype'           => 'number',
         ];
 
         $tab[] = [
-           'id'                 => '6',
-           'table'              => $this->getTable(),
-           'field'              => 'vis_rows',
-           'name'               => __('Number of rows'),
-           'datatype'           => 'number'
+            'id'                 => '6',
+            'table'              => $this->getTable(),
+            'field'              => 'vis_rows',
+            'name'               => __('Number of rows'),
+            'datatype'           => 'number',
         ];
 
         $tab[] = [
-           'id'                 => '19',
-           'table'              => $this->getTable(),
-           'field'              => 'date_mod',
-           'name'               => __('Last update'),
-           'datatype'           => 'datetime',
-           'massiveaction'      => false
+            'id'                 => '19',
+            'table'              => $this->getTable(),
+            'field'              => 'date_mod',
+            'name'               => __('Last update'),
+            'datatype'           => 'datetime',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '121',
-           'table'              => $this->getTable(),
-           'field'              => 'date_creation',
-           'name'               => __('Creation date'),
-           'datatype'           => 'datetime',
-           'massiveaction'      => false
+            'id'                 => '121',
+            'table'              => $this->getTable(),
+            'field'              => 'date_creation',
+            'name'               => __('Creation date'),
+            'datatype'           => 'datetime',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '80',
-           'table'              => 'glpi_entities',
-           'field'              => 'completename',
-           'name'               => Entity::getTypeName(1),
-           'datatype'           => 'dropdown'
+            'id'                 => '80',
+            'table'              => 'glpi_entities',
+            'field'              => 'completename',
+            'name'               => Entity::getTypeName(1),
+            'datatype'           => 'dropdown',
         ];
 
         $tab = array_merge($tab, Notepad::rawSearchOptionsToAdd());
@@ -318,8 +320,8 @@ class DCRoom extends CommonDBTM
                     $nb = countElementsInTable(
                         self::getTable(),
                         [
-                          'datacenters_id'  => $item->getID(),
-                          'is_deleted'      => 0
+                            'datacenters_id'  => $item->getID(),
+                            'is_deleted'      => 0,
                         ]
                     );
                 }
@@ -341,7 +343,7 @@ class DCRoom extends CommonDBTM
      *
      * @param Datacenter $datacenter Datacenter object
      *
-     * @return void|boolean (display) Returns false if there is a rights error.
+     * @return void|bool (display) Returns false if there is a rights error.
     **/
     public static function showForDatacenter(Datacenter $datacenter)
     {
@@ -359,10 +361,10 @@ class DCRoom extends CommonDBTM
         $canedit = $datacenter->canEdit($ID);
 
         $rooms = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'datacenters_id' => $datacenter->getID()
-           ]
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'datacenters_id' => $datacenter->getID(),
+            ],
         ]);
 
         echo "<div class='firstbloc'>";
@@ -377,9 +379,9 @@ class DCRoom extends CommonDBTM
         if ($canedit) {
             Html::openMassiveActionsForm('mass' . __CLASS__ . $rand);
             $massiveactionparams = [
-               'num_displayed'   => min($_SESSION['glpilist_limit'], count($rooms)),
-               'container'       => 'mass' . __CLASS__ . $rand,
-               'deprecated'      => true
+                'num_displayed'   => min($_SESSION['glpilist_limit'], count($rooms)),
+                'container'       => 'mass' . __CLASS__ . $rand,
+                'deprecated'      => true,
             ];
             Html::showMassiveActions($massiveactionparams);
         }
@@ -447,11 +449,11 @@ class DCRoom extends CommonDBTM
         global $DB;
 
         $iterator = $DB->request([
-           'FROM'   => Rack::getTable(),
-           'WHERE'  => [
-              'dcrooms_id'   => $this->getID(),
-              'is_deleted'   => 0
-           ]
+            'FROM'   => Rack::getTable(),
+            'WHERE'  => [
+                'dcrooms_id'   => $this->getID(),
+                'is_deleted'   => 0,
+            ],
         ]);
 
         $filled = [];
@@ -475,8 +477,8 @@ class DCRoom extends CommonDBTM
     public function getAllPositions()
     {
         $positions = [];
-        for ($x = 1; $x < (int)$this->fields['vis_cols'] + 1; ++$x) {
-            for ($y = 1; $y < (int)$this->fields['vis_rows'] + 1; ++$y) {
+        for ($x = 1; $x < (int) $this->fields['vis_cols'] + 1; ++$x) {
+            for ($y = 1; $y < (int) $this->fields['vis_rows'] + 1; ++$y) {
                 $positions["$x,$y"] = sprintf(
                     __('col: %1$s, row: %2$s'),
                     Toolbox::getBijectiveIndex($x),

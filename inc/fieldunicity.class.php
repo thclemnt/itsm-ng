@@ -105,24 +105,24 @@ class FieldUnicity extends CommonDropdown
         }
 
         return [
-           [
-              'type' => 'hidden',
-              'name' => 'entities_id',
-              'value' => Session::getActiveEntity()
-           ],
-           __('Active') => [
-              'name'  => 'is_active',
-              'type'  => 'checkbox',
-              'value' => $this->fields['is_active']
-           ],
-           _n('Type', 'Types', 1) => [
-              'name'  => 'itemtype',
-              'type'  => 'select',
-              'id' => 'dropdown_itemtype',
-              'values' => array_merge([Dropdown::EMPTY_VALUE], $options),
-              'value' => $this->fields['itemtype'],
-              'hooks' => [
-                 'change' => <<<JS
+            [
+                'type' => 'hidden',
+                'name' => 'entities_id',
+                'value' => Session::getActiveEntity(),
+            ],
+            __('Active') => [
+                'name'  => 'is_active',
+                'type'  => 'checkbox',
+                'value' => $this->fields['is_active'],
+            ],
+            _n('Type', 'Types', 1) => [
+                'name'  => 'itemtype',
+                'type'  => 'select',
+                'id' => 'dropdown_itemtype',
+                'values' => array_merge([Dropdown::EMPTY_VALUE], $options),
+                'value' => $this->fields['itemtype'],
+                'hooks' => [
+                    'change' => <<<JS
                $.ajax({
                   url: '{$CFG_GLPI["root_doc"]}/ajax/dropdownUnicityFields.php',
                   type: 'POST',
@@ -149,25 +149,25 @@ class FieldUnicity extends CommonDropdown
                   }
                });
                JS,
-              ]
-           ],
-           __('Unique fields') => [
-              'name'  => '_fields',
-              'id'    => 'span_fields',
-              'type'  => 'checklist',
-              'options' => $values,
-              'values' => explode(',', (string) $this->fields['fields'])
-           ],
-           __('Record into the database denied') => [
-              'name'  => 'action_refuse',
-              'type'  => 'checkbox',
-              'value' => $this->fields['action_refuse']
-           ],
-           __('Send a notification') => [
-              'name'  => 'action_notify',
-              'type'  => 'checkbox',
-              'value' => $this->fields['action_notify']
-           ]
+                ],
+            ],
+            __('Unique fields') => [
+                'name'  => '_fields',
+                'id'    => 'span_fields',
+                'type'  => 'checklist',
+                'options' => $values,
+                'values' => explode(',', (string) $this->fields['fields']),
+            ],
+            __('Record into the database denied') => [
+                'name'  => 'action_refuse',
+                'type'  => 'checkbox',
+                'value' => $this->fields['action_refuse'],
+            ],
+            __('Send a notification') => [
+                'name'  => 'action_notify',
+                'type'  => 'checkbox',
+                'value' => $this->fields['action_notify'],
+            ],
         ];
     }
 
@@ -235,8 +235,8 @@ class FieldUnicity extends CommonDropdown
     /**
      * Display a dropdown which contains all the available itemtypes
      *
-     * @param integer $ID     The field unicity item id
-     * @param integer $value  The selected value (default 0)
+     * @param int $ID     The field unicity item id
+     * @param int $value  The selected value (default 0)
      *
      * @return void
     **/
@@ -264,7 +264,7 @@ class FieldUnicity extends CommonDropdown
             $rand = Dropdown::showFromArray('itemtype', $options, ['display_emptychoice' => true]);
 
             $params = ['itemtype' => '__VALUE__',
-                            'id'       => $ID];
+                'id'       => $ID];
             Ajax::updateItemOnSelectEvent(
                 "dropdown_itemtype$rand",
                 "span_fields",
@@ -279,8 +279,8 @@ class FieldUnicity extends CommonDropdown
      * Return criteria unicity for an itemtype, in an entity
      *
      * @param string  itemtype       the itemtype for which unicity must be checked
-     * @param integer entities_id    the entity for which configuration must be retrivied
-     * @param boolean $check_active
+     * @param int entities_id    the entity for which configuration must be retrivied
+     * @param bool $check_active
      *
      * @return array an array of fields to check, or an empty array if no
     **/
@@ -290,11 +290,11 @@ class FieldUnicity extends CommonDropdown
 
         //Get the first active configuration for this itemtype
         $request = [
-           'FROM'   => 'glpi_fieldunicities',
-           'WHERE'  => [
-              'itemtype'  => $itemtype
-           ] + getEntitiesRestrictCriteria('glpi_fieldunicities', '', $entities_id, true),
-           'ORDER'  => ['entities_id DESC']
+            'FROM'   => 'glpi_fieldunicities',
+            'WHERE'  => [
+                'itemtype'  => $itemtype,
+            ] + getEntitiesRestrictCriteria('glpi_fieldunicities', '', $entities_id, true),
+            'ORDER'  => ['entities_id DESC'],
         ];
 
         if ($check_active) {
@@ -344,7 +344,7 @@ class FieldUnicity extends CommonDropdown
         self::dropdownFields(
             $unicity->fields['itemtype'],
             ['values' => $unicity_fields,
-                                   'name'   => '_fields']
+                'name'   => '_fields']
         );
         echo "</span>";
     }
@@ -362,9 +362,9 @@ class FieldUnicity extends CommonDropdown
         global $DB;
 
         $p = [
-           'name'    => 'fields',
-           'display' => true,
-           'values'  => [],
+            'name'    => 'fields',
+            'display' => true,
+            'values'  => [],
         ];
 
         if (is_array($options) && count($options)) {
@@ -404,95 +404,95 @@ class FieldUnicity extends CommonDropdown
         $tab = [];
 
         $tab[] = [
-           'id'                 => 'common',
-           'name'               => self::getTypeName()
+            'id'                 => 'common',
+            'name'               => self::getTypeName(),
         ];
 
         $tab[] = [
-           'id'                 => '1',
-           'table'              => $this->getTable(),
-           'field'              => 'name',
-           'name'               => __('Name'),
-           'datatype'           => 'itemlink',
-           'massiveaction'      => false
+            'id'                 => '1',
+            'table'              => $this->getTable(),
+            'field'              => 'name',
+            'name'               => __('Name'),
+            'datatype'           => 'itemlink',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '2',
-           'table'              => $this->getTable(),
-           'field'              => 'id',
-           'name'               => __('ID'),
-           'datatype'           => 'number',
-           'massiveaction'      => false
+            'id'                 => '2',
+            'table'              => $this->getTable(),
+            'field'              => 'id',
+            'name'               => __('ID'),
+            'datatype'           => 'number',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '3',
-           'table'              => $this->getTable(),
-           'field'              => 'fields',
-           'name'               => __('Unique fields'),
-           'massiveaction'      => false,
-           'datatype'           => 'specific',
-           'additionalfields'   => ['itemtype']
+            'id'                 => '3',
+            'table'              => $this->getTable(),
+            'field'              => 'fields',
+            'name'               => __('Unique fields'),
+            'massiveaction'      => false,
+            'datatype'           => 'specific',
+            'additionalfields'   => ['itemtype'],
         ];
 
         $tab[] = [
-           'id'                 => '4',
-           'table'              => $this->getTable(),
-           'field'              => 'itemtype',
-           'name'               => _n('Type', 'Types', 1),
-           'massiveaction'      => false,
-           'datatype'           => 'itemtypename',
-           'itemtype_list'      => 'unicity_types'
+            'id'                 => '4',
+            'table'              => $this->getTable(),
+            'field'              => 'itemtype',
+            'name'               => _n('Type', 'Types', 1),
+            'massiveaction'      => false,
+            'datatype'           => 'itemtypename',
+            'itemtype_list'      => 'unicity_types',
         ];
 
         $tab[] = [
-           'id'                 => '5',
-           'table'              => $this->getTable(),
-           'field'              => 'action_refuse',
-           'name'               => __('Record into the database denied'),
-           'datatype'           => 'bool'
+            'id'                 => '5',
+            'table'              => $this->getTable(),
+            'field'              => 'action_refuse',
+            'name'               => __('Record into the database denied'),
+            'datatype'           => 'bool',
         ];
 
         $tab[] = [
-           'id'                 => '6',
-           'table'              => $this->getTable(),
-           'field'              => 'action_notify',
-           'name'               => __('Send a notification'),
-           'datatype'           => 'bool'
+            'id'                 => '6',
+            'table'              => $this->getTable(),
+            'field'              => 'action_notify',
+            'name'               => __('Send a notification'),
+            'datatype'           => 'bool',
         ];
 
         $tab[] = [
-           'id'                 => '86',
-           'table'              => $this->getTable(),
-           'field'              => 'is_recursive',
-           'name'               => __('Child entities'),
-           'datatype'           => 'bool'
+            'id'                 => '86',
+            'table'              => $this->getTable(),
+            'field'              => 'is_recursive',
+            'name'               => __('Child entities'),
+            'datatype'           => 'bool',
         ];
 
         $tab[] = [
-           'id'                 => '16',
-           'table'              => $this->getTable(),
-           'field'              => 'comment',
-           'name'               => __('Comments'),
-           'datatype'           => 'text'
+            'id'                 => '16',
+            'table'              => $this->getTable(),
+            'field'              => 'comment',
+            'name'               => __('Comments'),
+            'datatype'           => 'text',
         ];
 
         $tab[] = [
-           'id'                 => '30',
-           'table'              => $this->getTable(),
-           'field'              => 'is_active',
-           'name'               => __('Active'),
-           'datatype'           => 'bool',
-           'massiveaction'      => false
+            'id'                 => '30',
+            'table'              => $this->getTable(),
+            'field'              => 'is_active',
+            'name'               => __('Active'),
+            'datatype'           => 'bool',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '80',
-           'table'              => 'glpi_entities',
-           'field'              => 'completename',
-           'name'               => Entity::getTypeName(1),
-           'datatype'           => 'dropdown'
+            'id'                 => '80',
+            'table'              => 'glpi_entities',
+            'field'              => 'completename',
+            'name'               => Entity::getTypeName(1),
+            'datatype'           => 'dropdown',
         ];
 
         return $tab;
@@ -626,7 +626,7 @@ class FieldUnicity extends CommonDropdown
         $DB->delete(
             self::getTable(),
             [
-              'itemtype'  => ['LIKE', "%Plugin$itemtype%"]
+                'itemtype'  => ['LIKE', "%Plugin$itemtype%"],
             ]
         );
     }
@@ -669,26 +669,26 @@ class FieldUnicity extends CommonDropdown
             foreach ($where_fields as $where_field) {
                 if (getTableNameForForeignKeyField($where_field)) {
                     $where = $where + [
-                       'NOT'          => [$where_field => null],
-                       $where_field   => ['<>', 0]
+                        'NOT'          => [$where_field => null],
+                        $where_field   => ['<>', 0],
                     ];
                 } else {
                     $where = $where + [
-                       'NOT'          => [$where_field => null],
-                       $where_field   => ['<>', '']
+                        'NOT'          => [$where_field => null],
+                        $where_field   => ['<>', ''],
                     ];
                 }
             }
 
             $iterator = $DB->request([
-               'SELECT'    => $fields,
-               'COUNT'     => 'cpt',
-               'FROM'      => $item->getTable(),
-               'WHERE'     => [
-                  $item->getTable() . '.entities_id'  => $entities
-               ] + $where,
-               'GROUPBY'   => $fields,
-               'ORDERBY'   => 'cpt DESC'
+                'SELECT'    => $fields,
+                'COUNT'     => 'cpt',
+                'FROM'      => $item->getTable(),
+                'WHERE'     => [
+                    $item->getTable() . '.entities_id'  => $entities,
+                ] + $where,
+                'GROUPBY'   => $fields,
+                'ORDERBY'   => 'cpt DESC',
             ]);
             $results = [];
             while ($data = $iterator->next()) {
@@ -736,14 +736,14 @@ class FieldUnicity extends CommonDropdown
     {
 
         $params = ['action_type' => true,
-                        'action_user' => getUserName(Session::getLoginUserID()),
-                        'entities_id' => $_SESSION['glpiactive_entity'],
-                        'itemtype'    => get_class($this),
-                        'date'        => $_SESSION['glpi_currenttime'],
-                        'refuse'      => true,
-                        'label'       => ['name' => 'test'],
-                        'field'       => ['action_refuse' => true],
-                        'double'      => []];
+            'action_user' => getUserName(Session::getLoginUserID()),
+            'entities_id' => $_SESSION['glpiactive_entity'],
+            'itemtype'    => get_class($this),
+            'date'        => $_SESSION['glpi_currenttime'],
+            'refuse'      => true,
+            'label'       => ['name' => 'test'],
+            'field'       => ['action_refuse' => true],
+            'double'      => []];
 
         NotificationEvent::debugEvent($this, $params);
     }

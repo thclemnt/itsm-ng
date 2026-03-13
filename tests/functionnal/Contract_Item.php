@@ -43,37 +43,37 @@ class Contract_Item extends DbTestCase
 
         $contract = new \Contract();
         $contract_id = $contract->add([
-           'name'              => 'contract-item-' . $this->getUniqueString(),
-           'entities_id'       => 0,
-           'max_links_allowed' => 1,
+            'name'              => 'contract-item-' . $this->getUniqueString(),
+            'entities_id'       => 0,
+            'max_links_allowed' => 1,
         ]);
-        $this->integer((int)$contract_id)->isGreaterThan(0);
+        $this->integer((int) $contract_id)->isGreaterThan(0);
 
         $computer = getItemByTypeName('Computer', '_test_pc01');
         $this->object($computer)->isInstanceOf('\Computer');
 
         $computer_2 = new \Computer();
         $computer_2_id = $computer_2->add([
-           'name'        => 'contract-item-computer-' . $this->getUniqueString(),
-           'entities_id' => 0,
+            'name'        => 'contract-item-computer-' . $this->getUniqueString(),
+            'entities_id' => 0,
         ]);
-        $this->integer((int)$computer_2_id)->isGreaterThan(0);
+        $this->integer((int) $computer_2_id)->isGreaterThan(0);
 
         $relation = new \Contract_Item();
         $first_id = $relation->add([
-           'contracts_id' => $contract_id,
-           'itemtype'     => 'Computer',
-           'items_id'     => $computer->getID(),
+            'contracts_id' => $contract_id,
+            'itemtype'     => 'Computer',
+            'items_id'     => $computer->getID(),
         ]);
-        $this->integer((int)$first_id)->isGreaterThan(0);
+        $this->integer((int) $first_id)->isGreaterThan(0);
 
         $second_id = $relation->add([
-           'contracts_id' => $contract_id,
-           'itemtype'     => 'Computer',
-           'items_id'     => $computer_2_id,
+            'contracts_id' => $contract_id,
+            'itemtype'     => 'Computer',
+            'items_id'     => $computer_2_id,
         ]);
-        $this->integer((int)$second_id)->isEqualTo(0);
-        $this->integer((int)countElementsInTable(
+        $this->integer((int) $second_id)->isEqualTo(0);
+        $this->integer((int) countElementsInTable(
             \Contract_Item::getTable(),
             ['contracts_id' => $contract_id]
         ))->isEqualTo(1);

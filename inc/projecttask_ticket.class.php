@@ -112,24 +112,24 @@ class ProjectTask_Ticket extends CommonDBRelation
      *
      * @param $projecttasks_id    integer    $projecttasks_id ID of the project task
      *
-     * @return integer total actiontime
+     * @return int total actiontime
      **/
     public static function getTicketsTotalActionTime($projecttasks_id)
     {
         global $DB;
 
         $iterator = $DB->request([
-           'SELECT'       => new QueryExpression('SUM(glpi_tickets.actiontime) AS duration'),
-           'FROM'         => self::getTable(),
-           'INNER JOIN'   => [
-              'glpi_tickets' => [
-                 'FKEY'   => [
-                    self::getTable()  => 'tickets_id',
-                    'glpi_tickets'    => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'        => ['projecttasks_id' => $projecttasks_id]
+            'SELECT'       => new QueryExpression('SUM(glpi_tickets.actiontime) AS duration'),
+            'FROM'         => self::getTable(),
+            'INNER JOIN'   => [
+                'glpi_tickets' => [
+                    'FKEY'   => [
+                        self::getTable()  => 'tickets_id',
+                        'glpi_tickets'    => 'id',
+                    ],
+                ],
+            ],
+            'WHERE'        => ['projecttasks_id' => $projecttasks_id],
         ]);
 
         if ($row = $iterator->next()) {
@@ -175,19 +175,19 @@ class ProjectTask_Ticket extends CommonDBRelation
             echo "<tr class='tab_bg_2'><td class='right'>";
             echo "<input type='hidden' name='projecttasks_id' value='$ID'>";
             $condition = [
-               'NOT' => [
-                  'glpi_tickets.status'    => array_merge(
-                      Ticket::getSolvedStatusArray(),
-                      Ticket::getClosedStatusArray()
-                  )
-               ]
+                'NOT' => [
+                    'glpi_tickets.status'    => array_merge(
+                        Ticket::getSolvedStatusArray(),
+                        Ticket::getClosedStatusArray()
+                    ),
+                ],
             ];
             Ticket::dropdown([
-               'used'        => $used,
-               'entity'      => $projecttask->getEntityID(),
-               'entity_sons' => $projecttask->isRecursive(),
-               'condition'   => $condition,
-               'displaywith' => ['id']
+                'used'        => $used,
+                'entity'      => $projecttask->getEntityID(),
+                'entity_sons' => $projecttask->isRecursive(),
+                'condition'   => $condition,
+                'displaywith' => ['id'],
             ]);
 
             echo "</td><td width='20%'>";
@@ -207,8 +207,8 @@ class ProjectTask_Ticket extends CommonDBRelation
         if ($canedit && $numrows) {
             Html::openMassiveActionsForm('mass' . __CLASS__ . $rand);
             $massiveactionparams = [
-               'num_displayed'    => min($_SESSION['glpilist_limit'], $numrows),
-               'container'        => 'mass' . __CLASS__ . $rand
+                'num_displayed'    => min($_SESSION['glpilist_limit'], $numrows),
+                'container'        => 'mass' . __CLASS__ . $rand,
             ];
             Html::showMassiveActions($massiveactionparams);
         }
@@ -235,9 +235,9 @@ class ProjectTask_Ticket extends CommonDBRelation
                 Ticket::showShort(
                     $data['id'],
                     [
-                      'row_num'                => $i,
-                      'type_for_massiveaction' => __CLASS__,
-                      'id_for_massiveaction'   => $data['linkid']
+                        'row_num'                => $i,
+                        'type_for_massiveaction' => __CLASS__,
+                        'id_for_massiveaction'   => $data['linkid'],
                     ]
                 );
                 $i++;
@@ -289,11 +289,11 @@ class ProjectTask_Ticket extends CommonDBRelation
         ) {
             $finished_states_it = $DB->request(
                 [
-                  'SELECT' => ['id'],
-                  'FROM'   => ProjectState::getTable(),
-                  'WHERE'  => [
-                     'is_finished' => 1
-                  ],
+                    'SELECT' => ['id'],
+                    'FROM'   => ProjectState::getTable(),
+                    'WHERE'  => [
+                        'is_finished' => 1,
+                    ],
                 ]
             );
             $finished_states_ids = [];
@@ -303,33 +303,33 @@ class ProjectTask_Ticket extends CommonDBRelation
 
             $usedValues = json_encode($used);
             $form = [
-               'action' => Toolbox::getItemTypeFormURL(__CLASS__),
-               'buttons' => [
-                  'add' => [
-                     'name' => 'add',
-                     'value' => _sx('button', 'Add'),
-                     'class' => 'btn btn-secondary'
-                  ]
-               ],
-               'content' => [
-                  __('Add a project task') => [
-                     'visible' => true,
-                     'inputs' => [
-                        'projecttasks_id' => [
-                           'type' => 'hidden',
-                           'name' => 'tickets_id',
-                           'value' => $ID
-                        ],
-                        Project::getTypeName() => [
-                           'type' => 'select',
-                           'name' => 'projects_id',
-                           'id' => 'DropdownForProjectIdProjectTask',
-                           'itemtype' => Project::class,
-                           'conditions' => [ 'NOT' => ['projectstates_id' => $finished_states_ids] ],
-                           'entity' => $ticket->getEntityID(),
-                           'col_lg' => 6,
-                           'hooks' => [
-                              'change' => <<<JS
+                'action' => Toolbox::getItemTypeFormURL(__CLASS__),
+                'buttons' => [
+                    'add' => [
+                        'name' => 'add',
+                        'value' => _sx('button', 'Add'),
+                        'class' => 'btn btn-secondary',
+                    ],
+                ],
+                'content' => [
+                    __('Add a project task') => [
+                        'visible' => true,
+                        'inputs' => [
+                            'projecttasks_id' => [
+                                'type' => 'hidden',
+                                'name' => 'tickets_id',
+                                'value' => $ID,
+                            ],
+                            Project::getTypeName() => [
+                                'type' => 'select',
+                                'name' => 'projects_id',
+                                'id' => 'DropdownForProjectIdProjectTask',
+                                'itemtype' => Project::class,
+                                'conditions' => [ 'NOT' => ['projectstates_id' => $finished_states_ids] ],
+                                'entity' => $ticket->getEntityID(),
+                                'col_lg' => 6,
+                                'hooks' => [
+                                    'change' => <<<JS
                               var projects_id = $('#DropdownForProjectIdProjectTask').val();
                               $.ajax({
                               url: '{$CFG_GLPI['root_doc']}/ajax/dropdownProjectTaskTicket.php',
@@ -376,114 +376,114 @@ class ProjectTask_Ticket extends CommonDBRelation
                                  $("#DropdownForProjectTaskIdProjectTask").attr('disabled', projects_id == 0)
                               }});
                            JS,
-                           ],
-                           'actions' => getItemActionButtons(['info'], Project::class),
+                                ],
+                                'actions' => getItemActionButtons(['info'], Project::class),
+                            ],
+                            ProjectTask::getTypeName() => [
+                                'type' => 'select',
+                                'id' => 'DropdownForProjectTaskIdProjectTask',
+                                'name' => 'projecttasks_id',
+                                'disabled' => '',
+                                'col_lg' => 6,
+                                'actions' => getItemActionButtons(['info'], ProjectTask::class),
+                            ],
                         ],
-                        ProjectTask::getTypeName() => [
-                           'type' => 'select',
-                           'id' => 'DropdownForProjectTaskIdProjectTask',
-                           'name' => 'projecttasks_id',
-                           'disabled' => '',
-                           'col_lg' => 6,
-                           'actions' => getItemActionButtons(['info'], ProjectTask::class),
-                        ]
-                     ]
-                  ]
-               ]
+                    ],
+                ],
             ];
             renderTwigForm($form);
         }
 
         $fields = [
-           Project::getTypeName(Session::getPluralNumber()),
-           ProjectTask::getTypeName(Session::getPluralNumber()),
-           _n('Type', 'Types', 1),
-           __('Status'),
-           __('Percent done'),
-           __('Planned start date'),
-           __('Planned end date'),
-           __('Planned duration'),
-           __('Effective duration'),
-           __('Father')
+            Project::getTypeName(Session::getPluralNumber()),
+            ProjectTask::getTypeName(Session::getPluralNumber()),
+            _n('Type', 'Types', 1),
+            __('Status'),
+            __('Percent done'),
+            __('Planned start date'),
+            __('Planned end date'),
+            __('Planned duration'),
+            __('Effective duration'),
+            __('Father'),
         ];
         $values = [];
         if ($numrows) {
             $iterator = $DB->request([
-               'SELECT'    => [
-                  'glpi_projecttasks.*',
-                  'glpi_projecttasktypes.name AS tname',
-                  'glpi_projectstates.name AS sname',
-                  'glpi_projectstates.color',
-                  'father.name AS fname',
-                  'father.id AS fID',
-                  'glpi_projects.name AS projectname',
-                  'glpi_projects.content AS projectcontent'
-               ],
-               'FROM'      => 'glpi_projecttasks',
-               'LEFT JOIN' => [
-                  'glpi_projecttasktypes' => [
-                     'ON' => [
-                        'glpi_projecttasktypes' => 'id',
-                        'glpi_projecttasks'     => 'projecttasktypes_id'
-                     ]
-                  ],
-                  'glpi_projectstates'    => [
-                     'ON' => [
-                        'glpi_projectstates' => 'id',
-                        'glpi_projecttasks'  => 'projectstates_id'
-                     ]
-                  ],
-                  'glpi_projecttasks AS father' => [
-                     'ON' => [
-                        'father'             => 'id',
-                        'glpi_projecttasks'  => 'projecttasks_id'
-                     ]
-                  ],
-                  'glpi_projecttasks_tickets'   => [
-                     'ON' => [
-                        'glpi_projecttasks_tickets'   => 'projecttasks_id',
-                        'glpi_projecttasks'           => 'id'
-                     ]
-                  ],
-                  'glpi_projects'               => [
-                     'ON' => [
-                        'glpi_projecttasks'  => 'projects_id',
-                        'glpi_projects'      => 'id'
-                     ]
-                  ]
-               ],
-               'WHERE'     => [
-                  'glpi_projecttasks_tickets.tickets_id' => $ID
-               ],
+                'SELECT'    => [
+                    'glpi_projecttasks.*',
+                    'glpi_projecttasktypes.name AS tname',
+                    'glpi_projectstates.name AS sname',
+                    'glpi_projectstates.color',
+                    'father.name AS fname',
+                    'father.id AS fID',
+                    'glpi_projects.name AS projectname',
+                    'glpi_projects.content AS projectcontent',
+                ],
+                'FROM'      => 'glpi_projecttasks',
+                'LEFT JOIN' => [
+                    'glpi_projecttasktypes' => [
+                        'ON' => [
+                            'glpi_projecttasktypes' => 'id',
+                            'glpi_projecttasks'     => 'projecttasktypes_id',
+                        ],
+                    ],
+                    'glpi_projectstates'    => [
+                        'ON' => [
+                            'glpi_projectstates' => 'id',
+                            'glpi_projecttasks'  => 'projectstates_id',
+                        ],
+                    ],
+                    'glpi_projecttasks AS father' => [
+                        'ON' => [
+                            'father'             => 'id',
+                            'glpi_projecttasks'  => 'projecttasks_id',
+                        ],
+                    ],
+                    'glpi_projecttasks_tickets'   => [
+                        'ON' => [
+                            'glpi_projecttasks_tickets'   => 'projecttasks_id',
+                            'glpi_projecttasks'           => 'id',
+                        ],
+                    ],
+                    'glpi_projects'               => [
+                        'ON' => [
+                            'glpi_projecttasks'  => 'projects_id',
+                            'glpi_projects'      => 'id',
+                        ],
+                    ],
+                ],
+                'WHERE'     => [
+                    'glpi_projecttasks_tickets.tickets_id' => $ID,
+                ],
             ]);
             while ($data = $iterator->next()) {
                 $newValue = [];
                 $rand = mt_rand();
-                $link = "<a id='Project" . $data["projects_id"] . $rand . "' href='" .
-                   Project::getFormURLWithID($data['projects_id']) . "'>" . $data['projectname'] .
-                   (empty($data['projectname']) ? "(" . $data['projects_id'] . ")" : "") . "</a>";
+                $link = "<a id='Project" . $data["projects_id"] . $rand . "' href='"
+                   . Project::getFormURLWithID($data['projects_id']) . "'>" . $data['projectname']
+                   . (empty($data['projectname']) ? "(" . $data['projects_id'] . ")" : "") . "</a>";
                 $newValue[] = sprintf(
                     __('%1$s %2$s'),
                     $link,
                     Html::showToolTip(
                         $data['projectcontent'],
                         [
-                          'display' => false,
-                          'applyto' => "Project" . $data["projects_id"] . $rand
+                            'display' => false,
+                            'applyto' => "Project" . $data["projects_id"] . $rand,
                         ]
                     )
                 );
-                $link = "<a id='ProjectTask" . $data["id"] . $rand . "' href='" .
-                   ProjectTask::getFormURLWithID($data['id']) . "'>" . $data['name'] .
-                   (empty($data['name']) ? "(" . $data['id'] . ")" : "") . "</a>";
+                $link = "<a id='ProjectTask" . $data["id"] . $rand . "' href='"
+                   . ProjectTask::getFormURLWithID($data['id']) . "'>" . $data['name']
+                   . (empty($data['name']) ? "(" . $data['id'] . ")" : "") . "</a>";
                 $newValue[] = sprintf(
                     __('%1$s %2$s'),
                     $link,
                     Html::showToolTip(
                         $data['content'],
                         [
-                          'display' => false,
-                          'applyto' => "ProjectTask" . $data["id"] . $rand
+                            'display' => false,
+                            'applyto' => "ProjectTask" . $data["id"] . $rand,
                         ]
                     )
                 );
@@ -499,16 +499,16 @@ class ProjectTask_Ticket extends CommonDBRelation
                 );
                 if ($data['projecttasks_id'] > 0) {
                     $father = Dropdown::getDropdownName('glpi_projecttasks', $data['projecttasks_id']);
-                    $newValue[] = "<a id='ProjectTask" . $data["projecttasks_id"] . $rand . "' href='" .
-                       ProjectTask::getFormURLWithID($data['projecttasks_id']) . "'>" . $father .
-                       (empty($father) ? "(" . $data['projecttasks_id'] . ")" : "") . "</a>";
+                    $newValue[] = "<a id='ProjectTask" . $data["projecttasks_id"] . $rand . "' href='"
+                       . ProjectTask::getFormURLWithID($data['projecttasks_id']) . "'>" . $father
+                       . (empty($father) ? "(" . $data['projecttasks_id'] . ")" : "") . "</a>";
                 }
                 $values[] = $newValue;
             }
         };
         renderTwigTemplate('table.twig', [
-           'fields' => $fields,
-           'values' => $values
+            'fields' => $fields,
+            'values' => $values,
         ]);
     }
 }

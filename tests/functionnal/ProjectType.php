@@ -43,16 +43,16 @@ class ProjectType extends DbTestCase
 
         $obj = new \ProjectType();
         $id = $obj->add([
-           'name'    => 'project-type-' . $this->getUniqueString(),
-           'comment' => 'comment-' . $this->getUniqueString(),
+            'name'    => 'project-type-' . $this->getUniqueString(),
+            'comment' => 'comment-' . $this->getUniqueString(),
         ]);
-        $this->integer((int)$id)->isGreaterThan(0);
+        $this->integer((int) $id)->isGreaterThan(0);
         $this->boolean($obj->getFromDB($id))->isTrue();
 
         $this->boolean($obj->update([
-           'id'      => $id,
-           'name'    => 'project-type-updated-' . $this->getUniqueString(),
-           'comment' => 'updated-' . $this->getUniqueString(),
+            'id'      => $id,
+            'name'    => 'project-type-updated-' . $this->getUniqueString(),
+            'comment' => 'updated-' . $this->getUniqueString(),
         ]))->isTrue();
         $this->boolean($obj->getFromDB($id))->isTrue();
 

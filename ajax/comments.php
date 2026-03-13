@@ -62,8 +62,8 @@ if (
         case User::getType():
             if ($_POST['value'] == 0) {
                 $tmpname = [
-                   'link'    => $CFG_GLPI['root_doc'] . "/front/user.php",
-                   'comment' => "",
+                    'link'    => $CFG_GLPI['root_doc'] . "/front/user.php",
+                    'comment' => "",
                 ];
             } else {
                 if (is_array($_POST["value"])) {
@@ -73,7 +73,7 @@ if (
                         $comments[] = $username['comment'] ?? "";
                     }
                     $tmpname = [
-                       'comment' => implode("<br>", $comments),
+                        'comment' => implode("<br>", $comments),
                     ];
                     unset($_POST['withlink']);
                 } else {
@@ -93,8 +93,8 @@ if (
             if ($_POST["value"] > 0) {
                 if (
                     !Session::validateIDOR([
-                    'itemtype'    => $_POST['itemtype'],
-                    '_idor_token' => $_POST['_idor_token'] ?? ""
+                        'itemtype'    => $_POST['itemtype'],
+                        '_idor_token' => $_POST['_idor_token'] ?? "",
                     ])
                 ) {
                     exit();

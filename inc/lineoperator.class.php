@@ -53,16 +53,16 @@ class LineOperator extends CommonDropdown
     public function getAdditionalFields()
     {
         return [
-           __('Mobile Country Code') => [
-              'name'  => 'mcc',
-              'type'  => 'number',
-              'value' => $this->fields['mcc'],
-           ],
-           __('Mobile Network Code') => [
-              'name'  => 'mnc',
-              'type'  => 'number',
-              'value' => $this->fields['mnc'],
-           ],
+            __('Mobile Country Code') => [
+                'name'  => 'mcc',
+                'type'  => 'number',
+                'value' => $this->fields['mcc'],
+            ],
+            __('Mobile Network Code') => [
+                'name'  => 'mnc',
+                'type'  => 'number',
+                'value' => $this->fields['mnc'],
+            ],
         ];
     }
 
@@ -71,21 +71,21 @@ class LineOperator extends CommonDropdown
         $tab = parent::rawSearchOptions();
 
         $tab[] = [
-              'id'                 => '11',
-              'table'              => $this->getTable(),
-              'field'              => 'mcc',
-              'name'               => __('Mobile Country Code'),
-              'datatype'           => 'text',
-              'autocomplete'       => true,
+            'id'                 => '11',
+            'table'              => $this->getTable(),
+            'field'              => 'mcc',
+            'name'               => __('Mobile Country Code'),
+            'datatype'           => 'text',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-              'id'                 => '12',
-              'table'              => $this->getTable(),
-              'field'              => 'mnc',
-              'name'               => __('Mobile Network Code'),
-              'datatype'           => 'text',
-              'autocomplete'       => true,
+            'id'                 => '12',
+            'table'              => $this->getTable(),
+            'field'              => 'mnc',
+            'name'               => __('Mobile Network Code'),
+            'datatype'           => 'text',
+            'autocomplete'       => true,
         ];
 
         return $tab;
@@ -106,12 +106,12 @@ class LineOperator extends CommonDropdown
 
         //check for mcc/mnc unicity
         $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'mcc' => $input['mcc'],
-              'mnc' => $input['mnc']
-           ]
+            'COUNT'  => 'cpt',
+            'FROM'   => self::getTable(),
+            'WHERE'  => [
+                'mcc' => $input['mcc'],
+                'mnc' => $input['mnc'],
+            ],
         ])->next();
 
         if ($result['cpt'] > 0) {

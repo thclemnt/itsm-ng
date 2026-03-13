@@ -33,7 +33,7 @@ class MailServer
                 'label'    => __('POP'),
                 'protocol' => 'Laminas\Mail\Protocol\Pop3',
                 'storage'  => 'Laminas\Mail\Storage\Pop3',
-            ]
+            ],
         ];
 
         $additionnal_protocols = Plugin::doHookFunction('mail_server_protocols', []);
@@ -76,8 +76,8 @@ class MailServer
      * @since ITSM 2.0
      *
      * @param string  $value      connect string
-     * @param boolean $forceport  force compute port if not set
-     * @param boolean $allow_plugins_protocols allow plugins protocols
+     * @param bool $forceport  force compute port if not set
+     * @param bool $allow_plugins_protocols allow plugins protocols
      *
      * @return array  parsed arguments (address, port, mailbox, type, ssl, tls, validate-cert
      *                norsh, secure and debug) : options are empty if not set
@@ -161,13 +161,13 @@ class MailServer
      * Display a mail server configuration form
      *
      * @param string $value  host connect string ex {localhost:993/imap/ssl}INBOX
-     * @param boolean $allow_plugins_protocols
+     * @param bool $allow_plugins_protocols
      *
      * @return array
      **/
     public static function showMailServerConfig($value, bool $allow_plugins_protocols): array
     {
-        $data = array();
+        $data = [];
 
         if (!Config::canUpdate()) {
             return false;
@@ -192,7 +192,7 @@ class MailServer
 
         $values = [ //TRANS: imap_open option see http://www.php.net/manual/en/function.imap-open.php
             '' => '-----',
-            '/ssl' => __('SSL')
+            '/ssl' => __('SSL'),
         ];
 
         $svalue = ($tab['ssl'] ? '/ssl' : '');
@@ -236,7 +236,7 @@ class MailServer
 
         $values = [ //TRANS: imap_open option see http://www.php.net/manual/en/function.imap-open.php
             '/rsh' => '-----',
-            '/norsh' => __('NORSH')
+            '/norsh' => __('NORSH'),
         ];
 
         $svalue = ($tab['norsh'] === true ? '/norsh' : '');
@@ -247,7 +247,7 @@ class MailServer
 
         $values = [ //TRANS: imap_open option see http://www.php.net/manual/en/function.imap-open.php
             '/nosecure' => '-----',
-            '/secure' => __('SECURE')
+            '/secure' => __('SECURE'),
         ];
 
         $svalue = ($tab['secure'] === true ? '/secure' : '');
@@ -257,7 +257,7 @@ class MailServer
 
         $values = [ //TRANS: imap_open option see http://www.php.net/manual/en/function.imap-open.php
             '' => 'No ' . __('DEBUG'),
-            '/debug' => __('DEBUG')
+            '/debug' => __('DEBUG'),
         ];
 
         $svalue = ($tab['debug'] === true ? '/debug' : '');
@@ -310,8 +310,8 @@ class MailServer
                     'type' => 'submit',
                     'name' => 'purge',
                     'value' => __('Delete permanently'),
-                    'class' => 'btn btn-secondary'
-                ]
+                    'class' => 'btn btn-secondary',
+                ],
             ],
             'content' => [
                 ($title) => [
@@ -320,7 +320,7 @@ class MailServer
                         $is_ID ? [] : [
                             'type' => 'hidden',
                             'name' => 'id',
-                            'value' => $ID
+                            'value' => $ID,
                         ],
                         __('Name') => [
                             'name' => 'name',
@@ -335,7 +335,7 @@ class MailServer
                         __('Email domain Name (users email will be login@domain)') => $mailcollector ? [] : [
                             'type' => 'text',
                             'name' => 'host',
-                            'value' => $fields['host'] ?? ''
+                            'value' => $fields['host'] ?? '',
                         ],
                         __('Server') => [
                             'name' => 'mail_server',
@@ -405,57 +405,57 @@ class MailServer
                         __('Login') => $authmail ? [] : [
                             'name' => 'login',
                             'type' => 'text',
-                            'value' => $fields['login'] ?? ''
+                            'value' => $fields['login'] ?? '',
                         ],
                         __('Password') => $authmail ? [] : [
                             'name' => 'passwd',
-                            'type' => 'password'
+                            'type' => 'password',
                         ],
                         __('Accepted mail archive folder (optional)') => $authmail ? [] : [
                             'name' => 'accepted',
                             'type' => 'text',
-                            'value' => $fields['accepted'] ?? ''
+                            'value' => $fields['accepted'] ?? '',
                         ],
                         __('Refused mail archive folder (optional)') => $authmail ? [] : [
                             'name' => 'refused',
                             'type' => 'text',
-                            'value' => $fields['refused'] ?? ''
+                            'value' => $fields['refused'] ?? '',
                         ],
                         __('Maximum size of each file imported by the mails receiver') => $authmail ? [] : [
                             'name' => 'filesize_max',
                             'type' => 'select',
                             'values' => self::dropdown_upload_size(),
-                            'value' => $fields['filesize_max'] ?? ''
+                            'value' => $fields['filesize_max'] ?? '',
                         ],
                         __('Use mail date, instead of collect one') => $authmail ? [] : [
                             'name' => 'use_mail_date',
                             'type' => 'checkbox',
-                            'value' => $fields['use_mail_date'] ?? ''
+                            'value' => $fields['use_mail_date'] ?? '',
                         ],
                         __('Use Reply-To as requester (when available)') => $authmail ? [] : [
                             'name' => 'requester_field',
                             'type' => 'checkbox',
-                            'value' => $fields['requester_field'] ?? ''
+                            'value' => $fields['requester_field'] ?? '',
                         ],
                         __('Add CC users as observer') => $authmail ? [] : [
                             'name' => 'add_cc_to_observer',
                             'type' => 'checkbox',
-                            'value' => $fields['add_cc_to_observer'] ?? ''
+                            'value' => $fields['add_cc_to_observer'] ?? '',
                         ],
                         __('Collect only unread mail') => $authmail ? [] : [
                             'name' => 'collect_only_unread',
                             'type' => 'checkbox',
-                            'value' => $fields['collect_only_unread'] ?? ''
+                            'value' => $fields['collect_only_unread'] ?? '',
                         ],
                         __('Comments') => [
                             'name' => 'comment',
                             'type' => 'textarea',
-                            'value' => $fields['comment'] ?? ''
+                            'value' => $fields['comment'] ?? '',
                         ],
 
                     ],
-                ]
-            ]
+                ],
+            ],
         ];
 
         renderTwigForm($form);
@@ -465,7 +465,7 @@ class MailServer
     {
         $i = 0;
         $size = 0;
-        $data = array();
+        $data = [];
 
         $data[$i] = __('No import');
         for ($i = 1; $i < 100; $i++) {
@@ -482,7 +482,7 @@ class MailServer
             return false;
         }
 
-        $data = array();
+        $data = [];
 
         $pattern = '/{([^:]+):(\d+)\/([^\/]+)\/([^\/]+)\/([^\/]+)\/([^\/]+)\/([^}]+)/';
         preg_match($pattern, (string) $entry, $matches);

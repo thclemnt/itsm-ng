@@ -49,11 +49,11 @@ $root_entities_for_profiles = array_column($_SESSION['glpiactiveprofile']['entit
 
 if (isset($_POST['str'])) {
     $iterator = $DB->request([
-       'FROM'   => 'glpi_entities',
-       'WHERE'  => [
-          'name' => ['LIKE', '%' . $_POST['str'] . '%']
-       ],
-       'ORDER'  => ['completename']
+        'FROM'   => 'glpi_entities',
+        'WHERE'  => [
+            'name' => ['LIKE', '%' . $_POST['str'] . '%'],
+        ],
+        'ORDER'  => ['completename'],
     ]);
 
     while ($data = $iterator->next()) {

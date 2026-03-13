@@ -47,35 +47,35 @@ class Project extends DbTestCase
 
         $project = new \Project();
         $project_id_1 = $project->add([
-           'name' => 'Project 1',
-           'auto_percent_done' => 1
+            'name' => 'Project 1',
+            'auto_percent_done' => 1,
         ]);
         $this->integer((int) $project_id_1)->isGreaterThan(0);
         $project_id_2 = $project->add([
-           'name' => 'Project 2',
-           'auto_percent_done' => 1,
-           'projects_id' => $project_id_1
+            'name' => 'Project 2',
+            'auto_percent_done' => 1,
+            'projects_id' => $project_id_1,
         ]);
         $this->integer((int) $project_id_2)->isGreaterThan(0);
         $project_id_3 = $project->add([
-           'name' => 'Project 3',
-           'projects_id' => $project_id_2
+            'name' => 'Project 3',
+            'projects_id' => $project_id_2,
         ]);
         $this->integer((int) $project_id_3)->isGreaterThan(0);
 
-        $projecttask = new \ProjectTask();
+        $projecttask = new ProjectTask();
         $projecttask_id_1 = $projecttask->add([
-           'name' => 'Project Task 1',
-           'auto_percent_done' => 1,
-           'projects_id' => $project_id_2,
-           'projecttasktemplates_id' => 0
+            'name' => 'Project Task 1',
+            'auto_percent_done' => 1,
+            'projects_id' => $project_id_2,
+            'projecttasktemplates_id' => 0,
         ]);
         $this->integer((int) $projecttask_id_1)->isGreaterThan(0);
         $projecttask_id_2 = $projecttask->add([
-           'name' => 'Project Task 2',
-           'projects_id' => 0,
-           'projecttasks_id' => $projecttask_id_1,
-           'projecttasktemplates_id' => 0
+            'name' => 'Project Task 2',
+            'projects_id' => 0,
+            'projecttasks_id' => $projecttask_id_1,
+            'projecttasktemplates_id' => 0,
         ]);
         $this->integer((int) $projecttask_id_2)->isGreaterThan(0);
 
@@ -86,8 +86,8 @@ class Project extends DbTestCase
         $project_3 = new \Project();
         $this->boolean($project_3->getFromDB($project_id_3))->isTrue();
         $this->boolean($project_3->update([
-           'id'           => $project_id_3,
-           'percent_done' => '10'
+            'id'           => $project_id_3,
+            'percent_done' => '10',
         ]))->isTrue();
 
         // Reload projects to get newest values
@@ -97,14 +97,14 @@ class Project extends DbTestCase
         $this->integer($project_2->fields['percent_done'])->isEqualTo(5);
         $this->integer($project_1->fields['percent_done'])->isEqualTo(5);
 
-        $projecttask_1 = new \ProjectTask();
+        $projecttask_1 = new ProjectTask();
         $this->boolean($projecttask_1->getFromDB($projecttask_id_1))->isTrue();
-        $projecttask_2 = new \ProjectTask();
+        $projecttask_2 = new ProjectTask();
         $this->boolean($projecttask_2->getFromDB($projecttask_id_2))->isTrue();
 
         $this->boolean($projecttask_2->update([
-           'id'           => $projecttask_id_2,
-           'percent_done' => '40'
+            'id'           => $projecttask_id_2,
+            'percent_done' => '40',
         ]))->isTrue();
 
         // Reload projects and tasks to get newest values
@@ -139,31 +139,31 @@ class Project extends DbTestCase
         // Create a project template
         $template_id = $project->add(
             [
-              'name'         => $this->getUniqueString(),
-              'entities_id'  => 0,
-              'is_recursive' => 1,
-              'is_template'  => 1,
-         ]
+                'name'         => $this->getUniqueString(),
+                'entities_id'  => 0,
+                'is_recursive' => 1,
+                'is_template'  => 1,
+            ]
         );
         $this->integer($template_id)->isGreaterThan(0);
 
         $project_task = new ProjectTask();
         $task1_id = $project_task->add(
             [
-              'name'         => $this->getUniqueString(),
-              'projects_id'  => $template_id,
-              'entities_id'  => 0,
-              'is_recursive' => 1,
-         ]
+                'name'         => $this->getUniqueString(),
+                'projects_id'  => $template_id,
+                'entities_id'  => 0,
+                'is_recursive' => 1,
+            ]
         );
         $this->integer($task1_id)->isGreaterThan(0);
         $task2_id = $project_task->add(
             [
-              'name'         => $this->getUniqueString(),
-              'projects_id'  => $template_id,
-              'entities_id'  => 0,
-              'is_recursive' => 1,
-         ]
+                'name'         => $this->getUniqueString(),
+                'projects_id'  => $template_id,
+                'entities_id'  => 0,
+                'is_recursive' => 1,
+            ]
         );
         $this->integer($task2_id)->isGreaterThan(0);
 
@@ -171,11 +171,11 @@ class Project extends DbTestCase
         $entity_id = getItemByTypeName('Entity', '_test_child_2', true);
         $project_id = $project->add(
             [
-              'id'           => $template_id,
-              'name'         => $this->getUniqueString(),
-              'entities_id'  => $entity_id,
-              'is_recursive' => 0,
-         ]
+                'id'           => $template_id,
+                'name'         => $this->getUniqueString(),
+                'entities_id'  => $entity_id,
+                'is_recursive' => 0,
+            ]
         );
         $this->integer($project_id)->isGreaterThan(0);
         $this->integer($project_id)->isNotEqualTo($template_id);
@@ -198,8 +198,8 @@ class Project extends DbTestCase
         // Create a basic project
         $project_name = 'Project testClone' . mt_rand();
         $project_input = [
-           'name'     => $project_name,
-           'priority' => 5,
+            'name'     => $project_name,
+            'priority' => 5,
         ];
         $this->createItems('Project', [$project_input]);
         $projects_id = getItemByTypeName("Project", $project_name, true);
@@ -216,16 +216,16 @@ class Project extends DbTestCase
 
         // Add team to project
         $this->createItems('ProjectTeam', [
-           [
-              'projects_id' => $projects_id,
-              'itemtype'    => 'User',
-              'items_id'    => $users_id,
-           ],
-           [
-              'projects_id' => $projects_id,
-              'itemtype'    => 'Group',
-              'items_id'    => $groups_id,
-           ],
+            [
+                'projects_id' => $projects_id,
+                'itemtype'    => 'User',
+                'items_id'    => $users_id,
+            ],
+            [
+                'projects_id' => $projects_id,
+                'itemtype'    => 'Group',
+                'items_id'    => $groups_id,
+            ],
         ]);
 
         // Load current project
@@ -254,8 +254,8 @@ class Project extends DbTestCase
         $team = [];
         foreach ($project_team->find(['projects_id' => $projects_id]) as $row) {
             $team[] = [
-               'itemtype' => $row['itemtype'],
-               'items_id' => $row['items_id'],
+                'itemtype' => $row['itemtype'],
+                'items_id' => $row['items_id'],
             ];
         }
 
@@ -263,8 +263,8 @@ class Project extends DbTestCase
         $team_clone = [];
         foreach ($project_team->find(['projects_id' => $projects_id_clone]) as $row) {
             $team_clone[] = [
-               'itemtype' => $row['itemtype'],
-               'items_id' => $row['items_id'],
+                'itemtype' => $row['itemtype'],
+                'items_id' => $row['items_id'],
             ];
         }
 

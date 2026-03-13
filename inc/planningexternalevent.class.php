@@ -37,12 +37,13 @@ if (!defined('GLPI_ROOT')) {
 
 use Glpi\CalDAV\Contracts\CalDAVCompatibleItemInterface;
 use Glpi\CalDAV\Traits\VobjectConverterTrait;
+use Glpi\Features\PlanningEvent;
 use Sabre\VObject\Component\VCalendar;
 use Sabre\VObject\Component\VTodo;
 
 class PlanningExternalEvent extends CommonDBTM implements CalDAVCompatibleItemInterface
 {
-    use Glpi\Features\PlanningEvent {
+    use PlanningEvent {
         rawSearchOptions as protected trait_rawSearchOptions;
     }
     use VobjectConverterTrait;
@@ -72,9 +73,9 @@ class PlanningExternalEvent extends CommonDBTM implements CalDAVCompatibleItemIn
         // we permits globally to update this object,
         // as users can update their onw items
         return Session::haveRightsOr(self::$rightname, [
-           CREATE,
-           UPDATE,
-           self::MANAGE_BG_EVENTS
+            CREATE,
+            UPDATE,
+            self::MANAGE_BG_EVENTS,
         ]);
     }
 
@@ -168,31 +169,31 @@ class PlanningExternalEvent extends CommonDBTM implements CalDAVCompatibleItemIn
             $this->fields['end'] = $options['end'];
         }
         Planning::showAddEventClassicForm([
-           'items_id'  => $this->fields['id'],
-           'itemtype'  => $this->getType(),
-           'begin'     => $this->fields['begin'],
-           'end'       => $this->fields['end'],
-           'rand_user' => $this->fields['users_id'],
-           'rand'      => $rand_plan,
+            'items_id'  => $this->fields['id'],
+            'itemtype'  => $this->getType(),
+            'begin'     => $this->fields['begin'],
+            'end'       => $this->fields['end'],
+            'rand_user' => $this->fields['users_id'],
+            'rand'      => $rand_plan,
         ]);
         $calendarInput = ob_get_clean();
 
         $form = [
-          'action' => $this->getFormURL(),
-          'itemtype' => self::class,
-          'content' => [
-              $this->getTypeName() => [
-                  'visible' => true,
-                  'inputs' => [
-                      $this->getTypeName() => $canedit ? [
-                          'type' => 'select',
-                          'name' => 'planningexternaleventtemplate_id',
-                          'itemtype' => PlanningExternalEventTemplate::class,
-                          'value' => $this->fields['planningexternaleventtemplates_id'],
-                          'col_lg' => 12,
-                          'col_md' => 12,
-                          'hooks' => [
-                              'change' => <<<JS
+            'action' => $this->getFormURL(),
+            'itemtype' => self::class,
+            'content' => [
+                $this->getTypeName() => [
+                    'visible' => true,
+                    'inputs' => [
+                        $this->getTypeName() => $canedit ? [
+                            'type' => 'select',
+                            'name' => 'planningexternaleventtemplate_id',
+                            'itemtype' => PlanningExternalEventTemplate::class,
+                            'value' => $this->fields['planningexternaleventtemplates_id'],
+                            'col_lg' => 12,
+                            'col_md' => 12,
+                            'hooks' => [
+                                'change' => <<<JS
                                $.ajax({
                                   url: '{$CFG_GLPI["root_doc"]}/ajax/planning.php',
                                   type: "POST",
@@ -234,94 +235,94 @@ class PlanningExternalEvent extends CommonDBTM implements CalDAVCompatibleItemIn
                                      $("#dropdown_rrule_bymonth_{$rand_rrule}").val(data.rrule.bymonth).trigger('change');
                                   }
                                });
-                            JS
-                          ],
-                      ] : [],
-                      __('Title') => [
-                          'type' => 'text',
-                          'name' => 'name',
-                          'value' => $this->fields['name'],
-                          'size' => 80,
-                          $canedit ? '' : 'disabled' => true,
-                      ],
-                      isset($options['start']) ? [
-                          'type' => 'hidden',
-                          'name' => 'day',
-                          'value' => $options['start']
-                      ] : [],
-                      isset($options['from_planning_edit_ajax']) && $options['from_planning_edit_ajax'] ? [
-                          'type' => 'hidden',
-                          'name' => 'from_planning_edit_ajax',
-                          'value' => 1
-                      ] : [],
-                      User::getTypeName(1) => [
-                          'type' => 'select',
-                          'name' => 'users_id',
-                          'values' => getOptionsForUsers('all'),
-                          'value' => $this->fields['users_id'],
-                          $canedit ? '' : 'disabled' => true,
+                            JS,
+                            ],
+                        ] : [],
+                        __('Title') => [
+                            'type' => 'text',
+                            'name' => 'name',
+                            'value' => $this->fields['name'],
+                            'size' => 80,
+                            $canedit ? '' : 'disabled' => true,
+                        ],
+                        isset($options['start']) ? [
+                            'type' => 'hidden',
+                            'name' => 'day',
+                            'value' => $options['start'],
+                        ] : [],
+                        isset($options['from_planning_edit_ajax']) && $options['from_planning_edit_ajax'] ? [
+                            'type' => 'hidden',
+                            'name' => 'from_planning_edit_ajax',
+                            'value' => 1,
+                        ] : [],
+                        User::getTypeName(1) => [
+                            'type' => 'select',
+                            'name' => 'users_id',
+                            'values' => getOptionsForUsers('all'),
+                            'value' => $this->fields['users_id'],
+                            $canedit ? '' : 'disabled' => true,
 
-                      ],
-                      __('Guests') => [
-                          'type' => 'select',
-                          'name' => 'users_id_guests[]',
-                          'values' => getOptionsForUsers('all', [], false),
-                          'value' => $this->fields['users_id_guests'],
-                          'multiple' => true,
-                          'after' => "<i class='fas fa-info-circle' title='" . __('Each guest will have a read-only copy of this event') . "'></i>",
-                      ],
-                      __('Status') => [
-                          'type' => 'select',
-                          'name' => 'state',
-                          'values' => [
-                              Planning::INFO => _n('Information', 'Information', 1),
-                              Planning::TODO => __('To do'),
-                              Planning::DONE => __('Done')
-                          ],
-                          'value' => $this->fields['state'],
-                          $canedit ? '' : 'disabled' => true,
-                      ],
-                      __('Category') => [
-                          'type' => 'select',
-                          'name' => 'planningeventcategories_id',
-                          'itemtype' => PlanningEventCategory::class,
-                          'value' => $this->fields['planningeventcategories_id'],
-                          $canedit ? '' : 'disabled' => true,
-                      ],
-                      __('Background event') => [
-                          'type' => 'checkbox',
-                          'name' => 'background',
-                          'value' => $this->fields['background'],
-                          $canedit ? '' : 'disabled' => true,
-                      ],
-                      _n('Calendar', 'Calendars', 1) => [
-                          'content' => $calendarInput,
-                          'col_lg' => 12,
-                          'col_md' => 12,
-                      ],
-                      __('Repeat') => [
-                          'content' => self::showRepetitionForm($this->fields['rrule'] ?? '', [
-                              'rand' => $rand_rrule
-                          ]),
-                      ],
-                      __('Description') => [
-                          'type' => 'richtextarea',
-                          'name' => 'text',
-                          'value' => $this->fields["text"],
-                          'col_lg' => 12,
-                          'col_md' => 12,
-                      ],
-                      __('Files') => [
-                          'type' => 'files',
-                          'name' => 'documents_id',
-                          'value' => $this->fields['documents_id'] ?? null,
-                          'multiple' => true,
-                          'col_lg' => 12,
-                          'col_md' => 12,
-                      ],
-                  ],
-              ]
-          ],
+                        ],
+                        __('Guests') => [
+                            'type' => 'select',
+                            'name' => 'users_id_guests[]',
+                            'values' => getOptionsForUsers('all', [], false),
+                            'value' => $this->fields['users_id_guests'],
+                            'multiple' => true,
+                            'after' => "<i class='fas fa-info-circle' title='" . __('Each guest will have a read-only copy of this event') . "'></i>",
+                        ],
+                        __('Status') => [
+                            'type' => 'select',
+                            'name' => 'state',
+                            'values' => [
+                                Planning::INFO => _n('Information', 'Information', 1),
+                                Planning::TODO => __('To do'),
+                                Planning::DONE => __('Done'),
+                            ],
+                            'value' => $this->fields['state'],
+                            $canedit ? '' : 'disabled' => true,
+                        ],
+                        __('Category') => [
+                            'type' => 'select',
+                            'name' => 'planningeventcategories_id',
+                            'itemtype' => PlanningEventCategory::class,
+                            'value' => $this->fields['planningeventcategories_id'],
+                            $canedit ? '' : 'disabled' => true,
+                        ],
+                        __('Background event') => [
+                            'type' => 'checkbox',
+                            'name' => 'background',
+                            'value' => $this->fields['background'],
+                            $canedit ? '' : 'disabled' => true,
+                        ],
+                        _n('Calendar', 'Calendars', 1) => [
+                            'content' => $calendarInput,
+                            'col_lg' => 12,
+                            'col_md' => 12,
+                        ],
+                        __('Repeat') => [
+                            'content' => self::showRepetitionForm($this->fields['rrule'] ?? '', [
+                                'rand' => $rand_rrule,
+                            ]),
+                        ],
+                        __('Description') => [
+                            'type' => 'richtextarea',
+                            'name' => 'text',
+                            'value' => $this->fields["text"],
+                            'col_lg' => 12,
+                            'col_md' => 12,
+                        ],
+                        __('Files') => [
+                            'type' => 'files',
+                            'name' => 'documents_id',
+                            'value' => $this->fields['documents_id'] ?? null,
+                            'multiple' => true,
+                            'col_lg' => 12,
+                            'col_md' => 12,
+                        ],
+                    ],
+                ],
+            ],
         ];
         renderTwigForm($form, '', $this->fields);
 
@@ -342,7 +343,7 @@ class PlanningExternalEvent extends CommonDBTM implements CalDAVCompatibleItemIn
 
         $this->deleteChildrenAndRelationsFromDb(
             [
-              VObject::class,
+                VObject::class,
             ]
         );
     }
@@ -357,10 +358,10 @@ class PlanningExternalEvent extends CommonDBTM implements CalDAVCompatibleItemIn
     {
 
         return self::getItemsAsVCalendars([
-           'OR' => [
-              self::getTableField('users_id')        => $users_id,
-              self::getTableField('users_id_guests') => ['LIKE', '%"' . $users_id . '"%'],
-           ]
+            'OR' => [
+                self::getTableField('users_id')        => $users_id,
+                self::getTableField('users_id_guests') => ['LIKE', '%"' . $users_id . '"%'],
+            ],
         ]);
     }
 
@@ -369,7 +370,7 @@ class PlanningExternalEvent extends CommonDBTM implements CalDAVCompatibleItemIn
      *
      * @param array $criteria
      *
-     * @return \Sabre\VObject\Component\VCalendar[]
+     * @return VCalendar[]
      */
     private static function getItemsAsVCalendars(array $criteria)
     {
@@ -377,8 +378,8 @@ class PlanningExternalEvent extends CommonDBTM implements CalDAVCompatibleItemIn
         global $DB;
 
         $query = [
-           'FROM'  => self::getTable(),
-           'WHERE' => $criteria,
+            'FROM'  => self::getTable(),
+            'WHERE' => $criteria,
         ];
 
         $event_iterator = $DB->request($query);
@@ -434,7 +435,7 @@ class PlanningExternalEvent extends CommonDBTM implements CalDAVCompatibleItemIn
 
         if ($vcomp instanceof VTodo && !array_key_exists('state', $input)) {
             // Force default state to TO DO or event will be considered as VEVENT
-            $input['state'] = \Planning::TODO;
+            $input['state'] = Planning::TODO;
         }
 
         return $input;

@@ -65,7 +65,7 @@ class Document extends CommonDBTM
      *
      * @param string|object $item An object or a string
      *
-     * @return boolean
+     * @return bool
     **/
     public static function canApplyOn($item)
     {
@@ -165,7 +165,7 @@ class Document extends CommonDBTM
 
         $this->deleteChildrenAndRelationsFromDb(
             [
-              Document_Item::class,
+                Document_Item::class,
             ]
         );
 
@@ -343,8 +343,8 @@ class Document extends CommonDBTM
         ) {
             $docitem = new Document_Item();
             $docitem->add(['documents_id' => $this->fields['id'],
-                                'itemtype'     => $this->input["itemtype"],
-                                'items_id'     => $this->input["items_id"]]);
+                'itemtype'     => $this->input["itemtype"],
+                'items_id'     => $this->input["items_id"]]);
 
             Event::log(
                 $this->fields['id'],
@@ -436,101 +436,101 @@ class Document extends CommonDBTM
         }
 
         $form = [
-           'action' => $this->getFormURL(),
-           'itemtype' => self::class,
-           'content' => [
-              self::getTypeName(1) => [
-                 'visible' => 'true',
-                 'inputs' => [
-                    __('Added by') => ($ID > 0 && $this->fields['users_id'] > 0) ? [
-                       'content' => getUserName($this->fields["users_id"], $showuserlink),
-                    ] : [],
-                    __('Last update on') => ($ID > 0) ? [
-                       'content' => Html::convDateTime($this->fields["date_mod"]),
-                    ] : [],
-                    __('Name') => [
-                       'type' => 'text',
-                       'name' => 'name',
-                       'value' => $this->fields["name"],
+            'action' => $this->getFormURL(),
+            'itemtype' => self::class,
+            'content' => [
+                self::getTypeName(1) => [
+                    'visible' => 'true',
+                    'inputs' => [
+                        __('Added by') => ($ID > 0 && $this->fields['users_id'] > 0) ? [
+                            'content' => getUserName($this->fields["users_id"], $showuserlink),
+                        ] : [],
+                        __('Last update on') => ($ID > 0) ? [
+                            'content' => Html::convDateTime($this->fields["date_mod"]),
+                        ] : [],
+                        __('Name') => [
+                            'type' => 'text',
+                            'name' => 'name',
+                            'value' => $this->fields["name"],
+                        ],
+                        __('Current file') => ($ID > 0) ? [
+                            'content' => $this->getDownloadLink('', 45),
+                        ] : [],
+                        __('Heading') => [
+                            'type' => 'select',
+                            'name' => 'documentcategories_id',
+                            'values' => getOptionForItems('DocumentCategory'),
+                            'value' => $this->fields["documentcategories_id"],
+                            'actions' => getItemActionButtons(['info', 'add'], 'DocumentCategory'),
+                        ],
+                        sprintf(__('%1$s (%2$s)'), __('Checksum'), __('SHA1')) => ($ID > 0) ? [
+                            'content' => $this->fields["sha1sum"],
+                        ] : [],
+                        __('Web link') => [
+                            'type' => 'text',
+                            'name' => 'link',
+                            'value' => $this->fields["link"],
+                        ],
+                        __('Comments') => [
+                            'type' => 'textarea',
+                            'name' => 'comment',
+                            'value' => $this->fields["comment"],
+                        ],
+                        __('MIME type') => [
+                            'type' => 'text',
+                            'name' => 'mime',
+                            'value' => $this->fields["mime"],
+                        ],
+                        __('Blacklisted for import') => [
+                            'type' => 'checkbox',
+                            'name' => 'is_blacklisted',
+                            'value' => $this->fields["is_blacklisted"],
+                        ],
+                        __('Use a FTP installed file') => [
+                            'type' => 'select',
+                            'name' => 'upload_file',
+                            'values' => $uploaded_files,
+                            'value' => '',
+                        ],
+                        sprintf(__('%1$s (%2$s)'), __('File'), self::getMaxUploadSize()) => [
+                            'type' => 'file',
+                            'name' => 'files',
+                            'id' => 'fileSelectorForDocument',
+                            'data-max-size' => self::getMaxUploadSizeInBytes(),
+                        ],
                     ],
-                    __('Current file') => ($ID > 0) ? [
-                       'content' => $this->getDownloadLink('', 45),
-                    ] : [],
-                    __('Heading') => [
-                       'type' => 'select',
-                       'name' => 'documentcategories_id',
-                       'values' => getOptionForItems('DocumentCategory'),
-                       'value' => $this->fields["documentcategories_id"],
-                       'actions' => getItemActionButtons(['info', 'add'], 'DocumentCategory')
+                ],
+                [
+                    'visible' => false,
+                    'inputs' => [
+                        'current_filepath' => ($ID > 0) ? [
+                            'type' => 'hidden',
+                            'name' => 'current_filepath',
+                            'value' => $this->fields["filepath"],
+                        ] : [],
+                        'current_filename' => ($ID > 0) ? [
+                            'type' => 'hidden',
+                            'name' => 'current_filename',
+                            'value' => $this->fields["filename"],
+                        ] : [],
+                        [
+                            'name' => 'id',
+                            'type' => 'hidden',
+                            'value' => $ID,
+                        ],
+                        [
+                            'name' => 'entities_id',
+                            'type' => 'hidden',
+                            'value' => $this->fields["entities_id"] ?? 0,
+                        ],
+                        [
+                            'name' => 'is_recursive',
+                            'type' => 'hidden',
+                            'value' => $this->fields["is_recursive"] ?? 0,
+                        ],
                     ],
-                    sprintf(__('%1$s (%2$s)'), __('Checksum'), __('SHA1')) => ($ID > 0) ? [
-                       'content' => $this->fields["sha1sum"],
-                    ] : [],
-                    __('Web link') => [
-                       'type' => 'text',
-                       'name' => 'link',
-                       'value' => $this->fields["link"],
-                    ],
-                    __('Comments') => [
-                       'type' => 'textarea',
-                       'name' => 'comment',
-                       'value' => $this->fields["comment"],
-                    ],
-                    __('MIME type') => [
-                       'type' => 'text',
-                       'name' => 'mime',
-                       'value' => $this->fields["mime"],
-                    ],
-                    __('Blacklisted for import') => [
-                       'type' => 'checkbox',
-                       'name' => 'is_blacklisted',
-                       'value' => $this->fields["is_blacklisted"],
-                    ],
-                    __('Use a FTP installed file') => [
-                       'type' => 'select',
-                       'name' => 'upload_file',
-                       'values' => $uploaded_files,
-                       'value' => '',
-                    ],
-                    sprintf(__('%1$s (%2$s)'), __('File'), self::getMaxUploadSize()) => [
-                       'type' => 'file',
-                       'name' => 'files',
-                       'id' => 'fileSelectorForDocument',
-                       'data-max-size' => self::getMaxUploadSizeInBytes(),
-                    ],
-                 ],
-              ],
-              [
-                 'visible' => false,
-                 'inputs' => [
-                    'current_filepath' => ($ID > 0) ? [
-                       'type' => 'hidden',
-                       'name' => 'current_filepath',
-                       'value' => $this->fields["filepath"],
-                    ] : [],
-                    'current_filename' => ($ID > 0) ? [
-                       'type' => 'hidden',
-                       'name' => 'current_filename',
-                       'value' => $this->fields["filename"],
-                    ] : [],
-                    [
-                       'name' => 'id',
-                       'type' => 'hidden',
-                       'value' => $ID,
-                    ],
-                    [
-                       'name' => 'entities_id',
-                       'type' => 'hidden',
-                       'value' => $this->fields["entities_id"] ?? 0,
-                    ],
-                    [
-                       'name' => 'is_recursive',
-                       'type' => 'hidden',
-                       'value' => $this->fields["is_recursive"] ?? 0,
-                    ],
-                 ]
-              ]
-           ]
+                ],
+            ],
         ];
         renderTwigForm($form, '', $this->fields);
 
@@ -578,7 +578,7 @@ class Document extends CommonDBTM
      * Get download link for a document
      *
      * @param string  $params    additonal parameters to be added to the link (default '')
-     * @param integer $len       maximum length of displayed string (default 20)
+     * @param int $len       maximum length of displayed string (default 20)
      *
     **/
     public function getDownloadLink($params = '', $len = 20)
@@ -608,8 +608,8 @@ class Document extends CommonDBTM
             self::canView()
             || $this->canViewFile(['tickets_id' => $this->fields['tickets_id']])
         ) {
-            $open  = "<a href='" . $CFG_GLPI["root_doc"] . "/front/document.send.php?docid=" .
-                       $this->fields['id'] . $params . "' alt=\"" . $initfileout . "\"
+            $open  = "<a href='" . $CFG_GLPI["root_doc"] . "/front/document.send.php?docid="
+                       . $this->fields['id'] . $params . "' alt=\"" . $initfileout . "\"
                     title=\"" . $initfileout . "\"target='_blank'>";
             $close = "</a>";
         }
@@ -617,12 +617,12 @@ class Document extends CommonDBTM
 
         if (count($splitter)) {
             $iterator = $DB->request([
-               'SELECT' => 'icon',
-               'FROM'   => 'glpi_documenttypes',
-               'WHERE'  => [
-                  'ext'    => ['LIKE', $splitter[0]],
-                  'icon'   => ['<>', '']
-               ]
+                'SELECT' => 'icon',
+                'FROM'   => 'glpi_documenttypes',
+                'WHERE'  => [
+                    'ext'    => ['LIKE', $splitter[0]],
+                    'icon'   => ['<>', ''],
+                ],
             ]);
 
             if (count($iterator) > 0) {
@@ -631,9 +631,9 @@ class Document extends CommonDBTM
                 if (!file_exists(GLPI_ROOT . "/pics/icones/$icon")) {
                     $icon = "defaut-dist.png";
                 }
-                $out .= "&nbsp;<img class='middle' style='margin-left:3px; margin-right:6px;' alt=\"" .
-                                  $initfileout . "\" title=\"" . $initfileout . "\" src='" .
-                                  $CFG_GLPI["typedoc_icon_dir"] . "/$icon'>";
+                $out .= "&nbsp;<img class='middle' style='margin-left:3px; margin-right:6px;' alt=\""
+                                  . $initfileout . "\" title=\"" . $initfileout . "\" src='"
+                                  . $CFG_GLPI["typedoc_icon_dir"] . "/$icon'>";
             }
         }
         $out .= "$open<span class='b'>$fileout</span>$close";
@@ -645,10 +645,10 @@ class Document extends CommonDBTM
     /**
      * find a document with a file attached
      *
-     * @param integer $entity    entity of the document
+     * @param int $entity    entity of the document
      * @param string  $path      path of the searched file
      *
-     * @return boolean
+     * @return bool
     **/
     public function getFromDBbyContent($entity, $path)
     {
@@ -666,13 +666,13 @@ class Document extends CommonDBTM
 
         $doc_iterator = $DB->request(
             [
-              'SELECT' => 'id',
-              'FROM'   => $this->getTable(),
-              'WHERE'  => [
-                 $this->getTable() . '.sha1sum'      => $sum,
-                 $this->getTable() . '.entities_id'  => $entity
-              ],
-              'LIMIT'  => 1,
+                'SELECT' => 'id',
+                'FROM'   => $this->getTable(),
+                'WHERE'  => [
+                    $this->getTable() . '.sha1sum'      => $sum,
+                    $this->getTable() . '.entities_id'  => $entity,
+                ],
+                'LIMIT'  => 1,
             ]
         );
 
@@ -690,7 +690,7 @@ class Document extends CommonDBTM
      *
      * @param array $options Options (only 'tickets_id' used)
      *
-     * @return boolean
+     * @return bool
     **/
     public function canViewFile(array $options = [])
     {
@@ -746,7 +746,7 @@ class Document extends CommonDBTM
      */
     private static function loadAPISessionIfExist()
     {
-        $session_token = \Toolbox::getHeader('Session-Token');
+        $session_token = Toolbox::getHeader('Session-Token');
 
         // No api token found
         if ($session_token === null) {
@@ -769,7 +769,7 @@ class Document extends CommonDBTM
      * Check if file of current instance can be viewed from a Reminder.
      *
      * @global DBmysql $DB
-     * @return boolean
+     * @return bool
      *
      * @TODO Use DBmysqlIterator instead of raw SQL
      */
@@ -784,23 +784,23 @@ class Document extends CommonDBTM
 
         $criteria = array_merge_recursive(
             [
-              'COUNT'     => 'cpt',
-              'FROM'      => 'glpi_documents_items',
-              'LEFT JOIN' => [
-                 'glpi_reminders'  => [
-                    'ON' => [
-                       'glpi_documents_items'  => 'items_id',
-                       'glpi_reminders'        => 'id', [
-                          'AND' => [
-                             'glpi_documents_items.itemtype'  => 'Reminder'
-                          ]
-                       ]
-                    ]
-                 ]
-              ],
-              'WHERE'     => [
-                 'glpi_documents_items.documents_id' => $this->fields['id']
-              ]
+                'COUNT'     => 'cpt',
+                'FROM'      => 'glpi_documents_items',
+                'LEFT JOIN' => [
+                    'glpi_reminders'  => [
+                        'ON' => [
+                            'glpi_documents_items'  => 'items_id',
+                            'glpi_reminders'        => 'id', [
+                                'AND' => [
+                                    'glpi_documents_items.itemtype'  => 'Reminder',
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+                'WHERE'     => [
+                    'glpi_documents_items.documents_id' => $this->fields['id'],
+                ],
             ],
             Reminder::getVisibilityCriteria()
         );
@@ -814,7 +814,7 @@ class Document extends CommonDBTM
      *
      * @global array $CFG_GLPI
      * @global DBmysql $DB
-     * @return boolean
+     * @return bool
      */
     private function canViewFileFromKnowbaseItem()
     {
@@ -837,20 +837,20 @@ class Document extends CommonDBTM
         $visibilityCriteria = KnowbaseItem::getVisibilityCriteria();
 
         $request = [
-           'FROM'      => 'glpi_documents_items',
-           'COUNT'     => 'cpt',
-           'LEFT JOIN' => [
-              'glpi_knowbaseitems' => [
-                 'FKEY' => [
-                    'glpi_knowbaseitems'   => 'id',
-                    'glpi_documents_items' => 'items_id',
-                    ['AND' => ['glpi_documents_items.itemtype' => 'KnowbaseItem']]
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_documents_items.documents_id' => $this->fields['id'],
-           ]
+            'FROM'      => 'glpi_documents_items',
+            'COUNT'     => 'cpt',
+            'LEFT JOIN' => [
+                'glpi_knowbaseitems' => [
+                    'FKEY' => [
+                        'glpi_knowbaseitems'   => 'id',
+                        'glpi_documents_items' => 'items_id',
+                        ['AND' => ['glpi_documents_items.itemtype' => 'KnowbaseItem']],
+                    ],
+                ],
+            ],
+            'WHERE'     => [
+                'glpi_documents_items.documents_id' => $this->fields['id'],
+            ],
         ];
 
         if (array_key_exists('LEFT JOIN', $visibilityCriteria) && count($visibilityCriteria['LEFT JOIN']) > 0) {
@@ -870,8 +870,8 @@ class Document extends CommonDBTM
      *
      * @global DBmysql $DB
      * @param string  $itemtype
-     * @param integer $items_id
-     * @return boolean
+     * @param int $items_id
+     * @return bool
      */
     private function canViewFileFromItilObject($itemtype, $items_id)
     {
@@ -892,12 +892,12 @@ class Document extends CommonDBTM
         $itil->getFromDB($items_id);
 
         $result = $DB->request([
-           'FROM'  => Document_Item::getTable(),
-           'COUNT' => 'cpt',
-           'WHERE' => [
-              $itil->getAssociatedDocumentsCriteria(),
-              'documents_id' => $this->fields['id']
-           ]
+            'FROM'  => Document_Item::getTable(),
+            'COUNT' => 'cpt',
+            'WHERE' => [
+                $itil->getAssociatedDocumentsCriteria(),
+                'documents_id' => $this->fields['id'],
+            ],
         ])->next();
 
         return $result['cpt'] > 0;
@@ -908,22 +908,22 @@ class Document extends CommonDBTM
         $tab = [];
 
         $tab[] = [
-           'id'                 => 'document',
-           'name'               => self::getTypeName(Session::getPluralNumber())
+            'id'                 => 'document',
+            'name'               => self::getTypeName(Session::getPluralNumber()),
         ];
 
         $tab[] = [
-           'id'                 => '119',
-           'table'              => 'glpi_documents_items',
-           'field'              => 'id',
-           'name'               => _x('quantity', 'Number of documents'),
-           'forcegroupby'       => true,
-           'usehaving'          => true,
-           'datatype'           => 'count',
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'jointype'           => 'itemtype_item'
-           ]
+            'id'                 => '119',
+            'table'              => 'glpi_documents_items',
+            'field'              => 'id',
+            'name'               => _x('quantity', 'Number of documents'),
+            'forcegroupby'       => true,
+            'usehaving'          => true,
+            'datatype'           => 'count',
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'jointype'           => 'itemtype_item',
+            ],
         ];
 
         return $tab;
@@ -935,137 +935,137 @@ class Document extends CommonDBTM
         $tab = [];
 
         $tab[] = [
-           'id'                 => 'common',
-           'name'               => __('Characteristics')
+            'id'                 => 'common',
+            'name'               => __('Characteristics'),
         ];
 
         $tab[] = [
-           'id'                 => '1',
-           'table'              => $this->getTable(),
-           'field'              => 'name',
-           'name'               => __('Name'),
-           'datatype'           => 'itemlink',
-           'massiveaction'      => false,
-           'autocomplete'       => true,
+            'id'                 => '1',
+            'table'              => $this->getTable(),
+            'field'              => 'name',
+            'name'               => __('Name'),
+            'datatype'           => 'itemlink',
+            'massiveaction'      => false,
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '2',
-           'table'              => $this->getTable(),
-           'field'              => 'id',
-           'name'               => __('ID'),
-           'massiveaction'      => false,
-           'datatype'           => 'number'
+            'id'                 => '2',
+            'table'              => $this->getTable(),
+            'field'              => 'id',
+            'name'               => __('ID'),
+            'massiveaction'      => false,
+            'datatype'           => 'number',
         ];
 
         $tab[] = [
-           'id'                 => '3',
-           'table'              => $this->getTable(),
-           'field'              => 'filename',
-           'name'               => __('File'),
-           'massiveaction'      => false,
-           'datatype'           => 'string'
+            'id'                 => '3',
+            'table'              => $this->getTable(),
+            'field'              => 'filename',
+            'name'               => __('File'),
+            'massiveaction'      => false,
+            'datatype'           => 'string',
         ];
 
         $tab[] = [
-           'id'                 => '4',
-           'table'              => $this->getTable(),
-           'field'              => 'link',
-           'name'               => __('Web link'),
-           'datatype'           => 'weblink',
-           'autocomplete'       => true,
+            'id'                 => '4',
+            'table'              => $this->getTable(),
+            'field'              => 'link',
+            'name'               => __('Web link'),
+            'datatype'           => 'weblink',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '5',
-           'table'              => $this->getTable(),
-           'field'              => 'mime',
-           'name'               => __('MIME type'),
-           'datatype'           => 'string',
-           'autocomplete'       => true,
+            'id'                 => '5',
+            'table'              => $this->getTable(),
+            'field'              => 'mime',
+            'name'               => __('MIME type'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-           'id'                 => '6',
-           'table'              => $this->getTable(),
-           'field'              => 'tag',
-           'name'               => __('Tag'),
-           'datatype'           => 'text',
-           'massiveaction'      => false
+            'id'                 => '6',
+            'table'              => $this->getTable(),
+            'field'              => 'tag',
+            'name'               => __('Tag'),
+            'datatype'           => 'text',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '7',
-           'table'              => 'glpi_documentcategories',
-           'field'              => 'completename',
-           'name'               => __('Heading'),
-           'datatype'           => 'dropdown'
+            'id'                 => '7',
+            'table'              => 'glpi_documentcategories',
+            'field'              => 'completename',
+            'name'               => __('Heading'),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '80',
-           'table'              => 'glpi_entities',
-           'field'              => 'completename',
-           'name'               => Entity::getTypeName(1),
-           'massiveaction'      => false,
-           'datatype'           => 'dropdown'
+            'id'                 => '80',
+            'table'              => 'glpi_entities',
+            'field'              => 'completename',
+            'name'               => Entity::getTypeName(1),
+            'massiveaction'      => false,
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-           'id'                 => '86',
-           'table'              => $this->getTable(),
-           'field'              => 'is_recursive',
-           'name'               => __('Child entities'),
-           'datatype'           => 'bool'
+            'id'                 => '86',
+            'table'              => $this->getTable(),
+            'field'              => 'is_recursive',
+            'name'               => __('Child entities'),
+            'datatype'           => 'bool',
         ];
 
         $tab[] = [
-           'id'                 => '19',
-           'table'              => $this->getTable(),
-           'field'              => 'date_mod',
-           'name'               => __('Last update'),
-           'datatype'           => 'datetime',
-           'massiveaction'      => false
+            'id'                 => '19',
+            'table'              => $this->getTable(),
+            'field'              => 'date_mod',
+            'name'               => __('Last update'),
+            'datatype'           => 'datetime',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '121',
-           'table'              => $this->getTable(),
-           'field'              => 'date_creation',
-           'name'               => __('Creation date'),
-           'datatype'           => 'datetime',
-           'massiveaction'      => false
+            'id'                 => '121',
+            'table'              => $this->getTable(),
+            'field'              => 'date_creation',
+            'name'               => __('Creation date'),
+            'datatype'           => 'datetime',
+            'massiveaction'      => false,
         ];
 
         $tab[] = [
-           'id'                 => '20',
-           'table'              => $this->getTable(),
-           'field'              => 'sha1sum',
-           'name'               => sprintf(__('%1$s (%2$s)'), __('Checksum'), __('SHA1')),
-           'massiveaction'      => false,
-           'datatype'           => 'string'
+            'id'                 => '20',
+            'table'              => $this->getTable(),
+            'field'              => 'sha1sum',
+            'name'               => sprintf(__('%1$s (%2$s)'), __('Checksum'), __('SHA1')),
+            'massiveaction'      => false,
+            'datatype'           => 'string',
         ];
 
         $tab[] = [
-           'id'                 => '16',
-           'table'              => $this->getTable(),
-           'field'              => 'comment',
-           'name'               => __('Comments'),
-           'datatype'           => 'text'
+            'id'                 => '16',
+            'table'              => $this->getTable(),
+            'field'              => 'comment',
+            'name'               => __('Comments'),
+            'datatype'           => 'text',
         ];
 
         $tab[] = [
-           'id'                 => '72',
-           'table'              => 'glpi_documents_items',
-           'field'              => 'id',
-           'name'               => _x('quantity', 'Number of associated items'),
-           'forcegroupby'       => true,
-           'usehaving'          => true,
-           'datatype'           => 'count',
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'jointype'           => 'child'
-           ]
+            'id'                 => '72',
+            'table'              => 'glpi_documents_items',
+            'field'              => 'id',
+            'name'               => _x('quantity', 'Number of associated items'),
+            'forcegroupby'       => true,
+            'usehaving'          => true,
+            'datatype'           => 'count',
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'jointype'           => 'child',
+            ],
         ];
 
         // add objectlock search options
@@ -1084,7 +1084,7 @@ class Document extends CommonDBTM
      * @param string $srce   source file path
      * @param string $dest   destination file path
      *
-     * @return boolean : success
+     * @return bool : success
     **/
     public static function renameForce($srce, $dest)
     {
@@ -1106,7 +1106,7 @@ class Document extends CommonDBTM
      * @param array  $input     array of datas used in adding process (need current_filepath)
      * @param string $filename  filename to move
      *
-     * @return boolean for success / $input array is updated
+     * @return bool for success / $input array is updated
     **/
     public function moveUploadedDocument(array &$input, $filename)
     {
@@ -1146,8 +1146,8 @@ class Document extends CommonDBTM
             && is_file(GLPI_DOC_DIR . "/" . $input['current_filepath'])
             && (countElementsInTable(
                 'glpi_documents',
-                ['sha1sum' => sha1_file(GLPI_DOC_DIR . "/" .
-                                               $input['current_filepath']) ]
+                ['sha1sum' => sha1_file(GLPI_DOC_DIR . "/"
+                                               . $input['current_filepath']) ]
             ) <= 1)
         ) {
             if (unlink(GLPI_DOC_DIR . "/" . $input['current_filepath'])) {
@@ -1206,7 +1206,7 @@ class Document extends CommonDBTM
      * @param array  $input     array of datas used in adding process (need current_filepath)
      * @param string $filename  filename to move
      *
-     * @return boolean for success / $input array is updated
+     * @return bool for success / $input array is updated
     **/
     public static function moveDocument(array &$input, $filename)
     {
@@ -1246,8 +1246,8 @@ class Document extends CommonDBTM
             && is_file(GLPI_DOC_DIR . "/" . $input['current_filepath'])
             && (countElementsInTable(
                 'glpi_documents',
-                ['sha1sum' => sha1_file(GLPI_DOC_DIR . "/" .
-                                               $input['current_filepath']) ]
+                ['sha1sum' => sha1_file(GLPI_DOC_DIR . "/"
+                                               . $input['current_filepath']) ]
             ) <= 1)
         ) {
             if (unlink(GLPI_DOC_DIR . "/" . $input['current_filepath'])) {
@@ -1345,8 +1345,8 @@ class Document extends CommonDBTM
             && !empty($input['current_filepath'])
             && (countElementsInTable(
                 'glpi_documents',
-                ['sha1sum' => sha1_file(GLPI_DOC_DIR . "/" .
-                                               $input['current_filepath']) ]
+                ['sha1sum' => sha1_file(GLPI_DOC_DIR . "/"
+                                               . $input['current_filepath']) ]
             ) <= 1)
         ) {
             if (unlink(GLPI_DOC_DIR . "/" . $input['current_filepath'])) {
@@ -1409,7 +1409,7 @@ class Document extends CommonDBTM
             if (Session::haveRight('dropdown', READ)) {
                 $dt       = new DocumentType();
                 $message .= " <a target='_blank' href='" . $dt->getSearchURL() . "' class='pointer'>
-                         <i class='fa fa-info' aria-hidden='true'</i><span class='sr-only'>" . __('Manage document types')  . "</span></a>";
+                         <i class='fa fa-info' aria-hidden='true'</i><span class='sr-only'>" . __('Manage document types') . "</span></a>";
             }
             Session::addMessageAfterRedirect($message, false, ERROR);
             return '';
@@ -1430,7 +1430,7 @@ class Document extends CommonDBTM
 
         if (
             !is_dir(GLPI_DOC_DIR . "/" . $subdir)
-            && @mkdir(GLPI_DOC_DIR . "/" . $subdir, 0777, true)
+            && @mkdir(GLPI_DOC_DIR . "/" . $subdir, 0o777, true)
         ) {
             Session::addMessageAfterRedirect(sprintf(
                 __('Create the directory %s'),
@@ -1498,11 +1498,11 @@ class Document extends CommonDBTM
         $ext      = end($splitter);
 
         $iterator = $DB->request([
-           'FROM'   => 'glpi_documenttypes',
-           'WHERE'  => [
-              'ext'             => ['LIKE', $ext],
-              'is_uploadable'   => 1
-           ]
+            'FROM'   => 'glpi_documenttypes',
+            'WHERE'  => [
+                'ext'             => ['LIKE', $ext],
+                'is_uploadable'   => 1,
+            ],
         ]);
 
         if (count($iterator)) {
@@ -1511,11 +1511,11 @@ class Document extends CommonDBTM
 
         // Not found try with regex one
         $iterator = $DB->request([
-           'FROM'   => 'glpi_documenttypes',
-           'WHERE'  => [
-              'ext'             => ['LIKE', '/%/'],
-              'is_uploadable'   => 1
-           ]
+            'FROM'   => 'glpi_documenttypes',
+            'WHERE'  => [
+                'ext'             => ['LIKE', '/%/'],
+                'is_uploadable'   => 1,
+            ],
         ]);
 
         while ($data = $iterator->next()) {
@@ -1544,7 +1544,7 @@ class Document extends CommonDBTM
      *
      * @param $options array of possible options
      *
-     * @return integer|string
+     * @return int|string
      *    integer if option display=true (random part of elements id)
      *    string if option display=false (HTML code)
     **/
@@ -1564,7 +1564,7 @@ class Document extends CommonDBTM
         }
 
         $subwhere = [
-           'glpi_documents.is_deleted'   => 0,
+            'glpi_documents.is_deleted'   => 0,
         ] + getEntitiesRestrictCriteria('glpi_documents', '', $p['entity'], true);
 
         if (count($p['used'])) {
@@ -1572,16 +1572,16 @@ class Document extends CommonDBTM
         }
 
         $criteria = [
-           'FROM'   => 'glpi_documentcategories',
-           'WHERE'  => [
-              'id' => new QuerySubQuery([
-                 'SELECT'          => 'documentcategories_id',
-                 'DISTINCT'        => true,
-                 'FROM'            => 'glpi_documents',
-                 'WHERE'           => $subwhere
-              ])
-           ],
-           'ORDER'  => 'name'
+            'FROM'   => 'glpi_documentcategories',
+            'WHERE'  => [
+                'id' => new QuerySubQuery([
+                    'SELECT'          => 'documentcategories_id',
+                    'DISTINCT'        => true,
+                    'FROM'            => 'glpi_documents',
+                    'WHERE'           => $subwhere,
+                ]),
+            ],
+            'ORDER'  => 'name',
         ];
         $iterator = $DB->request($criteria);
 
@@ -1598,15 +1598,15 @@ class Document extends CommonDBTM
         );
 
         $inputs = [
-           __('Heading') => [
-              'type' => 'select',
-              'id' => 'selectForMaRubDocId',
-              'name' => '_rubdoc',
-              'values' => [Dropdown::EMPTY_VALUE] + $values,
-              'col_lg' => 12,
-              'col_md' => 12,
-              'hooks' => [
-                 'change' => <<<JS
+            __('Heading') => [
+                'type' => 'select',
+                'id' => 'selectForMaRubDocId',
+                'name' => '_rubdoc',
+                'values' => [Dropdown::EMPTY_VALUE] + $values,
+                'col_lg' => 12,
+                'col_md' => 12,
+                'hooks' => [
+                    'change' => <<<JS
                var rubdoc = $('#selectForMaRubDocId').val();
                var entity = $entity;
                $.ajax({
@@ -1622,25 +1622,25 @@ class Document extends CommonDBTM
                   }
                });
                JS,
-              ]
-           ],
-           Document::getTypeName() => [
-              'type' => 'select',
-              'id' => 'selectForMaDocumentId',
-              'name' => 'peer_documents_id',
-              'values' => $initial_docs,
-              'itemtype' => Document::class,
-              'col_lg' => 12,
-              'col_md' => 12,
-              'actions' => getItemActionButtons(['info'], Document::class)
-           ]
+                ],
+            ],
+            Document::getTypeName() => [
+                'type' => 'select',
+                'id' => 'selectForMaDocumentId',
+                'name' => 'peer_documents_id',
+                'values' => $initial_docs,
+                'itemtype' => Document::class,
+                'col_lg' => 12,
+                'col_md' => 12,
+                'actions' => getItemActionButtons(['info'], Document::class),
+            ],
         ];
         $out = '';
         foreach ($inputs as $title => $input) {
             ob_start();
             renderTwigTemplate('macros/wrappedInput.twig', [
-               'title' => $title,
-               'input' => $input,
+                'title' => $title,
+                'input' => $input,
             ]);
             $out .= ob_get_clean();
         }
@@ -1662,8 +1662,8 @@ class Document extends CommonDBTM
 
         if (self::canApplyOn($itemtype)) {
             if (Document::canView()) {
-                $actions[$action_prefix . 'add']    = "<i class='ma-icon far fa-file' aria-hidden='true'></i>" .
-                                                    _x('button', 'Add a document');
+                $actions[$action_prefix . 'add']    = "<i class='ma-icon far fa-file' aria-hidden='true'></i>"
+                                                    . _x('button', 'Add a document');
                 $actions[$action_prefix . 'remove'] = _x('button', 'Remove a document');
             }
         }
@@ -1694,7 +1694,7 @@ class Document extends CommonDBTM
      *
      * @param string $file File name
      *
-     * @return boolean
+     * @return bool
      */
     public static function isImage($file)
     {
@@ -1725,8 +1725,8 @@ class Document extends CommonDBTM
      *
      * @param string  $path    Original path
      * @param string  $context Context
-     * @param integer $mwidth  Maximal width
-     * @param integer $mheight Maximal height
+     * @param int $mwidth  Maximal width
+     * @param int $mheight Maximal height
      *
      * @return string Image path on disk
      */
@@ -1735,15 +1735,15 @@ class Document extends CommonDBTM
         if ($mwidth === null || $mheight === null) {
             switch ($context) {
                 case 'mail':
-                    $mwidth  = $mwidth ?? 400;
-                    $mheight = $mheight ?? 300;
+                    $mwidth ??= 400;
+                    $mheight ??= 300;
                     break;
                 case 'timeline':
-                    $mwidth  = $mwidth ?? 100;
-                    $mheight = $mheight ?? 100;
+                    $mwidth ??= 100;
+                    $mheight ??= 100;
                     break;
                 default:
-                    throw new \RuntimeException("Unknown context $context!");
+                    throw new RuntimeException("Unknown context $context!");
             }
         }
 
@@ -1807,7 +1807,7 @@ class Document extends CommonDBTM
      *
      * @param CronTask $task CronTask object
      *
-     * @return integer (0 : nothing done - 1 : done)
+     * @return int (0 : nothing done - 1 : done)
     **/
     public static function cronCleanOrphans(CronTask $task)
     {
@@ -1817,19 +1817,19 @@ class Document extends CommonDBTM
         $ditable = Document_Item::getTable();
         //documents tht are nt present in Document_Item are oprhan
         $iterator = $DB->request([
-           'SELECT'    => ["$dtable.id"],
-           'FROM'      => $dtable,
-           'LEFT JOIN' => [
-              $ditable => [
-                 'ON'  => [
-                    $dtable  => 'id',
-                    $ditable => 'documents_id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-                 "$ditable.documents_id" => null
-           ]
+            'SELECT'    => ["$dtable.id"],
+            'FROM'      => $dtable,
+            'LEFT JOIN' => [
+                $ditable => [
+                    'ON'  => [
+                        $dtable  => 'id',
+                        $ditable => 'documents_id',
+                    ],
+                ],
+            ],
+            'WHERE'     => [
+                "$ditable.documents_id" => null,
+            ],
         ]);
 
         $nb = 0;

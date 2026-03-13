@@ -56,9 +56,9 @@ class SavedSearch extends DbTestCase
             'glpi_profilerights',
             ['rights' => 1],
             [
-              'profiles_id'  => 2,
-              'name'         => 'bookmark_public'
-         ]
+                'profiles_id'  => 2,
+                'name'         => 'bookmark_public',
+            ]
         );
 
         //ACLs have changed: login again.
@@ -69,9 +69,9 @@ class SavedSearch extends DbTestCase
             'glpi_profilerights',
             ['rights' => 0],
             [
-              'profiles_id'  => 2,
-              'name'         => 'bookmark_public'
-         ]
+                'profiles_id'  => 2,
+                'name'         => 'bookmark_public',
+            ]
         );
 
         $this->string(\SavedSearch::addVisibilityRestrict())

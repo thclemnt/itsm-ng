@@ -67,11 +67,11 @@ if (count($optgroup) > 0) {
                     if (_value != 0) {
                         window.location.href=_value;
                     }
-                JS
+                JS,
             ],
             'col_lg' => 12,
             'col_md' => 12,
-        ]
+        ],
     ]);
     Dropdown::showItemTypeList($optgroup);
     echo "</div>";

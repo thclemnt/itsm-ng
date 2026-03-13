@@ -45,12 +45,12 @@ class ITILSolution extends DbTestCase
         $this->login();
 
         $uid = getItemByTypeName('User', TU_USER, true);
-        $ticket = new \Ticket();
-        $this->integer((int)$ticket->add([
-           'name'               => 'ticket title',
-           'description'        => 'a description',
-           'content'            => 'a description',
-           '_users_id_assign'   => $uid
+        $ticket = new Ticket();
+        $this->integer((int) $ticket->add([
+            'name'               => 'ticket title',
+            'description'        => 'a description',
+            'content'            => 'a description',
+            '_users_id_assign'   => $uid,
         ]))->isGreaterThan(0);
 
         $this->boolean($ticket->isNewItem())->isFalse();
@@ -58,11 +58,11 @@ class ITILSolution extends DbTestCase
 
         $solution = new \ITILSolution();
         $this->integer(
-            (int)$solution->add([
-              'itemtype'  => $ticket::getType(),
-              'items_id'  => $ticket->getID(),
-              'content'   => 'Current friendly ticket\r\nis solved!'
-         ])
+            (int) $solution->add([
+                'itemtype'  => $ticket::getType(),
+                'items_id'  => $ticket->getID(),
+                'content'   => 'Current friendly ticket\r\nis solved!',
+            ])
         );
         //reload from DB
         $this->boolean($ticket->getFromDB($ticket->getID()))->isTrue();
@@ -71,69 +71,69 @@ class ITILSolution extends DbTestCase
         $this->string($solution->getField('content'))->isIdenticalTo("Current friendly ticket\r\nis solved!");
 
         $this->boolean($solution->getFromDB($solution->getID()))->isTrue();
-        $this->integer((int)$solution->fields['status'])->isIdenticalTo(\CommonITILValidation::WAITING);
+        $this->integer((int) $solution->fields['status'])->isIdenticalTo(\CommonITILValidation::WAITING);
 
         //approve solution
         $follow = new \ITILFollowup();
         $this->integer(
-            (int)$follow->add([
-              'itemtype'  => $ticket::getType(),
-              'items_id'   => $ticket->getID(),
-              'add_close'    => '1'
-         ])
+            (int) $follow->add([
+                'itemtype'  => $ticket::getType(),
+                'items_id'   => $ticket->getID(),
+                'add_close'    => '1',
+            ])
         )->isGreaterThan(0);
         $this->boolean($follow->getFromDB($follow->getID()))->isTrue();
         $this->boolean($solution->getFromDB($solution->getID()))->isTrue();
         $this->boolean($ticket->getFromDB($ticket->getID()))->isTrue();
-        $this->integer((int)$solution->fields['status'])->isIdenticalTo(\CommonITILValidation::ACCEPTED);
-        $this->integer((int)$ticket->fields['status'])->isIdenticalTo($ticket::CLOSED);
+        $this->integer((int) $solution->fields['status'])->isIdenticalTo(\CommonITILValidation::ACCEPTED);
+        $this->integer((int) $ticket->fields['status'])->isIdenticalTo($ticket::CLOSED);
 
         //reopen ticket
         $this->integer(
-            (int)$follow->add([
-              'itemtype'  => $ticket::getType(),
-              'items_id'  => $ticket->getID(),
-              'add_reopen'   => '1',
-              'content'      => 'This is required'
-         ])
+            (int) $follow->add([
+                'itemtype'  => $ticket::getType(),
+                'items_id'  => $ticket->getID(),
+                'add_reopen'   => '1',
+                'content'      => 'This is required',
+            ])
         )->isGreaterThan(0);
         $this->boolean($ticket->getFromDB($ticket->getID()))->isTrue();
         $this->boolean($solution->getFromDB($solution->getID()))->isTrue();
 
-        $this->integer((int)$ticket->fields['status'])->isIdenticalTo($ticket::ASSIGNED);
-        $this->integer((int)$solution->fields['status'])->isIdenticalTo(\CommonITILValidation::REFUSED);
+        $this->integer((int) $ticket->fields['status'])->isIdenticalTo($ticket::ASSIGNED);
+        $this->integer((int) $solution->fields['status'])->isIdenticalTo(\CommonITILValidation::REFUSED);
 
         $this->integer(
-            (int)$solution->add([
-              'itemtype'  => $ticket::getType(),
-              'items_id'  => $ticket->getID(),
-              'content'   => 'Another solution proposed!'
-         ])
+            (int) $solution->add([
+                'itemtype'  => $ticket::getType(),
+                'items_id'  => $ticket->getID(),
+                'content'   => 'Another solution proposed!',
+            ])
         );
         //reload from DB
         $this->boolean($ticket->getFromDB($ticket->getID()))->isTrue();
         $this->boolean($solution->getFromDB($solution->getID()))->isTrue();
 
         $this->variable($ticket->getField('status'))->isEqualTo($ticket::SOLVED);
-        $this->integer((int)$solution->fields['status'])->isIdenticalTo(\CommonITILValidation::WAITING);
+        $this->integer((int) $solution->fields['status'])->isIdenticalTo(\CommonITILValidation::WAITING);
 
         //refuse
         $follow = new \ITILFollowup();
         $this->integer(
-            (int)$follow->add([
-              'itemtype'   => 'Ticket',
-              'items_id'   => $ticket->getID(),
-              'add_reopen'   => '1',
-              'content'      => 'This is required'
-         ])
+            (int) $follow->add([
+                'itemtype'   => 'Ticket',
+                'items_id'   => $ticket->getID(),
+                'add_reopen'   => '1',
+                'content'      => 'This is required',
+            ])
         )->isGreaterThan(0);
 
         //reload from DB
         $this->boolean($ticket->getFromDB($ticket->getID()))->isTrue();
         $this->boolean($solution->getFromDB($solution->getID()))->isTrue();
 
-        $this->integer((int)$ticket->fields['status'])->isIdenticalTo($ticket::ASSIGNED);
-        $this->integer((int)$solution->fields['status'])->isIdenticalTo(\CommonITILValidation::REFUSED);
+        $this->integer((int) $ticket->fields['status'])->isIdenticalTo($ticket::ASSIGNED);
+        $this->integer((int) $solution->fields['status'])->isIdenticalTo(\CommonITILValidation::REFUSED);
 
         $this->integer(
             $solution::countFor(
@@ -149,11 +149,11 @@ class ITILSolution extends DbTestCase
         $uid = getItemByTypeName('User', TU_USER, true);
 
         $problem = new \Problem();
-        $this->integer((int)$problem->add([
-           'name'               => 'problem title',
-           'description'        => 'a description',
-           'content'            => 'a content',
-           '_users_id_assign'   => $uid
+        $this->integer((int) $problem->add([
+            'name'               => 'problem title',
+            'description'        => 'a description',
+            'content'            => 'a content',
+            '_users_id_assign'   => $uid,
         ]))->isGreaterThan(0);
 
         $this->boolean($problem->isNewItem())->isFalse();
@@ -161,11 +161,11 @@ class ITILSolution extends DbTestCase
 
         $solution = new \ITILSolution();
         $this->integer(
-            (int)$solution->add([
-              'itemtype'  => $problem::getType(),
-              'items_id'  => $problem->getID(),
-              'content'   => 'Current friendly problem\r\nis solved!'
-         ])
+            (int) $solution->add([
+                'itemtype'  => $problem::getType(),
+                'items_id'  => $problem->getID(),
+                'content'   => 'Current friendly problem\r\nis solved!',
+            ])
         );
         //reload from DB
         $this->boolean($problem->getFromDB($problem->getID()))->isTrue();
@@ -174,7 +174,7 @@ class ITILSolution extends DbTestCase
         $this->string($solution->getField('content'))->isIdenticalTo("Current friendly problem\r\nis solved!");
 
         $this->boolean($solution->getFromDB($solution->getID()))->isTrue();
-        $this->integer((int)$solution->fields['status'])->isIdenticalTo(\CommonITILValidation::ACCEPTED);
+        $this->integer((int) $solution->fields['status'])->isIdenticalTo(\CommonITILValidation::ACCEPTED);
     }
 
     public function testChangeSolution()
@@ -183,11 +183,11 @@ class ITILSolution extends DbTestCase
         $uid = getItemByTypeName('User', TU_USER, true);
 
         $change = new \Change();
-        $this->integer((int)$change->add([
-           'name'               => 'change title',
-           'description'        => 'a description',
-           'content'            => 'a content',
-           '_users_id_assign'   => $uid
+        $this->integer((int) $change->add([
+            'name'               => 'change title',
+            'description'        => 'a description',
+            'content'            => 'a content',
+            '_users_id_assign'   => $uid,
         ]))->isGreaterThan(0);
 
         $this->boolean($change->isNewItem())->isFalse();
@@ -195,11 +195,11 @@ class ITILSolution extends DbTestCase
 
         $solution = new \ITILSolution();
         $this->integer(
-            (int)$solution->add([
-              'itemtype'  => $change::getType(),
-              'items_id'  => $change->getID(),
-              'content'   => 'Current friendly change\r\nis solved!'
-         ])
+            (int) $solution->add([
+                'itemtype'  => $change::getType(),
+                'items_id'  => $change->getID(),
+                'content'   => 'Current friendly change\r\nis solved!',
+            ])
         );
         //reload from DB
         $this->boolean($change->getFromDB($change->getID()))->isTrue();
@@ -208,7 +208,7 @@ class ITILSolution extends DbTestCase
         $this->string($solution->getField('content'))->isIdenticalTo("Current friendly change\r\nis solved!");
 
         $this->boolean($solution->getFromDB($solution->getID()))->isTrue();
-        $this->integer((int)$solution->fields['status'])->isIdenticalTo(\CommonITILValidation::ACCEPTED);
+        $this->integer((int) $solution->fields['status'])->isIdenticalTo(\CommonITILValidation::ACCEPTED);
     }
 
 
@@ -218,41 +218,41 @@ class ITILSolution extends DbTestCase
         $this->setEntity('Root entity', true);
 
         $uid = getItemByTypeName('User', TU_USER, true);
-        $ticket = new \Ticket();
-        $duplicated = (int)$ticket->add([
-           'name'               => 'Duplicated ticket',
-           'description'        => 'A ticket that will be duplicated',
-           'content'            => 'a content',
-           '_users_id_assign'   => $uid
+        $ticket = new Ticket();
+        $duplicated = (int) $ticket->add([
+            'name'               => 'Duplicated ticket',
+            'description'        => 'A ticket that will be duplicated',
+            'content'            => 'a content',
+            '_users_id_assign'   => $uid,
         ]);
         $this->integer($duplicated)->isGreaterThan(0);
 
-        $duplicate = (int)$ticket->add([
-           'name'               => 'Duplicate ticket',
-           'description'        => 'A ticket that is a duplicate',
-           'content'            => 'a content',
-           '_users_id_assign'   => $uid
+        $duplicate = (int) $ticket->add([
+            'name'               => 'Duplicate ticket',
+            'description'        => 'A ticket that is a duplicate',
+            'content'            => 'a content',
+            '_users_id_assign'   => $uid,
         ]);
         $this->integer($duplicate)->isGreaterThan(0);
 
         $link = new \Ticket_Ticket();
         $this->integer(
-            (int)$link->add([
-              'tickets_id_1' => $duplicated,
-              'tickets_id_2' => $duplicate,
-              'link'         => \Ticket_Ticket::DUPLICATE_WITH
-         ])
+            (int) $link->add([
+                'tickets_id_1' => $duplicated,
+                'tickets_id_2' => $duplicate,
+                'link'         => \Ticket_Ticket::DUPLICATE_WITH,
+            ])
         )->isGreaterThan(0);
 
         //we got one ticketg, and another that duplicates it.
         //let's manage solutions on them
         $solution = new \ITILSolution();
         $this->integer(
-            (int)$solution->add([
-              'itemtype'  => $ticket::getType(),
-              'items_id'  => $duplicate,
-              'content'   => 'Solve from main ticket'
-         ])
+            (int) $solution->add([
+                'itemtype'  => $ticket::getType(),
+                'items_id'  => $duplicate,
+                'content'   => 'Solve from main ticket',
+            ])
         );
         //reload from DB
         $this->boolean($ticket->getFromDB($duplicate))->isTrue();
@@ -267,12 +267,12 @@ class ITILSolution extends DbTestCase
         $this->login();
 
         $uid = getItemByTypeName('User', TU_USER, true);
-        $ticket = new \Ticket();
-        $this->integer((int)$ticket->add([
-           'name'               => 'ticket title',
-           'description'        => 'a description',
-           'content'            => 'a content',
-           '_users_id_assign'   => $uid
+        $ticket = new Ticket();
+        $this->integer((int) $ticket->add([
+            'name'               => 'ticket title',
+            'description'        => 'a description',
+            'content'            => 'a content',
+            '_users_id_assign'   => $uid,
         ]))->isGreaterThan(0);
 
         $this->boolean($ticket->isNewItem())->isFalse();
@@ -282,23 +282,23 @@ class ITILSolution extends DbTestCase
 
         // 1st solution, it should be accepted
         $this->integer(
-            (int)$solution->add([
-              'itemtype'  => $ticket::getType(),
-              'items_id'  => $ticket->getID(),
-              'content'   => '1st solution, should be accepted!'
-         ])
+            (int) $solution->add([
+                'itemtype'  => $ticket::getType(),
+                'items_id'  => $ticket->getID(),
+                'content'   => '1st solution, should be accepted!',
+            ])
         );
 
         $this->boolean($solution->getFromDB($solution->getID()))->isTrue();
-        $this->integer((int)$solution->fields['status'])->isIdenticalTo(\CommonITILValidation::WAITING);
+        $this->integer((int) $solution->fields['status'])->isIdenticalTo(\CommonITILValidation::WAITING);
 
         // try to add directly another solution, it should be refused
         $this->boolean(
             $solution->add([
-              'itemtype'  => $ticket::getType(),
-              'items_id'  => $ticket->getID(),
-              'content'   => '2nd solution, should be refused!'
-         ])
+                'itemtype'  => $ticket::getType(),
+                'items_id'  => $ticket->getID(),
+                'content'   => '2nd solution, should be refused!',
+            ])
         )->isFalse();
         $this->hasSessionMessages(ERROR, ['The item is already solved, did anyone pushed a solution before you ?']);
     }
@@ -309,10 +309,10 @@ class ITILSolution extends DbTestCase
         $this->login(); // must be logged as ITILSolution uses Session::getLoginUserID()
 
         // Test uploads for item creation
-        $ticket = new \Ticket();
+        $ticket = new Ticket();
         $ticket->add([
-           'name' => $this->getUniqueString(),
-           'content' => 'test',
+            'name' => $this->getUniqueString(),
+            'content' => 'test',
         ]);
         $this->boolean($ticket->isNewItem())->isFalse();
 
@@ -321,21 +321,21 @@ class ITILSolution extends DbTestCase
         $filename = '5e5e92ffd9bd91.11111111image_paste22222222.png';
         $instance = new \ITILSolution();
         $input = [
-           'users_id' => $user,
-           'items_id' => $ticket->getID(),
-           'itemtype' => 'Ticket',
-           'name'    => 'a solution',
-           'content' => '&lt;p&gt; &lt;/p&gt;&lt;p&gt;&lt;img id="3e29dffe-0237ea21-5e5e7034b1d1a1.00000000"'
-           . ' src="data:image/png;base64,' . $base64Image . '" width="12" height="12" /&gt;&lt;/p&gt;',
-           '_content' => [
-              $filename,
-           ],
-           '_tag_content' => [
-              '3e29dffe-0237ea21-5e5e7034b1d1a1.00000000',
-           ],
-           '_prefix_content' => [
-              '5e5e92ffd9bd91.11111111',
-           ]
+            'users_id' => $user,
+            'items_id' => $ticket->getID(),
+            'itemtype' => 'Ticket',
+            'name'    => 'a solution',
+            'content' => '&lt;p&gt; &lt;/p&gt;&lt;p&gt;&lt;img id="3e29dffe-0237ea21-5e5e7034b1d1a1.00000000"'
+            . ' src="data:image/png;base64,' . $base64Image . '" width="12" height="12" /&gt;&lt;/p&gt;',
+            '_content' => [
+                $filename,
+            ],
+            '_tag_content' => [
+                '3e29dffe-0237ea21-5e5e7034b1d1a1.00000000',
+            ],
+            '_prefix_content' => [
+                '5e5e92ffd9bd91.11111111',
+            ],
         ];
         copy(__DIR__ . '/../fixtures/uploads/foo.png', GLPI_TMP_DIR . '/' . $filename);
 
@@ -349,18 +349,18 @@ class ITILSolution extends DbTestCase
         $filename = '5e5e92ffd9bd91.44444444image_paste55555555.png';
         copy(__DIR__ . '/../fixtures/uploads/bar.png', GLPI_TMP_DIR . '/' . $filename);
         $success = $instance->update([
-           'id' => $instance->getID(),
-           'content' => '&lt;p&gt; &lt;/p&gt;&lt;p&gt;&lt;img id="3e29dffe-0237ea21-5e5e7034b1d1a1.33333333"'
-           . ' src="data:image/png;base64,' . $base64Image . '" width="12" height="12" /&gt;&lt;/p&gt;',
-           '_content' => [
-              $filename,
-           ],
-           '_tag_content' => [
-              '3e29dffe-0237ea21-5e5e7034b1d1a1.33333333',
-           ],
-           '_prefix_content' => [
-              '5e5e92ffd9bd91.44444444',
-           ]
+            'id' => $instance->getID(),
+            'content' => '&lt;p&gt; &lt;/p&gt;&lt;p&gt;&lt;img id="3e29dffe-0237ea21-5e5e7034b1d1a1.33333333"'
+            . ' src="data:image/png;base64,' . $base64Image . '" width="12" height="12" /&gt;&lt;/p&gt;',
+            '_content' => [
+                $filename,
+            ],
+            '_tag_content' => [
+                '3e29dffe-0237ea21-5e5e7034b1d1a1.33333333',
+            ],
+            '_prefix_content' => [
+                '5e5e92ffd9bd91.44444444',
+            ],
         ]);
         $this->boolean($success)->isTrue();
         $expected = 'a href=&quot;/front/document.send.php?docid=';
@@ -380,8 +380,8 @@ class ITILSolution extends DbTestCase
         // Create 10 tickets
         for ($i = 0; $i < 10; $i++) {
             $id = $em_ticket->add([
-               'name'    => "test",
-               'content' => "test",
+                'name'    => "test",
+                'content' => "test",
             ]);
             $this->integer($id);
 
@@ -393,9 +393,9 @@ class ITILSolution extends DbTestCase
         // Solve all created tickets
         foreach ($tickets as $ticket) {
             $id = $em_solution->add([
-               'itemtype' => $ticket::getType(),
-               'items_id' => $ticket->fields['id'],
-               'content'  => 'test'
+                'itemtype' => $ticket::getType(),
+                'items_id' => $ticket->fields['id'],
+                'content'  => 'test',
             ]);
             $this->integer($id);
 

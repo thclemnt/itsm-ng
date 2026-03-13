@@ -81,15 +81,15 @@ $auth = new Auth();
 
 
 // now we can continue with the process...
-if ($auth->login($login, $password, (isset($_REQUEST["noAUTO"]) ? $_REQUEST["noAUTO"] : false), $remember, $login_auth)) {
+if ($auth->login($login, $password, ($_REQUEST["noAUTO"] ?? false), $remember, $login_auth)) {
     Auth::redirectIfAuthenticated();
 } else {
     // we have done at least a good login? No, we exit.
     Html::nullHeader("Login", $CFG_GLPI["root_doc"] . '/index.php');
     echo '<div class="center b">' . $auth->getErr() . '<br><br>';
     // Logout whit noAUto to manage auto_login with errors
-    echo '<a href="' . $CFG_GLPI["root_doc"] . '/front/logout.php?noAUTO=1' .
-          str_replace("?", "&", $REDIRECT) . '">' . __('Log in again') . '</a></div>';
+    echo '<a href="' . $CFG_GLPI["root_doc"] . '/front/logout.php?noAUTO=1'
+          . str_replace("?", "&", $REDIRECT) . '">' . __('Log in again') . '</a></div>';
     Html::nullFooter();
     exit();
 }

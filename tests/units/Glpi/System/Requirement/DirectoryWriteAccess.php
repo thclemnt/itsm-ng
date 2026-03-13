@@ -43,7 +43,7 @@ class DirectoryWriteAccess extends \GLPITestCase
     public function testCheckOnExistingWritableDir()
     {
 
-        vfsStream::setup('root', 0777, []);
+        vfsStream::setup('root', 0o777, []);
         $path = vfsStream::url('root');
 
         $this->newTestedInstance($path);
@@ -55,7 +55,7 @@ class DirectoryWriteAccess extends \GLPITestCase
     public function testCheckOnUnexistingDir()
     {
 
-        vfsStream::setup('root', 0777, []);
+        vfsStream::setup('root', 0o777, []);
         $path = vfsStream::url('root/not-existing');
 
         $this->newTestedInstance($path);

@@ -66,14 +66,14 @@ abstract class AbstractCommand extends Command implements GlpiCommandInterface
     /**
      * Flag to indicate if command requires a DB connection.
      *
-     * @var boolean
+     * @var bool
      */
     protected $requires_db = true;
 
     /**
      * Flag to indicate if command requires an up-to-date DB.
      *
-     * @var boolean
+     * @var bool
      */
     protected $requires_db_up_to_date = true;
 
@@ -110,7 +110,7 @@ abstract class AbstractCommand extends Command implements GlpiCommandInterface
      *
      * @param string|array $messages
      * @param ProgressBar  $progress_bar
-     * @param integer      $verbosity
+     * @param int      $verbosity
      *
      * @return void
      */
@@ -147,18 +147,18 @@ abstract class AbstractCommand extends Command implements GlpiCommandInterface
         }
 
         $msg_levels = [
-           INFO    => [
-              'tag'       => 'info',
-              'verbosity' => OutputInterface::VERBOSITY_VERBOSE,
-           ],
-           WARNING => [
-              'tag'       => 'comment',
-              'verbosity' => OutputInterface::VERBOSITY_NORMAL,
-           ],
-           ERROR   => [
-              'tag'       => 'error',
-              'verbosity' => OutputInterface::VERBOSITY_QUIET,
-           ],
+            INFO    => [
+                'tag'       => 'info',
+                'verbosity' => OutputInterface::VERBOSITY_VERBOSE,
+            ],
+            WARNING => [
+                'tag'       => 'comment',
+                'verbosity' => OutputInterface::VERBOSITY_NORMAL,
+            ],
+            ERROR   => [
+                'tag'       => 'error',
+                'verbosity' => OutputInterface::VERBOSITY_QUIET,
+            ],
         ];
 
         foreach ($msg_levels as $key => $options) {

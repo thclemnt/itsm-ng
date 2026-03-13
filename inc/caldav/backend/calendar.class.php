@@ -43,6 +43,11 @@ use Glpi\CalDAV\Traits\CalDAVUriUtilTrait;
 use Ramsey\Uuid\Uuid;
 use Sabre\CalDAV\Backend\AbstractBackend;
 use Sabre\CalDAV\Xml\Property\SupportedCalendarComponentSet;
+use Sabre\DAV\Exception;
+use Sabre\DAV\Exception\Forbidden;
+use Sabre\DAV\Exception\NotFound;
+use Sabre\DAV\Exception\NotImplemented;
+use Sabre\DAV\Exception\UnsupportedMediaType;
 use Sabre\DAV\Xml\Property\ResourceType;
 use Sabre\VObject\Component\VCalendar;
 use Sabre\VObject\Property\FlatText;
@@ -82,15 +87,15 @@ class Calendar extends AbstractBackend
         );
 
         $calendars_params = [
-           // Calendar of current principal
-           $principal_calendar_key => [
-              'key'          => $principal_calendar_key,
-              'uri'          => self::BASE_CALENDAR_URI,
-              'principaluri' => $principalPath,
-              'name'         => $principal_item->getName(),
-              'desc'         => sprintf(__('Calendar of %s'), $principal_item->getFriendlyName()),
-              'color'        => null,
-           ]
+            // Calendar of current principal
+            $principal_calendar_key => [
+                'key'          => $principal_calendar_key,
+                'uri'          => self::BASE_CALENDAR_URI,
+                'principaluri' => $principalPath,
+                'name'         => $principal_item->getName(),
+                'desc'         => sprintf(__('Calendar of %s'), $principal_item->getFriendlyName()),
+                'color'        => null,
+            ],
         ];
 
         if ($principal_item instanceof \User) {
@@ -120,14 +125,14 @@ class Calendar extends AbstractBackend
                 }
 
                 $calendars_params[$key] = [
-                   'key'          => $key,
-                   'uri'          => \User::class === get_class($calendar_principal)
-                      ? $calendar_principal->fields['name']
-                      : $key,
-                   'principaluri' => $this->getPrincipalUri($calendar_principal),
-                   'name'         => $calendar_principal->getName(),
-                   'desc'         => sprintf(__('Calendar of %s'), $calendar_principal->getFriendlyName()),
-                   'color'        => $calendar_params['color'],
+                    'key'          => $key,
+                    'uri'          => \User::class === get_class($calendar_principal)
+                       ? $calendar_principal->fields['name']
+                       : $key,
+                    'principaluri' => $this->getPrincipalUri($calendar_principal),
+                    'name'         => $calendar_principal->getName(),
+                    'desc'         => sprintf(__('Calendar of %s'), $calendar_principal->getFriendlyName()),
+                    'color'        => $calendar_params['color'],
                 ];
             }
         }
@@ -155,12 +160,12 @@ class Calendar extends AbstractBackend
 
     public function createCalendar($principalPath, $calendarPath, array $properties)
     {
-        throw new \Sabre\DAV\Exception\NotImplemented('Calendar creation is not implemented');
+        throw new NotImplemented('Calendar creation is not implemented');
     }
 
     public function deleteCalendar($calendarId)
     {
-        throw new \Sabre\DAV\Exception\NotImplemented('Calendar deletion is not implemented');
+        throw new NotImplemented('Calendar deletion is not implemented');
     }
 
     public function getCalendarObjects($calendarId)
@@ -176,7 +181,7 @@ class Calendar extends AbstractBackend
         }
 
         if (!$exists) {
-            throw new \Sabre\DAV\Exception\NotFound(sprintf('Calendar "%s" not found', $calendarId));
+            throw new NotFound(sprintf('Calendar "%s" not found', $calendarId));
         }
 
         $objects = [];
@@ -220,7 +225,7 @@ class Calendar extends AbstractBackend
     {
 
         if (!$this->storeCalendarObject($calendarId, $calendarData)) {
-            throw new \Sabre\DAV\Exception('Error during object creation');
+            throw new Exception('Error during object creation');
         }
 
         return null;
@@ -231,11 +236,11 @@ class Calendar extends AbstractBackend
 
         $item = $this->getCalendarItemForPath($objectPath);
         if (null === $item) {
-            throw new \Sabre\DAV\Exception\NotFound(sprintf('Object "%s" not found', $objectPath));
+            throw new NotFound(sprintf('Object "%s" not found', $objectPath));
         }
 
         if (!$this->storeCalendarObject($calendarId, $calendarData, $item)) {
-            throw new \Sabre\DAV\Exception('Error during object creation');
+            throw new Exception('Error during object creation');
         }
 
         return null;
@@ -246,11 +251,11 @@ class Calendar extends AbstractBackend
 
         $item = $this->getCalendarItemForPath($objectPath);
         if (null === $item) {
-            throw new \Sabre\DAV\Exception\NotFound(sprintf('Object "%s" not found', $objectPath));
+            throw new NotFound(sprintf('Object "%s" not found', $objectPath));
         }
 
         if (!$item->deleteFromDB()) {
-            throw new \Sabre\DAV\Exception('Error during object deletion');
+            throw new Exception('Error during object deletion');
         }
     }
 
@@ -274,10 +279,10 @@ class Calendar extends AbstractBackend
            : new \DateTime();
 
         return  [
-           'uri'          => $vcomponent->UID . '.ics',
-           'lastmodified' => (new \DateTime('@' . $last_modified->getTimestamp())),
-           'size'         => strlen($calendardata),
-           'calendardata' => $calendardata
+            'uri'          => $vcomponent->UID . '.ics',
+            'lastmodified' => (new \DateTime('@' . $last_modified->getTimestamp())),
+            'size'         => strlen($calendardata),
+            'calendardata' => $calendardata,
         ];
     }
 
@@ -289,7 +294,7 @@ class Calendar extends AbstractBackend
      * @param string                             $calendarData  Seialized VCalendar object
      * @param CalDAVCompatibleItemInterface|null $item          Item on which input will be stored
      *
-     * @return boolean
+     * @return bool
      */
     private function storeCalendarObject($calendarId, $calendarData, ?CalDAVCompatibleItemInterface $item = null)
     {
@@ -301,7 +306,7 @@ class Calendar extends AbstractBackend
         $vcomponent = $vcalendar->getBaseComponent();
 
         if (!in_array($vcomponent->name, $CFG_GLPI['caldav_supported_components'])) {
-            throw new \Sabre\DAV\Exception\UnsupportedMediaType('Component "%s" is not supported');
+            throw new UnsupportedMediaType('Component "%s" is not supported');
         }
 
         $input = [];
@@ -347,7 +352,7 @@ class Calendar extends AbstractBackend
                 $input['entities_id'] = $_SESSION['glpiactive_entity'];
             }
             if (!$item->can(-1, CREATE, $input)) {
-                throw new \Sabre\DAV\Exception\Forbidden();
+                throw new Forbidden();
             }
             $items_id = $item->add($input);
             if (false === $items_id) {
@@ -358,7 +363,7 @@ class Calendar extends AbstractBackend
 
         $input['id'] = $item->fields['id'];
         if (!$item->can($item->fields['id'], UPDATE, $input)) {
-            throw new \Sabre\DAV\Exception\Forbidden();
+            throw new Forbidden();
         }
         if (array_key_exists('date_creation', $input)) {
             unset($input['date_creation']); // Prevent date creation override
@@ -374,10 +379,10 @@ class Calendar extends AbstractBackend
      * Store raw VCalendar data and attach it to given item.
      *
      * @param string  $calendarData
-     * @param integer $items_id
+     * @param int $items_id
      * @param string  $itemtype
      *
-     * @return boolean
+     * @return bool
      */
     private function storeVCalendarData($calendarData, $items_id, $itemtype)
     {
@@ -387,15 +392,15 @@ class Calendar extends AbstractBackend
         // Load existing object if exists.
         $vobject->getFromDBByCrit(
             [
-              'itemtype' => $itemtype,
-              'items_id' => $items_id,
+                'itemtype' => $itemtype,
+                'items_id' => $items_id,
             ]
         );
 
         $input = [
-           'itemtype' => $itemtype,
-           'items_id' => $items_id,
-           'data'     => $calendarData,
+            'itemtype' => $itemtype,
+            'items_id' => $items_id,
+            'data'     => $calendarData,
         ];
 
         $input = \Toolbox::addslashes_deep($input);

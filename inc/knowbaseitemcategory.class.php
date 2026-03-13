@@ -48,12 +48,12 @@ class KnowbaseItemCategory extends CommonTreeDropdown
     {
 
         return [
-           __('As child of') => [
-              'name'  => $this->getForeignKeyField(),
-              'type'  => 'select',
-              'values'  => getOptionForItems('KnowbaseItemCategory', ['NOT' => ['id' => $this->getID()]]),
-              'value' => $this->fields[$this->getForeignKeyField()],
-           ]
+            __('As child of') => [
+                'name'  => $this->getForeignKeyField(),
+                'type'  => 'select',
+                'values'  => getOptionForItems('KnowbaseItemCategory', ['NOT' => ['id' => $this->getID()]]),
+                'value' => $this->fields[$this->getForeignKeyField()],
+            ],
         ];
     }
 

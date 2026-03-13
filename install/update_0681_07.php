@@ -195,7 +195,7 @@ function update0681to07()
                     while ($data = $DB->fetchAssoc($result)) {
                         $query = "INSERT INTO `glpi_users_profiles`
                                    (`FK_users`, `FK_profiles`)
-                            VALUES ('".$data['ID']."', '$IDprof') ";
+                            VALUES ('" . $data['ID'] . "', '$IDprof') ";
                         $DB->query($query);
                     }
                 }
@@ -238,10 +238,10 @@ function update0681to07()
 
     // Add entity tags to tables
     $tables = ["glpi_cartridges_type", "glpi_computers", "glpi_consumables_type",
-                    "glpi_contacts", "glpi_contracts", "glpi_docs", "glpi_dropdown_locations",
-                    "glpi_dropdown_netpoint", "glpi_enterprises", "glpi_groups", "glpi_monitors",
-                    "glpi_networking", "glpi_peripherals", "glpi_phones", "glpi_printers",
-                    "glpi_reminder", "glpi_software", "glpi_tracking"];
+        "glpi_contacts", "glpi_contracts", "glpi_docs", "glpi_dropdown_locations",
+        "glpi_dropdown_netpoint", "glpi_enterprises", "glpi_groups", "glpi_monitors",
+        "glpi_networking", "glpi_peripherals", "glpi_phones", "glpi_printers",
+        "glpi_reminder", "glpi_software", "glpi_tracking"];
     // "glpi_kbitems","glpi_dropdown_kbcategories", -> easier to manage
     // "glpi_followups" -> always link to tracking ?
     // "glpi_licenses" -> always link to software ?
@@ -336,16 +336,16 @@ function update0681to07()
         if (!empty($config["ldap_host"])) {
             //Transfer ldap information into the new table
             $query = "INSERT INTO `glpi_auth_ldap`
-                   VALUES (NULL, '".$config["ldap_host"]."', '".$config["ldap_host"]."',
-                           '".$config["ldap_basedn"]."', '".$config["ldap_rootdn"]."',
-                           '".$config["ldap_pass"]."', ".$config["ldap_port"].",
-                           '".$config["ldap_condition"]."', '".$config["ldap_login"]."',
-                           '".$config["ldap_use_tls"]."', '".$config["ldap_field_group"]."',
-                           '".$config["ldap_condition"]."', ".$config["ldap_search_for_groups"].",
-                           '".$config["ldap_field_group_member"]."', '".$config["ldap_field_email"]."',
-                           '".$config["ldap_field_realname"]."', '".$config["ldap_field_firstname"]."',
-                           '".$config["ldap_field_phone"]."', '".$config["ldap_field_phone2"]."',
-                           '".$config["ldap_field_mobile"]."', NULL)";
+                   VALUES (NULL, '" . $config["ldap_host"] . "', '" . $config["ldap_host"] . "',
+                           '" . $config["ldap_basedn"] . "', '" . $config["ldap_rootdn"] . "',
+                           '" . $config["ldap_pass"] . "', " . $config["ldap_port"] . ",
+                           '" . $config["ldap_condition"] . "', '" . $config["ldap_login"] . "',
+                           '" . $config["ldap_use_tls"] . "', '" . $config["ldap_field_group"] . "',
+                           '" . $config["ldap_condition"] . "', " . $config["ldap_search_for_groups"] . ",
+                           '" . $config["ldap_field_group_member"] . "', '" . $config["ldap_field_email"] . "',
+                           '" . $config["ldap_field_realname"] . "', '" . $config["ldap_field_firstname"] . "',
+                           '" . $config["ldap_field_phone"] . "', '" . $config["ldap_field_phone2"] . "',
+                           '" . $config["ldap_field_mobile"] . "', NULL)";
             $DB->queryOrDie($query, "0.7 transfert of ldap parameters into glpi_auth_ldap");
         }
 
@@ -398,8 +398,8 @@ function update0681to07()
         if (!empty($config["imap_host"])) {
             //Transfer ldap information into the new table
             $query = "INSERT INTO `glpi_auth_mail`
-                   VALUES (NULL, '".$config["imap_host"]."', '".$config["imap_auth_server"]."',
-                           '".$config["imap_host"]."')";
+                   VALUES (NULL, '" . $config["imap_host"] . "', '" . $config["imap_auth_server"] . "',
+                           '" . $config["imap_host"] . "')";
             $DB->queryOrDie($query, "0.7 transfert of mail parameters into glpi_auth_mail");
         }
 
@@ -412,12 +412,12 @@ function update0681to07()
     // Clean state_item -> add a field from tables
     if ($DB->tableExists("glpi_state_item")) {
         $state_type = [SOFTWARE_TYPE   => 'glpi_software',
-                            COMPUTER_TYPE   => 'glpi_computers',
-                            PRINTER_TYPE    => 'glpi_printers',
-                            MONITOR_TYPE    => 'glpi_monitors',
-                            PERIPHERAL_TYPE => 'glpi_peripherals',
-                            NETWORKING_TYPE => 'glpi_networking',
-                            PHONE_TYPE      => 'glpi_phones'];
+            COMPUTER_TYPE   => 'glpi_computers',
+            PRINTER_TYPE    => 'glpi_printers',
+            MONITOR_TYPE    => 'glpi_monitors',
+            PERIPHERAL_TYPE => 'glpi_peripherals',
+            NETWORKING_TYPE => 'glpi_networking',
+            PHONE_TYPE      => 'glpi_phones'];
 
         foreach ($state_type as $type => $table) {
             if (!$DB->fieldExists($table, "state", false)) {
@@ -433,8 +433,8 @@ function update0681to07()
                 if ($DB->numrows($result)) {
                     while ($data = $DB->fetchArray($result)) {
                         $query3 = "UPDATE `$table`
-                             SET `state` = '". $data["state"]."'
-                             WHERE `ID` = '".$data["id_device"]."'";
+                             SET `state` = '" . $data["state"] . "'
+                             WHERE `ID` = '" . $data["id_device"] . "'";
                         $DB->queryOrDie($query3, "0.7 update state field value to $table");
                     }
                 }
@@ -463,12 +463,12 @@ function update0681to07()
 
     // Add ticket_tco for hardwares
     $tco_tbl = [SOFTWARE_TYPE   => 'glpi_software',
-                     COMPUTER_TYPE   => 'glpi_computers',
-                     PRINTER_TYPE    => 'glpi_printers',
-                     MONITOR_TYPE    => 'glpi_monitors',
-                     PERIPHERAL_TYPE => 'glpi_peripherals',
-                     NETWORKING_TYPE => 'glpi_networking',
-                     PHONE_TYPE      => 'glpi_phones'];
+        COMPUTER_TYPE   => 'glpi_computers',
+        PRINTER_TYPE    => 'glpi_printers',
+        MONITOR_TYPE    => 'glpi_monitors',
+        PERIPHERAL_TYPE => 'glpi_peripherals',
+        NETWORKING_TYPE => 'glpi_networking',
+        PHONE_TYPE      => 'glpi_phones'];
 
     foreach ($tco_tbl as $type => $table) {
         if (!$DB->fieldExists($table, "ticket_tco", false)) {
@@ -488,8 +488,8 @@ function update0681to07()
             if ($DB->numrows($result)) {
                 while ($data = $DB->fetchArray($result)) {
                     $query2 = "UPDATE `$table`
-                          SET `ticket_tco` = '".computeTicketTco($type, $data["computer"])."'
-                          WHERE `ID` = '".$data["computer"]."'";
+                          SET `ticket_tco` = '" . computeTicketTco($type, $data["computer"]) . "'
+                          WHERE `ID` = '" . $data["computer"] . "'";
                     $DB->queryOrDie($query2, "0.7 update ticket_tco");
                 }
             }
@@ -533,7 +533,7 @@ function update0681to07()
 
                     if (!empty($data['postcode']) || !empty($data['town'])) {
                         if (!empty($comments)) {
-                            $comments = sprintf(__('%1$s %2$s', $comments, __('Address')))."\n";
+                            $comments = sprintf(__('%1$s %2$s', $comments, __('Address'))) . "\n";
                         }
                         //TRANS: %1$s is postcode, %2$s is town
                         $comments .= sprintf(__('%1$s %2$s'), $data['postcode'], $data['town']);
@@ -541,7 +541,7 @@ function update0681to07()
 
                     if (!empty($data['state']) || !empty($data['country'])) {
                         if (!empty($comments)) {
-                            $comments = sprintf(__('%1$s %2$s', $comments, __('Address')))."\n";
+                            $comments = sprintf(__('%1$s %2$s', $comments, __('Address'))) . "\n";
                         }
                         //TRANS: %1$s is country, %2$s is state
                         $comments .= sprintf(__('%1$s %2$s'), $data['country'], $data['state']);
@@ -591,7 +591,7 @@ function update0681to07()
 
                     $query2 = "INSERT INTO `glpi_dropdown_manufacturer`
                                  (ID, name, comments)
-                          VALUES ('".$data['ID'] . "', '".$data['name']."', '".$comments."')";
+                          VALUES ('" . $data['ID'] . "', '" . $data['name'] . "', '" . $comments . "')";
                     $DB->queryOrDie($query2, "0.7 add manufacturer item");
                 }
             }
@@ -632,7 +632,7 @@ function update0681to07()
                     // Skip first
                     $query = "SELECT `ID`
                          FROM `glpi_ocs_link`
-                         WHERE `ocs_id` = '".$data['ocs_id']."'
+                         WHERE `ocs_id` = '" . $data['ocs_id'] . "'
                          ORDER BY `last_update` DESC
                          LIMIT 1,99999";
                     if ($result2 = $DB->query($query)) {
@@ -640,7 +640,7 @@ function update0681to07()
                             while ($data2 = $DB->fetchArray($result2)) {
                                 $query = "DELETE
                                   FROM `glpi_ocs_link`
-                                  WHERE `ID` ='".$data2['ID']."'";
+                                  WHERE `ID` ='" . $data2['ID'] . "'";
                                 $DB->queryOrDie($query, "0.7 clean to update ocs_server_id=1 in glpi_ocs_link");
                             }
                         }
@@ -720,7 +720,7 @@ function update0681to07()
     // Enum 0-1
     $enum01          = [];
     $template_tables = ["glpi_computers", "glpi_networking", "glpi_printers", "glpi_monitors",
-                             "glpi_peripherals", "glpi_software", "glpi_phones", "glpi_ocs_config"];
+        "glpi_peripherals", "glpi_software", "glpi_phones", "glpi_ocs_config"];
 
     foreach ($template_tables as $table) {
         if (!isset($enum01[$table])) {
@@ -785,9 +785,9 @@ function update0681to07()
     $enumYN["Y"]["glpi_type_docs"][]      = "upload"; // Y
 
     $deleted_tables = ["glpi_computers", "glpi_networking", "glpi_printers", "glpi_monitors",
-                            "glpi_peripherals", "glpi_software", "glpi_cartridges_type",
-                            "glpi_contracts", "glpi_contacts", "glpi_enterprises", "glpi_docs",
-                            "glpi_phones", "glpi_consumables_type" ];
+        "glpi_peripherals", "glpi_software", "glpi_cartridges_type",
+        "glpi_contracts", "glpi_contacts", "glpi_enterprises", "glpi_docs",
+        "glpi_phones", "glpi_consumables_type" ];
 
     foreach ($deleted_tables as $table) {
         if (!isset($enum01[$table])) {
@@ -965,12 +965,12 @@ function update0681to07()
 
             $query = "INSERT INTO `glpi_rules_criterias`
                           (`FK_rules`, `criteria`, `condition`, `pattern`)
-                   VALUES (".$datas["ID"].", 'TAG', 0, '*')";
+                   VALUES (" . $datas["ID"] . ", 'TAG', 0, '*')";
             $DB->queryOrDie($query, "0.7 add default ocs criteria");
 
             $query = "INSERT INTO `glpi_rules_actions`
                           (`FK_rules`, `action_type`, `field`, `value`)
-                   VALUES (".$datas["ID"].", 'assign', 'FK_entities', '0')";
+                   VALUES (" . $datas["ID"] . ", 'assign', 'FK_entities', '0')";
             $DB->queryOrDie($query, "0.7 add default ocs actions");
 
             //Insert rule to affect users from LDAP to the root entity
@@ -990,23 +990,23 @@ function update0681to07()
             //Criteria
             $query = "INSERT INTO `glpi_rules_criterias`
                           (`FK_rules`, `criteria`, `condition`, `pattern`)
-                   VALUES (".$datas["ID"].", 'uid', 0, '*')";
+                   VALUES (" . $datas["ID"] . ", 'uid', 0, '*')";
             $DB->queryOrDie($query, "0.7 add default right criteria");
 
             $query = "INSERT INTO `glpi_rules_criterias`
                           (`FK_rules`, `criteria`, `condition`, `pattern`)
-                   VALUES (".$datas["ID"].", 'samaccountname', 0, '*')";
+                   VALUES (" . $datas["ID"] . ", 'samaccountname', 0, '*')";
             $DB->queryOrDie($query, "0.7 add default right criteria");
 
             $query = "INSERT INTO `glpi_rules_criterias`
                           (`FK_rules`, `criteria`, `condition`, `pattern`)
-                   VALUES (".$datas["ID"].", 'MAIL_EMAIL', 0, '*')";
+                   VALUES (" . $datas["ID"] . ", 'MAIL_EMAIL', 0, '*')";
             $DB->queryOrDie($query, "0.7 add default right criteria");
 
             //Action
             $query = "INSERT INTO `glpi_rules_actions`
                           (`FK_rules`, `action_type`, `field`, `value`)
-                   VALUES (".$datas["ID"].", 'assign', 'FK_entities', '0')";
+                   VALUES (" . $datas["ID"] . ", 'assign', 'FK_entities', '0')";
             $DB->queryOrDie($query, "0.7 add default right actions");
         }
     }
@@ -1249,8 +1249,8 @@ function update0681to07()
         if ($DB->numrows($result) > 0) {
             while ($soft = $DB->fetchArray($result)) {
                 $sql = "UPDATE `glpi_licenses`
-                    SET `version` = '".$soft["version"]."'
-                    WHERE `sID` = ".$soft["ID"];
+                    SET `version` = '" . $soft["version"] . "'
+                    WHERE `sID` = " . $soft["ID"];
                 $DB->query($sql);
             }
         }
@@ -1276,14 +1276,14 @@ function update0681to07()
             if ($data['expire'] == "") {
                 $expire_search = " AND `glpi_licenses`.`expire` IS NULL";
             } else {
-                $expire_search = " AND `glpi_licenses`.`expire?? = '".$data['expire']."'";
+                $expire_search = " AND `glpi_licenses`.`expire?? = '" . $data['expire'] . "'";
             }
             $query = "SELECT `glpi_licenses`.`ID`
                    FROM `glpi_licenses`
-                   WHERE `serial` ='".$data['serial']."'
-                         AND `sID` ='".$data['sID']."'
+                   WHERE `serial` ='" . $data['serial'] . "'
+                         AND `sID` ='" . $data['sID'] . "'
                          $expire_search
-                         AND `buy` ='".$data['buy']."'";
+                         AND `buy` ='" . $data['buy'] . "'";
             $result2 = $DB->query($query);
             if ($DB->numrows($result2)) {
                 $licIDs = [];
@@ -1327,8 +1327,8 @@ function update0681to07()
             // Get duplicates
             $query2 = "SELECT *
                     FROM `glpi_reservation_item`
-                    WHERE `device_type` = '".$data['device_type']."'
-                         AND `id_device` = '".$data['id_device']."'
+                    WHERE `device_type` = '" . $data['device_type'] . "'
+                         AND `id_device` = '" . $data['id_device'] . "'
                          AND `ID` <> '$refID'";
             $result2 = $DB->query($query2);
             if ($DB->numrows($result2)) {
@@ -1336,12 +1336,12 @@ function update0681to07()
                     // Update r??servations
                     $query = "UPDATE `glpi_reservation_resa`
                          SET `id_item` = '$refID'
-                         WHERE `id_item` = '".$data2['ID']."'";
+                         WHERE `id_item` = '" . $data2['ID'] . "'";
                     $DB->query($query);
                     // Delete Reservation Item
                     $query = "DELETE
                          FROM `glpi_reservation_item`
-                         WHERE `ID` = '".$data2['ID']."'";
+                         WHERE `ID` = '" . $data2['ID'] . "'";
                     $DB->query($query);
                 }
             }
@@ -1489,32 +1489,32 @@ function update0681to07()
     }
 
     $intnull = ["glpi_alerts"                     => ["device_type", "FK_device", "type"],
-                     "glpi_cartridges_type"            => ["tech_num"],
-                     "glpi_computers"                  => ["FK_users", "FK_groups"],
-                     "glpi_consumables_type"           => ["tech_num"],
-                     "glpi_contacts"                   => ["type"],
-                     "glpi_device_case"                => ["type"],
-                     "glpi_device_control"             => ["interface"],
-                     "glpi_device_drive"               => ["interface"],
-                     "glpi_dropdown_kbcategories"      => ["level"],
-                     "glpi_dropdown_locations"         => ["level"],
-                     "glpi_dropdown_tracking_category" => ["level"],
-                     "glpi_entities"                   => ["level"],
-                     "glpi_infocoms"                   => ["FK_enterprise", "budget"],
-                     "glpi_monitors"                   => ["type", "model", "FK_users",
-                                                                "FK_groups"],
-                     "glpi_networking"                 => ["type", "model", "firmware",
-                                                                "FK_users", "FK_groups"],
-                     "glpi_networking_ports"           => ["iface", "netpoint"],
-                     "glpi_ocs_link"                   => ["ocs_server_id"],
-                     "glpi_peripherals"                => ["model", "FK_users", "FK_groups"],
-                     "glpi_phones"                     => ["model", "FK_users", "FK_groups"],
-                     "glpi_printers"                   => ["type", "model", "FK_users",
-                                                                "FK_groups"],
-                     "glpi_software"                   => ["location", "platform", "FK_users",
-                                                                "FK_groups"],
-                     "glpi_tracking"                   => ["computer"],
-                     "glpi_users_groups"               => ["FK_users", "FK_groups"]];
+        "glpi_cartridges_type"            => ["tech_num"],
+        "glpi_computers"                  => ["FK_users", "FK_groups"],
+        "glpi_consumables_type"           => ["tech_num"],
+        "glpi_contacts"                   => ["type"],
+        "glpi_device_case"                => ["type"],
+        "glpi_device_control"             => ["interface"],
+        "glpi_device_drive"               => ["interface"],
+        "glpi_dropdown_kbcategories"      => ["level"],
+        "glpi_dropdown_locations"         => ["level"],
+        "glpi_dropdown_tracking_category" => ["level"],
+        "glpi_entities"                   => ["level"],
+        "glpi_infocoms"                   => ["FK_enterprise", "budget"],
+        "glpi_monitors"                   => ["type", "model", "FK_users",
+            "FK_groups"],
+        "glpi_networking"                 => ["type", "model", "firmware",
+            "FK_users", "FK_groups"],
+        "glpi_networking_ports"           => ["iface", "netpoint"],
+        "glpi_ocs_link"                   => ["ocs_server_id"],
+        "glpi_peripherals"                => ["model", "FK_users", "FK_groups"],
+        "glpi_phones"                     => ["model", "FK_users", "FK_groups"],
+        "glpi_printers"                   => ["type", "model", "FK_users",
+            "FK_groups"],
+        "glpi_software"                   => ["location", "platform", "FK_users",
+            "FK_groups"],
+        "glpi_tracking"                   => ["computer"],
+        "glpi_users_groups"               => ["FK_users", "FK_groups"]];
 
     foreach ($intnull as $table => $fields) {
         foreach ($fields as $field) {
@@ -1522,7 +1522,7 @@ function update0681to07()
                 $query = "UPDATE `$table`
                       SET `$field` = '0'
                       WHERE `$field` IS NULL";
-                $DB->queryOrDie($query, "0.7 update datas in $table for NULL values ".$DB->error());
+                $DB->queryOrDie($query, "0.7 update datas in $table for NULL values " . $DB->error());
 
                 $query = "ALTER TABLE `$table`
                       CHANGE `$field` `$field` INT NOT NULL DEFAULT '0'";
@@ -1549,7 +1549,7 @@ function update0681to07()
 
     $query = "DELETE
              FROM `glpi_display`
-             WHERE `type` = ".USER_TYPE."
+             WHERE `type` = " . USER_TYPE . "
                    AND (`num` = 4)";
     $DB->queryOrDie($query, "0.7 clean glpi_display for glpi_users " . $DB->error());
 
@@ -1718,41 +1718,41 @@ function update0681to07()
     }
 
     $LINK_ID_TABLE = [1  => "glpi_computers",
-                           2  => "glpi_networking",
-                           3  => "glpi_printers",
-                           4  => "glpi_monitors",
-                           5  => "glpi_peripherals",
-                           6  => "glpi_software",
-                           7  => "glpi_contacts",
-                           8  => "glpi_enterprises",
-                           9  => "glpi_infocoms",
-                           10 => "glpi_contracts",
-                           11 => "glpi_cartridges_type",
-                           12 => "glpi_type_docs",
-                           13 => "glpi_docs",
-                           14 => "glpi_kbitems",
-                           15 => "glpi_users",
-                           16 => "glpi_tracking",
-                           17 => "glpi_consumables_type",
-                           18 => "glpi_consumables",
-                           19 => "glpi_cartridges",
-                           20 => "glpi_softwarelicenses",
-                           21 => "glpi_links",
-                           23 => "glpi_phones",
-                           25 => "glpi_reminder",
-                           27 => "glpi_groups",
-                           28 => "glpi_entities",
-                           29 => "glpi_reservation_item",
-                           32 => "glpi_ocs_config",
-                           33 => "glpi_registry",
-                           34 => "glpi_profiles",
-                           35 => "glpi_mailgate",
-                           36 => "glpi_rules_descriptions",
-                           37 => "glpi_transfers",
-                           39 => "glpi_softwareversions",
-                           41 => "glpi_computerdisks",
-                           42 => "glpi_networking_ports",
-                           43 => "glpi_followups"];
+        2  => "glpi_networking",
+        3  => "glpi_printers",
+        4  => "glpi_monitors",
+        5  => "glpi_peripherals",
+        6  => "glpi_software",
+        7  => "glpi_contacts",
+        8  => "glpi_enterprises",
+        9  => "glpi_infocoms",
+        10 => "glpi_contracts",
+        11 => "glpi_cartridges_type",
+        12 => "glpi_type_docs",
+        13 => "glpi_docs",
+        14 => "glpi_kbitems",
+        15 => "glpi_users",
+        16 => "glpi_tracking",
+        17 => "glpi_consumables_type",
+        18 => "glpi_consumables",
+        19 => "glpi_cartridges",
+        20 => "glpi_softwarelicenses",
+        21 => "glpi_links",
+        23 => "glpi_phones",
+        25 => "glpi_reminder",
+        27 => "glpi_groups",
+        28 => "glpi_entities",
+        29 => "glpi_reservation_item",
+        32 => "glpi_ocs_config",
+        33 => "glpi_registry",
+        34 => "glpi_profiles",
+        35 => "glpi_mailgate",
+        36 => "glpi_rules_descriptions",
+        37 => "glpi_transfers",
+        39 => "glpi_softwareversions",
+        41 => "glpi_computerdisks",
+        42 => "glpi_networking_ports",
+        43 => "glpi_followups"];
 
     // Clean history
     $query = "SELECT DISTINCT `device_type`
@@ -1762,10 +1762,10 @@ function update0681to07()
             while ($data = $DB->fetchArray($result)) {
                 $query2 = "DELETE
                        FROM `glpi_history`
-                       WHERE `glpi_history`.`device_type` = '".$data['device_type']."'
+                       WHERE `glpi_history`.`device_type` = '" . $data['device_type'] . "'
                              AND `glpi_history`.`FK_glpi_device`
                                   NOT IN (SELECT `ID`
-                                          FROM `".$LINK_ID_TABLE[$data['device_type']]."`)";
+                                          FROM `" . $LINK_ID_TABLE[$data['device_type']] . "`)";
                 $DB->query($query2);
             }
         }

@@ -149,8 +149,8 @@ trait CalDAVPrincipalsTrait
 
         $groups_iterator = $DB->request(
             [
-              'FROM'  => Group::getTable(),
-              'WHERE' => $groups_criteria,
+                'FROM'  => Group::getTable(),
+                'WHERE' => $groups_criteria,
             ]
         );
 

@@ -49,22 +49,22 @@ function update0803to083()
 
     $backup_tables = false;
     $newtables     = ['glpi_entities_knowbaseitems', 'glpi_entities_reminders',
-                           'glpi_groups_problems', 'glpi_groups_knowbaseitems', 'glpi_groups_reminders',
-                           'glpi_knowbaseitems_profiles',  'glpi_knowbaseitems_users',
-                           'glpi_items_problems', 'glpi_problems',
-                           'glpi_problemtasks', 'glpi_problems_ticket', 'glpi_problems_users',
-                           'glpi_profiles_reminders', 'glpi_reminders_users',
-                           'glpi_ticketrecurrents',
-                           'glpi_tickettemplates', 'glpi_tickettemplatehiddenfields',
-                           'glpi_tickettemplatemandatoryfields',
-                           'glpi_tickettemplatepredefinedfields', 'glpi_useremails'];
+        'glpi_groups_problems', 'glpi_groups_knowbaseitems', 'glpi_groups_reminders',
+        'glpi_knowbaseitems_profiles',  'glpi_knowbaseitems_users',
+        'glpi_items_problems', 'glpi_problems',
+        'glpi_problemtasks', 'glpi_problems_ticket', 'glpi_problems_users',
+        'glpi_profiles_reminders', 'glpi_reminders_users',
+        'glpi_ticketrecurrents',
+        'glpi_tickettemplates', 'glpi_tickettemplatehiddenfields',
+        'glpi_tickettemplatemandatoryfields',
+        'glpi_tickettemplatepredefinedfields', 'glpi_useremails'];
 
     foreach ($newtables as $new_table) {
         // rename new tables if exists ?
         if ($DB->tableExists($new_table)) {
             $migration->dropTable("backup_$new_table");
-            $migration->displayWarning("$new_table table already exists. ".
-                                       "A backup have been done to backup_$new_table.");
+            $migration->displayWarning("$new_table table already exists. "
+                                       . "A backup have been done to backup_$new_table.");
             $backup_tables = true;
             $query         = $migration->renameTable("$new_table", "backup_$new_table");
         }
@@ -233,7 +233,7 @@ function update0803to083()
         "show_my_problem",
         "char",
         ['update'    => "1",
-                               'condition' => " WHERE `own_ticket` = 1"]
+            'condition' => " WHERE `own_ticket` = 1"]
     );
 
     $migration->addField(
@@ -241,7 +241,7 @@ function update0803to083()
         "show_all_problem",
         "char",
         ['update'    => "1",
-                               'condition' => " WHERE `show_all_ticket` = 1"]
+            'condition' => " WHERE `show_all_ticket` = 1"]
     );
 
     $migration->addField(
@@ -249,7 +249,7 @@ function update0803to083()
         "edit_all_problem",
         "char",
         ['update'    => "1",
-                               'condition' => " WHERE `update_ticket` = 1"]
+            'condition' => " WHERE `update_ticket` = 1"]
     );
 
     $migration->changeField(
@@ -284,13 +284,13 @@ function update0803to083()
         foreach ($DB->request('glpi_ticketplannings') as $data) {
             if ($task->getFromDB($data['tickettasks_id'])) {
                 $query = "UPDATE `glpi_tickettasks`
-                      SET `begin` = ".((($data['begin'] == 'NULL') || is_null($data['begin']))
-                                            ? 'NULL' : "'".$data['begin']."'").",
-                          `end` = ".((($data['end'] == 'NULL') || is_null($data['end']))
-                                          ? 'NULL' : "'".$data['end']."'").",
-                          `users_id_tech` = '".$data['users_id']."',
-                          `state` = '".$data['state']."'
-                      WHERE `id` = '".$data['tickettasks_id']."'";
+                      SET `begin` = " . ((($data['begin'] == 'NULL') || is_null($data['begin']))
+                                            ? 'NULL' : "'" . $data['begin'] . "'") . ",
+                          `end` = " . ((($data['end'] == 'NULL') || is_null($data['end']))
+                                          ? 'NULL' : "'" . $data['end'] . "'") . ",
+                          `users_id_tech` = '" . $data['users_id'] . "',
+                          `state` = '" . $data['state'] . "'
+                      WHERE `id` = '" . $data['tickettasks_id'] . "'";
                 $DB->queryOrDie($query, "0.83 migrate planning to glpi_tickettasks");
             }
         }
@@ -301,7 +301,7 @@ function update0803to083()
 
         // Migrate templates
         $from = ['task.planning.user##', 'task.planning.begin##', 'task.planning.end##',
-                      'task.planning.status##',];
+            'task.planning.status##',];
         $to = ['task.user##', 'task.begin##', 'task.end##', 'task.status##',];
 
         $query = "SELECT `glpi_notificationtemplatetranslations`.*
@@ -315,18 +315,18 @@ function update0803to083()
             if ($DB->numrows($result)) {
                 while ($data = $DB->fetchAssoc($result)) {
                     $query = "UPDATE `glpi_notificationtemplatetranslations`
-                         SET `subject` = '".addslashes(str_replace($from, $to, $data['subject']))."',
-                             `content_text` = '".addslashes(str_replace(
+                         SET `subject` = '" . addslashes(str_replace($from, $to, $data['subject'])) . "',
+                             `content_text` = '" . addslashes(str_replace(
                         $from,
                         $to,
                         $data['content_text']
-                    ))."',
-                             `content_html` = '".addslashes(str_replace(
+                    )) . "',
+                             `content_html` = '" . addslashes(str_replace(
                         $from,
                         $to,
                         $data['content_html']
-                    ))."'
-                         WHERE `id` = ".$data['id']."";
+                    )) . "'
+                         WHERE `id` = " . $data['id'] . "";
                     $DB->queryOrDie($query, "0.83 fix tags usage for multi users");
                 }
             }
@@ -413,23 +413,23 @@ function update0803to083()
             $DB->queryOrDie($query, "0.83 add problem notification translation");
 
             $notifications = ['new'         => [],
-                                   'update'      => [Notification::ASSIGN_TECH,
-                                                          Notification::OLD_TECH_IN_CHARGE],
-                                   'solved'      => [],
-                                   'add_task'    => [],
-                                   'update_task' => [],
-                                   'delete_task' => [],
-                                   'closed'      => [],
-                                   'delete'      => []];
+                'update'      => [Notification::ASSIGN_TECH,
+                    Notification::OLD_TECH_IN_CHARGE],
+                'solved'      => [],
+                'add_task'    => [],
+                'update_task' => [],
+                'delete_task' => [],
+                'closed'      => [],
+                'delete'      => []];
 
             $notif_names   = ['new'         => 'New Problem',
-                                   'update'      => 'Update Problem',
-                                   'solved'      => 'Resolve Problem',
-                                   'add_task'    => 'Add Task',
-                                   'update_task' => 'Update Task',
-                                   'delete_task' => 'Delete Task',
-                                   'closed'      => 'Close Problem',
-                                   'delete'      => 'Delete Problem'];
+                'update'      => 'Update Problem',
+                'solved'      => 'Resolve Problem',
+                'add_task'    => 'Add Task',
+                'update_task' => 'Update Task',
+                'delete_task' => 'Delete Task',
+                'closed'      => 'Close Problem',
+                'delete'      => 'Delete Problem'];
 
             foreach ($notifications as $key => $val) {
                 $notifications[$key][] = Notification::AUTHOR;
@@ -442,7 +442,7 @@ function update0803to083()
                              (`name`, `entities_id`, `itemtype`, `event`, `mode`,
                               `notificationtemplates_id`, `comment`, `is_recursive`, `is_active`,
                               `date_mod`)
-                      VALUES ('".$notif_names[$type]."', 0, 'Problem', '$type', 'mail',
+                      VALUES ('" . $notif_names[$type] . "', 0, 'Problem', '$type', 'mail',
                               $notid, '', 1, 1, NOW())";
                 $DB->queryOrDie($query, "0.83 add problem $type notification");
                 $notifid = $DB->insertId();
@@ -450,7 +450,7 @@ function update0803to083()
                 foreach ($targets as $target) {
                     $query = "INSERT INTO `glpi_notificationtargets`
                                 (`id`, `notifications_id`, `type`, `items_id`)
-                         VALUES (NULL, $notifid, ".Notification::USER_TYPE.", $target);";
+                         VALUES (NULL, $notifid, " . Notification::USER_TYPE . ", $target);";
                     $DB->queryOrDie($query, "0.83 add problem $type notification target");
                 }
             }
@@ -524,8 +524,8 @@ function update0803to083()
     $itemtype_tables = ["glpi_bookmarks", "glpi_bookmarks_users", "glpi_displaypreferences"];
 
     $typestochange = ['TicketSolutionTemplate' => 'SolutionTemplate',
-                           'TicketSolutionType'     => 'SolutionType',
-                           'TicketCategory'         => 'ITILCategory',];
+        'TicketSolutionType'     => 'SolutionType',
+        'TicketCategory'         => 'ITILCategory',];
 
     foreach ($itemtype_tables as $table) {
         foreach ($typestochange as $key => $val) {
@@ -623,9 +623,9 @@ function update0803to083()
 
     /// Add document types
     $types = ['csv' => ['name' => 'Comma-Separated Values',
-                                  'icon' => 'csv-dist.png'],
-                   'svg' => ['name' => 'Scalable Vector Graphics',
-                                  'icon' => 'svg-dist.png'],];
+        'icon' => 'csv-dist.png'],
+        'svg' => ['name' => 'Scalable Vector Graphics',
+            'icon' => 'svg-dist.png'],];
 
     foreach ($types as $ext => $data) {
 
@@ -636,18 +636,18 @@ function update0803to083()
             if ($DB->numrows($result) == 0) {
                 $query = "INSERT INTO `glpi_documenttypes`
                              (`name`, `ext`, `icon`, `is_uploadable`, `date_mod`)
-                      VALUES ('".$data['name']."', '$ext', '".$data['icon']."', '1', NOW())";
+                      VALUES ('" . $data['name'] . "', '$ext', '" . $data['icon'] . "', '1', NOW())";
                 $DB->queryOrDie($query, "0.83 add document type $ext");
             }
         }
     }
     /// Update icons
     $types = ['c'   => 'c-dist.png',
-                   'h'   => 'h-dist.png',
-                   'swf' => 'swf-dist.png',
-                   'pas' => 'pas-dist.png',
-                   'wmv' => 'wmv-dist.png',
-                   'zip' => 'zip-dist.png',];
+        'h'   => 'h-dist.png',
+        'swf' => 'swf-dist.png',
+        'pas' => 'pas-dist.png',
+        'wmv' => 'wmv-dist.png',
+        'zip' => 'zip-dist.png',];
 
     foreach ($types as $ext => $icon) {
         $query = "SELECT `id`
@@ -657,7 +657,7 @@ function update0803to083()
             if ($DB->numrows($result) == 1) {
                 $query = "UPDATE `glpi_documenttypes`
                       SET `icon` = '$icon', `date_mod` = NOW()
-                      WHERE `id` = '".$DB->result($result, 0, 0)."'";
+                      WHERE `id` = '" . $DB->result($result, 0, 0) . "'";
                 $DB->queryOrDie($query, "0.83 update icon for doc type $ext");
             }
         }
@@ -699,7 +699,7 @@ function update0803to083()
         "itemtype",
         "VARCHAR(100) DEFAULT NULL",
         ["after" => "date_out",
-                                   "update" => "'User'"]
+            "update" => "'User'"]
     )) {
 
         $migration->dropKey("glpi_consumables", 'users_id');
@@ -755,7 +755,7 @@ function update0803to083()
                     }
                     $query2 = "INSERT INTO `glpi_useremails`
                                  (`users_id`, `is_default`, `is_dynamic`, `email`)
-                          VALUES ('".$data['id']."','1','$is_dynamic','".addslashes($data['email'])."')";
+                          VALUES ('" . $data['id'] . "','1','$is_dynamic','" . addslashes($data['email']) . "')";
                     $DB->queryOrDie($query2, "0.83 move emails to  glpi_useremails");
                 }
             }
@@ -771,7 +771,7 @@ function update0803to083()
     ) as $data) {
         $query = "UPDATE `glpi_fieldunicities`
                 SET `is_active` = '0'
-                WHERE `id` = '".$data['id']."'";
+                WHERE `id` = '" . $data['id'] . "'";
         $DB->query($query);
         echo "<div class='red'><p>A unicity check use email for users. ";
         echo "Due to new feature permit several email per users, this rule have been disabled.</p></div>";
@@ -801,21 +801,21 @@ function update0803to083()
                     if ($user->getFromDB($data['users_id'])) {
                         $query = "SELECT `id`
                             FROM `glpi_groups_users`
-                            WHERE `groups_id` = '".$data['id']."'
-                                 AND `users_id` = '".$data['users_id']."'";
+                            WHERE `groups_id` = '" . $data['id'] . "'
+                                 AND `users_id` = '" . $data['users_id'] . "'";
                         if ($result2 = $DB->query($query)) {
                             // add manager to groups_users setting if not present
                             if ($DB->numrows($result2) == 0) {
                                 $query2 = "INSERT INTO`glpi_groups_users`
                                           (`users_id`, `groups_id`, `is_manager`)
-                                   VALUES ('".$data['users_id']."' ,'".$data['id']."', '1')";
+                                   VALUES ('" . $data['users_id'] . "' ,'" . $data['id'] . "', '1')";
                                 $DB->queryOrDie($query2, "0.83 insert manager of groups");
                             } else {
                                 // Update user as manager if presnet in groups_users
                                 $query2 = "UPDATE `glpi_groups_users`
                                    SET `is_manager` = '1'
-                                   WHERE `groups_id` = '".$data['id']."'
-                                         AND `users_id` = '".$data['users_id']."'";
+                                   WHERE `groups_id` = '" . $data['id'] . "'
+                                         AND `users_id` = '" . $data['users_id'] . "'";
                                 $DB->queryOrDie($query2, "0.83 set manager of groups");
                             }
                         }
@@ -864,7 +864,7 @@ function update0803to083()
         // Get rules
         $query = "SELECT GROUP_CONCAT(`id`)
                 FROM `glpi_rules`
-                WHERE `sub_type` = '".$ruletype."'
+                WHERE `sub_type` = '" . $ruletype . "'
                 GROUP BY `sub_type`";
         if ($result = $DB->query($query)) {
             if ($DB->numrows($result) > 0) {
@@ -1211,158 +1211,158 @@ function update0803to083()
     $migration->displayMessage(sprintf(__('Data migration - %s'), 'Create new default profiles'));
 
     $profiles = ['hotliner'   => ['name'                      => 'Hotliner',
-                                            'interface'                 => 'central',
-                                            'user'                      => 'r',
-                                            'import_externalauth_users' => 'w',
-                                            'create_ticket'             => '1',
-                                            'assign_ticket'             => '1',
-                                            'global_add_followups'      => '1',
-                                            'add_followups'             => '1',
-                                            'update_ticket'             => '1',
-                                            'observe_ticket'            => '1',
-                                            'show_all_ticket'           => '1',
-                                            'show_full_ticket'          => '1',
-                                            'show_all_problem'          => '1',
-                                            'show_planning'             => '1',
-                                            'statistic'                 => '1',
-                                            'tickettemplate'            => 'r',
-                                            'password_update'           => '1',
-                                            'helpdesk_hardware'         => '3',
-                                            'helpdesk_item_type'
-                                                 => addslashes('["Computer", "Monitor", "NetworkEquipment",' .
-                                                               '"Peripheral", "Phone", "Printer",' .
-                                                               '"Software"]'),
-                                            'create_validation'         => '1',
-                                            'update_own_followups'      => '1',
-                                            'create_ticket_on_login'    => '1'],
+        'interface'                 => 'central',
+        'user'                      => 'r',
+        'import_externalauth_users' => 'w',
+        'create_ticket'             => '1',
+        'assign_ticket'             => '1',
+        'global_add_followups'      => '1',
+        'add_followups'             => '1',
+        'update_ticket'             => '1',
+        'observe_ticket'            => '1',
+        'show_all_ticket'           => '1',
+        'show_full_ticket'          => '1',
+        'show_all_problem'          => '1',
+        'show_planning'             => '1',
+        'statistic'                 => '1',
+        'tickettemplate'            => 'r',
+        'password_update'           => '1',
+        'helpdesk_hardware'         => '3',
+        'helpdesk_item_type'
+             => addslashes('["Computer", "Monitor", "NetworkEquipment",'
+                           . '"Peripheral", "Phone", "Printer",'
+                           . '"Software"]'),
+        'create_validation'         => '1',
+        'update_own_followups'      => '1',
+        'create_ticket_on_login'    => '1'],
 
-                      'technician' => ['name'                      => 'Technician',
-                                            'interface'                 => 'central',
-                                            'password_update'           => '1',
-                                            'computer'                  => 'w',
-                                            'monitor'                   => 'w',
-                                            'software'                  => 'w',
-                                            'networking'                => 'w',
-                                            'printer'                   => 'w',
-                                            'peripheral'                => 'w',
-                                            'cartridge'                 => 'w',
-                                            'consumable'                => 'w',
-                                            'phone'                     => 'w',
-                                            'notes'                     => 'w',
-                                            'document'                  => 'w',
-                                            'knowbase'                  => 'w',
-                                            'faq'                       => 'w',
-                                            'reservation_helpdesk'      => '1',
-                                            'reservation_central'       => 'w',
-                                            'reports'                   => 'r',
-                                            'view_ocsng'                => 'r',
-                                            'sync_ocsng'                => 'w',
-                                            'user'                      => 'w',
-                                            'group'                     => 'r',
-                                            'entity'                    => 'r',
-                                            'transfer'                  => 'r',
-                                            'reminder_public'           => 'w',
-                                            'create_ticket'             => '1',
-                                            'add_followups'             => '1',
-                                            'global_add_followups'      => '1',
-                                            'global_add_tasks'          => '1',
-                                            'update_ticket'             => '1',
-                                            'own_ticket'                => '1',
-                                            'show_all_ticket'           => '1',
-                                            'show_assign_ticket'        => '1',
-                                            'show_full_ticket'          => '1',
-                                            'observe_ticket'            => '1',
-                                            'update_followups'          => '1',
-                                            'update_tasks'              => '1',
-                                            'show_planning'             => '1',
-                                            'statistic'                 => '1',
-                                            'helpdesk_hardware'         => '3',
-                                            'helpdesk_item_type'
-                                                 => addslashes('["Computer", "Monitor", "NetworkEquipment",' .
-                                                                '"Peripheral", "Phone", "Printer",' .
-                                                                '"Software"]'),
-                                            'import_externalauth_users' => 'w',
-                                            'create_validation'         => '1',
-                                            'sla'                       => 'r',
-                                            'update_own_followups'      => '1',
-                                            'show_my_problem'           => '1',
-                                            'show_all_problem'          => '1',
-                                            'tickettemplate'            => 'r',
-                                            'ticketrecurrent'           => 'r'],
+        'technician' => ['name'                      => 'Technician',
+            'interface'                 => 'central',
+            'password_update'           => '1',
+            'computer'                  => 'w',
+            'monitor'                   => 'w',
+            'software'                  => 'w',
+            'networking'                => 'w',
+            'printer'                   => 'w',
+            'peripheral'                => 'w',
+            'cartridge'                 => 'w',
+            'consumable'                => 'w',
+            'phone'                     => 'w',
+            'notes'                     => 'w',
+            'document'                  => 'w',
+            'knowbase'                  => 'w',
+            'faq'                       => 'w',
+            'reservation_helpdesk'      => '1',
+            'reservation_central'       => 'w',
+            'reports'                   => 'r',
+            'view_ocsng'                => 'r',
+            'sync_ocsng'                => 'w',
+            'user'                      => 'w',
+            'group'                     => 'r',
+            'entity'                    => 'r',
+            'transfer'                  => 'r',
+            'reminder_public'           => 'w',
+            'create_ticket'             => '1',
+            'add_followups'             => '1',
+            'global_add_followups'      => '1',
+            'global_add_tasks'          => '1',
+            'update_ticket'             => '1',
+            'own_ticket'                => '1',
+            'show_all_ticket'           => '1',
+            'show_assign_ticket'        => '1',
+            'show_full_ticket'          => '1',
+            'observe_ticket'            => '1',
+            'update_followups'          => '1',
+            'update_tasks'              => '1',
+            'show_planning'             => '1',
+            'statistic'                 => '1',
+            'helpdesk_hardware'         => '3',
+            'helpdesk_item_type'
+                 => addslashes('["Computer", "Monitor", "NetworkEquipment",'
+                                . '"Peripheral", "Phone", "Printer",'
+                                . '"Software"]'),
+            'import_externalauth_users' => 'w',
+            'create_validation'         => '1',
+            'sla'                       => 'r',
+            'update_own_followups'      => '1',
+            'show_my_problem'           => '1',
+            'show_all_problem'          => '1',
+            'tickettemplate'            => 'r',
+            'ticketrecurrent'           => 'r'],
 
-                      'supervisor' => ['name'                      => 'Supervisor',
-                                            'interface'                 => 'central',
-                                            'password_update'           => '1',
-                                            'computer'                  => 'w',
-                                            'monitor'                   => 'w',
-                                            'software'                  => 'w',
-                                            'networking'                => 'w',
-                                            'printer'                   => 'w',
-                                            'peripheral'                => 'w',
-                                            'cartridge'                 => 'w',
-                                            'consumable'                => 'w',
-                                            'phone'                     => 'w',
-                                            'notes'                     => 'w',
-                                            'document'                  => 'w',
-                                            'knowbase'                  => 'w',
-                                            'faq'                       => 'w',
-                                            'reservation_helpdesk'      => '1',
-                                            'reservation_central'       => 'w',
-                                            'reports'                   => 'r',
-                                            'view_ocsng'                => 'r',
-                                            'sync_ocsng'                => 'w',
-                                            'entity_dropdown'           => 'w',
-                                            'rule_ticket'               => 'r',
-                                            'entity_rule_ticket'        => 'w',
-                                            'user'                      => 'w',
-                                            'group'                     => 'r',
-                                            'entity'                    => 'r',
-                                            'transfer'                  => 'r',
-                                            'logs'                      => 'r',
-                                            'reminder_public'           => 'w',
-                                            'create_ticket'             => '1',
-                                            'delete_ticket'             => '1',
-                                            'add_followups'             => '1',
-                                            'global_add_followups'      => '1',
-                                            'global_add_tasks'          => '1',
-                                            'update_ticket'             => '1',
-                                            'update_priority'           => '1',
-                                            'own_ticket'                => '1',
-                                            'steal_ticket'              => '1',
-                                            'assign_ticket'             => '1',
-                                            'show_all_ticket'           => '1',
-                                            'show_assign_ticket'        => '1',
-                                            'show_full_ticket'          => '1',
-                                            'observe_ticket'            => '1',
-                                            'update_followups'          => '1',
-                                            'update_tasks'              => '1',
-                                            'show_planning'             => '1',
-                                            'show_all_planning'         => '1',
-                                            'statistic'                 => '1',
-                                            'helpdesk_hardware'         => '3',
-                                            'helpdesk_item_type'
-                                                 => addslashes('["Computer", "Monitor", "NetworkEquipment",' .
-                                                                '"Peripheral", "Phone", "Printer",' .
-                                                                '"Software"]'),
-                                            'import_externalauth_users' => 'w',
-                                            'rule_mailcollector'        => 'w',
-                                            'validate_ticket'           => '1',
-                                            'create_validation'         => '1',
-                                            'calendar'                  => 'w',
-                                            'sla'                       => 'w',
-                                            'update_own_followups'      => '1',
-                                            'delete_followups'          => '1',
-                                            'show_my_problem'           => '1',
-                                            'show_all_problem'          => '1',
-                                            'edit_all_problem'          => '1',
-                                            'tickettemplate'            => 'w',
-                                            'ticketrecurrent'           => 'w']
-                                  ];
+        'supervisor' => ['name'                      => 'Supervisor',
+            'interface'                 => 'central',
+            'password_update'           => '1',
+            'computer'                  => 'w',
+            'monitor'                   => 'w',
+            'software'                  => 'w',
+            'networking'                => 'w',
+            'printer'                   => 'w',
+            'peripheral'                => 'w',
+            'cartridge'                 => 'w',
+            'consumable'                => 'w',
+            'phone'                     => 'w',
+            'notes'                     => 'w',
+            'document'                  => 'w',
+            'knowbase'                  => 'w',
+            'faq'                       => 'w',
+            'reservation_helpdesk'      => '1',
+            'reservation_central'       => 'w',
+            'reports'                   => 'r',
+            'view_ocsng'                => 'r',
+            'sync_ocsng'                => 'w',
+            'entity_dropdown'           => 'w',
+            'rule_ticket'               => 'r',
+            'entity_rule_ticket'        => 'w',
+            'user'                      => 'w',
+            'group'                     => 'r',
+            'entity'                    => 'r',
+            'transfer'                  => 'r',
+            'logs'                      => 'r',
+            'reminder_public'           => 'w',
+            'create_ticket'             => '1',
+            'delete_ticket'             => '1',
+            'add_followups'             => '1',
+            'global_add_followups'      => '1',
+            'global_add_tasks'          => '1',
+            'update_ticket'             => '1',
+            'update_priority'           => '1',
+            'own_ticket'                => '1',
+            'steal_ticket'              => '1',
+            'assign_ticket'             => '1',
+            'show_all_ticket'           => '1',
+            'show_assign_ticket'        => '1',
+            'show_full_ticket'          => '1',
+            'observe_ticket'            => '1',
+            'update_followups'          => '1',
+            'update_tasks'              => '1',
+            'show_planning'             => '1',
+            'show_all_planning'         => '1',
+            'statistic'                 => '1',
+            'helpdesk_hardware'         => '3',
+            'helpdesk_item_type'
+                 => addslashes('["Computer", "Monitor", "NetworkEquipment",'
+                                . '"Peripheral", "Phone", "Printer",'
+                                . '"Software"]'),
+            'import_externalauth_users' => 'w',
+            'rule_mailcollector'        => 'w',
+            'validate_ticket'           => '1',
+            'create_validation'         => '1',
+            'calendar'                  => 'w',
+            'sla'                       => 'w',
+            'update_own_followups'      => '1',
+            'delete_followups'          => '1',
+            'show_my_problem'           => '1',
+            'show_all_problem'          => '1',
+            'edit_all_problem'          => '1',
+            'tickettemplate'            => 'w',
+            'ticketrecurrent'           => 'w'],
+    ];
 
     foreach ($profiles as $profile => $data) {
         $query  = "INSERT INTO `glpi_profiles`
-                         (`".implode("`, `", array_keys($data))."`)
-                  VALUES ('".implode("', '", $data)."')";
+                         (`" . implode("`, `", array_keys($data)) . "`)
+                  VALUES ('" . implode("', '", $data) . "')";
         $DB->queryOrDie($query, "0.83 create new profile $profile");
     }
 
@@ -1452,7 +1452,7 @@ function update0803to083()
                         foreach ($helpdesk_profiles as $pid) {
                             $query = "INSERT INTO `glpi_profiles_reminders`
                                       (`reminders_id`, `profiles_id`)
-                               VALUES ('".$data['id']."', '$pid');";
+                               VALUES ('" . $data['id'] . "', '$pid');";
                             $DB->queryOrDie($query, "0.83 migrate data for is_helpdesk_visible drop on glpi_reminders");
                         }
                     }
@@ -1476,8 +1476,8 @@ function update0803to083()
                 while ($data = $DB->fetchAssoc($result)) {
                     $query = "INSERT INTO `glpi_entities_reminders`
                                 (`reminders_id`, `entities_id`, `is_recursive`)
-                         VALUES ('".$data['id']."', '".$data['entities_id']."',
-                                 '".$data['is_recursive']."');";
+                         VALUES ('" . $data['id'] . "', '" . $data['entities_id'] . "',
+                                 '" . $data['is_recursive'] . "');";
                     $DB->queryOrDie($query, "0.83 migrate data for public reminders");
                 }
             }
@@ -1565,8 +1565,8 @@ function update0803to083()
                 while ($data = $DB->fetchAssoc($result)) {
                     $query = "INSERT INTO `glpi_entities_knowbaseitems`
                                 (`knowbaseitems_id`, `entities_id`, `is_recursive`)
-                         VALUES ('".$data['id']."', '".$data['entities_id']."',
-                                 '".$data['is_recursive']."');";
+                         VALUES ('" . $data['id'] . "', '" . $data['entities_id'] . "',
+                                 '" . $data['is_recursive'] . "');";
                     $DB->queryOrDie($query, "0.83 migrate data for entities on glpi_entities_knowbaseitems");
                 }
             }
@@ -1691,7 +1691,7 @@ function update0803to083()
 
     // migration to new values for inherit parent (-1 => -2)
     $fieldparent = ['autofill_buy_date', 'autofill_delivery_date', 'autofill_warranty_date',
-                         'autofill_order_date', 'autofill_use_date'];
+        'autofill_order_date', 'autofill_use_date'];
 
     foreach ($fieldparent as $field_parent) {
         if ($DB->fieldExists("glpi_entitydatas", $field_parent, false)) {
@@ -1740,8 +1740,8 @@ function update0803to083()
 
     // migration to new values for inherit config
     $fieldconfig = ['auto_assign_mode', 'autoclose_delay', 'cartridges_alert_repeat',
-                         'consumables_alert_repeat', 'notclosed_delay', 'use_contracts_alert',
-                         'use_infocoms_alert', 'use_licenses_alert', 'use_reservations_alert'];
+        'consumables_alert_repeat', 'notclosed_delay', 'use_contracts_alert',
+        'use_infocoms_alert', 'use_licenses_alert', 'use_reservations_alert'];
 
     $query = "SELECT *
              FROM `glpi_configs`";
@@ -1755,7 +1755,7 @@ function update0803to083()
                         && $DB->fieldExists("glpi_configs", $field_config, false)) {
                         // value of general config
                         $query = "UPDATE `glpi_entitydatas`
-                            SET `$field_config` = '".$data[$field_config]."'
+                            SET `$field_config` = '" . $data[$field_config] . "'
                             WHERE `$field_config` = -1";
                         $DB->queryOrDie($query, "0.83 migrate data from config to glpi_entitydatas");
 
@@ -1799,8 +1799,8 @@ function update0803to083()
                             $field_config,
                             'integer',
                             ['update' => $data[$field_config],
-                                                    'value'  => ($field_config == "default_alarm_threshold"
-                                                                  ? 10 : 0)]
+                                'value'  => ($field_config == "default_alarm_threshold"
+                                              ? 10 : 0)]
                         );
 
                         $migration->dropField("glpi_configs", $field_config);
@@ -1828,20 +1828,20 @@ function update0803to083()
     //   $ADDTODISPLAYPREF['KnowbaseItem'] = array(2,3,4,5,6,7);
 
     $renametables = ['TicketSolutionType'     => 'SolutionType',
-                          'TicketSolutionTemplate' => 'SolutionTemplate',
-                          'TicketCategory'         => 'ITILCategory'];
+        'TicketSolutionTemplate' => 'SolutionTemplate',
+        'TicketCategory'         => 'ITILCategory'];
 
     $itemtype_tables = ["glpi_bookmarks"          => 'itemtype',
-                             "glpi_bookmarks_users"    => 'itemtype',
-                             "glpi_displaypreferences" => 'itemtype',
-                             "glpi_logs"               => 'itemtype',
-                             "glpi_events"             => 'type',];
+        "glpi_bookmarks_users"    => 'itemtype',
+        "glpi_displaypreferences" => 'itemtype',
+        "glpi_logs"               => 'itemtype',
+        "glpi_events"             => 'type',];
 
     foreach ($itemtype_tables as $table => $field) {
         foreach ($renametables as $key => $val) {
             $query = "UPDATE `$table`
-                      SET `$field` = '".$val."'
-                      WHERE `$field` = '".$key."'";
+                      SET `$field` = '" . $val . "'
+                      WHERE `$field` = '" . $key . "'";
             $DB->queryOrDie($query, "0.83 update itemtype of table $table for $val");
         }
     }
@@ -1866,7 +1866,7 @@ function update0803to083()
                 while ($data = $DB->fetchAssoc($result)) {
                     $query = "SELECT MAX(`rank`)
                          FROM `glpi_displaypreferences`
-                         WHERE `users_id` = '".$data['users_id']."'
+                         WHERE `users_id` = '" . $data['users_id'] . "'
                                AND `itemtype` = '$type'";
                     $result = $DB->query($query);
                     $rank   = $DB->result($result, 0, 0);
@@ -1875,15 +1875,15 @@ function update0803to083()
                     foreach ($tab as $newval) {
                         $query = "SELECT *
                             FROM `glpi_displaypreferences`
-                            WHERE `users_id` = '".$data['users_id']."'
+                            WHERE `users_id` = '" . $data['users_id'] . "'
                                   AND `num` = '$newval'
                                   AND `itemtype` = '$type'";
                         if ($result2 = $DB->query($query)) {
                             if ($DB->numrows($result2) == 0) {
                                 $query = "INSERT INTO `glpi_displaypreferences`
                                          (`itemtype` ,`num` ,`rank` ,`users_id`)
-                                  VALUES ('$type', '$newval', '".$rank++."',
-                                          '".$data['users_id']."')";
+                                  VALUES ('$type', '$newval', '" . $rank++ . "',
+                                          '" . $data['users_id'] . "')";
                                 $DB->query($query);
                             }
                         }
@@ -1895,7 +1895,7 @@ function update0803to083()
                 foreach ($tab as $newval) {
                     $query = "INSERT INTO `glpi_displaypreferences`
                                 (`itemtype` ,`num` ,`rank` ,`users_id`)
-                         VALUES ('$type', '$newval', '".$rank++."', '0')";
+                         VALUES ('$type', '$newval', '" . $rank++ . "', '0')";
                     $DB->query($query);
                 }
             }

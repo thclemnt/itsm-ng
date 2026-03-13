@@ -61,8 +61,8 @@ if (isset($_GET['search'])) {
             'link' => 'AND',
             'field' => 1,
             'searchtype' => 'contains',
-            'value' => $_GET['search']
-        ]
+            'value' => $_GET['search'],
+        ],
     ];
 } else {
     $params['criteria'] = [];
@@ -107,7 +107,7 @@ foreach ($datas['data']['rows'] as $row) {
 }
 $return = [
     'total' => $datas['data']['totalcount'],
-    'rows' => $formattedDatas
+    'rows' => $formattedDatas,
 ];
 
 Header('Content-Type: application/json; charset=UTF-8');

@@ -59,7 +59,7 @@ class PrinterModel extends CommonDropdown
         // Temporary solution to clean wrong updated items
         $this->deleteChildrenAndRelationsFromDb(
             [
-              CartridgeItem_PrinterModel::class,
+                CartridgeItem_PrinterModel::class,
             ]
         );
     }

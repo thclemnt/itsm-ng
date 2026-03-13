@@ -51,24 +51,24 @@ class DeviceSimcard extends CommonDevice
         return array_merge(
             parent::getAdditionalFields(),
             [
-              _n('Type', 'Types', 1) => [
-                 'name'  => 'devicesimcardtypes_id',
-                 'type'  => 'select',
-                 'values' => getOptionForItems('DeviceSimcardType'),
-                 'value' => $this->fields['devicesimcardtypes_id'],
-                 'actions' => getItemActionButtons(['info', 'add'], 'DeviceSimcardType')
-              ],
-              __('Voltage') => [
-                 'name'  => 'voltage',
-                 'type'  => 'number',
-                 'after'  => 'mV',
-                 'value' => $this->fields['voltage']
-              ],
-              __('Allow VOIP') => [
+                _n('Type', 'Types', 1) => [
+                    'name'  => 'devicesimcardtypes_id',
+                    'type'  => 'select',
+                    'values' => getOptionForItems('DeviceSimcardType'),
+                    'value' => $this->fields['devicesimcardtypes_id'],
+                    'actions' => getItemActionButtons(['info', 'add'], 'DeviceSimcardType'),
+                ],
+                __('Voltage') => [
+                    'name'  => 'voltage',
+                    'type'  => 'number',
+                    'after'  => 'mV',
+                    'value' => $this->fields['voltage'],
+                ],
+                __('Allow VOIP') => [
                     'name'  => 'allow_voip',
                     'type'  => 'checkbox',
                     'value' => $this->fields['allow_voip'],
-              ],
+                ],
             ]
         );
     }
@@ -78,28 +78,28 @@ class DeviceSimcard extends CommonDevice
         $tab = parent::rawSearchOptions();
 
         $tab[] = [
-              'id'                 => '12',
-              'table'              => $this->getTable(),
-              'field'              => 'voltage',
-              'name'               => __('Voltage'),
-              'datatype'           => 'string',
-              'autocomplete'       => true,
+            'id'                 => '12',
+            'table'              => $this->getTable(),
+            'field'              => 'voltage',
+            'name'               => __('Voltage'),
+            'datatype'           => 'string',
+            'autocomplete'       => true,
         ];
 
         $tab[] = [
-              'id'                 => '13',
-              'table'              => 'glpi_devicesimcardtypes',
-              'field'              => 'name',
-              'name'               => _n('Type', 'Types', 1),
-              'datatype'           => 'dropdown'
+            'id'                 => '13',
+            'table'              => 'glpi_devicesimcardtypes',
+            'field'              => 'name',
+            'name'               => _n('Type', 'Types', 1),
+            'datatype'           => 'dropdown',
         ];
 
         $tab[] = [
-              'id'                 => '14',
-              'table'              => $this->getTable(),
-              'field'              => 'allow_voip',
-              'name'               => __('Allow VOIP'),
-              'datatype'           => 'bool'
+            'id'                 => '14',
+            'table'              => $this->getTable(),
+            'field'              => 'allow_voip',
+            'name'               => __('Allow VOIP'),
+            'datatype'           => 'bool',
         ];
 
         return $tab;
@@ -116,9 +116,9 @@ class DeviceSimcard extends CommonDevice
     {
 
         return [
-              'designation'             => 'equal',
-              'manufacturers_id'        => 'equal',
-              'devicesensortypes_id'    => 'equal',
+            'designation'             => 'equal',
+            'manufacturers_id'        => 'equal',
+            'devicesensortypes_id'    => 'equal',
         ];
     }
 

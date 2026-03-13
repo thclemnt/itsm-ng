@@ -10,7 +10,7 @@ $favorites = $DB->request(
     [
         'SELECT' => 'menu_favorite',
         'FROM'   => 'glpi_users',
-        'WHERE'  => ['id' => $_SESSION["glpiID"]]
+        'WHERE'  => ['id' => $_SESSION["glpiID"]],
     ]
 );
 

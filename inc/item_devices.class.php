@@ -96,7 +96,7 @@ class Item_Devices extends CommonDBRelation
     /**
      * Get type name for device (used in Log)
      *
-     * @param integer $nb Count
+     * @param int $nb Count
      *
      * @return string
      */
@@ -128,57 +128,57 @@ class Item_Devices extends CommonDBRelation
         $tab = [];
 
         $tab[] = [
-           'id'                 => 'common',
-           'name'               => __('Characteristics')
+            'id'                 => 'common',
+            'name'               => __('Characteristics'),
         ];
 
         $tab[] = [
-           'id'                 => '1',
-           'table'              => $this->getTable(),
-           'field'              => 'id',
-           'name'               => __('ID'),
-           'datatype'           => 'itemlink',
-           'massiveaction'      => false,
+            'id'                 => '1',
+            'table'              => $this->getTable(),
+            'field'              => 'id',
+            'name'               => __('ID'),
+            'datatype'           => 'itemlink',
+            'massiveaction'      => false,
         ];
 
         $deviceType = $this->getDeviceType();
         $tab[] = [
-           'id'                 => '4',
-           'table'              => getTableForItemType($deviceType),
-           'field'              => 'designation',
-           'name'               => $deviceType::getTypeName(1),
-           'datatype'           => 'itemlink',
-           'forcegroupby'       => true,
-           'massiveaction'      => false,
-           'joinparams'         => [
-              'beforejoin'         => [
-                 'table'              => $this->getTable(),
-                 'joinparams'         => [
-                    'jointype'           => 'child'
-                 ]
-              ]
-           ]
+            'id'                 => '4',
+            'table'              => getTableForItemType($deviceType),
+            'field'              => 'designation',
+            'name'               => $deviceType::getTypeName(1),
+            'datatype'           => 'itemlink',
+            'forcegroupby'       => true,
+            'massiveaction'      => false,
+            'joinparams'         => [
+                'beforejoin'         => [
+                    'table'              => $this->getTable(),
+                    'joinparams'         => [
+                        'jointype'           => 'child',
+                    ],
+                ],
+            ],
         ];
 
         $tab[] = [
-           'id'                 => '5',
-           'table'              => $this->getTable(),
-           'field'              => 'items_id',
-           'name'               => _n('Associated element', 'Associated elements', Session::getPluralNumber()),
-           'datatype'           => 'specific',
-           'comments'           => true,
-           'nosort'             => true,
-           'additionalfields'   => ['itemtype']
+            'id'                 => '5',
+            'table'              => $this->getTable(),
+            'field'              => 'items_id',
+            'name'               => _n('Associated element', 'Associated elements', Session::getPluralNumber()),
+            'datatype'           => 'specific',
+            'comments'           => true,
+            'nosort'             => true,
+            'additionalfields'   => ['itemtype'],
         ];
 
         $tab[] = [
-           'id'                 => '6',
-           'table'              => $this->getTable(),
-           'field'              => 'itemtype',
-           'name'               => _n('Associated item type', 'Associated item types', Session::getPluralNumber()),
-           'datatype'           => 'itemtypename',
-           'itemtype_list'      => 'itemdevices_types',
-           'nosort'             => true
+            'id'                 => '6',
+            'table'              => $this->getTable(),
+            'field'              => 'itemtype',
+            'name'               => _n('Associated item type', 'Associated item types', Session::getPluralNumber()),
+            'datatype'           => 'itemtypename',
+            'itemtype_list'      => 'itemdevices_types',
+            'nosort'             => true,
         ];
 
         foreach (static::getSpecificities() as $field => $attributs) {
@@ -197,11 +197,11 @@ class Item_Devices extends CommonDBRelation
             }
 
             $newtab = [
-               'id'                 => $attributs['id'],
-               'table'              => $table,
-               'field'              => $field,
-               'name'               => $attributs['long name'],
-               'massiveaction'      => true
+                'id'                 => $attributs['id'],
+                'table'              => $table,
+                'field'              => $field,
+                'name'               => $attributs['long name'],
+                'massiveaction'      => true,
             ];
 
             if (isset($attributs['datatype'])) {
@@ -220,11 +220,11 @@ class Item_Devices extends CommonDBRelation
         }
 
         $tab[] = [
-           'id'                 => '80',
-           'table'              => 'glpi_entities',
-           'field'              => 'completename',
-           'name'               => Entity::getTypeName(1),
-           'datatype'           => 'dropdown'
+            'id'                 => '80',
+            'table'              => 'glpi_entities',
+            'field'              => 'completename',
+            'name'               => Entity::getTypeName(1),
+            'datatype'           => 'dropdown',
         ];
 
         return $tab;
@@ -238,8 +238,8 @@ class Item_Devices extends CommonDBRelation
         $device_types = $CFG_GLPI['device_types'];
 
         $main_joinparams = [
-           'jointype'           => 'itemtype_item',
-           'specific_itemtype'  => $itemtype
+            'jointype'           => 'itemtype_item',
+            'specific_itemtype'  => $itemtype,
         ];
 
         foreach ($device_types as $device_type) {
@@ -263,8 +263,8 @@ class Item_Devices extends CommonDBRelation
             //add title if there are options
             $options = array_merge(
                 [[
-                  'id'                => 'devices',
-                  'name'              => _n('Component', 'Components', Session::getPluralNumber())
+                    'id'                => 'devices',
+                    'name'              => _n('Component', 'Components', Session::getPluralNumber()),
                 ]],
                 $options
             );
@@ -341,67 +341,67 @@ class Item_Devices extends CommonDBRelation
         switch ($specif) {
             case 'serial':
                 return [
-                   'long name'  => __('Serial number'),
-                   'short name' => __('Serial number'),
-                   'size'       => 20,
-                   'id'         => 10,
-                   'autocomplete' => true,
-                   'formContent' => [
-                      'type' => 'text',
-                   ]
+                    'long name'  => __('Serial number'),
+                    'short name' => __('Serial number'),
+                    'size'       => 20,
+                    'id'         => 10,
+                    'autocomplete' => true,
+                    'formContent' => [
+                        'type' => 'text',
+                    ],
                 ];
 
             case 'busID':
                 return [
-                   'long name'  => __('Position of the device on its bus'),
-                   'short name' => __('bus ID'),
-                   'size'       => 10,
-                   'id'         => 11,
-                   'autocomplete' => true,
-                   'formContent' => [
-                      'type' => 'text',
-                   ]
+                    'long name'  => __('Position of the device on its bus'),
+                    'short name' => __('bus ID'),
+                    'size'       => 10,
+                    'id'         => 11,
+                    'autocomplete' => true,
+                    'formContent' => [
+                        'type' => 'text',
+                    ],
                 ];
 
             case 'otherserial':
                 return [
-                   'long name'  => __('Inventory number'),
-                   'short name' => __('Inventory number'),
-                   'size'       => 20,
-                   'id'         => 12,
-                   'autocomplete' => true,
-                   'formContent' => [
-                      'type' => 'text',
-                   ]
+                    'long name'  => __('Inventory number'),
+                    'short name' => __('Inventory number'),
+                    'size'       => 20,
+                    'id'         => 12,
+                    'autocomplete' => true,
+                    'formContent' => [
+                        'type' => 'text',
+                    ],
                 ];
 
             case 'locations_id':
                 include_once GLPI_ROOT . "/src/twig/twig.utils.php";
                 return [
-                   'long name'  => Location::getTypeName(1),
-                   'short name' => Location::getTypeName(1),
-                   'size'       => 20,
-                   'id'         => 13,
-                   'datatype'   => 'dropdown',
-                   'formContent' => [
-                      'type' => 'select',
-                      'values' => getOptionForItems(Location::class),
-                      'actions' => getItemActionButtons(['info', 'add'], Location::class),
-                   ]
+                    'long name'  => Location::getTypeName(1),
+                    'short name' => Location::getTypeName(1),
+                    'size'       => 20,
+                    'id'         => 13,
+                    'datatype'   => 'dropdown',
+                    'formContent' => [
+                        'type' => 'select',
+                        'values' => getOptionForItems(Location::class),
+                        'actions' => getItemActionButtons(['info', 'add'], Location::class),
+                    ],
                 ];
 
             case 'states_id':
                 return [
-                   'long name'  => __('Status'),
-                   'short name' => __('Status'),
-                   'size'       => 20,
-                   'id'         => 14,
-                   'datatype'   => 'dropdown',
-                   'formContent' => [
-                      'type' => 'select',
-                      'values' => getOptionForItems(State::class),
-                      'actions' => getItemActionButtons(['info', 'add'], State::class),
-                   ]
+                    'long name'  => __('Status'),
+                    'short name' => __('Status'),
+                    'size'       => 20,
+                    'id'         => 14,
+                    'datatype'   => 'dropdown',
+                    'formContent' => [
+                        'type' => 'select',
+                        'values' => getOptionForItems(State::class),
+                        'actions' => getItemActionButtons(['info', 'add'], State::class),
+                    ],
                 ];
         }
         return [];
@@ -549,12 +549,12 @@ class Item_Devices extends CommonDBRelation
         foreach (self::getItemAffinities($itemtype) as $link_type) {
             $table = $link_type::getTable();
             $iterator = $DB->request([
-               'SELECT' => 'id',
-               'FROM'   => $table,
-               'WHERE'  => [
-                  'itemtype'  => $itemtype,
-                  'items_id'  => $items_id
-               ]
+                'SELECT' => 'id',
+                'FROM'   => $table,
+                'WHERE'  => [
+                    'itemtype'  => $itemtype,
+                    'items_id'  => $items_id,
+                ],
             ]);
 
             while ($row = $iterator->next()) {
@@ -580,11 +580,11 @@ class Item_Devices extends CommonDBRelation
         foreach (self::getItemAffinities($itemtype) as $link_type) {
             $table = $link_type::getTable();
             $olds = $DB->request([
-               'FROM'   => $table,
-               'WHERE'  => [
-                  'itemtype'  => $itemtype,
-                  'items_id'  => $oldid
-               ]
+                'FROM'   => $table,
+                'WHERE'  => [
+                    'itemtype'  => $itemtype,
+                    'items_id'  => $oldid,
+                ],
             ]);
 
             while ($data = $olds->next()) {
@@ -612,9 +612,9 @@ class Item_Devices extends CommonDBRelation
                         $nb   += countElementsInTable(
                             $link_type::getTable(),
                             [
-                              'items_id'   => $item->getID(),
-                              'itemtype'   => $item->getType(),
-                              'is_deleted' => 0
+                                'items_id'   => $item->getID(),
+                                'itemtype'   => $item->getType(),
+                                'is_deleted' => 0,
                             ]
                         );
                     }
@@ -633,8 +633,8 @@ class Item_Devices extends CommonDBRelation
                     $nb = countElementsInTable(
                         $table,
                         [
-                          $foreignkeyField => $item->getID(),
-                          'is_deleted' => 0
+                            $foreignkeyField => $item->getID(),
+                            'is_deleted' => 0,
                         ]
                     );
                 }
@@ -682,44 +682,44 @@ class Item_Devices extends CommonDBRelation
             }
             asort($dropdownValues);
             $form = [
-               'action' => Toolbox::getItemTypeFormURL(__CLASS__),
-               'buttons' => [
-                  [
-                     'type'  => 'submit',
-                     'value' => _sx('button', 'Add'),
-                     'name'  => 'add',
-                     'class' => 'btn btn-secondary'
-                  ]
-               ],
-               'content' => [
-                  __('Add a new component') => [
-                     'visible' => true,
-                     'inputs' => [
-                        [
-                           'type'  => 'hidden',
-                           'name'  => 'items_id',
-                           'value' => $ID
-                        ],
-                        [
-                           'type'  => 'hidden',
-                           'name'  => 'itemtype',
-                           'value' => $item->getType()
-                        ],
-                        __('Number of components') => ($is_device) ? [
-                           'type'  => 'number',
-                           'name'  => 'number_devices_to_add',
-                           'value' => 0,
-                           'min'   => 0,
-                           'max'   => 10
-                        ] : [],
-                        __('Itemtype') => (!$is_device) ? [
-                           'type' => 'select',
-                           'id' => 'selectForDeviceIdItemDevices',
-                           'name' => 'devicetype',
-                           'values' => $dropdownValues,
-                           'col_lg' => 6,
-                           'hooks' => [
-                              'change' => <<<JS
+                'action' => Toolbox::getItemTypeFormURL(__CLASS__),
+                'buttons' => [
+                    [
+                        'type'  => 'submit',
+                        'value' => _sx('button', 'Add'),
+                        'name'  => 'add',
+                        'class' => 'btn btn-secondary',
+                    ],
+                ],
+                'content' => [
+                    __('Add a new component') => [
+                        'visible' => true,
+                        'inputs' => [
+                            [
+                                'type'  => 'hidden',
+                                'name'  => 'items_id',
+                                'value' => $ID,
+                            ],
+                            [
+                                'type'  => 'hidden',
+                                'name'  => 'itemtype',
+                                'value' => $item->getType(),
+                            ],
+                            __('Number of components') => ($is_device) ? [
+                                'type'  => 'number',
+                                'name'  => 'number_devices_to_add',
+                                'value' => 0,
+                                'min'   => 0,
+                                'max'   => 10,
+                            ] : [],
+                            __('Itemtype') => (!$is_device) ? [
+                                'type' => 'select',
+                                'id' => 'selectForDeviceIdItemDevices',
+                                'name' => 'devicetype',
+                                'values' => $dropdownValues,
+                                'col_lg' => 6,
+                                'hooks' => [
+                                    'change' => <<<JS
                               const val = this.value;
                               $('select[name="devices_id"]').empty();
                               if (val != 0) {
@@ -756,17 +756,17 @@ class Item_Devices extends CommonDBRelation
                                  $('select[name="devices_id"]').prop('disabled', false);
                               }
                            JS,
-                           ]
-                        ] : [],
-                        __('Component') => (!$is_device) ? [
-                           'type' => 'select',
-                           'name' => 'devices_id',
-                           'id' => 'DropdownForDeviceIdItemDevices',
-                           'values' => [],
-                           'col_lg' => 6,
-                           'disabled' => '',
-                           'hooks' => [
-                              'change' => <<<JS
+                                ],
+                            ] : [],
+                            __('Component') => (!$is_device) ? [
+                                'type' => 'select',
+                                'name' => 'devices_id',
+                                'id' => 'DropdownForDeviceIdItemDevices',
+                                'values' => [],
+                                'col_lg' => 6,
+                                'disabled' => '',
+                                'hooks' => [
+                                    'change' => <<<JS
                               const val = this.value;
                               $('#checklistForDeviceIdItemDevices').empty();
                               if (val != 0) {
@@ -799,25 +799,25 @@ class Item_Devices extends CommonDBRelation
                                  $('input[name="new_devices"]').prop('disabled', true);
                               }
                            JS,
-                           ]
-                        ] : [],
-                        __('Choose an existing device') => (!$is_device) ? [
-                           'type' => 'checklist',
-                           'id' => 'checklistForDeviceIdItemDevices',
-                           'col_lg' => 6,
-                        ] : [],
-                        __('Add new devices') => (!$is_device) ? [
-                           'type' => 'number',
-                           'name' => 'new_devices',
-                           'min' => 0,
-                           'max' => 10,
-                           'step' => 1,
-                           'col_lg' => 6,
-                           'disabled' => '',
-                        ] : [],
-                     ]
-                  ]
-               ]
+                                ],
+                            ] : [],
+                            __('Choose an existing device') => (!$is_device) ? [
+                                'type' => 'checklist',
+                                'id' => 'checklistForDeviceIdItemDevices',
+                                'col_lg' => 6,
+                            ] : [],
+                            __('Add new devices') => (!$is_device) ? [
+                                'type' => 'number',
+                                'name' => 'new_devices',
+                                'min' => 0,
+                                'max' => 10,
+                                'step' => 1,
+                                'col_lg' => 6,
+                                'disabled' => '',
+                            ] : [],
+                        ],
+                    ],
+                ],
             ];
             renderTwigForm($form);
         }
@@ -826,34 +826,34 @@ class Item_Devices extends CommonDBRelation
             $link = getItemForItemtype($link_type);
             $table = $link->getTable();
             $criteria = [
-               'SELECT' => "$table.*",
-               'FROM'   => $table
+                'SELECT' => "$table.*",
+                'FROM'   => $table,
             ];
             if ($is_device) {
                 $fk = 'items_id';
 
                 // Entity restrict
                 $criteria['WHERE'] = [
-                   $link->getDeviceForeignKey()  => $item->getID(),
-                   "$table.itemtype"            => $peer_type,
-                   "$table.is_deleted"          => 0
+                    $link->getDeviceForeignKey()  => $item->getID(),
+                    "$table.itemtype"            => $peer_type,
+                    "$table.is_deleted"          => 0,
                 ];
                 $criteria['ORDERBY'] = [
-                   "$table.itemtype",
-                   "$table.$fk"
+                    "$table.itemtype",
+                    "$table.$fk",
                 ];
                 if (!empty($peer_type)) {
                     $criteria['LEFT JOIN'] = [
-                       getTableForItemType($peer_type) => [
-                          'ON' => [
-                             $table                          => 'items_id',
-                             getTableForItemType($peer_type)  => 'id', [
-                                'AND' => [
-                                   "$table.itemtype"   => $peer_type
-                                ]
-                             ]
-                          ]
-                       ]
+                        getTableForItemType($peer_type) => [
+                            'ON' => [
+                                $table                          => 'items_id',
+                                getTableForItemType($peer_type)  => 'id', [
+                                    'AND' => [
+                                        "$table.itemtype"   => $peer_type,
+                                    ],
+                                ],
+                            ],
+                        ],
                     ];
                     $criteria['WHERE'] = $criteria['WHERE'] + getEntitiesRestrictCriteria(getTableForItemType($peer_type));
                 }
@@ -861,9 +861,9 @@ class Item_Devices extends CommonDBRelation
                 $fk = $link->getDeviceForeignKey();
 
                 $criteria['WHERE'] = [
-                   'itemtype'     => $item->getType(),
-                   'items_id'     => $item->getID(),
-                   'is_deleted'   => 0
+                    'itemtype'     => $item->getType(),
+                    'items_id'     => $item->getID(),
+                    'is_deleted'   => 0,
                 ];
                 $criteria['ORDERBY'] = $fk;
             }
@@ -872,9 +872,9 @@ class Item_Devices extends CommonDBRelation
                 $massiveActionContainerId = 'mass' . __CLASS__ . rand();
                 if ($canedit) {
                     $params = [
-                       'container' => $massiveActionContainerId,
-                       'is_deleted' => 0,
-                       'display_arrow' => false,
+                        'container' => $massiveActionContainerId,
+                        'is_deleted' => 0,
+                        'display_arrow' => false,
                     ];
                     Html::showMassiveActions($params);
                 }
@@ -904,10 +904,10 @@ class Item_Devices extends CommonDBRelation
                 echo "<hr>";
                 echo "<h2>" . $link::getTypeName() . "</h2>";
                 renderTwigTemplate('table.twig', [
-                   'id' => $massiveActionContainerId,
-                   'fields' => $fields,
-                   'values' => $values,
-                   'massive_action' => $massive_action
+                    'id' => $massiveActionContainerId,
+                    'fields' => $fields,
+                    'values' => $values,
+                    'massive_action' => $massive_action,
                 ]);
             }
         }
@@ -926,34 +926,34 @@ class Item_Devices extends CommonDBRelation
         $is_device = ($item instanceof CommonDevice);
         $ctable = $this->getTable();
         $criteria = [
-           'SELECT' => "$ctable.*",
-           'FROM'   => $ctable
+            'SELECT' => "$ctable.*",
+            'FROM'   => $ctable,
         ];
         if ($is_device) {
             $fk = 'items_id';
 
             // Entity restrict
             $criteria['WHERE'] = [
-               $this->getDeviceForeignKey()  => $item->getID(),
-               "$ctable.itemtype"            => $peer_type,
-               "$ctable.is_deleted"          => 0
+                $this->getDeviceForeignKey()  => $item->getID(),
+                "$ctable.itemtype"            => $peer_type,
+                "$ctable.is_deleted"          => 0,
             ];
             $criteria['ORDERBY'] = [
-               "$ctable.itemtype",
-               "$ctable.$fk"
+                "$ctable.itemtype",
+                "$ctable.$fk",
             ];
             if (!empty($peer_type)) {
                 $criteria['LEFT JOIN'] = [
-                   getTableForItemType($peer_type) => [
-                      'ON' => [
-                         $ctable                          => 'items_id',
-                         getTableForItemType($peer_type)  => 'id', [
-                            'AND' => [
-                               "$ctable.itemtype"   => $peer_type
-                            ]
-                         ]
-                      ]
-                   ]
+                    getTableForItemType($peer_type) => [
+                        'ON' => [
+                            $ctable                          => 'items_id',
+                            getTableForItemType($peer_type)  => 'id', [
+                                'AND' => [
+                                    "$ctable.itemtype"   => $peer_type,
+                                ],
+                            ],
+                        ],
+                    ],
                 ];
                 $criteria['WHERE'] = $criteria['WHERE'] + getEntitiesRestrictCriteria(getTableForItemType($peer_type));
             }
@@ -961,9 +961,9 @@ class Item_Devices extends CommonDBRelation
             $fk = $this->getDeviceForeignKey();
 
             $criteria['WHERE'] = [
-               'itemtype'     => $item->getType(),
-               'items_id'     => $item->getID(),
-               'is_deleted'   => 0
+                'itemtype'     => $item->getType(),
+                'items_id'     => $item->getID(),
+                'is_deleted'   => 0,
             ];
             $criteria['ORDERBY'] = $fk;
         }
@@ -1197,13 +1197,13 @@ class Item_Devices extends CommonDBRelation
 
             if (
                 countElementsInTable('glpi_infocoms', [
-                'itemtype' => $this->getType(),
-                'items_id' => $link['id']
+                    'itemtype' => $this->getType(),
+                    'items_id' => $link['id'],
                 ])
             ) {
                 $content = [[
-                   'function'   => 'Infocom::showDisplayLink',
-                   'parameters' => [$this->getType(), $link['id']]
+                    'function'   => 'Infocom::showDisplayLink',
+                    'parameters' => [$this->getType(), $link['id']],
                 ]];
             } else {
                 $content = '';
@@ -1213,21 +1213,21 @@ class Item_Devices extends CommonDBRelation
             $content = [];
             // The order is to be sure that specific documents appear first
             $doc_iterator = $DB->request([
-               'SELECT' => 'documents_id',
-               'FROM'   => 'glpi_documents_items',
-               'WHERE'  => [
-                  'OR' => [
-                     [
-                        'itemtype'  => $this->getType(),
-                        'items_id'  => $link['id']
-                     ],
-                     [
-                        'itemtype'  => $this->getDeviceType(),
-                        'items_id'  => $link[$this->getDeviceForeignKey()]
-                     ]
-                  ]
-               ],
-               'ORDER'  => 'itemtype'
+                'SELECT' => 'documents_id',
+                'FROM'   => 'glpi_documents_items',
+                'WHERE'  => [
+                    'OR' => [
+                        [
+                            'itemtype'  => $this->getType(),
+                            'items_id'  => $link['id'],
+                        ],
+                        [
+                            'itemtype'  => $this->getDeviceType(),
+                            'items_id'  => $link[$this->getDeviceForeignKey()],
+                        ],
+                    ],
+                ],
+                'ORDER'  => 'itemtype',
             ]);
             $document = new Document();
             while ($document_link = $doc_iterator->next()) {
@@ -1341,8 +1341,8 @@ class Item_Devices extends CommonDBRelation
                     && (count($input[$linktype::getForeignKeyField()]))
                 ) {
                     $update_input = [
-                       'itemtype' => $input['itemtype'],
-                       'items_id' => $input['items_id']
+                        'itemtype' => $input['itemtype'],
+                        'items_id' => $input['items_id'],
                     ];
                     foreach ($input[$linktype::getForeignKeyField()] as $id) {
                         $update_input['id'] = $id;
@@ -1426,8 +1426,8 @@ class Item_Devices extends CommonDBRelation
             }
             if (!isset($links[$link_type])) {
                 $links[$link_type] = [
-                   'add'    => [],
-                   'update' => []
+                    'add'    => [],
+                    'update' => [],
                 ];
             }
 
@@ -1469,16 +1469,16 @@ class Item_Devices extends CommonDBRelation
      * @param $items_id
      * @param $itemtype
      *
-     * @return boolean
+     * @return bool
      **/
     public static function affectItem_Device($item_devices_id, $items_id, $itemtype)
     {
 
         $link = new static();
         return $link->update([
-           'id'       => $item_devices_id,
-           'items_id' => $items_id,
-           'itemtype' => $itemtype
+            'id'       => $item_devices_id,
+            'items_id' => $items_id,
+            'itemtype' => $itemtype,
         ]);
     }
 
@@ -1499,12 +1499,12 @@ class Item_Devices extends CommonDBRelation
                     $DB->update(
                         $link->getTable(),
                         [
-                          'items_id'  => 0,
-                          'itemtype'  => ''
+                            'items_id'  => 0,
+                            'itemtype'  => '',
                         ],
                         [
-                          'items_id'  => $items_id,
-                          'itemtype'  => $itemtype
+                            'items_id'  => $items_id,
+                            'itemtype'  => $itemtype,
                         ]
                     );
                 } else {
@@ -1570,31 +1570,31 @@ class Item_Devices extends CommonDBRelation
         $device = $this->getOnePeer(1);
 
         $form = [
-           'action' => $this->getFormURL(),
-           'itemtype' => $this::class,
-           'content' => [
-              $this->getTypeName() => [
-                 'visible' => true,
-                 'inputs' => [
-                    !$this->isNewID($ID) ? [
-                       'type' => 'hidden',
-                       'name' => 'id',
-                       'value' => $ID,
-                    ] : [],
-                    _n('Item', 'Items', 1) => [
-                       'content' => ($item === false) ? __('No associated item') : $item->getLink(),
+            'action' => $this->getFormURL(),
+            'itemtype' => $this::class,
+            'content' => [
+                $this->getTypeName() => [
+                    'visible' => true,
+                    'inputs' => [
+                        !$this->isNewID($ID) ? [
+                            'type' => 'hidden',
+                            'name' => 'id',
+                            'value' => $ID,
+                        ] : [],
+                        _n('Item', 'Items', 1) => [
+                            'content' => ($item === false) ? __('No associated item') : $item->getLink(),
+                        ],
+                        _n('Component', 'Components', 1) => (false === $device) ? [
+                            'type' => 'select',
+                            'name' => $this->getDeviceForeignKey(),
+                            'values' => getOptionForItems($this->getDeviceType(), [], true, true),
+                            'actions' => getItemActionButtons(['info', 'add'], $this->getDeviceType()),
+                        ] : [
+                            'content' => $device->getLink(),
+                        ],
                     ],
-                    _n('Component', 'Components', 1) => (false === $device) ? [
-                       'type' => 'select',
-                       'name' => $this->getDeviceForeignKey(),
-                       'values' => getOptionForItems($this->getDeviceType(), [], true, true),
-                       'actions' => getItemActionButtons(['info', 'add'], $this->getDeviceType())
-                    ] : [
-                       'content' => $device->getLink(),
-                    ],
-                 ]
-              ]
-           ]
+                ],
+            ],
         ];
         foreach (static::getSpecificities() as $field => $attributes) {
             if (!isset($attributes['right'])) {

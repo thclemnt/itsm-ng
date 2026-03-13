@@ -48,7 +48,7 @@ function update210to211(): bool
         [
             'comment' => 'Automatically purge expired reminders',
             'mode'    => CronTask::MODE_INTERNAL,
-            'param'   => 90
+            'param'   => 90,
         ]
     );
 

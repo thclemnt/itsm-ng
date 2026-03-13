@@ -148,58 +148,58 @@ class TicketRecurrent extends CommonDropdown
     {
 
         return [
-           __('Active') => [
-              'name'  => 'is_active',
-              'type'  => 'checkbox',
-              'value' => $this->fields['is_active'],
-           ],
-           _n('Ticket template', 'Ticket templates', 1) => [
-              'name'  => 'tickettemplates_id',
-              'type'  => 'select',
-              'values' => getOptionForItems(TicketTemplate::class),
-              'value' => $this->fields['tickettemplates_id'],
-              'actions' => getItemActionButtons(['info', 'add'], TicketTemplate::class),
-           ],
-           __('Start date') => [
-              'name'  => 'begin_date',
-              'type'  => 'datetime-local',
-              'value' => $this->fields['begin_date']
-           ],
-           __('End date') => [
-              'name'  => 'end_date',
-              'type'  => 'datetime-local',
-              'value' => $this->fields['end_date']
-           ],
-           __('Periodicity') => [
-              'name'  => 'periodicity',
-              'type'  => 'select',
-              'values' => Timezone::GetTimeStamp([
-                 'min'   => HOUR_TIMESTAMP,
-                 'step'  => HOUR_TIMESTAMP,
-              ]) +
-              Timezone::GetTimeStamp([
-                 'min'   => 2 * DAY_TIMESTAMP,
-                 'step'  => DAY_TIMESTAMP,
-                 'max'   => 30 * DAY_TIMESTAMP
-              ]),
-              'value' => $this->fields['periodicity']
-           ],
-           __('Preliminary creation') => [
-              'name'  => 'create_before',
-              'type'  => 'select',
-              'values' => array_merge([Dropdown::EMPTY_VALUE], Timezone::GetTimeStamp([
-                 'max'   => 7 * DAY_TIMESTAMP,
-                 'step'  => HOUR_TIMESTAMP
-              ])),
-              'value' => $this->fields['create_before']
-           ],
-           _n('Calendar', 'Calendars', 1) => [
-              'name'  => 'calendars_id',
-              'type'  => 'select',
-              'values' => getOptionForItems(Calendar::class),
-              'value' => $this->fields['calendars_id'],
-              'actions' => getItemActionButtons(['info', 'add'], Calendar::class),
-           ],
+            __('Active') => [
+                'name'  => 'is_active',
+                'type'  => 'checkbox',
+                'value' => $this->fields['is_active'],
+            ],
+            _n('Ticket template', 'Ticket templates', 1) => [
+                'name'  => 'tickettemplates_id',
+                'type'  => 'select',
+                'values' => getOptionForItems(TicketTemplate::class),
+                'value' => $this->fields['tickettemplates_id'],
+                'actions' => getItemActionButtons(['info', 'add'], TicketTemplate::class),
+            ],
+            __('Start date') => [
+                'name'  => 'begin_date',
+                'type'  => 'datetime-local',
+                'value' => $this->fields['begin_date'],
+            ],
+            __('End date') => [
+                'name'  => 'end_date',
+                'type'  => 'datetime-local',
+                'value' => $this->fields['end_date'],
+            ],
+            __('Periodicity') => [
+                'name'  => 'periodicity',
+                'type'  => 'select',
+                'values' => Timezone::GetTimeStamp([
+                    'min'   => HOUR_TIMESTAMP,
+                    'step'  => HOUR_TIMESTAMP,
+                ])
+                + Timezone::GetTimeStamp([
+                    'min'   => 2 * DAY_TIMESTAMP,
+                    'step'  => DAY_TIMESTAMP,
+                    'max'   => 30 * DAY_TIMESTAMP,
+                ]),
+                'value' => $this->fields['periodicity'],
+            ],
+            __('Preliminary creation') => [
+                'name'  => 'create_before',
+                'type'  => 'select',
+                'values' => array_merge([Dropdown::EMPTY_VALUE], Timezone::GetTimeStamp([
+                    'max'   => 7 * DAY_TIMESTAMP,
+                    'step'  => HOUR_TIMESTAMP,
+                ])),
+                'value' => $this->fields['create_before'],
+            ],
+            _n('Calendar', 'Calendars', 1) => [
+                'name'  => 'calendars_id',
+                'type'  => 'select',
+                'values' => getOptionForItems(Calendar::class),
+                'value' => $this->fields['calendars_id'],
+                'actions' => getItemActionButtons(['info', 'add'], Calendar::class),
+            ],
         ];
     }
 
@@ -273,59 +273,59 @@ class TicketRecurrent extends CommonDropdown
         $tab = parent::rawSearchOptions();
 
         $tab[] = [
-           'id'                 => '11',
-           'table'              => $this->getTable(),
-           'field'              => 'is_active',
-           'name'               => __('Active'),
-           'datatype'           => 'bool'
+            'id'                 => '11',
+            'table'              => $this->getTable(),
+            'field'              => 'is_active',
+            'name'               => __('Active'),
+            'datatype'           => 'bool',
         ];
 
         $tab[] = [
-           'id'                 => '12',
-           'table'              => 'glpi_tickettemplates',
-           'field'              => 'name',
-           'name'               => _n('Ticket template', 'Ticket templates', 1),
-           'datatype'           => 'itemlink'
+            'id'                 => '12',
+            'table'              => 'glpi_tickettemplates',
+            'field'              => 'name',
+            'name'               => _n('Ticket template', 'Ticket templates', 1),
+            'datatype'           => 'itemlink',
         ];
 
         $tab[] = [
-           'id'                 => '13',
-           'table'              => $this->getTable(),
-           'field'              => 'begin_date',
-           'name'               => __('Start date'),
-           'datatype'           => 'datetime'
+            'id'                 => '13',
+            'table'              => $this->getTable(),
+            'field'              => 'begin_date',
+            'name'               => __('Start date'),
+            'datatype'           => 'datetime',
         ];
 
         $tab[] = [
-           'id'                 => '17',
-           'table'              => $this->getTable(),
-           'field'              => 'end_date',
-           'name'               => __('End date'),
-           'datatype'           => 'datetime'
+            'id'                 => '17',
+            'table'              => $this->getTable(),
+            'field'              => 'end_date',
+            'name'               => __('End date'),
+            'datatype'           => 'datetime',
         ];
 
         $tab[] = [
-           'id'                 => '15',
-           'table'              => $this->getTable(),
-           'field'              => 'periodicity',
-           'name'               => __('Periodicity'),
-           'datatype'           => 'specific'
+            'id'                 => '15',
+            'table'              => $this->getTable(),
+            'field'              => 'periodicity',
+            'name'               => __('Periodicity'),
+            'datatype'           => 'specific',
         ];
 
         $tab[] = [
-           'id'                 => '14',
-           'table'              => $this->getTable(),
-           'field'              => 'create_before',
-           'name'               => __('Preliminary creation'),
-           'datatype'           => 'timestamp'
+            'id'                 => '14',
+            'table'              => $this->getTable(),
+            'field'              => 'create_before',
+            'name'               => __('Preliminary creation'),
+            'datatype'           => 'timestamp',
         ];
 
         $tab[] = [
-           'id'                 => '18',
-           'table'              => 'glpi_calendars',
-           'field'              => 'name',
-           'name'               => _n('Calendar', 'Calendars', 1),
-           'datatype'           => 'itemlink'
+            'id'                 => '18',
+            'table'              => 'glpi_calendars',
+            'field'              => 'name',
+            'name'               => _n('Calendar', 'Calendars', 1),
+            'datatype'           => 'itemlink',
         ];
 
         return $tab;
@@ -358,11 +358,11 @@ class TicketRecurrent extends CommonDropdown
      * @param string         $begin_date     Begin date of the recurrent ticket in 'Y-m-d H:i:s' format.
      * @param string         $end_date       End date of the recurrent ticket in 'Y-m-d H:i:s' format,
      *                                       or 'NULL' or empty value.
-     * @param string|integer $periodicity    Periodicity of creation, could be:
+     * @param string|int $periodicity    Periodicity of creation, could be:
      *                                        - an integer corresponding to seconds,
      *                                        - a string using "/([0-9]+)(MONTH|YEAR)/" pattern.
-     * @param integer        $create_before  Anticipated creation delay in seconds.
-     * @param integer|null   $calendars_id   ID of the calendar to use to restrict creation to working hours,
+     * @param int        $create_before  Anticipated creation delay in seconds.
+     * @param int|null   $calendars_id   ID of the calendar to use to restrict creation to working hours,
      *                                       or 0 / null for no calendar.
      *
      * @return string  Next creation date in 'Y-m-d H:i:s' format.
@@ -518,7 +518,7 @@ class TicketRecurrent extends CommonDropdown
      *
      * @param $task : crontask object
      *
-     * @return integer (0 : nothing done - 1 : done)
+     * @return int (0 : nothing done - 1 : done)
      **/
     public static function cronTicketRecurrent($task)
     {
@@ -527,15 +527,15 @@ class TicketRecurrent extends CommonDropdown
         $tot = 0;
 
         $iterator = $DB->request([
-           'FROM'   => 'glpi_ticketrecurrents',
-           'WHERE'  => [
-              'next_creation_date' => ['<', new \QueryExpression('NOW()')],
-              'is_active'          => 1,
-              'OR'                 => [
-                 ['end_date' => null],
-                 ['end_date' => ['>', new \QueryExpression('NOW()')]]
-              ]
-           ]
+            'FROM'   => 'glpi_ticketrecurrents',
+            'WHERE'  => [
+                'next_creation_date' => ['<', new QueryExpression('NOW()')],
+                'is_active'          => 1,
+                'OR'                 => [
+                    ['end_date' => null],
+                    ['end_date' => ['>', new QueryExpression('NOW()')]],
+                ],
+            ],
         ]);
 
         while ($data = $iterator->next()) {
@@ -560,7 +560,7 @@ class TicketRecurrent extends CommonDropdown
      *
      * @param $data array data of a entry of glpi_ticketrecurrents
      *
-     * @return boolean
+     * @return bool
      **/
     public static function createTicket($data)
     {

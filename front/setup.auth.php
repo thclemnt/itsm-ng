@@ -40,8 +40,8 @@ Html::header(__('External authentication sources'), $_SERVER['PHP_SELF'], "confi
 echo "<table class='tab_cadre'>";
 echo "<tr><th>&nbsp;" . __('External authentications') . "</th></tr>";
 if (Session::haveRight("config", UPDATE)) {
-    echo "<tr class='tab_bg_1'><td class='center b'>" .
-         "<a href='auth.settings.php'>" . __('Setup') . "</a></td></tr>";
+    echo "<tr class='tab_bg_1'><td class='center b'>"
+         . "<a href='auth.settings.php'>" . __('Setup') . "</a></td></tr>";
 }
 echo "<tr class='tab_bg_1'><td class='center b'>";
 if (Toolbox::canUseLdap()) {
@@ -55,11 +55,11 @@ echo "<tr class='tab_bg_1'><td class='center b'>";
 echo "<a href='authmail.php'>" . AuthMail::getTypeName(Session::getPluralNumber()) . "</a>";
 echo "</td> </tr>";
 // oidc setup
-echo "<tr class='tab_bg_1'><td class='center'>" .
-     "<a href='auth.oidc.php'>" . __('Open ID connect authentication') . "</a></td></tr>";
+echo "<tr class='tab_bg_1'><td class='center'>"
+     . "<a href='auth.oidc.php'>" . __('Open ID connect authentication') . "</a></td></tr>";
 
-echo "<tr class='tab_bg_1'><td class='center'>" .
-     "<a href='auth.others.php'>" . __('Others authentication methods') . "</a></td></tr>";
+echo "<tr class='tab_bg_1'><td class='center'>"
+     . "<a href='auth.others.php'>" . __('Others authentication methods') . "</a></td></tr>";
 echo "</table>";
 
 Html::footer();

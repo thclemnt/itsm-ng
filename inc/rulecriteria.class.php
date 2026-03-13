@@ -118,7 +118,7 @@ class RuleCriteria extends CommonDBChild
             && ($realrule = Rule::getRuleObjectByID($this->input['rules_id']))
         ) {
             $realrule->update(['id'       => $this->input['rules_id'],
-                                    'date_mod' => $_SESSION['glpi_currenttime']]);
+                'date_mod' => $_SESSION['glpi_currenttime']]);
         }
     }
 
@@ -137,7 +137,7 @@ class RuleCriteria extends CommonDBChild
             && ($realrule = Rule::getRuleObjectByID($this->fields['rules_id']))
         ) {
             $realrule->update(['id'       => $this->fields['rules_id'],
-                                    'date_mod' => $_SESSION['glpi_currenttime']]);
+                'date_mod' => $_SESSION['glpi_currenttime']]);
         }
     }
 
@@ -160,34 +160,34 @@ class RuleCriteria extends CommonDBChild
         $tab = [];
 
         $tab[] = [
-           'id'                 => '1',
-           'table'              => $this->getTable(),
-           'field'              => 'criteria',
-           'name'               => __('Name'),
-           'massiveaction'      => false,
-           'datatype'           => 'specific',
-           'additionalfields'   => ['rules_id']
+            'id'                 => '1',
+            'table'              => $this->getTable(),
+            'field'              => 'criteria',
+            'name'               => __('Name'),
+            'massiveaction'      => false,
+            'datatype'           => 'specific',
+            'additionalfields'   => ['rules_id'],
         ];
 
         $tab[] = [
-           'id'                 => '2',
-           'table'              => $this->getTable(),
-           'field'              => 'condition',
-           'name'               => __('Condition'),
-           'massiveaction'      => false,
-           'datatype'           => 'specific',
-           'additionalfields'   => ['rules_id', 'criteria']
+            'id'                 => '2',
+            'table'              => $this->getTable(),
+            'field'              => 'condition',
+            'name'               => __('Condition'),
+            'massiveaction'      => false,
+            'datatype'           => 'specific',
+            'additionalfields'   => ['rules_id', 'criteria'],
         ];
 
         $tab[] = [
-           'id'                 => '3',
-           'table'              => $this->getTable(),
-           'field'              => 'pattern',
-           'name'               => __('Reason'),
-           'massiveaction'      => false,
-           'datatype'           => 'specific',
-           'additionalfields'   => ['rules_id', 'criteria', 'condition'],
-           'autocomplete'       => true,
+            'id'                 => '3',
+            'table'              => $this->getTable(),
+            'field'              => 'pattern',
+            'name'               => __('Reason'),
+            'massiveaction'      => false,
+            'datatype'           => 'specific',
+            'additionalfields'   => ['rules_id', 'criteria', 'condition'],
+            'autocomplete'       => true,
         ];
 
         return $tab;
@@ -344,9 +344,9 @@ class RuleCriteria extends CommonDBChild
 
         $rules_list = [];
         $params = ['FROM'  => $this->getTable(),
-                   'WHERE' => [static::$items_id => $rules_id],
-                   'ORDER' => 'id'
-                  ];
+            'WHERE' => [static::$items_id => $rules_id],
+            'ORDER' => 'id',
+        ];
         foreach ($DB->request($params) as $rule) {
             $tmp          = new self();
             $tmp->fields  = $rule;
@@ -545,15 +545,15 @@ class RuleCriteria extends CommonDBChild
     {
 
         $criteria =  [Rule::PATTERN_IS              => __('is'),
-                           Rule::PATTERN_IS_NOT          => __('is not'),
-                           Rule::PATTERN_CONTAIN         => __('contains'),
-                           Rule::PATTERN_NOT_CONTAIN     => __('does not contain'),
-                           Rule::PATTERN_BEGIN           => __('starting with'),
-                           Rule::PATTERN_END             => __('finished by'),
-                           Rule::REGEX_MATCH             => __('regular expression matches'),
-                           Rule::REGEX_NOT_MATCH         => __('regular expression does not match'),
-                           Rule::PATTERN_EXISTS          => __('exists'),
-                           Rule::PATTERN_DOES_NOT_EXISTS => __('does not exist')];
+            Rule::PATTERN_IS_NOT          => __('is not'),
+            Rule::PATTERN_CONTAIN         => __('contains'),
+            Rule::PATTERN_NOT_CONTAIN     => __('does not contain'),
+            Rule::PATTERN_BEGIN           => __('starting with'),
+            Rule::PATTERN_END             => __('finished by'),
+            Rule::REGEX_MATCH             => __('regular expression matches'),
+            Rule::REGEX_NOT_MATCH         => __('regular expression does not match'),
+            Rule::PATTERN_EXISTS          => __('exists'),
+            Rule::PATTERN_DOES_NOT_EXISTS => __('does not exist')];
 
         $extra_criteria = call_user_func([$itemtype, 'addMoreCriteria'], $criterion);
 
@@ -661,48 +661,48 @@ class RuleCriteria extends CommonDBChild
         }
 
         $form = [
-          'action' => Toolbox::getItemTypeFormURL(__CLASS__),
-          'itemtype' => self::class,
-          'content' => [
-              $this->getTypeName() => [
-                  'visible' => true,
-                  'inputs' => [
-                      $this->isNewID($ID) ? [] : [
-                          'type'  => 'hidden',
-                          'name'  => 'id',
-                          'value' => $ID,
-                      ],
-                      [
-                          'type'  => 'hidden',
-                          'name'  => $rule->getRuleIdField(),
-                          'value' => $this->fields[$rule->getRuleIdField()],
-                      ],
-                      _n('Criterion', 'Criteria', 1) => [
-                          'type'  => 'select',
-                          'name'  => 'criteria',
-                          'value' => $this->fields['criteria'],
-                          'values' => [Dropdown::EMPTY_VALUE] + $items,
-                          'actions' => getItemActionButtons(['add'], $this::class),
-                          'col_lg' => 12,
-                          'col_md' => 12,
-                          'hooks' => [
-                              'change' => <<<JS
+            'action' => Toolbox::getItemTypeFormURL(__CLASS__),
+            'itemtype' => self::class,
+            'content' => [
+                $this->getTypeName() => [
+                    'visible' => true,
+                    'inputs' => [
+                        $this->isNewID($ID) ? [] : [
+                            'type'  => 'hidden',
+                            'name'  => 'id',
+                            'value' => $ID,
+                        ],
+                        [
+                            'type'  => 'hidden',
+                            'name'  => $rule->getRuleIdField(),
+                            'value' => $this->fields[$rule->getRuleIdField()],
+                        ],
+                        _n('Criterion', 'Criteria', 1) => [
+                            'type'  => 'select',
+                            'name'  => 'criteria',
+                            'value' => $this->fields['criteria'],
+                            'values' => [Dropdown::EMPTY_VALUE] + $items,
+                            'actions' => getItemActionButtons(['add'], $this::class),
+                            'col_lg' => 12,
+                            'col_md' => 12,
+                            'hooks' => [
+                                'change' => <<<JS
                             var criteria = $(this).val();
                             var params = {'criteria': criteria, 'sub_type': '{$rule->getType()}'};
                             $.post('{$CFG_GLPI['root_doc']}/ajax/rulecriteria.php', params, function(data) {
                                 $('#criteria_span').html(data);
                             });
                             JS,
-                          ]
-                      ],
-                      '' => [
-                          'content' => '<span id="criteria_span"></span>',
-                          'col_lg' => 12,
-                          'col_md' => 12,
-                      ],
-                  ],
-              ]
-          ]
+                            ],
+                        ],
+                        '' => [
+                            'content' => '<span id="criteria_span"></span>',
+                            'col_lg' => 12,
+                            'col_md' => 12,
+                        ],
+                    ],
+                ],
+            ],
         ];
         renderTwigForm($form, '', $this->fields);
     }

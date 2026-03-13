@@ -54,15 +54,15 @@ if ($_POST["authtype"] > 0) {
         case Auth::LDAP:
         case Auth::EXTERNAL:
             echo AuthLDAP::dropdown([
-               'name'      => "auths_id",
-               'condition' => ['is_active' => 1]
+                'name'      => "auths_id",
+                'condition' => ['is_active' => 1],
             ]);
             break;
 
         case Auth::MAIL:
             echo AuthMail::dropdown([
-               'name'      => "auths_id",
-               'condition' => ['is_active' => 1]
+                'name'      => "auths_id",
+                'condition' => ['is_active' => 1],
             ]);
             break;
     }

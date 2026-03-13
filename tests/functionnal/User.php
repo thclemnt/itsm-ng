@@ -33,6 +33,8 @@
 
 namespace tests\units;
 
+use Glpi\Exception\ForgetPasswordException;
+
 /* Test for inc/user.class.php */
 
 class User extends \DbTestCase
@@ -77,16 +79,16 @@ class User extends \DbTestCase
         // Test reset password with a bad token
         $token = $user->getField('password_forget_token');
         $input = [
-           'password_forget_token' => $token . 'bad',
-           'password'  => TU_PASS,
-           'password2' => TU_PASS
+            'password_forget_token' => $token . 'bad',
+            'password'  => TU_PASS,
+            'password2' => TU_PASS,
         ];
         $this->exception(
             function () use ($user, $input) {
                 $result = $user->updateForgottenPassword($input);
             }
         )
-        ->isInstanceOf(\Glpi\Exception\ForgetPasswordException::class);
+        ->isInstanceOf(ForgetPasswordException::class);
 
         // Test reset password with good token
         // 1 - Refresh the in-memory instance of user and get the current password
@@ -94,9 +96,9 @@ class User extends \DbTestCase
 
         // 2 - Set a new password
         $input = [
-           'password_forget_token' => $token,
-           'password'  => 'NewPassword',
-           'password2' => 'NewPassword'
+            'password_forget_token' => $token,
+            'password'  => 'NewPassword',
+            'password2' => 'NewPassword',
         ];
 
         // 3 - check the update succeeds
@@ -107,9 +109,9 @@ class User extends \DbTestCase
         // 4 - Restore the initial password in the DB before checking the updated password
         // This ensure the original password is restored even if the next test fails
         $updateSuccess = $user->update([
-           'id'        => $user->getID(),
-           'password'  => TU_PASS,
-           'password2' => TU_PASS
+            'id'        => $user->getID(),
+            'password'  => TU_PASS,
+            'password2' => TU_PASS,
         ]);
         $this->variable($updateSuccess)->isNotFalse('password update failed');
 
@@ -125,11 +127,11 @@ class User extends \DbTestCase
         $this->array($user->getAllEmails())->isIdenticalTo([]);
         $this->boolean($user->isEmail('one@test.com'))->isFalse();
 
-        $uid = (int)$user->add([
-           'name'   => 'test_email',
-           '_useremails'  => [
-              'one@test.com'
-           ]
+        $uid = (int) $user->add([
+            'name'   => 'test_email',
+            '_useremails'  => [
+                'one@test.com',
+            ],
         ]);
         $this->integer($uid)->isGreaterThan(0);
         $this->boolean($user->getFromDB($user->fields['id']))->isTrue();
@@ -137,10 +139,10 @@ class User extends \DbTestCase
 
         $this->boolean(
             $user->update([
-              'id'              => $uid,
-              '_useremails'     => ['two@test.com'],
-              '_default_email'  => 0
-         ])
+                'id'              => $uid,
+                '_useremails'     => ['two@test.com'],
+                '_default_email'  => 0,
+            ])
         )->isTrue();
 
         $this->boolean($user->getFromDB($user->fields['id']))->isTrue();
@@ -156,8 +158,8 @@ class User extends \DbTestCase
     public function testGetFromDBbyToken()
     {
         $user = $this->newTestedInstance;
-        $uid = (int)$user->add([
-           'name'   => 'test_token'
+        $uid = (int) $user->add([
+            'name'   => 'test_token',
         ]);
         $this->integer($uid)->isGreaterThan(0);
         $this->boolean($user->getFromDB($uid))->isTrue();
@@ -187,16 +189,16 @@ class User extends \DbTestCase
         $user = $this->newTestedInstance();
 
         $input = [
-           'name'   => 'prepare_for_add'
+            'name'   => 'prepare_for_add',
         ];
         $expected = [
-           'name'         => 'prepare_for_add',
-           'authtype'     => 1,
-           'auths_id'     => 0,
-           'is_active'    => 1,
-           'is_deleted'   => 0,
-           'entities_id'  => 0,
-           'profiles_id'  => 0
+            'name'         => 'prepare_for_add',
+            'authtype'     => 1,
+            'auths_id'     => 0,
+            'is_active'    => 1,
+            'is_deleted'   => 0,
+            'entities_id'  => 0,
+            'profiles_id'  => 0,
         ];
 
         $this->array($user->prepareInputForAdd($input))->isIdenticalTo($expected);
@@ -215,27 +217,27 @@ class User extends \DbTestCase
         $this->hasSessionMessages(ERROR, ['Unable to add. The user already exists.']);
 
         $input = [
-           'name'      => 'user_pass',
-           'password'  => 'password',
-           'password2' => 'nomatch'
+            'name'      => 'user_pass',
+            'password'  => 'password',
+            'password2' => 'nomatch',
         ];
         $this->boolean($user->prepareInputForAdd($input))->isFalse();
         $this->hasSessionMessages(ERROR, ['Error: the two passwords do not match']);
 
         $input = [
-           'name'      => 'user_pass',
-           'password'  => '',
-           'password2' => 'nomatch'
+            'name'      => 'user_pass',
+            'password'  => '',
+            'password2' => 'nomatch',
         ];
         $expected = [
-           'name'         => 'user_pass',
-           'password2'    => 'nomatch',
-           'authtype'     => 1,
-           'auths_id'     => 0,
-           'is_active'    => 1,
-           'is_deleted'   => 0,
-           'entities_id'  => 0,
-           'profiles_id'  => 0
+            'name'         => 'user_pass',
+            'password2'    => 'nomatch',
+            'authtype'     => 1,
+            'auths_id'     => 0,
+            'is_active'    => 1,
+            'is_deleted'   => 0,
+            'entities_id'  => 0,
+            'profiles_id'  => 0,
         ];
         $this->array($user->prepareInputForAdd($input))->isIdenticalTo($expected);
 
@@ -251,16 +253,16 @@ class User extends \DbTestCase
         $input['password2'] = 'mypass';
         $input['_extauth'] = 1;
         $expected = [
-           'name'                 => 'user_pass',
-           'password'             => '',
-           '_extauth'             => 1,
-           'authtype'             => 1,
-           'auths_id'             => 0,
-           'password_last_update' => $_SESSION['glpi_currenttime'],
-           'is_active'            => 1,
-           'is_deleted'           => 0,
-           'entities_id'          => 0,
-           'profiles_id'          => 0,
+            'name'                 => 'user_pass',
+            'password'             => '',
+            '_extauth'             => 1,
+            'authtype'             => 1,
+            'auths_id'             => 0,
+            'password_last_update' => $_SESSION['glpi_currenttime'],
+            'is_active'            => 1,
+            'is_deleted'           => 0,
+            'entities_id'          => 0,
+            'profiles_id'          => 0,
         ];
         $this->array($user->prepareInputForAdd($input))->isIdenticalTo($expected);
     }
@@ -268,31 +270,31 @@ class User extends \DbTestCase
     protected function prepareInputForTimezoneUpdateProvider()
     {
         return [
-           [
-              'input'     => [
-                 'timezone' => 'Europe/Paris',
-              ],
-              'expected'  => [
-                 'timezone' => 'Europe/Paris',
-              ],
-           ],
-           [
-              'input'     => [
-                 'timezone' => '0',
-              ],
-              'expected'  => [
-                 'timezone' => 'NULL',
-              ],
-           ],
-           // check that timezone is not reset unexpectedly
-           [
-              'input'     => [
-                 'registration_number' => 'no.1',
-              ],
-              'expected'  => [
-                 'registration_number' => 'no.1',
-              ],
-           ],
+            [
+                'input'     => [
+                    'timezone' => 'Europe/Paris',
+                ],
+                'expected'  => [
+                    'timezone' => 'Europe/Paris',
+                ],
+            ],
+            [
+                'input'     => [
+                    'timezone' => '0',
+                ],
+                'expected'  => [
+                    'timezone' => 'NULL',
+                ],
+            ],
+            // check that timezone is not reset unexpectedly
+            [
+                'input'     => [
+                    'registration_number' => 'no.1',
+                ],
+                'expected'  => [
+                    'registration_number' => 'no.1',
+                ],
+            ],
         ];
     }
 
@@ -306,13 +308,13 @@ class User extends \DbTestCase
         $username = 'prepare_for_update_' . mt_rand();
         $user_id = $user->add(
             [
-              'name'         => $username,
-              'password'     => 'mypass',
-              'password2'    => 'mypass',
-              '_profiles_id' => 1
-         ]
+                'name'         => $username,
+                'password'     => 'mypass',
+                'password2'    => 'mypass',
+                '_profiles_id' => 1,
+            ]
         );
-        $this->integer((int)$user_id)->isGreaterThan(0);
+        $this->integer((int) $user_id)->isGreaterThan(0);
 
         $this->login($username, 'mypass');
 
@@ -326,32 +328,32 @@ class User extends \DbTestCase
     protected function prepareInputForUpdatePasswordProvider()
     {
         return [
-           [
-              'input'     => [
-                 'password'  => 'initial_pass',
-                 'password2' => 'initial_pass'
-              ],
-              'expected'  => [
-              ],
-           ],
-           [
-              'input'     => [
-                 'password'  => 'new_pass',
-                 'password2' => 'new_pass_not_match'
-              ],
-              'expected'  => false,
-              'messages'  => [ERROR => ['Error: the two passwords do not match']],
-           ],
-           [
-              'input'     => [
-                 'password'  => 'new_pass',
-                 'password2' => 'new_pass'
-              ],
-              'expected'  => [
-                 'password_last_update' => true,
-                 'password' => true,
-              ],
-           ],
+            [
+                'input'     => [
+                    'password'  => 'initial_pass',
+                    'password2' => 'initial_pass',
+                ],
+                'expected'  => [
+                ],
+            ],
+            [
+                'input'     => [
+                    'password'  => 'new_pass',
+                    'password2' => 'new_pass_not_match',
+                ],
+                'expected'  => false,
+                'messages'  => [ERROR => ['Error: the two passwords do not match']],
+            ],
+            [
+                'input'     => [
+                    'password'  => 'new_pass',
+                    'password2' => 'new_pass',
+                ],
+                'expected'  => [
+                    'password_last_update' => true,
+                    'password' => true,
+                ],
+            ],
         ];
     }
 
@@ -365,13 +367,13 @@ class User extends \DbTestCase
         $username = 'prepare_for_update_' . mt_rand();
         $user_id = $user->add(
             [
-              'name'         => $username,
-              'password'     => 'initial_pass',
-              'password2'    => 'initial_pass',
-              '_profiles_id' => 1
-         ]
+                'name'         => $username,
+                'password'     => 'initial_pass',
+                'password2'    => 'initial_pass',
+                '_profiles_id' => 1,
+            ]
         );
-        $this->integer((int)$user_id)->isGreaterThan(0);
+        $this->integer((int) $user_id)->isGreaterThan(0);
 
         $this->login($username, 'initial_pass');
 
@@ -416,9 +418,9 @@ class User extends \DbTestCase
 
         //user with a profile
         $pid = getItemByTypeName('Profile', 'Technician', true);
-        $uid = (int)$user->add([
-           'name'         => 'create_user',
-           '_profiles_id' => $pid
+        $uid = (int) $user->add([
+            'name'         => 'create_user',
+            '_profiles_id' => $pid,
         ]);
         $this->integer($uid)->isGreaterThan(0);
 
@@ -435,12 +437,12 @@ class User extends \DbTestCase
            ->integer['is_recursive']->isEqualTo(0)
            ->integer['is_dynamic']->isEqualTo(0);
 
-        $pid = (int)\Profile::getDefault();
+        $pid = (int) \Profile::getDefault();
         $this->integer($pid)->isGreaterThan(0);
 
         //user without a profile (will take default one)
-        $uid2 = (int)$user->add([
-           'name' => 'create_user2',
+        $uid2 = (int) $user->add([
+            'name' => 'create_user2',
         ]);
         $this->integer($uid2)->isGreaterThan(0);
 
@@ -458,11 +460,11 @@ class User extends \DbTestCase
            ->integer['is_dynamic']->isEqualTo(1);
 
         //user with entity not recursive
-        $eid2 = (int)getItemByTypeName('Entity', '_test_child_1', true);
+        $eid2 = (int) getItemByTypeName('Entity', '_test_child_1', true);
         $this->integer($eid2)->isGreaterThan(0);
-        $uid3 = (int)$user->add([
-           'name'         => 'create_user3',
-           '_entities_id' => $eid2
+        $uid3 = (int) $user->add([
+            'name'         => 'create_user3',
+            '_entities_id' => $eid2,
         ]);
         $this->integer($uid3)->isGreaterThan(0);
 
@@ -479,10 +481,10 @@ class User extends \DbTestCase
            ->integer['is_dynamic']->isEqualTo(1);
 
         //user with entity recursive
-        $uid4 = (int)$user->add([
-           'name'            => 'create_user4',
-           '_entities_id'    => $eid2,
-           '_is_recursive'   => 1
+        $uid4 = (int) $user->add([
+            'name'            => 'create_user4',
+            '_entities_id'    => $eid2,
+            '_is_recursive'   => 1,
         ]);
         $this->integer($uid4)->isGreaterThan(0);
 
@@ -513,7 +515,7 @@ class User extends \DbTestCase
 
         // Test item cloning
         $added = $user->clone();
-        $this->integer((int)$added)->isGreaterThan(0);
+        $this->integer((int) $added)->isGreaterThan(0);
 
         $clonedUser = new \User();
         $this->boolean($clonedUser->getFromDB($added))->isTrue();
@@ -546,9 +548,9 @@ class User extends \DbTestCase
         $user = $this->newTestedInstance;
         $dn = 'user=user_with_dn,dc=test,dc=glpi-project,dc=org';
 
-        $uid = (int)$user->add([
-           'name'      => 'user_with_dn',
-           'user_dn'   => $dn
+        $uid = (int) $user->add([
+            'name'      => 'user_with_dn',
+            'user_dn'   => $dn,
         ]);
         $this->integer($uid)->isGreaterThan(0);
 
@@ -563,9 +565,9 @@ class User extends \DbTestCase
         $user = $this->newTestedInstance;
         $sync_field = 'abc-def-ghi';
 
-        $uid = (int)$user->add([
-           'name'         => 'user_with_syncfield',
-           'sync_field'   => $sync_field
+        $uid = (int) $user->add([
+            'name'         => 'user_with_syncfield',
+            'sync_field'   => $sync_field,
         ]);
 
         $this->integer($uid)->isGreaterThan(0);
@@ -581,8 +583,8 @@ class User extends \DbTestCase
         $user = $this->newTestedInstance;
         $name = 'user_with_name';
 
-        $uid = (int)$user->add([
-           'name' => $name
+        $uid = (int) $user->add([
+            'name' => $name,
         ]);
 
         $this->integer($uid)->isGreaterThan(0);
@@ -597,10 +599,10 @@ class User extends \DbTestCase
         $user = $this->newTestedInstance;
         $name = 'user_with_auth';
 
-        $uid = (int)$user->add([
-           'name'      => $name,
-           'authtype'  => \Auth::DB_GLPI,
-           'auths_id'  => 12
+        $uid = (int) $user->add([
+            'name'      => $name,
+            'authtype'  => \Auth::DB_GLPI,
+            'auths_id'  => 12,
         ]);
 
         $this->integer($uid)->isGreaterThan(0);
@@ -614,29 +616,29 @@ class User extends \DbTestCase
     protected function rawNameProvider()
     {
         return [
-           [
-              'input'     => ['name' => 'myname'],
-              'rawname'   => 'myname'
-           ], [
-              'input'     => [
-                 'name'      => 'anothername',
-                 'realname'  => 'real name'
-              ],
-              'rawname'      => 'real name'
-           ], [
-              'input'     => [
-                 'name'      => 'yet another name',
-                 'firstname' => 'first name'
-              ],
-              'rawname'   => 'yet another name'
-           ], [
-              'input'     => [
-                 'name'      => 'yet another one',
-                 'realname'  => 'real name',
-                 'firstname' => 'first name'
-              ],
-              'rawname'   => 'real name first name'
-           ]
+            [
+                'input'     => ['name' => 'myname'],
+                'rawname'   => 'myname',
+            ], [
+                'input'     => [
+                    'name'      => 'anothername',
+                    'realname'  => 'real name',
+                ],
+                'rawname'      => 'real name',
+            ], [
+                'input'     => [
+                    'name'      => 'yet another name',
+                    'firstname' => 'first name',
+                ],
+                'rawname'   => 'yet another name',
+            ], [
+                'input'     => [
+                    'name'      => 'yet another one',
+                    'realname'  => 'real name',
+                    'firstname' => 'first name',
+                ],
+                'rawname'   => 'real name first name',
+            ],
         ];
     }
 
@@ -652,7 +654,7 @@ class User extends \DbTestCase
         $this
            ->given($this->newTestedInstance)
               ->then
-                 ->integer($uid = (int)$this->testedInstance->add($input))
+                 ->integer($uid = (int) $this->testedInstance->add($input))
                     ->isGreaterThan(0)
                  ->boolean($this->testedInstance->getFromDB($uid))->isTrue()
                  ->string($this->testedInstance->getFriendlyName())->isIdenticalTo($rawname);
@@ -661,14 +663,14 @@ class User extends \DbTestCase
     public function testBlankPassword()
     {
         $input = [
-           'name'      => 'myname',
-           'password'  => 'mypass',
-           'password2' => 'mypass'
+            'name'      => 'myname',
+            'password'  => 'mypass',
+            'password2' => 'mypass',
         ];
         $this
            ->given($this->newTestedInstance)
               ->then
-                 ->integer($uid = (int)$this->testedInstance->add($input))
+                 ->integer($uid = (int) $this->testedInstance->add($input))
                     ->isGreaterThan(0)
                  ->boolean($this->testedInstance->getFromDB($uid))->isTrue()
                  ->array($this->testedInstance->fields)
@@ -687,31 +689,31 @@ class User extends \DbTestCase
         $this->login();
         $user = $this->newTestedInstance();
 
-        $uid = (int)$user->add([
-           'name' => 'preupdate_user'
+        $uid = (int) $user->add([
+            'name' => 'preupdate_user',
         ]);
         $this->integer($uid)->isGreaterThan(0);
         $this->boolean($user->getFromDB($uid))->isTrue();
 
         $this->boolean($user->update([
-           'id'     => $uid,
-           'name'   => 'preupdate_user_edited'
+            'id'     => $uid,
+            'name'   => 'preupdate_user_edited',
         ]))->isTrue();
         $this->hasNoSessionMessages([ERROR, WARNING]);
 
         //can update with same name when id is identical
         $this->boolean($user->update([
-           'id'     => $uid,
-           'name'   => 'preupdate_user_edited'
+            'id'     => $uid,
+            'name'   => 'preupdate_user_edited',
         ]))->isTrue();
         $this->hasNoSessionMessages([ERROR, WARNING]);
 
         $this->integer(
-            (int)$user->add(['name' => 'do_exist'])
+            (int) $user->add(['name' => 'do_exist'])
         )->isGreaterThan(0);
         $this->boolean($user->update([
-           'id'     => $uid,
-           'name'   => 'do_exist'
+            'id'     => $uid,
+            'name'   => 'do_exist',
         ]))->isTrue();
         $this->hasSessionMessages(ERROR, ['Unable to update login. A user already exists.']);
 
@@ -719,8 +721,8 @@ class User extends \DbTestCase
         $this->string($user->fields['name'])->isIdenticalTo('preupdate_user_edited');
 
         $this->boolean($user->update([
-           'id'     => $uid,
-           'name'   => 'in+valid'
+            'id'     => $uid,
+            'name'   => 'in+valid',
         ]))->isTrue();
         $this->hasSessionMessages(ERROR, ['The login is not valid. Unable to update login.']);
     }
@@ -729,7 +731,7 @@ class User extends \DbTestCase
     {
         $user = $this->newTestedInstance;
 
-        $uid = (int)$user->add(['name' => 'id_by_name']);
+        $uid = (int) $user->add(['name' => 'id_by_name']);
         $this->integer($uid)->isGreaterThan(0);
 
         $this->integer($user->getIdByName('id_by_name'))->isIdenticalTo($uid);
@@ -739,9 +741,9 @@ class User extends \DbTestCase
     {
         $user = $this->newTestedInstance;
 
-        $uid = (int)$user->add([
-           'name'   => 'id_by_field',
-           'phone'  => '+33123456789'
+        $uid = (int) $user->add([
+            'name'   => 'id_by_field',
+            'phone'  => '+33123456789',
         ]);
         $this->integer($uid)->isGreaterThan(0);
 
@@ -749,9 +751,9 @@ class User extends \DbTestCase
 
         $this->integer(
             $user->add([
-              'name'   => 'id_by_field2',
-              'phone'  => '+33123456789'
-         ])
+                'name'   => 'id_by_field2',
+                'phone'  => '+33123456789',
+            ])
         )->isGreaterThan(0);
         $this->boolean($user->getIdByField('phone', '+33123456789'))->isFalse();
 
@@ -781,38 +783,38 @@ class User extends \DbTestCase
         $time = time();
 
         return [
-           [
-              'last_update'                     => date('Y-m-d H:i:s', strtotime('-10 years', $time)),
-              'expiration_delay'                => -1,
-              'expiration_notice'               => -1,
-              'expected_expiration_time'        => null,
-              'expected_should_change_password' => false,
-              'expected_has_password_expire'    => false,
-           ],
-           [
-              'last_update'                     => date('Y-m-d H:i:s', strtotime('-10 days', $time)),
-              'expiration_delay'                => 15,
-              'expiration_notice'               => -1,
-              'expected_expiration_time'        => strtotime('+5 days', $time),
-              'expected_should_change_password' => false, // not yet in notice time
-              'expected_has_password_expire'    => false,
-           ],
-           [
-              'last_update'                     => date('Y-m-d H:i:s', strtotime('-10 days', $time)),
-              'expiration_delay'                => 15,
-              'expiration_notice'               => 10,
-              'expected_expiration_time'        => strtotime('+5 days', $time),
-              'expected_should_change_password' => true,
-              'expected_has_password_expire'    => false,
-           ],
-           [
-              'last_update'                     => date('Y-m-d H:i:s', strtotime('-20 days', $time)),
-              'expiration_delay'                => 15,
-              'expiration_notice'               => -1,
-              'expected_expiration_time'        => strtotime('-5 days', $time),
-              'expected_should_change_password' => true,
-              'expected_has_password_expire'    => true,
-           ],
+            [
+                'last_update'                     => date('Y-m-d H:i:s', strtotime('-10 years', $time)),
+                'expiration_delay'                => -1,
+                'expiration_notice'               => -1,
+                'expected_expiration_time'        => null,
+                'expected_should_change_password' => false,
+                'expected_has_password_expire'    => false,
+            ],
+            [
+                'last_update'                     => date('Y-m-d H:i:s', strtotime('-10 days', $time)),
+                'expiration_delay'                => 15,
+                'expiration_notice'               => -1,
+                'expected_expiration_time'        => strtotime('+5 days', $time),
+                'expected_should_change_password' => false, // not yet in notice time
+                'expected_has_password_expire'    => false,
+            ],
+            [
+                'last_update'                     => date('Y-m-d H:i:s', strtotime('-10 days', $time)),
+                'expiration_delay'                => 15,
+                'expiration_notice'               => 10,
+                'expected_expiration_time'        => strtotime('+5 days', $time),
+                'expected_should_change_password' => true,
+                'expected_has_password_expire'    => false,
+            ],
+            [
+                'last_update'                     => date('Y-m-d H:i:s', strtotime('-20 days', $time)),
+                'expiration_delay'                => 15,
+                'expiration_notice'               => -1,
+                'expected_expiration_time'        => strtotime('-5 days', $time),
+                'expected_should_change_password' => true,
+                'expected_has_password_expire'    => true,
+            ],
         ];
     }
 
@@ -833,10 +835,10 @@ class User extends \DbTestCase
         $username = 'prepare_for_update_' . mt_rand();
         $user_id = $user->add(
             [
-              'name'      => $username,
-              'password'  => 'pass',
-              'password2' => 'pass'
-         ]
+                'name'      => $username,
+                'password'  => 'pass',
+                'password2' => 'pass',
+            ]
         );
         $this->integer($user_id)->isGreaterThan(0);
         $this->boolean($user->update(['id' => $user_id, 'password_last_update' => $last_update]))->isTrue();
@@ -869,92 +871,92 @@ class User extends \DbTestCase
         for ($i = 1; $i < 100; $i += 10) {
             $user_id = $user->add(
                 [
-                  'name'     => 'cron_user_' . mt_rand(),
-                  'authtype' => \Auth::DB_GLPI,
-            ]
+                    'name'     => 'cron_user_' . mt_rand(),
+                    'authtype' => \Auth::DB_GLPI,
+                ]
             );
             $this->integer($user_id)->isGreaterThan(0);
             $this->boolean(
                 $user->update(
                     [
-                     'id' => $user_id,
-                     'password_last_update' => date('Y-m-d H:i:s', strtotime('-' . $i . ' days')),
-               ]
+                        'id' => $user_id,
+                        'password_last_update' => date('Y-m-d H:i:s', strtotime('-' . $i . ' days')),
+                    ]
                 )
             )->isTrue();
         }
 
         return [
-           // validate that cron does nothing if password expiration is not active (default config)
-           [
-              'expiration_delay'               => -1,
-              'notice_delay'                   => -1,
-              'lock_delay'                     => -1,
-              'cron_limit'                     => 100,
-              'expected_result'                => 0, // 0 = nothing to do
-              'expected_notifications_count'   => 0,
-              'expected_lock_count'            => 0,
-           ],
-           // validate that cron send no notification if password_expiration_notice == -1
-           [
-              'expiration_delay'               => 15,
-              'notice_delay'                   => -1,
-              'lock_delay'                     => -1,
-              'cron_limit'                     => 100,
-              'expected_result'                => 0, // 0 = nothing to do
-              'expected_notifications_count'   => 0,
-              'expected_lock_count'            => 0,
-           ],
-           // validate that cron send notifications instantly if password_expiration_notice == 0
-           [
-              'expiration_delay'               => 50,
-              'notice_delay'                   => 0,
-              'lock_delay'                     => -1,
-              'cron_limit'                     => 100,
-              'expected_result'                => 1, // 1 = fully processed
-              'expected_notifications_count'   => 5, // 5 users should be notified (them which has password set more than 50 days ago)
-              'expected_lock_count'            => 0,
-           ],
-           // validate that cron send notifications before expiration if password_expiration_notice > 0
-           [
-              'expiration_delay'               => 50,
-              'notice_delay'                   => 20,
-              'lock_delay'                     => -1,
-              'cron_limit'                     => 100,
-              'expected_result'                => 1, // 1 = fully processed
-              'expected_notifications_count'   => 7, // 7 users should be notified (them which has password set more than 50-20 days ago)
-              'expected_lock_count'            => 0,
-           ],
-           // validate that cron returns partial result if there is too many notifications to send
-           [
-              'expiration_delay'               => 50,
-              'notice_delay'                   => 20,
-              'lock_delay'                     => -1,
-              'cron_limit'                     => 5,
-              'expected_result'                => -1, // -1 = partially processed
-              'expected_notifications_count'   => 5, // 5 on 7 users should be notified (them which has password set more than 50-20 days ago)
-              'expected_lock_count'            => 0,
-           ],
-           // validate that cron disable users instantly if password_expiration_lock_delay == 0
-           [
-              'expiration_delay'               => 50,
-              'notice_delay'                   => -1,
-              'lock_delay'                     => 0,
-              'cron_limit'                     => 100,
-              'expected_result'                => 1, // 1 = fully processed
-              'expected_notifications_count'   => 0,
-              'expected_lock_count'            => 5, // 5 users should be locked (them which has password set more than 50 days ago)
-           ],
-           // validate that cron disable users with given delay if password_expiration_lock_delay > 0
-           [
-              'expiration_delay'               => 20,
-              'notice_delay'                   => -1,
-              'lock_delay'                     => 10,
-              'cron_limit'                     => 100,
-              'expected_result'                => 1, // 1 = fully processed
-              'expected_notifications_count'   => 0,
-              'expected_lock_count'            => 7, // 7 users should be locked (them which has password set more than 20+10 days ago)
-           ],
+            // validate that cron does nothing if password expiration is not active (default config)
+            [
+                'expiration_delay'               => -1,
+                'notice_delay'                   => -1,
+                'lock_delay'                     => -1,
+                'cron_limit'                     => 100,
+                'expected_result'                => 0, // 0 = nothing to do
+                'expected_notifications_count'   => 0,
+                'expected_lock_count'            => 0,
+            ],
+            // validate that cron send no notification if password_expiration_notice == -1
+            [
+                'expiration_delay'               => 15,
+                'notice_delay'                   => -1,
+                'lock_delay'                     => -1,
+                'cron_limit'                     => 100,
+                'expected_result'                => 0, // 0 = nothing to do
+                'expected_notifications_count'   => 0,
+                'expected_lock_count'            => 0,
+            ],
+            // validate that cron send notifications instantly if password_expiration_notice == 0
+            [
+                'expiration_delay'               => 50,
+                'notice_delay'                   => 0,
+                'lock_delay'                     => -1,
+                'cron_limit'                     => 100,
+                'expected_result'                => 1, // 1 = fully processed
+                'expected_notifications_count'   => 5, // 5 users should be notified (them which has password set more than 50 days ago)
+                'expected_lock_count'            => 0,
+            ],
+            // validate that cron send notifications before expiration if password_expiration_notice > 0
+            [
+                'expiration_delay'               => 50,
+                'notice_delay'                   => 20,
+                'lock_delay'                     => -1,
+                'cron_limit'                     => 100,
+                'expected_result'                => 1, // 1 = fully processed
+                'expected_notifications_count'   => 7, // 7 users should be notified (them which has password set more than 50-20 days ago)
+                'expected_lock_count'            => 0,
+            ],
+            // validate that cron returns partial result if there is too many notifications to send
+            [
+                'expiration_delay'               => 50,
+                'notice_delay'                   => 20,
+                'lock_delay'                     => -1,
+                'cron_limit'                     => 5,
+                'expected_result'                => -1, // -1 = partially processed
+                'expected_notifications_count'   => 5, // 5 on 7 users should be notified (them which has password set more than 50-20 days ago)
+                'expected_lock_count'            => 0,
+            ],
+            // validate that cron disable users instantly if password_expiration_lock_delay == 0
+            [
+                'expiration_delay'               => 50,
+                'notice_delay'                   => -1,
+                'lock_delay'                     => 0,
+                'cron_limit'                     => 100,
+                'expected_result'                => 1, // 1 = fully processed
+                'expected_notifications_count'   => 0,
+                'expected_lock_count'            => 5, // 5 users should be locked (them which has password set more than 50 days ago)
+            ],
+            // validate that cron disable users with given delay if password_expiration_lock_delay > 0
+            [
+                'expiration_delay'               => 20,
+                'notice_delay'                   => -1,
+                'lock_delay'                     => 10,
+                'cron_limit'                     => 100,
+                'expected_result'                => 1, // 1 = fully processed
+                'expected_notifications_count'   => 0,
+                'expected_lock_count'            => 7, // 7 users should be locked (them which has password set more than 20+10 days ago)
+            ],
         ];
     }
 
@@ -994,8 +996,8 @@ class User extends \DbTestCase
         $DB->delete(\Alert::getTable(), ['itemtype' => \User::getType()]); // reset alerts
 
         $user_crit = [
-           'authtype'  => \Auth::DB_GLPI,
-           'is_active' => 0,
+            'authtype'  => \Auth::DB_GLPI,
+            'is_active' => 0,
         ];
         $this->integer(countElementsInTable(\User::getTable(), $user_crit))->isEqualTo($expected_lock_count);
         $DB->update(\User::getTable(), ['is_active' => 1], $user_crit); // reset users

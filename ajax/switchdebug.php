@@ -38,14 +38,14 @@ if (Config::canUpdate()) {
     $user = new User();
     $user->update(
         [
-          'id'        => Session::getLoginUserID(),
-          'use_mode'  => $mode
+            'id'        => Session::getLoginUserID(),
+            'use_mode'  => $mode,
         ]
     );
     Session::addMessageAfterRedirect(
-        $_SESSION['glpi_use_mode'] == Session::DEBUG_MODE ?
-          __('Debug mode has been enabled!') :
-          __('Debug mode has been disabled!')
+        $_SESSION['glpi_use_mode'] == Session::DEBUG_MODE
+          ? __('Debug mode has been enabled!')
+          : __('Debug mode has been disabled!')
     );
 }
 
