@@ -1339,21 +1339,25 @@ class Infocom extends CommonDBChild
                                 ],
                                 ]
                              ],
-                             __('Start date of warranty') => [
-                           'type' => 'date',
-                           'name' => 'warranty_date',
-                           'value' => $ic->fields["warranty_date"],
-                           $withtemplate == 2 ? 'disabled' : '' => true
-                          ],
                              __('Warranty information') => [
                           'visible' => true,
                           'inputs' => [
+                           __('Start date of warranty') => [
+                              'type' => 'date',
+                              'name' => 'warranty_date',
+                              'value' => $ic->fields["warranty_date"],
+                              'col_md' => 6,
+                              'col_lg' => 6,
+                              $withtemplate == 2 ? 'disabled' : '' => true
+                           ],
                            __('Warranty duration') => $withtemplate == 2 ? [
                               'content' => $ic->fields["warranty_duration"] == -1 ? __('Lifelong') :
                                       sprintf(
                                           _n('%d month', '%d months', $ic->fields["warranty_duration"]),
                                           $ic->fields["warranty_duration"]
                                       ),
+                              'col_md' => 6,
+                              'col_lg' => 6,
                            ] : [
                               'type' => 'number',
                               'name' => 'warranty_duration',
@@ -1363,17 +1367,23 @@ class Infocom extends CommonDBChild
                               'unit' => 'month',
                               'after' => '(-1 = ' . __('Lifelong') . ')',
                               'value' => $ic->fields["warranty_duration"],
+                              'col_md' => 6,
+                              'col_lg' => 6,
                            ],
                            __('Warranty information') => [
                               'type' => 'text',
                               'name' => 'warranty_info',
                               'value' => $ic->fields["warranty_info"],
+                              'col_md' => 6,
+                              'col_lg' => 6,
                            ],
                            __('Alarms on financial and administrative information') => $CFG_GLPI['use_notifications'] ? [
                               'type' => 'select',
                               'name' => 'alert',
                               'values' => self::getAlertName(),
                               'value' => $ic->fields["alert"],
+                              'col_md' => 6,
+                              'col_lg' => 6,
                            ] : [],
                           ]
                           ]
