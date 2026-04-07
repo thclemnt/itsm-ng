@@ -273,13 +273,13 @@ $CFG_GLPI["linkgroup_types"]              = [
 $CFG_GLPI["linkuser_tech_types"]          = [
    'Computer', 'ConsumableItem', 'Monitor', 'NetworkEquipment',
    'Peripheral', 'Phone', 'Printer', 'Software',
-   'SoftwareLicense', 'Certificate', 'Appliance'
+   'SoftwareLicense', 'Certificate', 'Cluster', 'Domain', 'Appliance'
 ];
 
 $CFG_GLPI["linkgroup_tech_types"]         = [
    'Computer', 'ConsumableItem', 'Monitor', 'NetworkEquipment',
    'Peripheral', 'Phone', 'Printer', 'Software',
-   'SoftwareLicense', 'Certificate', 'Appliance'
+   'SoftwareLicense', 'Certificate', 'Cluster', 'Domain', 'Appliance'
 ];
 
 $CFG_GLPI["location_types"]               = [
