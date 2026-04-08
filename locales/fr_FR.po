@@ -25151,6 +25151,14 @@ msgstr "Gérer le suivi par courriel"
 msgid "New actors are added when you save the ticket."
 msgstr "Les nouveaux acteurs sont ajoutés lorsque vous enregistrez le ticket."
 
+#: inc/infocom.class.php
+msgid "Custom"
+msgstr "Personnalisé"
+
+#: inc/infocom.class.php
+msgid "Months"
+msgstr "Mois"
+
 #~ msgid ""
 #~ "No time zones are available. Please check your database configuration."
 #~ msgstr ""
