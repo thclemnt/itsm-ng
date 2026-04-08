@@ -30,6 +30,8 @@
  * ---------------------------------------------------------------------
  */
 
+use Glpi\Toolbox\URL;
+
 if (!defined('GLPI_ROOT')) {
    die("Sorry. You can't access this file directly");
 }
@@ -432,14 +434,17 @@ class Supplier extends CommonDBTM {
       $ret = '&nbsp;&nbsp;&nbsp;&nbsp;';
 
       if ($withname) {
-         $ret .= $this->fields["name"];
+         $ret .= htmlspecialchars((string) $this->fields["name"], ENT_QUOTES, 'UTF-8');
          $ret .= "&nbsp;&nbsp;";
       }
 
       if (!empty($this->fields['website'])) {
-         $ret .= "<a href='".Toolbox::formatOutputWebLink($this->fields['website'])."' target='_blank'>
-                  <img src='".$CFG_GLPI["root_doc"]."/pics/web.png' class='middle' alt=\"".
-                   __s('Web')."\" title=\"".__s('Web')."\"></a>&nbsp;&nbsp;";
+         $website_url = URL::sanitizeURL(Toolbox::formatOutputWebLink($this->fields['website']));
+         if ($website_url !== '') {
+            $ret .= "<a href='".htmlspecialchars($website_url, ENT_QUOTES, 'UTF-8')."' target='_blank'>
+                     <img src='".$CFG_GLPI["root_doc"]."/pics/web.png' class='middle' alt=\"".
+                      __s('Web')."\" title=\"".__s('Web')."\"></a>&nbsp;&nbsp;";
+         }
       }
 
       if ($this->can($this->fields['id'], READ)) {
