@@ -129,11 +129,6 @@
                     "reference": "master"
                 }
             }
-        },
-        {
-            "type": "composer",
-            "url": "https://www.bioinformatics.org/phplabware/downloads/",
-            "name": "htmlawed"
         }
     ]
 }
