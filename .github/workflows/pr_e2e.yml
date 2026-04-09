@@ -10,33 +10,14 @@ jobs:
     permissions:
       contents: read
     env:
-      COMPOSE_FILE: .github/actions/docker-compose-app.yml:.github/actions/docker-compose-services.yml:.github/actions/docker-compose-e2e.yml
-      APPLICATION_ROOT: ${{ github.workspace }}
-      APP_CONTAINER_HOME: ${{ github.workspace }}/tests/files/_github_actions_app_home
       DB_IMAGE: mariadb:10.11
       PHP_IMAGE: itsm-tests-app:local
-      UPDATE_FILES_ACL: true
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Initialize containers
-        run: .github/actions/init_containers-start.sh
-
-      - name: Show versions
-        run: .github/actions/init_show-versions.sh
-
-      - name: Install dependencies
-        run: .github/actions/docker-compose.sh exec -T app .github/actions/init_install-dependencies.sh
-
-      - name: Install ITSM-ng test database
-        run: .github/actions/docker-compose.sh exec -T app .github/actions/test_install.sh
-
-      - name: Prepare E2E API access
-        run: .github/actions/docker-compose.sh exec -T app bash .github/actions/test_tests-e2e-prepare.sh
-
       - name: Run Playwright E2E tests
-        run: .github/actions/docker-compose.sh exec -T e2e bash .github/actions/test_tests-e2e.sh
+        run: ./tests/run_tests.sh --build e2e
 
       - name: Upload Playwright artifacts
         if: failure()
@@ -44,6 +25,3 @@ jobs:
         with:
           name: playwright-artifacts
           path: tests/files/_playwright
-
-      - name: Cleanup containers
-        run: .github/actions/teardown_containers-cleanup.sh
