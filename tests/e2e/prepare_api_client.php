@@ -14,6 +14,17 @@ define(
 );
 
 require_once GLPI_ROOT . '/inc/based_config.php';
+
+// Ensure all VAR directories exist (cache etc)
+foreach (get_defined_constants() as $constant_name => $constant_value) {
+    if (
+        preg_match('/^GLPI_[\w]+_DIR$/', $constant_name)
+        && preg_match('/^' . preg_quote(GLPI_VAR_DIR, '/') . '\//', $constant_value)
+    ) {
+        is_dir($constant_value) or mkdir($constant_value, 0755, true);
+    }
+}
+
 require_once GLPI_ROOT . '/inc/includes.php';
 
 $outputFile = $argv[1] ?? (__DIR__ . '/../files/_playwright/app-token');
@@ -23,6 +34,24 @@ Session::start();
 $auth = new Auth();
 if (!$auth->login('itsm', 'itsm', true)) {
     throw new RuntimeException('Unable to login with the default E2E admin account.');
+}
+
+// Prevents output polution from DEBUG mode (this thing is horrible)
+Toolbox::setDebugMode(Session::NORMAL_MODE, false, false, false);
+
+$user = new User();
+if (!$user->getFromDBbyName('itsm')) {
+    throw new RuntimeException('Unable to load the default E2E admin account.');
+}
+
+if ((int) ($user->fields['use_mode'] ?? Session::NORMAL_MODE) !== Session::NORMAL_MODE) {
+    $result = $user->update([
+        'id' => $user->getID(),
+        'use_mode' => Session::NORMAL_MODE,
+    ]);
+    if (!$result) {
+        throw new RuntimeException('Unable to force the default E2E admin account into normal mode.');
+    }
 }
 
 $client = new APIClient();
