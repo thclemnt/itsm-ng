@@ -9,10 +9,13 @@ export interface SeedTicketResult {
   ticketName: string;
   ticketContent: string;
   ticketUrl: string;
+  userId: number;
   taskId?: number;
   taskContent?: string;
   taskState?: string;
 }
+
+export type ActorPanelRole = 'requester' | 'observer' | 'assign';
 
 interface ApiSession {
   apiUrl: string;
@@ -155,6 +158,7 @@ export async function seedTicket(request: APIRequestContext, options: SeedTicket
       ticketName,
       ticketContent,
       ticketUrl: `/front/ticket.form.php?id=${ticketId}`,
+      userId: session.userId,
     };
 
     if (options.withTaskState) {
@@ -182,6 +186,65 @@ export async function seedTicket(request: APIRequestContext, options: SeedTicket
   }
 }
 
+function getCollectionItems(data: unknown): Array<Record<string, unknown>> {
+  if (Array.isArray(data)) {
+    return data.filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null);
+  }
+
+  if (typeof data !== 'object' || data === null) {
+    return [];
+  }
+
+  return Object.entries(data)
+    .filter(([key, value]) => /^\d+$/.test(key) && typeof value === 'object' && value !== null)
+    .map(([, value]) => value as Record<string, unknown>);
+}
+
+export async function findTicketIdByName(request: APIRequestContext, ticketName: string): Promise<number | null> {
+  const session = await initApiSession(request);
+
+  try {
+    const response = await request.get(`${session.apiUrl}Ticket/`, {
+      headers: {
+        'App-Token': getAppToken(),
+        'Session-Token': session.sessionToken,
+      },
+      params: {
+        'searchText[name]': ticketName,
+      },
+    });
+    const data = await parseJsonResponse<unknown>(response, `Finding ticket "${ticketName}"`);
+    const match = getCollectionItems(data).find((item) => item.name === ticketName);
+
+    if (match?.id === undefined || Number.isNaN(Number(match.id))) {
+      return null;
+    }
+
+    return Number(match.id);
+  } finally {
+    await closeApiSession(request, session);
+  }
+}
+
+export async function waitForTicketIdByName(
+  request: APIRequestContext,
+  ticketName: string,
+  timeoutMs = 10_000
+): Promise<number> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() <= deadline) {
+    const ticketId = await findTicketIdByName(request, ticketName);
+    if (ticketId !== null) {
+      return ticketId;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+
+  throw new Error(`Unable to find ticket "${ticketName}" within ${timeoutMs}ms.`);
+}
+
 export async function login(page: Page): Promise<void> {
   await page.goto('/index.php');
   await page.locator('#login_name').fill('itsm');
@@ -193,6 +256,30 @@ export async function login(page: Page): Promise<void> {
 export async function openTicket(page: Page, seed: SeedTicketResult): Promise<void> {
   await page.goto(seed.ticketUrl);
   await expect(page.getByTestId('timeline-history')).toBeVisible();
+}
+
+export function getActorPanel(page: Page, role: ActorPanelRole): Locator {
+  return page.locator(`.itil-actor-card[data-actor-role="${role}"]`).first();
+}
+
+export async function waitForActorValueSelect(panel: Locator): Promise<Locator> {
+  const selector = panel.locator('[data-role="selector-container"] select').first();
+  await expect(selector).toBeAttached();
+  return selector;
+}
+
+export async function submitForm(
+  page: Page,
+  submitName: 'add' | 'update',
+  root: Locator | Page = page
+): Promise<void> {
+  const submitButton = root.locator(`button[name="${submitName}"], input[name="${submitName}"]:not([type="hidden"])`).first();
+  await expect(submitButton).toBeAttached();
+  await Promise.all([
+    page.waitForLoadState('domcontentloaded'),
+    submitButton.click(),
+  ]);
+  await page.waitForLoadState('networkidle');
 }
 
 export async function fillRichTextForm(form: Locator, content: string): Promise<void> {
@@ -217,7 +304,10 @@ export async function fillRichTextForm(form: Locator, content: string): Promise<
 
   await page.evaluate(
     ({ value, id }) => {
-      const textareaElement = document.querySelector(`textarea[name="content"]${id ? `#${id}` : ''}`) as HTMLTextAreaElement | null;
+      const textareaById = id ? document.getElementById(id) : null;
+      const textareaElement = textareaById instanceof HTMLTextAreaElement
+        ? textareaById
+        : document.querySelector('textarea[name="content"]') as HTMLTextAreaElement | null;
       if (!textareaElement) {
         throw new Error('Unable to find the timeline content textarea.');
       }
@@ -247,9 +337,5 @@ export async function fillRichTextForm(form: Locator, content: string): Promise<
 }
 
 export async function submitAddForm(form: Locator, page: Page): Promise<void> {
-  await Promise.all([
-    page.waitForLoadState('domcontentloaded'),
-    form.locator('[name="add"]').click(),
-  ]);
-  await page.waitForLoadState('networkidle');
+  await submitForm(page, 'add', form);
 }
