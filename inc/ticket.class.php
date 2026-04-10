@@ -4793,8 +4793,7 @@ class Ticket extends CommonITILObject
         array $hiddenFields,
         array $existingKeys,
         bool $isNew
-    )
-    {
+    ) {
         $entries = [];
 
         foreach ($definitions as $type => $definition) {
@@ -5095,7 +5094,7 @@ class Ticket extends CommonITILObject
                     'tempValueField'        => sprintf('%s[%ss_id]', $definition['temp_field'], $type),
                     'tempNotifFieldPrefix'  => sprintf('%s[use_notification]', $definition['temp_field']),
                     'tempEmailFieldPrefix'  => sprintf('%s[alternative_email]', $definition['temp_field']),
-                    'defaultUseNotification'=> $defaultUseNotification,
+                    'defaultUseNotification' => $defaultUseNotification,
                 ];
             }
 

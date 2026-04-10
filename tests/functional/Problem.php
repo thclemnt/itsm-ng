@@ -179,7 +179,7 @@ class Problem extends DbTestCase
               '_type'            => 'user',
               'users_id'         => $users_id_assign,
               'use_notification' => ['1'],
-              'alternative_email'=> [''],
+              'alternative_email' => [''],
            ],
         ]);
 
