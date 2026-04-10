@@ -37,7 +37,7 @@ TESTS_SUITES=(
   "install"
   "update"
   "units"
-  "functionnal"
+  "functional"
   "ldap"
   "imap"
   "web"
@@ -100,7 +100,7 @@ Available tests suites:
  - install
  - update
  - units
- - functionnal
+ - functional
  - ldap
  - imap
  - web
@@ -163,8 +163,8 @@ do
          docker-compose exec -T app .github/actions/test_tests-units.sh \
       || LAST_EXIT_CODE=$?
       ;;
-    "functionnal")
-         docker-compose exec -T app .github/actions/test_tests-functionnal.sh \
+    "functional")
+         docker-compose exec -T app .github/actions/test_tests-functional.sh \
       || LAST_EXIT_CODE=$?
       ;;
     "ldap")

@@ -344,6 +344,40 @@ class Change extends DbTestCase
         $this->integer((int)$change->fields['status'])->isEqualTo(\CommonITILObject::INCOMING);
     }
 
+    public function testShowFormNewItem()
+    {
+        $change = new \Change();
+        $change->getEmpty();
+
+        $this->login();
+
+        ob_start();
+        $change->showForm($change->getID());
+        $html = ob_get_clean();
+
+        $this->string((string)$html)->isNotEmpty();
+    }
+
+    public function testShowFormClosedItem()
+    {
+        $this->login();
+
+        $change = new \Change();
+        $change_id = $change->add([
+           'name'        => 'closed change form',
+           'content'     => 'closed change form',
+           'entities_id' => getItemByTypeName('Entity', '_test_root_entity', true),
+           'status'      => \CommonITILObject::CLOSED,
+        ]);
+        $this->integer((int)$change_id)->isGreaterThan(0);
+
+        ob_start();
+        $change->showForm($change_id);
+        $html = ob_get_clean();
+
+        $this->string((string)$html)->isNotEmpty();
+    }
+
     public function testCreateChangeFromUser()
     {
         $this->login();

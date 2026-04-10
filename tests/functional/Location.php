@@ -121,6 +121,41 @@ class Location extends DbTestCase
         $this->integer((int)$location->findID($params))->isIdenticalTo((int)$location_id_2);
     }
 
+    public function testUnicity()
+    {
+        $location_1 = new \Location();
+        $location_1_id = $location_1->add([
+           'name' => 'Unique location',
+        ]);
+        $this->integer((int)$location_1_id)->isGreaterThan(0);
+        $this->boolean($location_1->getFromDB($location_1_id))->isTrue();
+        $this->string($location_1->fields['completename'])->isIdenticalTo('Unique location');
+
+        $location_2 = new \Location();
+        $location_2_id = $location_2->add([
+           'name' => 'Non unique location',
+        ]);
+        $this->integer((int)$location_2_id)->isGreaterThan(0);
+        $this->boolean($location_2->getFromDB($location_2_id))->isTrue();
+        $this->string($location_2->fields['completename'])->isIdenticalTo('Non unique location');
+
+        $this->exception(
+            function () use ($location_2, $location_2_id) {
+                $location_2->update([
+                   'id'   => $location_2_id,
+                   'name' => 'Unique location',
+                ]);
+            }
+        )
+           ->isInstanceOf('GlpitestSQLError')
+           ->message
+              ->matches("#Duplicate entry '.+' for key '(" . $location_2->getTable() . "\\.)?unicity'#");
+
+        $this->boolean($location_2->getFromDB($location_2_id))->isTrue();
+        $this->string($location_2->fields['name'])->isIdenticalTo('Non unique location');
+        $this->string($location_2->fields['completename'])->isIdenticalTo('Non unique location');
+    }
+
     protected function importProvider()
     {
         $root_entity_id = getItemByTypeName('Entity', '_test_root_entity', true);
