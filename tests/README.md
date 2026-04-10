@@ -50,8 +50,8 @@ Running the test suite on developpement env
 
 There are multiple directories for tests:
 - `tests/units` for unit tests;
-- `tests/functionnal` for functionnal tests;
 - `tests/e2e` for Playwright browser end-to-end tests, with specs stored in `tests/e2e/spec`;
+- `tests/functional` for functional tests;
 - `tests/imap` for Mail collector tests;
 - `tests/LDAP` for LDAP connection tests;
 - `tests/web` for API tests.

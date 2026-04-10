@@ -37,8 +37,8 @@ TESTS_SUITES=(
   "install"
   "update"
   "units"
-  "functionnal"
   "e2e"
+  "functional"
   "ldap"
   "imap"
   "web"
@@ -101,8 +101,8 @@ Available tests suites:
  - install
  - update
  - units
- - functionnal
  - e2e
+ - functional
  - ldap
  - imap
  - web
@@ -174,8 +174,8 @@ do
          "$COMPOSE_CMD" exec -T app .github/actions/test_tests-units.sh \
       || LAST_EXIT_CODE=$?
       ;;
-    "functionnal")
-         "$COMPOSE_CMD" exec -T app .github/actions/test_tests-functionnal.sh \
+    "functional")
+         "$COMPOSE_CMD" exec -T app .github/actions/test_tests-functional.sh \
       || LAST_EXIT_CODE=$?
       ;;
     "e2e")
