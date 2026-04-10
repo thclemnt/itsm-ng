@@ -22,7 +22,7 @@ function expandSelect(&$select, $fields = [])
         }
         $select["values"] =
             ($select["display_emptychoice"] ?? true
-                ? [DROPDOWN::EMPTY_VALUE]
+                ? [Dropdown::EMPTY_VALUE]
                 : []) +
             getItemByEntity(
                 $select["itemtype"],
