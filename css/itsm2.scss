@@ -1532,8 +1532,14 @@ div.chip>p {
     width: 100%;
 }
 
-.select2-dropdown {
-    width: max-content !important;
+.select2-container--bootstrap-5 .select2-dropdown {
+    max-width: calc(100vw - 2rem);
+}
+
+.select2-container--bootstrap-5 .select2-dropdown .select2-results__option {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 @media (max-width: 768px) {
