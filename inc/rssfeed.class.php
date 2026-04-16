@@ -619,7 +619,6 @@ class RSSFeed extends CommonDBVisible implements ExtraVisibilityCriteria
         if (empty($input["name"])) {
             $input["name"] = __('Without title');
         }
-        unset($input["users_id"]);
         return $input;
     }
 
