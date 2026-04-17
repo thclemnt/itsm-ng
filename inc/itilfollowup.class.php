@@ -539,7 +539,7 @@ class ITILFollowup extends CommonDBChild
         $known_tags = array_fill_keys(
             array_filter(
                 array_map(
-                    static fn($tag) => is_scalar($tag) ? (string) $tag : '',
+                    static fn ($tag) => is_scalar($tag) ? (string) $tag : '',
                     $input[$tag_field]
                 )
             ),
