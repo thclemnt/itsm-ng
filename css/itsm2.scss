@@ -1284,6 +1284,43 @@ div.chip>p {
     }
 }
 
+.itsm-table-shell {
+    position: relative;
+}
+
+.sticky-table-header {
+    position: sticky;
+    top: -1px;
+    z-index: 5;
+    height: 0;
+    overflow: visible;
+    pointer-events: none;
+
+    &:not(.is-active) {
+        visibility: hidden;
+    }
+
+    .sticky-table-header__viewport {
+        display: none;
+        overflow: hidden;
+        background-color: var(--bs-body-bg, #fff);
+    }
+
+    &.is-active .sticky-table-header__viewport {
+        display: block;
+    }
+
+    .table {
+        margin-bottom: 0 !important;
+        background-color: var(--bs-body-bg, #fff);
+    }
+
+    .sticky-table-header__viewport,
+    .sticky-table-header__viewport * {
+        pointer-events: auto;
+    }
+}
+
 #firstboxlogin {
     background-color: var(--bs-header);
 }

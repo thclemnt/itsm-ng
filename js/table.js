@@ -445,6 +445,188 @@
             }
         };
 
+        let destroyStickyHeader = () => {};
+
+        const initStickyHeader = () => {
+            destroyStickyHeader();
+
+            const pageElement = document.getElementById('page');
+            const tableShell = wrapperElement.querySelector('.itsm-table-shell');
+            const tableContainer = wrapperElement.querySelector('.fixed-table-container');
+            const sourceTable = tableContainer ? tableContainer.querySelector('table') : null;
+            const sourceThead = sourceTable ? sourceTable.querySelector('thead') : null;
+            const stickyContainer = wrapperElement.querySelector('.sticky-table-header');
+
+            if (!pageElement || !tableShell || !tableContainer || !sourceTable || !sourceThead || !stickyContainer) {
+                destroyStickyHeader = () => {};
+                return;
+            }
+
+            const stickyViewport = document.createElement('div');
+            stickyViewport.className = 'sticky-table-header__viewport fixed-table-container';
+
+            const pagePaddingTop = parseFloat(window.getComputedStyle(pageElement).paddingTop) || 0;
+            stickyContainer.style.top = `${(-pagePaddingTop) - 1}px`;
+
+            const stickyTable = sourceTable.cloneNode(false);
+            stickyTable.setAttribute('aria-hidden', 'true');
+
+            const clonedThead = sourceThead.cloneNode(true);
+            const stickySelectAll = clonedThead.querySelector('#select-all');
+            if (stickySelectAll) {
+                stickySelectAll.removeAttribute('id');
+                stickySelectAll.setAttribute('data-sticky-select-all', 'true');
+            }
+
+            stickyTable.appendChild(clonedThead);
+            stickyViewport.appendChild(stickyTable);
+            stickyContainer.replaceChildren(stickyViewport);
+
+            const getSourceHeaders = () => Array.from(sourceThead.querySelectorAll('th'));
+            const getStickyHeaders = () => Array.from(clonedThead.querySelectorAll('th'));
+
+            const syncSelectAllState = () => {
+                const sourceSelectAll = sourceThead.querySelector('#select-all');
+                const clonedSelectAll = clonedThead.querySelector('[data-sticky-select-all="true"]');
+                if (sourceSelectAll && clonedSelectAll) {
+                    clonedSelectAll.checked = sourceSelectAll.checked;
+                    clonedSelectAll.indeterminate = sourceSelectAll.indeterminate;
+                }
+            };
+
+            const syncHorizontalScroll = () => {
+                stickyTable.style.transform = `translateX(${-tableContainer.scrollLeft}px)`;
+            };
+
+            const syncLayout = () => {
+                const sourceHeaders = getSourceHeaders();
+                const stickyHeaders = getStickyHeaders();
+
+                sourceHeaders.forEach((sourceHeader, index) => {
+                    const stickyHeader = stickyHeaders[index];
+                    if (!stickyHeader) {
+                        return;
+                    }
+
+                    const { width } = sourceHeader.getBoundingClientRect();
+                    const computedStyle = window.getComputedStyle(sourceHeader);
+
+                    stickyHeader.style.width = `${width}px`;
+                    stickyHeader.style.minWidth = `${width}px`;
+                    stickyHeader.style.maxWidth = `${width}px`;
+                    stickyHeader.style.height = `${sourceHeader.getBoundingClientRect().height}px`;
+                    stickyHeader.style.backgroundColor = computedStyle.backgroundColor;
+                    stickyHeader.style.color = computedStyle.color;
+                });
+
+                stickyTable.style.width = `${sourceTable.getBoundingClientRect().width}px`;
+                stickyViewport.style.width = `${tableContainer.clientWidth}px`;
+
+                syncHorizontalScroll();
+                syncSelectAllState();
+            };
+
+            const syncVisibility = () => {
+                const pageRect = pageElement.getBoundingClientRect();
+                const shellRect = tableShell.getBoundingClientRect();
+                const headerHeight = sourceThead.getBoundingClientRect().height;
+                const stickyActivationTop = pageRect.top + pagePaddingTop;
+                const isStickyVisible = shellRect.top < stickyActivationTop && (shellRect.bottom - headerHeight) > stickyActivationTop;
+
+                stickyContainer.classList.toggle('is-active', isStickyVisible);
+            };
+
+            const handleStickyClick = (event) => {
+                const stickyCheckbox = event.target.closest('[data-sticky-select-all="true"]');
+                if (stickyCheckbox) {
+                    const sourceSelectAll = sourceThead.querySelector('#select-all');
+                    if (!sourceSelectAll) {
+                        return;
+                    }
+
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    sourceSelectAll.checked = stickyCheckbox.checked;
+                    sourceSelectAll.dispatchEvent(new Event('change', { bubbles: true }));
+                    syncSelectAllState();
+                    return;
+                }
+
+                const stickyInner = event.target.closest('.th-inner');
+                if (!stickyInner) {
+                    return;
+                }
+
+                const stickyHeader = stickyInner.closest('th');
+                if (!stickyHeader) {
+                    return;
+                }
+
+                const field = stickyHeader.getAttribute('data-field');
+                const sourceHeader = getSourceHeaders().find((headerCell) => headerCell.getAttribute('data-field') === field);
+                const sourceInner = sourceHeader ? sourceHeader.querySelector('.th-inner') : null;
+
+                if (!sourceInner) {
+                    return;
+                }
+
+                event.preventDefault();
+                event.stopPropagation();
+                sourceInner.click();
+            };
+
+            const handleWrapperChange = (event) => {
+                if (event.target.closest('.sticky-table-header')) {
+                    return;
+                }
+
+                syncSelectAllState();
+            };
+
+            const handlePageScroll = () => {
+                syncVisibility();
+            };
+
+            const handleResize = () => {
+                syncLayout();
+                syncVisibility();
+            };
+
+            stickyContainer.addEventListener('click', handleStickyClick);
+            tableContainer.addEventListener('scroll', syncHorizontalScroll);
+            pageElement.addEventListener('scroll', handlePageScroll);
+            wrapperElement.addEventListener('change', handleWrapperChange);
+            window.addEventListener('resize', handleResize);
+
+            let resizeObserver = null;
+            if (window.ResizeObserver) {
+                resizeObserver = new window.ResizeObserver(() => {
+                    syncLayout();
+                    syncVisibility();
+                });
+                resizeObserver.observe(sourceTable);
+                resizeObserver.observe(tableContainer);
+            }
+
+            requestAnimationFrame(() => {
+                syncLayout();
+                syncVisibility();
+            });
+
+            destroyStickyHeader = () => {
+                stickyContainer.removeEventListener('click', handleStickyClick);
+                tableContainer.removeEventListener('scroll', syncHorizontalScroll);
+                pageElement.removeEventListener('scroll', handlePageScroll);
+                wrapperElement.removeEventListener('change', handleWrapperChange);
+                window.removeEventListener('resize', handleResize);
+                if (resizeObserver) {
+                    resizeObserver.disconnect();
+                }
+                stickyContainer.replaceChildren();
+            };
+        };
+
         const openMassiveAction = () => {
             const dialog = window['massiveaction_window' + config.id];
             if (dialog && typeof dialog.dialog === 'function') {
@@ -686,92 +868,95 @@
             const tableContainerStyle = 'overflow-x: scroll;' + (hasLoadingOverlay ? ' position: relative;' : '');
 
             return html`
-                <div class="fixed-table-container" style=${tableContainerStyle}>
-                    <table class="table table-striped table-bordered table-hover">
-                        <thead>
-                            ${table.getHeaderGroups().map(headerGroup => html`
-                                <tr>
-                                    ${headerGroup.headers.map(header => {
-                                        const isSelectColumn = header.id === 'select';
-                                        const canSort = header.column.getCanSort();
-                                        const sortingState = header.column.getIsSorted();
+                <div class="itsm-table-shell">
+                    <div class="sticky-table-header" aria-hidden="true"></div>
+                    <div class="fixed-table-container" style=${tableContainerStyle}>
+                        <table class="table table-striped table-bordered table-hover">
+                            <thead>
+                                ${table.getHeaderGroups().map(headerGroup => html`
+                                    <tr>
+                                        ${headerGroup.headers.map(header => {
+                                            const isSelectColumn = header.id === 'select';
+                                            const canSort = header.column.getCanSort();
+                                            const sortingState = header.column.getIsSorted();
 
-                                        let thClasses = '';
-                                        let thInnerClasses = 'th-inner';
+                                            let thClasses = '';
+                                            let thInnerClasses = 'th-inner';
 
-                                        if (isSelectColumn) {
-                                            thClasses = 'bs-checkbox';
-                                        } else if (canSort) {
-                                            thInnerClasses += ' sortable both';
-                                            if (sortingState === 'asc') {
-                                                thInnerClasses += ' asc';
-                                            } else if (sortingState === 'desc') {
-                                                thInnerClasses += ' desc';
-                                            }
-                                        }
-
-                                        return html`
-                                            <th
-                                                class=${thClasses}
-                                                data-field=${header.column.id}
-                                                style=${isSelectColumn ? 'width: 36px' : ''}
-                                            >
-                                                <div
-                                                    class=${thInnerClasses}
-                                                    onClick=${canSort ? () => header.column.toggleSorting() : null}
-                                                >
-                                                    ${flexRender(header.column.columnDef.header, header.getContext())}
-                                                </div>
-                                                <div class="fht-cell"></div>
-                                            </th>
-                                        `;
-                                    })}
-                                </tr>
-                            `)}
-                        </thead>
-                        ${table.getRowModel().rows.length === 0 ? html`
-                            <tbody class="table-light">
-                                <tr class="no-records-found">
-                                    <td colspan=${table.getAllColumns().length}>
-                                        No matching records found
-                                    </td>
-                                </tr>
-                            </tbody>
-                        ` : html`
-                        <tbody class="table-light">
-                            ${table.getRowModel().rows.map(row => html`
-                                <tr>
-                                    ${row.getVisibleCells().map(cell => {
-                                        const isSelectColumn = cell.column.id === 'select';
-                                        const isDisabled = isSelectColumn && !radio && hasMassiveAction && !row.original.value;
-
-                                        return html`
-                                            <td
-                                                class=${isSelectColumn ? 'bs-checkbox' : ''}
-                                                style=${isSelectColumn ? 'width: 36px' : ''}
-                                            >
-                                                ${isSelectColumn && isDisabled ?
-                                                    html`<input type="checkbox" class="row-select" data-row-id=${row.id} disabled />` :
-                                                    flexRender(cell.column.columnDef.cell, cell.getContext())
+                                            if (isSelectColumn) {
+                                                thClasses = 'bs-checkbox';
+                                            } else if (canSort) {
+                                                thInnerClasses += ' sortable both';
+                                                if (sortingState === 'asc') {
+                                                    thInnerClasses += ' asc';
+                                                } else if (sortingState === 'desc') {
+                                                    thInnerClasses += ' desc';
                                                 }
-                                            </td>
-                                        `;
-                                    })}
-                                </tr>
-                            `)}
-                        </tbody>
-                        `}
-                    </table>
-                    ${isLoading ? html`
-                        <div
-                            class="loading-overlay"
-                            style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 255, 255, 0.8); display: flex; align-items: center; justify-content: center; z-index: 10;"
-                        >
-                            <div class="spinner-border" role="status">
-                                <span class="visually-hidden">Loading...</span>
+                                            }
+
+                                            return html`
+                                                <th
+                                                    class=${thClasses}
+                                                    data-field=${header.column.id}
+                                                    style=${isSelectColumn ? 'width: 36px' : ''}
+                                                >
+                                                    <div
+                                                        class=${thInnerClasses}
+                                                        onClick=${canSort ? () => header.column.toggleSorting() : null}
+                                                    >
+                                                        ${flexRender(header.column.columnDef.header, header.getContext())}
+                                                    </div>
+                                                    <div class="fht-cell"></div>
+                                                </th>
+                                            `;
+                                        })}
+                                    </tr>
+                                `)}
+                            </thead>
+                            ${table.getRowModel().rows.length === 0 ? html`
+                                <tbody class="table-light">
+                                    <tr class="no-records-found">
+                                        <td colspan=${table.getAllColumns().length}>
+                                            No matching records found
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            ` : html`
+                            <tbody class="table-light">
+                                ${table.getRowModel().rows.map(row => html`
+                                    <tr>
+                                        ${row.getVisibleCells().map(cell => {
+                                            const isSelectColumn = cell.column.id === 'select';
+                                            const isDisabled = isSelectColumn && !radio && hasMassiveAction && !row.original.value;
+
+                                            return html`
+                                                <td
+                                                    class=${isSelectColumn ? 'bs-checkbox' : ''}
+                                                    style=${isSelectColumn ? 'width: 36px' : ''}
+                                                >
+                                                    ${isSelectColumn && isDisabled ?
+                                                        html`<input type="checkbox" class="row-select" data-row-id=${row.id} disabled />` :
+                                                        flexRender(cell.column.columnDef.cell, cell.getContext())
+                                                    }
+                                                </td>
+                                            `;
+                                        })}
+                                    </tr>
+                                `)}
+                            </tbody>
+                            `}
+                        </table>
+                        ${isLoading ? html`
+                            <div
+                                class="loading-overlay"
+                                style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 255, 255, 0.8); display: flex; align-items: center; justify-content: center; z-index: 10;"
+                            >
+                                <div class="spinner-border" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
                             </div>
-                        </div>
-                    ` : ''}
+                        ` : ''}
+                    </div>
                 </div>
             `;
         };
@@ -820,6 +1005,7 @@
         };
 
         renderTable = () => {
+            destroyStickyHeader();
             render(null, wrapperElement);
             render(html`<${TableApp} />`, wrapperElement);
 
@@ -829,6 +1015,8 @@
             wrapperElement.querySelectorAll('.row-select').forEach(checkbox => {
                 checkbox.addEventListener('change', handleRowSelection);
             });
+
+            initStickyHeader();
         };
 
         if (url) {
