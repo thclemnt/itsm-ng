@@ -379,6 +379,10 @@ export async function uploadRichTextFixture(form: Locator, fixtureRelativePath: 
   const fixturePath = resolveRepoPath(fixtureRelativePath);
   const fileBuffer = await readFile(fixturePath);
   const { editorId, page } = await getRichTextContext(form);
+  const uploadResponsePromise = page.waitForResponse((response) => {
+    return response.url().includes('/ajax/v2/richtext_image_upload.php')
+      && response.request().method() === 'POST';
+  });
 
   await page.evaluate(
     ({ id, fileName, fileBase64, mimeType }) => {
@@ -433,6 +437,18 @@ export async function uploadRichTextFixture(form: Locator, fixtureRelativePath: 
       mimeType: getMimeType(fixturePath),
     }
   );
+
+  const uploadResponse = await uploadResponsePromise;
+  expect(uploadResponse.ok()).toBeTruthy();
+
+  const uploadPayload = await uploadResponse.json() as {
+    filename?: string;
+    prefix?: string;
+    tag?: string;
+  };
+  expect(typeof uploadPayload.filename).toBe('string');
+  expect(typeof uploadPayload.prefix).toBe('string');
+  expect(typeof uploadPayload.tag).toBe('string');
 
   await expect(form.locator('input[name^="_content["]')).toHaveCount(1);
   await expect(form.locator('input[name^="_prefix_content["]')).toHaveCount(1);
