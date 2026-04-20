@@ -128,11 +128,11 @@ class RSSFeed extends DbTestCase
         $items = $feed->get_items();
         $this->array($items)->hasSize(2);
 
-        $titles = array_map(static fn($item) => (string) $item->get_title(), $items);
+        $titles = array_map(static fn ($item) => (string) $item->get_title(), $items);
         sort($titles);
         $this->array($titles)->isIdenticalTo(['Second item', 'Test item']);
 
-        $permalinks = array_map(static fn($item) => (string) $item->get_permalink(), $items);
+        $permalinks = array_map(static fn ($item) => (string) $item->get_permalink(), $items);
         sort($permalinks);
         $this->array($permalinks)->isIdenticalTo([
            'https://example.com/items/1',
