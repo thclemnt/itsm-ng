@@ -14,14 +14,14 @@ jobs:
       PHP_IMAGE: itsm-tests-app:local
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Run Playwright E2E tests
         run: ./tests/run_tests.sh --build e2e
 
       - name: Upload Playwright artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-artifacts
           path: tests/files/_playwright
