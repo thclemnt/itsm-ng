@@ -286,6 +286,13 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
         ) { // Change from task form
             $input["users_id_editor"] = $uid;
         }
+        if (
+            isset($input['tasktemplates_id'])
+            && (int)$input['tasktemplates_id'] > 0
+            && !TaskTemplate::isVisibleForCurrentUser((int)$input['tasktemplates_id'])
+        ) {
+            $input['tasktemplates_id'] = 0;
+        }
 
         $itemtype      = $this->getItilObjectItemType();
         $input["_job"] = new $itemtype();
@@ -519,6 +526,13 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
         }
         if (!isset($input["is_private"])) {
             $input['is_private'] = 0;
+        }
+        if (
+            isset($input['tasktemplates_id'])
+            && (int)$input['tasktemplates_id'] > 0
+            && !TaskTemplate::isVisibleForCurrentUser((int)$input['tasktemplates_id'])
+        ) {
+            $input['tasktemplates_id'] = 0;
         }
 
         $input['timeline_position'] = CommonITILObject::TIMELINE_LEFT;
@@ -1642,7 +1656,10 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
                        'type' => 'select',
                        'name' => 'tasktemplates_id',
                        'id' => 'TaskTemplateDropdown',
-                       'values' => getOptionForItems(TaskTemplate::class),
+                       'values' => getOptionForItems(
+                           TaskTemplate::class,
+                           TaskTemplate::getGroupVisibilityCondition()
+                       ),
                        'actions' => getItemActionButtons(['info', 'add'], TaskTemplate::class),
                        'hooks' => [
                           'change' => <<<JS
