@@ -114,7 +114,6 @@ class Contact_Supplier extends CommonDBRelation
         }
 
         $canedit = $contact->can($instID, UPDATE);
-        $rand = mt_rand();
 
         $iterator = self::getListForItem($contact);
         $number = count($iterator);
@@ -127,53 +126,63 @@ class Contact_Supplier extends CommonDBRelation
         }
 
         if ($canedit) {
-            echo "<div class='firstbloc'>";
-            echo "<form aria-label='Add supplier' name='contactsupplier_form$rand' id='contactsupplier_form$rand'
-                method='post' action='";
-            echo Toolbox::getItemTypeFormURL(__CLASS__) . "'>";
-            echo "<table class='tab_cadre_fixe aria-label='Add supplier form''>";
-            echo "<tr class='tab_bg_1'><th colspan='2'>" . __('Add a supplier') . "</tr>";
-
-            echo "<tr class='tab_bg_2'><td class='center'>";
-            echo "<input type='hidden' name='contacts_id' value='$instID'>";
-            Supplier::dropdown(['used'        => $used,
-                                     'entity'      => $contact->fields["entities_id"],
-                                     'entity_sons' => $contact->fields["is_recursive"]]);
-            echo "</td><td class='center'>";
-            echo "<input type='submit' name='add' value=\"" . _sx('button', 'Add') . "\" class='submit'>";
-            echo "</td></tr>";
-
-            echo "</table>";
-            Html::closeForm();
-            echo "</div>";
+            $form = [
+               'action' => Toolbox::getItemTypeFormURL(__CLASS__),
+               'buttons' => [
+                  [
+                     'type' => 'submit',
+                     'name' => 'add',
+                     'value' => _sx('button', 'Add'),
+                     'class' => 'btn btn-secondary'
+                  ]
+               ],
+               'content' => [
+                  __('Add a supplier') => [
+                     'visible' => true,
+                     'inputs' => [
+                        [
+                           'type' => 'hidden',
+                           'name' => 'contacts_id',
+                           'value' => $instID
+                        ],
+                        '' => [
+                           'type' => 'select',
+                           'name' => 'suppliers_id',
+                           'values' => getOptionForItems('Supplier', [
+                              'is_active' => true
+                           ], true, false, $used),
+                           'actions' => getItemActionButtons(['info'], 'Supplier'),
+                           'col_lg' => 12,
+                           'col_md' => 12,
+                        ]
+                     ]
+                  ]
+               ]
+            ];
+            renderTwigForm($form);
         }
 
-        echo "<div class='spaced'>";
         if ($canedit && $number) {
-            Html::openMassiveActionsForm('mass' . __CLASS__ . $rand);
-            $massiveactionparams = ['num_displayed' => min($_SESSION['glpilist_limit'], $number),
-                                         'container'     => 'mass' . __CLASS__ . $rand];
+            $massiveactionparams = [
+               'num_displayed' => min($_SESSION['glpilist_limit'], $number),
+               'container'     => 'tableForContactSupplier',
+               'is_deleted'    => false,
+               'display_arrow' => false,
+            ];
             Html::showMassiveActions($massiveactionparams);
         }
-        echo "<table class='tab_cadre_fixehov' aria-label='supplier Table'>";
-        $header_begin  = "<tr>";
-        $header_top    = '';
-        $header_bottom = '';
-        $header_end    = '';
-        if ($canedit && $number) {
-            $header_top    .= "<th width='10'>" . Html::getCheckAllAsCheckbox('mass' . __CLASS__ . $rand);
-            $header_top    .= "</th>";
-            $header_bottom .= "<th width='10'>" . Html::getCheckAllAsCheckbox('mass' . __CLASS__ . $rand);
-            $header_bottom .= "</th>";
-        }
-        $header_end .= "<th>" . Supplier::getTypeName(1) . "</th>";
-        $header_end .= "<th>" . Entity::getTypeName(1) . "</th>";
-        $header_end .= "<th>" . SupplierType::getTypeName(1) . "</th>";
-        $header_end .= "<th>" . Phone::getTypeName(1) . "</th>";
-        $header_end .= "<th>" . __('Fax') . "</th>";
-        $header_end .= "<th>" . __('Website') . "</th>";
-        $header_end .= "</tr>";
-        echo $header_begin . $header_top . $header_end;
+
+        $fields = [
+           'supplier' => Supplier::getTypeName(1),
+           'entity' => Entity::getTypeName(1),
+           'suppliertypes_id' => SupplierType::getTypeName(1),
+           'phonenumber' => Phone::getTypeName(1),
+           'fax' => __('Fax'),
+           'website' => __('Website'),
+        ];
+
+        $values = [];
+        $massiveactionValues = [];
 
         if ($number > 0) {
             Session::initNavigateListItems(
@@ -201,32 +210,32 @@ class Contact_Supplier extends CommonDBRelation
                     $website = "<a target=_blank href='$website'>" . $data["website"] . "</a>";
                 }
 
-                echo "<tr class='tab_bg_1" . ($data["is_deleted"] ? "_2" : "") . "'>";
-                if ($canedit) {
-                    echo "<td>" . Html::getMassiveActionCheckBox(__CLASS__, $assocID) . "</td>";
+                $supplierName = Dropdown::getDropdownName("glpi_suppliers", $data["id"]);
+                if (
+                    $_SESSION["glpiis_ids_visible"]
+                    || empty($supplierName)
+                ) {
+                    $supplierName = sprintf(__('%1$s (%2$s)'), $supplierName, $data["id"]);
                 }
-                echo "<td class='center'>";
-                echo "<a href='" . Supplier::getFormURLWithID($data["id"]) . "'>" .
-                       Dropdown::getDropdownName("glpi_suppliers", $data["id"]) . "</a></td>";
-                echo "<td class='center'>" . Dropdown::getDropdownName("glpi_entities", $data["entity"]);
-                echo "</td>";
-                echo "<td class='center'>" . Dropdown::getDropdownName("glpi_suppliertypes", $data["suppliertypes_id"]);
-                echo "</td>";
-                echo "<td class='center' width='80'>" . $data["phonenumber"] . "</td>";
-                echo "<td class='center' width='80'>" . $data["fax"] . "</td>";
-                echo "<td class='center'>" . $website . "</td>";
-                echo "</tr>";
+
+                $values[] = [
+                   'supplier' => "<a href='" . Supplier::getFormURLWithID($data["id"]) . "'>" . $supplierName . "</a>",
+                   'entity' => Dropdown::getDropdownName("glpi_entities", $data["entity"]),
+                   'suppliertypes_id' => Dropdown::getDropdownName("glpi_suppliertypes", $data["suppliertypes_id"]),
+                   'phonenumber' => $data["phonenumber"],
+                   'fax' => $data["fax"],
+                   'website' => $website,
+                ];
+                $massiveactionValues[] = sprintf('item[%s][%s]', __CLASS__, $assocID);
             }
-            echo $header_begin . $header_bottom . $header_end;
         }
 
-        echo "</table>";
-        if ($canedit && $number) {
-            $massiveactionparams['ontop'] = false;
-            Html::showMassiveActions($massiveactionparams);
-            Html::closeForm();
-        }
-        echo "</div>";
+        renderTwigTemplate('table.twig', [
+           'id' => 'tableForContactSupplier',
+           'fields' => $fields,
+           'values' => $values,
+           'massive_action' => $massiveactionValues,
+        ]);
     }
 
     /**
