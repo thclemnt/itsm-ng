@@ -1408,12 +1408,17 @@ class Rule extends CommonDBTM
             }
         }
 
+        $items = [];
         $value = '';
 
         foreach ($actions as $ID => $act) {
+            if ($p['noHtml'] && isset($p['used'][$ID])) {
+                continue;
+            }
+
             $items[$ID] = $act['name'];
 
-            if (empty($value) && !isset($used[$ID])) {
+            if (empty($value) && !isset($p['used'][$ID])) {
                 $value = $ID;
             }
         }

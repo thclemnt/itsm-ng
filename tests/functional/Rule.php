@@ -286,6 +286,27 @@ class Rule extends DbTestCase
         $this->array($ruleTicket->getAction('location'))->isEmpty();
     }
 
+    public function testDropdownActionsFiltersUsedActionsInArrayMode()
+    {
+        $ruleRight = new \RuleRight();
+        $actions   = $ruleRight->dropdownActions([
+           'noHtml' => true,
+           'used'   => ['profiles_id' => 'profiles_id'],
+        ]);
+
+        $this->array($actions)
+           ->notHasKey('profiles_id')
+           ->hasKey('entities_id');
+
+        $ruleTicket = new \RuleTicket();
+        $actions    = $ruleTicket->dropdownActions([
+           'noHtml' => true,
+           'used'   => ['_users_id_requester' => '_users_id_requester'],
+        ]);
+
+        $this->array($actions)->hasKey('_users_id_requester');
+    }
+
     public function testGetCriteriaName()
     {
         $ruleTicket = new \RuleTicket();
