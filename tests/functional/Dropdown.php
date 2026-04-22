@@ -40,6 +40,27 @@ use Generator;
 
 class Dropdown extends DbTestCase
 {
+    public function testGetItemActionButtonsHonorsItemRights()
+    {
+        $_SESSION['glpiactiveprofile'][\RequestType::$rightname] = READ | CREATE;
+        $buttons = \getItemActionButtons(['info', 'add'], \RequestType::class);
+        $this->array($buttons)
+           ->hasKey('info')
+           ->hasKey('add');
+
+        $_SESSION['glpiactiveprofile'][\RequestType::$rightname] = CREATE;
+        $buttons = \getItemActionButtons(['info', 'add'], \RequestType::class);
+        $this->array($buttons)
+           ->notHasKey('info')
+           ->hasKey('add');
+
+        $_SESSION['glpiactiveprofile'][\RequestType::$rightname] = READ;
+        $buttons = \getItemActionButtons(['info', 'add'], \RequestType::class);
+        $this->array($buttons)
+           ->hasKey('info')
+           ->notHasKey('add');
+    }
+
     public function testShowLanguages()
     {
 

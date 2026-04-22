@@ -539,12 +539,15 @@ function renderTwigPage(
 function getItemActionButtons(array $actions, string $itemType): array
 {
     $buttons = [];
+    $item = new $itemType();
 
     foreach ($actions as $action) {
         $content = [];
         switch ($action) {
             case "info":
-                $item = new $itemType();
+                if (!$item->canView()) {
+                    continue 2;
+                }
                 $itemSearchUrl = $item->getSearchUrl();
                 $content = [
                     "icon" => "fas fa-info",
@@ -553,7 +556,9 @@ function getItemActionButtons(array $actions, string $itemType): array
                 ];
                 break;
             case "add":
-                $item = new $itemType();
+                if (!$item->canCreate()) {
+                    continue 2;
+                }
                 $modal_script = Ajax::createModalWindow(
                     "add_" . $itemType,
                     $item->getFormUrl() . "?_in_modal=1",
@@ -566,6 +571,8 @@ function getItemActionButtons(array $actions, string $itemType): array
                     "modal_script" => $modal_script,
                 ];
                 break;
+            default:
+                continue 2;
         }
         $buttons[$action] = $content;
     }
