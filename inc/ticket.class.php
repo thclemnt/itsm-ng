@@ -5101,7 +5101,7 @@ class Ticket extends CommonITILObject
             $panels[] = [
                 'id'          => sprintf('ticket-actor-%s-%s', $panelDefinition['actorType'], mt_rand()),
                 'title'       => $panelDefinition['title'],
-                'helpText'    => $panelDefinition['help'],
+                'helpText'    => $panelDefinition['help'] ?? '',
                 'actorType'   => $panelDefinition['actorType'],
                 'actorTypeId' => $panelDefinition['action'],
                 'ticketId'    => $isNew ? 0 : $ID,

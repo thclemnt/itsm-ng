@@ -5230,7 +5230,7 @@ abstract class CommonITILObject extends CommonDBTM
             $panels[] = [
                 'id'          => sprintf('itil-actor-%s-%s', $panelDefinition['actorType'], mt_rand()),
                 'title'       => $panelDefinition['title'],
-                'helpText'    => $panelDefinition['help'],
+                'helpText'    => $panelDefinition['help'] ?? '',
                 'actorType'   => $panelDefinition['actorType'],
                 'actorTypeId' => $panelDefinition['action'],
                 'itemtype'    => $this->getType(),
