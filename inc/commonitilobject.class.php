@@ -5128,7 +5128,6 @@ abstract class CommonITILObject extends CommonDBTM
                     '_groups_id_requester',
                 ]),
                 'fields'       => ['_users_id_requester', '_groups_id_requester'],
-                'help'         => !$isClosed && $canAdmin ? __('New actors are added when you save the item.') : '',
                 'allowAdd'     => !$isClosed && $canAdmin,
                 'removable'    => !$isClosed && $canAdmin,
                 'allowedTypes' => ['user', 'group'],
@@ -5141,7 +5140,6 @@ abstract class CommonITILObject extends CommonDBTM
                     '_groups_id_observer',
                 ]),
                 'fields'       => ['_users_id_observer', '_groups_id_observer'],
-                'help'         => !$isClosed && $canAdmin ? __('New actors are added when you save the item.') : '',
                 'allowAdd'     => !$isClosed && $canAdmin,
                 'removable'    => !$isClosed && $canAdmin,
                 'allowedTypes' => ['user', 'group'],
@@ -5155,9 +5153,6 @@ abstract class CommonITILObject extends CommonDBTM
                     '_suppliers_id_assign',
                 ]),
                 'fields'       => ['_users_id_assign', '_groups_id_assign', '_suppliers_id_assign'],
-                'help'         => !$isClosed && $assignAllowed && ($canAssign || $canAssignToMe)
-                    ? __('New actors are added when you save the item.')
-                    : '',
                 'allowAdd'     => $assignAllowed && ($canAssign || $canAssignToMe),
                 'removable'    => $canAssign,
                 'allowedTypes' => array_values(array_filter([
