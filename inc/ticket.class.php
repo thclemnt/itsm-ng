@@ -7735,6 +7735,10 @@ class Ticket extends CommonITILObject
      */
     public function getValueToSelect($field_id_or_search_options, $name = '', $values = '', $options = [])
     {
+        if (isset($options['relative_dates']) && $options['relative_dates']) {
+            return parent::getValueToSelect($field_id_or_search_options, $name, $values, $options);
+        }
+
         if (isset($field_id_or_search_options['field']) && isset($field_id_or_search_options['datatype'])) {
             $dateFields = [
                 'date', 'closedate', 'solvedate', 'date_mod', 'time_to_resolve',

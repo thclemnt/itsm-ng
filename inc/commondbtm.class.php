@@ -5244,6 +5244,13 @@ class CommonDBTM extends CommonGLPI
 
                 case "date":
                 case "date_delay":
+                    if (isset($options['relative_dates']) && $options['relative_dates']) {
+                        if (isset($searchoptions['maybefuture']) && $searchoptions['maybefuture']) {
+                            $options['with_future'] = true;
+                        }
+                        return Html::showGenericDateTimeSearch($name, $value, $options);
+                    }
+
                     return renderTwigTemplate('macros/input.twig', [
                        'type' => 'datetime-local',
                        'name' => $name,
@@ -5251,6 +5258,14 @@ class CommonDBTM extends CommonGLPI
                     ]);
 
                 case "datetime":
+                    if (isset($options['relative_dates']) && $options['relative_dates']) {
+                        if (isset($searchoptions['maybefuture']) && $searchoptions['maybefuture']) {
+                            $options['with_future'] = true;
+                        }
+                        $options['with_time'] = true;
+                        return Html::showGenericDateTimeSearch($name, $value, $options);
+                    }
+
                     return renderTwigTemplate('macros/input.twig', [
                        'type' => 'datetime-local',
                        'name' => $name,

@@ -803,6 +803,34 @@ class Search extends DbTestCase
            ->contains("'1970-01-01");
     }
 
+    public function testDateSearchValueInputUsesRelativeDates()
+    {
+        $ticket = new \Ticket();
+        $searchopt = \Search::getOptions('Ticket');
+
+        $opening_date_input = $ticket->getValueToSelect(
+            $searchopt[15],
+            'criteria[0][value]',
+            '-6MONTH',
+            ['relative_dates' => true]
+        );
+        $this->string($opening_date_input)
+           ->contains('_select_criteria')
+           ->contains('-6MONTH')
+           ->notContains('datetime-local');
+
+        $time_to_resolve_input = $ticket->getValueToSelect(
+            $searchopt[18],
+            'criteria[0][value]',
+            '6MONTH',
+            ['relative_dates' => true]
+        );
+        $this->string($time_to_resolve_input)
+           ->contains('_select_criteria')
+           ->contains('6MONTH')
+           ->notContains('datetime-local');
+    }
+
     /**
      * Test that searchOptions throws an exception when it finds a duplicate
      *
