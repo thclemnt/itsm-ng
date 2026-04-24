@@ -3327,13 +3327,18 @@ JAVASCRIPT;
         // Preformat items
         if (isset($searchopt[$ID]["datatype"])) {
             switch ($searchopt[$ID]["datatype"]) {
+                case "date":
                 case "datetime":
+                case "date_delay":
                     if (in_array($searchtype, ['contains', 'notcontains'])) {
                         break;
                     }
 
-                    $force_day = false;
-                    if (strstr($val, 'BEGIN') || strstr($val, 'LAST')) {
+                    $force_day = $searchopt[$ID]["datatype"] !== 'datetime';
+                    if (
+                        $searchopt[$ID]["datatype"] === 'datetime'
+                        && (strstr($val, 'BEGIN') || strstr($val, 'LAST') || strstr($val, 'DAY'))
+                    ) {
                         $force_day = true;
                     }
 
@@ -3342,10 +3347,8 @@ JAVASCRIPT;
                     $operator = '';
                     switch ($searchtype) {
                         case 'equals':
-                            $operator = !$NOT ? '=' : '!=';
-                            break;
                         case 'notequals':
-                            $operator = !$NOT ? '!=' : '=';
+                            $operator = !$NOT ? '=' : '!=';
                             break;
                         case 'lessthan':
                             $operator = !$NOT ? '<' : '>';
@@ -3355,7 +3358,9 @@ JAVASCRIPT;
                             break;
                     }
 
-                    return " {$LINK} ({$DB->quoteName($NAME)} $operator {$DB->quoteValue($val)}) ";
+                    if ($operator !== '') {
+                        return " {$LINK} ({$DB->quoteName($NAME)} $operator {$DB->quoteValue($val)}) ";
+                    }
                     break;
                 case "count":
                 case "number":

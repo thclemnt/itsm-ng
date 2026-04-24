@@ -737,6 +737,20 @@ class Search extends DbTestCase
 
     public function testDateBeforeOrNot()
     {
+        $date_actions = \Search::getActionsFor('Ticket', 15);
+        unset($date_actions['searchopt']);
+        $this->array($date_actions)->isIdenticalTo([
+           'equals'      => __('is'),
+           'notequals'   => __('is not'),
+           'lessthan'    => __('before'),
+           'morethan'    => __('after'),
+           'contains'    => __('contains'),
+           'notcontains' => __('not contains'),
+        ]);
+
+        $numeric_actions = \Search::getActionsFor('Ticket', 2);
+        $this->array($numeric_actions)->notHasKeys(['lessthan', 'morethan']);
+
         //tickets created since one week
         $search_params = [
            'is_deleted'   => 0,
@@ -766,6 +780,55 @@ class Search extends DbTestCase
         $data = $this->doSearch('Ticket', $search_params);
 
         $this->integer($data['data']['totalcount'])->isIdenticalTo(0);
+
+        // tickets created before a fixed future boundary
+        $search_params['criteria'][1]['link']       = 'AND';
+        $search_params['criteria'][1]['searchtype'] = 'lessthan';
+        $search_params['criteria'][1]['value']      = '2999-01-01 00:00:00';
+        $data = $this->doSearch('Ticket', $search_params);
+
+        $this->integer($data['data']['totalcount'])->isGreaterThan(1);
+    }
+
+    public function testDateAddHaving()
+    {
+        $before = \Search::addHaving(' AND ', 0, 'Ticket', 16, 'lessthan', '2999-01-01');
+        $this->string($before)
+           ->contains('`ITEM_Ticket_16` <')
+           ->contains("'2999-01-01");
+
+        $after = \Search::addHaving(' AND ', 0, 'Ticket', 16, 'morethan', '1970-01-01');
+        $this->string($after)
+           ->contains('`ITEM_Ticket_16` >')
+           ->contains("'1970-01-01");
+    }
+
+    public function testDateSearchValueInputUsesRelativeDates()
+    {
+        $ticket = new \Ticket();
+        $searchopt = \Search::getOptions('Ticket');
+
+        $opening_date_input = $ticket->getValueToSelect(
+            $searchopt[15],
+            'criteria[0][value]',
+            '-6MONTH',
+            ['relative_dates' => true]
+        );
+        $this->string($opening_date_input)
+           ->contains('_select_criteria')
+           ->contains('-6MONTH')
+           ->notContains('datetime-local');
+
+        $time_to_resolve_input = $ticket->getValueToSelect(
+            $searchopt[18],
+            'criteria[0][value]',
+            '6MONTH',
+            ['relative_dates' => true]
+        );
+        $this->string($time_to_resolve_input)
+           ->contains('_select_criteria')
+           ->contains('6MONTH')
+           ->notContains('datetime-local');
     }
 
     /**
