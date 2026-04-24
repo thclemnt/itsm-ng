@@ -1,3 +1,6 @@
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { expect, type APIRequestContext, type APIResponse, type Locator, type Page } from '@playwright/test';
 
 export interface SeedTicketOptions {
@@ -21,6 +24,36 @@ interface ApiSession {
   apiUrl: string;
   sessionToken: string;
   userId: number;
+}
+
+interface RichTextContext {
+  editorId: string | null;
+  page: Page;
+  textarea: Locator;
+}
+
+const dirname = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(dirname, '..', '..');
+
+function resolveRepoPath(relativePath: string): string {
+  return path.resolve(repoRoot, relativePath);
+}
+
+function getMimeType(filePath: string): string {
+  const extension = path.extname(filePath).toLowerCase();
+  switch (extension) {
+    case '.png':
+      return 'image/png';
+    case '.jpg':
+    case '.jpeg':
+      return 'image/jpeg';
+    case '.gif':
+      return 'image/gif';
+    case '.webp':
+      return 'image/webp';
+    default:
+      throw new Error(`Unsupported fixture type for rich text upload: ${filePath}`);
+  }
 }
 
 function getAppToken(): string {
@@ -258,6 +291,29 @@ export async function openTicket(page: Page, seed: SeedTicketResult): Promise<vo
   await expect(page.getByTestId('timeline-history')).toBeVisible();
 }
 
+async function getRichTextContext(form: Locator): Promise<RichTextContext> {
+  const textarea = form.locator('textarea[name="content"]').first();
+  await expect(textarea).toBeAttached();
+  const editorId = await textarea.getAttribute('id');
+  const page = form.page();
+
+  if (editorId) {
+    await page.waitForFunction(
+      (id) => {
+        const editorRegistry = window as unknown as Record<string, unknown>;
+        const ckEditor = editorRegistry[id];
+        const tinyMceEditor = (window as Window & { tinymce?: { get: (editorId: string) => unknown } }).tinymce?.get(id);
+
+        return ckEditor !== undefined || (tinyMceEditor !== undefined && tinyMceEditor !== null);
+      },
+      editorId,
+      { timeout: 5_000 }
+    ).catch(() => undefined);
+  }
+
+  return { editorId, page, textarea };
+}
+
 export function getActorPanel(page: Page, role: ActorPanelRole): Locator {
   return page.locator(`.itil-actor-card[data-actor-role="${role}"]`).first();
 }
@@ -283,24 +339,7 @@ export async function submitForm(
 }
 
 export async function fillRichTextForm(form: Locator, content: string): Promise<void> {
-  const textarea = form.locator('textarea[name="content"]').first();
-  await expect(textarea).toBeAttached();
-  const editorId = await textarea.getAttribute('id');
-  const page = form.page();
-
-  if (editorId) {
-    await page.waitForFunction(
-      (id) => {
-        const editorRegistry = window as unknown as Record<string, unknown>;
-        const ckEditor = editorRegistry[id];
-        const tinyMceEditor = (window as Window & { tinymce?: { get: (editorId: string) => unknown } }).tinymce?.get(id);
-
-        return ckEditor !== undefined || (tinyMceEditor !== undefined && tinyMceEditor !== null);
-      },
-      editorId,
-      { timeout: 5_000 }
-    ).catch(() => undefined);
-  }
+  const { editorId, page } = await getRichTextContext(form);
 
   await page.evaluate(
     ({ value, id }) => {
@@ -334,6 +373,91 @@ export async function fillRichTextForm(form: Locator, content: string): Promise<
     },
     { value: content, id: editorId }
   );
+}
+
+export async function uploadRichTextFixture(form: Locator, fixtureRelativePath: string): Promise<void> {
+  const fixturePath = resolveRepoPath(fixtureRelativePath);
+  const fileBuffer = await readFile(fixturePath);
+  const { editorId, page } = await getRichTextContext(form);
+  const uploadResponsePromise = page.waitForResponse((response) => {
+    return response.url().includes('/ajax/v2/richtext_image_upload.php')
+      && response.request().method() === 'POST';
+  });
+
+  await page.evaluate(
+    ({ id, fileName, fileBase64, mimeType }) => {
+      if (!id) {
+        throw new Error('Unable to resolve the rich text editor id.');
+      }
+
+      const editor = (window as unknown as Record<string, unknown>)[id] as
+        | { ui?: { getEditableElement?: () => HTMLElement | null } }
+        | undefined;
+
+      if (!editor?.ui?.getEditableElement) {
+        throw new Error(`Unable to resolve CKEditor instance "${id}".`);
+      }
+
+      const editable = editor.ui.getEditableElement();
+      if (!(editable instanceof HTMLElement)) {
+        throw new Error('Unable to resolve the CKEditor editable element.');
+      }
+
+      const binary = atob(fileBase64);
+      const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+      const file = new File([bytes], fileName, { type: mimeType });
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(file);
+
+      editable.focus();
+
+      ['dragenter', 'dragover', 'drop'].forEach((type) => {
+        const event = typeof DragEvent === 'function'
+          ? new DragEvent(type, {
+              bubbles: true,
+              cancelable: true,
+              dataTransfer,
+            })
+          : new Event(type, {
+              bubbles: true,
+              cancelable: true,
+            });
+
+        if (!(event instanceof DragEvent)) {
+          Object.defineProperty(event, 'dataTransfer', { value: dataTransfer });
+        }
+
+        editable.dispatchEvent(event);
+      });
+    },
+    {
+      id: editorId,
+      fileName: path.basename(fixturePath),
+      fileBase64: fileBuffer.toString('base64'),
+      mimeType: getMimeType(fixturePath),
+    }
+  );
+
+  const uploadResponse = await uploadResponsePromise;
+  expect(uploadResponse.ok()).toBeTruthy();
+
+  const uploadPayload = await uploadResponse.json() as {
+    filename?: string;
+    prefix?: string;
+    tag?: string;
+  };
+  expect(typeof uploadPayload.filename).toBe('string');
+  expect(typeof uploadPayload.prefix).toBe('string');
+  expect(typeof uploadPayload.tag).toBe('string');
+
+  await expect(form.locator('input[name^="_content["]')).toHaveCount(1);
+  await expect(form.locator('input[name^="_prefix_content["]')).toHaveCount(1);
+  await expect(form.locator('input[name^="_tag_content["]')).toHaveCount(1);
+  await expect(form.locator('.ck-content img[src^="blob:"]').first()).toBeVisible();
+}
+
+export async function getInnerHtml(locator: Locator): Promise<string> {
+  return locator.evaluate((element) => element.innerHTML);
 }
 
 export async function submitAddForm(form: Locator, page: Page): Promise<void> {

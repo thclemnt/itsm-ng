@@ -398,6 +398,7 @@ class ITILFollowup extends CommonDBChild
     {
 
         $input["_job"] = new $input['itemtype']();
+        $input = $this->normalizeRichTextUploads($input);
 
         if (
             empty($input['content'])
@@ -477,6 +478,7 @@ class ITILFollowup extends CommonDBChild
         if (!isset($this->fields['itemtype'])) {
             return false;
         }
+        $input = $this->normalizeRichTextUploads($input);
         $input["_job"] = new $this->fields['itemtype']();
         if (!$input["_job"]->getFromDB($this->fields["items_id"])) {
             return false;
@@ -489,6 +491,105 @@ class ITILFollowup extends CommonDBChild
         ) {
             $input["users_id_editor"] = $uid;
         }
+
+        return $input;
+    }
+
+    /**
+     * Replace CKEditor upload placeholders by GLPI document tags before persisting the followup.
+     *
+     * @param array  $input
+     * @param string $field
+     *
+     * @return array
+     */
+    private function normalizeRichTextUploads(array $input, string $field = 'content'): array
+    {
+        $tag_field = '_tag_' . $field;
+
+        if (
+            !isset($input[$field])
+            || !is_string($input[$field])
+            || strpos($input[$field], 'data-glpi-doc-tag') === false
+            || !isset($input[$tag_field])
+            || !is_array($input[$tag_field])
+            || count($input[$tag_field]) === 0
+        ) {
+            return $input;
+        }
+
+        $content = Html::entity_decode_deep($input[$field]);
+        if (strpos($content, 'data-glpi-doc-tag') === false) {
+            return $input;
+        }
+
+        $dom = new \DOMDocument('1.0', 'UTF-8');
+        $internal_errors = libxml_use_internal_errors(true);
+        $loaded = $dom->loadHTML(
+            '<?xml encoding="UTF-8"><div id="glpi-richtext-root">' . $content . '</div>',
+            LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD
+        );
+        libxml_clear_errors();
+        libxml_use_internal_errors($internal_errors);
+
+        if (!$loaded) {
+            return $input;
+        }
+
+        $known_tags = array_fill_keys(
+            array_filter(
+                array_map(
+                    static fn ($tag) => is_scalar($tag) ? (string) $tag : '',
+                    $input[$tag_field]
+                )
+            ),
+            true
+        );
+
+        if (count($known_tags) === 0) {
+            return $input;
+        }
+
+        $xpath = new \DOMXPath($dom);
+        foreach ($xpath->query('//*[@data-glpi-doc-tag]') as $node) {
+            if (!$node instanceof \DOMElement) {
+                continue;
+            }
+
+            $tag = $node->getAttribute('data-glpi-doc-tag');
+            if ($tag === '' || !isset($known_tags[$tag])) {
+                continue;
+            }
+
+            $replacement = $dom->createTextNode(Document::getImageTag($tag));
+            $target = strtolower($node->tagName) === 'figure'
+                ? $node
+                : (
+                    $node->parentNode instanceof \DOMElement
+                    && strtolower($node->parentNode->tagName) === 'figure'
+                    && $node->parentNode->hasAttribute('data-glpi-doc-tag')
+                    && $node->parentNode->getElementsByTagName('img')->length === 1
+                        ? $node->parentNode
+                        : $node
+                );
+            if ($target->parentNode !== null) {
+                $target->parentNode->replaceChild($replacement, $target);
+            }
+        }
+
+        $root = $dom->getElementById('glpi-richtext-root');
+        if (!$root instanceof \DOMElement) {
+            return $input;
+        }
+
+        $normalized = '';
+        foreach ($root->childNodes as $child) {
+            $normalized .= $dom->saveHTML($child);
+        }
+
+        $input[$field] = $content === $input[$field]
+            ? $normalized
+            : Html::entities_deep($normalized);
 
         return $input;
     }

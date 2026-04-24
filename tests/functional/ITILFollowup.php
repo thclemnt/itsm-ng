@@ -454,6 +454,71 @@ class ITILFollowup extends DbTestCase
         $this->string($instance->fields['content'])->contains($expected);
     }
 
+    public function testCkeditorUploadPlaceholderConvertedIntoDocument()
+    {
+
+        $this->login(); // must be logged as Document_Item uses Session::getLoginUserID()
+
+        $ticket = new \Ticket();
+        $ticket->add([
+           'name' => $this->getUniqueString(),
+           'content' => 'test',
+        ]);
+        $this->boolean($ticket->isNewItem())->isFalse();
+
+        $user = getItemByTypeName('User', TU_USER, true);
+        $tag = '3e29dffe-0237ea21-5e5e7034b1d1a1.ckeditortag';
+        $filename = '5e5e92ffd9bd91.77777777image_ck_editor88888888.png';
+
+        copy(__DIR__ . '/../fixtures/uploads/foo.png', GLPI_TMP_DIR . '/' . $filename);
+
+        $instance = new \ITILFollowup();
+        $instance->add([
+           'users_id' => $user,
+           'items_id' => $ticket->getID(),
+           'itemtype' => 'Ticket',
+           'name'    => 'a followup',
+           'content' => '&lt;p&gt;before&lt;/p&gt;&lt;figure class=&quot;image&quot; data-glpi-doc-tag=&quot;' . $tag . '&quot;&gt;&lt;img src=&quot;blob:http://itsm-main.local/followup-add&quot; width=&quot;12&quot; height=&quot;12&quot; /&gt;&lt;/figure&gt;',
+           '_content' => [
+              $filename,
+           ],
+           '_tag_content' => [
+              $tag,
+           ],
+           '_prefix_content' => [
+              '5e5e92ffd9bd91.77777777',
+           ]
+        ]);
+        $this->boolean($instance->isNewItem())->isFalse();
+        $expected = 'a href=&quot;/front/document.send.php?docid=';
+        $this->string($instance->fields['content'])->contains($expected);
+        $this->string($instance->fields['content'])->notContains('data-glpi-doc-tag');
+        $this->string($instance->fields['content'])->notContains('blob:http://itsm-main.local/followup-add');
+
+        $updated_tag = '3e29dffe-0237ea21-5e5e7034b1d1a1.ckeditortag2';
+        $updated_filename = '5e5e92ffd9bd91.99999999image_ck_editor11111111.png';
+
+        copy(__DIR__ . '/../fixtures/uploads/bar.png', GLPI_TMP_DIR . '/' . $updated_filename);
+
+        $success = $instance->update([
+           'id' => $instance->getID(),
+           'content' => '&lt;p&gt;after&lt;/p&gt;&lt;figure class=&quot;image&quot; data-glpi-doc-tag=&quot;' . $updated_tag . '&quot;&gt;&lt;img src=&quot;blob:http://itsm-main.local/followup-update&quot; width=&quot;12&quot; height=&quot;12&quot; /&gt;&lt;/figure&gt;',
+           '_content' => [
+              $updated_filename,
+           ],
+           '_tag_content' => [
+              $updated_tag,
+           ],
+           '_prefix_content' => [
+              '5e5e92ffd9bd91.99999999',
+           ]
+        ]);
+        $this->boolean($success)->isTrue();
+        $this->string($instance->fields['content'])->contains($expected);
+        $this->string($instance->fields['content'])->notContains('data-glpi-doc-tag');
+        $this->string($instance->fields['content'])->notContains('blob:http://itsm-main.local/followup-update');
+    }
+
     public function testUploadDocuments()
     {
 

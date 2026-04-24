@@ -1,8 +1,11 @@
 {% macro richtextarea(attributes, root_doc) %}
   {% set rand=random() %}
-  <textarea id="{{attributes.id|default("ckEditorInstance" ~ rand)}}"
+  {% set editor_id = attributes.id|default("ckEditorInstance" ~ rand) %}
+  {% set field_name = attributes.name|default('content') %}
+  <textarea id="{{editor_id}}"
     {% for name, value in attributes|filter((v, k) => k != 'value')  %} {{name}}="{{value}}" {% endfor %}>
     {{attributes.value|default('')|raw}}</textarea>
+  <div id="{{editor_id}}_uploads" class="d-none"></div>
   <style>
     .ck.ck-button.ck-source-editing-button .ck-button__label {
       display: none;
@@ -10,28 +13,195 @@
   </style>
   <script>
   $(function() {
+    const editorId = '{{ editor_id }}';
+    const fieldName = '{{ field_name }}';
+    const uploadUrl = '{{ root_doc }}/ajax/v2/richtext_image_upload.php';
+    const uploadStore = new Map();
+    const uploadsContainer = document.getElementById(editorId + '_uploads');
+
+    const parseEditorHtml = editor => {
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = editor.getData();
+      return wrapper;
+    };
+
+    const getTaggedNodes = container =>
+      container.querySelectorAll('[data-glpi-doc-tag]');
+
+    const findTaggedNode = (container, tag) =>
+      container.querySelector(`[data-glpi-doc-tag="${tag}"]`);
+
+    const syncHiddenUploads = editor => {
+      uploadsContainer.innerHTML = '';
+
+      const content = parseEditorHtml(editor);
+      let index = 0;
+      for (const upload of uploadStore.values()) {
+        if (!findTaggedNode(content, upload.tag)) {
+          continue;
+        }
+
+        [
+          { name: `_${fieldName}[${index}]`, value: upload.filename },
+          { name: `_prefix_${fieldName}[${index}]`, value: upload.prefix },
+          { name: `_tag_${fieldName}[${index}]`, value: upload.tag }
+        ].forEach(hidden => {
+          const input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = hidden.name;
+          input.value = hidden.value;
+          uploadsContainer.appendChild(input);
+        });
+        index++;
+      }
+    };
+
+    const buildSubmitContent = editor => {
+      const content = parseEditorHtml(editor);
+
+      Array.from(getTaggedNodes(content)).forEach(node => {
+        const tag = node.dataset.glpiDocTag;
+        if (!tag) {
+          return;
+        }
+
+        const replacement = document.createTextNode('#' + tag + '#');
+        if (node.tagName === 'FIGURE') {
+          node.replaceWith(replacement);
+          return;
+        }
+
+        const figure = node.closest('figure[data-glpi-doc-tag]');
+        if (figure && figure.querySelectorAll('img').length === 1) {
+          figure.replaceWith(replacement);
+          return;
+        }
+
+        node.replaceWith(replacement);
+      });
+
+      return content.innerHTML;
+    };
+
+    class GlpiRichTextUploadAdapter {
+      constructor(loader, editor) {
+        this.loader = loader;
+        this.editor = editor;
+        this.request = null;
+      }
+
+      upload() {
+        return this.loader.file.then(file => new Promise((resolve, reject) => {
+          const formData = new FormData();
+          formData.append('upload', file, file.name);
+
+          this.request = $.ajax({
+            url: uploadUrl,
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            dataType: 'json',
+            success: data => {
+              uploadStore.set(data.tag, data);
+              syncHiddenUploads(this.editor);
+              resolve({
+                default: URL.createObjectURL(file),
+                glpiDocTag: data.tag
+              });
+            },
+            error: xhr => {
+              let message = xhr.responseText || xhr.statusText || 'Upload failed';
+              try {
+                const payload = JSON.parse(xhr.responseText);
+                message = payload.message || payload.error || message;
+              } catch (e) {
+                // Keep raw response text when JSON parsing is not possible.
+              }
+              reject(message);
+            }
+          });
+        }));
+      }
+
+      abort() {
+        if (this.request) {
+          this.request.abort();
+        }
+      }
+    }
+
     const {
         ClassicEditor, Essentials, Bold,
         Italic, BlockQuote, Heading,
-        Link, AutoLink, Image,
+        Link, AutoLink, Image, ImageUpload,
         Table, List, ListProperties,
         ImageInsert,
-        Base64UploadAdapter,
-        SourceEditing
+        SourceEditing, Plugin
     } = CKEDITOR;
 
-    if (typeof editor_{{attributes.id|default("ckEditorInstance" ~ rand)}} !== 'undefined' && editor_{{attributes.id|default("ckEditorInstance" ~ rand)}}.config) {
+    class GlpiRichTextUploadPlugin extends Plugin {
+      static get pluginName() {
+        return 'GlpiRichTextUploadPlugin';
+      }
+
+      static get requires() {
+        return [ImageUpload];
+      }
+
+      init() {
+        const editor = this.editor;
+
+        ['imageBlock', 'imageInline'].forEach(imageType => {
+          editor.model.schema.extend(imageType, {
+            allowAttributes: ['glpiDocTag']
+          });
+
+          editor.conversion.for('downcast').attributeToAttribute({
+            model: {
+              name: imageType,
+              key: 'glpiDocTag'
+            },
+            view: modelAttributeValue => ({
+              key: 'data-glpi-doc-tag',
+              value: modelAttributeValue
+            })
+          });
+        });
+
+        editor.plugins.get('FileRepository').createUploadAdapter = loader =>
+          new GlpiRichTextUploadAdapter(loader, editor);
+
+        editor.plugins.get('ImageUploadEditing').on('uploadComplete', (event, { data, imageElement }) => {
+          if (!data.glpiDocTag) {
+            return;
+          }
+
+          editor.model.change(writer => {
+            writer.setAttribute('glpiDocTag', data.glpiDocTag, imageElement);
+          });
+          syncHiddenUploads(editor);
+        });
+
+        editor.model.document.on('change:data', () => {
+          syncHiddenUploads(editor);
+        });
+      }
+    }
+
+    if (typeof window[editorId] !== 'undefined' && window[editorId].config) {
         return;
     }
     ClassicEditor
-      .create(document.getElementById('{{attributes.id|default("ckEditorInstance" ~ rand)}}'), {
+      .create(document.getElementById(editorId), {
         licenseKey: 'GPL',
         plugins: [
             Essentials, Bold, Italic,
             BlockQuote, Heading, Link,
-            AutoLink, Image, Table,
-            List, ListProperties, Base64UploadAdapter,
+            AutoLink, Image, ImageUpload,
+            Table, List, ListProperties,
             ImageInsert, SourceEditing,
+            GlpiRichTextUploadPlugin,
         ],
         toolbar: ['heading',
           '|', 'bold', 'italic', 'blockQuote', 'link', 'insertImage',
@@ -52,8 +222,24 @@
         }
       })
       .then(editor => {
-        var editor_{{attributes.id|default("ckEditorInstance" ~ rand)}} = editor;
-        window['{{attributes.id|default("ckEditorInstance" ~ rand)}}'] = editor;
+        window[editorId] = editor;
+        syncHiddenUploads(editor);
+
+        if (editor.sourceElement && editor.sourceElement.form) {
+          editor.sourceElement.form.addEventListener('submit', event => {
+            const fileRepository = editor.plugins.get('FileRepository');
+            const hasPendingUpload = Array.from(fileRepository.loaders || []).some(loader => loader.status === 'uploading');
+
+            if (hasPendingUpload) {
+              event.preventDefault();
+              alert('Please wait for image uploads to finish before submitting.');
+              return;
+            }
+
+            syncHiddenUploads(editor);
+            editor.sourceElement.value = buildSubmitContent(editor);
+          });
+        }
       })
       .catch(error => {
         console.error(error);
