@@ -1161,6 +1161,28 @@ class Dropdown extends DbTestCase
         $this->array($result)->isIdenticalTo($expected);
     }
 
+    public function testShowNumberInitializesAjaxDropdown()
+    {
+        $output = \Dropdown::showNumber(
+            'warranty_duration',
+            [
+              'display' => false,
+              'min'     => 0,
+              'max'     => 120,
+              'unit'    => 'month',
+              'toadd'   => [-1 => 'Forever'],
+            ]
+        );
+
+        $this->string($output)
+           ->contains('getDropdownNumber.php')
+           ->contains('select.select2')
+           ->contains("type: 'POST'")
+           ->contains('searchText')
+           ->contains('"max":120')
+           ->contains('0 months');
+    }
+
     protected function getDropdownUsersProvider()
     {
         return [

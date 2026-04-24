@@ -5035,7 +5035,7 @@ JAVASCRIPT
 
         $placeholder = $params['placeholder'] ?? '';
         $allowclear =  "false";
-        if (strlen($placeholder) > 0 && !$params['display_emptychoice']) {
+        if (strlen($placeholder) > 0 && !($params['display_emptychoice'] ?? true)) {
             $allowclear = "true";
         }
 
@@ -5078,26 +5078,49 @@ JAVASCRIPT
             }
         }
 
+        $select2_params = $params;
+
         // display select tag
         $output = self::select($name, $values, $options);
 
         $js = "
-         var params_$field_id = {";
-        foreach ($params as $key => $val) {
-            // Specific boolean case
-            if (is_bool($val)) {
-                $js .= "$key: " . ($val ? 1 : 0) . ",\n";
-            } else {
-                $js .= "$key: " . json_encode($val) . ",\n";
-            }
-        }
-        $js .= "";
+         var field_id = " . json_encode($field_id) . ";
+         var select = $(document.getElementById(field_id));
+         var params = " . json_encode($select2_params) . ";
+
+         $.getScript(" . json_encode($CFG_GLPI['root_doc'] . "/node_modules/select2/dist/js/select2.min.js") . ", function() {
+            select.select2({
+               theme: 'bootstrap-5',
+               width: " . json_encode($width) . ",
+               placeholder: " . json_encode($placeholder) . ",
+               allowClear: $allowclear,
+               escapeMarkup: function(markup) {
+                  return markup;
+               },
+               ajax: {
+                  url: " . json_encode($url) . ",
+                  type: 'POST',
+                  dataType: 'json',
+                  delay: 250,
+                  data: function(params_select2) {
+                     return $.extend({}, params, {
+                        searchText: params_select2.term,
+                        page: params_select2.page || 1,
+                        page_limit: 500
+                     });
+                  }
+               }
+            });
+         });
+        ";
         if (!empty($on_change)) {
-            $js .= " $('#$field_id').on('change', function(e) {" .
+            $js .= " select.on('change', function(e) {" .
                stripslashes((string) $on_change) . "});";
         }
 
-        $js .= "}; $('label[for=$field_id]').on('click', function(){ $('#$field_id').select2('open'); });";
+        $js .= "$('label').filter(function() {
+            return $(this).attr('for') === field_id;
+         }).on('click', function(){ select.select2('open'); });";
 
         $output .= Html::scriptBlock('$(function() {' . $js . '});');
         return $output;
