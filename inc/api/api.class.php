@@ -2497,7 +2497,9 @@ abstract class API extends CommonGLPI
         // get sql errors
         if (
             count($all_messages) <= 0
-            && $DEBUG_SQL['errors'] !== null
+            && isset($DEBUG_SQL['errors'])
+            && is_array($DEBUG_SQL['errors'])
+            && count($DEBUG_SQL['errors']) > 0
         ) {
             $all_messages = $DEBUG_SQL['errors'];
         }
