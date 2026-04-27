@@ -1602,31 +1602,31 @@ class Html
             $locales_domains[$plugin] = Plugin::getInfo($plugin, 'version');
         }
         if (isset($_SESSION['glpilanguage'])) {
+            $locales_url = $CFG_GLPI['root_doc'] . '/front/locale.php?'
+               . http_build_query([
+                  'domains' => array_keys($locales_domains),
+                  'version' => sha1(json_encode($locales_domains)),
+               ])
+               . ($_SESSION['glpi_use_mode'] == Session::DEBUG_MODE ? '&debug' : '');
+            $locales_url = json_encode($locales_url, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT);
+            $locale_domains = json_encode(array_keys($locales_domains), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT);
+            $language = json_encode($_SESSION['glpilanguage'], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT);
             echo Html::scriptBlock(
                 <<<JAVASCRIPT
-            $(function() {
-               i18n.setLocale('{$_SESSION['glpilanguage']}');
+            i18n.setLocale({$language});
+            $.ajax({
+               type: 'GET',
+               url: {$locales_url},
+               success: function(locales) {
+                  {$locale_domains}.forEach(function(localeDomain) {
+                     if (locales[localeDomain]) {
+                        i18n.loadJSON(locales[localeDomain], localeDomain);
+                     }
+                  });
+               }
             });
 JAVASCRIPT
             );
-            foreach ($locales_domains as $locale_domain => $locale_version) {
-                $locales_url = $CFG_GLPI['root_doc'] . '/front/locale.php'
-                   . '?domain=' . $locale_domain
-                   . '&version=' . $locale_version
-                   . ($_SESSION['glpi_use_mode'] == Session::DEBUG_MODE ? '&debug' : '');
-                $locale_js = <<<JAVASCRIPT
-               $(function() {
-                  $.ajax({
-                     type: 'GET',
-                     url: '{$locales_url}',
-                     success: function(json) {
-                        i18n.loadJSON(json, '{$locale_domain}');
-                     }
-                  });
-               });
-JAVASCRIPT;
-                echo Html::scriptBlock($locale_js);
-            }
         }
 
         self::accessibilityHeader();

@@ -54,30 +54,38 @@ if ($is_cacheable) {
 
 global $CFG_GLPI, $TRANSLATE;
 
-// Default respoinse to send if locales cannot be loaded.
-// Prevent JS error for plugins that does not provide any translation files
-$default_response = json_encode(
-    [
-      '' => [
-         'language'     => $CFG_GLPI['languages'][$_SESSION['glpilanguage']][1],
-         'plural-forms' => 'nplurals=2; plural=(n != 1);',
-      ],
-    ]
-);
+$language = $_SESSION['glpilanguage'];
+$locale = $CFG_GLPI['languages'][$language][1];
+$requested_domains = [];
+if (isset($_GET['domains']) && is_array($_GET['domains'])) {
+    $requested_domains = $_GET['domains'];
+} elseif (isset($_GET['domain'])) {
+    $requested_domains = [$_GET['domain']];
+}
+$requested_domains = array_values(array_unique(array_filter($requested_domains, 'is_string')));
+if (count($requested_domains) === 0) {
+    $requested_domains = ['glpi'];
+}
+$is_batch_request = count($requested_domains) > 1 || isset($_GET['domains']);
 
-// Get messages from translator component
-$messages = $TRANSLATE->getAllMessages($_GET['domain']);
-if (!($messages instanceof \Laminas\I18n\Translator\TextDomain)) {
-    // No TextDomain found means that there is no translations for given domain.
-    // It is mostly related to plugins that does not provide any translations.
-    exit($default_response);
+// Default response to send if locales cannot be loaded.
+// Prevent JS error for plugins that does not provide any translation files.
+$default_response = [
+   '' => [
+      'language'     => $locale,
+      'plural-forms' => 'nplurals=2; plural=(n != 1);',
+   ],
+];
+
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
 }
 
 // Extract headers from main po file
 $po_file = GLPI_ROOT . '/locales/' . preg_replace(
     '/\.mo$/',
     '.po',
-    (string) $CFG_GLPI['languages'][$_SESSION['glpilanguage']][1]
+    (string) $locale
 );
 $po_file_handle = fopen(
     $po_file,
@@ -85,7 +93,7 @@ $po_file_handle = fopen(
 );
 if (false === $po_file_handle) {
     Toolbox::logError(sprintf('Unable to extract locales data from "%s".', $po_file));
-    exit($default_response);
+    exit(json_encode($is_batch_request ? array_fill_keys($requested_domains, $default_response) : $default_response));
 }
 $in_headers = false;
 $headers = [];
@@ -107,12 +115,29 @@ while (false !== ($line = fgets($po_file_handle))) {
         }
     }
 }
+fclose($po_file_handle);
 if (count(array_diff($header_keys, array_keys($headers))) > 0) {
     Toolbox::logError(sprintf('Missing mandatory locale headers in "%s".', $po_file));
-    exit($default_response);
+    $headers = $default_response[''];
+}
+$default_response[''] = $headers;
+
+$locales = [];
+foreach ($requested_domains as $domain) {
+    // Get messages from translator component.
+    $messages = $TRANSLATE->getAllMessages($domain);
+    if (!($messages instanceof \Laminas\I18n\Translator\TextDomain)) {
+        // No TextDomain found means that there is no translations for given domain.
+        // It is mostly related to plugins that does not provide any translations.
+        $locales[$domain] = $default_response;
+        continue;
+    }
+
+    // Output messages and headers.
+    $messages[''] = $headers;
+    $messages->ksort();
+    $locales[$domain] = $messages;
 }
 
-// Output messages and headers
-$messages[''] = $headers;
-$messages->ksort();
-echo(json_encode($messages, JSON_PRETTY_PRINT));
+$json_flags = isset($_GET['debug']) ? JSON_PRETTY_PRINT : 0;
+echo json_encode($is_batch_request ? $locales : reset($locales), $json_flags);
