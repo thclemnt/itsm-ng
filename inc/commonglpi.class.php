@@ -1059,10 +1059,9 @@ class CommonGLPI
                      <i class='fas fa-angle-left pointer' title=\"" . __s('Previous') . "\"></i>
                   </a>";
                 $js = '$("body").keydown(function(e) {
-                       if ($("input, textarea").is(":focus") === false) {
-                          if(e.keyCode == 37 && e.ctrlKey) {
-                            window.location = $("#previouspage").attr("href");
-                          }
+                       var editable_selector = "input, textarea, select, [contenteditable]:not([contenteditable=false]), [role=textbox]";
+                       if ($(e.target).closest(editable_selector).length === 0 && e.keyCode == 37 && e.ctrlKey) {
+                          window.location = $("#previouspage").attr("href");
                        }
                   });';
                 echo Html::scriptBlock($js);
@@ -1203,10 +1202,9 @@ class CommonGLPI
                    "<i class='fas fa-angle-right pointer' title=\"" . __s('Next') . "\"></i>
                     </a>";
                 $js = '$("body").keydown(function(e) {
-                       if ($("input, textarea").is(":focus") === false) {
-                          if(e.keyCode == 39 && e.ctrlKey) {
-                            window.location = $("#nextpage").attr("href");
-                          }
+                       var editable_selector = "input, textarea, select, [contenteditable]:not([contenteditable=false]), [role=textbox]";
+                       if ($(e.target).closest(editable_selector).length === 0 && e.keyCode == 39 && e.ctrlKey) {
+                          window.location = $("#nextpage").attr("href");
                        }
                   });';
                 echo Html::scriptBlock($js);
