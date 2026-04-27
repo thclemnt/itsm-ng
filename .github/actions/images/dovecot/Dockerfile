@@ -26,6 +26,6 @@ RUN sed -ri 's|^#?listen =.*$|listen = *, ::|' /etc/dovecot/dovecot.conf \
 COPY .github/actions/images/dovecot/getmail_maildir /usr/local/bin/getmail_maildir
 RUN chmod +x /usr/local/bin/getmail_maildir
 
-EXPOSE 143
+EXPOSE 143 110
 
 CMD ["dovecot", "-F"]
