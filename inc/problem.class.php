@@ -749,6 +749,25 @@ class Problem extends CommonITILObject
     }
 
     /**
+     * Get status key map by status value.
+     *
+     * @return array
+     */
+    protected static function getStatusKeyMap()
+    {
+        return [
+           self::INCOMING => 'new',
+           self::ACCEPTED => 'accepted',
+           self::ASSIGNED => 'assigned',
+           self::PLANNED  => 'planned',
+           self::WAITING  => 'waiting',
+           self::SOLVED   => 'solved',
+           self::OBSERVED => 'observe',
+           self::CLOSED   => 'closed',
+        ];
+    }
+
+    /**
      * Get the ITIL object assign, plan or accepted status list
      *
      * @since 0.83

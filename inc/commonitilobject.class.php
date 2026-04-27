@@ -4381,11 +4381,12 @@ abstract class CommonITILObject extends CommonDBTM
      */
     public static function getStatusIcon($status)
     {
-        $tab = Ticket::getAllStatusArray(false, true);
         $class = static::getStatusClass($status);
         $label = static::getStatus($status);
         if (empty($class)) {
-            return "<i style='color:" . $tab["color"][$status] . "' class='itilstatus fas fa-circle new' title='$label'></i>";
+            $tab = Ticket::getAllStatusArray(false, true);
+            $color = $tab["color"][$status] ?? 'Default';
+            return "<i style='color:" . $color . "' class='itilstatus fas fa-circle new' title='$label'></i>";
         } else {
             return "<i class='$class' title='$label'></i>";
         }
@@ -4400,57 +4401,15 @@ abstract class CommonITILObject extends CommonDBTM
      */
     public static function getStatusClass($status)
     {
-        $class = null;
-        $solid = true;
-        $tab = Ticket::getAllStatusArray(false, true);
-        $statusName = $tab["name"][$status] ?? '';
-        switch ($statusName) {
-            case "New":
-                $class = 'circle';
-                break;
-            case "Processing (assigned)":
-                $class = 'circle';
-                $solid = false;
-                break;
-            case "Processing (planned)":
-                $class = 'calendar';
-                break;
-            case "Pending":
-                $class = 'circle';
-                break;
-            case "Solved":
-                $class = 'circle';
-                $solid = false;
-                break;
-            case "Closed":
-                $class = 'circle';
-                break;
-            case "Accepted":
-                $class = 'check-circle';
-                break;
-            case "Observe":
-                $class = 'eye';
-                break;
-            case "Eval":
-                $class = 'circle';
-                $solid = false;
-                break;
-            case "Approval":
-                $class = 'question-circle';
-                break;
-            case "Test":
-                $class = 'question-circle';
-                break;
-            case "Qualif":
-                $class = 'circle';
-                $solid = false;
-                break;
+        $statusKey = static::getStatusKey($status);
+        $icon = static::getStatusIconClassMap()[$statusKey] ?? null;
+
+        if ($icon === null) {
+            return '';
         }
 
-        return $class == null
-           ? ''
-           : 'itilstatus ' . ($solid ? 'fas fa-' : 'far fa-') . $class .
-           " " . static::getStatusKey($status);
+        return 'itilstatus ' . ($icon['solid'] ? 'fas fa-' : 'far fa-') . $icon['class'] .
+           " " . $statusKey;
     }
 
     /**
@@ -4462,47 +4421,72 @@ abstract class CommonITILObject extends CommonDBTM
      */
     public static function getStatusKey($status)
     {
-        $key = '';
-        $tab = Ticket::getAllStatusArray(false, true);
-        switch ($tab["name"][$status]) {
-            case "New":
-                $key = 'new';
-                break;
-            case "Processing (assigned)":
-                $key = 'assigned';
-                break;
-            case "Processing (planned)":
-                $key = 'planned';
-                break;
-            case "Pending":
-                $key = 'waiting';
-                break;
-            case "Solved":
-                $key = 'solved';
-                break;
-            case "Closed":
-                $key = 'closed';
-                break;
-            case "Accepted":
-                $key = 'accepted';
-                break;
-            case "Observe":
-                $key = 'observe';
-                break;
-            case "Eval":
-                $key = 'eval';
-                break;
-            case "Approval":
-                $key = 'approval';
-                break;
-            case "Test":
-                $key = 'test';
-                break;
-            case "Qualif":
-                $key = 'qualif';
-                break;
+        $statusKeyMap = static::getStatusKeyMap();
+        if (isset($statusKeyMap[$status])) {
+            return $statusKeyMap[$status];
         }
-        return $key;
+
+        $tab = Ticket::getAllStatusArray(false, true);
+        $statusName = $tab["name"][$status] ?? '';
+        $statusNameMap = static::getStatusNameKeyMap();
+
+        return $statusNameMap[$statusName] ?? '';
+    }
+
+    /**
+     * Get status key map by status value.
+     *
+     * @return array
+     */
+    protected static function getStatusKeyMap()
+    {
+        return [];
+    }
+
+    /**
+     * Get status key map by status name.
+     *
+     * @return array
+     */
+    protected static function getStatusNameKeyMap()
+    {
+        return [
+           'New'                   => 'new',
+           'Processing (assigned)' => 'assigned',
+           'Processing (planned)'  => 'planned',
+           'Pending'               => 'waiting',
+           'Solved'                => 'solved',
+           'Closed'                => 'closed',
+           'Accepted'              => 'accepted',
+           'Observe'               => 'observe',
+           'Eval'                  => 'eval',
+           'Approval'              => 'approval',
+           'Test'                  => 'test',
+           'Qualif'                => 'qualif',
+        ];
+    }
+
+    /**
+     * Get status icon class map by status key.
+     *
+     * @return array
+     */
+    protected static function getStatusIconClassMap()
+    {
+        return [
+           'new'      => ['class' => 'circle',          'solid' => true],
+           'assigned' => ['class' => 'circle',          'solid' => false],
+           'planned'  => ['class' => 'calendar',        'solid' => true],
+           'waiting'  => ['class' => 'circle',          'solid' => true],
+           'solved'   => ['class' => 'circle',          'solid' => false],
+           'closed'   => ['class' => 'circle',          'solid' => true],
+           'accepted' => ['class' => 'check-circle',    'solid' => true],
+           'observe'  => ['class' => 'eye',             'solid' => true],
+           'eval'     => ['class' => 'circle',          'solid' => false],
+           'approval' => ['class' => 'question-circle', 'solid' => true],
+           'test'     => ['class' => 'question-circle', 'solid' => true],
+           'qualif'   => ['class' => 'circle',          'solid' => false],
+        ];
     }
 
 

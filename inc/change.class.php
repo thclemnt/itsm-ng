@@ -589,6 +589,27 @@ class Change extends CommonITILObject
         return $tab;
     }
 
+    /**
+     * Get status key map by status value.
+     *
+     * @return array
+     */
+    protected static function getStatusKeyMap()
+    {
+        return [
+           self::INCOMING      => 'new',
+           self::EVALUATION    => 'eval',
+           self::APPROVAL      => 'approval',
+           self::ACCEPTED      => 'accepted',
+           self::WAITING       => 'waiting',
+           self::TEST          => 'test',
+           self::QUALIFICATION => 'qualif',
+           self::SOLVED        => 'solved',
+           self::OBSERVED      => 'observe',
+           self::CLOSED        => 'closed',
+        ];
+    }
+
 
     /**
      * Get the ITIL object closed status list
