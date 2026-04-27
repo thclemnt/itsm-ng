@@ -2048,12 +2048,10 @@ JAVASCRIPT
         self::displayDebugInfos();
         self::loadJavascript();
         echo Html::script("node_modules/jquery-ui-dist/jquery-ui.min.js");
-        echo Html::script("node_modules/@tanstack/table-core/build/umd/index.production.js");
         echo Html::script("node_modules/htm/dist/htm.umd.js");
         echo Html::script("node_modules/vhtml/dist/vhtml.min.js");
         echo Html::script("node_modules/preact/dist/preact.umd.js");
         echo Html::script("node_modules/preact/hooks/dist/hooks.umd.js");
-        echo Html::script("public/lib/nanostores.js");
         echo Html::script("public/build/displaypreferences.js");
         echo Html::script("public/build/table.js");
         echo Html::script("vendor/twbs/bootstrap/dist/js/bootstrap.bundle.min.js");

@@ -32,9 +32,11 @@
 const { CleanWebpackPlugin } = require('clean-webpack-plugin');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
+const TerserPlugin = require('terser-webpack-plugin');
 
 const glob = require('glob');
 const path = require('path');
+const webpack = require('webpack');
 
 const libOutputPath = 'public/lib';
 
@@ -45,7 +47,7 @@ const glpiConfig = {
   entry: {
     glpi: path.resolve(__dirname, 'js/main.js'),
     displaypreferences: path.resolve(__dirname, 'js/displaypreferences.js'),
-    table: path.resolve(__dirname, 'js/table.js'),
+    table: path.resolve(__dirname, 'js/table.jsx'),
   },
   output: {
     filename: '[name].js',
@@ -64,16 +66,32 @@ const glpiConfig = {
   module: {
     rules: [
       {
-        test: /\.js$/,
+        test: /\.jsx?$/,
         exclude: /node_modules/,
         use: {
           loader: 'babel-loader',
           options: {
             presets: ['@babel/preset-env'],
-            plugins: ['babel-plugin-htm']
+            plugins: [
+              ['@babel/plugin-transform-react-jsx', { pragma: 'h', pragmaFrag: 'Fragment' }],
+            ],
           },
         },
       },
+    ],
+  },
+  plugins: [
+    new webpack.DefinePlugin({
+      'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production'),
+    }),
+  ],
+  optimization: {
+    minimize: true,
+    minimizer: [
+      new TerserPlugin({
+        include: /table\.js$/,
+        extractComments: false,
+      }),
     ],
   },
 };
