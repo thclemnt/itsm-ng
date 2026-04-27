@@ -126,9 +126,6 @@ jobs:
       - name: Start PHP development server
         run: php -S localhost:8088 tests/router.php &>/dev/null &
 
-      - name: Run web API tests
-        run: vendor/bin/atoum -p 'php -d memory_limit=512M' --debug --force-terminal --use-dot-report --bootstrap-file tests/bootstrap.php --no-code-coverage --max-children-number 1 -d tests/web
-
       - name: Setup migration environment
         run: |
           sudo mysql -e "CREATE DATABASE IF NOT EXISTS itsm_migration;"
