@@ -4980,6 +4980,15 @@ class Ticket extends CommonITILObject
 
         $entityId = $options['entities_id'] ?? $this->fields['entities_id'];
         $defaultUseNotification = Entity::getUsedConfig('is_notif_enable_default', $entityId, '', 1);
+        $assignAllowed = ($isNew
+            ? $this->isAllowedStatus(CommonITILObject::INCOMING, CommonITILObject::ASSIGNED)
+            : $this->isAllowedStatus($this->fields['status'], CommonITILObject::ASSIGNED));
+        $canSelfAssign = !$isNew
+            && $canAssignToMe
+            && !$isClosed
+            && !($hiddenFields['_users_id_assign'] ?? false)
+            && !$this->isUser(CommonITILActor::ASSIGN, Session::getLoginUserID())
+            && $assignAllowed;
 
         $roleDefinitions = [
             [
@@ -5017,13 +5026,11 @@ class Ticket extends CommonITILObject
                     '_suppliers_id_assign',
                 ]),
                 'fields'        => ['_users_id_assign', '_groups_id_assign', '_suppliers_id_assign'],
-                'help'          => !$isNew && $this->isAllowedStatus($this->fields['status'], CommonITILObject::ASSIGNED)
+                'help'          => !$isNew && $assignAllowed
                     && ($canAssign || $canAssignToMe) ? __('New actors are added when you save the ticket.') : '',
-                'allowAdd'      => ($isNew
-                    ? $this->isAllowedStatus(CommonITILObject::INCOMING, CommonITILObject::ASSIGNED)
-                    : $this->isAllowedStatus($this->fields['status'], CommonITILObject::ASSIGNED))
-                    && ($canAssign || $canAssignToMe),
+                'allowAdd'      => $assignAllowed && ($canAssign || $canAssignToMe),
                 'removable'     => $canAssign,
+                'selfAssign'    => $canSelfAssign,
                 'allowedTypes'  => array_values(array_filter([
                     ($canAssign || $canAssignToMe) ? 'user' : null,
                     $canAssign ? 'group' : null,
@@ -5110,6 +5117,12 @@ class Ticket extends CommonITILObject
                 'defaultType' => $defaultType,
                 'fieldMap'    => $fieldMap,
                 'values'      => $values,
+                'selfAssign'  => !empty($panelDefinition['selfAssign']) ? [
+                    'fieldName'  => $this->getForeignKeyField(),
+                    'itemId'     => $ID,
+                    'buttonName' => 'addme_assign',
+                    'label'      => __('Associate myself'),
+                ] : null,
             ];
         }
 

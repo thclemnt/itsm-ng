@@ -5102,6 +5102,12 @@ abstract class CommonITILObject extends CommonDBTM
         $assignAllowed = ($isNew
             ? $this->isAllowedStatus(CommonITILObject::INCOMING, CommonITILObject::ASSIGNED)
             : $this->isAllowedStatus($this->fields['status'], CommonITILObject::ASSIGNED));
+        $canSelfAssign = !$isNew
+            && $canAssignToMe
+            && !$isClosed
+            && !($hiddenFields['_users_id_assign'] ?? false)
+            && !$this->isUser(CommonITILActor::ASSIGN, Session::getLoginUserID())
+            && $assignAllowed;
 
         $roleDefinitions = [
             [
@@ -5139,6 +5145,7 @@ abstract class CommonITILObject extends CommonDBTM
                 'fields'       => ['_users_id_assign', '_groups_id_assign', '_suppliers_id_assign'],
                 'allowAdd'     => $assignAllowed && ($canAssign || $canAssignToMe),
                 'removable'    => $canAssign,
+                'selfAssign'   => $canSelfAssign,
                 'allowedTypes' => array_values(array_filter([
                     ($canAssign || $canAssignToMe) ? 'user' : null,
                     $canAssign ? 'group' : null,
@@ -5224,6 +5231,12 @@ abstract class CommonITILObject extends CommonDBTM
                 'defaultType' => $defaultType,
                 'fieldMap'    => $fieldMap,
                 'values'      => $values,
+                'selfAssign'  => !empty($panelDefinition['selfAssign']) ? [
+                    'fieldName'  => $this->getForeignKeyField(),
+                    'itemId'     => $ID,
+                    'buttonName' => 'addme_assign',
+                    'label'      => __('Associate myself'),
+                ] : null,
             ];
         }
 

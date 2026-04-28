@@ -12,6 +12,7 @@
     }
 
     #{{ panel_id }} .itil-actor-card {
+      position: relative;
       border: 1px solid var(--tbl-border-color, #d9dee7);
       border-radius: 0.75rem;
       background: linear-gradient(180deg, #ffffff 0%, #f7f9fc 100%);
@@ -29,6 +30,27 @@
       justify-content: space-between;
       align-items: center;
       gap: 0.75rem;
+    }
+
+    #{{ panel_id }} .itil-actor-card__header-actions {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      line-height: 1;
+    }
+
+    #{{ panel_id }} .itil-actor-card__header-actions .icon-button {
+      border: 0;
+      background: transparent;
+      color: #5f6f86;
+      line-height: 1;
+      padding: 0;
+      cursor: pointer;
+    }
+
+    #{{ panel_id }} .itil-actor-card__header-actions .icon-button:hover,
+    #{{ panel_id }} .itil-actor-card__header-actions .icon-button:focus {
+      color: #102a56;
     }
 
     #{{ panel_id }} .itil-actor-card__title {
@@ -227,6 +249,22 @@
                 <p class="itil-actor-card__hint">{{ panel.helpText }}</p>
               {% endif %}
             </div>
+            {% if panel.selfAssign %}
+              <div class="itil-actor-card__header-actions">
+                <input type="hidden"
+                       name="{{ panel.selfAssign.fieldName }}"
+                       value="{{ panel.selfAssign.itemId }}">
+                <button type="submit"
+                        name="{{ panel.selfAssign.buttonName }}"
+                        value="{{ panel.selfAssign.buttonName }}"
+                        class="icon-button"
+                        title="{{ panel.selfAssign.label }}"
+                        aria-label="{{ panel.selfAssign.label }}"
+                        formnovalidate>
+                  <i class="fas fa-male" aria-hidden="true"></i>
+                </button>
+              </div>
+            {% endif %}
           </div>
 
           {% if panel.allowAdd and panel.actorTypes %}
