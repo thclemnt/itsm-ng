@@ -43,7 +43,7 @@ if (substr(ITSM_VERSION, -4) === '-dev') {
     );
 } else {
     //for stable version
-    define("ITSM_SCHEMA_VERSION", '2.1.3');
+    define("ITSM_SCHEMA_VERSION", '2.1.4');
 }
 
 // Current version of ITSM-NG
@@ -428,7 +428,8 @@ $CFG_GLPI["rulecollections_types"]        = [
 // Items which can planned something
 $CFG_GLPI['planning_types']               = [
    'ChangeTask', 'ProblemTask', 'Reminder',
-   'TicketTask', 'ProjectTask', 'PlanningExternalEvent'
+   'TicketTask', 'ProjectTask', 'PlanningExternalEvent',
+   'Holiday'
 ];
 $CFG_GLPI['planning_add_types']           = ['PlanningExternalEvent'];
 

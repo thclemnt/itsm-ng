@@ -2091,6 +2091,7 @@ abstract class CommonITILObject extends CommonDBTM
                 $tasktemplate_content = Toolbox::addslashes_deep($tasktemplate->fields["content"]);
                 $itiltask->add([
                    'tasktemplates_id'            => $tasktemplates_id,
+                   'title'                       => $tasktemplate->fields['title'] ?? '',
                    'content'                     => $tasktemplate_content,
                    'taskcategories_id'           => $tasktemplate->fields['taskcategories_id'],
                    'actiontime'                  => $tasktemplate->fields['actiontime'],
@@ -7972,7 +7973,7 @@ abstract class CommonITILObject extends CommonDBTM
                   '$foreignKey': " . $this->fields['id'] . "
                 })
                 .done(function(response) {
-                  $(target).removeClass('state_1 state_2')
+                  $(target).removeClass('state_1 state_2 state_3')
                            .addClass('state_'+response.state)
                            .attr('data-state', response.state)
                            .attr('title', response.label);
@@ -8188,7 +8189,8 @@ abstract class CommonITILObject extends CommonDBTM
             if ($total_tasks > 0) {
                 $states = [Planning::INFO => __('Information tasks: %s %%'),
                            Planning::TODO => __('Todo tasks: %s %%'),
-                           Planning::DONE => __('Done tasks: %s %% ')];
+                           Planning::DONE => __('Done tasks: %s %% '),
+                           Planning::CANCELLED => __('Cancelled tasks: %s %% ')];
                 echo "<h3 style='font-family: $font;'>";
                 foreach ($states as $state => $string) {
                     $criteria = [$foreignKey => $this->fields['id'],
@@ -8639,6 +8641,12 @@ abstract class CommonITILObject extends CommonDBTM
             }
 
             if (isset($item_i['content'])) {
+                if (is_subclass_of($item['type'], CommonITILTask::class)) {
+                    $task_title = CommonITILTask::getTitleToDisplay($item_i);
+                    if ($task_title !== '') {
+                        echo "<div class='item_title'>" . Html::entities_deep($task_title) . "</div>";
+                    }
+                }
                 $content = $item_i['content'];
                 $content = Toolbox::getHtmlToDisplay($content);
                 $content = autolink($content, false);

@@ -70,6 +70,30 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
     }
 
 
+    /**
+     * Get the task title, falling back to a short plain-text version of the task body.
+     *
+     * @param array   $fields task fields
+     * @param integer $length maximum returned length
+     *
+     * @return string
+    **/
+    public static function getTitleToDisplay(array $fields, $length = 80)
+    {
+        $title = trim((string)($fields['title'] ?? ''));
+        if ($title === '') {
+            $title = Html::clean(
+                Toolbox::unclean_cross_side_scripting_deep(
+                    $fields['content'] ?? ''
+                )
+            );
+            $title = preg_replace('/\s+/', ' ', trim((string)$title));
+        }
+
+        return Html::resume_name($title, $length);
+    }
+
+
     public function canViewPrivates()
     {
         return false;
@@ -695,6 +719,14 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
         ];
 
         $tab[] = [
+           'id'                 => '8',
+           'table'              => $this->getTable(),
+           'field'              => 'title',
+           'name'               => __('Title'),
+           'datatype'           => 'string'
+        ];
+
+        $tab[] = [
            'id'                 => '1',
            'table'              => $this->getTable(),
            'field'              => 'content',
@@ -778,6 +810,21 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
         $tab[] = [
            'id'                 => 'task',
            'name'               => $name
+        ];
+
+        $tab[] = [
+           'id'                 => '176',
+           'table'              => static::getTable(),
+           'field'              => 'title',
+           'name'               => __('Title'),
+           'datatype'           => 'string',
+           'forcegroupby'       => true,
+           'splititems'         => true,
+           'massiveaction'      => false,
+           'joinparams'         => [
+              'jointype'           => 'child',
+              'condition'          => $task_condition,
+           ]
         ];
 
         $tab[] = [
@@ -1229,6 +1276,7 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
                         $interv[$key]["id"]                        = $data["id"];
                         if (isset($data["state"])) {
                             $interv[$key]["state"]                  = $data["state"];
+                            $interv[$key]["state_label"]            = Planning::getState($data["state"]);
                         }
                         $interv[$key][$parentitem->getForeignKeyField()]
                                                         = $item->fields[$parentitem->getForeignKeyField()];
@@ -1248,7 +1296,10 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
                             $interv[$key]["end"] = $data["end"];
                         }
 
-                        $interv[$key]["name"]     = Html::entity_decode_deep($parentitem->fields["name"]);
+                        $interv[$key]["name"]     = Html::entity_decode_deep(
+                            self::getTitleToDisplay($item->fields)
+                        );
+                        $interv[$key]["parent_name"] = Html::entity_decode_deep($parentitem->fields["name"]);
                         $interv[$key]["content"]  = Html::resume_text(
                             $item->fields["content"],
                             $CFG_GLPI["cut"]
@@ -1317,7 +1368,7 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
         $styleText = "";
         if (isset($val["state"])) {
             switch ($val["state"]) {
-                case 2: // Done
+                case Planning::DONE:
                     $styleText = "color:#747474;";
                     break;
             }
@@ -1336,6 +1387,9 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
         $html .= "&nbsp;<a id='content_tracking_" . $val["id"] . $rand . "'
                    href='" . $parenttype::getFormURLWithID($val[$parenttype_fk]) . "'
                    style='$styleText'>";
+        if (!empty($val["parent_name"])) {
+            $html .= "<span class='small'>" . Html::entities_deep($val["parent_name"]) . "</span>";
+        }
 
         if (!empty($val["device"])) {
             $html .= "<br>" . $val["device"];
@@ -1371,8 +1425,8 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
         }
 
         if (isset($val["state"])) {
-            $html .= "<span>";
-            $html .= Planning::getState($val["state"]);
+            $html .= "<span class='d-block'>";
+            $html .= sprintf(__('%1$s: %2$s'), __('State'), Planning::getState($val["state"]));
             $html .= "</span>";
         }
         $html .= "<div>";
@@ -1448,6 +1502,13 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
                         ['title' => __('Done')]
                     );
                     break;
+
+                case Planning::CANCELLED:
+                    echo Html::image(
+                        $CFG_GLPI['root_doc'] . "/pics/delete.png",
+                        ['title' => __('Cancelled')]
+                    );
+                    break;
             }
             echo "</td>";
             echo "<td>";
@@ -1485,6 +1546,10 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
             //else echo "--no--";
             echo Html::convDateTime($this->fields["date"]) . "</td>";
             $content = Toolbox::getHtmlToDisplay($this->fields['content']);
+            $title = self::getTitleToDisplay($this->fields);
+            if ($title !== '') {
+                $content = "<strong>" . Html::entities_deep($title) . "</strong><br>" . $content;
+            }
             echo "<td class='left'>$content</td>";
             echo "<td>" . Html::timestampToString($this->fields["actiontime"], 0) . "</td>";
             echo "<td>" . getUserName($this->fields["users_id"]) . "</td>";
@@ -1602,6 +1667,7 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
         $rand = mt_rand();
 
         $planLabel = __('Plan this task');
+        $title_placeholder = self::getTitleToDisplay($this->fields);
 
         $form = [
            'action' => $this->getFormURL(),
@@ -1629,6 +1695,15 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
                        'type' => 'hidden',
                        'name' => $fkfield,
                        'value' => $this->fields[$fkfield],
+                    ],
+                    __('Title') => [
+                       'type' => 'text',
+                       'name' => 'title',
+                       'id' => 'InputForTaskTitle',
+                       'value' => $this->fields['title'] ?? '',
+                       'placeholder' => $title_placeholder,
+                       'col_lg' => 12,
+                       'col_md' => 12,
                     ],
                     '' => [
                        'type' => 'richtextarea',
@@ -1665,7 +1740,10 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
                               var group_tech = isNaN(parseInt(data.groups_id_tech))
                                  ? 0
                                  : parseInt(data.groups_id_tech);
+                              var title = data.title || "";
 
+                              // set title
+                              $("#InputForTaskTitle").val(title);
                               // set textarea content
                               TextAreaForTaskContent.setData(data.content);
                               // set category
@@ -1707,7 +1785,8 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
                        'values' => [
                           Planning::INFO => _n('Information', 'Information', 1),
                           Planning::TODO => __('To do'),
-                          Planning::DONE => __('Done')
+                          Planning::DONE => __('Done'),
+                          Planning::CANCELLED => __('Cancelled')
                        ],
                        'value' => Planning::TODO,
                     ] : [],
@@ -1828,6 +1907,12 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
               'col_lg' => 12,
               'col_md' => 12,
            ],
+           __('Title') => [
+              'name' => 'title',
+              'type' => 'text',
+              'col_lg' => 12,
+              'col_md' => 12,
+           ],
            __('Duration') => [
               'name' => 'actiontime',
               'type' => 'select',
@@ -1846,7 +1931,8 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
               'values' => [
                  Planning::INFO => _n('Information', 'Information', 1),
                  Planning::TODO => __('To do'),
-                 Planning::DONE => __('Done')
+                 Planning::DONE => __('Done'),
+                 Planning::CANCELLED => __('Cancelled')
               ],
               'col_lg' => 12,
               'col_md' => 12,
@@ -2215,7 +2301,7 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
         $utc_tz = new \DateTimeZone('UTC');
 
         $vcomp = $vcalendar->getBaseComponent();
-        $vcomp->SUMMARY           = $parent_fields['name'];
+        $vcomp->SUMMARY           = self::getTitleToDisplay($this->fields);
         $vcomp->DTSTAMP           = (new \DateTime($parent_fields['date_mod']))->setTimeZone($utc_tz);
         $vcomp->{'LAST-MODIFIED'} = (new \DateTime($parent_fields['date_mod']))->setTimeZone($utc_tz);
         $vcomp->URL               = $CFG_GLPI['url_base'] . $parent_item->getFormURLWithID($parent_id, false);
@@ -2233,6 +2319,10 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
         }
 
         $input = $this->getCommonInputFromVcomponent($vtodo, $this->isNewItem());
+        if (array_key_exists('name', $input)) {
+            $input['title'] = $input['name'];
+            unset($input['name']);
+        }
 
         if (!$this->isNewItem()) {
             // self::prepareInputForUpdate() expect these fields to be set in input.
