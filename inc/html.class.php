@@ -2949,7 +2949,8 @@ JAVASCRIPT
                         }
                     });
                JS : <<<JS
-                  let rows = window['$identifier'+'_getMassiveActionSelection']();
+                  let tableInstance = window.ITSMTable ? window.ITSMTable.get('$identifier') : null;
+                  let rows = tableInstance ? tableInstance.getSelection() : [];
                   for (let i = 0; i < rows.length; i++) {
                      fields[rows[i].value] = 1;
                   }

@@ -71,7 +71,8 @@
     <input id="table_input" type="hidden" name="{{args.post_name}}" value=''>
     <script>
         $('form').on("submit", function() {
-            selection = window[table + '_getMassiveActionSelection']();
+            const tableInstance = window.ITSMTable ? window.ITSMTable.get(table) : null;
+            selection = tableInstance ? tableInstance.getSelection() : [];
             selection.forEach(array => {
             Object.keys(array).forEach(key => {
                     if (key.includes("_data")) {

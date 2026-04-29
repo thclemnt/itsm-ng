@@ -46,7 +46,7 @@ const libOutputPath = 'public/lib';
 const glpiConfig = {
   entry: {
     glpi: path.resolve(__dirname, 'js/main.js'),
-    displaypreferences: path.resolve(__dirname, 'js/displaypreferences.js'),
+    displaypreferences: path.resolve(__dirname, 'js/displaypreferences.jsx'),
     table: path.resolve(__dirname, 'js/table.jsx'),
   },
   output: {

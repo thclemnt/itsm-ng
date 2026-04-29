@@ -10,9 +10,77 @@ import { useEffect } from 'preact/hooks';
 import { batch, signal } from '@preact/signals';
 
 (function (window, document) {
-    const existingQueue = Array.isArray(window.ITSMTableQueue) ? window.ITSMTableQueue : [];
+    const instances = new Map();
 
-    function initTable(config) {
+    const normalizeTableConfig = (rawConfig) => {
+        if (!rawConfig || typeof rawConfig !== 'object') {
+            console.error('ITSMTable: missing table configuration');
+            return null;
+        }
+
+        if (!rawConfig.id) {
+            console.error('ITSMTable: table configuration requires an id', rawConfig);
+            return null;
+        }
+
+        const columns = Array.isArray(rawConfig.columns) ? rawConfig.columns : [];
+        if (!columns.length) {
+            console.error('ITSMTable: table configuration requires at least one column', rawConfig);
+            return null;
+        }
+
+        const dataSource = rawConfig.dataSource || {};
+        const isRemote = dataSource.type === 'remote';
+        if (isRemote && !dataSource.url) {
+            console.error('ITSMTable: remote data source requires an url', rawConfig);
+            return null;
+        }
+
+        const selection = rawConfig.selection || {};
+        const toolbar = rawConfig.toolbar || {};
+        const trash = toolbar.trash || {};
+        const view = rawConfig.view || {};
+        const exportConfig = rawConfig.export || {};
+
+        return {
+            id: String(rawConfig.id),
+            stateKey: String(rawConfig.stateKey || rawConfig.itemtype || rawConfig.id),
+            itemtype: rawConfig.itemtype || '',
+            columns,
+            dataSource: {
+                type: isRemote ? 'remote' : 'local',
+                url: isRemote ? dataSource.url : null,
+                rows: isRemote ? [] : (dataSource.rows || []),
+            },
+            selection: {
+                type: selection.type || 'none',
+                values: selection.values || [],
+                inputId: selection.inputId || null,
+            },
+            toolbar: {
+                enabled: toolbar.enabled !== false,
+                columns: toolbar.columns !== false,
+                massiveAction: toolbar.massiveAction !== false,
+                displayPreferences: !!toolbar.displayPreferences,
+                id: toolbar.id || 'toolbar' + Math.floor(Math.random() * 1000000),
+                trash: {
+                    enabled: !!trash.enabled,
+                    isTrash: !!trash.isTrash,
+                },
+            },
+            view: {
+                pageSize: view.pageSize || 15,
+            },
+            export: {
+                enabled: exportConfig.enabled !== false,
+                target: exportConfig.target || null,
+                params: exportConfig.params || null,
+            },
+        };
+    };
+
+    function initTable(rawConfig) {
+        const config = normalizeTableConfig(rawConfig);
         if (!config || !config.id) {
             return;
         }
@@ -27,40 +95,34 @@ import { batch, signal } from '@preact/signals';
         }
         wrapperElement.dataset.tableInitialized = 'true';
 
-        const trimmedId = String(config.id).replace(/\d+$/, '');
-        const fieldsArray = Array.isArray(config.fields) ? config.fields : Object.entries(config.fields || {});
+        const fieldsArray = config.columns.map(column => [String(column.id), column.label]);
         const fields = Object.fromEntries(fieldsArray);
         const fieldKeys = fieldsArray.map(pair => pair[0]);
 
-        const values = config.values || [];
-        const massiveAction = config.massiveAction || [];
-        const radio = !!config.radio;
-        const columnEdit = !!config.columnEdit;
-        const minimal = !!config.minimal;
-        const isTrash = !!config.isTrash;
-        const canTrash = !!config.canTrash;
-        const noToolBar = !!config.noToolBar;
-        const url = config.url || null;
+        const values = config.dataSource.rows || [];
+        const massiveAction = config.selection.values || [];
+        const radio = config.selection.type === 'radio';
+        const hasMassiveAction = config.selection.type === 'massive-action';
+        const columnEdit = !!config.toolbar.displayPreferences;
+        const toolbarEnabled = !!config.toolbar.enabled;
+        const isTrash = !!config.toolbar.trash.isTrash;
+        const canTrash = !!config.toolbar.trash.enabled;
+        const url = config.dataSource.type === 'remote' ? config.dataSource.url : null;
         const itemtype = config.itemtype || '';
-        const showExport = config.showExport !== false;
-        const hasMassiveAction = !!config.hasMassiveAction;
-        const pageSize = config.pageSize || 15;
-        const toolbarId = 'toolbar' + (config.rand || Math.floor(Math.random() * 1000000));
-        const exportTarget = config.exportTarget || null;
-        const exportParams = config.exportParams || null;
+        const stateKey = config.stateKey;
+        const showExport = config.export.enabled !== false;
+        const pageSize = config.view.pageSize || 15;
+        const toolbarId = config.toolbar.id;
+        const exportTarget = config.export.target || null;
+        const exportParams = config.export.params || null;
         const hasServerExport = !!(exportTarget && exportParams);
         const canExport = showExport && hasServerExport;
-
         const tableStateSignal = signal({});
         const tableDataSignal = signal([]);
         const serverTotalSignal = signal(null);
         const isLoadingSignal = signal(false);
         const hasLoadingOverlaySignal = signal(false);
         const massiveActionSelectionSignal = signal([]);
-
-        window[config.id + '_getMassiveActionSelection'] = function () {
-            return massiveActionSelectionSignal.value;
-        };
 
         if (!url && hasMassiveAction) {
             Object.keys(values).forEach(key => {
@@ -102,17 +164,15 @@ import { batch, signal } from '@preact/signals';
         const flexRender = (comp, props) => (typeof comp === 'function' ? comp(props) : comp);
 
         const storeState = (state) => {
-            const keySuffix = itemtype || trimmedId;
-            localStorage.setItem('tableState_pagination_' + keySuffix, JSON.stringify(state.pagination));
-            localStorage.setItem('tableState_sorting_' + keySuffix, JSON.stringify(state.sorting));
-            localStorage.setItem('tableState_visibility_' + keySuffix, JSON.stringify(state.columnVisibility));
+            localStorage.setItem('tableState_pagination_' + stateKey, JSON.stringify(state.pagination));
+            localStorage.setItem('tableState_sorting_' + stateKey, JSON.stringify(state.sorting));
+            localStorage.setItem('tableState_visibility_' + stateKey, JSON.stringify(state.columnVisibility));
         };
 
         const loadState = () => {
-            const keySuffix = itemtype || trimmedId;
-            const pagination = JSON.parse(localStorage.getItem('tableState_pagination_' + keySuffix) || 'null');
-            const sorting = JSON.parse(localStorage.getItem('tableState_sorting_' + keySuffix) || 'null');
-            const visibility = JSON.parse(localStorage.getItem('tableState_visibility_' + keySuffix) || 'null');
+            const pagination = JSON.parse(localStorage.getItem('tableState_pagination_' + stateKey) || 'null');
+            const sorting = JSON.parse(localStorage.getItem('tableState_sorting_' + stateKey) || 'null');
+            const visibility = JSON.parse(localStorage.getItem('tableState_visibility_' + stateKey) || 'null');
             return { pagination, sorting, visibility };
         };
 
@@ -256,7 +316,7 @@ import { batch, signal } from '@preact/signals';
                 header: () => (
                     <input
                         type="checkbox"
-                        id="select-all"
+                        data-select-all-table={config.id}
                         checked={areAllVisibleRowsSelected()}
                         onChange={handleSelectAll}
                     />
@@ -477,9 +537,8 @@ import { batch, signal } from '@preact/signals';
             stickyTable.setAttribute('aria-hidden', 'true');
 
             const clonedThead = sourceThead.cloneNode(true);
-            const stickySelectAll = clonedThead.querySelector('#select-all');
+            const stickySelectAll = clonedThead.querySelector('[data-select-all-table]');
             if (stickySelectAll) {
-                stickySelectAll.removeAttribute('id');
                 stickySelectAll.setAttribute('data-sticky-select-all', 'true');
             }
 
@@ -491,7 +550,7 @@ import { batch, signal } from '@preact/signals';
             const getStickyHeaders = () => Array.from(clonedThead.querySelectorAll('th'));
 
             const syncSelectAllState = () => {
-                const sourceSelectAll = sourceThead.querySelector('#select-all');
+                const sourceSelectAll = sourceThead.querySelector('[data-select-all-table]');
                 const clonedSelectAll = clonedThead.querySelector('[data-sticky-select-all="true"]');
                 if (sourceSelectAll && clonedSelectAll) {
                     clonedSelectAll.checked = sourceSelectAll.checked;
@@ -544,7 +603,7 @@ import { batch, signal } from '@preact/signals';
             const handleStickyClick = (event) => {
                 const stickyCheckbox = event.target.closest('[data-sticky-select-all="true"]');
                 if (stickyCheckbox) {
-                    const sourceSelectAll = sourceThead.querySelector('#select-all');
+                    const sourceSelectAll = sourceThead.querySelector('[data-select-all-table]');
                     if (!sourceSelectAll) {
                         return;
                     }
@@ -795,7 +854,7 @@ import { batch, signal } from '@preact/signals';
                 <div class="fixed-table-toolbar">
                     <div class="float-left bs-bars">
                         <div id={toolbarId} class="btn-group">
-                            {hasMassiveAction && !radio && (
+                            {hasMassiveAction && config.toolbar.massiveAction && !radio && (
                                 <button
                                     type="button"
                                     class="btn btn-secondary"
@@ -829,40 +888,42 @@ import { batch, signal } from '@preact/signals';
                                 <i class="fas fa-trash-alt"></i>
                             </button>
                         )}
-                        <div class="btn-group keep-open">
-                            <button
-                                type="button"
-                                class="btn btn-secondary dropdown-toggle"
-                                data-bs-toggle="dropdown"
-                                aria-haspopup="true"
-                            >
-                                <i class="bi fas fa-columns"></i> <span class="caret"></span>
-                            </button>
-                            <div class="dropdown-menu dropdown-menu-end">
-                                <label class="dropdown-item dropdown-item-marker">
-                                    <input
-                                        type="checkbox"
-                                        defaultChecked
-                                        data-column="all"
-                                        data-action="toggle-all-columns"
-                                        onChange={toggleAllColumns}
-                                    />
-                                    Toggle All
-                                </label>
-                                <div class="dropdown-divider"></div>
-                                {visibleColumns.map(column => (
+                        {config.toolbar.columns && (
+                            <div class="btn-group keep-open">
+                                <button
+                                    type="button"
+                                    class="btn btn-secondary dropdown-toggle"
+                                    data-bs-toggle="dropdown"
+                                    aria-haspopup="true"
+                                >
+                                    <i class="bi fas fa-columns"></i> <span class="caret"></span>
+                                </button>
+                                <div class="dropdown-menu dropdown-menu-end">
                                     <label class="dropdown-item dropdown-item-marker">
                                         <input
                                             type="checkbox"
-                                            checked={column.getIsVisible()}
-                                            onChange={(event) => column.toggleVisibility(event.target.checked)}
-                                            data-column-id={column.id}
+                                            defaultChecked
+                                            data-column="all"
+                                            data-action="toggle-all-columns"
+                                            onChange={toggleAllColumns}
                                         />
-                                        <span>{fields[column.id]}</span>
+                                        Toggle All
                                     </label>
-                                ))}
+                                    <div class="dropdown-divider"></div>
+                                    {visibleColumns.map(column => (
+                                        <label class="dropdown-item dropdown-item-marker">
+                                            <input
+                                                type="checkbox"
+                                                checked={column.getIsVisible()}
+                                                onChange={(event) => column.toggleVisibility(event.target.checked)}
+                                                data-column-id={column.id}
+                                            />
+                                            <span>{fields[column.id]}</span>
+                                        </label>
+                                    ))}
+                                </div>
                             </div>
-                        </div>
+                        )}
                         {canExport && renderExportDropdown()}
                     </div>
                 </div>
@@ -990,13 +1051,13 @@ import { batch, signal } from '@preact/signals';
                     return undefined;
                 }
                 const handler = () => {
-                    const input = document.getElementById('table_input' + config.id);
+                    const input = document.getElementById(config.selection.inputId || ('table_input' + config.id));
                     if (input) {
                         const selectedRadio = wrapperElement.querySelector('.row-select:checked');
                         if (selectedRadio) {
                             const rowId = selectedRadio.getAttribute('data-row-id');
-                            const selectedRow = data[rowId];
-                            input.value = JSON.stringify([selectedRow]);
+                            const selectedRow = table.getRowModel().rowsById[rowId];
+                            input.value = JSON.stringify(selectedRow ? [selectedRow.original] : []);
                         } else {
                             input.value = '[]';
                         }
@@ -1023,12 +1084,19 @@ import { batch, signal } from '@preact/signals';
 
             return (
                 <div>
-                    {(!minimal || !noToolBar) && renderToolbar()}
+                    {toolbarEnabled && renderToolbar()}
                     {renderTableElement()}
                     {shouldPaginate ? renderPagination() : (showPageSizeSelector && renderPageSizeSelector())}
                 </div>
             );
         };
+
+        instances.set(config.id, {
+            id: config.id,
+            refresh: () => fetchData(),
+            getSelection: () => massiveActionSelectionSignal.value,
+            getTable: () => table,
+        });
 
         if (url) {
             tableDataSignal.value = [];
@@ -1044,15 +1112,44 @@ import { batch, signal } from '@preact/signals';
         }
     }
 
-    existingQueue.forEach(initTable);
-    const originalPush = existingQueue.push.bind(existingQueue);
-    existingQueue.push = function (config) {
-        const length = originalPush(config);
-        initTable(config);
-        return length;
+    const readElementConfig = (wrapperElement) => {
+        const configId = wrapperElement.dataset.itsmTableConfig;
+        if (!configId) {
+            return null;
+        }
+
+        const configElement = document.getElementById(configId);
+        if (!configElement) {
+            console.error('ITSMTable: missing JSON config element', configId);
+            return null;
+        }
+
+        try {
+            return JSON.parse(configElement.textContent || '{}');
+        } catch (error) {
+            console.error('ITSMTable: invalid JSON config', configId, error);
+            return null;
+        }
     };
 
-    window.ITSMTableQueue = existingQueue;
+    const initConfiguredTables = (root = document) => {
+        if (root.matches && root.matches('[data-itsm-table-config]')) {
+            initTable(readElementConfig(root));
+        }
+
+        root.querySelectorAll('[data-itsm-table-config]').forEach((wrapperElement) => {
+            initTable(readElementConfig(wrapperElement));
+        });
+    };
+
     window.ITSMTable = window.ITSMTable || {};
     window.ITSMTable.init = initTable;
+    window.ITSMTable.initAll = initConfiguredTables;
+    window.ITSMTable.get = (id) => instances.get(String(id)) || null;
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => initConfiguredTables(), { once: true });
+    } else {
+        initConfiguredTables();
+    }
 })(window, document);

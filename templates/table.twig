@@ -2,35 +2,66 @@
   {% set id = 'table' ~ random() %}
 {% endif %}
 {% set rand = random() %}
-<div class="bootstrap-table bootstrap5" id="{{ id }}"></div>
-{% if radio is defined and radio %}
-<input id="table_input{{ id }}" type="hidden" name="{{ radio }}" value=''>
+{% set config_id = id ~ '_config' %}
+{% set has_remote_data = url is defined and url %}
+{% set has_massive_action = massive_action is defined %}
+{% set has_radio_selection = radio is defined and radio %}
+{% set table_itemtype = itemtype is defined ? itemtype : '' %}
+{% set table_state_key = state_key is defined ? state_key : (table_itemtype ? table_itemtype : id) %}
+{% set toolbar_enabled = not (minimal is defined and minimal) and not (noToolBar is defined and noToolBar) %}
+
+<div
+  class="bootstrap-table bootstrap5"
+  id="{{ id|e('html_attr') }}"
+  data-itsm-table-config="{{ config_id|e('html_attr') }}"
+></div>
+
+{% if has_radio_selection %}
+<input id="table_input{{ id|e('html_attr') }}" type="hidden" name="{{ radio|e('html_attr') }}" value=''>
 {% endif %}
 
-<script>
-window.ITSMTableQueue = window.ITSMTableQueue || [];
-window.ITSMTableQueue.push({
-    id: {{ id|json_encode|raw }},
-    rand: {{ rand|json_encode|raw }},
-    fields: [
+<script type="application/json" id="{{ config_id|e('html_attr') }}">
+{
+    "id": {{ id|json_encode|raw }},
+    "stateKey": {{ table_state_key|json_encode|raw }},
+    "itemtype": {{ table_itemtype|json_encode|raw }},
+    "columns": [
         {% for key, value in fields %}
-            [{{ key|json_encode|raw }}, {{ value|json_encode|raw }}],
+            {
+                "id": {{ key|json_encode|raw }},
+                "label": {{ value|json_encode|raw }},
+                "html": true
+            }{% if not loop.last %},{% endif %}
         {% endfor %}
     ],
-    values: {{ url ? '[]' : values|json_encode|raw }},
-    massiveAction: {{ massive_action is defined ? massive_action|json_encode|raw : "[]" }},
-    radio: {{ radio is defined and radio ? 'true' : 'false' }},
-    columnEdit: {{ column_edit is defined ? (column_edit ? "true" : "false") : "false" }},
-    minimal: {{ minimal is defined ? (minimal ? "true" : "false") : "false" }},
-    isTrash: {{ is_trash is defined ? (is_trash ? "true" : "false") : "false" }},
-    canTrash: {{ can_trash is defined ? (can_trash ? "true" : "false") : "false" }},
-    noToolBar: {{ noToolBar is defined ? (noToolBar ? "true" : "false") : "false" }},
-    url: {{ url is defined ? url|json_encode|raw : "null" }},
-    itemtype: {{ itemtype is defined ? itemtype|json_encode|raw : "''" }},
-    showExport: {{ show_export is defined ? (show_export ? "true" : "false") : "true" }},
-    hasMassiveAction: {{ massive_action is defined ? 'true' : 'false' }},
-    pageSize: {{ pageSize is defined ? pageSize : 15 }},
-    exportTarget: {{ export_target is defined ? export_target|json_encode|raw : "null" }},
-    exportParams: {{ export_params is defined ? export_params|json_encode|raw : "null" }}
-});
+    "dataSource": {
+        "type": {{ (has_remote_data ? 'remote' : 'local')|json_encode|raw }},
+        "url": {{ has_remote_data ? url|json_encode|raw : "null" }},
+        "rows": {{ has_remote_data ? '[]' : values|json_encode|raw }}
+    },
+    "selection": {
+        "type": {{ (has_radio_selection ? 'radio' : (has_massive_action ? 'massive-action' : 'none'))|json_encode|raw }},
+        "values": {{ has_massive_action ? massive_action|json_encode|raw : "[]" }},
+        "inputId": {{ has_radio_selection ? ('table_input' ~ id)|json_encode|raw : "null" }}
+    },
+    "toolbar": {
+        "enabled": {{ toolbar_enabled ? 'true' : 'false' }},
+        "columns": true,
+        "massiveAction": {{ has_massive_action ? 'true' : 'false' }},
+        "displayPreferences": {{ column_edit is defined and column_edit ? "true" : "false" }},
+        "trash": {
+            "enabled": {{ can_trash is defined and can_trash ? "true" : "false" }},
+            "isTrash": {{ is_trash is defined and is_trash ? "true" : "false" }}
+        },
+        "id": {{ ('toolbar' ~ rand)|json_encode|raw }}
+    },
+    "view": {
+        "pageSize": {{ pageSize is defined ? pageSize : 15 }}
+    },
+    "export": {
+        "enabled": {{ show_export is defined ? (show_export ? "true" : "false") : "true" }},
+        "target": {{ export_target is defined ? export_target|json_encode|raw : "null" }},
+        "params": {{ export_params is defined ? export_params|json_encode|raw : "null" }}
+    }
+}
 </script>
