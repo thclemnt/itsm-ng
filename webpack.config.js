@@ -40,15 +40,19 @@ const webpack = require('webpack');
 
 const libOutputPath = 'public/lib';
 
+const glpiJsxEntries = () => Object.fromEntries(
+  glob.sync(path.resolve(__dirname, 'js/*.jsx'))
+    .map(file => [path.basename(file, '.jsx'), file]),
+);
+
 /*
  * GLPI core files build configuration.
  */
 const glpiConfig = {
-  entry: {
+  entry: () => ({
     glpi: path.resolve(__dirname, 'js/main.js'),
-    displaypreferences: path.resolve(__dirname, 'js/displaypreferences.jsx'),
-    table: path.resolve(__dirname, 'js/table.jsx'),
-  },
+    ...glpiJsxEntries(),
+  }),
   output: {
     filename: '[name].js',
     path: path.resolve(__dirname, 'public/build'),
@@ -89,7 +93,6 @@ const glpiConfig = {
     minimize: true,
     minimizer: [
       new TerserPlugin({
-        include: /table\.js$/,
         extractComments: false,
       }),
     ],
