@@ -1,5 +1,7 @@
 <?php
 
+use itsmng\Csrf;
+
 function expandSelect(&$select, $fields = [])
 {
     global $CFG_GLPI;
@@ -464,7 +466,7 @@ function renderTwigForm(
             "preItemFormHtml" => $preItemFormHtml ?? "",
             "additionnalHtml" => $additionnalHtml,
             "root_doc" => $CFG_GLPI["root_doc"],
-            "csrf_token" => $_SESSION["_glpi_csrf_token"],
+            "csrf_token" => Csrf::generate(),
         ]);
     } catch (Exception $e) {
         echo "<div class='text-start'>";

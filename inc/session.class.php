@@ -1320,7 +1320,7 @@ class Session
     **/
     public static function getNewCSRFToken(bool $standalone = false)
     {
-        return $_SESSION['_glpi_csrf_token'] ?? Csrf::generate();
+        return Csrf::generate($standalone);
     }
 
 
@@ -1334,33 +1334,13 @@ class Session
     **/
     public static function cleanCSRFTokens()
     {
-
-        $now = time();
-        if (isset($_SESSION['glpicsrftokens']) && is_array($_SESSION['glpicsrftokens'])) {
-            if (count($_SESSION['glpicsrftokens'])) {
-                foreach ($_SESSION['glpicsrftokens'] as $token => $expires) {
-                    if ($expires < $now) {
-                        unset($_SESSION['glpicsrftokens'][$token]);
-                    }
-                }
-                $overflow = count($_SESSION['glpicsrftokens']) - GLPI_CSRF_MAX_TOKENS;
-                if ($overflow > 0) {
-                    $_SESSION['glpicsrftokens'] = array_slice(
-                        $_SESSION['glpicsrftokens'],
-                        $overflow + 1,
-                        null,
-                        true
-                    );
-                }
-            }
-        }
+        Csrf::clean();
     }
 
 
     /**
      * Validate that the page has a CSRF token in the POST data
-     * and that the token is legit/not expired.  If the token is valid
-     * it will be removed from the list of valid tokens.
+     * and that the token is legit/not expired.
      *
      * @since 0.83.3
      * @deprecated 2.0.0
@@ -1371,24 +1351,7 @@ class Session
     **/
     public static function validateCSRF($data)
     {
-
-        if (!isset($data['_glpi_csrf_token'])) {
-            Session::cleanCSRFTokens();
-            return false;
-        }
-        $requestToken = $data['_glpi_csrf_token'];
-        if (
-            isset($_SESSION['glpicsrftokens'][$requestToken])
-            && ($_SESSION['glpicsrftokens'][$requestToken] >= time())
-        ) {
-            if (!defined('GLPI_KEEP_CSRF_TOKEN')) { /* When post open a new windows */
-                unset($_SESSION['glpicsrftokens'][$requestToken]);
-            }
-            Session::cleanCSRFTokens();
-            return true;
-        }
-        Session::cleanCSRFTokens();
-        return false;
+        return Csrf::verify($data);
     }
 
 

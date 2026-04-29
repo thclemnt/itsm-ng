@@ -458,6 +458,7 @@ class DisplayPreference extends CommonDBTM
         $i = 0;
         while ($data = $iterator->next()) {
             $newValue = [];
+            $csrf_token = Session::getNewCSRFToken();
             if (($data["num"] != 1) && isset($searchopt[$data["num"]])) {
                 $newValue['name'] = $searchopt[$data["num"]]["name"];
 
@@ -471,7 +472,7 @@ class DisplayPreference extends CommonDBTM
                             <button type="submit" name="up" title="Bring up" class="btn btn-sm fs-6" aria-label="Bring Up">
                                 <i class="fa fa-arrow-up" aria-hidden="true"></i>
                             </button>
-                            <input type="hidden" name="_glpi_csrf_token" value="$_SESSION[_glpi_csrf_token]">
+                            <input type="hidden" name="_glpi_csrf_token" value="$csrf_token">
                         </form>
                       HTML;
                     }
@@ -485,7 +486,7 @@ class DisplayPreference extends CommonDBTM
                             <button type="submit" name="down" title="Bring down" class="btn btn-sm fs-6" aria-label="Bring Down">
                                 <i class="fa fa-arrow-down" aria-hidden="true"></i>
                             </button>
-                            <input type="hidden" name="_glpi_csrf_token" value="$_SESSION[_glpi_csrf_token]">
+                            <input type="hidden" name="_glpi_csrf_token" value="$csrf_token">
                         </form>
                       HTML;
                     }
@@ -499,7 +500,7 @@ class DisplayPreference extends CommonDBTM
                             <button type="submit" name="purge" title="Delete permanently" class="btn btn-sm fs-6" aria-label="Delete">
                                 <i class="fa fa-times-circle" aria-hidden="true"></i>
                             </button>
-                            <input type="hidden" name="_glpi_csrf_token" value="$_SESSION[_glpi_csrf_token]">
+                            <input type="hidden" name="_glpi_csrf_token" value="$csrf_token">
                         </form>
                       HTML;
                     }
@@ -626,6 +627,7 @@ class DisplayPreference extends CommonDBTM
         $i = 0;
         while ($data = $iterator->next()) {
             $newValue = [];
+            $csrf_token = Session::getNewCSRFToken();
             if (
                 ($data["num"] != 1)
                 && isset($searchopt[$data["num"]])
@@ -642,7 +644,7 @@ class DisplayPreference extends CommonDBTM
                            <button type="submit" name="up" title="Bring up" class="btn btn-sm text-sm fs-6" aria-label='Bring Up'>
                               <i class="fa fa-arrow-up"></i>
                            </button>
-                           <input type="hidden" name="_glpi_csrf_token" value="$_SESSION[_glpi_csrf_token]">
+                           <input type="hidden" name="_glpi_csrf_token" value="$csrf_token">
                         </form>
                      HTML;
                     }
@@ -656,7 +658,7 @@ class DisplayPreference extends CommonDBTM
                            <button type="submit" name="down" title="Bring down" class="btn btn-sm fs-6" aria-label='Bring Down'>
                               <i class="fa fa-arrow-down" aria-hidden='true'></i>
                            </button>
-                           <input type="hidden" name="_glpi_csrf_token" value="$_SESSION[_glpi_csrf_token]">
+                           <input type="hidden" name="_glpi_csrf_token" value="$csrf_token">
                         </form>
                      HTML;
                     }
@@ -670,7 +672,7 @@ class DisplayPreference extends CommonDBTM
                            <button type="submit" name="purge" title="Delete permanently" class="btn btn-xs fs-6" aria-label='Delete'>
                               <i class="fa fa-times-circle" aria-hidden='true'></i>
                            </button>
-                           <input type="hidden" name="_glpi_csrf_token" value="$_SESSION[_glpi_csrf_token]">
+                           <input type="hidden" name="_glpi_csrf_token" value="$csrf_token">
                         </form>
                      HTML;
                     }

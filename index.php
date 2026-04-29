@@ -1,5 +1,7 @@
 <?php
 
+use itsmng\Csrf;
+
 // Check PHP version not to have trouble
 // Need to be the very fist step before any include
 if (version_compare(PHP_VERSION, '8.0.0') < 0) {
@@ -156,7 +158,7 @@ if ($CFG_GLPI["use_public_faq"]) {
 
 $twig_vars["copyright_message"] = Html::getCopyrightMessage(false);
 
-$twig_vars["csrf_token"] = $_SESSION['_glpi_csrf_token'];
+$twig_vars["csrf_token"] = Csrf::generate();
 
 ob_start();
 Plugin::doHook("display_login");

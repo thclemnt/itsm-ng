@@ -165,8 +165,7 @@ if (
     }
 } elseif (
     GLPI_USE_CSRF_CHECK && !isAPI()
-    && (!isset($_SESSION['csrf_token_time']) || time() > $_SESSION['csrf_token_time'])
-    && !isset($_POST['csrf_token'])
+    && (!isset($_POST) || !is_array($_POST) || !count($_POST))
 ) {
     Csrf::generate();
 }

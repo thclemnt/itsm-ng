@@ -31,6 +31,7 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Csrf;
 use Glpi\Cache\SimpleCache;
 use Glpi\Toolbox\URL;
 use ScssPhp\ScssPhp\Compiler;
@@ -4811,7 +4812,7 @@ JAVASCRIPT
 
         $out = "\n";
         if (GLPI_USE_CSRF_CHECK) {
-            $out .= Html::hidden('_glpi_csrf_token', ['value' => $_SESSION['_glpi_csrf_token']]) . "\n";
+            $out .= Html::hidden('_glpi_csrf_token', ['value' => Csrf::generate()]) . "\n";
         }
 
         if (isset($CFG_GLPI['checkbox-zero-on-empty']) && $CFG_GLPI['checkbox-zero-on-empty']) {
@@ -7708,7 +7709,7 @@ JAVASCRIPT;
         }
         $user_form_url = User::getFormURL();
         $impersonate_name = $_SESSION['glpiname'];
-        $csrf_token =  $_SESSION['_glpi_csrf_token'];
+        $csrf_token =  Session::getNewCSRFToken();
         $template_path = 'headers/utils/impersonate_banner.twig';
         $twig_vars = [
            "root_doc" => $CFG_GLPI['root_doc'],
