@@ -142,6 +142,18 @@ switch ($action) {
             }
         }
 
+        $has_personal = countElementsInTable(DisplayPreference::getTable(), [
+            'itemtype' => $itemtype,
+            'users_id' => $personal_view
+        ]) > 0;
+
+        $default_if_no_personal = ($_POST['default_if_no_personal'] ?? $_GET['default_if_no_personal'] ?? 0) == 1;
+
+        if ($default_if_no_personal && $view !== 'global' && !$has_personal && $can_global) {
+            $view = 'global';
+            $users_id = $global_view;
+        }
+
         $iterator = $DB->request([
             'FROM'   => DisplayPreference::getTable(),
             'WHERE'  => [
@@ -172,11 +184,6 @@ switch ($action) {
                 }
             }
         }
-
-        $has_personal = countElementsInTable(DisplayPreference::getTable(), [
-            'itemtype' => $itemtype,
-            'users_id' => $personal_view
-        ]) > 0;
 
         echo json_encode([
             'success' => true,

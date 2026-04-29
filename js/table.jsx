@@ -1,19 +1,86 @@
+import {
+    createColumnHelper,
+    createTable,
+    getCoreRowModel,
+    getPaginationRowModel,
+    getSortedRowModel,
+} from '@tanstack/table-core';
+import { Fragment, h, render } from 'preact';
+import { useEffect } from 'preact/hooks';
+import { batch, signal } from '@preact/signals';
+
 (function (window, document) {
-    const existingQueue = Array.isArray(window.ITSMTableQueue) ? window.ITSMTableQueue : [];
+    const instances = new Map();
 
-    const preactGlobal = window.preact;
-    const hooksGlobal = window.preactHooks;
-    const htmGlobal = window.htm;
+    const normalizeTableConfig = (rawConfig) => {
+        if (!rawConfig || typeof rawConfig !== 'object') {
+            console.error('ITSMTable: missing table configuration');
+            return null;
+        }
 
-    if (!preactGlobal || !hooksGlobal || !htmGlobal) {
-        return;
-    }
+        if (!rawConfig.id) {
+            console.error('ITSMTable: table configuration requires an id', rawConfig);
+            return null;
+        }
 
-    const { h, render } = preactGlobal;
-    const { useEffect } = hooksGlobal;
-    const html = htmGlobal.bind(h);
+        const columns = Array.isArray(rawConfig.columns) ? rawConfig.columns : [];
+        if (!columns.length) {
+            console.error('ITSMTable: table configuration requires at least one column', rawConfig);
+            return null;
+        }
 
-    function initTable(config) {
+        const dataSource = rawConfig.dataSource || {};
+        const isRemote = dataSource.type === 'remote';
+        if (isRemote && !dataSource.url) {
+            console.error('ITSMTable: remote data source requires an url', rawConfig);
+            return null;
+        }
+
+        const selection = rawConfig.selection || {};
+        const toolbar = rawConfig.toolbar || {};
+        const trash = toolbar.trash || {};
+        const view = rawConfig.view || {};
+        const exportConfig = rawConfig.export || {};
+
+        return {
+            id: String(rawConfig.id),
+            stateKey: String(rawConfig.stateKey || rawConfig.itemtype || rawConfig.id),
+            itemtype: rawConfig.itemtype || '',
+            columns,
+            dataSource: {
+                type: isRemote ? 'remote' : 'local',
+                url: isRemote ? dataSource.url : null,
+                rows: isRemote ? [] : (dataSource.rows || []),
+            },
+            selection: {
+                type: selection.type || 'none',
+                values: selection.values || [],
+                inputId: selection.inputId || null,
+            },
+            toolbar: {
+                enabled: toolbar.enabled !== false,
+                columns: toolbar.columns !== false,
+                massiveAction: toolbar.massiveAction !== false,
+                displayPreferences: !!toolbar.displayPreferences,
+                id: toolbar.id || 'toolbar' + Math.floor(Math.random() * 1000000),
+                trash: {
+                    enabled: !!trash.enabled,
+                    isTrash: !!trash.isTrash,
+                },
+            },
+            view: {
+                pageSize: view.pageSize || 15,
+            },
+            export: {
+                enabled: exportConfig.enabled !== false,
+                target: exportConfig.target || null,
+                params: exportConfig.params || null,
+            },
+        };
+    };
+
+    function initTable(rawConfig) {
+        const config = normalizeTableConfig(rawConfig);
         if (!config || !config.id) {
             return;
         }
@@ -28,45 +95,34 @@
         }
         wrapperElement.dataset.tableInitialized = 'true';
 
-        const TableCore = window.TableCore;
-        const Nanostores = window.Nanostores;
-
-        if (!TableCore || !Nanostores) {
-            console.error('Table dependencies missing.');
-            return;
-        }
-
-        let massiveActionSelection = [];
-        window[config.id + '_getMassiveActionSelection'] = function () {
-            return massiveActionSelection;
-        };
-
-        const { createColumnHelper, createTable, getCoreRowModel, getPaginationRowModel, getSortedRowModel } = TableCore;
-        const { atom } = Nanostores;
-        const stateStore = atom({});
-        const trimmedId = String(config.id).replace(/\d+$/, '');
-        const fieldsArray = Array.isArray(config.fields) ? config.fields : Object.entries(config.fields || {});
+        const fieldsArray = config.columns.map(column => [String(column.id), column.label]);
         const fields = Object.fromEntries(fieldsArray);
         const fieldKeys = fieldsArray.map(pair => pair[0]);
 
-        const values = config.values || [];
-        const massiveAction = config.massiveAction || [];
-        const radio = !!config.radio;
-        const columnEdit = !!config.columnEdit;
-        const minimal = !!config.minimal;
-        const isTrash = !!config.isTrash;
-        const canTrash = !!config.canTrash;
-        const noToolBar = !!config.noToolBar;
-        const url = config.url || null;
+        const values = config.dataSource.rows || [];
+        const massiveAction = config.selection.values || [];
+        const radio = config.selection.type === 'radio';
+        const hasMassiveAction = config.selection.type === 'massive-action';
+        const columnEdit = !!config.toolbar.displayPreferences;
+        const toolbarEnabled = !!config.toolbar.enabled;
+        const isTrash = !!config.toolbar.trash.isTrash;
+        const canTrash = !!config.toolbar.trash.enabled;
+        const url = config.dataSource.type === 'remote' ? config.dataSource.url : null;
         const itemtype = config.itemtype || '';
-        const showExport = config.showExport !== false;
-        const hasMassiveAction = !!config.hasMassiveAction;
-        const pageSize = config.pageSize || 15;
-        const toolbarId = 'toolbar' + (config.rand || Math.floor(Math.random() * 1000000));
-        const exportTarget = config.exportTarget || null;
-        const exportParams = config.exportParams || null;
+        const stateKey = config.stateKey;
+        const showExport = config.export.enabled !== false;
+        const pageSize = config.view.pageSize || 15;
+        const toolbarId = config.toolbar.id;
+        const exportTarget = config.export.target || null;
+        const exportParams = config.export.params || null;
         const hasServerExport = !!(exportTarget && exportParams);
         const canExport = showExport && hasServerExport;
+        const tableStateSignal = signal({});
+        const tableDataSignal = signal([]);
+        const serverTotalSignal = signal(null);
+        const isLoadingSignal = signal(false);
+        const hasLoadingOverlaySignal = signal(false);
+        const massiveActionSelectionSignal = signal([]);
 
         if (!url && hasMassiveAction) {
             Object.keys(values).forEach(key => {
@@ -77,9 +133,7 @@
         }
 
         let table;
-        let serverTotal = null;
-        let isLoading = false;
-        let hasLoadingOverlay = false;
+        let fetchRequestId = 0;
 
         const decodeHtml = (htmlString) => {
             const txt = document.createElement('textarea');
@@ -110,41 +164,49 @@
         const flexRender = (comp, props) => (typeof comp === 'function' ? comp(props) : comp);
 
         const storeState = (state) => {
-            const keySuffix = itemtype || trimmedId;
-            localStorage.setItem('tableState_pagination_' + keySuffix, JSON.stringify(state.pagination));
-            localStorage.setItem('tableState_sorting_' + keySuffix, JSON.stringify(state.sorting));
-            localStorage.setItem('tableState_visibility_' + keySuffix, JSON.stringify(state.columnVisibility));
+            localStorage.setItem('tableState_pagination_' + stateKey, JSON.stringify(state.pagination));
+            localStorage.setItem('tableState_sorting_' + stateKey, JSON.stringify(state.sorting));
+            localStorage.setItem('tableState_visibility_' + stateKey, JSON.stringify(state.columnVisibility));
         };
 
         const loadState = () => {
-            const keySuffix = itemtype || trimmedId;
-            const pagination = JSON.parse(localStorage.getItem('tableState_pagination_' + keySuffix) || 'null');
-            const sorting = JSON.parse(localStorage.getItem('tableState_sorting_' + keySuffix) || 'null');
-            const visibility = JSON.parse(localStorage.getItem('tableState_visibility_' + keySuffix) || 'null');
+            const pagination = JSON.parse(localStorage.getItem('tableState_pagination_' + stateKey) || 'null');
+            const sorting = JSON.parse(localStorage.getItem('tableState_sorting_' + stateKey) || 'null');
+            const visibility = JSON.parse(localStorage.getItem('tableState_visibility_' + stateKey) || 'null');
             return { pagination, sorting, visibility };
         };
 
-        const validatePaginationState = (totalRows) => {
-            const state = table.getState();
+        const getPageCount = (totalRows, currentPageSize) => Math.ceil(totalRows / currentPageSize);
+
+        const getValidPaginationState = (state, totalRows) => {
             const { pageIndex, pageSize: currentPageSize } = state.pagination;
             const maxPageIndex = Math.max(0, Math.ceil(totalRows / currentPageSize) - 1);
 
             if (pageIndex > maxPageIndex) {
-                table.setPageIndex(0);
-                return true;
+                return {
+                    ...state,
+                    pagination: {
+                        ...state.pagination,
+                        pageIndex: 0,
+                    },
+                };
             }
-            return false;
+            return state;
         };
 
-        let renderTable = () => {};
+        const hasTableStateChanged = (oldState, newState, key) => {
+            return JSON.stringify(oldState[key]) !== JSON.stringify(newState[key]);
+        };
 
-        const fetchDataAndRender = async () => {
+        const fetchData = async (state = tableStateSignal.value) => {
             if (!url) return;
-            isLoading = true;
-            hasLoadingOverlay = true;
-            renderTable();
 
-            const state = table.getState();
+            const requestId = ++fetchRequestId;
+            batch(() => {
+                isLoadingSignal.value = true;
+                hasLoadingOverlaySignal.value = true;
+            });
+
             const { pageIndex, pageSize: currentPageSize } = state.pagination;
             const { sorting } = state;
 
@@ -160,73 +222,77 @@
             try {
                 const response = await fetch(fetchUrl.toString());
                 const result = await response.json();
-                serverTotal = result.total;
-                table.setOptions(prev => ({
-                    ...prev,
-                    data: result.rows,
-                    pageCount: Math.ceil(result.total / currentPageSize),
-                }));
-                if (validatePaginationState(serverTotal)) {
-                    isLoading = false;
-                    renderTable();
-                    fetchDataAndRender();
+
+                if (requestId !== fetchRequestId) {
+                    return;
+                }
+
+                batch(() => {
+                    serverTotalSignal.value = result.total;
+                    tableDataSignal.value = result.rows;
+                });
+
+                const validState = getValidPaginationState(state, result.total);
+                if (validState !== state) {
+                    tableStateSignal.value = validState;
+                    storeState(validState);
+                    await fetchData(validState);
                     return;
                 }
             } catch (error) {
+                if (requestId !== fetchRequestId) {
+                    return;
+                }
                 console.error('Failed to fetch table data:', error);
-                table.setOptions(prev => ({ ...prev, data: [] }));
-                serverTotal = 0;
+                batch(() => {
+                    tableDataSignal.value = [];
+                    serverTotalSignal.value = 0;
+                });
             } finally {
-                isLoading = false;
-                renderTable();
+                if (requestId === fetchRequestId) {
+                    isLoadingSignal.value = false;
+                }
             }
         };
 
-        const useTable = (options) => {
-            const { data, ...restOptions } = options;
-            const resolvedOptions = {
+        const updateTableState = (updater) => {
+            const currentState = tableStateSignal.value;
+            const newState = typeof updater === 'function' ? updater(currentState) : updater;
+            const paginationChanged = hasTableStateChanged(currentState, newState, 'pagination');
+            const sortingChanged = hasTableStateChanged(currentState, newState, 'sorting');
+
+            if (url && paginationChanged) {
+                massiveActionSelectionSignal.value = [];
+            }
+
+            tableStateSignal.value = newState;
+            storeState(newState);
+
+            if (url && (paginationChanged || sortingChanged)) {
+                fetchData(newState);
+            }
+        };
+
+        const createSignalTable = (options) => {
+            const { data: initialData, ...restOptions } = options;
+            const { pagination, sorting, visibility } = loadState();
+            const initialState = {
+                ...restOptions.initialState,
+                pagination: pagination || restOptions.initialState.pagination,
+                ...(sorting ? { sorting } : {}),
+                ...(visibility ? { columnVisibility: visibility } : {}),
+            };
+            const tableInstance = createTable({
                 state: {},
-                onStateChange: () => {},
+                onStateChange: updateTableState,
                 getCoreRowModel: getCoreRowModel(),
                 getPaginationRowModel: getPaginationRowModel(),
                 getSortedRowModel: getSortedRowModel(),
-                data,
+                data: initialData,
                 ...restOptions,
-            };
-            const { pagination, sorting, visibility } = loadState();
-            if (pagination) resolvedOptions.initialState.pagination = pagination;
-            if (sorting) resolvedOptions.initialState.sorting = sorting;
-            if (visibility) resolvedOptions.initialState.columnVisibility = visibility;
-
-            const tableInstance = createTable(resolvedOptions);
-            stateStore.set(tableInstance.initialState);
-
-            stateStore.subscribe((currentState) => {
-                tableInstance.setOptions((prev) => ({
-                    ...prev,
-                    ...restOptions,
-                    state: { ...currentState, ...restOptions.state },
-                    onStateChange: (updater) => {
-                        let newState = typeof updater === 'function' ? updater(currentState) : updater;
-                        const oldState = currentState;
-
-                        if (url) {
-                            const paginationChanged = JSON.stringify(oldState.pagination) !== JSON.stringify(newState.pagination);
-                            const sortingChanged = JSON.stringify(oldState.sorting) !== JSON.stringify(newState.sorting);
-                            if (paginationChanged || sortingChanged) {
-                                if (paginationChanged) massiveActionSelection = [];
-                                stateStore.set(newState);
-                                storeState(newState);
-                                fetchDataAndRender();
-                                return;
-                            }
-                        }
-                        stateStore.set(newState);
-                        storeState(newState);
-                        renderTable();
-                    },
-                }));
+                initialState,
             });
+            tableStateSignal.value = tableInstance.initialState;
             return tableInstance;
         };
 
@@ -235,13 +301,35 @@
         if (radio) {
             columns.push(columnHelper.display({
                 id: 'select',
-                cell: info => html`<input type="radio" name="row-select-${config.id}" class="row-select" data-row-id="${info.row.id}" />`,
+                cell: info => (
+                    <input
+                        type="radio"
+                        name={`row-select-${config.id}`}
+                        class="row-select"
+                        data-row-id={info.row.id}
+                    />
+                ),
             }));
         } else if (hasMassiveAction) {
             columns.push(columnHelper.display({
                 id: 'select',
-                header: () => html`<input type="checkbox" id="select-all" />`,
-                cell: info => html`<input type="checkbox" class="row-select" data-row-id="${info.row.id}" />`,
+                header: () => (
+                    <input
+                        type="checkbox"
+                        data-select-all-table={config.id}
+                        checked={areAllVisibleRowsSelected()}
+                        onChange={handleSelectAll}
+                    />
+                ),
+                cell: info => (
+                    <input
+                        type="checkbox"
+                        class="row-select"
+                        data-row-id={info.row.id}
+                        checked={isRowSelected(info.row)}
+                        onChange={handleRowSelection}
+                    />
+                ),
             }));
         }
         const dataColumns = fieldKeys.map(field => columnHelper.accessor(String(field), {
@@ -261,7 +349,9 @@
             return row;
         });
 
-        table = useTable({
+        tableDataSignal.value = data;
+
+        table = createSignalTable({
             data,
             columns,
             manualPagination: !!url,
@@ -279,6 +369,12 @@
             PDF_PORTRAIT: 4,
             SYLK: 1
         };
+        const EXPORT_OPTIONS = [
+            { format: EXPORT_FORMATS.CSV, icon: 'fas fa-file-csv', label: 'CSV' },
+            { format: EXPORT_FORMATS.PDF_LANDSCAPE, icon: 'fas fa-file-pdf', label: 'PDF (Landscape)' },
+            { format: EXPORT_FORMATS.PDF_PORTRAIT, icon: 'fas fa-file-pdf', label: 'PDF (Portrait)' },
+            { format: EXPORT_FORMATS.SYLK, icon: 'fas fa-file-excel', label: 'SLK (Excel)' },
+        ];
 
         const performExport = (format, exportAll = false) => {
             if (!hasServerExport) {
@@ -329,8 +425,13 @@
             window.open(exportTarget + '?' + params.toString(), '_blank');
         };
 
-        const renderExportDropdown = () => {
-            return html`
+        const renderExportItems = (exportAll = false) => EXPORT_OPTIONS.map(({ format, icon, label }) => (
+            <a class="dropdown-item" onClick={() => performExport(format, exportAll)}>
+                <i class={icon}></i> {__(label)}
+            </a>
+        ));
+
+        const renderExportDropdown = () => (
                 <div class="btn-group keep-open">
                     <button
                         type="button"
@@ -342,39 +443,14 @@
                         <i class="fas fa-file-export"></i> <span class="caret"></span>
                     </button>
                     <div class="dropdown-menu dropdown-menu-end">
-                        <h6 class="dropdown-header">${__("Current page")}</h6>
-                        <a class="dropdown-item" onClick=${() => performExport(EXPORT_FORMATS.CSV)}>
-                            <i class="fas fa-file-csv"></i> ${__("CSV")}
-                        </a>
-                        ${hasServerExport ? html`
-                            <a class="dropdown-item" onClick=${() => performExport(EXPORT_FORMATS.PDF_LANDSCAPE)}>
-                                <i class="fas fa-file-pdf"></i> ${__("PDF (Landscape)")}
-                            </a>
-                            <a class="dropdown-item" onClick=${() => performExport(EXPORT_FORMATS.PDF_PORTRAIT)}>
-                                <i class="fas fa-file-pdf"></i> ${__("PDF (Portrait)")}
-                            </a>
-                            <a class="dropdown-item" onClick=${() => performExport(EXPORT_FORMATS.SYLK)}>
-                                <i class="fas fa-file-excel"></i> ${__("SLK (Excel)")}
-                            </a>
-                            <div class="dropdown-divider"></div>
-                            <h6 class="dropdown-header">${__("All pages")}</h6>
-                            <a class="dropdown-item" onClick=${() => performExport(EXPORT_FORMATS.CSV, true)}>
-                                <i class="fas fa-file-csv"></i> ${__("CSV")}
-                            </a>
-                            <a class="dropdown-item" onClick=${() => performExport(EXPORT_FORMATS.PDF_LANDSCAPE, true)}>
-                                <i class="fas fa-file-pdf"></i> ${__("PDF (Landscape)")}
-                            </a>
-                            <a class="dropdown-item" onClick=${() => performExport(EXPORT_FORMATS.PDF_PORTRAIT, true)}>
-                                <i class="fas fa-file-pdf"></i> ${__("PDF (Portrait)")}
-                            </a>
-                            <a class="dropdown-item" onClick=${() => performExport(EXPORT_FORMATS.SYLK, true)}>
-                                <i class="fas fa-file-excel"></i> ${__("SLK (Excel)")}
-                            </a>
-                        ` : ''}
+                        <h6 class="dropdown-header">{__("Current page")}</h6>
+                        {renderExportItems()}
+                        <div class="dropdown-divider"></div>
+                        <h6 class="dropdown-header">{__("All pages")}</h6>
+                        {renderExportItems(true)}
                     </div>
                 </div>
-            `;
-        };
+        );
 
         const toggleAllColumns = (event) => {
             const isChecked = event.target.checked;
@@ -392,48 +468,37 @@
                 return;
             }
             const isChecked = event.target.checked;
-            const checkboxes = wrapperElement.querySelectorAll('.row-select');
-            checkboxes.forEach((checkbox) => {
-                if (!checkbox.disabled) {
-                    checkbox.checked = isChecked;
-                }
-            });
             if (isChecked) {
-                massiveActionSelection = table.getRowModel().rows
-                    .filter(row => {
-                        const checkbox = wrapperElement.querySelector(`.row-select[data-row-id="${row.id}"]`);
-                        return checkbox && !checkbox.disabled;
-                    })
+                massiveActionSelectionSignal.value = table.getRowModel().rows
+                    .filter(row => row.original.value)
                     .map(row => row.original);
             } else {
-                massiveActionSelection = [];
+                massiveActionSelectionSignal.value = [];
             }
-            setTimeout(() => {
-                const selectAllCheckbox = wrapperElement.querySelector('#select-all');
-                if (selectAllCheckbox) {
-                    selectAllCheckbox.checked = isChecked;
-                }
-            }, 0);
         };
 
         const updateMassiveActionSelection = (rowId, isSelected) => {
             const row = table.getRowModel().rowsById[rowId];
             if (!row) return;
             const massiveActionId = row.original.value;
+            const currentSelection = massiveActionSelectionSignal.value;
 
             if (isSelected) {
-                if (!massiveActionSelection.some(item => item.value === massiveActionId)) {
-                    massiveActionSelection.push(row.original);
+                if (!currentSelection.some(item => item.value === massiveActionId)) {
+                    massiveActionSelectionSignal.value = currentSelection.concat(row.original);
                 }
             } else {
-                massiveActionSelection = massiveActionSelection.filter(item => item.value !== massiveActionId);
+                massiveActionSelectionSignal.value = currentSelection.filter(item => item.value !== massiveActionId);
             }
-            const checkboxes = wrapperElement.querySelectorAll('.row-select');
-            const allChecked = Array.from(checkboxes).filter(cb => !cb.disabled).every(cb => cb.checked);
-            const selectAllCheckbox = wrapperElement.querySelector('#select-all');
-            if (selectAllCheckbox) {
-                selectAllCheckbox.checked = allChecked;
-            }
+        };
+
+        const isRowSelected = (row) => {
+            return massiveActionSelectionSignal.value.some(item => item.value === row.original.value);
+        };
+
+        const areAllVisibleRowsSelected = () => {
+            const selectableRows = table.getRowModel().rows.filter(row => !!row.original.value);
+            return selectableRows.length > 0 && selectableRows.every(isRowSelected);
         };
 
         const handleRowSelection = (event) => {
@@ -472,9 +537,8 @@
             stickyTable.setAttribute('aria-hidden', 'true');
 
             const clonedThead = sourceThead.cloneNode(true);
-            const stickySelectAll = clonedThead.querySelector('#select-all');
+            const stickySelectAll = clonedThead.querySelector('[data-select-all-table]');
             if (stickySelectAll) {
-                stickySelectAll.removeAttribute('id');
                 stickySelectAll.setAttribute('data-sticky-select-all', 'true');
             }
 
@@ -486,7 +550,7 @@
             const getStickyHeaders = () => Array.from(clonedThead.querySelectorAll('th'));
 
             const syncSelectAllState = () => {
-                const sourceSelectAll = sourceThead.querySelector('#select-all');
+                const sourceSelectAll = sourceThead.querySelector('[data-select-all-table]');
                 const clonedSelectAll = clonedThead.querySelector('[data-sticky-select-all="true"]');
                 if (sourceSelectAll && clonedSelectAll) {
                     clonedSelectAll.checked = sourceSelectAll.checked;
@@ -539,7 +603,7 @@
             const handleStickyClick = (event) => {
                 const stickyCheckbox = event.target.closest('[data-sticky-select-all="true"]');
                 if (stickyCheckbox) {
-                    const sourceSelectAll = sourceThead.querySelector('#select-all');
+                    const sourceSelectAll = sourceThead.querySelector('[data-select-all-table]');
                     if (!sourceSelectAll) {
                         return;
                     }
@@ -654,7 +718,7 @@
             const currentPageSize = table.getState().pagination.pageSize;
             const pageSizeOptions = [15, 25, 50, 100, 1000, 10000];
 
-            return html`
+            return (
                 <div class="page-list">
                     <div class="dropdown dropup">
                         <button
@@ -662,44 +726,44 @@
                             type="button"
                             data-bs-toggle="dropdown"
                         >
-                            ${currentPageSize}
+                            {currentPageSize}
                         </button>
                         <div class="dropdown-menu">
-                            ${pageSizeOptions.map(size => html`
+                            {pageSizeOptions.map(size => (
                                 <a
                                     class="dropdown-item"
-                                    onClick=${() => table.setPageSize(size)}
+                                    onClick={() => table.setPageSize(size)}
                                 >
-                                    ${size}
+                                    {size}
                                 </a>
-                            `)}
+                            ))}
                         </div>
                     </div>
                 </div>
-            `;
+            );
         };
 
         const renderPageSizeSelector = () => {
             const currentPageSize = table.getState().pagination.pageSize;
-            const totalRows = url ? serverTotal : table.getFilteredRowModel().rows.length;
+            const totalRows = url ? serverTotalSignal.value : table.getFilteredRowModel().rows.length;
 
-            return html`
+            return (
                 <div class="fixed-table-pagination">
                     <div class="float-left pagination-detail">
                         <span class="pagination-info">
-                            Showing ${Math.min(totalRows, currentPageSize)} of ${totalRows} entries
+                            Showing {Math.min(totalRows, currentPageSize)} of {totalRows} entries
                         </span>
-                        ${renderPageSizeDropdown()}
+                        {renderPageSizeDropdown()}
                     </div>
                 </div>
-            `;
+            );
         };
 
         const renderPagination = () => {
             const totalPages = table.getPageCount();
             const currentPage = table.getState().pagination.pageIndex + 1;
             const currentPageSize = table.getState().pagination.pageSize;
-            const totalRows = url ? serverTotal : table.getFilteredRowModel().rows.length;
+            const totalRows = url ? serverTotalSignal.value : table.getFilteredRowModel().rows.length;
             const startRow = table.getState().pagination.pageIndex * currentPageSize + 1;
             const endRow = Math.min((table.getState().pagination.pageIndex + 1) * currentPageSize, totalRows);
 
@@ -733,44 +797,44 @@
                 pages.push(totalPages);
             }
 
-            return html`
+            return (
                 <div class="fixed-table-pagination">
                     <div class="float-left pagination-detail">
                         <span class="pagination-info">
-                            Showing ${startRow} to ${endRow} of ${totalRows} entries
+                            Showing {startRow} to {endRow} of {totalRows} entries
                         </span>
-                        ${renderPageSizeDropdown()}
+                        {renderPageSizeDropdown()}
                     </div>
                     <div class="float-right pagination">
                         <ul class="pagination">
                             <li
-                                class=${'page-item page-pre ' + (!table.getCanPreviousPage() ? 'disabled' : '')}
-                                onClick=${table.getCanPreviousPage() ? () => table.previousPage() : null}
+                                class={'page-item page-pre ' + (!table.getCanPreviousPage() ? 'disabled' : '')}
+                                onClick={table.getCanPreviousPage() ? () => table.previousPage() : null}
                                 style="user-select: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none;"
                             >
                                 <a class="page-link" aria-label="previous page" style="user-select: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none;">‹</a>
                             </li>
-                            ${pages.map(page => {
+                            {pages.map(page => {
                                 if (page === '...') {
-                                    return html`
+                                    return (
                                         <li class="page-item page-last-separator disabled" style="user-select: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none;">
                                             <a class="page-link" style="user-select: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none;">...</a>
                                         </li>
-                                    `;
+                                    );
                                 }
-                                return html`
+                                return (
                                     <li
-                                        class=${'page-item ' + (page === currentPage ? 'active' : '')}
-                                        onClick=${() => table.setPageIndex(page - 1)}
+                                        class={'page-item ' + (page === currentPage ? 'active' : '')}
+                                        onClick={() => table.setPageIndex(page - 1)}
                                         style="user-select: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none;"
                                     >
-                                        <a class="page-link" aria-label=${'to page ' + page} style="user-select: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none;">${page}</a>
+                                        <a class="page-link" aria-label={'to page ' + page} style="user-select: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none;">{page}</a>
                                     </li>
-                                `;
+                                );
                             })}
                             <li
-                                class=${'page-item page-next ' + (!table.getCanNextPage() ? 'disabled' : '')}
-                                onClick=${table.getCanNextPage() ? () => table.nextPage() : null}
+                                class={'page-item page-next ' + (!table.getCanNextPage() ? 'disabled' : '')}
+                                onClick={table.getCanNextPage() ? () => table.nextPage() : null}
                                 style="user-select: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none;"
                             >
                                 <a class="page-link" aria-label="next page" style="user-select: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none;">›</a>
@@ -778,7 +842,7 @@
                         </ul>
                     </div>
                 </div>
-            `;
+            );
         };
 
         const renderToolbar = () => {
@@ -786,96 +850,98 @@
                 column.id !== 'select' && !(isTrash && column.id === 'trash')
             );
 
-            return html`
+            return (
                 <div class="fixed-table-toolbar">
                     <div class="float-left bs-bars">
-                        <div id=${toolbarId} class="btn-group">
-                            ${hasMassiveAction && !radio ? html`
+                        <div id={toolbarId} class="btn-group">
+                            {hasMassiveAction && config.toolbar.massiveAction && !radio && (
                                 <button
                                     type="button"
                                     class="btn btn-secondary"
                                     aria-label="Actions"
-                                    onClick=${openMassiveAction}
+                                    onClick={openMassiveAction}
                                 >
                                     <i class="fas fa-hammer" title="Actions"></i>
                                 </button>
-                            ` : ''}
-                            ${columnEdit ? html`
+                            )}
+                            {columnEdit && (
                                 <button
                                     type="button"
                                     class="btn btn-secondary"
                                     aria-label="Options"
-                                    data-display-preferences=${itemtype}
-                                    onClick=${() => openDisplayPreferences(itemtype)}
+                                    data-display-preferences={itemtype}
+                                    onClick={() => openDisplayPreferences(itemtype)}
                                 >
                                     <i class="fas fa-wrench" title="Options"></i>
                                 </button>
-                            ` : ''}
+                            )}
                         </div>
                     </div>
                     <div class="float-right btn-group columns columns-right">
-                        ${canTrash ? html`
+                        {canTrash && (
                             <button
                                 type="button"
-                                class=${'btn btn-secondary' + (isTrash ? ' active btn-danger' : '')}
-                                onClick=${toggleTrash}
-                                title=${isTrash ? 'Show normal items' : 'Show trash content'}
+                                class={'btn btn-secondary' + (isTrash ? ' active btn-danger' : '')}
+                                onClick={toggleTrash}
+                                title={isTrash ? 'Show normal items' : 'Show trash content'}
                             >
                                 <i class="fas fa-trash-alt"></i>
                             </button>
-                        ` : ''}
-                        <div class="btn-group keep-open">
-                            <button
-                                type="button"
-                                class="btn btn-secondary dropdown-toggle"
-                                data-bs-toggle="dropdown"
-                                aria-haspopup="true"
-                            >
-                                <i class="bi fas fa-columns"></i> <span class="caret"></span>
-                            </button>
-                            <div class="dropdown-menu dropdown-menu-end">
-                                <label class="dropdown-item dropdown-item-marker">
-                                    <input
-                                        type="checkbox"
-                                        defaultChecked
-                                        data-column="all"
-                                        data-action="toggle-all-columns"
-                                        onChange=${toggleAllColumns}
-                                    />
-                                    Toggle All
-                                </label>
-                                <div class="dropdown-divider"></div>
-                                ${visibleColumns.map(column => html`
+                        )}
+                        {config.toolbar.columns && (
+                            <div class="btn-group keep-open">
+                                <button
+                                    type="button"
+                                    class="btn btn-secondary dropdown-toggle"
+                                    data-bs-toggle="dropdown"
+                                    aria-haspopup="true"
+                                >
+                                    <i class="bi fas fa-columns"></i> <span class="caret"></span>
+                                </button>
+                                <div class="dropdown-menu dropdown-menu-end">
                                     <label class="dropdown-item dropdown-item-marker">
                                         <input
                                             type="checkbox"
-                                            checked=${column.getIsVisible()}
-                                            onChange=${(event) => column.toggleVisibility(event.target.checked)}
-                                            data-column-id=${column.id}
+                                            defaultChecked
+                                            data-column="all"
+                                            data-action="toggle-all-columns"
+                                            onChange={toggleAllColumns}
                                         />
-                                        <span>${fields[column.id]}</span>
+                                        Toggle All
                                     </label>
-                                `)}
+                                    <div class="dropdown-divider"></div>
+                                    {visibleColumns.map(column => (
+                                        <label class="dropdown-item dropdown-item-marker">
+                                            <input
+                                                type="checkbox"
+                                                checked={column.getIsVisible()}
+                                                onChange={(event) => column.toggleVisibility(event.target.checked)}
+                                                data-column-id={column.id}
+                                            />
+                                            <span>{fields[column.id]}</span>
+                                        </label>
+                                    ))}
+                                </div>
                             </div>
-                        </div>
-                        ${canExport ? renderExportDropdown() : ''}
+                        )}
+                        {canExport && renderExportDropdown()}
                     </div>
                 </div>
-            `;
+            );
         };
 
         const renderTableElement = () => {
-            const tableContainerStyle = 'overflow-x: scroll;' + (hasLoadingOverlay ? ' position: relative;' : '');
+            const tableContainerStyle = 'overflow-x: scroll;' + (hasLoadingOverlaySignal.value ? ' position: relative;' : '');
 
-            return html`
+            return (
                 <div class="itsm-table-shell">
                     <div class="sticky-table-header" aria-hidden="true"></div>
-                    <div class="fixed-table-container" style=${tableContainerStyle}>
+                    <div class="fixed-table-container" style={tableContainerStyle}>
                         <table class="table table-striped table-bordered table-hover">
                             <thead>
-                                ${table.getHeaderGroups().map(headerGroup => html`
+                                {table.getHeaderGroups().map(headerGroup => (
                                     <tr>
-                                        ${headerGroup.headers.map(header => {
+                                        {headerGroup.headers.map(header => {
                                             const isSelectColumn = header.id === 'select';
                                             const canSort = header.column.getCanSort();
                                             const sortingState = header.column.getIsSorted();
@@ -894,59 +960,59 @@
                                                 }
                                             }
 
-                                            return html`
+                                            return (
                                                 <th
-                                                    class=${thClasses}
-                                                    data-field=${header.column.id}
-                                                    style=${isSelectColumn ? 'width: 36px' : ''}
+                                                    class={thClasses}
+                                                    data-field={header.column.id}
+                                                    style={isSelectColumn ? 'width: 36px' : ''}
                                                 >
                                                     <div
-                                                        class=${thInnerClasses}
-                                                        onClick=${canSort ? () => header.column.toggleSorting() : null}
+                                                        class={thInnerClasses}
+                                                        onClick={canSort ? () => header.column.toggleSorting() : null}
                                                     >
-                                                        ${flexRender(header.column.columnDef.header, header.getContext())}
+                                                        {flexRender(header.column.columnDef.header, header.getContext())}
                                                     </div>
                                                     <div class="fht-cell"></div>
                                                 </th>
-                                            `;
+                                            );
                                         })}
                                     </tr>
-                                `)}
+                                ))}
                             </thead>
-                            ${table.getRowModel().rows.length === 0 ? html`
+                            {table.getRowModel().rows.length === 0 ? (
                                 <tbody class="table-light">
                                     <tr class="no-records-found">
-                                        <td colspan=${table.getAllColumns().length}>
+                                        <td colspan={table.getAllColumns().length}>
                                             No matching records found
                                         </td>
                                     </tr>
                                 </tbody>
-                            ` : html`
+                            ) : (
                             <tbody class="table-light">
-                                ${table.getRowModel().rows.map(row => html`
+                                {table.getRowModel().rows.map(row => (
                                     <tr>
-                                        ${row.getVisibleCells().map(cell => {
+                                        {row.getVisibleCells().map(cell => {
                                             const isSelectColumn = cell.column.id === 'select';
                                             const isDisabled = isSelectColumn && !radio && hasMassiveAction && !row.original.value;
 
-                                            return html`
+                                            return (
                                                 <td
-                                                    class=${isSelectColumn ? 'bs-checkbox' : ''}
-                                                    style=${isSelectColumn ? 'width: 36px' : ''}
+                                                    class={isSelectColumn ? 'bs-checkbox' : ''}
+                                                    style={isSelectColumn ? 'width: 36px' : ''}
                                                 >
-                                                    ${isSelectColumn && isDisabled ?
-                                                        html`<input type="checkbox" class="row-select" data-row-id=${row.id} disabled />` :
+                                                    {isSelectColumn && isDisabled ?
+                                                        <input type="checkbox" class="row-select" data-row-id={row.id} disabled /> :
                                                         flexRender(cell.column.columnDef.cell, cell.getContext())
                                                     }
                                                 </td>
-                                            `;
+                                            );
                                         })}
                                     </tr>
-                                `)}
+                                ))}
                             </tbody>
-                            `}
+                            )}
                         </table>
-                        ${isLoading ? html`
+                        {isLoadingSignal.value && (
                             <div
                                 class="loading-overlay"
                                 style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 255, 255, 0.8); display: flex; align-items: center; justify-content: center; z-index: 10;"
@@ -955,13 +1021,27 @@
                                     <span class="visually-hidden">Loading...</span>
                                 </div>
                             </div>
-                        ` : ''}
+                        )}
                     </div>
                 </div>
-            `;
+            );
         };
 
         const TableApp = () => {
+            const tableState = tableStateSignal.value;
+            const tableData = tableDataSignal.value;
+            const serverTotal = serverTotalSignal.value;
+
+            table.setOptions(prev => ({
+                ...prev,
+                data: tableData,
+                state: tableState,
+                onStateChange: updateTableState,
+                pageCount: url && serverTotal !== null
+                    ? getPageCount(serverTotal, tableState.pagination.pageSize)
+                    : undefined,
+            }));
+
             useEffect(() => {
                 if (!radio) {
                     return undefined;
@@ -971,13 +1051,13 @@
                     return undefined;
                 }
                 const handler = () => {
-                    const input = document.getElementById('table_input' + config.id);
+                    const input = document.getElementById(config.selection.inputId || ('table_input' + config.id));
                     if (input) {
                         const selectedRadio = wrapperElement.querySelector('.row-select:checked');
                         if (selectedRadio) {
                             const rowId = selectedRadio.getAttribute('data-row-id');
-                            const selectedRow = data[rowId];
-                            input.value = JSON.stringify([selectedRow]);
+                            const selectedRow = table.getRowModel().rowsById[rowId];
+                            input.value = JSON.stringify(selectedRow ? [selectedRow.original] : []);
                         } else {
                             input.value = '[]';
                         }
@@ -989,54 +1069,87 @@
                 };
             }, []);
 
+            useEffect(() => {
+                initStickyHeader();
+                return () => {
+                    destroyStickyHeader();
+                };
+            });
+
             const totalRows = url ? serverTotal : data.length;
             const shouldPaginate = url
                 ? (serverTotal !== null && serverTotal > table.getState().pagination.pageSize)
                 : (data.length > table.getState().pagination.pageSize);
             const showPageSizeSelector = totalRows !== null && totalRows > 0;
 
-            return html`
+            return (
                 <div>
-                    ${(!minimal || !noToolBar) ? renderToolbar() : ''}
-                    ${renderTableElement()}
-                    ${shouldPaginate ? renderPagination() : (showPageSizeSelector ? renderPageSizeSelector() : '')}
+                    {toolbarEnabled && renderToolbar()}
+                    {renderTableElement()}
+                    {shouldPaginate ? renderPagination() : (showPageSizeSelector && renderPageSizeSelector())}
                 </div>
-            `;
+            );
         };
 
-        renderTable = () => {
-            destroyStickyHeader();
-            render(null, wrapperElement);
-            render(html`<${TableApp} />`, wrapperElement);
-
-            const selectAllCheckbox = wrapperElement.querySelector('#select-all');
-            if (selectAllCheckbox) selectAllCheckbox.addEventListener('change', handleSelectAll);
-
-            wrapperElement.querySelectorAll('.row-select').forEach(checkbox => {
-                checkbox.addEventListener('change', handleRowSelection);
-            });
-
-            initStickyHeader();
-        };
+        instances.set(config.id, {
+            id: config.id,
+            refresh: () => fetchData(),
+            getSelection: () => massiveActionSelectionSignal.value,
+            getTable: () => table,
+        });
 
         if (url) {
-            renderTable();
-            fetchDataAndRender();
+            tableDataSignal.value = [];
+            render(<TableApp />, wrapperElement);
+            fetchData();
         } else {
-            validatePaginationState(data.length);
-            renderTable();
+            const validState = getValidPaginationState(tableStateSignal.value, data.length);
+            if (validState !== tableStateSignal.value) {
+                tableStateSignal.value = validState;
+                storeState(validState);
+            }
+            render(<TableApp />, wrapperElement);
         }
     }
 
-    existingQueue.forEach(initTable);
-    const originalPush = existingQueue.push.bind(existingQueue);
-    existingQueue.push = function (config) {
-        const length = originalPush(config);
-        initTable(config);
-        return length;
+    const readElementConfig = (wrapperElement) => {
+        const configId = wrapperElement.dataset.itsmTableConfig;
+        if (!configId) {
+            return null;
+        }
+
+        const configElement = document.getElementById(configId);
+        if (!configElement) {
+            console.error('ITSMTable: missing JSON config element', configId);
+            return null;
+        }
+
+        try {
+            return JSON.parse(configElement.textContent || '{}');
+        } catch (error) {
+            console.error('ITSMTable: invalid JSON config', configId, error);
+            return null;
+        }
     };
 
-    window.ITSMTableQueue = existingQueue;
+    const initConfiguredTables = (root = document) => {
+        if (root.matches && root.matches('[data-itsm-table-config]')) {
+            initTable(readElementConfig(root));
+        }
+
+        root.querySelectorAll('[data-itsm-table-config]').forEach((wrapperElement) => {
+            initTable(readElementConfig(wrapperElement));
+        });
+    };
+
     window.ITSMTable = window.ITSMTable || {};
     window.ITSMTable.init = initTable;
+    window.ITSMTable.initAll = initConfiguredTables;
+    window.ITSMTable.get = (id) => instances.get(String(id)) || null;
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => initConfiguredTables(), { once: true });
+    } else {
+        initConfiguredTables();
+    }
 })(window, document);

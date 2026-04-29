@@ -32,21 +32,27 @@
 const { CleanWebpackPlugin } = require('clean-webpack-plugin');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
+const TerserPlugin = require('terser-webpack-plugin');
 
 const glob = require('glob');
 const path = require('path');
+const webpack = require('webpack');
 
 const libOutputPath = 'public/lib';
+
+const glpiJsxEntries = () => Object.fromEntries(
+  glob.sync(path.resolve(__dirname, 'js/*.jsx'))
+    .map(file => [path.basename(file, '.jsx'), file]),
+);
 
 /*
  * GLPI core files build configuration.
  */
 const glpiConfig = {
-  entry: {
+  entry: () => ({
     glpi: path.resolve(__dirname, 'js/main.js'),
-    displaypreferences: path.resolve(__dirname, 'js/displaypreferences.js'),
-    table: path.resolve(__dirname, 'js/table.js'),
-  },
+    ...glpiJsxEntries(),
+  }),
   output: {
     filename: '[name].js',
     path: path.resolve(__dirname, 'public/build'),
@@ -64,16 +70,31 @@ const glpiConfig = {
   module: {
     rules: [
       {
-        test: /\.js$/,
+        test: /\.jsx?$/,
         exclude: /node_modules/,
         use: {
           loader: 'babel-loader',
           options: {
             presets: ['@babel/preset-env'],
-            plugins: ['babel-plugin-htm']
+            plugins: [
+              ['@babel/plugin-transform-react-jsx', { pragma: 'h', pragmaFrag: 'Fragment' }],
+            ],
           },
         },
       },
+    ],
+  },
+  plugins: [
+    new webpack.DefinePlugin({
+      'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production'),
+    }),
+  ],
+  optimization: {
+    minimize: true,
+    minimizer: [
+      new TerserPlugin({
+        extractComments: false,
+      }),
     ],
   },
 };
