@@ -420,7 +420,7 @@ class NotificationTarget extends CommonDBChild
                                'multiple' => true,
                                'name' => '_targets[]',
                                'values' => $values,
-                               'value' => json_encode($actives),
+                               'value' => $actives,
                                'col_lg' => 12,
                                'col_md' => 12,
                                $canedit ? '' : 'disabled' => true
@@ -466,9 +466,12 @@ class NotificationTarget extends CommonDBChild
             // Be sure to have items once
             $input['_targets'] = array_unique($input['_targets']);
             foreach ($input['_targets'] as $val) {
+                if (!is_string($val) || !preg_match('/^\d+_\d+$/', $val)) {
+                    continue;
+                }
                 // Add if not set
                 if (!isset($actives[$val])) {
-                    list($type, $items_id)   = explode("_", (string) $val);
+                    list($type, $items_id)   = explode("_", $val);
                     $tmp                     = [];
                     $tmp['items_id']         = $items_id;
                     $tmp['type']             = $type;

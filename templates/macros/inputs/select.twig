@@ -18,7 +18,7 @@
   {% endif %}
   <select class='no-print form-select form-select-sm {{attributes.class}}' id="{{id}}" {{ attributes.multiple ? 'multiple="multiple"' : '' }}
     {% for name, value in attributes %}
-      {% if name not in  ['values', 'class', 'multiple', 'condition', 'conditions', 'used', 'ajax', 'itemtype']%}
+      {% if name not in  ['values', 'value', 'class', 'multiple', 'condition', 'conditions', 'used', 'ajax', 'itemtype']%}
         {{name}}="{{value}}"
       {% endif %}
     {% endfor %}
@@ -80,7 +80,9 @@
             });
             {% if attributes.multiple %}
             let values = JSON.parse('{{attributes.value|json_encode|raw}}');
-            if (typeof values === 'object') {
+            if (values === null) {
+                values = [];
+            } else if (!Array.isArray(values) && typeof values === 'object') {
                 values = Object.keys(values);
             }
             $('#{{attributes.id ? attributes.id : id}}')

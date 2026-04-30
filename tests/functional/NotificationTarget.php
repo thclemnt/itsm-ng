@@ -39,6 +39,62 @@ use DbTestCase;
 
 class NotificationTarget extends DbTestCase
 {
+    public function testShowForNotificationPreselectsExistingTargets()
+    {
+        $this->login();
+
+        $notif = new \Notification();
+        $this->boolean($notif->getFromDB(1))->isTrue();
+
+        \NotificationTarget::updateTargets([
+           'notifications_id' => $notif->getID(),
+           'itemtype'         => $notif->getField('itemtype'),
+           '_targets'         => ['1_1', '3_1'],
+        ]);
+
+        $target = \NotificationTarget::getInstanceByType(
+            $notif->getField('itemtype'),
+            $notif->getField('event'),
+            ['entities_id' => $notif->getField('entities_id')]
+        );
+        $this->object($target)->isInstanceOf(\NotificationTarget::class);
+
+        $this->output(
+            function () use ($target, $notif) {
+                $target->showForNotification($notif);
+            }
+        )->contains('"1_1":"1_1"')
+          ->contains('"3_1":"3_1"')
+          ->notContains('value="Array"')
+          ->notContains('JSON.parse(\'"{\\\"');
+    }
+
+    public function testUpdateTargetsKeepsPostedTargets()
+    {
+        $this->login();
+
+        $notif = new \Notification();
+        $this->boolean($notif->getFromDB(1))->isTrue();
+
+        \NotificationTarget::updateTargets([
+           'notifications_id' => $notif->getID(),
+           'itemtype'         => $notif->getField('itemtype'),
+           '_targets'         => ['1_1', '3_1'],
+        ]);
+
+        $this->integer(countElementsInTable(\NotificationTarget::getTable(), [
+           'notifications_id' => $notif->getID(),
+           'type'             => 1,
+           'items_id'         => 1,
+        ]))->isIdenticalTo(1);
+
+        $this->integer(countElementsInTable(\NotificationTarget::getTable(), [
+           'notifications_id' => $notif->getID(),
+           'type'             => 3,
+           'items_id'         => 1,
+        ]))->isIdenticalTo(1);
+    }
+
     public function testGetSubjectPrefix()
     {
         $this->login();
