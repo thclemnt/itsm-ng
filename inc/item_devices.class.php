@@ -543,25 +543,14 @@ class Item_Devices extends CommonDBRelation
      **/
     public static function getItemsAssociatedTo($itemtype, $items_id)
     {
-        global $DB;
-
         $res = [];
         foreach (self::getItemAffinities($itemtype) as $link_type) {
-            $table = $link_type::getTable();
-            $iterator = $DB->request([
-               'SELECT' => 'id',
-               'FROM'   => $table,
-               'WHERE'  => [
-                  'itemtype'  => $itemtype,
-                  'items_id'  => $items_id
-               ]
-            ]);
-
-            while ($row = $iterator->next()) {
-                $input = Toolbox::addslashes_deep($row);
+            $link = new $link_type();
+            foreach ($link->findIds(['itemtype' => $itemtype, 'items_id' => $items_id]) as $id) {
                 $item = new $link_type();
-                $item->getFromDB($input['id']);
-                $res[] = $item;
+                if ($item->getFromDB($id)) {
+                    $res[] = $item;
+                }
             }
         }
         return $res;
@@ -574,20 +563,10 @@ class Item_Devices extends CommonDBRelation
      **/
     public static function cloneItem($itemtype, $oldid, $newid)
     {
-        global $DB;
-
         Toolbox::deprecated('Use clone');
         foreach (self::getItemAffinities($itemtype) as $link_type) {
-            $table = $link_type::getTable();
-            $olds = $DB->request([
-               'FROM'   => $table,
-               'WHERE'  => [
-                  'itemtype'  => $itemtype,
-                  'items_id'  => $oldid
-               ]
-            ]);
-
-            while ($data = $olds->next()) {
+            $olds = (new $link_type())->find(['itemtype' => $itemtype, 'items_id' => $oldid]);
+            foreach ($olds as $data) {
                 $link = new $link_type();
                 unset($data['id']);
                 $data['items_id']     = $newid;
@@ -655,7 +634,7 @@ class Item_Devices extends CommonDBRelation
 
     public static function showForItem(CommonGLPI $item, $withtemplate = 0)
     {
-        global $CFG_GLPI, $DB;
+        global $CFG_GLPI;
 
         $is_device = ($item instanceof CommonDevice);
 
@@ -824,50 +803,7 @@ class Item_Devices extends CommonDBRelation
 
         foreach (self::getItemAffinities($item->getType()) as $link_type) {
             $link = getItemForItemtype($link_type);
-            $table = $link->getTable();
-            $criteria = [
-               'SELECT' => "$table.*",
-               'FROM'   => $table
-            ];
-            if ($is_device) {
-                $fk = 'items_id';
-
-                // Entity restrict
-                $criteria['WHERE'] = [
-                   $link->getDeviceForeignKey()  => $item->getID(),
-                   "$table.itemtype"            => $peer_type,
-                   "$table.is_deleted"          => 0
-                ];
-                $criteria['ORDERBY'] = [
-                   "$table.itemtype",
-                   "$table.$fk"
-                ];
-                if (!empty($peer_type)) {
-                    $criteria['LEFT JOIN'] = [
-                       getTableForItemType($peer_type) => [
-                          'ON' => [
-                             $table                          => 'items_id',
-                             getTableForItemType($peer_type)  => 'id', [
-                                'AND' => [
-                                   "$table.itemtype"   => $peer_type
-                                ]
-                             ]
-                          ]
-                       ]
-                    ];
-                    $criteria['WHERE'] = $criteria['WHERE'] + getEntitiesRestrictCriteria(getTableForItemType($peer_type));
-                }
-            } else {
-                $fk = $link->getDeviceForeignKey();
-
-                $criteria['WHERE'] = [
-                   'itemtype'     => $item->getType(),
-                   'items_id'     => $item->getID(),
-                   'is_deleted'   => 0
-                ];
-                $criteria['ORDERBY'] = $fk;
-            }
-            $datas = iterator_to_array($DB->request($criteria));
+            $datas = $link->getTableGroupRows($item, $peer_type ?? null);
             if (count($datas)) {
                 $massiveActionContainerId = 'mass' . __CLASS__ . rand();
                 if ($canedit) {
@@ -919,6 +855,40 @@ class Item_Devices extends CommonDBRelation
     public static function getDeviceForeignKey()
     {
         return getForeignKeyFieldForTable(getTableForItemType(static::getDeviceType()));
+    }
+
+    /** Mapped component rows, retaining custom plugin query extensions. */
+    public function getTableGroupRows($item, $peer_type = null): array
+    {
+        global $DB;
+
+        $table = $this->getTable();
+        $peerTable = $peer_type ? getTableForItemType($peer_type) : null;
+        $customCriteria = (new ReflectionMethod($this, 'getTableGroupCriteria'))->getDeclaringClass()->getName() !== self::class;
+        if ($customCriteria || !isset(\itsmng\Database\EntityRegistry::TABLES[$table])
+            || ($peerTable && !isset(\itsmng\Database\EntityRegistry::TABLES[$peerTable]))) {
+            return iterator_to_array($DB->request($this->getTableGroupCriteria($item, $peer_type)));
+        }
+        if (!$item instanceof CommonDevice) {
+            return array_values($this->find([
+                'itemtype' => $item->getType(), 'items_id' => $item->getID(), 'is_deleted' => 0,
+            ], $this->getDeviceForeignKey()));
+        }
+        $restriction = $peerTable ? (new DbUtils())->getEntitiesRestrictCriteria($peerTable) : [];
+        $entities = $restriction ? array_map('intval', (array)reset($restriction)) : null;
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            return (new \itsmng\Database\Repository\ComponentRepository($em))->forDevice(
+                $table,
+                $this->getDeviceForeignKey(),
+                (int)$item->getID(),
+                $peer_type,
+                $peerTable,
+                $entities
+            );
+        } finally {
+            $em->clear();
+        }
     }
 
     public function getTableGroupCriteria($item, $peer_type = null)
@@ -999,8 +969,6 @@ class Item_Devices extends CommonDBRelation
         ?HTMLTableSuperHeader $delete_column = null,
         ?HTMLTableSuperHeader $dynamic_column = null
     ) {
-        global $DB;
-
         $is_device = ($item instanceof CommonDevice);
 
         if ($is_device) {
@@ -1107,7 +1075,6 @@ class Item_Devices extends CommonDBRelation
             );
         }
 
-        $criteria = $this->getTableGroupCriteria($item, $peer_type);
         $fk = $item instanceof CommonDevice ? 'items_id' : $this->getDeviceForeignKey();
 
         if (!empty($peer_type)) {
@@ -1117,8 +1084,7 @@ class Item_Devices extends CommonDBRelation
             $peer = null;
         }
 
-        $iterator = $DB->request($criteria);
-        while ($link = $iterator->next()) {
+        foreach ($this->getTableGroupRows($item, $peer_type) as $link) {
             Session::addToNavigateListItems(static::getType(), $link["id"]);
             $this->getFromDB($link['id']);
             $current_row  = $table_group->createRow();
@@ -1212,25 +1178,14 @@ class Item_Devices extends CommonDBRelation
 
             $content = [];
             // The order is to be sure that specific documents appear first
-            $doc_iterator = $DB->request([
-               'SELECT' => 'documents_id',
-               'FROM'   => 'glpi_documents_items',
-               'WHERE'  => [
-                  'OR' => [
-                     [
-                        'itemtype'  => $this->getType(),
-                        'items_id'  => $link['id']
-                     ],
-                     [
-                        'itemtype'  => $this->getDeviceType(),
-                        'items_id'  => $link[$this->getDeviceForeignKey()]
-                     ]
-                  ]
-               ],
-               'ORDER'  => 'itemtype'
-            ]);
+            $documents = (new Document_Item())->find([
+                'OR' => [
+                    ['itemtype' => $this->getType(), 'items_id' => $link['id']],
+                    ['itemtype' => $this->getDeviceType(), 'items_id' => $link[$this->getDeviceForeignKey()]],
+                ],
+            ], 'itemtype');
             $document = new Document();
-            while ($document_link = $doc_iterator->next()) {
+            foreach ($documents as $document_link) {
                 if ($document->can($document_link['documents_id'], READ)) {
                     $content[] = $document->getLink();
                 }
@@ -1496,17 +1451,26 @@ class Item_Devices extends CommonDBRelation
             $link = getItemForItemtype($link_type);
             if ($link) {
                 if ($unaffect) {
-                    $DB->update(
-                        $link->getTable(),
-                        [
-                          'items_id'  => 0,
-                          'itemtype'  => ''
-                        ],
-                        [
-                          'items_id'  => $items_id,
-                          'itemtype'  => $itemtype
-                        ]
-                    );
+                    if (isset(\itsmng\Database\EntityRegistry::TABLES[$link->getTable()])) {
+                        $em = \itsmng\Database\Orm::create($DB);
+                        try {
+                            (new \itsmng\Database\Repository\ComponentRepository($em))->detach($link->getTable(), $itemtype, (int)$items_id);
+                        } finally {
+                            $em->clear();
+                        }
+                    } else {
+                        $DB->update(
+                            $link->getTable(),
+                            [
+                              'items_id'  => 0,
+                              'itemtype'  => ''
+                            ],
+                            [
+                              'items_id'  => $items_id,
+                              'itemtype'  => $itemtype
+                            ]
+                        );
+                    }
                 } else {
                     $link->cleanDBOnItemDelete($itemtype, $items_id);
                 }

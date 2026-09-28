@@ -10,6 +10,10 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'glpi_items_deviceprocessors')]
 class ItemDeviceProcessor
 {
+    #[ORM\ManyToOne(targetEntity: DeviceProcessor::class)]
+    #[ORM\JoinColumn(name: 'deviceprocessors_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?DeviceProcessor $deviceprocessors = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
@@ -20,9 +24,6 @@ class ItemDeviceProcessor
 
     #[ORM\Column(name: '`itemtype`', type: 'string', length: 255, nullable: true)]
     public ?string $itemtype = null;
-
-    #[ORM\Column(name: '`deviceprocessors_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $deviceprocessors_id = 0;
 
     #[ORM\Column(name: '`frequency`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $frequency = 0;

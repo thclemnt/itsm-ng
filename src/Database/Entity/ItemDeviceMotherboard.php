@@ -10,6 +10,10 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'glpi_items_devicemotherboards')]
 class ItemDeviceMotherboard
 {
+    #[ORM\ManyToOne(targetEntity: DeviceMotherboard::class)]
+    #[ORM\JoinColumn(name: 'devicemotherboards_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?DeviceMotherboard $devicemotherboards = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
@@ -20,9 +24,6 @@ class ItemDeviceMotherboard
 
     #[ORM\Column(name: '`itemtype`', type: 'string', length: 255, nullable: true)]
     public ?string $itemtype = null;
-
-    #[ORM\Column(name: '`devicemotherboards_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $devicemotherboards_id = 0;
 
     #[ORM\Column(name: '`is_deleted`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_deleted = false;

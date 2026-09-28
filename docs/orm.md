@@ -21,8 +21,8 @@ representable bigint values, date strings and JSON values. Plugin tables still u
 the legacy path until their mappings are registered.
 
 Audited required relationships use `ManyToOne` associations without cascading
-removal. Optional legacy references using zero and polymorphic item references
-remain scalar columns. Booleans, dates, decimals and JSON have explicit Doctrine
+removal. Audited optional references use nullable associations after explicit zero-to-NULL
+normalization; remaining optional and polymorphic references remain scalar columns. Booleans, dates, decimals and JSON have explicit Doctrine
 types; decimals remain strings to avoid rounding through floating point.
 
 `MappedStorage` now handles insert/update/delete, soft deletion and restoration
@@ -204,3 +204,24 @@ pass on both engines. Component, rack, CommonDBTM and DbUtils suites pass 52 met
 with 6,899 assertions on PHP 8.3. `CommonDevice` now uses mapped reads throughout,
 including an asset-scope check that examines every linked ID instead of comparing
 against a comma-separated SQL aggregate.
+
+Seventeen component-to-device endpoints now use required mapped associations and
+restrictive foreign keys (147 constraints total). Purging a device removes its
+assigned, deleted and stock component links through their model hooks; replacing
+a device reassigns those links through the existing replacement lifecycle.
+The polymorphic asset endpoint remains scalar because returning a component to
+stock deliberately clears its item type and sets its asset ID to zero.
+
+`ComponentRepository` handles device listings and atomic stock detachment with
+DQL. Listings join the concrete mapped asset type when applying active-entity
+scope, exclude deleted links, and distinguish empty scope from all-entity scope.
+Asset listings, component lookup, cloning and document lookup use mapped model
+reads. Custom plugin listing criteria and unmapped plugin tables retain their
+extension path. `components.php` exercises all 17 associations, entity filtering,
+replacement, purge, cloning and stock handling on both providers, and checks that
+core reads and stock detachment bypass legacy query execution. CI runs this suite
+for both databases.
+The full FK contracts pass 619 PostgreSQL / 221 MariaDB assertions. All-table
+mapped writes, application flows, reporting and search regressions also pass.
+The existing SIM-card tests now load their named device fixture instead of
+constructing an empty device object with an invalid ID.

@@ -168,6 +168,18 @@ abstract class CommonDevice extends CommonDropdown
         ];
     }
 
+    public function cleanDBonPurge()
+    {
+        parent::cleanDBonPurge();
+        // Replacement is handled by cleanRelationData after this hook.
+        if (empty($this->input['_replace_by'])) {
+            $link = getItemForItemtype(static::getItem_DeviceType());
+            if ($link) {
+                $link->cleanDBonItemDelete($this->getType(), $this->getID());
+            }
+        }
+    }
+
     /**
      * Can I change recursive flag to false
      * check if there is "linked" object in another entity

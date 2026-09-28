@@ -10,6 +10,10 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'glpi_items_devicenetworkcards')]
 class ItemDeviceNetworkCard
 {
+    #[ORM\ManyToOne(targetEntity: DeviceNetworkCard::class)]
+    #[ORM\JoinColumn(name: 'devicenetworkcards_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?DeviceNetworkCard $devicenetworkcards = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
@@ -20,9 +24,6 @@ class ItemDeviceNetworkCard
 
     #[ORM\Column(name: '`itemtype`', type: 'string', length: 255, nullable: true)]
     public ?string $itemtype = null;
-
-    #[ORM\Column(name: '`devicenetworkcards_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $devicenetworkcards_id = 0;
 
     #[ORM\Column(name: '`mac`', type: 'string', length: 255, nullable: true)]
     public ?string $mac = null;
