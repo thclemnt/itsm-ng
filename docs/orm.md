@@ -586,3 +586,33 @@ checks also pass. PHP 8.3 cartridge, consumable and printer suites pass 10 metho
 
 Coverage is now 198 enforced relationships, 564 pending relationship candidates,
 62 polymorphic references, one ambiguous reference and 1,447 legacy SQL sites.
+
+### Consumable assignments, summaries and alerts
+
+`ConsumableRepository` now handles give/return operations, paginated stock lists,
+usage summaries and alert candidates. Returning an item keeps the last recipient
+as history, and repeated returns retain the existing success behavior. Recipient
+type/ID pairs remain polymorphic and are not yet covered by a database FK.
+
+Stock pages apply limits and offsets in the database, with explicit NULL ordering
+and stable date/ID ordering. Used stock now retains its entry-date tiebreaker,
+which the former PHP array union discarded. Rendering uses the selected date to
+display status, avoiding additional state-count queries for every row. Missing
+recipients keep their table cell, and removed plugin classes no longer make the
+summary fail.
+
+Usage summaries join the mapped consumable model and apply its entity scope,
+independently of cached child entity IDs. Counts distinguish users and groups
+with the same numeric ID and include empty visible models in the rendered table.
+Alert selection uses a typed timestamp cutoff, preserves the strict repeat-delay
+boundary, filters deleted/disabled/foreign-entity models and distinguishes other
+alert item types. PostgreSQL timestamp output is normalized to the existing
+notification date-string format. Notification delivery remains in the existing
+application lifecycle.
+
+`consumables.php` covers these behaviors on PostgreSQL and MariaDB, including
+rendered lists/summaries and alert selection without sending notifications.
+Stock, reporting and application contracts also pass on both engines, and the
+PHP 8.3 consumable/cartridge suites pass 6 methods / 249 assertions. `Consumable`
+and `ConsumableItem` no longer execute direct adapter queries. The inventory now
+reports 1,435 legacy SQL sites; FK coverage remains 198 enforced relationships.

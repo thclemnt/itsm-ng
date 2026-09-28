@@ -121,19 +121,13 @@ class Consumable extends CommonDBChild
     {
         global $DB;
 
-        $result = $DB->update(
-            $this->getTable(),
-            [
-              'date_out' => 'NULL'
-            ],
-            [
-              'id' => $input['id']
-            ]
-        );
-        if ($result) {
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            (new \itsmng\Database\Repository\ConsumableRepository($em))->returnToStock((int)$input['id']);
             return true;
+        } finally {
+            $em->clear();
         }
-        return false;
     }
 
 
@@ -163,26 +157,16 @@ class Consumable extends CommonDBChild
     {
         global $DB;
 
-        if (
-            !empty($itemtype)
-            && ($items_id > 0)
-        ) {
-            $result = $DB->update(
-                $this->getTable(),
-                [
-                  'date_out'  => date('Y-m-d'),
-                  'itemtype'  => $itemtype,
-                  'items_id'  => $items_id
-                ],
-                [
-                  'id' => $ID
-                ]
-            );
-            if ($result) {
-                return true;
-            }
+        if (empty($itemtype) || $items_id <= 0) {
+            return false;
         }
-        return false;
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            (new \itsmng\Database\Repository\ConsumableRepository($em))->give((int)$ID, $itemtype, (int)$items_id);
+            return true;
+        } finally {
+            $em->clear();
+        }
     }
 
 
@@ -280,12 +264,7 @@ class Consumable extends CommonDBChild
     {
         global $DB;
 
-        $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => 'glpi_consumables',
-           'WHERE'  => ['consumableitems_id' => $tID]
-        ])->next();
-        return (int)$result['cpt'];
+        return \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), ['consumableitems_id' => $tID]);
     }
 
 
@@ -300,15 +279,7 @@ class Consumable extends CommonDBChild
     {
         global $DB;
 
-        $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => 'glpi_consumables',
-           'WHERE'  => [
-              'consumableitems_id' => $tID,
-              'NOT'                => ['date_out' => null]
-           ]
-        ])->next();
-        return (int)$result['cpt'];
+        return \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), ['consumableitems_id' => $tID, 'NOT' => ['date_out' => null]]);
     }
 
 
@@ -323,15 +294,7 @@ class Consumable extends CommonDBChild
     {
         global $DB;
 
-        $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => 'glpi_consumables',
-           'WHERE'  => [
-              'consumableitems_id' => $tID,
-              'date_out'           => null
-           ]
-        ])->next();
-        return(int) $result['cpt'];
+        return \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), ['consumableitems_id' => $tID, 'date_out' => null]);
     }
 
 
@@ -383,15 +346,7 @@ class Consumable extends CommonDBChild
     {
         global $DB;
 
-        $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => 'glpi_consumables',
-           'WHERE'  => [
-              'id'        => $cID,
-              'date_out'  => null
-           ]
-        ])->next();
-        return $result['cpt'] == 1;
+        return \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), ['id' => $cID, 'date_out' => null]) === 1;
     }
 
 
@@ -406,15 +361,7 @@ class Consumable extends CommonDBChild
     {
         global $DB;
 
-        $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => 'glpi_consumables',
-           'WHERE'  => [
-              'id'     => $cID,
-              'NOT'   => ['date_out' => null]
-           ]
-        ])->next();
-        return $result['cpt'] == 1;
+        return \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), ['id' => $cID, 'NOT' => ['date_out' => null]]) === 1;
     }
 
 
@@ -516,23 +463,14 @@ class Consumable extends CommonDBChild
         $canedit = $consitem->can($tID, UPDATE);
         $rand = mt_rand();
         $where = ['consumableitems_id' => $tID];
-        $order = ['date_in', 'id'];
-        if (!$show_old) { // NEW
-            $where += ['date_out' => 'NULL'];
-        } else { //OLD
-            $where += ['NOT'   => ['date_out' => 'NULL']];
-            $order = ['date_out DESC'] + $order;
+        $where += $show_old ? ['NOT' => ['date_out' => null]] : ['date_out' => null];
+        $number = \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), $where);
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            $rows = (new \itsmng\Database\Repository\ConsumableRepository($em))->forModel((int)$tID, (bool)$show_old, (int)$_SESSION['glpilist_limit'], (int)$start);
+        } finally {
+            $em->clear();
         }
-
-        $number = countElementsInTable("glpi_consumables", $where);
-
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => $where,
-           'ORDER'  => $order,
-           'START'  => (int)$start,
-           'LIMIT'  => (int)$_SESSION['glpilist_limit']
-        ]);
 
         if ($canedit && $number) {
             $actions = [];
@@ -576,21 +514,18 @@ class Consumable extends CommonDBChild
         $values = [];
         $massive_action = [];
         if ($number) {
-            while ($data = $iterator->next()) {
+            foreach ($rows as $data) {
                 $newValue = [];
                 $date_in  = Html::convDate($data["date_in"]);
                 $date_out = Html::convDate($data["date_out"]);
 
                 $newValue[] = $data['id'];
-                $newValue[] = self::getStatus($data["id"]);
+                $newValue[] = $data['date_out'] === null ? _nx('consumable', 'New', 'New', 1) : _nx('consumable', 'Used', 'Used', 1);
                 $newValue[] = $date_in;
                 if ($show_old) {
                     $newValue[] = $date_out;
-                    if ($item = getItemForItemtype($data['itemtype'])) {
-                        if ($item->getFromDB($data['items_id'])) {
-                            $newValue[] = $item->getLink();
-                        }
-                    }
+                    $item = getItemForItemtype($data['itemtype']);
+                    $newValue[] = $item && $item->getFromDB($data['items_id']) ? $item->getLink() : '';
                 }
                 ob_start();
                 Infocom::showDisplayLink('Consumable', $data["id"]);
@@ -627,61 +562,26 @@ class Consumable extends CommonDBChild
             return;
         }
 
-        $iterator = $DB->request([
-           'SELECT' => [
-              'COUNT'  => ['* AS count'],
-              'consumableitems_id',
-              'itemtype',
-              'items_id'
-           ],
-           'FROM'   => 'glpi_consumables',
-           'WHERE'  => [
-              'NOT'                => ['date_out' => null],
-              'consumableitems_id' => new \QuerySubQuery([
-                 'SELECT' => 'id',
-                 'FROM'   => 'glpi_consumableitems',
-                 'WHERE'  => getEntitiesRestrictCriteria('glpi_consumableitems')
-              ])
-           ],
-           'GROUP'  => ['itemtype', 'items_id', 'consumableitems_id']
-        ]);
+        $scope = getEntitiesRestrictCriteria('glpi_consumableitems');
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            $repository = new \itsmng\Database\Repository\ConsumableRepository($em);
+            $usedRows = $repository->summary($scope, true);
+            $newRows = $repository->summary($scope, false);
+        } finally {
+            $em->clear();
+        }
         $used = [];
-
-        while ($data = $iterator->next()) {
-            $used[$data['itemtype'] . '####' . $data['items_id']][$data["consumableitems_id"]]
-               = $data["count"];
+        foreach ($usedRows as $data) {
+            $used[$data['itemtype'] . '####' . $data['items_id']][$data['consumableitems_id']] = (int)$data['count'];
         }
-
-        $iterator = $DB->request([
-           'SELECT' => [
-              'COUNT'  => '* AS count',
-              'consumableitems_id',
-           ],
-           'FROM'   => 'glpi_consumables',
-           'WHERE'  => [
-              'date_out'           => null,
-              'consumableitems_id' => new \QuerySubQuery([
-                 'SELECT' => 'id',
-                 'FROM'   => 'glpi_consumableitems',
-                 'WHERE'  => getEntitiesRestrictCriteria('glpi_consumableitems')
-              ])
-           ],
-           'GROUP'  => ['consumableitems_id']
-        ]);
         $new = [];
-
-        while ($data = $iterator->next()) {
-            $new[$data["consumableitems_id"]] = $data["count"];
+        foreach ($newRows as $data) {
+            $new[$data['consumableitems_id']] = (int)$data['count'];
         }
-
-        $iterator = $DB->request([
-           'FROM'   => 'glpi_consumableitems',
-           'WHERE'  => getEntitiesRestrictCriteria('glpi_consumableitems')
-        ]);
         $types = [];
-
-        while ($data = $iterator->next()) {
-            $types[$data["id"]] = $data["name"];
+        foreach (\itsmng\Database\MappedReads::matching($DB, 'glpi_consumableitems', $scope) as $data) {
+            $types[$data['id']] = $data['name'];
         }
 
         asort($types);
@@ -717,8 +617,8 @@ class Consumable extends CommonDBChild
             foreach ($used as $itemtype_items_id => $val) {
                 echo "<tr class='tab_bg_2'><td>";
                 list($itemtype, $items_id) = explode('####', $itemtype_items_id);
-                $item = new $itemtype();
-                if ($item->getFromDB($items_id)) {
+                $item = getItemForItemtype($itemtype);
+                if ($item && $item->getFromDB($items_id)) {
                     //TRANS: %1$s is a type name - %2$s is a name
                     printf(__('%1$s - %2$s'), $item->getTypeName(1), $item->getNameID());
                 }

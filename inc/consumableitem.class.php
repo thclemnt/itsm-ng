@@ -390,40 +390,15 @@ class ConsumableItem extends CommonDBTM
             $alert   = new Alert();
 
             foreach (Entity::getEntitiesToNotify('consumables_alert_repeat') as $entity => $repeat) {
-                $alerts_result = $DB->request(
-                    [
-                      'SELECT'    => [
-                         'glpi_consumableitems.id AS consID',
-                         'glpi_consumableitems.entities_id AS entity',
-                         'glpi_consumableitems.ref AS ref',
-                         'glpi_consumableitems.name AS name',
-                         'glpi_consumableitems.alarm_threshold AS threshold',
-                         'glpi_alerts.id AS alertID',
-                         'glpi_alerts.date',
-                      ],
-                      'FROM'      => ConsumableItem::getTable(),
-                      'LEFT JOIN' => [
-                         'glpi_alerts' => [
-                            'FKEY' => [
-                               'glpi_alerts'         => 'items_id',
-                               'glpi_consumableitems' => 'id',
-                               [
-                                  'AND' => ['glpi_alerts.itemtype' => 'ConsumableItem'],
-                               ],
-                            ]
-                         ]
-                      ],
-                      'WHERE'     => [
-                         'glpi_consumableitems.is_deleted'      => 0,
-                         'glpi_consumableitems.alarm_threshold' => ['>=', 0],
-                         'glpi_consumableitems.entities_id'     => $entity,
-                         'OR'                                  => [
-                            ['glpi_alerts.date' => null],
-                            ['glpi_alerts.date' => ['<', new QueryExpression('CURRENT_TIMESTAMP() - INTERVAL ' . $repeat . ' second')]],
-                         ],
-                      ],
-                    ]
-                );
+                $em = \itsmng\Database\Orm::create($DB);
+                try {
+                    $alerts_result = (new \itsmng\Database\Repository\ConsumableRepository($em))->alertCandidates(
+                        (int)$entity,
+                        (new \DateTimeImmutable())->modify(sprintf('%+d seconds', -(int)$repeat))
+                    );
+                } finally {
+                    $em->clear();
+                }
 
                 $message = "";
                 $items   = [];
