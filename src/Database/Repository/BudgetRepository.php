@@ -46,14 +46,14 @@ final class BudgetRepository
     {
         if (isset(self::COSTS[$itemtype])) {
             $query = $this->costs($itemtype, $budget, $entities)
-                ->select('a.id AS id', 'a.entities_id AS entities_id', $this->costValue($itemtype) . ' AS value')
-                ->groupBy('a.id, a.entities_id, a.name')->orderBy('a.entities_id')->addOrderBy('a.name')->addOrderBy('a.id');
+                ->select('a.id AS id', 'IDENTITY(a.entities) AS entities_id', $this->costValue($itemtype) . ' AS value')
+                ->groupBy('a.id, entities_id, a.name')->orderBy('IDENTITY(a.entities)')->addOrderBy('a.name')->addOrderBy('a.id');
             if ($itemtype === 'Contract') {
                 $query->andWhere('a.is_template = :false')->setParameter('false', false, Types::BOOLEAN);
             }
             return $query->getQuery()->getScalarResult();
         }
-        $query = $this->infocoms($itemtype, $budget, $entities)->select('a', 'i.value AS value')->orderBy('a.entities_id');
+        $query = $this->infocoms($itemtype, $budget, $entities)->select('a', 'i.value AS value')->orderBy('IDENTITY(a.entities)');
         if (in_array($itemtype, ['Cartridge', 'Consumable'], true)) {
             $query->innerJoin('a.' . strtolower($itemtype) . 'items', 'model')->addSelect('model.name AS name')->addOrderBy('model.name');
         } else {
@@ -80,8 +80,8 @@ final class BudgetRepository
             $query = $this->infocoms($itemtype, $budget, $entities);
             $value = 'SUM(i.value)';
         }
-        return $query->select('a.entities_id AS entities_id', $value . ' AS sumvalue')
-            ->groupBy('a.entities_id')->orderBy('a.entities_id')->getQuery()->getScalarResult();
+        return $query->select('IDENTITY(a.entities) AS entities_id', $value . ' AS sumvalue')
+            ->groupBy('entities_id')->orderBy('IDENTITY(a.entities)')->getQuery()->getScalarResult();
     }
 
     private function costs(string $itemtype, int $budget, ?array $entities): QueryBuilder
@@ -118,7 +118,7 @@ final class BudgetRepository
     private function scope(QueryBuilder $query, string $alias, ?array $entities): void
     {
         if ($entities !== null) {
-            $query->andWhere($alias . '.entities_id IN (:entities)')->setParameter('entities', $entities ?: [-1]);
+            $query->andWhere('IDENTITY(' . $alias . '.entities) IN (:entities)')->setParameter('entities', $entities ?: [-1]);
         }
     }
 }

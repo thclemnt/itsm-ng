@@ -289,13 +289,7 @@ class IPNetwork extends CommonImplicitTreeDropdown
                 $params["exclude IDs"] = $this->fields["id"];
             }
 
-            if (isset($this->fields["entities_id"])) {
-                $entities_id = $this->fields["entities_id"];
-            } elseif (isset($input["entities_id"])) {
-                $entities_id = $input["entities_id"];
-            } else {
-                $entities_id = -1;
-            }
+            $entities_id = $input['entities_id'] ?? $this->fields['entities_id'] ?? -1;
 
             // TODO : what is the best way ? recursive or not ?
             $sameNetworks = self::searchNetworks("equals", $params, $entities_id, false);
@@ -329,7 +323,7 @@ class IPNetwork extends CommonImplicitTreeDropdown
             $this->networkUpdate = false;
             $address->setAddressFromArray($this->fields, "version", "address", "address");
             $netmask->setAddressFromArray($this->fields, "version", "netmask", "netmask");
-            $entities_id = $this->fields['entities_id'];
+            $entities_id = $input['entities_id'] ?? $this->fields['entities_id'];
         }
 
         // Update class for the CommonImplicitTree update ...
@@ -479,7 +473,7 @@ class IPNetwork extends CommonImplicitTreeDropdown
      * @param boolean                    $recursive  set to false to only search in current entity,
      *                                               otherwise, all visible entities will be search
      * @param string|array               $fields     list of fields to return in the result (default : only ID of the networks)
-     * @param string                     $where      search criteria
+     * @param array|string               $where      structured search criteria (or empty string)
      *
      * @return array|false  list of networks (see searchNetworks())
     **/
@@ -515,7 +509,7 @@ class IPNetwork extends CommonImplicitTreeDropdown
      *    - address (see \ref parameterType) : the address for the query
      *    - netmask (see \ref parameterType) : the netmask for the query
      *    - exclude IDs : the IDs to exclude from the query (for instance, $this->getID())
-     *    - where : filters to add to the SQL request
+     *    - where : structured field criteria to add to the mapped query
      *
      * @param integer $entityID   the entity on which the selection should occur (-1 => the current active
      *                            entity) (default -1)
@@ -554,62 +548,20 @@ class IPNetwork extends CommonImplicitTreeDropdown
             $fields = [$fields];
         }
 
-        $startIndex = (($version == 4) ? 3 : 1);
-
-        $addressDB  = ['address_0', 'address_1', 'address_2', 'address_3'];
-        $netmaskDB  = ['netmask_0', 'netmask_1', 'netmask_2', 'netmask_3'];
-
-        $WHERE      = [];
-        if (
-            isset($condition["address"])
-            && isset($condition["netmask"])
-        ) {
-            $addressPa = new IPAddress($condition["address"]);
-
-            // Check version equality ...
-            if ($version != $addressPa->getVersion()) {
-                if ($version != 0) {
-                    return false;
-                }
-                $version = $addressPa->getVersion();
-            }
-
-            $netmaskPa = new IPNetmask($condition["netmask"], $version);
-
-            // Get the array of the adresses
-            $addressPa = $addressPa->getBinary();
-            $netmaskPa = $netmaskPa->getBinary();
-
-            // Check the binary is valid
-            if (!is_array($addressPa) || (count($addressPa) != 4)) {
+        if (!in_array($relation, ['equals', 'contains', 'is contained by'], true)) {
+            return false;
+        }
+        $address = $mask = null;
+        if (isset($condition['address'], $condition['netmask'])) {
+            $parsed = new IPAddress($condition['address']);
+            if ((int)$version !== 0 && $version != $parsed->getVersion()) {
                 return false;
             }
-            if (!is_array($netmaskPa) || (count($netmaskPa) != 4)) {
+            $version = $parsed->getVersion();
+            $address = $parsed->getBinary();
+            $mask = (new IPNetmask($condition['netmask'], $version))->getBinary();
+            if (!is_array($address) || count($address) !== 4 || !is_array($mask) || count($mask) !== 4) {
                 return false;
-            }
-
-            $startIndex = (($version == 4) ? 3 : 0);
-
-            if ($relation == "equals") {
-                for ($i = $startIndex; $i < 4; ++$i) {
-                    $WHERE = [
-                       new \QueryExpression("(" . $DB->quoteName($addressDB[$i]) . " & " . $DB->quoteValue($netmaskPa[$i]) . ") = (" . $DB->quoteValue($addressPa[$i]) . " & " . $DB->quoteValue($netmaskPa[$i]) . ")"),
-                       $netmaskDB[$i]  => $netmaskPa[$i]
-                    ];
-                }
-            } else {
-                for ($i = $startIndex; $i < 4; ++$i) {
-                    if ($relation == "is contained by") {
-                        $globalNetmask = $DB->quoteValue($netmaskPa[$i]);
-                    } else {
-                        $globalNetmask = $DB->quoteName($netmaskDB[$i]);
-                    }
-
-                    $WHERE = [
-                       new \QueryExpression("(" . $DB->quoteName($addressDB[$i]) . " & $globalNetmask) = (" . $DB->quoteValue($addressPa[$i]) . " & $globalNetmask)"),
-                       new \QueryExpression("(" . $DB->quoteValue($netmaskPa[$i]) . " & " . $DB->quoteName($netmaskDB[$i]) . ")=$globalNetmask")
-                    ];
-                }
             }
         }
 
@@ -619,21 +571,18 @@ class IPNetwork extends CommonImplicitTreeDropdown
         $entitiesID = [];
         switch ($relation) {
             case "is contained by":
-                $ORDER_ORIENTATION = 'ASC';
                 if ($recursive) {
                     $entitiesID = getSonsOf('glpi_entities', $entityID);
                 }
                 break;
 
             case "contains":
-                $ORDER_ORIENTATION = 'DESC';
                 if ($recursive) {
                     $entitiesID = getAncestorsOf('glpi_entities', $entityID);
                 }
                 break;
 
             case "equals":
-                $ORDER_ORIENTATION = '';
                 if ($recursive) {
                     $entitiesID = getSonsAndAncestorsOf('glpi_entities', $entityID);
                 }
@@ -641,53 +590,23 @@ class IPNetwork extends CommonImplicitTreeDropdown
         }
 
         $entitiesID[] = $entityID;
-        $WHERE['entities_id']   = $entitiesID;
-        $WHERE['version']       = $version;
-
-        if (!empty($condition["exclude IDs"])) {
-            if (is_array($condition["exclude IDs"])) {
-                if (count($condition["exclude IDs"]) > 1) {
-                    $WHERE['NOT'] = ['id' => $condition['exclude IDs']];
-                } else {
-                    $WHERE['id'] = ['<>', $condition['exclude IDs'][0]];
-                }
-            } else {
-                $WHERE['id'] = ['<>', $condition['exclude IDs']];
-            }
+        $criteria = $condition['where'] ?? [];
+        if ($criteria === '') {
+            $criteria = [];
         }
-
-        $ORDER = [];
-        // By ordering on the netmask, we ensure that the first element is the nearest one (ie:
-        // the last should be 0.0.0.0/0.0.0.0 of x.y.z.a/255.255.255.255 regarding the interested
-        // element)
-        for ($i = $startIndex; $i < 4; ++$i) {
-            $ORDER[] = new \QueryExpression("BIT_COUNT(" . $DB->quoteName($netmaskDB[$i]) . ") $ORDER_ORIENTATION");
+        if (!is_array($criteria)) {
+            throw new \InvalidArgumentException('Network filters must use structured field criteria.');
         }
-
-        if (!empty($condition["where"])) {
-            $WHERE .= " AND " . $condition["where"];
-        }
-
-        $iterator = $DB->request([
-           'SELECT' => $fields,
-           'FROM'   => self::getTable(),
-           'WHERE'  => $WHERE,
-           'ORDER'  => $ORDER
-        ]);
-
-        $returnValues = [];
-        while ($data = $iterator->next()) {
-            if (count($fields) > 1) {
-                $returnValue = [];
-                foreach ($fields as $field) {
-                    $returnValue[$field] = $data[$field];
-                }
-            } else {
-                $returnValue = $data[$fields[0]];
-            }
-            $returnValues[] = $returnValue;
-        }
-        return $returnValues;
+        return (new \itsmng\Database\Repository\IPNetworkRepository(\itsmng\Database\Orm::create($DB)))->matching(
+            $relation,
+            $address,
+            $mask,
+            (int)$version,
+            array_values(array_unique($entitiesID)),
+            array_values($fields),
+            (array)($condition['exclude IDs'] ?? []),
+            $criteria
+        );
     }
 
 

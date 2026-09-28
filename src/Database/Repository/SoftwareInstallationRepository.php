@@ -37,7 +37,7 @@ final class SoftwareInstallationRepository
     public function countsByEntity(bool $licenses, int $parent, string $itemtype, string $assetTable, array $assetCriteria): array
     {
         $rows = $this->assets($licenses, $parent, false, $itemtype, $assetTable, $assetCriteria)
-            ->select('r.entities_id AS entity_id', 'COUNT(i.id) AS quantity')->groupBy('r.entities_id')
+            ->select('IDENTITY(r.entities) AS entity_id', 'COUNT(i.id) AS quantity')->groupBy('entity_id')
             ->getQuery()->getScalarResult();
         $counts = [];
         foreach ($rows as $row) {

@@ -21,7 +21,7 @@ final class CertificateRepository
         $query = $this->em->createQueryBuilder()->select('c')->from(Entity\Certificate::class, 'c')
             ->leftJoin(Entity\Alert::class, 'a', 'WITH', 'a.items_id = c.id AND a.itemtype = :type AND a.type = :end')
             ->setParameter('type', 'Certificate', Types::STRING)->setParameter('end', \Alert::END, Types::INTEGER)
-            ->where('c.entities_id = :entity AND c.is_deleted = :false AND c.is_template = :false')
+            ->where('IDENTITY(c.entities) = :entity AND c.is_deleted = :false AND c.is_template = :false')
             ->setParameter('entity', $entity, Types::INTEGER)->setParameter('false', false, Types::BOOLEAN)
             ->andWhere('a.id IS NULL AND c.date_expiration < :cutoff')->setParameter('cutoff', $cutoff, Types::DATE_IMMUTABLE)
             ->orderBy('c.id');

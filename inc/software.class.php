@@ -885,7 +885,7 @@ class Software extends CommonDBTM
         $rows = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
             ->matching('glpi_softwares', [
                 'name' => stripslashes((string)$name),
-                'manufacturers_id' => $manufacturer_id,
+                'manufacturers_id' => $manufacturer_id ?: null,
                 'is_template' => false,
             ] + getEntitiesRestrictCriteria('glpi_softwares', 'entities_id', $entity, true), ['id'], 1, legacyValues: false);
 

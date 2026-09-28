@@ -34,6 +34,12 @@ final class RecordWriter
                 $record->$field = new \DateTime();
             }
         }
+        foreach ($metadata->associationMappings as $mapping) {
+            $join = $mapping->joinColumns[0];
+            if (array_key_exists('default', $join->options ?? []) && !array_key_exists($join->name, $values)) {
+                $values[$join->name] = $join->options['default'];
+            }
+        }
         try {
             $this->assign($metadata, $record, $values);
             $this->em->persist($record);
@@ -90,6 +96,9 @@ final class RecordWriter
             }
             if (isset($associations[$column])) {
                 $field = $associations[$column];
+                if ($value === null && !$metadata->getAssociationMapping($field)->joinColumns[0]->nullable) {
+                    throw new \InvalidArgumentException('Required relationship cannot be NULL: ' . $metadata->getTableName() . '.' . $column);
+                }
                 $record->$field = $value === null ? null : $this->em->getReference($metadata->getAssociationTargetClass($field), (int)$value);
                 continue;
             }

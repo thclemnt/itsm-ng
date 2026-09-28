@@ -21,6 +21,7 @@ final class Orm
             \Doctrine\DBAL\Types\Type::addType(Type\ClockTimeType::NAME, Type\ClockTimeType::class);
         }
         $config = new Configuration();
+        $config->addCustomNumericFunction('BIT_COUNT', Query\BitCount::class);
         $config->setMetadataDriverImpl(new AttributeDriver([__DIR__ . '/Entity']));
         $config->setProxyDir(GLPI_CACHE_DIR . '/orm');
         $config->setProxyNamespace('itsmng\\Database\\Proxy');

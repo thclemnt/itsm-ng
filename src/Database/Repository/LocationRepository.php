@@ -30,7 +30,7 @@ final class LocationRepository
             $criteria['is_deleted'] = 0;
         }
         $query = $this->em->createQueryBuilder()->select('r', 'entity.completename AS entity_name')
-            ->from($class, 'r')->leftJoin(Entity\Entity::class, 'entity', 'WITH', 'entity.id = r.entities_id')
+            ->from($class, 'r')->leftJoin('r.entities', 'entity')
             ->orderBy('r.id');
         if ($language !== null) {
             $query->addSelect('translation.value AS translated_entity')

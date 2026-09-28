@@ -72,7 +72,7 @@ final class InfocomRepository
             }
         }
         if ($entities !== null) {
-            $query->andWhere($linkAlias . '.entities_id IN (:entities)')->setParameter('entities', $entities ?: [-1]);
+            $query->andWhere('IDENTITY(' . $linkAlias . '.entities) IN (:entities)')->setParameter('entities', $entities ?: [-1]);
         }
         $count = (int)(clone $query)->select('COUNT(i.id)')->getQuery()->getSingleScalarResult();
         if ($count === 0 || $count > max(0, $limit)) {
@@ -80,7 +80,7 @@ final class InfocomRepository
         }
         $name = $linktype::getNameField();
         $query->select('a', $linkAlias . '.' . $name . ' AS linked_name')
-            ->orderBy('i.entities_id')->addOrderBy($linkAlias . '.' . $name)->addOrderBy('a.id')
+            ->orderBy('IDENTITY(i.entities)')->addOrderBy($linkAlias . '.' . $name)->addOrderBy('a.id')
             ->setMaxResults(max(0, $limit));
         $rows = [];
         $records = new RecordRepository($this->em);

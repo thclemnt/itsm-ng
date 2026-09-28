@@ -80,10 +80,10 @@ final class ConsumableRepository
 
     public function alertCandidates(int $entity, \DateTimeImmutable $before): array
     {
-        $query = $this->em->createQueryBuilder()->select('r.id AS consID', 'r.entities_id AS entity', 'r.ref AS ref', 'r.name AS name', 'r.alarm_threshold AS threshold', 'a.id AS alertID', 'a.date AS date')
+        $query = $this->em->createQueryBuilder()->select('r.id AS consID', 'IDENTITY(r.entities) AS entity', 'r.ref AS ref', 'r.name AS name', 'r.alarm_threshold AS threshold', 'a.id AS alertID', 'a.date AS date')
             ->from(Entity\ConsumableItem::class, 'r')->leftJoin(Entity\Alert::class, 'a', 'WITH', 'a.items_id = r.id AND a.itemtype = :type')
             ->setParameter('type', 'ConsumableItem', Types::STRING)
-            ->where('r.is_deleted = :false AND r.alarm_threshold >= 0 AND r.entities_id = :entity')
+            ->where('r.is_deleted = :false AND r.alarm_threshold >= 0 AND IDENTITY(r.entities) = :entity')
             ->setParameter('false', false, Types::BOOLEAN)->setParameter('entity', $entity, Types::INTEGER)
             ->andWhere('a.date IS NULL OR a.date < :before')->setParameter('before', $before, Types::DATETIMETZ_IMMUTABLE)
             ->orderBy('r.id')->addOrderBy('a.id');

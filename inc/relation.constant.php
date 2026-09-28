@@ -421,6 +421,11 @@ $RELATION = [
    ],
 
    'glpi_entities' => [
+      'glpi_changetemplates'             => 'entities_id',
+      'glpi_domainrelations'             => 'entities_id',
+      'glpi_planningexternalevents'      => 'entities_id',
+      'glpi_planningexternaleventtemplates' => 'entities_id',
+      'glpi_problemtemplates'            => 'entities_id',
       'glpi_apiclients'                  => 'entities_id',
       'glpi_appliances'                  => 'entities_id',
       'glpi_appliancetypes'              => 'entities_id',

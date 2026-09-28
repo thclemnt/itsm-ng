@@ -50,7 +50,7 @@ final class SoftwareRepository
     public function mergeCandidates(int $software, string $name, array $entityScope): array
     {
         $query = $this->em->createQueryBuilder()->select('r.id AS id', 'r.name AS name', 'e.completename AS entity')
-            ->from(Entity\Software::class, 'r')->leftJoin(Entity\Entity::class, 'e', 'WITH', 'e.id = r.entities_id');
+            ->from(Entity\Software::class, 'r')->leftJoin('r.entities', 'e');
         $query->where((new RecordCriteria($query, $this->em->getClassMetadata(Entity\Software::class), false))->where([
             'id' => ['!=', $software], 'name' => $name, 'is_deleted' => false, 'is_template' => false,
         ] + $entityScope))->orderBy('e.completename')->addOrderBy('r.id');
@@ -118,7 +118,7 @@ final class SoftwareRepository
                 } else {
                     $this->em->createQueryBuilder()->update(Entity\SoftwareVersion::class, 'v')
                         ->set('v.softwares', ':target')->setParameter('target', $target, Types::INTEGER)
-                        ->set('v.entities_id', ':entity')->setParameter('entity', $entity, Types::INTEGER)
+                        ->set('v.entities', ':entity')->setParameter('entity', $entity, Types::INTEGER)
                         ->where('v.id = :id')->setParameter('id', $from['id'], Types::INTEGER)->getQuery()->execute();
                 }
                 ++$done;

@@ -41,8 +41,9 @@ class DeviceProcessor
     #[ORM\Column(name: '`nbthreads_default`', type: 'integer', nullable: true)]
     public ?int $nbthreads_default = null;
 
-    #[ORM\Column(name: '`entities_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $entities_id = 0;
+    #[ORM\ManyToOne(targetEntity: Entity::class)]
+    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
+    public ?Entity $entities = null;
 
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_recursive = false;

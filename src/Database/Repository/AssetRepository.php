@@ -82,7 +82,7 @@ final class AssetRepository
             }
         }
         if ($entities !== null) {
-            $query->andWhere('a.entities_id IN (:entities)')->setParameter('entities', $entities ?: [-1]);
+            $query->andWhere('IDENTITY(a.entities) IN (:entities)')->setParameter('entities', $entities ?: [-1]);
         }
     }
 }

@@ -29,7 +29,7 @@ final class ComponentRepository
             }
             // The asset side is polymorphic: join the registered concrete entity.
             $query->innerJoin(EntityRegistry::TABLES[$assetTable], 'a', 'WITH', 'a.id = r.items_id')
-                ->andWhere('a.entities_id IN (:entities)')->setParameter('entities', $entities);
+                ->andWhere('IDENTITY(a.entities) IN (:entities)')->setParameter('entities', $entities);
         }
         $query->orderBy('r.itemtype')->addOrderBy('r.items_id')->addOrderBy('r.id');
         $records = new RecordRepository($this->em);

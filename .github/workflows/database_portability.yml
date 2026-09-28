@@ -114,6 +114,10 @@ jobs:
         run: php tests/database-portability/locations.php tests/config
       - name: Group relationships, hierarchy and item pagination
         run: php tests/database-portability/groups.php tests/config
+      - name: Entity ownership and purge lifecycle
+        run: php tests/database-portability/entity-ownership.php tests/config
+      - name: Mapped IPv4 and IPv6 network matching
+        run: php tests/database-portability/network-search.php tests/config
       - name: Rack and enclosure placement queries
         run: php tests/database-portability/placements.php tests/config
       - name: Infrastructure relationships and placement

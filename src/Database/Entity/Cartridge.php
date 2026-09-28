@@ -19,8 +19,9 @@ class Cartridge
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
 
-    #[ORM\Column(name: '`entities_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $entities_id = 0;
+    #[ORM\ManyToOne(targetEntity: Entity::class)]
+    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
+    public ?Entity $entities = null;
 
     #[ORM\ManyToOne(targetEntity: Printer::class)]
     #[ORM\JoinColumn(name: 'printers_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]

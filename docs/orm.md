@@ -898,3 +898,52 @@ search and application workflows. The parent-purge suite also passes after fixin
 an unnamed-tree-node warning. PHP 8.3 tree, asset, membership, planning,
 certificate CRUD/clone and default-group ticket-rule tests pass 33 methods /
 1,029 assertions. Notification cron and browser interaction were not exercised.
+
+### Entity ownership and portable network matching
+
+136 ordinary `entities_id` columns now use required `ManyToOne` associations
+and restrictive foreign keys. Zero continues to identify the real root entity;
+it is neither converted to NULL nor treated as an absent relationship. Mapped
+inserts apply the association's root default when ownership is omitted. Explicit
+NULL ownership remains invalid. Financial, budget, reservation, software, asset,
+component, state and location repositories now query the association identity or
+join the entity mapping directly, including aggregate grouping.
+
+Existing installations use `php bin/console db:foreign_keys --apply` during
+maintenance with writers stopped. The command audits the entire graph before
+DDL and refuses orphaned data; no ownership values are guessed or repaired.
+Fresh installs include these constraints. Special entity selectors using -1,
+software-entity inheritance and the entity tree's root-parent sentinel still need
+separate migrations and are excluded from this ownership registry.
+
+Entity replacement/purge retains model hooks for ordinary relationships and
+uses ORM updates for remaining cached ownership columns. Inaccessible user
+defaults fall back to root without granting profile membership. Missing ownership
+cleanup registrations for change/problem templates, domain relations and external
+planning events/templates are included.
+
+`IPNetworkRepository` replaces the network-matching SQL with bound DQL predicates
+and a small platform-aware bit-count function. IPv6 comparisons now retain all
+four address words; previously each iteration overwrote the preceding predicate.
+Nearest-network order, exclusions and ancestor/descendant entity scope are
+preserved. Entity transfers compute network ancestry using the destination
+entity. Additional filters use structured field criteria; nonempty raw SQL
+strings are rejected. Core callers do not supply raw filters. Software dictionary
+restoration also uses NULL when matching an absent manufacturer.
+
+`entity-ownership.php` exercises all 136 ownership replacement/purge paths,
+unrelated records, root defaults, explicit NULL rejection and user membership.
+`network-search.php` checks IPv4/IPv6 containment, equality, ordering, projections,
+exclusions and scope. Both run in the database portability CI matrix.
+
+Coverage is 501 enforced relationships, 261 pending candidates, 62 polymorphic
+references, one ambiguous reference and 1,412 legacy SQL sites. This remains an
+incremental ORM migration; full relationship and query coverage is not complete.
+
+Fresh PostgreSQL 18 and MariaDB installs pass the 501-FK enforcement contract,
+complete ORM mappings and all-table writes, scoped reporting/budget/supplier and
+software tests, location/state/group lifecycles, stock/components, project
+planning/visibility, asset propagation, search and application workflows.
+Ownership and network regressions pass on both providers. PHP 8.3 entity,
+networking and software functional tests pass 28 methods / 693 assertions.
+Verification did not exercise browser interactions or notification cron.

@@ -28,8 +28,9 @@ class LineOperator
     #[ORM\Column(name: '`mnc`', type: 'integer', nullable: true)]
     public ?int $mnc = null;
 
-    #[ORM\Column(name: '`entities_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $entities_id = 0;
+    #[ORM\ManyToOne(targetEntity: Entity::class)]
+    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
+    public ?Entity $entities = null;
 
     #[ORM\Column(name: '`is_recursive`', type: 'smallint', nullable: false, options: ['default' => '0'])]
     public int $is_recursive = 0;

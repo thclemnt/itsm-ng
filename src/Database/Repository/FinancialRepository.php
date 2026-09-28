@@ -30,7 +30,7 @@ final class FinancialRepository
         $scope = 'a';
         if ($assets) {
             $query->addSelect('a.name AS name, a.ticket_tco AS ticket_tco, e.completename AS entname, e.id AS entID')
-                ->leftJoin(Entity\Entity::class, 'e', 'WITH', 'e.id = a.entities_id')
+                ->leftJoin('a.entities', 'e')
                 ->andWhere('a.is_template = :false')->setParameter('false', false, Types::BOOLEAN)
                 ->orderBy('e.completename')->addOrderBy('i.buy_date')->addOrderBy('i.use_date');
         } elseif ($itemtype === 'SoftwareLicense') {
@@ -49,7 +49,7 @@ final class FinancialRepository
             $scope = 'p';
         }
         if ($entities !== null) {
-            $query->andWhere($scope . '.entities_id IN (:entities)')->setParameter('entities', $entities ?: [-1]);
+            $query->andWhere('IDENTITY(' . $scope . '.entities) IN (:entities)')->setParameter('entities', $entities ?: [-1]);
         }
         $dates = [];
         foreach (['buy_date', 'use_date'] as $field) {

@@ -498,6 +498,25 @@ class Entity extends CommonTreeDropdown
     }
 
 
+    public function cleanRelationData()
+    {
+        global $DB;
+
+        parent::cleanRelationData();
+        $cached = [];
+        foreach (getDbRelations()['glpi_entities'] as $table => $fields) {
+            if (str_starts_with($table, '_') && in_array('entities_id', (array)$fields, true)) {
+                $cached[] = substr($table, 1);
+            }
+        }
+        $owners = new \itsmng\Database\Repository\EntityOwnershipRepository(\itsmng\Database\Orm::create($DB));
+        $owners->moveCachedOwners($cached, (int)$this->getID(), (int)($this->input['_replace_by'] ?? 0));
+        // An inaccessible replacement is rejected by User::prepareInputForUpdate.
+        // Clear any remaining default to root without creating profile membership.
+        $owners->moveCachedOwners(['glpi_users'], (int)$this->getID(), 0);
+    }
+
+
     public function cleanDBonPurge()
     {
 
