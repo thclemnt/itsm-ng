@@ -40,8 +40,9 @@ class User
     #[ORM\Column(name: '`firstname`', type: 'string', length: 255, nullable: true)]
     public ?string $firstname = null;
 
-    #[ORM\Column(name: '`locations_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $locations_id = 0;
+    #[ORM\ManyToOne(targetEntity: Location::class)]
+    #[ORM\JoinColumn(name: 'locations_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Location $locations = null;
 
     #[ORM\Column(name: '`language`', type: 'string', length: 10, nullable: true, options: ['fixed' => true])]
     public ?string $language = null;

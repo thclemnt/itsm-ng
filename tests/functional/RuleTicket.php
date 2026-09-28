@@ -779,8 +779,8 @@ class RuleTicket extends DbTestCase
         unset($ticket_input['_users_id_requester']); // _users_id_requester is stored in glpi_tickets_users table, so remove it
         $this->checkInput($ticket, $tickets_id, $ticket_input);
 
-        //locations_id must be set to 0
-        $this->integer($ticket->fields['locations_id'])->isIdenticalTo(0);
+        // No location is assigned before the update rule runs.
+        $this->variable($ticket->fields['locations_id'])->isNull();
 
         //load TicketGroup (expected false)
         $ticketGroup = new \Group_Ticket();

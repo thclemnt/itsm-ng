@@ -53,6 +53,13 @@ class Computer extends DbTestCase
         return (int)$id;
     }
 
+    private function getNewLocationId(): int
+    {
+        $id = (new \Location())->add(['name' => $this->getUniqueString()]);
+        $this->integer((int)$id)->isGreaterThan(0);
+        return (int)$id;
+    }
+
     private function getNewComputer()
     {
         $computer = getItemByTypeName('Computer', '_test_pc01');
@@ -105,7 +112,7 @@ class Computer extends DbTestCase
                'users_id'     => $this->getUniqueInteger(),
                'groups_id'    => $this->getUniqueInteger(),
                'states_id'    => $this->getNewStateId(),
-               'locations_id' => $this->getUniqueInteger(),
+               'locations_id' => $this->getNewLocationId(),
         ];
         $this->boolean($computer->update(\Toolbox::addslashes_deep($in)))->isTrue();
         $this->boolean($computer->getFromDB($computer->getID()))->isTrue();
@@ -150,7 +157,7 @@ class Computer extends DbTestCase
                'users_id'     => $this->getUniqueInteger(),
                'groups_id'    => $this->getUniqueInteger(),
                'states_id'    => $this->getNewStateId(),
-               'locations_id' => $this->getUniqueInteger(),
+               'locations_id' => $this->getNewLocationId(),
         ];
         $this->boolean($computer->update(\Toolbox::addslashes_deep($in2)))->isTrue();
         $this->boolean($computer->getFromDB($computer->getID()))->isTrue();
@@ -196,7 +203,7 @@ class Computer extends DbTestCase
         $CFG_GLPI['is_location_autoupdate'] = 1;
         $in = ['id'           => $computer->getField('id'),
                'states_id'    => $this->getNewStateId(),
-               'locations_id' => $this->getUniqueInteger(),
+               'locations_id' => $this->getNewLocationId(),
         ];
         $this->boolean($computer->update($in))->isTrue();
         $this->boolean($computer->getFromDB($computer->getID()))->isTrue();
@@ -230,7 +237,7 @@ class Computer extends DbTestCase
         $CFG_GLPI['is_location_autoupdate'] = 0;
         $in2 = ['id'          => $computer->getField('id'),
                'states_id'    => $this->getNewStateId(),
-               'locations_id' => $this->getUniqueInteger(),
+               'locations_id' => $this->getNewLocationId(),
         ];
         $this->boolean($computer->update($in2))->isTrue();
         $this->boolean($computer->getFromDB($computer->getID()))->isTrue();
@@ -272,7 +279,7 @@ class Computer extends DbTestCase
                'users_id'     => $this->getUniqueInteger(),
                'groups_id'    => $this->getUniqueInteger(),
                'states_id'    => $this->getNewStateId(),
-               'locations_id' => $this->getUniqueInteger(),
+               'locations_id' => $this->getNewLocationId(),
         ];
         $this->boolean($computer->update(\Toolbox::addslashes_deep($in)))->isTrue();
         $this->boolean($computer->getFromDB($computer->getID()))->isTrue();

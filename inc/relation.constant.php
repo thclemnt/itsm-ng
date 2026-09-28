@@ -718,6 +718,8 @@ $RELATION = [
    ],
 
    'glpi_locations' => [
+      'glpi_appliances'                => 'locations_id',
+      'glpi_queuedchats'               => 'locations_id',
       'glpi_budgets'                   => 'locations_id',
       'glpi_cartridgeitems'            => 'locations_id',
       'glpi_certificates'              => 'locations_id',

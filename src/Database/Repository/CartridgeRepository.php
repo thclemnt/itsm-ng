@@ -63,7 +63,7 @@ final class CartridgeRepository
             ->from(Entity\CartridgeItem::class, 'r')
             ->innerJoin(Entity\CartridgeItemPrinterModel::class, 'm', 'WITH', 'm.cartridgeitems = r.id')
             ->innerJoin(Entity\Cartridge::class, 'c', 'WITH', 'c.cartridgeitems = r.id AND c.date_use IS NULL')
-            ->leftJoin(Entity\Location::class, 'l', 'WITH', 'l.id = r.locations_id')
+            ->leftJoin('r.locations', 'l')
             ->where('m.printermodels = :model')->setParameter('model', $model, Types::INTEGER);
         $query->andWhere((new RecordCriteria($query, $this->em->getClassMetadata(Entity\CartridgeItem::class)))->where($scope))
             ->groupBy('r.id, r.name, r.ref, l.completename')->orderBy('r.name')->addOrderBy('r.ref')->addOrderBy('r.id');

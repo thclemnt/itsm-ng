@@ -66,8 +66,9 @@ class Printer
     #[ORM\Column(name: '`memory_size`', type: 'string', length: 255, nullable: true)]
     public ?string $memory_size = null;
 
-    #[ORM\Column(name: '`locations_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $locations_id = 0;
+    #[ORM\ManyToOne(targetEntity: Location::class)]
+    #[ORM\JoinColumn(name: 'locations_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Location $locations = null;
 
     #[ORM\Column(name: '`networks_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $networks_id = 0;

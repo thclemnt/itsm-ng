@@ -169,6 +169,8 @@ class Certificate extends DbTestCase
         $typeId = $type->add(['name' => $this->getUniqueString(), 'entities_id' => 0]);
         $this->integer((int)$typeId)->isGreaterThan(0);
         $manufacturerId = (new \Manufacturer())->add(['name' => $this->getUniqueString()]);
+        $locationId = (new \Location())->add(['name' => $this->getUniqueString()]);
+        $this->integer((int)$locationId)->isGreaterThan(0);
         $stateId = (new \State())->add(['name' => $this->getUniqueString()]);
         $this->integer((int)$manufacturerId)->isGreaterThan(0);
         $this->integer((int)$stateId)->isGreaterThan(0);
@@ -183,7 +185,7 @@ class Certificate extends DbTestCase
            'dns_suffix'          => $this->getUniqueString(),
            'users_id_tech'       => $this->getUniqueInteger(),
            'groups_id_tech'      => $this->getUniqueInteger(),
-           'locations_id'        => $this->getUniqueInteger(),
+           'locations_id'        => $locationId,
            'manufacturers_id'    => $manufacturerId,
            'users_id'            => $this->getUniqueInteger(),
            'groups_id'           => $this->getUniqueInteger(),

@@ -243,7 +243,7 @@ class Computer extends CommonDBTM
                         true
                     );
                 }
-                if (isset($changes['locations_id'])) {
+                if (array_key_exists('locations_id', $changes)) {
                     Session::addMessageAfterRedirect(
                         __('Location updated. The connected items have been moved in the same location.'),
                         true

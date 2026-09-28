@@ -2757,6 +2757,7 @@ class Toolbox
             (new \itsmng\Database\Migration\FinancialMetadata())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\Migration\ManufacturerReferences())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\Migration\StateReferences())->apply($DB->getDoctrineConnection());
+            (new \itsmng\Database\Migration\LocationReferences())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\ForeignKeys())->apply($DB->getDoctrineConnection());
 
             // update default language

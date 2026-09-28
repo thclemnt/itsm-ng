@@ -110,6 +110,8 @@ jobs:
         run: php tests/database-portability/manufacturers.php tests/config
       - name: State assignments, summaries and hierarchy validation
         run: php tests/database-portability/states.php tests/config
+      - name: Location relationships and scoped item listings
+        run: php tests/database-portability/locations.php tests/config
       - name: Rack and enclosure placement queries
         run: php tests/database-portability/placements.php tests/config
       - name: Infrastructure relationships and placement

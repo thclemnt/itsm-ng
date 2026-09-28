@@ -808,3 +808,45 @@ software, reporting, search and application workflows. PHP 8.3 tree, asset,
 software and certificate CRUD/clone tests pass 31 methods / 875 assertions.
 Certificate notification delivery was excluded. Rendering checks execute PHP;
 they do not establish browser behavior.
+
+### Location assignments and item listings
+
+Forty-two more location references now use nullable `ManyToOne` associations
+and restrictive foreign keys. These cover assets, stock, infrastructure,
+components, network outlets, tickets, users and queued chat records. Appliance
+and queued-chat location links are also registered for replacement and purge;
+removing a location preserves those records and clears their reference. Budget
+locations were already enforced. The location hierarchy's parent link still
+requires a separate migration for zero-root and sibling-name uniqueness.
+
+Existing databases use `php bin/console db:location_references` to inspect the
+plan, then `--apply` during maintenance with writers stopped, followed by
+`php bin/console db:foreign_keys --apply`. Every reference is audited for nonzero
+orphans before DDL. Empty selections become NULL and retries are idempotent.
+Fresh installation includes this normalization.
+
+`LocationRepository` replaces the core location listing's SQL union and per-item
+fetches with ORM queries that load item rows and entity labels together. It keeps
+entity scope, deleted-item exclusion, template inclusion, translated entity names,
+type filtering and the existing table renderer. Rows have deterministic ID order
+within each item type. Plugin types use their model's `find()` compatibility path.
+Cartridge stock selectors now join their mapped location association. The shared
+record loader accepts an absent NULL parent without PHP deprecation and still
+loads the real root entity ID zero.
+
+`locations.php` covers all 42 replacement/purge paths, legacy empty reads/writes,
+scoped listings across configured types, entity translations, rendered rows,
+migration preflight refusal and retries. Asset workflow tests also verify that
+clearing a computer's location propagates NULL to active attached assets and
+components. Computer and certificate fixtures use real locations; ticket-rule
+tests expect NULL for an unassigned location.
+
+Coverage is 324 enforced relationships, 438 pending candidates, 62 polymorphic
+references, one ambiguous reference and 1,414 legacy SQL sites.
+
+Fresh PostgreSQL and MariaDB installs pass the 324-FK contract, all 355 ORM
+mappings and CRUD checks, location migrations/lifecycle, asset propagation,
+components, stock, software, reporting, search and application workflows. PHP 8.3
+location, computer, datacenter, license, certificate CRUD/clone and ticket location
+rule tests pass 30 methods / 978 assertions. No notification cron was run; listing
+rendering was verified in PHP rather than through browser interactions.
