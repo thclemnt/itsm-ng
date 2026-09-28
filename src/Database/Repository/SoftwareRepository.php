@@ -36,6 +36,27 @@ final class SoftwareRepository
         return $rows;
     }
 
+    /** Each software appears once even when several accessible licenses reference it. */
+    public function withLicenses(array $licenseScope): array
+    {
+        $query = $this->em->createQueryBuilder()->select('DISTINCT s.id AS id', 's.name AS name')
+            ->from(Entity\SoftwareLicense::class, 'r')->innerJoin('r.softwares', 's');
+        $query->where((new RecordCriteria($query, $this->em->getClassMetadata(Entity\SoftwareLicense::class)))->where($licenseScope))
+            ->andWhere('s.is_deleted = :inactive AND s.is_template = :inactive')->setParameter('inactive', false, Types::BOOLEAN)
+            ->orderBy('s.name')->addOrderBy('s.id');
+        return $query->getQuery()->getScalarResult();
+    }
+
+    public function mergeCandidates(int $software, string $name, array $entityScope): array
+    {
+        $query = $this->em->createQueryBuilder()->select('r.id AS id', 'r.name AS name', 'e.completename AS entity')
+            ->from(Entity\Software::class, 'r')->leftJoin(Entity\Entity::class, 'e', 'WITH', 'e.id = r.entities_id');
+        $query->where((new RecordCriteria($query, $this->em->getClassMetadata(Entity\Software::class), false))->where([
+            'id' => ['!=', $software], 'name' => $name, 'is_deleted' => false, 'is_template' => false,
+        ] + $entityScope))->orderBy('e.completename')->addOrderBy('r.id');
+        return $query->getQuery()->getScalarResult();
+    }
+
     /** Unlimited licenses take precedence over the sum of finite quantities. */
     public function licenseQuantity(int $software, array $entityScope): int
     {

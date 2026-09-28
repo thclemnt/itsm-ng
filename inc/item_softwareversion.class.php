@@ -360,24 +360,17 @@ class Item_SoftwareVersion extends CommonDBRelation
     {
         global $DB;
 
-        $item_version_table = self::getTable(__CLASS__);
-        $iterator = $DB->request([
-           'SELECT'    => ['itemtype'],
-           'DISTINCT'  => true,
-           'FROM'      => $item_version_table,
-           'WHERE'     => [
-              'softwareversions_id'   => $softwareversions_id
-           ]
-        ]);
-
-        $target_types = [];
-        while ($data = $iterator->next()) {
-            $target_types[] = $data['itemtype'];
-        }
+        $repository = new \itsmng\Database\Repository\SoftwareInstallationRepository(\itsmng\Database\Orm::create($DB));
+        $target_types = $repository->itemTypes(false, (int)$softwareversions_id, false);
 
         $count = 0;
         foreach ($target_types as $itemtype) {
             $itemtable = $itemtype::getTable();
+            if (isset(\itsmng\Database\EntityRegistry::TABLES[$itemtable])) {
+                $count += $repository->count(false, (int)$softwareversions_id, false, $itemtype, $itemtable, getEntitiesRestrictCriteria($itemtable, '', $entity));
+                continue;
+            }
+            // Plugin assets without a mapped entity retain their existing query during migration.
             $request = [
                'FROM'         => 'glpi_items_softwareversions',
                'COUNT'        => 'cpt',
@@ -422,31 +415,17 @@ class Item_SoftwareVersion extends CommonDBRelation
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT'    => ['itemtype'],
-           'DISTINCT'  => true,
-           'FROM'      => 'glpi_softwareversions',
-           'INNER JOIN'   => [
-              'glpi_items_softwareversions'   => [
-                 'FKEY'   => [
-                    'glpi_items_softwareversions' => 'softwareversions_id',
-                    'glpi_softwareversions'       => 'id'
-                 ]
-              ],
-           ],
-           'WHERE'     => [
-              'softwares_id' => $softwares_id
-           ]
-        ]);
-
-        $target_types = [];
-        while ($data = $iterator->next()) {
-            $target_types[] = $data['itemtype'];
-        }
+        $repository = new \itsmng\Database\Repository\SoftwareInstallationRepository(\itsmng\Database\Orm::create($DB));
+        $target_types = $repository->itemTypes(false, (int)$softwares_id, true);
 
         $count = 0;
         foreach ($target_types as $itemtype) {
             $itemtable = $itemtype::getTable();
+            if (isset(\itsmng\Database\EntityRegistry::TABLES[$itemtable])) {
+                $count += $repository->count(false, (int)$softwares_id, true, $itemtype, $itemtable, getEntitiesRestrictCriteria($itemtable, '', '', true));
+                continue;
+            }
+            // Plugin assets without a mapped entity retain their existing query during migration.
             $request = [
                'FROM'         => 'glpi_softwareversions',
                'COUNT'        => 'cpt',
@@ -888,14 +867,10 @@ class Item_SoftwareVersion extends CommonDBRelation
 
         $tot = 0;
 
-        $iterator = $DB->request([
-           'SELECT' => ['id', 'completename'],
-           'FROM'   => 'glpi_entities',
-           'WHERE'  => getEntitiesRestrictCriteria('glpi_entities'),
-           'ORDER'  => ['completename']
-        ]);
+        $entities = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+            ->matching('glpi_entities', getEntitiesRestrictCriteria('glpi_entities'), ['completename']);
 
-        while ($data = $iterator->next()) {
+        foreach ($entities as $data) {
             $nb = self::countForVersion($softwareversions_id, $data['id']);
             if ($nb > 0) {
                 echo "<tr class='tab_bg_2'><td>" . $data["completename"] . "</td>";

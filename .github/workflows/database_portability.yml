@@ -84,6 +84,8 @@ jobs:
         run: php tests/database-portability/knowledgebase.php tests/config
       - name: Test mapped cleanup and template relationships
         run: php tests/database-portability/cleanup.php tests/config
+      - name: Software installation counts and selectors
+        run: php tests/database-portability/software-installations.php tests/config
       - name: Software associations, merge and license quantities
         run: php tests/database-portability/software.php tests/config
       - name: Project planning and subscription updates

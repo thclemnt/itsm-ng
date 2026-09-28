@@ -393,27 +393,17 @@ JAVASCRIPT;
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT'    => ['itemtype'],
-           'DISTINCT'  => true,
-           'FROM'      => self::getTable(__CLASS__),
-           'WHERE'     => [
-              'softwarelicenses_id'   => $softwarelicenses_id
-           ]
-        ]);
-
-        $target_types = [];
-        if ($itemtype !== null) {
-            $target_types = [$itemtype];
-        } else {
-            while ($data = $iterator->next()) {
-                $target_types[] = $data['itemtype'];
-            }
-        }
+        $repository = new \itsmng\Database\Repository\SoftwareInstallationRepository(\itsmng\Database\Orm::create($DB));
+        $target_types = $itemtype !== null ? [$itemtype] : $repository->itemTypes(true, (int)$softwarelicenses_id, false);
 
         $count = 0;
         foreach ($target_types as $itemtype) {
             $itemtable = $itemtype::getTable();
+            if (isset(\itsmng\Database\EntityRegistry::TABLES[$itemtable])) {
+                $count += $repository->count(true, (int)$softwarelicenses_id, false, $itemtype, $itemtable, $entity === -1 ? [] : getEntitiesRestrictCriteria($itemtable, '', $entity));
+                continue;
+            }
+            // Plugin assets without a mapped entity retain their existing query during migration.
             $request = [
                'FROM'         => 'glpi_items_softwarelicenses',
                'COUNT'        => 'cpt',
@@ -461,34 +451,17 @@ JAVASCRIPT;
     {
         global $DB;
 
-        $license_table = SoftwareLicense::getTable();
-        $item_license_table = self::getTable(__CLASS__);
-
-        $iterator = $DB->request([
-           'SELECT'    => ['itemtype'],
-           'DISTINCT'  => true,
-           'FROM'      => $item_license_table,
-           'LEFT JOIN' => [
-              $license_table => [
-                 'FKEY'   => [
-                    $license_table       => 'id',
-                    $item_license_table  => 'softwarelicenses_id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'softwares_id'   => $softwares_id
-           ]
-        ]);
-
-        $target_types = [];
-        while ($data = $iterator->next()) {
-            $target_types[] = $data['itemtype'];
-        }
+        $repository = new \itsmng\Database\Repository\SoftwareInstallationRepository(\itsmng\Database\Orm::create($DB));
+        $target_types = $repository->itemTypes(true, (int)$softwares_id, true);
 
         $count = 0;
         foreach ($target_types as $itemtype) {
             $itemtable = $itemtype::getTable();
+            if (isset(\itsmng\Database\EntityRegistry::TABLES[$itemtable])) {
+                $count += $repository->count(true, (int)$softwares_id, true, $itemtype, $itemtable, getEntitiesRestrictCriteria($itemtable));
+                continue;
+            }
+            // Plugin assets without a mapped entity retain their existing query during migration.
             $request = [
                'FROM'         => 'glpi_softwarelicenses',
                'COUNT'        => 'cpt',
@@ -540,8 +513,6 @@ JAVASCRIPT;
         global $DB;
 
         $softwarelicense_id = $license->getField('id');
-        $license_table = SoftwareLicense::getTable();
-        $item_license_table = self::getTable(__CLASS__);
 
         if (!Software::canView() || !$softwarelicense_id) {
             return false;
@@ -555,45 +526,36 @@ JAVASCRIPT;
 
         $tot = 0;
 
-        $iterator = $DB->request([
-           'SELECT' => ['id', 'completename'],
-           'FROM'   => 'glpi_entities',
-           'WHERE'  => getEntitiesRestrictCriteria('glpi_entities'),
-           'ORDER'  => ['completename']
-        ]);
-
-        $tab = "&nbsp;&nbsp;&nbsp;&nbsp;";
-        while ($data = $iterator->next()) {
-            $itemtype_iterator = $DB->request([
-               'SELECT'    => ['itemtype'],
-               'DISTINCT'  => true,
-               'FROM'      => $item_license_table,
-               'LEFT JOIN' => [
-                  $license_table => [
-                     'FKEY'   => [
-                        $license_table       => 'id',
-                        $item_license_table  => 'softwarelicenses_id'
-                     ]
-                  ]
-               ],
-               'WHERE'     => [
-                  $item_license_table . '.softwarelicenses_id'   => $softwarelicense_id
-               ] + getEntitiesRestrictCriteria($license_table, '', $data['id'])
-            ]);
-
-            $target_types = [];
-            while ($type = $itemtype_iterator->next()) {
-                $target_types[] = $type['itemtype'];
-            }
-
-            if (count($target_types)) {
-                echo "<tr class='tab_bg_2'><td colspan='2'>{$data["completename"]}</td></tr>";
-                foreach ($target_types as $itemtype) {
-                    $nb = self::countForLicense($softwarelicense_id, $data['id'], $itemtype);
-                    echo "<tr class='tab_bg_2'><td>$tab$tab{$itemtype::getTypeName()}</td>";
-                    echo "<td class='numeric'>{$nb}</td></tr>\n";
-                    $tot += $nb;
+        $entities = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+            ->matching('glpi_entities', getEntitiesRestrictCriteria('glpi_entities'), ['completename']);
+        $repository = new \itsmng\Database\Repository\SoftwareInstallationRepository(\itsmng\Database\Orm::create($DB));
+        $counts = [];
+        foreach ($repository->itemTypes(true, (int)$softwarelicense_id) as $itemtype) {
+            $table = $itemtype::getTable();
+            if (isset(\itsmng\Database\EntityRegistry::TABLES[$table])) {
+                foreach ($repository->countsByEntity(true, (int)$softwarelicense_id, $itemtype, $table, getEntitiesRestrictCriteria($table)) as $entity => $quantity) {
+                    $counts[$entity][$itemtype] = $quantity;
                 }
+            } else {
+                // Preserve the plugin count path until its asset has an ORM mapping.
+                foreach ($entities as $entity) {
+                    $quantity = self::countForLicense($softwarelicense_id, $entity['id'], $itemtype);
+                    if ($quantity > 0) {
+                        $counts[$entity['id']][$itemtype] = $quantity;
+                    }
+                }
+            }
+        }
+        $tab = "&nbsp;&nbsp;&nbsp;&nbsp;";
+        foreach ($entities as $data) {
+            if (empty($counts[$data['id']])) {
+                continue;
+            }
+            echo "<tr class='tab_bg_2'><td colspan='2'>{$data["completename"]}</td></tr>";
+            foreach ($counts[$data['id']] as $itemtype => $nb) {
+                echo "<tr class='tab_bg_2'><td>$tab$tab{$itemtype::getTypeName()}</td>";
+                echo "<td class='numeric'>{$nb}</td></tr>\n";
+                $tot += $nb;
             }
         }
 

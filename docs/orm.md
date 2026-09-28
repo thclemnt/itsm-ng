@@ -352,3 +352,30 @@ pass on PostgreSQL and MariaDB. The coverage inventory still reports 603 pending
 relationship candidates, 62 polymorphic references, one ambiguous reference and
 1,513 legacy SQL call sites; these counts are a migration backlog, not a claim of
 complete ORM conversion.
+
+### Software installation counts and entity reports
+
+`SoftwareInstallationRepository` resolves installation types through mapped
+version/license associations, then joins each concrete asset mapping. Counts use
+the asset's current deleted/template flags rather than cached installation flags,
+exclude removed links and missing polymorphic targets, and retain the existing
+entity/recursive scope rules. Multiple versions or licenses assigned to one asset
+remain separate installations. The explicit unrestricted license-count mode
+still applies deleted/template filtering. Unmapped plugin asset types retain the
+existing count query until those plugins supply mappings; this is not complete
+elimination of the compatibility path.
+
+The license assignment report now groups by the asset's actual entity. Previously
+it selected report rows by the license's entity, omitting assignments in other
+entities. Core grouped counts require one query per asset type and are filtered
+by the active entity scope. Software license selectors, merge candidates and
+dictionary restoration lookups also use ORM queries; `Software` no longer has
+direct adapter queries. Dictionary names retain the pre-escaped input contract,
+while merge candidate names bind stored values without manual escaping.
+
+`software-installations.php` covers all six core asset types, entity scopes,
+removed links, real versus cached asset flags, multiple installations, missing
+polymorphic targets, selectors, escaped dictionary names and cross-entity report
+rendering. The suite, software lifecycle and reporting contracts pass on both
+providers. The static inventory is now 1,503 remaining legacy SQL call sites;
+foreign-key coverage remains 159 enforced relationships.

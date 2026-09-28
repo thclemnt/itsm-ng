@@ -779,33 +779,9 @@ class Software extends CommonDBTM
     {
         global $CFG_GLPI, $DB;
 
-        $iterator = $DB->request([
-           'SELECT'          => [
-              'glpi_softwares.id',
-              'glpi_softwares.name'
-           ],
-           'DISTINCT'        => true,
-           'FROM'            => 'glpi_softwares',
-           'INNER JOIN'      => [
-              'glpi_softwarelicenses' => [
-                 'ON' => [
-                    'glpi_softwarelicenses' => 'softwares_id',
-                    'glpi_softwares'        => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'           => [
-              'glpi_softwares.is_deleted'    => 0,
-              'glpi_softwares.is_template'  => 0
-           ] + getEntitiesRestrictCriteria('glpi_softwarelicenses', 'entities_id', $entity_restrict, true),
-           'ORDERBY'         => 'glpi_softwares.name'
-        ]);
-
-        $values = [];
-        while ($data = $iterator->next()) {
-            $softwares_id          = $data["id"];
-            $values[$softwares_id] = $data["name"];
-        }
+        $rows = (new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB)))
+            ->withLicenses(getEntitiesRestrictCriteria('glpi_softwarelicenses', 'entities_id', $entity_restrict, true));
+        $values = array_column($rows, 'name', 'id');
         $rand = Dropdown::showFromArray('softwares_id', $values, ['display_emptychoice' => true]);
 
         $paramsselsoft = ['softwares_id'    => '__VALUE__',
@@ -906,22 +882,16 @@ class Software extends CommonDBTM
             $manufacturer_id = Dropdown::import('Manufacturer', ['name' => $manufacturer]);
         }
 
-        $iterator = $DB->request([
-           'SELECT' => [
-              'glpi_softwares.id',
-              'glpi_softwares.is_deleted'
-           ],
-           'FROM'   => 'glpi_softwares',
-           'WHERE'  => [
-              'name'               => $name,
-              'manufacturers_id'   => $manufacturer_id,
-              'is_template'        => 0
-           ] + getEntitiesRestrictCriteria('glpi_softwares', 'entities_id', $entity, true)
-        ]);
+        $rows = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+            ->matching('glpi_softwares', [
+                'name' => stripslashes((string)$name),
+                'manufacturers_id' => $manufacturer_id,
+                'is_template' => false,
+            ] + getEntitiesRestrictCriteria('glpi_softwares', 'entities_id', $entity, true), ['id'], 1, legacyValues: false);
 
-        if (count($iterator)) {
-            //Software already exists for this entity, get his ID
-            $data = $iterator->next();
+        if ($rows) {
+            // Software already exists for this entity; restore it if necessary.
+            $data = $rows[0];
             $ID   = $data["id"];
 
             // restore software
@@ -1018,35 +988,14 @@ class Software extends CommonDBTM
         $rand = mt_rand();
 
         echo "<div class='center'>";
-        $iterator = $DB->request([
-           'SELECT'    => [
-              'glpi_softwares.id',
-              'glpi_softwares.name',
-              'glpi_entities.completename AS entity'
-           ],
-           'FROM'      => 'glpi_softwares',
-           'LEFT JOIN' => [
-              'glpi_entities'   => [
-                 'ON' => [
-                    'glpi_softwares'  => 'entities_id',
-                    'glpi_entities'   => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_softwares.id'           => ['!=', $ID],
-              'glpi_softwares.name'         => addslashes((string) $this->fields['name']),
-              'glpi_softwares.is_deleted'   => 0,
-              'glpi_softwares.is_template'  => 0
-           ] + getEntitiesRestrictCriteria(
-               'glpi_softwares',
-               'entities_id',
-               getSonsOf("glpi_entities", $this->fields["entities_id"]),
-               false
-           ),
-           'ORDERBY'   => 'entity'
-        ]);
-        $nb = count($iterator);
+        $rows = (new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB)))
+            ->mergeCandidates((int)$ID, (string)$this->fields['name'], getEntitiesRestrictCriteria(
+                'glpi_softwares',
+                'entities_id',
+                getSonsOf('glpi_entities', $this->fields['entities_id']),
+                false
+            ));
+        $nb = count($rows);
 
         if ($nb) {
             $link = Toolbox::getItemTypeFormURL('Software');
@@ -1070,7 +1019,7 @@ class Software extends CommonDBTM
             echo "<th>" . _n('Installation', 'Installations', Session::getPluralNumber()) . "</th>";
             echo "<th>" . SoftwareLicense::getTypeName(Session::getPluralNumber()) . "</th></tr>";
 
-            while ($data = $iterator->next()) {
+            foreach ($rows as $data) {
                 echo "<tr class='tab_bg_2'>";
                 echo "<td>" . Html::getMassiveActionCheckBox(__CLASS__, $data["id"]) . "</td>";
                 echo "<td><a href='" . $link . "?id=" . $data["id"] . "'>" . $data["name"] . "</a></td>";
