@@ -22,8 +22,9 @@ class Cartridge
     #[ORM\Column(name: '`entities_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $entities_id = 0;
 
-    #[ORM\Column(name: '`printers_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $printers_id = 0;
+    #[ORM\ManyToOne(targetEntity: Printer::class)]
+    #[ORM\JoinColumn(name: 'printers_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Printer $printers = null;
 
     #[ORM\Column(name: '`date_in`', type: 'date', nullable: true)]
     public ?\DateTimeInterface $date_in = null;

@@ -55,8 +55,14 @@ final class OptionalReferences
         'glpi_networkequipments' => ['networkequipmentmodels_id' => 'glpi_networkequipmentmodels', 'networkequipmenttypes_id' => 'glpi_networkequipmenttypes'],
     ];
 
+    public const STOCK = [
+        'glpi_cartridges' => ['printers_id' => 'glpi_printers'],
+        'glpi_cartridgeitems' => ['cartridgeitemtypes_id' => 'glpi_cartridgeitemtypes'],
+        'glpi_consumableitems' => ['consumableitemtypes_id' => 'glpi_consumableitemtypes'],
+    ];
+
     public const RELATIONS = [
-        ...self::MODELS, ...self::PROJECT_HIERARCHY, ...self::INFRASTRUCTURE, ...self::ASSET_CLASSIFICATION,
+        ...self::MODELS, ...self::PROJECT_HIERARCHY, ...self::INFRASTRUCTURE, ...self::ASSET_CLASSIFICATION, ...self::STOCK,
         'glpi_racks' => [...self::MODELS['glpi_racks'], ...self::INFRASTRUCTURE['glpi_racks']],
         'glpi_pdus' => [...self::MODELS['glpi_pdus'], ...self::INFRASTRUCTURE['glpi_pdus']],
     ];

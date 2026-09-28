@@ -30,8 +30,9 @@ class ConsumableItem
     #[ORM\Column(name: '`locations_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $locations_id = 0;
 
-    #[ORM\Column(name: '`consumableitemtypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $consumableitemtypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: ConsumableItemType::class)]
+    #[ORM\JoinColumn(name: 'consumableitemtypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?ConsumableItemType $consumableitemtypes = null;
 
     #[ORM\Column(name: '`manufacturers_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $manufacturers_id = 0;

@@ -193,15 +193,12 @@ class Printer extends CommonDBTM
     {
         global $DB;
 
-        $DB->update(
-            'glpi_cartridges',
-            [
-              'printers_id' => 'NULL'
-            ],
-            [
-              'printers_id' => $this->fields['id']
-            ]
-        );
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            (new \itsmng\Database\Repository\CartridgeRepository($em))->detachPrinter((int)$this->getID());
+        } finally {
+            $em->clear();
+        }
 
         $this->deleteChildrenAndRelationsFromDb(
             [

@@ -30,8 +30,9 @@ class CartridgeItem
     #[ORM\Column(name: '`locations_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $locations_id = 0;
 
-    #[ORM\Column(name: '`cartridgeitemtypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $cartridgeitemtypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: CartridgeItemType::class)]
+    #[ORM\JoinColumn(name: 'cartridgeitemtypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?CartridgeItemType $cartridgeitemtypes = null;
 
     #[ORM\Column(name: '`manufacturers_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $manufacturers_id = 0;

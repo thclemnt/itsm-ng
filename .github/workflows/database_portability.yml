@@ -90,6 +90,10 @@ jobs:
         run: php tests/database-portability/asset-classification.php tests/config
       - name: Asset propagation, network recursion and printer imports
         run: php tests/database-portability/asset-workflows.php tests/config
+      - name: Stock associations and cartridge lifecycle
+        run: php tests/database-portability/stock.php tests/config
+      - name: Concurrent cartridge installation
+        run: php tests/database-portability/stock-concurrency.php tests/config
       - name: Rack and enclosure placement queries
         run: php tests/database-portability/placements.php tests/config
       - name: Infrastructure relationships and placement

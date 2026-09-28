@@ -230,21 +230,9 @@ class Cartridge extends CommonDBChild
     {
         global $DB;
 
-        $result = $DB->update(
-            $this->getTable(),
-            [
-              'date_out'     => 'NULL',
-              'date_use'     => 'NULL',
-              'printers_id'  => 0
-            ],
-            [
-              'id' => $input['id']
-            ]
-        );
-        if ($result && ($DB->affectedRows() > 0)) {
-            return true;
-        }
-        return false;
+        return (bool)(new \itsmng\Database\MappedStorage($DB))->update($this->getTable(), (int)$input['id'], [
+            'date_out' => null, 'date_use' => null, 'printers_id' => null,
+        ]);
     }
 
 
@@ -264,45 +252,18 @@ class Cartridge extends CommonDBChild
     {
         global $DB;
 
-        // Get first unused cartridge
-        $iterator = $DB->request([
-           'SELECT' => ['id'],
-           'FROM'   => $this->getTable(),
-           'WHERE'  => [
-              'cartridgeitems_id'  => $tID,
-              'date_use'           => null
-           ],
-           'LIMIT'  => 1
-        ]);
-
-        if (count($iterator)) {
-            $result = $iterator->next();
-            $cID = $result['id'];
-            // Update cartridge taking care of multiple insertion
-            $result = $DB->update(
-                $this->getTable(),
-                [
-                  'date_use'     => date('Y-m-d'),
-                  'printers_id'  => $pID
-                ],
-                [
-                  'id'        => $cID,
-                  'date_use'  => null
-                ]
-            );
-            if ($result && ($DB->affectedRows() > 0)) {
-                $changes = [
-                   '0',
-                   '',
-                   __('Installing a cartridge'),
-                ];
-                Log::history($pID, 'Printer', $changes, 0, Log::HISTORY_LOG_SIMPLE_MESSAGE);
-                return true;
-            }
-        } else {
-            Session::addMessageAfterRedirect(__('No free cartridge'), false, ERROR);
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            $installed = (new \itsmng\Database\Repository\CartridgeRepository($em))->install((int)$pID, (int)$tID);
+        } finally {
+            $em->clear();
         }
-        return false;
+        if (!$installed) {
+            Session::addMessageAfterRedirect(__('No free cartridge'), false, ERROR);
+            return false;
+        }
+        Log::history($pID, 'Printer', ['0', '', __('Installing a cartridge')], 0, Log::HISTORY_LOG_SIMPLE_MESSAGE);
+        return true;
     }
 
 
@@ -324,20 +285,14 @@ class Cartridge extends CommonDBChild
                 $toadd['pages'] = $printer->fields['last_pages_counter'];
             }
 
-            $result = $DB->update(
-                $this->getTable(),
-                [
-                  'date_out'  => date('Y-m-d')
-                ] + $toadd,
-                [
-                  'id'  => $ID
-                ]
-            );
+            $em = \itsmng\Database\Orm::create($DB);
+            try {
+                $changed = (new \itsmng\Database\Repository\CartridgeRepository($em))->endLife((int)$ID, isset($toadd['pages']) ? (int)$toadd['pages'] : null);
+            } finally {
+                $em->clear();
+            }
 
-            if (
-                $result
-                && ($DB->affectedRows() > 0)
-            ) {
+            if ($changed) {
                 $changes = [
                    '0',
                    '',
@@ -478,12 +433,7 @@ class Cartridge extends CommonDBChild
     {
         global $DB;
 
-        $row = $DB->request([
-           'FROM'   => self::getTable(),
-           'COUNT'  => 'cpt',
-           'WHERE'  => ['cartridgeitems_id' => $tID]
-        ])->next();
-        return $row['cpt'];
+        return \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), ['cartridgeitems_id' => $tID]);
     }
 
 
@@ -500,12 +450,7 @@ class Cartridge extends CommonDBChild
     {
         global $DB;
 
-        $row = $DB->request([
-           'FROM'   => self::getTable(),
-           'COUNT'  => 'cpt',
-           'WHERE'  => ['printers_id' => $pID]
-        ])->next();
-        return (int)$row['cpt'];
+        return \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), ['printers_id' => $pID]);
     }
 
 
@@ -520,19 +465,7 @@ class Cartridge extends CommonDBChild
     {
         global $DB;
 
-        $row = $DB->request([
-           'SELECT' => ['id'],
-           'COUNT'  => 'cpt',
-           'FROM'   => 'glpi_cartridges',
-           'WHERE'  => [
-              'cartridgeitems_id'  => $tID,
-              'date_out'           => null,
-              'NOT'                => [
-                 'date_use'  => null
-              ]
-           ]
-        ])->next();
-        return (int)$row['cpt'];
+        return \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), ['cartridgeitems_id' => $tID, 'date_out' => null, 'NOT' => ['date_use' => null]]);
     }
 
 
@@ -549,16 +482,7 @@ class Cartridge extends CommonDBChild
     {
         global $DB;
 
-        $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'printers_id'  => $pID,
-              'date_out'     => null,
-              'NOT'          => ['date_use' => null]
-           ]
-        ])->next();
-        return $result['cpt'];
+        return \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), ['printers_id' => $pID, 'date_out' => null, 'NOT' => ['date_use' => null]]);
     }
 
 
@@ -573,15 +497,7 @@ class Cartridge extends CommonDBChild
     {
         global $DB;
 
-        $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'cartridgeitems_id'  => $tID,
-              'NOT'                => ['date_out' => null]
-           ]
-        ])->next();
-        return $result['cpt'];
+        return \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), ['cartridgeitems_id' => $tID, 'NOT' => ['date_out' => null]]);
     }
 
 
@@ -598,15 +514,7 @@ class Cartridge extends CommonDBChild
     {
         global $DB;
 
-        $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'printers_id'  => $pID,
-              'NOT'          => ['date_out' => null]
-           ]
-        ])->next();
-        return $result['cpt'];
+        return \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), ['printers_id' => $pID, 'NOT' => ['date_out' => null]]);
     }
 
 
@@ -621,15 +529,7 @@ class Cartridge extends CommonDBChild
     {
         global $DB;
 
-        $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'cartridgeitems_id'  => $tID,
-              'date_use'           => null
-           ]
-        ])->next();
-        return $result['cpt'];
+        return \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), ['cartridgeitems_id' => $tID, 'date_use' => null]);
     }
 
 
@@ -672,50 +572,18 @@ class Cartridge extends CommonDBChild
         }
         $canedit = $cartitem->can($tID, UPDATE);
 
-        $where = ['glpi_cartridges.cartridgeitems_id' => $tID];
-        $order = [
-           'glpi_cartridges.date_use ASC',
-           'glpi_cartridges.date_out DESC',
-           'glpi_cartridges.date_in'
-        ];
-
-        if (!$show_old) { // NEW
-            $where['glpi_cartridges.date_out'] = null;
-            $order = [
-               'glpi_cartridges.date_out ASC',
-               'glpi_cartridges.date_use ASC',
-               'glpi_cartridges.date_in'
-            ];
-        } else { //OLD
-            $where['NOT'] = ['glpi_cartridges.date_out' => null];
-        }
-
         $stock_time       = 0;
         $use_time         = 0;
         $pages_printed    = 0;
         $nb_pages_printed = 0;
 
-        $iterator = $DB->request([
-           'SELECT' => [
-              'glpi_cartridges.*',
-              'glpi_printers.id AS printID',
-              'glpi_printers.name AS printname',
-              'glpi_printers.init_pages_counter'
-           ],
-           'FROM'   => self::gettable(),
-           'LEFT JOIN' => [
-              'glpi_printers'   => [
-                 'FKEY'   => [
-                    self::getTable()  => 'printers_id',
-                    'glpi_printers'   => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => $where,
-           'ORDER'     => $order
-        ]);
-
-        $number = count($iterator);
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            $rows = (new \itsmng\Database\Repository\CartridgeRepository($em))->forModel((int)$tID, (bool)$show_old);
+        } finally {
+            $em->clear();
+        }
+        $number = count($rows);
 
         $massiveActionId = 'tableForCartridgeCartridges' . rand();
         if ($canedit && $number) {
@@ -756,7 +624,7 @@ class Cartridge extends CommonDBChild
 
         $values = [];
         $massive_action = [];
-        while ($data = $iterator->next()) {
+        foreach ($rows as $data) {
             $date_in  = Html::convDate($data["date_in"]);
             $date_use = Html::convDate($data["date_use"]);
             $date_out = Html::convDate($data["date_out"]);
@@ -896,49 +764,13 @@ class Cartridge extends CommonDBChild
         $canedit = Session::haveRight("cartridge", UPDATE);
         $rand    = mt_rand();
 
-        $where = ['glpi_cartridges.printers_id' => $instID];
-        if ($old) {
-            $where['NOT'] = ['glpi_cartridges.date_out' => null];
-        } else {
-            $where['glpi_cartridges.date_out'] = null;
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            $rows = (new \itsmng\Database\Repository\CartridgeRepository($em))->forPrinter((int)$instID, (bool)$old);
+        } finally {
+            $em->clear();
         }
-        $iterator = $DB->request([
-           'SELECT'    => [
-              'glpi_cartridgeitems.id AS tID',
-              'glpi_cartridgeitems.is_deleted',
-              'glpi_cartridgeitems.ref AS ref',
-              'glpi_cartridgeitems.name AS type',
-              'glpi_cartridges.id',
-              'glpi_cartridges.pages AS pages',
-              'glpi_cartridges.date_use AS date_use',
-              'glpi_cartridges.date_out AS date_out',
-              'glpi_cartridges.date_in AS date_in',
-              'glpi_cartridgeitemtypes.name AS typename'
-           ],
-           'FROM'      => self::getTable(),
-           'LEFT JOIN' => [
-              'glpi_cartridgeitems'      => [
-                 'FKEY'   => [
-                    self::getTable()        => 'cartridgeitems_id',
-                    'glpi_cartridgeitems'   => 'id'
-                 ]
-              ],
-              'glpi_cartridgeitemtypes'  => [
-                 'FKEY'   => [
-                    'glpi_cartridgeitems'      => 'cartridgeitemtypes_id',
-                    'glpi_cartridgeitemtypes'  => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => $where,
-           'ORDER'     => [
-              'glpi_cartridges.date_out ASC',
-              'glpi_cartridges.date_use DESC',
-              'glpi_cartridges.date_in',
-           ]
-        ]);
-
-        $number = count($iterator);
+        $number = count($rows);
 
         if ($canedit && !$old) {
             $options = CartridgeItem::dropdownForPrinter($printer);
@@ -1029,7 +861,7 @@ class Cartridge extends CommonDBChild
         $pages_printed    = 0;
         $nb_pages_printed = 0;
 
-        while ($data = $iterator->next()) {
+        foreach ($rows as $data) {
             $cart_id    = $data["id"];
             $typename   = $data["typename"];
             $date_in    = Html::convDate($data["date_in"]);
@@ -1185,25 +1017,10 @@ class Cartridge extends CommonDBChild
     {
         global $DB, $CFG_GLPI;
 
-        //Look for parameters for this entity
-        $iterator = $DB->request([
-           'SELECT' => ['cartridges_alert_repeat'],
-           'FROM'   => 'glpi_entities',
-           'WHERE'  => ['id' => $entity]
-        ]);
-
-        if (!count($iterator)) {
-            //No specific parameters defined, taking global configuration params
-            return $CFG_GLPI['cartridges_alert_repeat'];
-        } else {
-            $data = $iterator->next();
-            //This entity uses global parameters -> return global config
-            if ($data['cartridges_alert_repeat'] == -1) {
-                return $CFG_GLPI['cartridges_alert_repeat'];
-            }
-            // ELSE Special configuration for this entity
-            return $data['cartridges_alert_repeat'];
-        }
+        $rows = \itsmng\Database\MappedReads::matching($DB, 'glpi_entities', ['id' => $entity], [], 1);
+        $data = reset($rows);
+        return !$data || $data['cartridges_alert_repeat'] == -1
+            ? $CFG_GLPI['cartridges_alert_repeat'] : $data['cartridges_alert_repeat'];
     }
 
 

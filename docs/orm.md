@@ -548,3 +548,41 @@ pass on PostgreSQL and MariaDB. Existing PHP 8.3 asset suites pass 17 methods /
 509 assertions. `Computer` and `NetworkEquipment` no longer execute direct
 adapter queries. Eight more legacy SQL sites are removed, leaving 1,463 in the
 static inventory; FK coverage remains 195 relationships.
+
+### Cartridge stock and printer history
+
+Cartridge printer assignments and cartridge/consumable model types now use three
+nullable associations with restrictive FKs. Empty stock assignments and type
+selections become NULL. Existing installations can review
+`php bin/console db:stock_references`, stop application writers, apply with
+`--apply`, then enforce constraints with `php bin/console db:foreign_keys --apply`.
+The migration audits all references before DDL and supports idempotent retries.
+Fresh installations normalize these references automatically.
+
+`CartridgeRepository` handles installation, end-of-life, printer detachment and
+the model/printer lists through typed ORM queries. Installation chooses the
+lowest unused cartridge ID, then conditionally updates it only while it remains
+unused. A competing request cannot overwrite a successful claim. The application
+still writes its explicit printer history after successful operations. Repeated
+unchanged end-of-life and back-to-stock operations return false on both engines.
+Printer purge clears the assignment while retaining usage dates and counters;
+unrelated printers' assignments remain intact.
+
+All seven cartridge counts and entity notification-setting reads use ORM.
+Cartridge lists join their mapped printer/model/type associations and specify
+NULL ordering explicitly. The compatible-stock selector also uses ORM grouping,
+counts unused cartridges and retains entity/recursive scope. `Cartridge` and
+`Printer` no longer execute direct adapter queries.
+
+`stock.php` covers type replacement/purge, installation and exhaustion,
+end-of-life/return no-ops, counters, legacy empty criteria, populated lists and
+selectors, entity scope, printer purge and old-schema migration/refusal/retry.
+`stock-concurrency.php` starts two independent PHP processes against one available
+cartridge, requires exactly one successful claim and removes its committed
+fixtures. Both suites pass on PostgreSQL and MariaDB, including fresh installs.
+The 198-FK contract, full ORM mappings/writes, reporting, search and application
+checks also pass. PHP 8.3 cartridge, consumable and printer suites pass 10 methods /
+355 assertions. Rendered-list checks are not browser interaction tests.
+
+Coverage is now 198 enforced relationships, 564 pending relationship candidates,
+62 polymorphic references, one ambiguous reference and 1,447 legacy SQL sites.

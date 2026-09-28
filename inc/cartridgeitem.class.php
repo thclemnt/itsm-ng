@@ -581,50 +581,17 @@ class CartridgeItem extends CommonDBTM
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT'       => [
-              'COUNT'  => '* AS cpt',
-              'glpi_locations.completename AS location',
-              'glpi_cartridgeitems.ref AS ref',
-              'glpi_cartridgeitems.name AS name',
-              'glpi_cartridgeitems.id AS tID'
-           ],
-           'FROM'         => self::getTable(),
-           'INNER JOIN'   => [
-              'glpi_cartridgeitems_printermodels' => [
-                 'ON' => [
-                    'glpi_cartridgeitems_printermodels' => 'cartridgeitems_id',
-                    'glpi_cartridgeitems'               => 'id'
-                 ]
-              ],
-              'glpi_cartridges'                   => [
-                 'ON' => [
-                    'glpi_cartridgeitems'   => 'id',
-                    'glpi_cartridges'       => 'cartridgeitems_id', [
-                       'AND' => [
-                          'glpi_cartridges.date_use' => null
-                       ]
-                    ]
-                 ]
-              ]
-           ],
-           'LEFT JOIN'    => [
-              'glpi_locations'                    => [
-                 'ON' => [
-                    'glpi_cartridgeitems'   => 'locations_id',
-                    'glpi_locations'        => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'        => [
-              'glpi_cartridgeitems_printermodels.printermodels_id'  => $printer->fields['printermodels_id']
-           ] + getEntitiesRestrictCriteria('glpi_cartridgeitems', '', $printer->fields['entities_id'], true),
-           'GROUPBY'      => 'tID',
-           'ORDERBY'      => ['name', 'ref']
-        ]);
-
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            $rows = (new \itsmng\Database\Repository\CartridgeRepository($em))->availableForPrinter(
+                (int)$printer->fields['printermodels_id'],
+                getEntitiesRestrictCriteria(self::getTable(), '', $printer->fields['entities_id'], true)
+            );
+        } finally {
+            $em->clear();
+        }
         $results = [];
-        while ($data = $iterator->next()) {
+        foreach ($rows as $data) {
             $text = sprintf(__('%1$s - %2$s'), $data["name"], $data["ref"]);
             $text = sprintf(__('%1$s (%2$s)'), $text, $data["cpt"]);
             $text = sprintf(__('%1$s - %2$s'), $text, $data["location"]);
