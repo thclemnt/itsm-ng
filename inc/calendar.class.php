@@ -306,8 +306,8 @@ class Calendar extends CommonDropdown
                  [
                     'AND' => [
                        'glpi_holidays.is_perpetual'  => 1,
-                       new \QueryExpression("MONTH(" . $DB->quoteName('end_date') . ")*100 + DAY(" . $DB->quoteName('end_date') . ") >= " . date('nd', strtotime($date))),
-                       new \QueryExpression("MONTH(" . $DB->quoteName('begin_date') . ")*100 + DAY(" . $DB->quoteName('begin_date') . ") <= " . date('nd', strtotime($date)))
+                       new \QueryExpression($DB->expressions()->datePart($DB->quoteName('end_date'), 'MONTH') . "*100 + " . $DB->expressions()->datePart($DB->quoteName('end_date'), 'DAY') . " >= " . date('nd', strtotime($date))),
+                       new \QueryExpression($DB->expressions()->datePart($DB->quoteName('begin_date'), 'MONTH') . "*100 + " . $DB->expressions()->datePart($DB->quoteName('begin_date'), 'DAY') . " <= " . date('nd', strtotime($date)))
                     ]
                  ]
               ]

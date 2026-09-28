@@ -195,7 +195,7 @@ abstract class AbstractCommand extends Command implements GlpiCommandInterface
 
         $requirements_manager = new RequirementsManager();
         $core_requirements = $requirements_manager->getCoreRequirementList(
-            $db instanceof \DBmysql && $db->connected ? $db : null
+            $db instanceof \DBAdapter && $db->connected ? $db : null
         );
         if ($core_requirements->hasMissingOptionalRequirements()) {
             $message = __('Some optional system requirements are missing.')

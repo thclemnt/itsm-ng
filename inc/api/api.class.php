@@ -1424,7 +1424,7 @@ abstract class API extends CommonGLPI
 
         // get result full row counts
         $count_query = "SELECT COUNT(*) FROM {$DB->quoteName($table)} $join WHERE $where";
-        $totalcount = $DB->query($count_query)->fetch_row()[0];
+        $totalcount = $DB->fetchRow($DB->query($count_query))[0];
 
         if ($params['range'][0] > $totalcount) {
             $this->returnError(

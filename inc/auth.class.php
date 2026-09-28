@@ -384,18 +384,12 @@ class Auth extends CommonGLPI
                  'id',
                  'password',
                  new QueryExpression(
-                     sprintf(
-                         'ADDDATE(%s, INTERVAL %d DAY) AS ' . $DB->quoteName('password_expiration_date'),
-                         $DB->quoteName('password_last_update'),
-                         $pass_expiration_delay
-                     )
+                     $DB->expressions()->dateAdd($DB->quoteName('password_last_update'), $pass_expiration_delay, 'DAY')
+                     . ' AS ' . $DB->quoteName('password_expiration_date')
                  ),
                  new QueryExpression(
-                     sprintf(
-                         'ADDDATE(%s, INTERVAL %d DAY) AS ' . $DB->quoteName('lock_date'),
-                         $DB->quoteName('password_last_update'),
-                         $pass_expiration_delay + $lock_delay
-                     )
+                     $DB->expressions()->dateAdd($DB->quoteName('password_last_update'), $pass_expiration_delay + $lock_delay, 'DAY')
+                     . ' AS ' . $DB->quoteName('lock_date')
                  )
               ],
               'FROM'   => User::getTable(),

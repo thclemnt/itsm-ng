@@ -1580,7 +1580,7 @@ class Html
         }
 
         // Custom CSS for active entity
-        if ($DB instanceof DBmysql && $DB->connected) {
+        if ($DB instanceof DBAdapter && $DB->connected) {
             $entity = new Entity();
             if (isset($_SESSION['glpiactive_entity'])) {
                 // Apply active entity styles

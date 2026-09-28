@@ -4364,7 +4364,7 @@ class Ticket extends CommonITILObject
             $users = [];
             $users[0] = "-- " . __('Select') . " --";
 
-            while ($row = $result->fetch_assoc()) {
+            while ($row = $DB->fetchAssoc($result)) {
                 $display_name = trim($row['realname'] . ' ' . $row['firstname']);
                 if (empty($display_name)) {
                     $display_name = $row['name'];

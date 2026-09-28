@@ -2686,7 +2686,7 @@ class Toolbox
      * @since 9.1
      * @since 9.4.7 Added $db parameter
     **/
-    public static function createSchema($lang = 'en_GB', ?DBmysql $database = null)
+    public static function createSchema($lang = 'en_GB', ?DBAdapter $database = null)
     {
         global $DB;
 
@@ -2699,7 +2699,7 @@ class Toolbox
         // Set global $DB as it is used in "Config::setConfigurationValues()" just after schema creation
         $DB = $database;
 
-        if (!$DB->runFile(GLPI_ROOT . "/install/mysql/glpi-empty.sql")) {
+        if (!$DB->installSchema()) {
             echo "Errors occurred inserting default database";
         } else {
             //dataset
@@ -2746,6 +2746,9 @@ class Toolbox
                     }
                 }
             }
+
+            $DB->synchronizeSequences();
+            (new \itsmng\Database\ForeignKeys())->apply($DB->getDoctrineConnection());
 
             // update default language
             Config::setConfigurationValues(

@@ -63,7 +63,7 @@ class RequirementsManager
      *
      * @return RequirementsList
      */
-    public function getCoreRequirementList(?\DBmysql $db = null): RequirementsList
+    public function getCoreRequirementList(?\DBAdapter $db = null): RequirementsList
     {
         $requirements = [];
 
@@ -73,7 +73,11 @@ class RequirementsManager
 
         $requirements[] = new MemoryLimit(64 * 1024 * 1024);
 
-        $requirements[] = new MysqliMysqlnd();
+        if ($db instanceof \DBpgsql) {
+            $requirements[] = new Extension('pgsql');
+        } elseif ($db !== null || !extension_loaded('pgsql')) {
+            $requirements[] = new MysqliMysqlnd();
+        }
         $requirements[] = new Extension('ctype');
         $requirements[] = new Extension('fileinfo');
         $requirements[] = new Extension('json');
@@ -91,7 +95,7 @@ class RequirementsManager
         $requirements[] = new Extension('exif', true); // for security reasons (images checks)
         $requirements[] = new Extension('sodium', true); // to enhance performances on encrypt/decrypt (fallback to polyfill)
 
-        if ($db instanceof \DBmysql) {
+        if ($db instanceof \DBAdapter) {
             $requirements[] = new DbEngine($db);
             $requirements[] = new DbTimezones($db);
         }

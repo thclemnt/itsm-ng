@@ -209,6 +209,27 @@ class InstallCommand extends AbstractConfigureCommand
             }
         }
 
+        $provider = $input->getOption('reconfigure') || !isset($DB)
+            ? $input->getOption('db-type') : $DB->getProvider();
+        if ($provider === 'pgsql') {
+            $database = \DBConnection::createConnection('pgsql', $db_hostport, $db_user, $db_pass, $db_name);
+            if (!$database->connected) {
+                $output->writeln('<error>' . $database->error() . '</error>');
+                return self::ERROR_DB_CONNECTION_FAILED;
+            }
+            if (count($database->listTables()) > 0) {
+                $output->writeln('<error>PostgreSQL installation requires an empty schema. Use a new database.</error>');
+                return self::ERROR_DB_ALREADY_CONTAINS_TABLES;
+            }
+            $glpikey = new GLPIKey();
+            if (!$glpikey->keyExists() && !$glpikey->generate()) {
+                return self::ERROR_CANNOT_CREATE_ENCRYPTION_KEY_FILE;
+            }
+            \itsmng\Database\Installer::installPostgres($database, $default_language);
+            $output->writeln('<info>' . __('Installation done.') . '</info>');
+            return 0;
+        }
+
         // Create security key
         $glpikey = new GLPIKey();
         if (!$glpikey->keyExists() && !$glpikey->generate()) {
@@ -272,23 +293,8 @@ class InstallCommand extends AbstractConfigureCommand
             return self::ERROR_DB_ALREADY_CONTAINS_TABLES;
         }
 
-        if ($DB instanceof DB) {
-            // If global $DB is set at this point, it means that configuration file has been loaded
-            // prior to reconfiguration.
-            // As configuration is part of a class, it cannot be reloaded and class properties
-            // have to be updated manually in order to make `Toolbox::createSchema()` work correctly.
-            $DB->dbhost     = $db_hostport;
-            $DB->dbuser     = $db_user;
-            $DB->dbpassword = rawurlencode($db_pass);
-            $DB->dbdefault  = $db_name;
-            $DB->clearSchemaCache();
-            $DB->connect();
-
-            $db_instance = $DB;
-        } else {
-            include_once(GLPI_CONFIG_DIR . "/config_db.php");
-            $db_instance = new DB();
-        }
+        // A provider change cannot reuse the previously loaded DB subclass.
+        $db_instance = \DBConnection::createConnection('mysql', $db_hostport, $db_user, $db_pass, $db_name);
 
         $output->writeln(
             '<comment>' . __('Loading default schema...') . '</comment>',
@@ -334,6 +340,7 @@ class InstallCommand extends AbstractConfigureCommand
     {
 
         $config_options = [
+           'db-type',
            'db-host',
            'db-port',
            'db-name',

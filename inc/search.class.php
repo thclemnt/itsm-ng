@@ -754,6 +754,10 @@ class Search
             }
         }
 
+        if ($DB->getProvider() === 'pgsql') {
+            $SELECT = (new \itsmng\Database\SearchProjection())->postgres($SELECT, $GROUPBY !== '');
+        }
+
         $LIMIT   = "";
         $numrows = 0;
         //No search : count number of items using a simple count(ID) request and LIMIT search
@@ -761,7 +765,7 @@ class Search
             if ($data['search']['list_limit'] == 0) {
                 $data['search']['list_limit'] = '18446744073709551615';
             }
-            $LIMIT = " LIMIT " . (int)$data['search']['start'] . ", " . (int)$data['search']['list_limit'];
+            $LIMIT = " LIMIT " . (int)$data['search']['list_limit'] . " OFFSET " . (int)$data['search']['start'];
 
             $count = "count(DISTINCT `$itemtable`.`id`)";
             // request currentuser for SQL supervision, not displayed
@@ -1305,10 +1309,12 @@ class Search
 
         // Use a ReadOnly connection if available and configured to be used
         $DBread = DBConnection::getReadConnection();
-        $DBread->query("SET SESSION group_concat_max_len = 16384;");
+        if ($DBread->getProvider() === 'mysql') {
+            $DBread->query("SET SESSION group_concat_max_len = 16384;");
+        }
 
         // directly increase group_concat_max_len to avoid double query
-        if (count($data['search']['metacriteria'])) {
+        if ($DBread->getProvider() === 'mysql' && count($data['search']['metacriteria'])) {
             foreach ($data['search']['metacriteria'] as $metacriterion) {
                 if (
                     $metacriterion['link'] == 'AND NOT'
@@ -1323,7 +1329,7 @@ class Search
         $DBread->execution_time = true;
         $result = $DBread->query($data['sql']['search']);
         /// Check group concat limit : if warning : increase limit
-        if ($result2 = $DBread->query('SHOW WARNINGS')) {
+        if ($DBread->getProvider() === 'mysql' && ($result2 = $DBread->query('SHOW WARNINGS'))) {
             if ($DBread->numrows($result2) > 0) {
                 $res = $DBread->fetchAssoc($result2);
                 if ($res['Code'] == 1260) {
@@ -8439,6 +8445,12 @@ JAVASCRIPT;
     **/
     public static function makeTextCriteria($field, $val, $not = false, $link = 'AND')
     {
+        global $DB;
+
+        // PostgreSQL does not implicitly cast identifiers/dates for LIKE.
+        if (isset($DB) && $DB->getProvider() === 'pgsql') {
+            $field = 'CAST(' . $field . ' AS text)';
+        }
 
         $sql = $field . self::makeTextSearch($val, $not);
         // mange empty field (string with length = 0)
@@ -8518,6 +8530,7 @@ JAVASCRIPT;
     **/
     public static function makeTextSearch($val, $not = false)
     {
+        global $DB;
 
         $NOT = "";
         if ($not) {
@@ -8528,7 +8541,8 @@ JAVASCRIPT;
         if ($val == null) {
             $SEARCH = " IS $NOT NULL ";
         } else {
-            $SEARCH = " $NOT LIKE '$val' ";
+            $operator = isset($DB) && $DB->getProvider() === 'pgsql' ? 'ILIKE' : 'LIKE';
+            $SEARCH = " $NOT $operator '$val' ";
         }
         return $SEARCH;
     }

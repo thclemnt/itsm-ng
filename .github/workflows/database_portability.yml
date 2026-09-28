@@ -1,0 +1,105 @@
+name: Database portability
+
+on: [pull_request, workflow_dispatch]
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        database:
+          - image: mariadb:11.8
+            provider: mysql
+            port: 3306
+            health: mariadb-admin ping
+            client: mariadb
+            tzinfo: mariadb-tzinfo-to-sql
+          - image: mysql:8.4
+            provider: mysql
+            port: 3306
+            health: mysqladmin ping
+            client: mysql
+            tzinfo: mysql_tzinfo_to_sql
+          - image: postgres:14
+            provider: pgsql
+            port: 5432
+            health: pg_isready -U test -d itsm_port_ci
+          - image: postgres:18
+            provider: pgsql
+            port: 5432
+            health: pg_isready -U test -d itsm_port_ci
+    services:
+      database:
+        image: ${{ matrix.database.image }}
+        env:
+          MYSQL_DATABASE: itsm_port_ci
+          MYSQL_USER: test
+          MYSQL_PASSWORD: test
+          MYSQL_ROOT_PASSWORD: test
+          POSTGRES_DB: itsm_port_ci
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        ports:
+          - 3306:3306
+          - 5432:5432
+        options: >-
+          --health-cmd "${{ matrix.database.health }}"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mysqli, pgsql, dom, curl, mbstring, zip, pcntl, intl, gd, ldap, exif
+          coverage: none
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: php bin/console dependencies install
+      - name: Prepare MySQL timezone fixtures
+        if: matrix.database.provider == 'mysql'
+        run: |
+          docker exec "${{ job.services.database.id }}" sh -c '${{ matrix.database.tzinfo }} /usr/share/zoneinfo | ${{ matrix.database.client }} -uroot -ptest mysql'
+          docker exec "${{ job.services.database.id }}" ${{ matrix.database.client }} -uroot -ptest -e "GRANT SELECT ON mysql.time_zone_name TO 'test'@'%';"
+      - name: Install database
+        run: >-
+          php bin/console db:install --config-dir=tests/config
+          --db-type=${{ matrix.database.provider }}
+          --db-host=127.0.0.1 --db-port=${{ matrix.database.port }}
+          --db-name=itsm_port_ci --db-user=test --db-password=test --no-interaction
+      - name: Test database contract and foreign keys
+        run: php tests/database-portability/run.php tests/config
+      - name: Test application workflow
+        run: php tests/database-portability/application.php tests/config
+      - name: Test PostgreSQL web installation and login
+        if: matrix.database.provider == 'pgsql'
+        env:
+          PORT_TEST_DB_PASSWORD: test
+          GLPI_CONFIG_DIR: /tmp/itsm-port-web-config
+        run: |
+          php -r '$db = pg_connect("host=127.0.0.1 user=test password=test dbname=itsm_port_ci"); if (!pg_query($db, "CREATE DATABASE itsm_port_web")) { exit(1); }'
+          mkdir -p "$GLPI_CONFIG_DIR"
+          php -S 127.0.0.1:8059 -t . > /tmp/itsm-port-web.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          for attempt in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:8059/install/install.php?step=4 > /dev/null; then break; fi
+            sleep 1
+          done
+          python3 tests/database-portability/web.py http://127.0.0.1:8059 --host=127.0.0.1 --database=itsm_port_web --user=test
+          php tests/database-portability/run.php "$GLPI_CONFIG_DIR"
+      - name: Test MySQL API compatibility
+        if: matrix.database.provider == 'mysql'
+        run: >-
+          php vendor/bin/atoum --bootstrap-file tests/bootstrap.php
+          --no-code-coverage --max-children-number 1 --use-dot-report
+          -f tests/units/DB.php -f tests/units/DBmysqlIterator.php
+      - name: Test MySQL lifecycle under foreign keys
+        if: matrix.database.provider == 'mysql'
+        run: >-
+          php vendor/bin/atoum --bootstrap-file tests/bootstrap.php
+          --no-code-coverage --max-children-number 1 --use-dot-report
+          -f tests/functional/CommonDBTM.php -f tests/functional/Group_User.php
+          -f tests/functional/User.php -f tests/functional/Ticket.php

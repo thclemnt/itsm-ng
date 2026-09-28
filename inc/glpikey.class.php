@@ -157,7 +157,7 @@ class GLPIKey
         // Fetch old key before generating the new one (but only if DB exists and there is something to migrate)
         $sodium_key = null;
         $old_key = false;
-        if ($DB instanceof DBmysql) {
+        if ($DB instanceof DBAdapter) {
             try {
                 $sodium_key = $this->get();
             } catch (\RuntimeException $e) {
@@ -172,7 +172,7 @@ class GLPIKey
             return false;
         }
 
-        if ($DB instanceof DBmysql) {
+        if ($DB instanceof DBAdapter) {
             return $this->migrateFieldsInDb($sodium_key, $old_key)
                && $this->migrateConfigsInDb($sodium_key, $old_key);
         }

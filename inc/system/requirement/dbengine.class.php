@@ -49,7 +49,7 @@ class DbEngine extends AbstractRequirement
      */
     private $db;
 
-    public function __construct(\DBmysql $db)
+    public function __construct(\DBAdapter $db)
     {
         $this->title = __('Testing DB engine version');
         $this->db = $db;
@@ -59,7 +59,7 @@ class DbEngine extends AbstractRequirement
     {
         $version = preg_replace('/^((\d+\.?)+).*$/', '$1', $this->db->getVersion());
 
-        if (version_compare($version, '5.6', '>=')) {
+        if (version_compare($version, $this->db->getProvider() === 'pgsql' ? '14' : '5.6', '>=')) {
             $this->validated = true;
             $this->validation_messages[] = sprintf(
                 __('Database version seems correct (%s) - Perfect!'),

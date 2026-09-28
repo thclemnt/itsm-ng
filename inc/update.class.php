@@ -165,6 +165,9 @@ class Update extends CommonGLPI
      */
     public function doUpdates($current_version = null)
     {
+        if ($this->DB->getProvider() === 'pgsql') {
+            throw new \RuntimeException('Legacy MySQL upgrade scripts cannot run on PostgreSQL. Use a fresh PostgreSQL installation until versioned portable migrations are available.');
+        }
         if ($current_version === null) {
             if ($this->version === null) {
                 throw new \RuntimeException('Cannot process updates without any version specified!');

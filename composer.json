@@ -18,11 +18,11 @@
         "ext-intl": "*",
         "ext-json": "*",
         "ext-mbstring": "*",
-        "ext-mysqli": "*",
         "ext-simplexml": "*",
         "ext-zlib": "*",
         "apereo/phpcas": "^1.6",
         "blueimp/jquery-file-upload": "^10.2",
+        "doctrine/dbal": "^3.10",
         "doctrine/doctrine-module": "^6.0",
         "elvanto/litemoji": "^4.3",
         "guzzlehttp/guzzle": "^7.8",
@@ -85,6 +85,8 @@
     },
     "suggest": {
         "ext-ldap": "Used to provide LDAP authentication and synchronization",
+        "ext-mysqli": "Required for MySQL/MariaDB databases",
+        "ext-pgsql": "Required for PostgreSQL databases",
         "ext-sodium": "Used to provide strong encryption for sensitive data in database"
     },
     "config": {

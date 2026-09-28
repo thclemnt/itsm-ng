@@ -63,17 +63,34 @@ class DBConnection extends CommonDBTM
      * @return boolean
      *
     **/
-    public static function createMainConfig($host, $user, $password, $DBname)
+    public static function createMainConfig($host, $user, $password, $DBname, string $provider = 'mysql')
     {
+        $class = self::getAdapterClass($provider);
+        $DB_str = "<?php\nclass DB extends $class {\n";
+        foreach (['dbhost' => $host, 'dbuser' => $user, 'dbpassword' => rawurlencode($password), 'dbdefault' => $DBname] as $property => $value) {
+            $DB_str .= '    public $' . $property . ' = ' . var_export($value, true) . ";\n";
+        }
+        return Toolbox::writeConfig('config_db.php', $DB_str . "}\n");
+    }
 
-        $DB_str = "<?php\nclass DB extends DBmysql {\n" .
-                  "   public \$dbhost     = '$host';\n" .
-                  "   public \$dbuser     = '$user';\n" .
-                  "   public \$dbpassword = '" . rawurlencode($password) . "';\n" .
-                  "   public \$dbdefault  = '$DBname';\n" .
-                  "}\n";
+    public static function getAdapterClass(string $provider): string
+    {
+        return match ($provider) {
+            'mysql' => DBmysql::class,
+            'pgsql' => DBpgsql::class,
+            default => throw new \InvalidArgumentException('Unknown database provider: ' . $provider),
+        };
+    }
 
-        return Toolbox::writeConfig('config_db.php', $DB_str);
+    public static function createConnection(string $provider, string $host, string $user, string $password, string $database): DBAdapter
+    {
+        $db = (new \ReflectionClass(self::getAdapterClass($provider)))->newInstanceWithoutConstructor();
+        $db->dbhost = $host;
+        $db->dbuser = $user;
+        $db->dbpassword = rawurlencode($password);
+        $db->dbdefault = $database;
+        $db->connect();
+        return $db;
     }
 
 
@@ -87,32 +104,19 @@ class DBConnection extends CommonDBTM
      *
      * @return boolean for success
     **/
-    public static function createSlaveConnectionFile($host, $user, $password, $DBname)
+    public static function createSlaveConnectionFile($host, $user, $password, $DBname, ?string $provider = null)
     {
-
-        $DB_str = "<?php \n class DBSlave extends DBmysql { \n public \$slave = true; \n public \$dbhost = ";
-        $host   = trim($host);
-        if (strpos($host, ' ')) {
-            $hosts = explode(' ', $host);
-            $first = true;
-            foreach ($hosts as $host) {
-                if (!empty($host)) {
-                    $DB_str .= ($first ? "array('" : ",'") . $host . "'";
-                    $first   = false;
-                }
-            }
-            if ($first) {
-                // no host configured
-                return false;
-            }
-            $DB_str .= ");\n";
-        } else {
-            $DB_str .= "'$host';\n";
+        global $DB;
+        $class = self::getAdapterClass($provider ?? ($DB instanceof DBAdapter ? $DB->getProvider() : 'mysql'));
+        $hosts = preg_split('/\s+/', trim($host), -1, PREG_SPLIT_NO_EMPTY);
+        if (!$hosts) {
+            return false;
         }
-        $DB_str .= " public \$dbuser = '" . $user . "'; \n public \$dbpassword= '" .
-                    rawurlencode($password) . "'; \n public \$dbdefault = '" . $DBname . "'; \n }\n";
-
-        return Toolbox::writeConfig('config_db_slave.php', $DB_str);
+        $DB_str = "<?php\nclass DBSlave extends $class {\n    public \$slave = true;\n";
+        foreach (['dbhost' => count($hosts) === 1 ? $hosts[0] : $hosts, 'dbuser' => $user, 'dbpassword' => rawurlencode($password), 'dbdefault' => $DBname] as $property => $value) {
+            $DB_str .= '    public $' . $property . ' = ' . var_export($value, true) . ";\n";
+        }
+        return Toolbox::writeConfig('config_db_slave.php', $DB_str . "}\n");
     }
 
 
@@ -357,8 +361,7 @@ class DBConnection extends CommonDBTM
     {
 
         if ($DBconnection->connected) {
-            $result = $DBconnection->query("SELECT UNIX_TIMESTAMP(MAX(`date_mod`)) AS max_date
-                                         FROM `glpi_logs`");
+            $result = $DBconnection->query('SELECT ' . $DBconnection->expressions()->epoch('MAX(' . $DBconnection->quoteName('date_mod') . ')') . ' AS max_date FROM ' . $DBconnection->quoteName('glpi_logs'));
             if ($DBconnection->numrows($result) > 0) {
                 return $DBconnection->result($result, 0, "max_date");
             }
@@ -374,7 +377,7 @@ class DBConnection extends CommonDBTM
     {
         global $DB;
 
-        $error = $DB instanceof DBmysql ? $DB->error : 1;
+        $error = $DB instanceof DBAdapter ? $DB->error : 1;
         switch ($error) {
             case 2:
                 $en_msg = "Use of mysqlnd driver is required for exchanges with the MySQL server.";

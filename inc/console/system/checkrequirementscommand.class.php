@@ -61,7 +61,7 @@ class CheckRequirementsCommand extends AbstractCommand
 
         $requirements_manager = new RequirementsManager();
         $core_requirements = $requirements_manager->getCoreRequirementList(
-            $this->db instanceof \DBmysql && $this->db->connected ? $this->db : null
+            $this->db instanceof \DBAdapter && $this->db->connected ? $this->db : null
         );
 
         $informations = new Table($output);

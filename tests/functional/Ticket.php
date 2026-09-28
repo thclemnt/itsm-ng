@@ -3146,20 +3146,23 @@ class Ticket extends DbTestCase
            'alternative_email'  => 'test@glpi.com'
         ]);
 
+        $group = new \Group();
+        $groupId = $group->add(['name' => 'Ticket merge group']);
+        $this->integer((int)$groupId)->isGreaterThan(0);
         $ticket_group = new \Group_Ticket();
         $ticket_group->add([
            'tickets_id'         => $ticket1,
-           'groups_id'          => 1,
+           'groups_id'          => $groupId,
            'type'               => \Group_Ticket::REQUESTER
         ]);
         $ticket_group->add([ // Duplicate with #1
            'tickets_id'         => $ticket3,
-           'groups_id'          => 1,
+           'groups_id'          => $groupId,
            'type'               => \Group_Ticket::REQUESTER
         ]);
         $ticket_group->add([
            'tickets_id'         => $ticket3,
-           'groups_id'          => 1,
+           'groups_id'          => $groupId,
            'type'               => \Group_Ticket::ASSIGN
         ]);
 

@@ -49,7 +49,7 @@ class DbTimezones extends AbstractRequirement
      */
     private $db;
 
-    public function __construct(\DBmysql $db)
+    public function __construct(\DBAdapter $db)
     {
         $this->title = __('Testing DB timezone data');
         $this->db = $db;

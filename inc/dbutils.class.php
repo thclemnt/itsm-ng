@@ -560,7 +560,7 @@ final class DbUtils
             if (trim($separator) == "AND") {
                 return "";
             }
-            return $query . " 1 ) ";
+            return $query . " 1 = 1 ) ";
         }
 
         if (empty($field)) {

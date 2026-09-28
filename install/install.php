@@ -113,7 +113,11 @@ switch ($step) {
         $host = isset($_SESSION['db_host']) ? $_SESSION['db_host'] : "";
         $user = isset($_SESSION['db_user']) ? $_SESSION['db_user'] : "";
 
-        $twig_vars = ['host' => $host, 'user' => $user];
+        $twig_vars = [
+            'host' => $host, 'user' => $user,
+            'provider' => $_SESSION['db_type'] ?? 'mysql',
+            'database_name' => $_SESSION['db_name'] ?? '',
+        ];
         break;
 
     case "5":
@@ -121,6 +125,40 @@ switch ($step) {
             $_SESSION['db_host'] = $_POST['db_host'];
             $_SESSION['db_user'] = $_POST['db_user'];
             $_SESSION['db_pass'] = $_POST['db_pass'];
+            $_SESSION['db_type'] = $_POST['db_type'] ?? 'mysql';
+            $_SESSION['db_name'] = $_POST['db_name'] ?? '';
+        }
+        $provider = $_SESSION['db_type'] ?? 'mysql';
+        $version = '';
+        $ver_too_old = false;
+        $databases_info = [];
+        $connect_error = '';
+        if ($provider === 'pgsql') {
+            try {
+                if ($_SESSION['action'] !== 'install') {
+                    throw new RuntimeException('PostgreSQL upgrades are not available yet.');
+                }
+                if (trim($_SESSION['db_name'] ?? '') === '') {
+                    throw new RuntimeException('Enter the name of an existing, empty PostgreSQL database.');
+                }
+                $database = DBConnection::createConnection('pgsql', $_SESSION['db_host'], $_SESSION['db_user'], $_SESSION['db_pass'], $_SESSION['db_name']);
+                \itsmng\Database\Installer::checkPostgres($database);
+                $version = $database->getVersion();
+                $databases_info[] = ['name' => $_SESSION['db_name'], 'table_count' => 0, 'creation_date' => '', 'last_update' => ''];
+                $database->close();
+            } catch (Throwable $exception) {
+                $connect_error = $exception->getMessage();
+            }
+            $twig_vars = [
+                'provider' => $provider, 'database_name' => $_SESSION['db_name'],
+                'connect_error' => $connect_error, 'version' => $version,
+                'ver_too_old' => false, 'action' => $_SESSION['action'], 'databases' => $databases_info,
+            ];
+            break;
+        }
+        if ($provider !== 'mysql' || !extension_loaded('mysqli')) {
+            $twig_vars = ['connect_error' => 'Select a supported database provider with its PHP extension installed.'];
+            break;
         }
         error_reporting(16);
         mysqli_report(MYSQLI_REPORT_OFF);
@@ -167,6 +205,29 @@ switch ($step) {
         break;
 
     case "6":
+        if (($_SESSION['db_type'] ?? 'mysql') === 'pgsql') {
+            $secured = false;
+            $error = '';
+            $sql_error = '';
+            try {
+                if ($_SESSION['action'] !== 'install') {
+                    throw new RuntimeException('PostgreSQL upgrades are not available yet.');
+                }
+                $database = DBConnection::createConnection('pgsql', $_SESSION['db_host'], $_SESSION['db_user'], $_SESSION['db_pass'], $_SESSION['db_name']);
+                \itsmng\Database\Installer::checkPostgres($database);
+                $database->close();
+                $glpikey = new GLPIKey();
+                $secured = $glpikey->keyExists() || $glpikey->generate();
+                if ($secured && !DBConnection::createMainConfig($_SESSION['db_host'], $_SESSION['db_user'], $_SESSION['db_pass'], $_SESSION['db_name'], 'pgsql')) {
+                    $error = 'setup';
+                }
+            } catch (Throwable $exception) {
+                $error = 'use';
+                $sql_error = $exception->getMessage();
+            }
+            $twig_vars = ['action' => 'install', 'created' => false, 'secured' => $secured, 'error' => $error, 'sql_error' => $sql_error];
+            break;
+        }
         if (isset($_POST['newdatabasename']) and $_POST['newdatabasename'] != "") {
             $new_db = true;
             $_SESSION["databasename"] = $_POST['newdatabasename'];
@@ -183,7 +244,6 @@ switch ($step) {
             $secured = $glpikey->keyExists();
             if (!$secured) {
                 $secured = $glpikey->generate();
-                $error = "secured";
             }
             if ($secured) {
                 mysqli_report(MYSQLI_REPORT_OFF);
@@ -240,14 +300,27 @@ switch ($step) {
                     ];
         break;
     case "7":
-        Toolbox::createSchema($_SESSION['language']);
+        include_once(GLPI_CONFIG_DIR . "/config_db.php");
+        $DB = new DB();
+        if ($DB->getProvider() === 'pgsql') {
+            try {
+                \itsmng\Database\Installer::installPostgres($DB, $_SESSION['language'] ?? 'en_GB');
+            } catch (Throwable $exception) {
+                $step = '6';
+                $twig_vars = ['action' => 'install', 'secured' => true, 'error' => 'use', 'sql_error' => $exception->getMessage(), 'created' => false];
+                break;
+            }
+        } else {
+            Toolbox::createSchema($_SESSION['language'], $DB);
+        }
         // no break
     case "8":
         include_once(GLPI_ROOT . "/inc/dbmysql.class.php");
         include_once(GLPI_CONFIG_DIR . "/config_db.php");
         $DB = new DB();
 
-        $url_base = str_replace("/install/install.php", "", $_SERVER['HTTP_REFERER']);
+        $referer = $_SERVER['HTTP_REFERER'] ?? '';
+        $url_base = preg_replace('~/install/install\.php(?:\?.*)?$~', '', $referer);
         $DB->update(
             'glpi_configs',
             ['value' => $DB->escape($url_base)],

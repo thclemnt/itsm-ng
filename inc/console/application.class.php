@@ -483,7 +483,7 @@ class Application extends BaseApplication
 
         $requirements_manager = new RequirementsManager();
         $core_requirements = $requirements_manager->getCoreRequirementList(
-            $db instanceof \DBmysql && $db->connected ? $db : null
+            $db instanceof \DBAdapter && $db->connected ? $db : null
         );
 
         if ($core_requirements->hasMissingMandatoryRequirements()) {
