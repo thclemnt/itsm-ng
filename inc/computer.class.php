@@ -192,56 +192,32 @@ class Computer extends CommonDBTM
 
             // Propagates the changes to linked items
             foreach ($CFG_GLPI['directconnect_types'] as $type) {
-                $items_result = $DB->request(
-                    [
-                      'SELECT' => ['items_id'],
-                      'FROM'   => Computer_Item::getTable(),
-                      'WHERE'  => [
-                         'itemtype'     => $type,
-                         'computers_id' => $this->fields["id"],
-                         'is_deleted'   => 0
-                      ]
-                    ]
-                );
-                $item      = new $type();
-                foreach ($items_result as $data) {
-                    $tID = $data['items_id'];
-                    $item->getFromDB($tID);
+                $ids = \itsmng\Database\MappedReads::identifiers($DB, Computer_Item::getTable(), 'items_id', [
+                    'itemtype' => $type, 'computers_id' => $this->getID(), 'is_deleted' => false,
+                ]);
+                $item = new $type();
+                foreach (array_unique($ids) as $tID) {
+                    if (!$item->getFromDB($tID)) {
+                        continue;
+                    }
                     if (!$item->getField('is_global')) {
-                        $changes['id'] = $item->getField('id');
-                        if ($item->update($changes)) {
+                        if ($item->update(['id' => $item->getID()] + $changes)) {
                             $update_done = true;
                         }
                     }
                 }
             }
 
-            //fields that are not present for devices
-            unset($changes['groups_id']);
-            unset($changes['users_id']);
-            unset($changes['contact_num']);
-            unset($changes['contact']);
-
-            if (count($changes) > 0) {
-                // Propagates the changes to linked devices
+            // Device associations only receive fields they actually store.
+            $deviceChanges = array_intersect_key($changes, array_flip(['states_id', 'locations_id']));
+            if ($deviceChanges) {
                 foreach ($CFG_GLPI['itemdevices'] as $device) {
                     $item = new $device();
-                    $devices_result = $DB->request(
-                        [
-                          'SELECT' => ['id'],
-                          'FROM'   => $item::getTable(),
-                          'WHERE'  => [
-                             'itemtype'     => self::getType(),
-                             'items_id'     => $this->fields["id"],
-                             'is_deleted'   => 0
-                          ]
-                        ]
-                    );
-                    foreach ($devices_result as $data) {
-                        $tID = $data['id'];
-                        $item->getFromDB($tID);
-                        $changes['id'] = $item->getField('id');
-                        if ($item->update($changes)) {
+                    $ids = $item->findIds([
+                        'itemtype' => self::getType(), 'items_id' => $this->getID(), 'is_deleted' => false,
+                    ]);
+                    foreach ($ids as $tID) {
+                        if ($item->getFromDB($tID) && $item->update(['id' => $tID] + $deviceChanges)) {
                             $update_done = true;
                         }
                     }

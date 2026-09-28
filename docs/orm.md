@@ -516,3 +516,35 @@ application and placement suites. The PHP 8.3 asset suites pass 17 methods / 509
 assertions. Coverage now stands at 195 foreign keys, 567 pending relationship
 candidates, 62 polymorphic references, one ambiguous reference and 1,471 remaining
 legacy SQL call sites; complete conversion is still in progress.
+
+### Asset propagation and connection visibility
+
+Computer update propagation now snapshots connected IDs through ORM, deduplicates
+them and skips missing polymorphic targets. It still excludes global assets and
+deleted connections. Device associations receive only state/location changes;
+the original change set remains intact for lifecycle messages and cannot retain
+another item's ID. Core device selectors use mapped reads, with the shared
+explicit fallback retained for unmapped plugin tables.
+
+`NetworkConnectionRepository` joins both mapped cable endpoints and returns
+distinct peer IDs by asset type in both orientations. Printer and network
+equipment recursion checks use these IDs to verify entity visibility. Shared
+computer/peripheral recursion checks reuse `AssetRepository::linkedItems()`.
+This removes MySQL-only aggregation and fixes checks that treated comma-separated
+IDs as one value or selected an arbitrary connected computer. Existing deleted
+connections and deleted peers still participate in these visibility checks.
+
+Printer import/restore lookups now use bounded ORM reads, retaining pre-escaped
+input handling. The ancestor lookup calls `getTable()` correctly and preserves
+entity/recursive visibility, allowing reuse of a recursive ancestor while
+creating a separate printer when the ancestor is private.
+
+`asset-workflows.php` covers both cable orientations, repeated peers, multiple
+IDs of one type, both direct-connection directions, entity restrictions,
+propagation flags, global/deleted exclusions, device updates, missing targets,
+escaped import names, restoration and recursive/private ancestor imports.
+These workflows and asset classification, application and reporting contracts
+pass on PostgreSQL and MariaDB. Existing PHP 8.3 asset suites pass 17 methods /
+509 assertions. `Computer` and `NetworkEquipment` no longer execute direct
+adapter queries. Eight more legacy SQL sites are removed, leaving 1,463 in the
+static inventory; FK coverage remains 195 relationships.

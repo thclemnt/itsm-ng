@@ -49,6 +49,28 @@ if (!defined('GLPI_ROOT')) {
 **/
 class NetworkPort extends CommonDBChild
 {
+    /** Whether a cable reaches an entity that cannot see the non-recursive owner. */
+    public static function hasConnectionsOutsideEntities(string $itemtype, int $id, array $entities): bool
+    {
+        global $DB;
+
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            $peers = (new \itsmng\Database\Repository\NetworkConnectionRepository($em))->peers($itemtype, $id);
+        } finally {
+            $em->clear();
+        }
+        foreach ($peers as $type => $ids) {
+            $item = getItemForItemtype($type);
+            if ($item && $item->isEntityAssign() && countElementsInTable($item->getTable(), [
+                'id' => array_values($ids), 'NOT' => ['entities_id' => $entities],
+            ]) > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // From CommonDBChild
     public static $itemtype             = 'itemtype';
     public static $items_id             = 'items_id';

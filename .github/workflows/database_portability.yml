@@ -88,6 +88,8 @@ jobs:
         run: php tests/database-portability/infrastructure-optional.php tests/config
       - name: Asset classification and computer connections
         run: php tests/database-portability/asset-classification.php tests/config
+      - name: Asset propagation, network recursion and printer imports
+        run: php tests/database-portability/asset-workflows.php tests/config
       - name: Rack and enclosure placement queries
         run: php tests/database-portability/placements.php tests/config
       - name: Infrastructure relationships and placement

@@ -199,8 +199,6 @@ class NetworkEquipment extends CommonDBTM
     **/
     public function canUnrecurs()
     {
-        global $DB;
-
         $ID = $this->fields['id'];
         if (
             ($ID < 0)
@@ -214,59 +212,7 @@ class NetworkEquipment extends CommonDBTM
         $entities = getAncestorsOf("glpi_entities", $this->fields['entities_id']);
         $entities[] = $this->fields['entities_id'];
 
-        // RELATION : networking -> _port -> _wire -> _port -> device
-
-        // Evaluate connection in the 2 ways
-        foreach (
-            ["networkports_id_1" => "networkports_id_2",
-                  "networkports_id_2" => "networkports_id_1"] as $enda => $endb
-        ) {
-            $criteria = [
-               'SELECT'       => [
-                  'itemtype',
-                  new QueryExpression('GROUP_CONCAT(DISTINCT ' . $DB->quoteName('items_id') . ') AS ' . $DB->quoteName('ids'))
-               ],
-               'FROM'         => 'glpi_networkports_networkports',
-               'INNER JOIN'   => [
-                  'glpi_networkports'  => [
-                     'ON'  => [
-                        'glpi_networkports_networkports' => $endb,
-                        'glpi_networkports'              => 'id'
-                     ]
-                  ]
-               ],
-               'WHERE'        => [
-                  'glpi_networkports_networkports.' . $enda   => new QuerySubQuery([
-                     'SELECT' => 'id',
-                     'FROM'   => 'glpi_networkports',
-                     'WHERE'  => [
-                        'itemtype'  => $this->getType(),
-                        'items_id'  => $ID
-                     ]
-                  ])
-               ],
-               'GROUPBY'      => 'itemtype'
-            ];
-
-            $res = $DB->request($criteria);
-            if ($res) {
-                while ($data = $res->next()) {
-                    $itemtable = getTableForItemType($data["itemtype"]);
-                    if ($item = getItemForItemtype($data["itemtype"])) {
-                        // For each itemtype which are entity dependant
-                        if ($item->isEntityAssign()) {
-                            if (
-                                countElementsInTable($itemtable, ['id' => $data["ids"],
-                                                     'NOT' => ['entities_id' => $entities ]]) > 0
-                            ) {
-                                return false;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return true;
+        return !NetworkPort::hasConnectionsOutsideEntities($this->getType(), (int)$ID, $entities);
     }
 
 

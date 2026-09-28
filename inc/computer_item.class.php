@@ -926,62 +926,21 @@ class Computer_Item extends CommonDBRelation
     {
         global $DB;
 
-        if ($item instanceof Computer) {
-            // RELATION : items -> computers
-            $iterator = $DB->request([
-               'SELECT' => [
-                  'itemtype',
-                  new \QueryExpression('GROUP_CONCAT(DISTINCT ' . $DB->quoteName('items_id') . ') AS ids'),
-               ],
-               'FROM' => self::getTable(),
-               'WHERE' => [
-                  'computers_id' => $item->fields['id']
-               ],
-               'GROUP' => 'itemtype'
-            ]);
-
-            while ($data = $iterator->next()) {
-                if (!class_exists($data['itemtype'])) {
-                    continue;
-                }
-                if (
-                    countElementsInTable(
-                        $data['itemtype']::getTable(),
-                        [
-                         'id' => $data['ids'],
-                         'NOT' => ['entities_id' => $entities]
-                        ]
-                    ) > 0
-                ) {
-                    return false;
-                }
-            }
-        } else {
-            // RELATION : computers -> items
-            $iterator = $DB->request([
-               'SELECT' => [
-                  'itemtype',
-                  new \QueryExpression('GROUP_CONCAT(DISTINCT ' . $DB->quoteName('items_id') . ') AS ids'),
-                  'computers_id'
-               ],
-               'FROM' => self::getTable(),
-               'WHERE' => [
-                  'itemtype' => $item->getType(),
-                  'items_id' => $item->fields['id']
-               ],
-               'GROUP' => 'itemtype'
-            ]);
-
-            while ($data = $iterator->next()) {
-                if (
-                    countElementsInTable(
-                        "glpi_computers",
-                        ['id' => $data["computers_id"],
-                         'NOT' => ['entities_id' => $entities]]
-                    ) > 0
-                ) {
-                    return false;
-                }
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            $links = (new \itsmng\Database\Repository\AssetRepository($em))->linkedItems(
+                $item instanceof Computer ? Computer::class : $item->getType(),
+                (int)$item->getID()
+            );
+        } finally {
+            $em->clear();
+        }
+        foreach ($links as $type => $ids) {
+            $target = getItemForItemtype($type);
+            if ($target && $target->isEntityAssign() && countElementsInTable($target->getTable(), [
+                'id' => array_values($ids), 'NOT' => ['entities_id' => $entities],
+            ]) > 0) {
+                return false;
             }
         }
 
