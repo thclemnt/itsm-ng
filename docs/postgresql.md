@@ -4,8 +4,8 @@ This branch is a development port, **not a complete or production-ready PostgreS
 
 ## Architecture
 
-- `DBAdapter` contains the existing shared CRUD, metadata-cache and quoting API. `DBmysql` preserves the mysqli transport and public class name; `DBpgsql` provides PostgreSQL transport. Existing generated `class DB extends DBmysql` configurations keep working.
-- Doctrine DBAL 3.10 is an explicit dependency, compatible with PHP 8.1. `getDoctrineConnection()` uses the **same native connection** as the legacy API. Session state, transactions and savepoints are shared. New repositories should use DBAL bound parameters and its query builder. A query builder does not make arbitrary vendor SQL portable; use platform expressions for differences.
+- `DBAdapter` contains the existing shared CRUD, metadata-cache and quoting API. `DBmysql` retains its public compatibility name but delegates connection ownership, SQL execution, escaping and prepared statements to DBAL. It no longer calls the native MySQL driver. `DBpgsql` still provides the native PostgreSQL transport pending its migration. Existing generated `class DB extends DBmysql` configurations keep working.
+- Doctrine DBAL 4.4+ is an explicit dependency and this branch requires PHP 8.2+. The installed development version is DBAL 4.5. `getDoctrineConnection()` uses the **same connection** as the legacy API. Session state, transactions and savepoints are shared. New application repositories should use ORM mappings and DQL; DBAL provides platform/schema operations. A query builder does not make arbitrary vendor SQL portable; use platform expressions for differences.
 - `BaselineSchema` reads the checked-in baseline into Doctrine's `Schema`/`Table` objects, so PostgreSQL does not maintain an independent SQL dump. It handles 355 distinct tables, native PostgreSQL boolean flags, generated identifiers, explicit scalar defaults, prefix/full-text indexes, comments and timestamp update triggers. The legacy baseline contains two definitions of `glpi_queuednotifications`; the final definition wins, matching the original installer.
 - MySQL installation still executes the existing baseline to preserve its exact native column behavior. Both engines install the foreign-key registry after seeding. PostgreSQL installs and seeds in one transaction and then synchronizes sequences, including tables whose seeds use explicit IDs.
 - `LegacySql` is a lexical bridge for the application's pre-escaped strings and backtick identifiers. It is not an SQL dialect translator. Prefer raw bound values with DBAL in new code. PostgreSQL rejects NUL text rather than silently truncating it.
@@ -142,3 +142,19 @@ database-contract assertions, all-table ORM write checks, soft-delete/restore an
 populated financial report scope/boundary checks. The full conversion still has
 694 pending candidate references, 62 polymorphic references and one ambiguous
 authentication reference, plus legacy query paths outside the shared lifecycle.
+
+The MySQL transport migration uses DBAL's public result metadata, including empty
+results, through `LegacyResult`. This seekable compatibility result buffers rows;
+new repositories should use Doctrine results directly. `LegacyStatement` reuses
+one prepared DBAL statement and reads bound variables at execution time. Legacy
+result consumers no longer receive `mysqli_result`/`mysqli_stmt` instances.
+Existing generated DB configuration classes still work. This removes native MySQL
+calls from the adapter, but it does not convert remaining SQL query builders into
+ORM repositories, nor remove the native PostgreSQL adapter yet.
+
+DBAL 4 transport-stage validation: fresh installation passes on both databases;
+PostgreSQL passes 540 database-contract assertions and MariaDB 142. Every mapped
+table passes ORM write checks; populated reporting and search contracts pass on
+both engines. The PHP 8.3 DB, DBmysqlIterator, CommonDBTM, User and Ticket suites
+pass 135 methods and 8,942 assertions. Both engines pass HTTP report checks.
+The CI matrix now includes PHP 8.2 and 8.3; remote CI results are not yet available.

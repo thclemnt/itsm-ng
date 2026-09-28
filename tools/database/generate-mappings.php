@@ -54,9 +54,13 @@ foreach ($names as $tableName => $class) {
         }
     }
     $code .= "class $class\n{\n";
-    foreach ($table->getColumns() as $column) {
+    // Keep associations together, independently of DBAL's schema column ordering.
+    $columns = $table->getColumns();
+    $relations = \itsmng\Database\ForeignKeys::RELATIONS[$tableName] ?? [];
+    uasort($columns, static fn ($left, $right) => isset($relations[$right->getName()]) <=> isset($relations[$left->getName()]));
+    foreach ($columns as $column) {
         $name = $column->getName();
-        $type = $column->getType()->getName();
+        $type = \Doctrine\DBAL\Types\Type::lookupName($column->getType());
         $nullable = !$column->getNotnull();
         $default = $column->getDefault();
         $target = \itsmng\Database\ForeignKeys::RELATIONS[$tableName][$name] ?? null;

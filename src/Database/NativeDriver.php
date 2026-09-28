@@ -7,18 +7,16 @@ namespace itsmng\Database;
 use Doctrine\DBAL\Driver;
 use Doctrine\DBAL\Driver\Middleware\AbstractDriverMiddleware;
 
-/** Let DBAL share the legacy connection, including its session and transaction. */
+/** Transitional PostgreSQL bridge; MySQL connections are owned directly by DBAL. */
 final class NativeDriver extends AbstractDriverMiddleware
 {
-    public function __construct(private object $native, private string $provider)
+    public function __construct(private object $native)
     {
-        parent::__construct($provider === 'pgsql' ? new Driver\PgSQL\Driver() : new Driver\Mysqli\Driver());
+        parent::__construct(new Driver\PgSQL\Driver());
     }
 
     public function connect(array $params): Driver\Connection
     {
-        return $this->provider === 'pgsql'
-            ? new Driver\PgSQL\Connection($this->native)
-            : new Driver\Mysqli\Connection($this->native);
+        return new Driver\PgSQL\Connection($this->native);
     }
 }

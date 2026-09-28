@@ -24,6 +24,19 @@ class DBpgsql extends DBAdapter
         return $this->dbh;
     }
 
+    /** The same physical connection is used by DBAL and legacy queries. */
+    public function getDoctrineConnection(): \Doctrine\DBAL\Connection
+    {
+        if ($this->doctrine === null) {
+            $this->doctrine = new \Doctrine\DBAL\Connection(
+                ['dbname' => $this->dbdefault, 'serverVersion' => $this->getVersion()],
+                new \itsmng\Database\NativeDriver($this->getNativeConnection())
+            );
+            $this->doctrine->setNestTransactionsWithSavepoints(true);
+        }
+        return $this->doctrine;
+    }
+
     public function getProvider(): string
     {
         return 'pgsql';

@@ -2,8 +2,8 @@
 
 // Check PHP version not to have trouble
 // Need to be the very fist step before any include
-if (version_compare(PHP_VERSION, '8.0.0') < 0) {
-    die('PHP >= 8.0.0 required');
+if (version_compare(PHP_VERSION, '8.2.0') < 0) {
+    die('PHP >= 8.2.0 required');
 }
 //Load GLPI constants
 define('GLPI_ROOT', __DIR__);

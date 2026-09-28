@@ -1,6 +1,6 @@
 # Mapped persistence and reporting
 
-Doctrine ORM 3 is an explicit dependency alongside DBAL 3. The attributes in
+Doctrine ORM 3 is an explicit dependency alongside DBAL 4.4+ (PHP 8.2+). The attributes in
 `src/Database/Entity` now map all 3,561 columns of all 355 baseline tables,
 including the dashboard's composite primary key and explicitly assigned IDs.
 `EntityRegistry` lists each table and mapped class. These are persistence records;

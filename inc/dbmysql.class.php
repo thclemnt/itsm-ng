@@ -71,13 +71,9 @@ class DBmysql extends DBAdapter
        'glpi_transfers.id',
     ];
 
-    private $dbh;
-    private $in_transaction;
-
-    protected function getNativeConnection(): object
-    {
-        return $this->dbh;
-    }
+    private string $lastError = '';
+    private int $lastErrno = 0;
+    private int $affected = 0;
 
     public function installSchema(): bool
     {
@@ -109,74 +105,30 @@ class DBmysql extends DBAdapter
      */
     public function connect($choice = null)
     {
-        $this->doctrine = null;
-        $this->connected = false;
-        $this->dbh = @new mysqli();
-        if ($this->dbssl) {
-            mysqli_ssl_set(
-                $this->dbh,
-                $this->dbsslkey,
-                $this->dbsslcert,
-                $this->dbsslca,
-                $this->dbsslcapath,
-                $this->dbsslcacipher
-            );
-        }
-
-        if (is_array($this->dbhost)) {
-            // Round robin choice
-            $i    = (isset($choice) ? $choice : mt_rand(0, count($this->dbhost) - 1));
-            $host = $this->dbhost[$i];
-        } else {
-            $host = $this->dbhost;
-        }
-
-        $this->connectedHost = (string)$host;
-        $hostport = explode(":", (string) $host);
-        if (count($hostport) < 2) {
-            // Host
-            $this->dbh->real_connect($host, $this->dbuser, rawurldecode((string) $this->dbpassword), $this->dbdefault);
-        } elseif (intval($hostport[1]) > 0) {
-            // Host:port
-            $this->dbh->real_connect($hostport[0], $this->dbuser, rawurldecode((string) $this->dbpassword), $this->dbdefault, $hostport[1]);
-        } else {
-            // :Socket
-            $this->dbh->real_connect($hostport[0], $this->dbuser, rawurldecode((string) $this->dbpassword), $this->dbdefault, ini_get('mysqli.default_port'), $hostport[1]);
-        }
-
-        if ($this->dbh->connect_error) {
-            $this->connected = false;
-            $this->error     = 1;
-        } elseif (!defined('MYSQLI_OPT_INT_AND_FLOAT_NATIVE')) {
-            $this->connected = false;
-            $this->error     = 2;
-        } else {
-            if (isset($this->dbenc)) {
-                Toolbox::deprecated('Usage of alternative DB connection encoding (`DB::$dbenc` property) is deprecated.');
+        $this->close();
+        $this->connectedHost = (string)(is_array($this->dbhost)
+            ? $this->dbhost[$choice ?? array_rand($this->dbhost)] : $this->dbhost);
+        $this->lastError = '';
+        $this->lastErrno = 0;
+        $this->error = 0;
+        try {
+            $this->doctrine = \Doctrine\DBAL\DriverManager::getConnection($this->connectionParameters());
+            $this->doctrine->getServerVersion();
+            if (!isset($this->dbenc) || $this->dbenc === 'utf8') {
+                $this->doctrine->executeStatement("SET NAMES 'utf8' COLLATE 'utf8_unicode_ci'");
             }
-            $dbenc = isset($this->dbenc) ? $this->dbenc : "utf8";
-            $this->dbh->set_charset($dbenc);
-            if ($dbenc === "utf8") {
-                // The mysqli::set_charset function will make COLLATE to be defined to the default one for used charset.
-                //
-                // For 'utf8' charset, default one is 'utf8_general_ci',
-                // so we have to redefine it to 'utf8_unicode_ci'.
-                //
-                // If encoding used by connection is not the default one (i.e utf8), then we assume
-                // that we cannot be sure of used COLLATE and that using the default one is the best option.
-                $this->dbh->query("SET NAMES 'utf8' COLLATE 'utf8_unicode_ci';");
-            }
-
-            // force mysqlnd to return int and float types correctly (not as strings)
-            $this->dbh->options(MYSQLI_OPT_INT_AND_FLOAT_NATIVE, true);
-
             if (GLPI_FORCE_EMPTY_SQL_MODE) {
-                $this->dbh->query("SET SESSION sql_mode = ''");
+                $this->doctrine->executeStatement("SET SESSION sql_mode = ''");
             }
-
             $this->connected = true;
-
             $this->setTimezone($this->guessTimezone());
+            return true;
+        } catch (\Doctrine\DBAL\Exception $error) {
+            $this->lastError = 'Unable to connect to MySQL. Check host, database, credentials and TLS settings.';
+            $this->lastErrno = (int)$error->getCode();
+            $this->error = 1;
+            $this->close();
+            return false;
         }
     }
 
@@ -193,7 +145,7 @@ class DBmysql extends DBAdapter
      */
     public function escape($string)
     {
-        return $this->dbh->real_escape_string($string ?? '');
+        return substr($this->getDoctrineConnection()->quote((string)$string), 1, -1);
     }
 
     /**
@@ -205,98 +157,78 @@ class DBmysql extends DBAdapter
      * @var array   $DEBUG_SQL
      * @var integer $SQL_TOTAL_REQUEST
      *
-     * @return mysqli_result|boolean Query result handler
+     * @return \itsmng\Database\LegacyResult|boolean Query result handler
      *
      * @throws GlpitestSQLError
      */
     public function query($query)
     {
+        return $this->queryParams($query, []);
+    }
+
+    /** Compatibility execution boundary; application repositories bind through ORM. */
+    public function queryParams(string $query, array $values)
+    {
+        return $this->executeResult($query, fn () => $this->getDoctrineConnection()->executeQuery($query, $values));
+    }
+
+    public function executePrepared(\Doctrine\DBAL\Statement $statement, string $query)
+    {
+        return $this->executeResult($query, $statement->executeQuery(...));
+    }
+
+    private function executeResult(string $query, callable $execute)
+    {
         global $CFG_GLPI, $DEBUG_SQL, $GLPI, $SQL_TOTAL_REQUEST;
-
-        $is_debug = isset($_SESSION['glpi_use_mode']) && ($_SESSION['glpi_use_mode'] == Session::DEBUG_MODE);
-        if ($is_debug && $CFG_GLPI["debug_sql"]) {
-            $SQL_TOTAL_REQUEST++;
-            $DEBUG_SQL["queries"][$SQL_TOTAL_REQUEST] = $query;
-        }
-        if ($is_debug && $CFG_GLPI["debug_sql"] || $this->execution_time === true) {
-            $TIMER                                    = new Timer();
-            $TIMER->start();
-        }
-
+        $debug = !empty($CFG_GLPI['debug_sql']) && ($_SESSION['glpi_use_mode'] ?? null) === Session::DEBUG_MODE;
+        $start = microtime(true);
+        $this->lastError = '';
+        $this->lastErrno = 0;
         try {
-            $res = $this->dbh->query($query);
-
-            if ($is_debug && $CFG_GLPI["debug_sql"]) {
-                $TIME                                   = $TIMER->getTime();
-                $DEBUG_SQL["times"][$SQL_TOTAL_REQUEST] = $TIME;
-                $DEBUG_SQL['rows'][$SQL_TOTAL_REQUEST] = $this->affectedRows();
+            $result = $execute();
+            $this->affected = (int)$result->rowCount();
+            if ($result->columnCount() === 0) {
+                $result->free();
+                return true;
             }
+            return new \itsmng\Database\LegacyResult($result);
+        } catch (\Doctrine\DBAL\Exception $error) {
+            $this->lastError = $error->getMessage();
+            $this->lastErrno = (int)$error->getCode();
+            $this->affected = -1;
+            Toolbox::logSqlError("MySQL query error: {$this->lastError}\nSQL: $query");
+            $handler = $GLPI?->getErrorHandler();
+            if ($handler instanceof ErrorHandler) {
+                $handler->handleSqlError($this->lastErrno, $this->lastError, $query);
+            }
+            return false;
+        } finally {
+            $elapsed = microtime(true) - $start;
             if ($this->execution_time === true) {
-                $this->execution_time = $TIMER->getTime(0, true);
+                $this->execution_time = $elapsed;
             }
-            return $res;
-        } catch (\mysqli_sql_exception $e) {
-            // no translation for error logs
-            $error = "  *** MySQL query error:\n  SQL: " . $query . "\n  Error: " .
-                      $this->dbh->error . "\n";
-            $error .= Toolbox::backtrace(false, 'DBmysql->query()', ['Toolbox::backtrace()']);
-
-            Toolbox::logSqlError($error);
-
-            $error_handler = $GLPI->getErrorHandler();
-            if ($error_handler instanceof ErrorHandler) {
-                $error_handler->handleSqlError($this->dbh->errno, $this->dbh->error, $query);
-            }
-
-            if (($is_debug || isAPI()) && $CFG_GLPI["debug_sql"]) {
-                $DEBUG_SQL["errors"][$SQL_TOTAL_REQUEST] = $this->error();
+            if ($debug) {
+                $SQL_TOTAL_REQUEST++;
+                $DEBUG_SQL['queries'][$SQL_TOTAL_REQUEST] = $query;
+                $DEBUG_SQL['times'][$SQL_TOTAL_REQUEST] = $elapsed;
+                $DEBUG_SQL['rows'][$SQL_TOTAL_REQUEST] = $this->affected;
+                if ($this->lastError !== '') {
+                    $DEBUG_SQL['errors'][$SQL_TOTAL_REQUEST] = $this->lastError;
+                }
             }
         }
     }
 
-
-    /**
-     * Prepare a MySQL query
-     *
-     * @param string $query Query to prepare
-     *
-     * @return mysqli_stmt|boolean statement object or FALSE if an error occurred.
-     *
-     * @throws GlpitestSQLError
-     */
     public function prepare($query)
     {
-        global $CFG_GLPI, $DEBUG_SQL, $SQL_TOTAL_REQUEST;
-
-        $res = $this->dbh->prepare($query);
-        if (!$res) {
-            // no translation for error logs
-            $error = "  *** MySQL prepare error:\n  SQL: " . $query . "\n  Error: " .
-                      $this->dbh->error . "\n";
-            $error .= Toolbox::backtrace(false, 'DBmysql->prepare()', ['Toolbox::backtrace()']);
-
-            Toolbox::logInFile("sql-errors", $error);
-            if (class_exists('GlpitestSQLError')) { // For unit test
-                throw new GlpitestSQLError($error);
-            }
-
-            if (
-                isset($_SESSION['glpi_use_mode'])
-                && $_SESSION['glpi_use_mode'] == Session::DEBUG_MODE
-                && $CFG_GLPI["debug_sql"]
-            ) {
-                $SQL_TOTAL_REQUEST++;
-                $DEBUG_SQL["errors"][$SQL_TOTAL_REQUEST] = $this->error();
-            }
-        }
-        return $res;
+        return new \itsmng\Database\LegacyStatement($this, $query);
     }
 
 
     /**
      * Number of rows
      *
-     * @param mysqli_result $result MySQL result handler
+     * @param \itsmng\Database\LegacyResult $result MySQL result handler
      *
      * @return integer number of rows
      */
@@ -310,7 +242,7 @@ class DBmysql extends DBAdapter
      * Fetch array of the next row of a Mysql query
      * Please prefer fetchRow or fetchAssoc
      *
-     * @param mysqli_result $result MySQL result handler
+     * @param \itsmng\Database\LegacyResult $result MySQL result handler
      *
      * @return string[]|null array results
      */
@@ -323,7 +255,7 @@ class DBmysql extends DBAdapter
     /**
      * Fetch row of the next row of a Mysql query
      *
-     * @param mysqli_result $result MySQL result handler
+     * @param \itsmng\Database\LegacyResult $result MySQL result handler
      *
      * @return mixed|null result row
      */
@@ -336,7 +268,7 @@ class DBmysql extends DBAdapter
     /**
      * Fetch assoc of the next row of a Mysql query
      *
-     * @param mysqli_result $result MySQL result handler
+     * @param \itsmng\Database\LegacyResult $result MySQL result handler
      *
      * @return string[]|null result associative array
      */
@@ -349,7 +281,7 @@ class DBmysql extends DBAdapter
     /**
      * Fetch object of the next row of an SQL query
      *
-     * @param mysqli_result $result MySQL result handler
+     * @param \itsmng\Database\LegacyResult $result MySQL result handler
      *
      * @return object|null
      */
@@ -362,7 +294,7 @@ class DBmysql extends DBAdapter
     /**
      * Move current pointer of a Mysql result to the specific row
      *
-     * @param mysqli_result $result MySQL result handler
+     * @param \itsmng\Database\LegacyResult $result MySQL result handler
      * @param integer       $num    Row to move current pointer
      *
      * @return boolean
@@ -380,14 +312,21 @@ class DBmysql extends DBAdapter
      */
     public function insertId()
     {
-        return $this->dbh->insert_id;
+        try {
+            return (int)$this->getDoctrineConnection()->lastInsertId();
+        } catch (\Doctrine\DBAL\Exception\DriverException $error) {
+            if ($error->getPrevious() instanceof \Doctrine\DBAL\Driver\Exception\NoIdentityValue) {
+                return 0;
+            }
+            throw $error;
+        }
     }
 
 
     /**
      * Give number of fields of a Mysql result
      *
-     * @param mysqli_result $result MySQL result handler
+     * @param \itsmng\Database\LegacyResult $result MySQL result handler
      *
      * @return int number of fields
      */
@@ -400,7 +339,7 @@ class DBmysql extends DBAdapter
     /**
      * Give name of a field of a Mysql result
      *
-     * @param mysqli_result $result MySQL result handler
+     * @param \itsmng\Database\LegacyResult $result MySQL result handler
      * @param integer       $nb     ID of the field
      *
      * @return string name of the field
@@ -409,8 +348,7 @@ class DBmysql extends DBAdapter
      */
     public function fieldName($result, $nb)
     {
-        $finfo = $result->fetch_fields();
-        return $finfo[$nb]->name;
+        return $result->fieldName($nb);
     }
 
 
@@ -484,14 +422,14 @@ class DBmysql extends DBAdapter
      */
     public function affectedRows()
     {
-        return $this->dbh->affected_rows;
+        return $this->affected;
     }
 
 
     /**
      * Free result memory
      *
-     * @param mysqli_result $result MySQL result handler
+     * @param \itsmng\Database\LegacyResult $result MySQL result handler
      *
      * @return boolean
      */
@@ -507,7 +445,7 @@ class DBmysql extends DBAdapter
      */
     public function errno()
     {
-        return $this->dbh->errno;
+        return $this->lastErrno;
     }
 
     /**
@@ -517,7 +455,7 @@ class DBmysql extends DBAdapter
      */
     public function error()
     {
-        return $this->dbh->error;
+        return $this->lastError;
     }
 
     /**
@@ -527,12 +465,11 @@ class DBmysql extends DBAdapter
      */
     public function close()
     {
-        if ($this->connected && $this->dbh) {
-            $this->doctrine = null;
-            $this->connected = false;
-            return $this->dbh->close();
-        }
-        return false;
+        $wasConnected = $this->connected;
+        $this->doctrine?->close();
+        $this->doctrine = null;
+        $this->connected = false;
+        return $wasConnected;
     }
 
 
@@ -556,7 +493,7 @@ class DBmysql extends DBAdapter
             if ($data['vers']) {
                 $ret['Server Version'] = $data['vers'];
             } else {
-                $ret['Server Version'] = $this->dbh->server_info;
+                $ret['Server Version'] = $this->getDoctrineConnection()->getServerVersion();
             }
             if ($data['mode']) {
                 $ret['Server SQL Mode'] = $data['mode'];
@@ -564,8 +501,8 @@ class DBmysql extends DBAdapter
                 $ret['Server SQL Mode'] = '';
             }
         }
-        $ret['Parameters'] = $this->dbuser . "@" . $this->dbhost . "/" . $this->dbdefault;
-        $ret['Host info']  = $this->dbh->host_info;
+        $ret['Parameters'] = $this->dbuser . "@" . $this->connectedHost . "/" . $this->dbdefault;
+        $ret['Host info']  = $this->connectedHost;
 
         return $ret;
     }
@@ -912,15 +849,12 @@ class DBmysql extends DBAdapter
         return $list;
     }
 
-    /**
-     * MariaDB's system tables may use Aria, which cannot participate in savepoints.
-     * Keep catalog reads outside the application's transaction, without changing it.
-     */
-    private function getTimezoneNames(): array
+    private function connectionParameters(): array
     {
         $parts = explode(':', $this->connectedHost ?? (string)$this->dbhost, 2);
         $params = [
-            'driver' => 'mysqli', 'host' => $parts[0], 'dbname' => $this->dbdefault,
+            'driver' => 'mysqli', 'charset' => $this->dbenc ?? 'utf8',
+            'driverOptions' => [MYSQLI_OPT_INT_AND_FLOAT_NATIVE => true], 'host' => $parts[0], 'dbname' => $this->dbdefault,
             'user' => $this->dbuser, 'password' => rawurldecode((string)$this->dbpassword),
         ];
         if (isset($parts[1])) {
@@ -933,7 +867,16 @@ class DBmysql extends DBAdapter
                 'ssl_cipher' => $this->dbsslcacipher ?? '',
             ];
         }
-        $connection = \Doctrine\DBAL\DriverManager::getConnection($params);
+        return $params;
+    }
+
+    /**
+     * MariaDB's system tables may use Aria, which cannot participate in savepoints.
+     * Keep catalog reads outside the application's transaction, without changing it.
+     */
+    private function getTimezoneNames(): array
+    {
+        $connection = \Doctrine\DBAL\DriverManager::getConnection($this->connectionParameters());
         try {
             return $connection->fetchFirstColumn('SELECT Name FROM mysql.time_zone_name ORDER BY Name');
         } finally {

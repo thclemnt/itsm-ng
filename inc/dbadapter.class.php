@@ -161,19 +161,10 @@ abstract class DBAdapter
 
     protected ?\Doctrine\DBAL\Connection $doctrine = null;
 
-    abstract protected function getNativeConnection(): object;
-
-    /** The same physical connection is used by DBAL and legacy queries. */
+    /** Doctrine owns the connection used by repositories and transitional callers. */
     public function getDoctrineConnection(): \Doctrine\DBAL\Connection
     {
-        if ($this->doctrine === null) {
-            $this->doctrine = new \Doctrine\DBAL\Connection(
-                ['dbname' => $this->dbdefault, 'serverVersion' => $this->getVersion()],
-                new \itsmng\Database\NativeDriver($this->getNativeConnection(), $this->getProvider())
-            );
-            $this->doctrine->setNestTransactionsWithSavepoints(true);
-        }
-        return $this->doctrine;
+        return $this->doctrine ?? throw new \RuntimeException('Database connection is not open.');
     }
 
     public function expressions(): \itsmng\Database\Expressions

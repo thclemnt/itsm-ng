@@ -55,11 +55,14 @@ $table = new Table($name);
 $table->addColumn('id', 'integer', ['autoincrement' => true]);
 $table->addColumn('name', 'string', ['length' => 255]);
 $table->addColumn('flag', 'integer', ['default' => 0]);
-$table->addColumn('optional', 'string', ['notnull' => false]);
+$table->addColumn('optional', 'string', ['length' => 255, 'notnull' => false]);
 $table->setPrimaryKey(['id']);
 $connection->createSchemaManager()->createTable($table);
 $DB->clearSchemaCache();
 try {
+    if ($DB->getProvider() === 'mysql') {
+        check($DB->insertId() === 0, 'No generated identity is represented as zero.');
+    }
     $values = ["O'Reilly", "two  spaces", "C:\\new\\test", "x'); DROP TABLE glpi_users; --", 'é € 日本語', "a\nb", 'GROUP_CONCAT(`name`) ? # --'];
     foreach ($values as $value) {
         check((bool)$DB->insert($name, ['name' => $DB->escape($value)]), 'Legacy insert.');
@@ -69,6 +72,17 @@ try {
         check($row['name'] === $value, 'Escaped values must round-trip byte-for-byte.');
         check($row['optional'] === null, 'NULL round-trip.');
     }
+    $result = $DB->query('SELECT 1 AS first_column, 2 AS second_column WHERE 1 = 0');
+    check($DB->numrows($result) === 0 && $DB->numFields($result) === 2, 'Empty result retains column count.');
+    check($DB->fieldName($result, 0) === 'first_column' && $DB->fieldName($result, 1) === 'second_column', 'Empty result retains column names.');
+    check($DB->fetchRow($result) === null, 'Empty result returns null.');
+    $DB->freeResult($result);
+    $result = $DB->query('SELECT 1 AS duplicate, 2 AS duplicate UNION ALL SELECT 3, 4');
+    check($DB->fetchRow($result) === [1, 2], 'Numeric fetch preserves duplicate columns.');
+    check($DB->fetchAssoc($result) === ['duplicate' => 4], 'Associative fetch preserves final duplicate column.');
+    check($DB->dataSeek($result, 0), 'Seeking rewinds a result.');
+    check($DB->fetchArray($result) === [0 => 1, 1 => 2, 'duplicate' => 2], 'Combined fetch preserves numeric and named columns.');
+    $DB->freeResult($result);
     $statement = $DB->prepare($DB->buildInsert($name, ['name' => new QueryParam(), 'flag' => new QueryParam()]));
     $value = "prepared ' ? \\ literal";
     $flag = 3;

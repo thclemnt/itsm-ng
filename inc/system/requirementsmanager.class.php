@@ -67,7 +67,7 @@ class RequirementsManager
     {
         $requirements = [];
 
-        $requirements[] = new PhpVersion(ITSM_VERSION);
+        $requirements[] = new PhpVersion(ITSM_MIN_PHP);
 
         $requirements[] = new SessionsConfiguration();
 

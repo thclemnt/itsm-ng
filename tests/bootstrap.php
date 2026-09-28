@@ -49,7 +49,6 @@ define(
 
 define('TU_USER', '_test_user');
 define('TU_PASS', 'PhpUnit_4');
-define('ITSM_MIN_PHP', '8.1');
 
 global $CFG_GLPI, $GLPI_CACHE;
 

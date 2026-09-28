@@ -79,7 +79,7 @@ final class ForeignKeys
         foreach (self::RELATIONS as $table => $relations) {
             foreach ($relations as $column => $parent) {
                 $child = $schema->getTable($table);
-                $child->addForeignKeyConstraint($schema->getTable($parent), [$column], ['id'], ['onDelete' => 'RESTRICT', 'onUpdate' => 'RESTRICT'], self::name($table, $column));
+                $child->addForeignKeyConstraint($parent, [$column], ['id'], ['onDelete' => 'RESTRICT', 'onUpdate' => 'RESTRICT'], self::name($table, $column));
             }
         }
     }
