@@ -11,16 +11,18 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\UniqueConstraint(name: 'networkports_vlans_unicity', columns: ['networkports_id', 'vlans_id'])]
 class NetworkPortVlan
 {
+    #[ORM\ManyToOne(targetEntity: NetworkPort::class)]
+    #[ORM\JoinColumn(name: 'networkports_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?NetworkPort $networkports = null;
+
+    #[ORM\ManyToOne(targetEntity: Vlan::class)]
+    #[ORM\JoinColumn(name: 'vlans_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?Vlan $vlans = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
-
-    #[ORM\Column(name: '`networkports_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $networkports_id = 0;
-
-    #[ORM\Column(name: '`vlans_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $vlans_id = 0;
 
     #[ORM\Column(name: '`tagged`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $tagged = false;

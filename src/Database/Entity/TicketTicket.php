@@ -11,16 +11,18 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\UniqueConstraint(name: 'tickets_tickets_unicity', columns: ['tickets_id_1', 'tickets_id_2'])]
 class TicketTicket
 {
+    #[ORM\ManyToOne(targetEntity: Ticket::class)]
+    #[ORM\JoinColumn(name: 'tickets_id_1', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?Ticket $tickets_id_1 = null;
+
+    #[ORM\ManyToOne(targetEntity: Ticket::class)]
+    #[ORM\JoinColumn(name: 'tickets_id_2', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?Ticket $tickets_id_2 = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
-
-    #[ORM\Column(name: '`tickets_id_1`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $tickets_id_1 = 0;
-
-    #[ORM\Column(name: '`tickets_id_2`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $tickets_id_2 = 0;
 
     #[ORM\Column(name: '`link`', type: 'integer', nullable: false, options: ['default' => '1'])]
     public int $link = 1;

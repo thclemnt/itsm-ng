@@ -17,10 +17,12 @@ removal. Optional legacy references using zero and polymorphic item references
 remain scalar columns. Booleans, dates, decimals and JSON have explicit Doctrine
 types; decimals remain strings to avoid rounding through floating point.
 
-`MappedStorage` handles insert/update/delete for GroupMembership, UserEmail,
-ProfileRight, ContractCost, ContractItem, ContractSupplier, ContactSupplier, Reservation, Calendar, CalendarSegment, CalendarHoliday, Holiday, Rule,
-RuleAction, RuleCriteria and NetworkPortNetworkPort (16 tables). `CommonDBTM` calls it below lifecycle processing. Bulk legacy SQL
-can still write these tables and the same foreign keys remain authoritative.
+`MappedStorage` now handles insert/update/delete, soft deletion and restoration
+for all 355 registered core tables through `RecordWriter`. `CommonDBTM` calls it
+below lifecycle processing; direct bulk SQL elsewhere is still pending migration.
+The writer supports assigned IDs, generated IDs, the dashboard's alternate key,
+JSON, native booleans, UUID values and clock boundaries. Bulk legacy SQL can still
+write these tables and the same foreign keys remain authoritative.
 Calling `EntityManager::flush()` directly is not an alternative application API:
 it would bypass those lifecycle services.
 
@@ -29,7 +31,9 @@ DBAL connection. It shares the legacy transaction and uses nested savepoints.
 It never retains managed objects across legacy writes. Pre-escaped legacy values
 are decoded once by `MappedStorage` and then bound with Doctrine types; new
 repositories accept raw values. SQL expressions are not accepted as mapped values.
-Explicit IDs remain supported for imports.
+Explicit IDs remain supported for imports. MariaDB timezone catalog reads use a
+separate, short-lived DBAL connection: its system tables can use Aria, whose reads
+inside the application transaction prevent subsequent savepoints.
 
 `AssetRepository` counts the eight mapped asset types with DQL, and
 `ReservationRepository` reads reservations through their mapped item association.
@@ -60,6 +64,9 @@ migrations, including handling of optional zero references.
   startup date to fall inside the entire requested interval. Consumable entity
   restrictions use the parent item table.
 - Reservation reports use typed DQL and entity scope for both past and future rows.
+- Both financial reports use `FinancialRepository` for core types. DQL joins mapped
+  assets and entities, applies typed inclusive date bounds, and scopes consumables
+  and cartridges through their parent. Plugin types retain the iterator path.
 - Calendar segment queries now use `CalendarRepository` and DQL. Interval
   calculations operate on clock boundaries in PHP, avoiding MySQL `TIMEDIFF`.
   The `itsm_clock_time` Doctrine type preserves `24:00:00` instead of normalizing
@@ -86,7 +93,7 @@ relationship candidates, polymorphic references and legacy SQL/driver call sites
 This is an intentionally incomplete static inventory: it cannot prove discovery of
 serialized references, dynamic SQL or alternate connection variables. Each
 candidate needs semantic review before installing its FK. The current inventory
-contains 825 candidate reference columns: 52 enforced, 710 pending, 62 polymorphic
+contains 825 candidate reference columns: 68 enforced, 694 pending, 62 polymorphic
 and one ambiguous (`users.auths_id`, whose target depends on authentication type).
 
 `tools/database/generate-mappings.php` is a development scaffold for explicit
@@ -104,3 +111,16 @@ NetworkPort pass 2,520 assertions (83 executed methods and one pre-existing void
 method). Both database providers pass the new FK, mapped lifecycle, end-of-day
 boundary, record parity, application and reporting contracts. This does not prove
 compatibility of every legacy dataset or every remaining SQL call site.
+
+The expanded write stage adds `orm-writes.php` to the provider CI matrix. It
+inserts and reads every mapped table, updates a scalar field on the 344 tables
+that have one, deletes records in dependency order, and rolls back the fixtures.
+This is persistence coverage, not a substitute for application lifecycle tests.
+The 16 additional constraints cover network/VLAN/IP associations, cartridge
+compatibility and stock, consumable stock, task/ticket links, linked tickets,
+notification targets and template translations. Their parent purge hooks are
+exercised on both databases with the actual constraints enabled.
+
+With all 68 constraints enabled, the PHP 8.3 CommonDBTM, User, Ticket, Calendar,
+Contract and Profile suites pass 103 methods and 5,206 assertions. Both database
+providers pass explicit-ID/import sequencing and raw-value preservation checks.

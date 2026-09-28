@@ -11,14 +11,16 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\UniqueConstraint(name: 'cartridgeitems_printermodels_unicity', columns: ['printermodels_id', 'cartridgeitems_id'])]
 class CartridgeItemPrinterModel
 {
+    #[ORM\ManyToOne(targetEntity: CartridgeItem::class)]
+    #[ORM\JoinColumn(name: 'cartridgeitems_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?CartridgeItem $cartridgeitems = null;
+
+    #[ORM\ManyToOne(targetEntity: PrinterModel::class)]
+    #[ORM\JoinColumn(name: 'printermodels_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?PrinterModel $printermodels = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
-
-    #[ORM\Column(name: '`cartridgeitems_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $cartridgeitems_id = 0;
-
-    #[ORM\Column(name: '`printermodels_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $printermodels_id = 0;
 }

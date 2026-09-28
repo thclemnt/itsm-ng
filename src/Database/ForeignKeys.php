@@ -57,6 +57,16 @@ final class ForeignKeys
         'glpi_ruleactions' => ['rules_id' => 'glpi_rules'],
         'glpi_rulecriterias' => ['rules_id' => 'glpi_rules'],
         'glpi_networkports_networkports' => ['networkports_id_1' => 'glpi_networkports', 'networkports_id_2' => 'glpi_networkports'],
+        'glpi_networkports_vlans' => ['networkports_id' => 'glpi_networkports', 'vlans_id' => 'glpi_vlans'],
+        'glpi_ipnetworks_vlans' => ['ipnetworks_id' => 'glpi_ipnetworks', 'vlans_id' => 'glpi_vlans'],
+        'glpi_ipaddresses_ipnetworks' => ['ipaddresses_id' => 'glpi_ipaddresses', 'ipnetworks_id' => 'glpi_ipnetworks'],
+        'glpi_cartridgeitems_printermodels' => ['cartridgeitems_id' => 'glpi_cartridgeitems', 'printermodels_id' => 'glpi_printermodels'],
+        'glpi_cartridges' => ['cartridgeitems_id' => 'glpi_cartridgeitems'],
+        'glpi_consumables' => ['consumableitems_id' => 'glpi_consumableitems'],
+        'glpi_projecttasks_tickets' => ['projecttasks_id' => 'glpi_projecttasks', 'tickets_id' => 'glpi_tickets'],
+        'glpi_tickets_tickets' => ['tickets_id_1' => 'glpi_tickets', 'tickets_id_2' => 'glpi_tickets'],
+        'glpi_notificationtargets' => ['notifications_id' => 'glpi_notifications'],
+        'glpi_notificationtemplatetranslations' => ['notificationtemplates_id' => 'glpi_notificationtemplates'],
     ];
 
     public static function name(string $table, string $column): string

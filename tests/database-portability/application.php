@@ -37,9 +37,18 @@ try {
     verify($computer->update(['id' => $computerId, 'comment' => "Apostrophe: l\'ordinateur"]), 'Asset update.');
     verify($computer->getFromDB($computerId) && $computer->fields['comment'] === "Apostrophe: l'ordinateur", 'Asset reload.');
 
+    verify($computer->delete(['id' => $computerId]), 'Asset soft delete through ORM.');
+    verify($computer->getFromDB($computerId) && $computer->fields['is_deleted'] === 1, 'Soft-delete flag round-trip.');
+    verify($computer->restore(['id' => $computerId]), 'Asset restore through ORM.');
+    verify($computer->getFromDB($computerId) && $computer->fields['is_deleted'] === 0, 'Restore flag round-trip.');
+
     $ticket = new Ticket();
     $ticketId = $ticket->add(['name' => $name, 'content' => 'Body', 'entities_id' => 0]);
     verify(is_int($ticketId) && $ticketId > 0, 'Ticket creation through rules and calendars.');
+    $task = new TicketTask();
+    $taskId = $task->add(['tickets_id' => $ticketId, 'content' => 'ORM task UUID']);
+    verify(is_int($taskId) && $taskId > 0, 'Task creation accepts a typed UUID value.');
+    verify($task->getFromDB($taskId) && \Ramsey\Uuid\Uuid::isValid($task->fields['uuid']), 'Task UUID string round-trip.');
     foreach ([Ticket_User::class => 'users_id', Supplier_Ticket::class => 'suppliers_id'] as $actorClass => $actorField) {
         $actor = new $actorClass();
         verify((bool)$actor->add([

@@ -42,6 +42,9 @@ use Glpi\Application\ErrorHandler;
 **/
 class DBmysql extends DBAdapter
 {
+    /** Selected endpoint, also used for independent system-catalog reads. */
+    private ?string $connectedHost = null;
+
     /**
      * List of keys that are allowed to use signed integers.
      *
@@ -128,6 +131,7 @@ class DBmysql extends DBAdapter
             $host = $this->dbhost;
         }
 
+        $this->connectedHost = (string)$host;
         $hostport = explode(":", (string) $host);
         if (count($hostport) < 2) {
             // Host
@@ -848,30 +852,13 @@ class DBmysql extends DBAdapter
         }
         $cache->set('are_timezones_available', false, DAY_TIMESTAMP);
 
-        $mysql_db_res = $this->request('SHOW DATABASES LIKE ' . $this->quoteValue('mysql'));
-        if ($mysql_db_res->count() === 0) {
-            $msg = __('Access to timezone database (mysql) is not allowed.');
-            return false;
-        }
-
-        $tz_table_res = $this->request(
-            'SHOW TABLES FROM '
-            . $this->quoteName('mysql')
-            . ' LIKE '
-            . $this->quoteValue('time_zone_name')
-        );
-        if ($tz_table_res->count() === 0) {
+        try {
+            $names = $this->getTimezoneNames();
+        } catch (\Doctrine\DBAL\Exception $error) {
             $msg = __('Access to timezone table (mysql.time_zone_name) is not allowed.');
             return false;
         }
-
-        $criteria = [
-           'COUNT'  => 'cpt',
-           'FROM'   => 'mysql.time_zone_name',
-        ];
-        $iterator = $this->request($criteria);
-        $result = $iterator->next();
-        if ($result['cpt'] == 0) {
+        if (!$names) {
             $msg = __('Timezones seems not loaded, see https://glpi-install.readthedocs.io/en/latest/timezones.html.');
             return false;
         }
@@ -892,7 +879,7 @@ class DBmysql extends DBAdapter
         //setup timezone
         if ($this->areTimezonesAvailable()) {
             date_default_timezone_set($timezone);
-            $this->dbh->query("SET SESSION time_zone = '$timezone'");
+            $this->getDoctrineConnection()->executeStatement("SET SESSION time_zone = ?", [$timezone]);
             $_SESSION['glpi_currenttime'] = date("Y-m-d H:i:s");
         }
         return $this;
@@ -913,14 +900,9 @@ class DBmysql extends DBAdapter
         $now = new \DateTime();
 
         try {
-            $iterator = $this->request([
-               'SELECT' => 'Name',
-               'FROM'   => 'mysql.time_zone_name',
-               'WHERE'  => ['Name' => $from_php]
-            ]);
-            while ($from_mysql = $iterator->next()) {
-                $now->setTimezone(new \DateTimeZone($from_mysql['Name']));
-                $list[$from_mysql['Name']] = $from_mysql['Name'] . $now->format(" (T P)");
+            foreach (array_intersect($this->getTimezoneNames(), $from_php) as $name) {
+                $now->setTimezone(new \DateTimeZone($name));
+                $list[$name] = $name . $now->format(" (T P)");
             }
         } catch (\Exception $e) {
             //do nothing
@@ -928,6 +910,35 @@ class DBmysql extends DBAdapter
 
 
         return $list;
+    }
+
+    /**
+     * MariaDB's system tables may use Aria, which cannot participate in savepoints.
+     * Keep catalog reads outside the application's transaction, without changing it.
+     */
+    private function getTimezoneNames(): array
+    {
+        $parts = explode(':', $this->connectedHost ?? (string)$this->dbhost, 2);
+        $params = [
+            'driver' => 'mysqli', 'host' => $parts[0], 'dbname' => $this->dbdefault,
+            'user' => $this->dbuser, 'password' => rawurldecode((string)$this->dbpassword),
+        ];
+        if (isset($parts[1])) {
+            $params[(int)$parts[1] > 0 ? 'port' : 'unix_socket'] = (int)$parts[1] > 0 ? (int)$parts[1] : $parts[1];
+        }
+        if ($this->dbssl) {
+            $params += [
+                'ssl_key' => $this->dbsslkey ?? '', 'ssl_cert' => $this->dbsslcert ?? '',
+                'ssl_ca' => $this->dbsslca ?? '', 'ssl_capath' => $this->dbsslcapath ?? '',
+                'ssl_cipher' => $this->dbsslcacipher ?? '',
+            ];
+        }
+        $connection = \Doctrine\DBAL\DriverManager::getConnection($params);
+        try {
+            return $connection->fetchFirstColumn('SELECT Name FROM mysql.time_zone_name ORDER BY Name');
+        } finally {
+            $connection->close();
+        }
     }
 
     /**

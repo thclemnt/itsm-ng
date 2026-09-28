@@ -114,45 +114,60 @@ function display_infocoms_report($itemtype, $begin, $end)
     if (!$DB->fieldExists($itemtable, "ticket_tco", false)) {
         return false;
     }
-    $criteria = [
-       'SELECT'       => [
-          'glpi_infocoms.*',
-          "$itemtable.name AS name",
-          "$itemtable.ticket_tco",
-          'glpi_entities.completename AS entname',
-          'glpi_entities.id AS entID'
+    if (\itsmng\Database\Repository\FinancialRepository::supports($itemtype)) {
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            $iterator = (new \itsmng\Database\Repository\FinancialRepository($em))->rows(
+                $itemtype,
+                (string)$begin,
+                (string)$end,
+                \itsmng\Reporting\Criteria::entities(),
+                true
+            );
+        } finally {
+            $em->clear();
+        }
+    } else {
+        $criteria = [
+           'SELECT'       => [
+              'glpi_infocoms.*',
+              "$itemtable.name AS name",
+              "$itemtable.ticket_tco",
+              'glpi_entities.completename AS entname',
+              'glpi_entities.id AS entID'
 
-       ],
-       'FROM'         => 'glpi_infocoms',
-       'INNER JOIN'   => [
-          $itemtable  => [
-             'ON'  => [
-                'glpi_infocoms'   => 'items_id',
-                $itemtable        => 'id', [
-                   'AND' => [
-                      'glpi_infocoms.itemtype'   => $itemtype
-                   ]
-                ]
-             ]
-          ]
-       ],
-       'LEFT JOIN'    => [
-          'glpi_entities'   => [
-             'ON'  => [
-                'glpi_entities'   => 'id',
-                $itemtable        => 'entities_id'
-             ]
-          ]
-       ],
-       'WHERE'        => ["$itemtable.is_template" => 0] + getEntitiesRestrictCriteria($itemtable),
-       'ORDERBY'      => ['entname ASC', 'buy_date', 'use_date']
-    ];
+           ],
+           'FROM'         => 'glpi_infocoms',
+           'INNER JOIN'   => [
+              $itemtable  => [
+                 'ON'  => [
+                    'glpi_infocoms'   => 'items_id',
+                    $itemtable        => 'id', [
+                       'AND' => [
+                          'glpi_infocoms.itemtype'   => $itemtype
+                       ]
+                    ]
+                 ]
+              ]
+           ],
+           'LEFT JOIN'    => [
+              'glpi_entities'   => [
+                 'ON'  => [
+                    'glpi_entities'   => 'id',
+                    $itemtable        => 'entities_id'
+                 ]
+              ]
+           ],
+           'WHERE'        => ["$itemtable.is_template" => 0] + getEntitiesRestrictCriteria($itemtable),
+           'ORDERBY'      => ['entname ASC', 'buy_date', 'use_date']
+        ];
 
-    $dates = \itsmng\Reporting\Criteria::financialDates((string)$begin, (string)$end);
-    if ($dates) {
-        $criteria['WHERE'][] = $dates;
+        $dates = \itsmng\Reporting\Criteria::financialDates((string)$begin, (string)$end);
+        if ($dates) {
+            $criteria['WHERE'][] = $dates;
+        }
+        $iterator = iterator_to_array($DB->request($criteria));
     }
-    $iterator = $DB->request($criteria);
 
     if (
         count($iterator)
@@ -174,7 +189,7 @@ function display_infocoms_report($itemtype, $begin, $end)
         $valeurnettegraph   = [];
         $valeurgraph        = [];
 
-        while ($line = $iterator->next()) {
+        foreach ($iterator as $line) {
             if (
                 isset($line["is_global"]) && $line["is_global"]
                 && $item->getFromDB($line["items_id"])

@@ -109,6 +109,29 @@ try {
     verify($DB->request(['FROM' => 'glpi_infocoms', 'WHERE' => ['id' => $infocom, $criteria]])->count() === 1, 'Either complete date interval includes its boundary');
     verify($DB->request(['FROM' => 'glpi_infocoms', 'WHERE' => ['id' => $infocom, \itsmng\Reporting\Criteria::year('glpi_infocoms.use_date', '2025')]])->count() === 1, 'Portable year range');
 
+    $financial = static fn () => new \itsmng\Database\Repository\FinancialRepository(\itsmng\Database\Orm::create($DB));
+    $rows = $financial()->rows('Computer', '2025-01-01', '2025-01-31', [$entity], true);
+    verify(count($rows) === 1 && $rows[0]['id'] === $infocom && $rows[0]['use_date'] === '2025-01-31', 'Financial ORM dates and inclusive boundary');
+    verify($rows[0]['name'] === 'Visible report computer' && (int)$rows[0]['entID'] === $entity, 'Financial asset and entity projection');
+    verify($financial()->rows('Computer', '', '', [], true) === [], 'Financial empty scope matches nothing');
+    verify($financial()->rows('Computer', '', '', [0], true) === [], 'Financial report hides other entities');
+    verify($financial()->rows('Computer', '2025-01-01', '2025-01-30', [$entity], true) === [], 'Financial dates cannot straddle the range');
+    verify(count($financial()->rows('Computer', '', '2024-12-01', [$entity], true)) === 1, 'Open lower financial bound');
+    verify(count($financial()->rows('Computer', '2025-01-31', '', [$entity], true)) === 1, 'Open upper financial bound');
+    foreach (['Consumable' => 'ConsumableItem', 'Cartridge' => 'CartridgeItem'] as $child => $parentType) {
+        foreach ([$entity, 0] as $scope) {
+            $parentId = fixture($parentType::getTable(), ['name' => 'Financial parent', 'entities_id' => $scope]);
+            $childId = fixture($child::getTable(), [$child::$items_id => $parentId]);
+            fixture('glpi_infocoms', ['itemtype' => $child, 'items_id' => $childId, 'buy_date' => '2025-01-15']);
+        }
+        verify(count($financial()->rows($child, '2025-01-01', '2025-01-31', [$entity], false)) === 1, 'Financial parent entity scope: ' . $child);
+        verify(count($financial()->rows($child, '', '', null, false)) === 2, 'Explicit unrestricted financial scope: ' . $child);
+    }
+    $software = fixture('glpi_softwares', ['name' => 'Financial software', 'entities_id' => $entity]);
+    $license = fixture('glpi_softwarelicenses', ['softwares_id' => $software, 'entities_id' => $entity]);
+    fixture('glpi_infocoms', ['itemtype' => 'SoftwareLicense', 'items_id' => $license]);
+    verify(count($financial()->rows('SoftwareLicense', '', '', [$entity], false)) === 1, 'Financial license projection');
+
     $ticket = fixture('glpi_tickets', ['name' => 'Report ticket', 'entities_id' => $entity, 'date' => '2025-01-04 12:00:00', 'solvedate' => '2025-01-07 12:00:00', 'closedate' => '2025-01-08 12:00:00', 'status' => Ticket::CLOSED]);
     $types = ['inter_total', 'inter_solved', 'inter_solved_late', 'inter_closed', 'inter_solved_with_actiontime', 'inter_avgsolvedtime', 'inter_avgclosedtime', 'inter_avgactiontime', 'inter_avgtakeaccount', 'inter_opensatisfaction', 'inter_answersatisfaction', 'inter_avgsatisfaction'];
     foreach ($types as $type) {

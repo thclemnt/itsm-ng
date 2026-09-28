@@ -718,6 +718,10 @@ class CommonDBTM extends CommonGLPI
                 $params['date_mod'] = $_SESSION["glpi_currenttime"];
             }
 
+            if (\itsmng\Database\MappedStorage::supports($this->getTable())) {
+                (new \itsmng\Database\MappedStorage($DB))->update($this->getTable(), (int)$this->fields['id'], $params);
+                return true;
+            }
             if ($DB->update($this->getTable(), $params, ['id' => $this->fields['id']])) {
                 return true;
             }
@@ -766,15 +770,13 @@ class CommonDBTM extends CommonGLPI
                 $toadd['date_mod'] = $_SESSION["glpi_currenttime"];
             }
 
-            $result = $DB->update(
-                $this->getTable(),
-                [
-                  'is_deleted' => 1
-                ] + $toadd,
-                [
-                  'id' => $this->fields['id']
-                ]
-            );
+            $params = ['is_deleted' => 1] + $toadd;
+            if (\itsmng\Database\MappedStorage::supports($this->getTable())) {
+                (new \itsmng\Database\MappedStorage($DB))->update($this->getTable(), (int)$this->fields['id'], $params);
+                $result = true;
+            } else {
+                $result = $DB->update($this->getTable(), $params, ['id' => $this->fields['id']]);
+            }
             $this->cleanDBonMarkDeleted();
 
             if ($result) {

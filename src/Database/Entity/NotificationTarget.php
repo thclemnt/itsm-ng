@@ -10,6 +10,10 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'glpi_notificationtargets')]
 class NotificationTarget
 {
+    #[ORM\ManyToOne(targetEntity: Notification::class)]
+    #[ORM\JoinColumn(name: 'notifications_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?Notification $notifications = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
@@ -20,7 +24,4 @@ class NotificationTarget
 
     #[ORM\Column(name: '`type`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $type = 0;
-
-    #[ORM\Column(name: '`notifications_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $notifications_id = 0;
 }

@@ -10,13 +10,14 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'glpi_notificationtemplatetranslations')]
 class NotificationTemplateTranslation
 {
+    #[ORM\ManyToOne(targetEntity: NotificationTemplate::class)]
+    #[ORM\JoinColumn(name: 'notificationtemplates_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?NotificationTemplate $notificationtemplates = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
-
-    #[ORM\Column(name: '`notificationtemplates_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $notificationtemplates_id = 0;
 
     #[ORM\Column(name: '`language`', type: 'string', length: 10, nullable: false, options: ['default' => ''])]
     public string $language = '';

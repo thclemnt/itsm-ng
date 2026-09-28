@@ -11,7 +11,7 @@ This branch is a development port, **not a complete or production-ready PostgreS
 - `LegacySql` is a lexical bridge for the application's pre-escaped strings and backtick identifiers. It is not an SQL dialect translator. Prefer raw bound values with DBAL in new code. PostgreSQL rejects NUL text rather than silently truncating it.
 - `Expressions` delegates date arithmetic to Doctrine platforms. Search has separate input, options, provider, projection, criteria, joins, sorting and output classes behind the existing `Search` facade. The SQL-rewriting `SearchProjection` bridge is removed. See [search architecture](search.md) for the two-phase planner and its compatibility boundaries.
 
-Doctrine ORM now maps all columns of all 355 core tables. Core record-by-ID reads use ORM, and sixteen tables use ORM persistence below the existing `CommonDBTM` lifecycle; asset counts and reservation reports use DQL repositories. Entity managers are scoped to one operation and share the adapter connection and transaction. See [mapped persistence and reporting](orm.md) for the ownership boundaries. The legacy baseline still owns installation and indexes; do not run ORM schema synchronization against an installation.
+Doctrine ORM now maps all columns of all 355 core tables. Core record-by-ID reads use ORM, and all 355 tables use ORM persistence below the existing `CommonDBTM` lifecycle; asset counts, reservations, calendars and financial reports use DQL repositories. Entity managers are scoped to one operation and share the adapter connection and transaction. See [mapped persistence and reporting](orm.md) for the ownership boundaries. The legacy baseline still owns installation and indexes; do not run ORM schema synchronization against an installation.
 
 ## Fresh PostgreSQL installation
 
@@ -41,7 +41,7 @@ This schema change applies to **fresh PostgreSQL installations**. Earlier experi
 
 ## Foreign keys
 
-Fifty-two declared relationships are enforced on both providers:
+Sixty-eight declared relationships are enforced on both providers:
 
 | Child | Referenced columns |
 | --- | --- |
@@ -71,6 +71,16 @@ Fifty-two declared relationships are enforced on both providers:
 | `glpi_calendarsegments` | `calendars_id` |
 | `glpi_ruleactions`, `glpi_rulecriterias` | `rules_id` |
 | `glpi_networkports_networkports` | `networkports_id_1`, `networkports_id_2` |
+| `glpi_networkports_vlans` | `networkports_id`, `vlans_id` |
+| `glpi_ipnetworks_vlans` | `ipnetworks_id`, `vlans_id` |
+| `glpi_ipaddresses_ipnetworks` | `ipaddresses_id`, `ipnetworks_id` |
+| `glpi_cartridgeitems_printermodels` | `cartridgeitems_id`, `printermodels_id` |
+| `glpi_cartridges` | `cartridgeitems_id` |
+| `glpi_consumables` | `consumableitems_id` |
+| `glpi_projecttasks_tickets` | `projecttasks_id`, `tickets_id` |
+| `glpi_tickets_tickets` | `tickets_id_1`, `tickets_id_2` |
+| `glpi_notificationtargets` | `notifications_id` |
+| `glpi_notificationtemplatetranslations` | `notificationtemplates_id` |
 
 These are mandatory, non-polymorphic associations. Update/delete actions are `RESTRICT`: the application must run its cleanup/history hooks before deleting the parent. Direct SQL that would orphan children fails. Root entity `0` remains a real row. Anonymous ticket actors can still use `users_id=0` or `suppliers_id=0` with an alternative email address, so those columns deliberately have no FK.
 
@@ -93,6 +103,7 @@ Use fresh, disposable databases named `itsm_port_*` and separate configuration d
 php tests/database-portability/run.php /path/to/test-config
 php tests/database-portability/application.php /path/to/test-config
 php tests/database-portability/orm.php /path/to/test-config
+php tests/database-portability/orm-writes.php /path/to/test-config
 php tests/database-portability/orm-records.php /path/to/test-config
 php tests/database-portability/reporting.php /path/to/test-config
 php tests/database-portability/search.php /path/to/test-config
@@ -125,3 +136,9 @@ The PHP 8.3 legacy query suites passed on the search revision (46 methods, 4,057
 - Audit plugins and extensions that use raw mysqli results, MySQL DDL, SQL functions or vendor-specific migrations. No blanket plugin compatibility is claimed.
 
 The subsequent full-mapping revision passes 517 PostgreSQL and 118 MariaDB database-contract assertions. ORM/native row parity is checked independently from metadata completeness. The full ORM/FK conversion remains active; see the coverage inventory and [ORM migration notes](orm.md).
+
+The expanded ORM lifecycle and 68-FK stage passes 533 PostgreSQL and 134 MariaDB
+database-contract assertions, all-table ORM write checks, soft-delete/restore and
+populated financial report scope/boundary checks. The full conversion still has
+694 pending candidate references, 62 polymorphic references and one ambiguous
+authentication reference, plus legacy query paths outside the shared lifecycle.

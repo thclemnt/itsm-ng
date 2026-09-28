@@ -75,6 +75,8 @@ jobs:
         run: php tests/database-portability/application.php tests/config
       - name: Test ORM mappings, persistence and FK purge lifecycles
         run: php tests/database-portability/orm.php tests/config
+      - name: Test ORM writes on every core table
+        run: php tests/database-portability/orm-writes.php tests/config
       - name: Compare ORM and adapter record contracts
         run: php tests/database-portability/orm-records.php tests/config
       - name: Test scoped reporting and monthly statistics
@@ -114,3 +116,5 @@ jobs:
           --no-code-coverage --max-children-number 1 --use-dot-report
           -f tests/functional/CommonDBTM.php -f tests/functional/Group_User.php
           -f tests/functional/User.php -f tests/functional/Ticket.php
+          -f tests/functional/Calendar.php -f tests/functional/Contract.php
+          -f tests/functional/Profile.php

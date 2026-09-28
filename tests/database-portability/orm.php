@@ -62,7 +62,11 @@ try {
         }
         return $parents[$table];
     };
-    foreach (\itsmng\Database\MappedStorage::TABLES as $table => $class) {
+    // Curated application-boundary cases; orm-writes.php covers every table.
+    foreach (['glpi_groups_users', 'glpi_useremails', 'glpi_profilerights', 'glpi_contractcosts',
+        'glpi_contracts_items', 'glpi_contracts_suppliers', 'glpi_contacts_suppliers', 'glpi_reservations',
+        'glpi_calendars', 'glpi_calendarsegments', 'glpi_calendars_holidays', 'glpi_holidays',
+        'glpi_rules', 'glpi_ruleactions', 'glpi_rulecriterias', 'glpi_networkports_networkports'] as $table) {
         $values = [];
         foreach ((\itsmng\Database\ForeignKeys::RELATIONS[$table] ?? []) as $column => $target) {
             $values[$column] = $parent($target);
@@ -112,7 +116,7 @@ try {
     verify($email->delete(['id' => $id], true), 'CommonDBTM purge');
 
     // Every parent purge must clean every new required association, with real FKs enabled.
-    foreach (['glpi_contracts', 'glpi_suppliers', 'glpi_contacts', 'glpi_reservationitems', 'glpi_changes', 'glpi_problems', 'glpi_tickets', 'glpi_groups', 'glpi_calendars', 'glpi_holidays', 'glpi_rules', 'glpi_networkports'] as $target) {
+    foreach (['glpi_contracts', 'glpi_suppliers', 'glpi_contacts', 'glpi_reservationitems', 'glpi_changes', 'glpi_problems', 'glpi_tickets', 'glpi_groups', 'glpi_calendars', 'glpi_holidays', 'glpi_rules', 'glpi_networkports', 'glpi_vlans', 'glpi_ipnetworks', 'glpi_ipaddresses', 'glpi_cartridgeitems', 'glpi_printermodels', 'glpi_consumableitems', 'glpi_projecttasks', 'glpi_notifications', 'glpi_notificationtemplates'] as $target) {
         $parentId = $parent($target);
         foreach (\itsmng\Database\ForeignKeys::RELATIONS as $table => $relations) {
             if (!in_array($target, $relations, true)) {

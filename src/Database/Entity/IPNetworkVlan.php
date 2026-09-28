@@ -11,14 +11,16 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\UniqueConstraint(name: 'ipnetworks_vlans_link', columns: ['ipnetworks_id', 'vlans_id'])]
 class IPNetworkVlan
 {
+    #[ORM\ManyToOne(targetEntity: IPNetwork::class)]
+    #[ORM\JoinColumn(name: 'ipnetworks_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?IPNetwork $ipnetworks = null;
+
+    #[ORM\ManyToOne(targetEntity: Vlan::class)]
+    #[ORM\JoinColumn(name: 'vlans_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?Vlan $vlans = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
-
-    #[ORM\Column(name: '`ipnetworks_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $ipnetworks_id = 0;
-
-    #[ORM\Column(name: '`vlans_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $vlans_id = 0;
 }

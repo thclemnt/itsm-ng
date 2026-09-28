@@ -113,53 +113,68 @@ function display_infocoms_report($itemtype, $begin, $end)
         return false;
     }
 
-    $criteria = [
-       'SELECT'       => 'glpi_infocoms.*',
-       'FROM'         => 'glpi_infocoms',
-       'INNER JOIN'   => [
-          $itemtable  => [
-             'ON'  => [
-                $itemtable        => 'id',
-                'glpi_infocoms'   => 'items_id', [
-                   'AND' => [
-                      'glpi_infocoms.itemtype' => $itemtype
-                   ]
-                ]
-             ]
-          ]
-       ],
-       'WHERE'        => []
-    ];
+    if (\itsmng\Database\Repository\FinancialRepository::supports($itemtype)) {
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            $iterator = (new \itsmng\Database\Repository\FinancialRepository($em))->rows(
+                $itemtype,
+                (string)$begin,
+                (string)$end,
+                \itsmng\Reporting\Criteria::entities(),
+                false
+            );
+        } finally {
+            $em->clear();
+        }
+    } else {
+        $criteria = [
+           'SELECT'       => 'glpi_infocoms.*',
+           'FROM'         => 'glpi_infocoms',
+           'INNER JOIN'   => [
+              $itemtable  => [
+                 'ON'  => [
+                    $itemtable        => 'id',
+                    'glpi_infocoms'   => 'items_id', [
+                       'AND' => [
+                          'glpi_infocoms.itemtype' => $itemtype
+                       ]
+                    ]
+                 ]
+              ]
+           ],
+           'WHERE'        => []
+        ];
 
-    switch ($itemtype) {
-        case 'SoftwareLicense':
-            $criteria['INNER JOIN']['glpi_softwares'] = [
-               'ON'  => [
-                  'glpi_softwarelicenses' => 'softwares_id',
-                  'glpi_softwares'        => 'id'
-               ]
-            ];
-            $criteria['WHERE'] =  getEntitiesRestrictCriteria("glpi_softwarelicenses");
-            break;
-        default:
-            if (is_a($itemtype, CommonDBChild::class, true)) {
-                $childitemtype = $itemtype::$itemtype; // acces to child via $itemtype static
-                $criteria['INNER JOIN'][$childitemtype::getTable()] = [
+        switch ($itemtype) {
+            case 'SoftwareLicense':
+                $criteria['INNER JOIN']['glpi_softwares'] = [
                    'ON'  => [
-                      $itemtype::getTable() => $itemtype::$items_id,
-                      $childitemtype::getTable() => 'id'
+                      'glpi_softwarelicenses' => 'softwares_id',
+                      'glpi_softwares'        => 'id'
                    ]
                 ];
-                $criteria['WHERE'] =  getEntitiesRestrictCriteria($childitemtype::getTable());
-            }
-            break;
-    }
+                $criteria['WHERE'] =  getEntitiesRestrictCriteria("glpi_softwarelicenses");
+                break;
+            default:
+                if (is_a($itemtype, CommonDBChild::class, true)) {
+                    $childitemtype = $itemtype::$itemtype; // acces to child via $itemtype static
+                    $criteria['INNER JOIN'][$childitemtype::getTable()] = [
+                       'ON'  => [
+                          $itemtype::getTable() => $itemtype::$items_id,
+                          $childitemtype::getTable() => 'id'
+                       ]
+                    ];
+                    $criteria['WHERE'] =  getEntitiesRestrictCriteria($childitemtype::getTable());
+                }
+                break;
+        }
 
-    $dates = \itsmng\Reporting\Criteria::financialDates((string)$begin, (string)$end);
-    if ($dates) {
-        $criteria['WHERE'][] = $dates;
+        $dates = \itsmng\Reporting\Criteria::financialDates((string)$begin, (string)$end);
+        if ($dates) {
+            $criteria['WHERE'][] = $dates;
+        }
+        $iterator = iterator_to_array($DB->request($criteria));
     }
-    $iterator = $DB->request($criteria);
 
     if (
         count($iterator)
@@ -173,7 +188,7 @@ function display_infocoms_report($itemtype, $begin, $end)
         $valeurnettegraph   = [];
         $valeurgraph        = [];
 
-        while ($line = $iterator->next()) {
+        foreach ($iterator as $line) {
             if ($itemtype == 'SoftwareLicense') {
                 $item->getFromDB($line["items_id"]);
 

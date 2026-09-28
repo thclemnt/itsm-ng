@@ -10,6 +10,10 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'glpi_consumables')]
 class Consumable
 {
+    #[ORM\ManyToOne(targetEntity: ConsumableItem::class)]
+    #[ORM\JoinColumn(name: 'consumableitems_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?ConsumableItem $consumableitems = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
@@ -17,9 +21,6 @@ class Consumable
 
     #[ORM\Column(name: '`entities_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $entities_id = 0;
-
-    #[ORM\Column(name: '`consumableitems_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $consumableitems_id = 0;
 
     #[ORM\Column(name: '`date_in`', type: 'date', nullable: true)]
     public ?\DateTimeInterface $date_in = null;
