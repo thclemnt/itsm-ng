@@ -766,3 +766,45 @@ license, cartridge and consumable suites pass 32 methods / 829 assertions.
 Antivirus rendering was exercised in PHP, not a browser. The audit now records
 247 enforced relationships, 515 pending candidates, 62 polymorphic references,
 one ambiguous reference and 1,418 legacy SQL sites.
+
+### State assignments and summaries
+
+Thirty-five additional state assignments now use nullable `ManyToOne` mappings
+and restrictive FKs, covering assets, infrastructure, software versions/licenses,
+device definitions and component assignments. State replacement updates every
+dependent table; purge preserves those records and clears their state. Appliance
+state cleanup is now registered too. The contract-state association was already
+enforced. The state hierarchy's own parent reference remains pending: its zero
+root and sibling-name uniqueness require a separate tree-schema migration.
+
+Existing installations inspect `php bin/console db:state_references`, then run
+it with `--apply` during maintenance with writers stopped, followed by
+`php bin/console db:foreign_keys --apply`. The migration refuses nonzero orphans
+before DDL and supports idempotent retries. Fresh installs normalize empty state
+references automatically.
+
+`StateRepository` provides grouped counts for core state summaries, with entity
+scope, deleted/template exclusions and the existing no-state bucket. Parameters
+use the mapped field type, including the remaining numeric flags. State selectors,
+summary labels and uniqueness checks use mapped reads; software version lists
+join their state association. Unmapped plugin summary types retain their adapter
+path. Partial state updates check the complete name/parent key. Renaming a tree
+dropdown retains its parent; adding through a reused object still creates a root
+when no parent is supplied.
+
+The shared update persistence now retains explicit NULL values. Clearing a
+computer's state therefore clears active linked assets and component assignments
+as well. The regression suite exercises this path alongside state replacement,
+purge, empty-selection reads/writes, recursive visibility, tree moves and migration
+refusal/retry. Existing computer and certificate fixtures now create real states
+instead of random IDs; certificate fixtures also create their manufacturer.
+
+The audit records 282 enforced relationships, 480 pending candidates, 62
+polymorphic references, one ambiguous reference and 1,415 legacy SQL sites.
+
+Fresh PostgreSQL and MariaDB installations pass the FK contract, all 355 ORM
+mappings and CRUD checks, state migration/lifecycle, asset propagation, components,
+software, reporting, search and application workflows. PHP 8.3 tree, asset,
+software and certificate CRUD/clone tests pass 31 methods / 875 assertions.
+Certificate notification delivery was excluded. Rendering checks execute PHP;
+they do not establish browser behavior.

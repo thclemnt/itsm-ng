@@ -102,13 +102,7 @@ class State extends CommonTreeDropdown
             $elements["-1"] = $lib;
         }
 
-        $iterator = $DB->request([
-           'SELECT' => ['id', 'name'],
-           'FROM'   => 'glpi_states',
-           'ORDER'  => 'name'
-        ]);
-
-        while ($data = $iterator->next()) {
+        foreach (\itsmng\Database\MappedReads::matching($DB, self::getTable(), [], 'name') as $data) {
             $elements[$data["id"]] = sprintf(__('Set status: %s'), $data["name"]);
         }
         Dropdown::showFromArray($name, $elements, ['value' => $value]);
@@ -127,27 +121,35 @@ class State extends CommonTreeDropdown
                 if (!$item->canView()) {
                     unset($state_type[$key]);
                 } else {
-                    $table = getTableForItemType($itemtype);
-                    $WHERE = [];
-                    if ($item->maybeDeleted()) {
-                        $WHERE["$table.is_deleted"] = 0;
+                    if (\itsmng\Database\Repository\StateRepository::supports($itemtype)) {
+                        $em = \itsmng\Database\Orm::create($DB);
+                        try {
+                            $iterator = (new \itsmng\Database\Repository\StateRepository($em))->counts($itemtype, \itsmng\Reporting\Criteria::entities());
+                        } finally {
+                            $em->clear();
+                        }
+                    } else {
+                        $table = getTableForItemType($itemtype);
+                        $WHERE = [];
+                        if ($item->maybeDeleted()) {
+                            $WHERE["$table.is_deleted"] = 0;
+                        }
+                        if ($item->maybeTemplate()) {
+                            $WHERE["$table.is_template"] = 0;
+                        }
+                        $WHERE += getEntitiesRestrictCriteria($table);
+                        $iterator = $DB->request([
+                           'SELECT' => [
+                              'states_id',
+                              'COUNT'  => '* AS cpt'
+                           ],
+                           'FROM'   => $table,
+                           'WHERE'  => $WHERE,
+                           'GROUP'  => 'states_id'
+                        ]);
                     }
-                    if ($item->maybeTemplate()) {
-                        $WHERE["$table.is_template"] = 0;
-                    }
-                    $WHERE += getEntitiesRestrictCriteria($table);
-                    $iterator = $DB->request([
-                       'SELECT' => [
-                          'states_id',
-                          'COUNT'  => '* AS cpt'
-                       ],
-                       'FROM'   => $table,
-                       'WHERE'  => $WHERE,
-                       'GROUP'  => 'states_id'
-                    ]);
-
-                    while ($data = $iterator->next()) {
-                        $states[$data["states_id"]][$itemtype] = $data["cpt"];
+                    foreach ($iterator as $data) {
+                        $states[(int)$data["states_id"]][$itemtype] = $data["cpt"];
                     }
                 }
             }
@@ -172,11 +174,12 @@ class State extends CommonTreeDropdown
             echo "<th>" . __('Total') . "</th>";
             echo "</tr>";
 
-            $iterator = $DB->request([
-               'FROM'   => 'glpi_states',
-               'WHERE'  => getEntitiesRestrictCriteria('glpi_states', '', '', true),
-               'ORDER'  => 'completename'
-            ]);
+            $iterator = \itsmng\Database\MappedReads::matching(
+                $DB,
+                self::getTable(),
+                getEntitiesRestrictCriteria(self::getTable(), '', '', true),
+                'completename'
+            );
 
             // No state
             $tot = 0;
@@ -196,7 +199,7 @@ class State extends CommonTreeDropdown
             }
             echo "<td class='numeric b'>$tot</td></tr>";
 
-            while ($data = $iterator->next()) {
+            foreach ($iterator as $data) {
                 $tot = 0;
                 echo "<tr class='tab_bg_2'><td class='b'>";
 
@@ -513,33 +516,18 @@ class State extends CommonTreeDropdown
     {
         global $DB;
 
-        $unicity_fields = ['states_id', 'name'];
-
-        $has_changed = false;
-        $where = [];
-        foreach ($unicity_fields as $unicity_field) {
-            if (
-                isset($input[$unicity_field]) &&
-                  (!isset($this->fields[$unicity_field]) || $input[$unicity_field] != $this->fields[$unicity_field])
-            ) {
-                $has_changed = true;
-            }
-            if (isset($input[$unicity_field])) {
-                $where[$unicity_field] = $input[$unicity_field];
-            }
-        }
-        if (!$has_changed) {
-            //state has not changed; this is OK.
+        if (!isset($input['name']) && !isset($input['states_id'])) {
             return true;
         }
-
-        $query = [
-           'FROM'   => $this->getTable(),
-           'COUNT'  => 'cpt',
-           'WHERE'  => $where
+        // Partial updates still compare the complete sibling key.
+        $where = [
+            'states_id' => $input['states_id'] ?? $this->fields['states_id'] ?? 0,
+            'name' => $input['name'] ?? addslashes((string)($this->fields['name'] ?? '')),
         ];
-        $row = $DB->request($query)->next();
-        return (int)$row['cpt'] == 0;
+        if (!$this->isNewID($this->getID())) {
+            $where['NOT'] = ['id' => $this->getID()];
+        }
+        return \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), $where) === 0;
     }
 
     /**

@@ -83,8 +83,9 @@ class Certificate
     #[ORM\Column(name: '`date_expiration`', type: 'date', nullable: true)]
     public ?\DateTimeInterface $date_expiration = null;
 
-    #[ORM\Column(name: '`states_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $states_id = 0;
+    #[ORM\ManyToOne(targetEntity: State::class)]
+    #[ORM\JoinColumn(name: 'states_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?State $states = null;
 
     #[ORM\Column(name: '`command`', type: 'text', nullable: true)]
     public ?string $command = null;

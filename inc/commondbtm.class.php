@@ -661,7 +661,7 @@ class CommonDBTM extends CommonGLPI
         if ($mapped) {
             $values = [];
             foreach ($updates as $field) {
-                if (isset($this->fields[$field])) {
+                if (array_key_exists($field, $this->fields)) {
                     $values[$field] = $this->fields[$field];
                 }
             }
@@ -675,7 +675,7 @@ class CommonDBTM extends CommonGLPI
         }
 
         foreach ($updates as $field) {
-            if (isset($this->fields[$field])) {
+            if (array_key_exists($field, $this->fields)) {
                 if ($mapped) {
                     $changed = in_array($field, $changedColumns, true);
                 } else {

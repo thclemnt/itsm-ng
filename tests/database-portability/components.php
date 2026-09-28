@@ -40,14 +40,14 @@ try {
         if (!str_starts_with($table, 'glpi_items_device')) {
             continue;
         }
-        $column = array_key_first($relations);
+        $linkType = getItemTypeForTable($table);
+        $column = $linkType::getDeviceForeignKey();
         $parentTable = $relations[$column];
         $deviceId = $fixtures->create($parentTable);
         $replacement = $fixtures->create($parentTable);
         $deviceType = getItemTypeForTable($parentTable);
         $device = new $deviceType();
         verify($device->getFromDB($deviceId), 'Load device');
-        $linkType = getItemTypeForTable($table);
         $link = new $linkType();
         $assigned = $fixtures->create($table, [$column => $deviceId, 'itemtype' => 'Computer', 'items_id' => $assetId]);
         $foreign = $fixtures->create($table, [$column => $deviceId, 'itemtype' => 'Computer', 'items_id' => $otherId]);

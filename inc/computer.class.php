@@ -237,7 +237,7 @@ class Computer extends CommonDBTM
                         true
                     );
                 }
-                if (isset($changes['states_id'])) {
+                if (array_key_exists('states_id', $changes)) {
                     Session::addMessageAfterRedirect(
                         __('Status updated. The connected items have been updated using this status.'),
                         true

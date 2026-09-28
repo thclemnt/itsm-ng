@@ -21,7 +21,7 @@ final class SoftwareRepository
     {
         $query = $this->em->createQueryBuilder()->select('v', 's.name AS sname')
             ->from(Entity\SoftwareVersion::class, 'v')
-            ->leftJoin(Entity\State::class, 's', 'WITH', 's.id = v.states_id')
+            ->leftJoin('v.states', 's')
             ->where('v.softwares = :software')->setParameter('software', $software, Types::INTEGER)
             ->orderBy('v.name')->addOrderBy('v.id');
         if ($excluded) {

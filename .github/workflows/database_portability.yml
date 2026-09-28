@@ -108,6 +108,8 @@ jobs:
         run: php tests/database-portability/suppliers.php tests/config
       - name: Manufacturer associations and antivirus ownership
         run: php tests/database-portability/manufacturers.php tests/config
+      - name: State assignments, summaries and hierarchy validation
+        run: php tests/database-portability/states.php tests/config
       - name: Rack and enclosure placement queries
         run: php tests/database-portability/placements.php tests/config
       - name: Infrastructure relationships and placement

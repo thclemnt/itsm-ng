@@ -61,8 +61,9 @@ class Appliance
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_mod = null;
 
-    #[ORM\Column(name: '`states_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $states_id = 0;
+    #[ORM\ManyToOne(targetEntity: State::class)]
+    #[ORM\JoinColumn(name: 'states_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?State $states = null;
 
     #[ORM\Column(name: '`externalidentifier`', type: 'string', length: 255, nullable: true)]
     public ?string $externalidentifier = null;

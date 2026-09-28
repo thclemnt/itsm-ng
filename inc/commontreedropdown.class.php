@@ -223,6 +223,10 @@ abstract class CommonTreeDropdown extends CommonDropdown
 
         // Name changes => update its completename (and its level : side effect ...)
         if ((isset($input['name'])) && ($input['name'] != $this->fields['name'])) {
+            $parentField = $this->getForeignKeyField();
+            if (!array_key_exists($parentField, $input)) {
+                $input[$parentField] = $this->fields[$parentField];
+            }
             return $this->adaptTreeFieldsFromUpdateOrAdd($input);
         }
         return $input;

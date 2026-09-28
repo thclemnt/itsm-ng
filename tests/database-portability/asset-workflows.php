@@ -89,6 +89,11 @@ try {
     $device = new Item_DeviceProcessor();
     verify($device->getFromDB($processor) && (int)$device->fields['locations_id'] === $location && (int)$device->fields['states_id'] === $state, 'Device association receives only state/location changes');
     verify($device->getFromDB($deletedProcessor) && (int)$device->fields['locations_id'] === 0, 'Deleted device association remains unchanged');
+    verify($computer->update(['id' => $computerId, 'states_id' => 0]), 'Clear computer state through the legacy empty selection');
+    $monitor = new Monitor();
+    verify($monitor->getFromDB($targets['active']) && $monitor->fields['states_id'] === null, 'Clearing computer state propagates NULL to attached assets');
+    verify($device->getFromDB($processor) && $device->fields['states_id'] === null, 'Clearing computer state propagates NULL to attached components');
+    verify($computer->getFromDB($computerId) && $computer->fields['states_id'] === null, 'Computer state remains NULL');
     $CFG_GLPI['is_contact_autoupdate'] = 0;
     verify($computer->update(['id' => $computerId, 'contact' => 'Disabled propagation']), 'Update with propagation disabled');
     $monitor = new Monitor();
