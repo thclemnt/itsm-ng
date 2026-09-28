@@ -366,6 +366,13 @@ final class DbUtils
                 $condition = [];
             }
         }
+        if (count($table) === 1 && array_is_list($table) && is_string($table[0]) && is_array($condition)) {
+            try {
+                return \itsmng\Database\MappedReads::countMatching($DB, $table[0], $condition);
+            } catch (\itsmng\Database\UnsupportedCriteria $unsupported) {
+                // Joins, aggregate options and unmapped plugin tables need dedicated queries.
+            }
+        }
         $condition['COUNT'] = 'cpt';
 
         $row = $DB->request($table, $condition)->next();

@@ -85,6 +85,16 @@ final class ForeignKeys
         'glpi_knowbaseitems_comments' => ['knowbaseitems_id' => 'glpi_knowbaseitems', 'parent_comment_id' => 'glpi_knowbaseitems_comments'],
         'glpi_knowbaseitems_revisions' => ['knowbaseitems_id' => 'glpi_knowbaseitems'],
         'glpi_knowbaseitems_items' => ['knowbaseitems_id' => 'glpi_knowbaseitems'],
+        'glpi_tickettemplatehiddenfields' => ['tickettemplates_id' => 'glpi_tickettemplates'],
+        'glpi_tickettemplatemandatoryfields' => ['tickettemplates_id' => 'glpi_tickettemplates'],
+        'glpi_tickettemplatepredefinedfields' => ['tickettemplates_id' => 'glpi_tickettemplates'],
+        'glpi_changetemplatehiddenfields' => ['changetemplates_id' => 'glpi_changetemplates'],
+        'glpi_changetemplatemandatoryfields' => ['changetemplates_id' => 'glpi_changetemplates'],
+        'glpi_changetemplatepredefinedfields' => ['changetemplates_id' => 'glpi_changetemplates'],
+        'glpi_problemtemplatehiddenfields' => ['problemtemplates_id' => 'glpi_problemtemplates'],
+        'glpi_problemtemplatemandatoryfields' => ['problemtemplates_id' => 'glpi_problemtemplates'],
+        'glpi_problemtemplatepredefinedfields' => ['problemtemplates_id' => 'glpi_problemtemplates'],
+        'glpi_notifications_notificationtemplates' => ['notifications_id' => 'glpi_notifications', 'notificationtemplates_id' => 'glpi_notificationtemplates'],
     ];
 
     public static function name(string $table, string $column): string

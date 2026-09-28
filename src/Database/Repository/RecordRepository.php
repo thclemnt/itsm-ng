@@ -55,6 +55,16 @@ final class RecordRepository
         return (int)$query->getQuery()->getSingleScalarResult();
     }
 
+    /** Snapshot identifiers before lifecycle hooks mutate the selected relationships. */
+    public function identifiers(string $table, string $column, array $criteria): array
+    {
+        $metadata = $this->em->getClassMetadata(EntityRegistry::TABLES[$table]);
+        $query = $this->em->createQueryBuilder()->from($metadata->name, 'r');
+        $compiler = new \itsmng\Database\RecordCriteria($query, $metadata);
+        $query->select($compiler->column($column) . ' AS record_id')->where($compiler->where($criteria));
+        return array_map('intval', array_column($query->getQuery()->getScalarResult(), 'record_id'));
+    }
+
     public function toRow(object $record): array
     {
         $metadata = $this->em->getClassMetadata($record::class);

@@ -90,6 +90,11 @@ final class RecordCriteria
         }
     }
 
+    public function column(string $column): string
+    {
+        return $this->field($column)[0];
+    }
+
     /** @return array{string, string} DQL expression and Doctrine parameter type. */
     private function field(string $column): array
     {

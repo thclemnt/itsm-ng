@@ -848,13 +848,8 @@ class CommonDBTM extends CommonGLPI
         global $DB;
 
         if ($this->dohistory) {
-            $DB->delete(
-                'glpi_logs',
-                [
-                  'itemtype'  => $this->getType(),
-                  'items_id'  => $this->fields['id']
-                ]
-            );
+            (new \itsmng\Database\Repository\HistoryRepository(\itsmng\Database\Orm::create($DB)))
+                ->deleteForItem($this->getType(), (int)$this->getID());
         }
     }
 
@@ -883,25 +878,14 @@ class CommonDBTM extends CommonGLPI
                     }
 
                     foreach ($field as $f) {
-                        $result = $DB->request(
-                            [
-                              'FROM'  => $tablename,
-                              'WHERE' => [$f => $this->getID()],
-                            ]
-                        );
-                        foreach ($result as $data) {
-                            // Be carefull : we must use getIndexName because self::update rely on that !
-                            if ($object = getItemForItemtype($itemtype)) {
-                                $idName = $object->getIndexName();
-                                // And we must ensure that the index name is not the same as the field
-                                // we try to modify. Otherwise we will loose this element because all
-                                // will be set to $newval ...
-                                if ($idName != $f) {
-                                    $object->update([$idName          => $data[$idName],
-                                                     $f               => $newval,
-                                                     '_disablenotif'  => true]); // Disable notifs
-                                }
-                            }
+                        $object = getItemForItemtype($itemtype);
+                        if (!$object || $object->getIndexName() === $f) {
+                            continue;
+                        }
+                        $idName = $object->getIndexName();
+                        foreach ($object->findIds([$f => $this->getID()]) as $id) {
+                            $related = getItemForItemtype($itemtype);
+                            $related->update([$idName => $id, $f => $newval, '_disablenotif' => true]);
                         }
                     }
                 }
@@ -913,16 +897,8 @@ class CommonDBTM extends CommonGLPI
             $job         = new Ticket();
             $itemsticket = new Item_Ticket();
 
-            $iterator = $DB->request([
-               'FROM'   => 'glpi_items_tickets',
-               'WHERE'  => [
-                  'items_id'  => $this->getID(),
-                  'itemtype'  => $this->getType()
-               ]
-            ]);
-
-            while ($data = $iterator->next()) {
-                $cnt = countElementsInTable('glpi_items_tickets', ['tickets_id' => $data['tickets_id']]);
+            foreach ($itemsticket->find(['items_id' => $this->getID(), 'itemtype' => $this->getType()]) as $data) {
+                $cnt = \itsmng\Database\MappedReads::countMatching($DB, 'glpi_items_tickets', ['tickets_id' => $data['tickets_id']]);
                 $itemsticket->delete(["id" => $data["id"]]);
                 if ($cnt == 1 && !$CFG_GLPI["keep_tickets_on_delete"]) {
                     $job->delete(["id" => $data["tickets_id"]]);
@@ -1879,8 +1855,6 @@ class CommonDBTM extends CommonGLPI
     **/
     protected function forwardEntityInformations()
     {
-        global $DB;
-
         if (!isset($this->fields['id']) || !($this->fields['id'] >= 0)) {
             return false;
         }
@@ -1888,10 +1862,6 @@ class CommonDBTM extends CommonGLPI
         if (count(static::$forward_entity_to)) {
             foreach (static::$forward_entity_to as $type) {
                 $item  = new $type();
-                $query = [
-                   'SELECT' => ['id'],
-                   'FROM'   => $item->getTable()
-                ];
 
                 $OR = [];
                 if ($item->isField('itemtype')) {
@@ -1903,7 +1873,6 @@ class CommonDBTM extends CommonGLPI
                 if ($item->isField($this->getForeignKeyField())) {
                     $OR[] = [$this->getForeignKeyField() => $this->getID()];
                 }
-                $query['WHERE'][] = ['OR' => $OR];
 
                 $input = [
                    'entities_id'  => $this->getEntityID(),
@@ -1913,9 +1882,8 @@ class CommonDBTM extends CommonGLPI
                     $input['is_recursive'] = $this->isRecursive();
                 }
 
-                $iterator = $DB->request($query);
-                while ($data = $iterator->next()) {
-                    $input['id'] = $data['id'];
+                foreach ($item->findIds(['OR' => $OR]) as $id) {
+                    $input['id'] = $id;
                     // No history for such update
                     $item->update($input, 0);
                 }
@@ -4908,16 +4876,35 @@ class CommonDBTM extends CommonGLPI
 
         $ok = false;
         if (is_array($crit) && (count($crit) > 0)) {
-            $crit['FIELDS'] = [$this::getTable() => static::getIndexName()];
+            try {
+                $ids = \itsmng\Database\MappedReads::identifiers($DB, $this->getTable(), $this->getIndexName(), $crit);
+            } catch (\itsmng\Database\UnsupportedCriteria $unsupported) {
+                // Legacy request options and plugin tables still use their existing query.
+                $crit['FIELDS'] = [$this::getTable() => static::getIndexName()];
+                $ids = array_column(iterator_to_array($DB->request($this->getTable(), $crit)), $this->getIndexName());
+            }
             $ok = true;
-            $iterator = $DB->request($this->getTable(), $crit);
-            foreach ($iterator as $row) {
-                if (!$this->delete($row, $force, $history)) {
+            foreach ($ids as $id) {
+                if (!$this->delete([$this->getIndexName() => $id], $force, $history)) {
                     $ok = false;
                 }
             }
         }
         return $ok;
+    }
+
+    /** Select only lifecycle identifiers without hydrating complete records. */
+    protected function findIds(array $criteria): array
+    {
+        global $DB;
+
+        try {
+            return \itsmng\Database\MappedReads::identifiers($DB, $this->getTable(), $this->getIndexName(), $criteria);
+        } catch (\itsmng\Database\UnsupportedCriteria $unsupported) {
+            return array_column(iterator_to_array($DB->request([
+                'SELECT' => $this->getIndexName(), 'FROM' => $this->getTable(), 'WHERE' => $criteria,
+            ])), $this->getIndexName());
+        }
     }
 
 

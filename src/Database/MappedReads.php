@@ -23,9 +23,25 @@ final class MappedReads
     }
     public static function countMatching(\DBAdapter $database, string $table, array $criteria): int
     {
+        if (!isset(EntityRegistry::TABLES[$table])) {
+            throw new UnsupportedCriteria('Unmapped table requires a registered entity.');
+        }
         $em = Orm::create($database);
         try {
             return (new RecordRepository($em))->countMatching($table, $criteria);
+        } finally {
+            $em->clear();
+        }
+    }
+
+    public static function identifiers(\DBAdapter $database, string $table, string $column, array $criteria): array
+    {
+        if (!isset(EntityRegistry::TABLES[$table])) {
+            throw new UnsupportedCriteria('Unmapped table requires a registered entity.');
+        }
+        $em = Orm::create($database);
+        try {
+            return (new RecordRepository($em))->identifiers($table, $column, $criteria);
         } finally {
             $em->clear();
         }

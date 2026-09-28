@@ -11,13 +11,14 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\UniqueConstraint(name: 'tickettemplatemandatoryfields_unicity', columns: ['tickettemplates_id', 'num'])]
 class TicketTemplateMandatoryField
 {
+    #[ORM\ManyToOne(targetEntity: TicketTemplate::class)]
+    #[ORM\JoinColumn(name: 'tickettemplates_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?TicketTemplate $tickettemplates = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
-
-    #[ORM\Column(name: '`tickettemplates_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $tickettemplates_id = 0;
 
     #[ORM\Column(name: '`num`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $num = 0;

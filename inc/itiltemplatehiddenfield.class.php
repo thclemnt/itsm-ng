@@ -74,30 +74,19 @@ abstract class ITILTemplateHiddenField extends ITILTemplateField
 
     public function post_purgeItem()
     {
-        global $DB;
-
         parent::post_purgeItem();
 
         $itil_class = static::$itiltype;
         $itil_object = new $itil_class();
-        $itemtype_id = $itil_object->getSearchOptionIDByField('field', 'itemtype', $itil_object->getTable());
-        $items_id_id = $itil_object->getSearchOptionIDByField('field', 'items_id', $itil_object->getTable());
+        $itemtype_id = $itil_object->getSearchOptionIDByField('field', 'itemtype', $itil_object->getItemsTable());
+        $items_id_id = $itil_object->getSearchOptionIDByField('field', 'items_id', $itil_object->getItemsTable());
 
         // Try to delete itemtype -> delete items_id
         if ($this->fields['num'] == $itemtype_id) {
-            $iterator = $DB->request([
-               'SELECT' => 'id',
-               'FROM'   => $this->getTable(),
-               'WHERE'  => [
-                  static::$items_id => $this->fields[static::$itiltype],
-                  'num'             => $items_id_id
-               ]
+            (new static())->deleteByCriteria([
+                static::$items_id => $this->fields[static::$items_id],
+                'num' => $items_id_id,
             ]);
-            if (count($iterator)) {
-                $result = $iterator->next();
-                $a = new static();
-                $a->delete(['id' => $result['id']]);
-            }
         }
     }
 
@@ -114,20 +103,14 @@ abstract class ITILTemplateHiddenField extends ITILTemplateField
     **/
     public function getHiddenFields($ID, $withtypeandcategory = false)
     {
-        global $DB;
-
-        $iterator = $DB->request([
-           'FROM'   => $this->getTable(),
-           'WHERE'  => [static::$items_id => $ID],
-           'ORDER'  => 'id'
-        ]);
+        $iterator = (new static())->find([static::$items_id => $ID], 'id');
 
         $tt_class       = static::$itemtype;
         $tt             = new $tt_class();
         $allowed_fields = $tt->getAllowedFields($withtypeandcategory);
         $fields         = [];
 
-        while ($rule = $iterator->next()) {
+        foreach ($iterator as $rule) {
             if (isset($allowed_fields[$rule['num']])) {
                 $fields[$allowed_fields[$rule['num']]] = $rule['num'];
             }
@@ -163,8 +146,6 @@ abstract class ITILTemplateHiddenField extends ITILTemplateField
     **/
     public static function showForITILTemplate(ITILTemplate $tt, $withtemplate = 0)
     {
-        global $DB;
-
         $ID = $tt->fields['id'];
 
         if (!$tt->getFromDB($ID) || !$tt->can($ID, READ)) {
@@ -176,16 +157,13 @@ abstract class ITILTemplateHiddenField extends ITILTemplateField
         $fields  = array_diff_key($fields, self::getExcludedFields());
         $rand    = mt_rand();
 
-        $iterator = $DB->request([
-           'FROM'   => static::getTable(),
-           'WHERE'  => [static::$items_id => $ID]
-        ]);
+        $iterator = (new static())->find([static::$items_id => $ID], 'id');
 
         $numrows = count($iterator);
 
         $hiddenfields = [];
         $used         = [];
-        while ($data = $iterator->next()) {
+        foreach ($iterator as $data) {
             $hiddenfields[$data['id']] = $data;
             $used[$data['num']]        = $data['num'];
         }

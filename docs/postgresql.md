@@ -179,3 +179,16 @@ assertions), all-table persistence and knowledge-base workflow checks. The PHP 8
 knowledge-base suites pass 20 methods and 404 assertions. The remaining inventory
 contains 662 pending relationship candidates; article search and visibility SQL
 are among the queries still awaiting migration.
+
+The shared-cleanup stage enables 111 foreign keys. ID selection for core child
+purges, reference reassignment, entity forwarding and criterion-based deletion now
+uses ORM while preserving model hooks. History cleanup and simple single-table
+counts use mapped queries too. Ticket/change/problem template-field ownership and
+notification-template links are enforced, including paired-field purge cleanup.
+Both providers pass 583/185 database-contract assertions respectively, all-table
+ORM writes, template and history isolation checks, parent purges and application
+workflows. HTTP reporting checks pass on both engines. There are still 651 pending
+relationship candidates, 62 polymorphic references and one ambiguous reference.
+The shared-cleanup regression run passes 153 methods and 12,430 assertions across
+database utilities, models, templates, notifications, users, tickets, calendars
+and history on PHP 8.3.

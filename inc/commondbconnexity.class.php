@@ -127,9 +127,14 @@ abstract class CommonDBConnexity extends CommonDBTM
                '_disablenotif'       => true
             ];
 
-            $iterator = $DB->request($criteria);
-            while ($data = $iterator->next()) {
-                $input[$this->getIndexName()] = $data[$this->getIndexName()];
+            if (!array_diff(array_keys($criteria), ['SELECT', 'FROM', 'WHERE']) && ($criteria['FROM'] ?? null) === $this->getTable() && is_array($criteria['WHERE'] ?? null)) {
+                $ids = $this->findIds($criteria['WHERE']);
+            } else {
+                // Custom plugin relation queries retain their selection semantics.
+                $ids = array_column(iterator_to_array($DB->request($criteria)), $this->getIndexName());
+            }
+            foreach ($ids as $id) {
+                $input[$this->getIndexName()] = $id;
                 $this->delete($input, 1);
             }
         }

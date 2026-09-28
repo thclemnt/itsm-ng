@@ -101,7 +101,7 @@ relationship candidates, polymorphic references and legacy SQL/driver call sites
 This is an intentionally incomplete static inventory: it cannot prove discovery of
 serialized references, dynamic SQL or alternate connection variables. Each
 candidate needs semantic review before installing its FK. The current inventory
-contains 825 candidate reference columns: 100 enforced, 662 pending, 62 polymorphic
+contains 825 candidate reference columns: 111 enforced, 651 pending, 62 polymorphic
 and one ambiguous (`users.auths_id`, whose target depends on authentication type).
 
 `tools/database/generate-mappings.php` is a development scaffold for explicit
@@ -159,3 +159,24 @@ of FK enforcement. All 100 FK checks pass, alongside all-table ORM writes and
 parent purge contracts (572 PostgreSQL / 174 MariaDB database assertions).
 Fresh installs pass on both providers, and the PHP 8.3 knowledge-base model suites
 pass 20 methods with 404 assertions under FK enforcement.
+
+Shared lifecycle cleanup now selects mapped IDs before invoking each model's
+update/delete hooks. This covers criterion-based deletion, child/relation purges,
+reference reassignment and entity forwarding without hydrating full rows just to
+read their IDs. It deliberately snapshots the selection before hooks mutate it.
+History cleanup uses a scoped DQL delete; ordinary model deletion still invokes
+its lifecycle. Simple single-table `countElementsInTable()` calls also use typed
+ORM predicates; joins, aggregate options, raw expressions and unmapped plugin
+tables retain their existing path.
+
+Eleven more constraints cover the nine ticket/change/problem template field
+relationships and both endpoints of notification-template links. Template purge
+now removes hidden, mandatory and predefined fields through their model hooks.
+Removing an item-type field removes all paired item-ID fields for that template,
+using the correct parent key and search-option table. Template field lists and
+rendering reads use ORM. `cleanup.php` checks paired-field removal, template
+isolation, history-owner isolation and execution through ORM on both engines.
+The full FK contracts pass 583 PostgreSQL / 185 MariaDB assertions at this stage.
+The PHP 8.3 DbUtils, CommonDBTM, ITILTemplate, ChangeTemplatePredefinedField,
+Notification, NotificationTemplate, Notification_NotificationTemplate, User,
+Ticket, Calendar and Log suites pass 153 methods with 12,430 assertions.
