@@ -2753,6 +2753,7 @@ class Toolbox
             (new \itsmng\Database\Migration\InfrastructureReferences())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\Migration\AssetClassification())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\Migration\StockReferences())->apply($DB->getDoctrineConnection());
+            (new \itsmng\Database\Migration\FinancialReferences())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\ForeignKeys())->apply($DB->getDoctrineConnection());
 
             // update default language

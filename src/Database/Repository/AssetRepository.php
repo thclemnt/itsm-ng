@@ -46,6 +46,36 @@ final class AssetRepository
     {
         $class = self::TYPES[$itemtype] ?? throw new \InvalidArgumentException('Unmapped asset type');
         $query = $this->em->createQueryBuilder()->select('COUNT(a.id)')->from($class, 'a');
+        $this->visible($query, $class, $entities);
+        return (int)$query->getQuery()->getSingleScalarResult();
+    }
+
+    /** Group by the displayed name, retaining the unclassified NULL group. */
+    public function countsByType(string $itemtype, ?array $entities): array
+    {
+        $class = self::TYPES[$itemtype] ?? throw new \InvalidArgumentException('Unmapped asset type');
+        $association = strtolower($itemtype) . 'types';
+        $query = $this->em->createQueryBuilder()->select('COUNT(a.id) AS count', 't.name AS name')
+            ->from($class, 'a')->leftJoin('a.' . $association, 't')->groupBy('t.name')->orderBy('t.name');
+        $this->visible($query, $class, $entities);
+        return $query->getQuery()->getScalarResult();
+    }
+
+    /** Count OS installations on visible computers, independently of child entity caches. */
+    public function operatingSystems(?array $entities): array
+    {
+        $query = $this->em->createQueryBuilder()->select('COUNT(os.id) AS count', 't.name AS name')
+            ->from(Entity\ItemOperatingSystem::class, 'os')
+            ->innerJoin(Entity\Computer::class, 'a', 'WITH', 'a.id = os.items_id AND os.itemtype = :computer')
+            ->leftJoin(Entity\OperatingSystem::class, 't', 'WITH', 't.id = os.operatingsystems_id')
+            ->setParameter('computer', 'Computer', Types::STRING)
+            ->where('os.is_deleted = :false')->groupBy('t.name')->orderBy('t.name');
+        $this->visible($query, Entity\Computer::class, $entities);
+        return $query->getQuery()->getScalarResult();
+    }
+
+    private function visible(\Doctrine\ORM\QueryBuilder $query, string $class, ?array $entities): void
+    {
         foreach (['is_deleted', 'is_template'] as $flag) {
             if ($this->em->getClassMetadata($class)->hasField($flag)) {
                 $query->andWhere('a.' . $flag . ' = :false')->setParameter('false', false, Types::BOOLEAN);
@@ -54,6 +84,5 @@ final class AssetRepository
         if ($entities !== null) {
             $query->andWhere('a.entities_id IN (:entities)')->setParameter('entities', $entities ?: [-1]);
         }
-        return (int)$query->getQuery()->getSingleScalarResult();
     }
 }

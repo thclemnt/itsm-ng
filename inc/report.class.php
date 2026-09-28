@@ -213,33 +213,7 @@ class Report extends CommonGLPI
         echo "<tr class='tab_bg_1'><td colspan='2' class='b'>" . OperatingSystem::getTypeName(1) . "</td></tr>";
 
         // 2. Get some more number data (operating systems per computer)
-        $iterator = $DB->request([
-           'SELECT'    => [
-              'COUNT' => '* AS count',
-              'glpi_operatingsystems.name AS name'
-           ],
-           'FROM'      => 'glpi_items_operatingsystems',
-           'INNER JOIN' => [
-               'glpi_computers' => ['ON' => ['glpi_items_operatingsystems' => 'items_id', 'glpi_computers' => 'id']],
-           ],
-           'LEFT JOIN' => [
-              'glpi_operatingsystems' => [
-                 'ON' => [
-                    'glpi_items_operatingsystems' => 'operatingsystems_id',
-                    'glpi_operatingsystems'       => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-               'glpi_items_operatingsystems.itemtype' => 'Computer',
-               'glpi_items_operatingsystems.is_deleted' => 0,
-               'glpi_computers.is_deleted' => 0,
-               'glpi_computers.is_template' => 0,
-           ] + getEntitiesRestrictCriteria('glpi_computers'),
-           'GROUPBY'   => 'glpi_operatingsystems.name'
-        ]);
-
-        while ($data = $iterator->next()) {
+        foreach ($assets->operatingSystems(\itsmng\Reporting\Criteria::entities()) as $data) {
             if (empty($data['name'])) {
                 $data['name'] = Dropdown::EMPTY_VALUE;
             }
@@ -261,33 +235,37 @@ class Report extends CommonGLPI
             $type_table = getTableForItemType($typeclass);
             $typefield  = getForeignKeyFieldForTable(getTableForItemType($typeclass));
 
-            $criteria = [
-               'SELECT'    => [
-                  'COUNT'  => '* AS count',
-                  "$type_table.name AS name"
-               ],
-               'FROM'      => $table_item,
-               'LEFT JOIN' => [
-                  $type_table => [
-                     'ON' => [
-                        $table_item => $typefield,
-                        $type_table => 'id'
-                     ]
-                  ]
-               ],
-               'WHERE'     => [
-                  "$table_item.is_deleted"   => 0,
-                  "$table_item.is_template"  => 0
-               ] + getEntitiesRestrictCriteria($table_item),
-               'GROUPBY'   => "$type_table.name"
-            ];
+            if (isset(\itsmng\Database\Repository\AssetRepository::TYPES[$itemtype])) {
+                $rows = $assets->countsByType($itemtype, \itsmng\Reporting\Criteria::entities());
+            } else {
+                $criteria = [
+                   'SELECT'    => [
+                      'COUNT'  => '* AS count',
+                      "$type_table.name AS name"
+                   ],
+                   'FROM'      => $table_item,
+                   'LEFT JOIN' => [
+                      $type_table => [
+                         'ON' => [
+                            $table_item => $typefield,
+                            $type_table => 'id'
+                         ]
+                      ]
+                   ],
+                   'WHERE'     => [
+                      "$table_item.is_deleted"   => 0,
+                      "$table_item.is_template"  => 0
+                   ] + getEntitiesRestrictCriteria($table_item),
+                   'GROUPBY'   => "$type_table.name"
+                ];
 
-            if (!$DB->fieldExists($table_item, 'is_template')) {
-                unset($criteria['WHERE']["$table_item.is_template"]);
+                if (!$DB->fieldExists($table_item, 'is_template')) {
+                    unset($criteria['WHERE']["$table_item.is_template"]);
+                }
+
+                $rows = $DB->request($criteria);
             }
-
-            $iterator = $DB->request($criteria);
-            while ($data = $iterator->next()) {
+            foreach ($rows as $data) {
                 if (empty($data['name'])) {
                     $data['name'] = Dropdown::EMPTY_VALUE;
                 }

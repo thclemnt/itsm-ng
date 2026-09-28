@@ -73,8 +73,9 @@ class Infocom
     #[ORM\Column(name: '`bill`', type: 'string', length: 255, nullable: true)]
     public ?string $bill = null;
 
-    #[ORM\Column(name: '`budgets_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $budgets_id = 0;
+    #[ORM\ManyToOne(targetEntity: Budget::class)]
+    #[ORM\JoinColumn(name: 'budgets_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Budget $budgets = null;
 
     #[ORM\Column(name: '`alert`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $alert = 0;

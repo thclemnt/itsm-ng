@@ -37,8 +37,9 @@ class SoftwareLicense
     #[ORM\Column(name: '`number`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $number = 0;
 
-    #[ORM\Column(name: '`softwarelicensetypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $softwarelicensetypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: SoftwareLicenseType::class)]
+    #[ORM\JoinColumn(name: 'softwarelicensetypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?SoftwareLicenseType $softwarelicensetypes = null;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
     public ?string $name = null;

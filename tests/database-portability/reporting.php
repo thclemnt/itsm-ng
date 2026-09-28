@@ -52,9 +52,30 @@ try {
         $os = fixture('glpi_operatingsystems', ['name' => $name]);
         fixture('glpi_items_operatingsystems', ['operatingsystems_id' => $os, 'items_id' => $id, 'itemtype' => 'Computer']);
     }
+    $type = fixture('glpi_computertypes', ['name' => 'Duplicate report type']);
+    $sameLabel = fixture('glpi_computertypes', ['name' => 'Duplicate report type']);
+    foreach ([$type, $sameLabel] as $classification) {
+        fixture('glpi_computers', ['entities_id' => $entity, 'computertypes_id' => $classification]);
+    }
+    foreach (['is_deleted', 'is_template'] as $flag) {
+        $excluded = fixture('glpi_computers', ['entities_id' => $entity, $flag => 1]);
+        fixture('glpi_items_operatingsystems', ['items_id' => $excluded, 'itemtype' => 'Computer', 'operatingsystems_id' => $os]);
+    }
+    fixture('glpi_items_operatingsystems', ['items_id' => $computer, 'itemtype' => 'Computer', 'operatingsystems_id' => $os, 'is_deleted' => 1]);
+    fixture('glpi_items_operatingsystems', ['items_id' => $computer, 'itemtype' => 'Printer', 'operatingsystems_id' => $os]);
+    $groups = array_column($assets->countsByType('Computer', [$entity]), 'count', 'name');
+    verify((int)$groups['Duplicate report type'] === 2 && (int)$groups[''] === 1, 'Type totals merge identical names and retain unclassified assets');
+    verify($assets->countsByType('Computer', []) === [] && $assets->operatingSystems([]) === [], 'Empty report scope returns no groups');
+    $systems = $assets->operatingSystems([$entity]);
+    verify(count($systems) === 1 && $systems[0]['name'] === 'Visible report OS' && (int)$systems[0]['count'] === 1, 'OS counts filter parent flags, itemtype and deleted installations');
+    $_SESSION['glpi_use_mode'] = Session::DEBUG_MODE;
+    $CFG_GLPI['debug_sql'] = true;
+    $DEBUG_SQL = [];
+    $SQL_TOTAL_REQUEST = 0;
     ob_start();
     Report::showDefaultReport();
     $html = ob_get_clean();
+    verify($SQL_TOTAL_REQUEST === 0, 'Core default report bypasses legacy SQL execution');
     verify(str_contains($html, 'Visible report OS') && !str_contains($html, 'Hidden report OS'), 'OS report obeys computer entity scope');
 
     $switch = fixture('glpi_networkequipments', ['name' => 'Report switch', 'entities_id' => $entity]);

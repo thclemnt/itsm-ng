@@ -34,8 +34,9 @@ class ProjectCost
     #[ORM\Column(name: '`cost`', type: 'decimal', precision: 20, scale: 4, nullable: false, options: ['default' => '0.0000'])]
     public string $cost = '0.0000';
 
-    #[ORM\Column(name: '`budgets_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $budgets_id = 0;
+    #[ORM\ManyToOne(targetEntity: Budget::class)]
+    #[ORM\JoinColumn(name: 'budgets_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Budget $budgets = null;
 
     #[ORM\Column(name: '`entities_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $entities_id = 0;

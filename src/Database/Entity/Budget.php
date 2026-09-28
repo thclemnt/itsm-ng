@@ -54,6 +54,7 @@ class Budget
     #[ORM\Column(name: '`locations_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $locations_id = 0;
 
-    #[ORM\Column(name: '`budgettypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $budgettypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: BudgetType::class)]
+    #[ORM\JoinColumn(name: 'budgettypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?BudgetType $budgettypes = null;
 }

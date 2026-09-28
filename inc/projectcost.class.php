@@ -75,12 +75,12 @@ class ProjectCost extends CommonDBChild
     public function prepareInputForUpdate($input)
     {
 
-        if (
-            empty($input['end_date'])
-            || ($input['end_date'] == 'NULL')
-            || ($input['end_date'] < $input['begin_date'])
-        ) {
-            $input['end_date'] = $input['begin_date'];
+        if (array_key_exists('begin_date', $input) || array_key_exists('end_date', $input)) {
+            $begin = array_key_exists('begin_date', $input) ? $input['begin_date'] : ($this->fields['begin_date'] ?? null);
+            $end = array_key_exists('end_date', $input) ? $input['end_date'] : ($this->fields['end_date'] ?? null);
+            if (empty($end) || $end === 'NULL' || ($begin !== null && $end < $begin)) {
+                $input['end_date'] = $begin;
+            }
         }
 
         return parent::prepareInputForUpdate($input);

@@ -630,3 +630,35 @@ NULL dates, entity scope, deleted/template records, alert deduplication and
 selectors. It tests selection without sending notifications. The PHP 8.3 domain
 and certificate suites pass 10 methods / 208 assertions. The audit now reports
 1,431 legacy SQL sites; FK coverage remains 198 enforced relationships.
+
+### Financial relationships and default report aggregates
+
+Nine more references are nullable ORM associations with restrictive foreign keys:
+contract/budget/license types, and budget assignments on infocoms, contract costs,
+ticket costs, problem costs, change costs and project costs. Empty dropdown values
+normalize to NULL. Budget purge retains financial records and clears their budget;
+type replacement/purge retains the affected records. Project-cost partial updates
+now preserve dates when only the budget changes.
+
+Existing installations must stop writers during maintenance, inspect
+`php bin/console db:financial_references`, apply it with `--apply`, then run
+`php bin/console db:foreign_keys --apply`. The migration audits all references
+before changing any column, refuses real zero parents and nonzero orphans, and
+supports retry after MySQL's separately committed DDL. Fresh installs normalize
+and enforce these references automatically.
+
+The core default report's OS and asset-type aggregates now run through
+`AssetRepository`. Counts retain unclassified assets, merge identical type names,
+and filter deleted/template assets and deleted OS installations. Authorization
+uses the parent computer's entity rather than the installation's cached entity.
+Plugin types retain their existing query path. Regression checks also assert that
+the core report uses no legacy SQL execution.
+
+Fresh PostgreSQL and MariaDB installs pass the 207-FK enforcement contract,
+financial lifecycle/migration, reporting, search and application suites. All 355
+tables pass ORM insert/read/delete checks and 341 pass update checks. PHP 8.3
+contract, contract-cost, project-cost, license and infocom suites pass 14 methods /
+288 assertions. Report rendering was exercised in PHP, not a browser.
+
+The audit now records 207 enforced relationships, 555 pending candidates,
+62 polymorphic references, one ambiguous reference and 1,430 legacy SQL sites.

@@ -27,8 +27,9 @@ class Contract
     #[ORM\Column(name: '`num`', type: 'string', length: 255, nullable: true)]
     public ?string $num = null;
 
-    #[ORM\Column(name: '`contracttypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $contracttypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: ContractType::class)]
+    #[ORM\JoinColumn(name: 'contracttypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?ContractType $contracttypes = null;
 
     #[ORM\Column(name: '`begin_date`', type: 'date', nullable: true)]
     public ?\DateTimeInterface $begin_date = null;
