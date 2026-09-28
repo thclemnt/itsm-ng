@@ -1,0 +1,56 @@
+<?php
+
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+namespace itsmng\Database\Entity;
+
+use Doctrine\ORM\Mapping as ORM;
+
+#[ORM\Entity]
+#[ORM\Table(name: 'glpi_savedsearches')]
+class SavedSearch
+{
+    #[ORM\Id]
+    #[ORM\GeneratedValue(strategy: 'IDENTITY')]
+    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    public ?int $id = null;
+
+    #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
+    public ?string $name = null;
+
+    #[ORM\Column(name: '`type`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    public int $type = 0;
+
+    #[ORM\Column(name: '`itemtype`', type: 'string', length: 100, nullable: false)]
+    public string $itemtype = '';
+
+    #[ORM\Column(name: '`users_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    public int $users_id = 0;
+
+    #[ORM\Column(name: '`is_private`', type: 'boolean', nullable: false, options: ['default' => true])]
+    public bool $is_private = true;
+
+    #[ORM\Column(name: '`entities_id`', type: 'integer', nullable: false, options: ['default' => '-1'])]
+    public int $entities_id = -1;
+
+    #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
+    public bool $is_recursive = false;
+
+    #[ORM\Column(name: '`path`', type: 'string', length: 255, nullable: true)]
+    public ?string $path = null;
+
+    #[ORM\Column(name: '`query`', type: 'text', nullable: true)]
+    public ?string $query = null;
+
+    #[ORM\Column(name: '`last_execution_time`', type: 'integer', nullable: true)]
+    public ?int $last_execution_time = null;
+
+    #[ORM\Column(name: '`do_count`', type: 'smallint', nullable: false, options: ['default' => '2'])]
+    public int $do_count = 2;
+
+    #[ORM\Column(name: '`last_execution_date`', type: 'datetimetz', nullable: true)]
+    public ?\DateTimeInterface $last_execution_date = null;
+
+    #[ORM\Column(name: '`counter`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    public int $counter = 0;
+}

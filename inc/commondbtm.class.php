@@ -280,6 +280,25 @@ class CommonDBTM extends CommonGLPI
             return false;
         }
 
+        if (isset(\itsmng\Database\EntityRegistry::TABLES[$this->getTable()])) {
+            $manager = \itsmng\Database\Orm::create($DB);
+            try {
+                $row = (new \itsmng\Database\Repository\RecordRepository($manager))->find(
+                    $this->getTable(),
+                    $this->getIndexName(),
+                    (int)Toolbox::cleanInteger($ID)
+                );
+            } finally {
+                $manager->clear();
+            }
+            if ($row === null) {
+                return false;
+            }
+            $this->fields = $row;
+            $this->post_getFromDB();
+            return true;
+        }
+
         $iterator = $DB->request([
            'FROM'   => $this->getTable(),
            'WHERE'  => [

@@ -17,6 +17,9 @@ final class Orm
      */
     public static function create(\DBAdapter $db): EntityManager
     {
+        if (!\Doctrine\DBAL\Types\Type::hasType(Type\ClockTimeType::NAME)) {
+            \Doctrine\DBAL\Types\Type::addType(Type\ClockTimeType::NAME, Type\ClockTimeType::class);
+        }
         $config = new Configuration();
         $config->setMetadataDriverImpl(new AttributeDriver([__DIR__ . '/Entity']));
         $config->setProxyDir(GLPI_CACHE_DIR . '/orm');

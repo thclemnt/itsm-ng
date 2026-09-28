@@ -29,7 +29,7 @@ $em = \itsmng\Database\Orm::create($DB);
 verify((new \Doctrine\ORM\Tools\SchemaValidator($em))->validateMapping() === [], 'Doctrine validates all mappings');
 $schema = (new \itsmng\Database\BaselineSchema())->build($DB->getDoctrineConnection()->getDatabasePlatform());
 $metadata = $em->getMetadataFactory()->getAllMetadata();
-verify(count($metadata) === 23, 'Mapped identity, asset, contract and reservation tables');
+verify(count($metadata) === count($schema->getTables()), 'Every core table is mapped');
 foreach ($metadata as $meta) {
     $columns = array_map(fn ($field) => $field->columnName, $meta->fieldMappings);
     foreach ($meta->associationMappings as $association) {
@@ -38,27 +38,33 @@ foreach ($metadata as $meta) {
         }
     }
     sort($columns);
-    $expected = array_keys($schema->getTable($meta->getTableName())->getColumns());
+    $expected = array_map(fn ($column) => $column->getName(), $schema->getTable($meta->getTableName())->getColumns());
     sort($expected);
     verify($columns === $expected, 'Complete mapping for ' . $meta->getTableName());
+    $keys = array_map(fn ($key) => trim($key, '`'), $schema->getTable($meta->getTableName())->getPrimaryKey()->getColumns());
+    verify($meta->getIdentifierColumnNames() === $keys, 'Mapped primary key for ' . $meta->getTableName());
     // Hydrate whole entities, including typed flags and dates, not partial objects.
     $em->createQueryBuilder()->select('e')->from($meta->name, 'e')->setMaxResults(1)->getQuery()->getResult();
 }
-verify(count((new \Doctrine\ORM\Tools\SchemaTool($em))->getCreateSchemaSql($metadata)) >= 23, 'Mappings generate portable scoped schema DDL');
+verify(count((new \Doctrine\ORM\Tools\SchemaTool($em))->getCreateSchemaSql($metadata)) >= count($schema->getTables()), 'Mappings generate portable scoped schema DDL');
 $em->clear();
 $DB->beginTransaction();
 try {
     $parents = [];
     $parent = static function (string $table) use (&$parents, $DB): int {
         if (!isset($parents[$table])) {
-            $DB->insertOrDie($table, $DB->fieldExists($table, 'name') ? ['name' => 'ORM fixture'] : ['comment' => 'Foreign key fixture']);
+            $values = $DB->fieldExists($table, 'name') ? ['name' => 'ORM fixture'] : ['comment' => 'Foreign key fixture'];
+            if ($table === 'glpi_rules') {
+                $values['sub_type'] = 'RuleTicket';
+            }
+            $DB->insertOrDie($table, $values);
             $parents[$table] = $DB->insertId();
         }
         return $parents[$table];
     };
     foreach (\itsmng\Database\MappedStorage::TABLES as $table => $class) {
         $values = [];
-        foreach (\itsmng\Database\ForeignKeys::RELATIONS[$table] as $column => $target) {
+        foreach ((\itsmng\Database\ForeignKeys::RELATIONS[$table] ?? []) as $column => $target) {
             $values[$column] = $parent($target);
         }
         $storage = new \itsmng\Database\MappedStorage($DB);
@@ -67,7 +73,7 @@ try {
         $field = match ($table) {
             'glpi_groups_users' => 'is_manager', 'glpi_useremails' => 'email', 'glpi_profilerights' => 'rights',
             'glpi_contractcosts' => 'name', 'glpi_reservations' => 'comment',
-            default => array_key_first($values),
+            default => array_key_first($values) ?? 'name',
         };
         $value = match ($field) {
             'is_manager' => 1, 'rights' => 42, 'email', 'name', 'comment' => "O'Reilly C:\\new\\file %_ 日本語", default => $parent(\itsmng\Database\ForeignKeys::RELATIONS[$table][$field])
@@ -82,6 +88,19 @@ try {
         verify($storage->delete($table, $id), 'ORM deletion');
         verify(!$DB->request(['FROM' => $table, 'WHERE' => ['id' => $id]])->count(), 'Deletion visible through legacy connection');
     }
+    $calendar = new Calendar();
+    $calendarId = $calendar->add(['name' => 'ORM clock boundary', 'entities_id' => 0]);
+    $segment = new CalendarSegment();
+    $segmentId = $segment->add(['calendars_id' => $calendarId, 'day' => 1, 'begin' => '23:00', 'end' => '24:00']);
+    verify((bool)$segmentId && $segment->fields['end'] === '24:00:00', 'ORM preserves the end-of-day boundary');
+    verify(CalendarSegment::getActiveTimeBetween($calendarId, 1, '23:30:00', '24:00:00') === 1800, 'Clipped working interval');
+    verify(CalendarSegment::addDelayInDay($calendarId, 1, '23:30:00', 1800) === '24:00:00', 'Delay reaches end of day');
+    verify(CalendarSegment::addDelayInDay($calendarId, 1, '23:30:00', 1801) === false, 'Delay beyond available time');
+    verify(CalendarSegment::getLastWorkingHour($calendarId, 1) === '24:00:00', 'Last boundary is not midnight');
+    verify(CalendarSegment::isAWorkingHour($calendarId, 1, '23:45:00'), 'Working-hour membership');
+    verify(!CalendarSegment::isAWorkingHour($calendarId, 1, '22:59:59'), 'Nonworking-hour membership');
+    verify($calendar->delete(['id' => $calendarId], true), 'Mapped calendar purge with constrained segments');
+
     // Native writes remain visible to a subsequent ORM unit of work.
     $email = new UserEmail();
     $id = $email->add(['users_id' => $parent('glpi_users'), 'email' => 'first@example.invalid']);
@@ -93,7 +112,7 @@ try {
     verify($email->delete(['id' => $id], true), 'CommonDBTM purge');
 
     // Every parent purge must clean every new required association, with real FKs enabled.
-    foreach (['glpi_contracts', 'glpi_suppliers', 'glpi_contacts', 'glpi_reservationitems', 'glpi_changes', 'glpi_problems', 'glpi_tickets', 'glpi_groups'] as $target) {
+    foreach (['glpi_contracts', 'glpi_suppliers', 'glpi_contacts', 'glpi_reservationitems', 'glpi_changes', 'glpi_problems', 'glpi_tickets', 'glpi_groups', 'glpi_calendars', 'glpi_holidays', 'glpi_rules', 'glpi_networkports'] as $target) {
         $parentId = $parent($target);
         foreach (\itsmng\Database\ForeignKeys::RELATIONS as $table => $relations) {
             if (!in_array($target, $relations, true)) {

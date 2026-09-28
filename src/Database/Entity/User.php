@@ -8,6 +8,7 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_users')]
+#[ORM\UniqueConstraint(name: 'users_unicityloginauth', columns: ['name', 'authtype', 'auths_id'])]
 class User
 {
     #[ORM\Id]
@@ -42,7 +43,7 @@ class User
     #[ORM\Column(name: '`locations_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $locations_id = 0;
 
-    #[ORM\Column(name: '`language`', type: 'string', length: 10, nullable: true)]
+    #[ORM\Column(name: '`language`', type: 'string', length: 10, nullable: true, options: ['fixed' => true])]
     public ?string $language = null;
 
     #[ORM\Column(name: '`use_mode`', type: 'integer', nullable: false, options: ['default' => '0'])]
@@ -96,7 +97,7 @@ class User
     #[ORM\Column(name: '`names_format`', type: 'integer', nullable: true)]
     public ?int $names_format = null;
 
-    #[ORM\Column(name: '`csv_delimiter`', type: 'string', length: 1, nullable: true)]
+    #[ORM\Column(name: '`csv_delimiter`', type: 'string', length: 1, nullable: true, options: ['fixed' => true])]
     public ?string $csv_delimiter = null;
 
     #[ORM\Column(name: '`is_ids_visible`', type: 'boolean', nullable: true)]
@@ -108,22 +109,22 @@ class User
     #[ORM\Column(name: '`show_jobs_at_login`', type: 'smallint', nullable: true)]
     public ?int $show_jobs_at_login = null;
 
-    #[ORM\Column(name: '`priority_1`', type: 'string', length: 20, nullable: true)]
+    #[ORM\Column(name: '`priority_1`', type: 'string', length: 20, nullable: true, options: ['fixed' => true])]
     public ?string $priority_1 = null;
 
-    #[ORM\Column(name: '`priority_2`', type: 'string', length: 20, nullable: true)]
+    #[ORM\Column(name: '`priority_2`', type: 'string', length: 20, nullable: true, options: ['fixed' => true])]
     public ?string $priority_2 = null;
 
-    #[ORM\Column(name: '`priority_3`', type: 'string', length: 20, nullable: true)]
+    #[ORM\Column(name: '`priority_3`', type: 'string', length: 20, nullable: true, options: ['fixed' => true])]
     public ?string $priority_3 = null;
 
-    #[ORM\Column(name: '`priority_4`', type: 'string', length: 20, nullable: true)]
+    #[ORM\Column(name: '`priority_4`', type: 'string', length: 20, nullable: true, options: ['fixed' => true])]
     public ?string $priority_4 = null;
 
-    #[ORM\Column(name: '`priority_5`', type: 'string', length: 20, nullable: true)]
+    #[ORM\Column(name: '`priority_5`', type: 'string', length: 20, nullable: true, options: ['fixed' => true])]
     public ?string $priority_5 = null;
 
-    #[ORM\Column(name: '`priority_6`', type: 'string', length: 20, nullable: true)]
+    #[ORM\Column(name: '`priority_6`', type: 'string', length: 20, nullable: true, options: ['fixed' => true])]
     public ?string $priority_6 = null;
 
     #[ORM\Column(name: '`followup_private`', type: 'boolean', nullable: true)]
@@ -135,7 +136,7 @@ class User
     #[ORM\Column(name: '`default_requesttypes_id`', type: 'integer', nullable: true)]
     public ?int $default_requesttypes_id = null;
 
-    #[ORM\Column(name: '`password_forget_token`', type: 'string', length: 40, nullable: true)]
+    #[ORM\Column(name: '`password_forget_token`', type: 'string', length: 40, nullable: true, options: ['fixed' => true])]
     public ?string $password_forget_token = null;
 
     #[ORM\Column(name: '`password_forget_token_date`', type: 'datetimetz', nullable: true)]
@@ -222,7 +223,7 @@ class User
     #[ORM\Column(name: '`keep_devices_when_purging_item`', type: 'boolean', nullable: true)]
     public ?bool $keep_devices_when_purging_item = null;
 
-    #[ORM\Column(name: '`privatebookmarkorder`', type: 'text', nullable: true)]
+    #[ORM\Column(name: '`privatebookmarkorder`', type: 'text', length: 4294967295, nullable: true)]
     public ?string $privatebookmarkorder = null;
 
     #[ORM\Column(name: '`backcreated`', type: 'smallint', nullable: true)]
@@ -231,10 +232,10 @@ class User
     #[ORM\Column(name: '`task_state`', type: 'integer', nullable: true)]
     public ?int $task_state = null;
 
-    #[ORM\Column(name: '`layout`', type: 'string', length: 20, nullable: true)]
+    #[ORM\Column(name: '`layout`', type: 'string', length: 20, nullable: true, options: ['fixed' => true])]
     public ?string $layout = null;
 
-    #[ORM\Column(name: '`palette`', type: 'string', length: 20, nullable: true)]
+    #[ORM\Column(name: '`palette`', type: 'string', length: 20, nullable: true, options: ['fixed' => true])]
     public ?string $palette = null;
 
     #[ORM\Column(name: '`set_default_requester`', type: 'smallint', nullable: true)]
@@ -291,7 +292,7 @@ class User
     #[ORM\Column(name: '`access_custom_shortcuts`', type: 'json', nullable: true)]
     public ?array $access_custom_shortcuts = null;
 
-    #[ORM\Column(name: '`menu_favorite`', type: 'text', nullable: true)]
+    #[ORM\Column(name: '`menu_favorite`', type: 'text', length: 4294967295, nullable: true)]
     public ?string $menu_favorite = null;
 
     #[ORM\Column(name: '`menu_favorite_on`', type: 'text', nullable: true)]
@@ -306,6 +307,6 @@ class User
     #[ORM\Column(name: '`compact_mode_ui`', type: 'boolean', nullable: true, options: ['default' => false])]
     public ?bool $compact_mode_ui = null;
 
-    #[ORM\Column(name: '`menu_open`', type: 'text', nullable: true)]
+    #[ORM\Column(name: '`menu_open`', type: 'text', length: 4294967295, nullable: true)]
     public ?string $menu_open = null;
 }

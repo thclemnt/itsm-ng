@@ -20,6 +20,14 @@ final class MappedStorage
         'glpi_contracts_suppliers' => Entity\ContractSupplier::class,
         'glpi_contacts_suppliers' => Entity\ContactSupplier::class,
         'glpi_reservations' => Entity\Reservation::class,
+        'glpi_calendars' => Entity\Calendar::class,
+        'glpi_calendarsegments' => Entity\CalendarSegment::class,
+        'glpi_calendars_holidays' => Entity\CalendarHoliday::class,
+        'glpi_holidays' => Entity\Holiday::class,
+        'glpi_rules' => Entity\Rule::class,
+        'glpi_ruleactions' => Entity\RuleAction::class,
+        'glpi_rulecriterias' => Entity\RuleCriteria::class,
+        'glpi_networkports_networkports' => Entity\NetworkPortNetworkPort::class,
     ];
 
     public function __construct(private \DBAdapter $db)

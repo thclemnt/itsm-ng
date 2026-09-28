@@ -8,6 +8,7 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_groups_users')]
+#[ORM\UniqueConstraint(name: 'groups_users_unicity', columns: ['users_id', 'groups_id'])]
 class GroupMembership
 {
     #[ORM\ManyToOne(targetEntity: User::class)]

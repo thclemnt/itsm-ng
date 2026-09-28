@@ -52,6 +52,11 @@ final class ForeignKeys
         'glpi_ticketcosts' => ['tickets_id' => 'glpi_tickets'],
         'glpi_ticketvalidations' => ['tickets_id' => 'glpi_tickets'],
         'glpi_items_tickets' => ['tickets_id' => 'glpi_tickets'],
+        'glpi_calendars_holidays' => ['calendars_id' => 'glpi_calendars', 'holidays_id' => 'glpi_holidays'],
+        'glpi_calendarsegments' => ['calendars_id' => 'glpi_calendars'],
+        'glpi_ruleactions' => ['rules_id' => 'glpi_rules'],
+        'glpi_rulecriterias' => ['rules_id' => 'glpi_rules'],
+        'glpi_networkports_networkports' => ['networkports_id_1' => 'glpi_networkports', 'networkports_id_2' => 'glpi_networkports'],
     ];
 
     public static function name(string $table, string $column): string

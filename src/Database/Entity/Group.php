@@ -48,10 +48,10 @@ class Group
     #[ORM\Column(name: '`level`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $level = 0;
 
-    #[ORM\Column(name: '`ancestors_cache`', type: 'text', nullable: true)]
+    #[ORM\Column(name: '`ancestors_cache`', type: 'text', length: 4294967295, nullable: true)]
     public ?string $ancestors_cache = null;
 
-    #[ORM\Column(name: '`sons_cache`', type: 'text', nullable: true)]
+    #[ORM\Column(name: '`sons_cache`', type: 'text', length: 4294967295, nullable: true)]
     public ?string $sons_cache = null;
 
     #[ORM\Column(name: '`is_requester`', type: 'boolean', nullable: false, options: ['default' => true])]

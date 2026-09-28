@@ -1,0 +1,56 @@
+<?php
+
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+namespace itsmng\Database\Entity;
+
+use Doctrine\ORM\Mapping as ORM;
+
+#[ORM\Entity]
+#[ORM\Table(name: 'glpi_itilfollowups')]
+class ITILFollowup
+{
+    #[ORM\Id]
+    #[ORM\GeneratedValue(strategy: 'IDENTITY')]
+    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    public ?int $id = null;
+
+    #[ORM\Column(name: '`itemtype`', type: 'string', length: 100, nullable: false)]
+    public string $itemtype = '';
+
+    #[ORM\Column(name: '`items_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    public int $items_id = 0;
+
+    #[ORM\Column(name: '`date`', type: 'datetimetz', nullable: true)]
+    public ?\DateTimeInterface $date = null;
+
+    #[ORM\Column(name: '`users_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    public int $users_id = 0;
+
+    #[ORM\Column(name: '`users_id_editor`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    public int $users_id_editor = 0;
+
+    #[ORM\Column(name: '`content`', type: 'text', length: 4294967295, nullable: true)]
+    public ?string $content = null;
+
+    #[ORM\Column(name: '`is_private`', type: 'boolean', nullable: false, options: ['default' => false])]
+    public bool $is_private = false;
+
+    #[ORM\Column(name: '`requesttypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    public int $requesttypes_id = 0;
+
+    #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
+    public ?\DateTimeInterface $date_mod = null;
+
+    #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
+    public ?\DateTimeInterface $date_creation = null;
+
+    #[ORM\Column(name: '`timeline_position`', type: 'smallint', nullable: false, options: ['default' => '0'])]
+    public int $timeline_position = 0;
+
+    #[ORM\Column(name: '`sourceitems_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    public int $sourceitems_id = 0;
+
+    #[ORM\Column(name: '`sourceof_items_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    public int $sourceof_items_id = 0;
+}

@@ -8,6 +8,7 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_profilerights')]
+#[ORM\UniqueConstraint(name: 'profilerights_unicity', columns: ['profiles_id', 'name'])]
 class ProfileRight
 {
     #[ORM\ManyToOne(targetEntity: Profile::class)]

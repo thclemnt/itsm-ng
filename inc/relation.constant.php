@@ -950,7 +950,7 @@ $RELATION = [
    ],
 
    'glpi_plugs' => [
-      '_glpi_pdus_plugs' => 'pdus_id',
+      '_glpi_pdus_plugs' => 'plugs_id',
    ],
 
    'glpi_printermodels' => [

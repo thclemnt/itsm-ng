@@ -1,0 +1,51 @@
+<?php
+
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+namespace itsmng\Database\Entity;
+
+use Doctrine\ORM\Mapping as ORM;
+
+#[ORM\Entity]
+#[ORM\Table(name: 'glpi_businesscriticities')]
+#[ORM\UniqueConstraint(name: 'businesscriticities_unicity', columns: ['businesscriticities_id', 'name'])]
+class BusinessCriticity
+{
+    #[ORM\Id]
+    #[ORM\GeneratedValue(strategy: 'IDENTITY')]
+    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    public ?int $id = null;
+
+    #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
+    public ?string $name = null;
+
+    #[ORM\Column(name: '`entities_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    public int $entities_id = 0;
+
+    #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
+    public bool $is_recursive = false;
+
+    #[ORM\Column(name: '`comment`', type: 'text', nullable: true)]
+    public ?string $comment = null;
+
+    #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
+    public ?\DateTimeInterface $date_mod = null;
+
+    #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
+    public ?\DateTimeInterface $date_creation = null;
+
+    #[ORM\Column(name: '`businesscriticities_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    public int $businesscriticities_id = 0;
+
+    #[ORM\Column(name: '`completename`', type: 'text', nullable: true)]
+    public ?string $completename = null;
+
+    #[ORM\Column(name: '`level`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    public int $level = 0;
+
+    #[ORM\Column(name: '`ancestors_cache`', type: 'text', length: 4294967295, nullable: true)]
+    public ?string $ancestors_cache = null;
+
+    #[ORM\Column(name: '`sons_cache`', type: 'text', length: 4294967295, nullable: true)]
+    public ?string $sons_cache = null;
+}

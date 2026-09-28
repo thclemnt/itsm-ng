@@ -1,0 +1,93 @@
+<?php
+
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+namespace itsmng\Database\Entity;
+
+use Doctrine\ORM\Mapping as ORM;
+
+#[ORM\Entity]
+#[ORM\Table(name: 'glpi_projecttasks')]
+#[ORM\UniqueConstraint(name: 'projecttasks_uuid', columns: ['uuid'])]
+class ProjectTask
+{
+    #[ORM\Id]
+    #[ORM\GeneratedValue(strategy: 'IDENTITY')]
+    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    public ?int $id = null;
+
+    #[ORM\Column(name: '`uuid`', type: 'string', length: 255, nullable: true)]
+    public ?string $uuid = null;
+
+    #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
+    public ?string $name = null;
+
+    #[ORM\Column(name: '`content`', type: 'text', length: 4294967295, nullable: true)]
+    public ?string $content = null;
+
+    #[ORM\Column(name: '`comment`', type: 'text', length: 4294967295, nullable: true)]
+    public ?string $comment = null;
+
+    #[ORM\Column(name: '`entities_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    public int $entities_id = 0;
+
+    #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
+    public bool $is_recursive = false;
+
+    #[ORM\Column(name: '`projects_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    public int $projects_id = 0;
+
+    #[ORM\Column(name: '`projecttasks_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    public int $projecttasks_id = 0;
+
+    #[ORM\Column(name: '`date`', type: 'datetimetz', nullable: true)]
+    public ?\DateTimeInterface $date = null;
+
+    #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
+    public ?\DateTimeInterface $date_mod = null;
+
+    #[ORM\Column(name: '`plan_start_date`', type: 'datetimetz', nullable: true)]
+    public ?\DateTimeInterface $plan_start_date = null;
+
+    #[ORM\Column(name: '`plan_end_date`', type: 'datetimetz', nullable: true)]
+    public ?\DateTimeInterface $plan_end_date = null;
+
+    #[ORM\Column(name: '`real_start_date`', type: 'datetimetz', nullable: true)]
+    public ?\DateTimeInterface $real_start_date = null;
+
+    #[ORM\Column(name: '`real_end_date`', type: 'datetimetz', nullable: true)]
+    public ?\DateTimeInterface $real_end_date = null;
+
+    #[ORM\Column(name: '`planned_duration`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    public int $planned_duration = 0;
+
+    #[ORM\Column(name: '`effective_duration`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    public int $effective_duration = 0;
+
+    #[ORM\Column(name: '`projectstates_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    public int $projectstates_id = 0;
+
+    #[ORM\Column(name: '`projecttasktypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    public int $projecttasktypes_id = 0;
+
+    #[ORM\Column(name: '`users_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    public int $users_id = 0;
+
+    #[ORM\Column(name: '`percent_done`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    public int $percent_done = 0;
+
+    #[ORM\Column(name: '`auto_percent_done`', type: 'boolean', nullable: false, options: ['default' => false])]
+    public bool $auto_percent_done = false;
+
+    #[ORM\Column(name: '`is_milestone`', type: 'boolean', nullable: false, options: ['default' => false])]
+    public bool $is_milestone = false;
+
+    #[ORM\Column(name: '`projecttasktemplates_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    public int $projecttasktemplates_id = 0;
+
+    #[ORM\Column(name: '`is_template`', type: 'boolean', nullable: false, options: ['default' => false])]
+    public bool $is_template = false;
+
+    #[ORM\Column(name: '`template_name`', type: 'string', length: 255, nullable: true)]
+    public ?string $template_name = null;
+}

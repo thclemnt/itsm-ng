@@ -8,6 +8,7 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_contracts_suppliers')]
+#[ORM\UniqueConstraint(name: 'contracts_suppliers_unicity', columns: ['suppliers_id', 'contracts_id'])]
 class ContractSupplier
 {
     #[ORM\ManyToOne(targetEntity: Supplier::class)]

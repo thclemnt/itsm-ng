@@ -54,26 +54,26 @@ class Contract
     #[ORM\Column(name: '`is_deleted`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_deleted = false;
 
-    #[ORM\Column(name: '`week_begin_hour`', type: 'time', nullable: false, options: ['default' => '00:00:00'])]
-    public ?\DateTimeInterface $week_begin_hour = null;
+    #[ORM\Column(name: '`week_begin_hour`', type: 'itsm_clock_time', nullable: false, options: ['default' => '00:00:00'])]
+    public string $week_begin_hour = '00:00:00';
 
-    #[ORM\Column(name: '`week_end_hour`', type: 'time', nullable: false, options: ['default' => '00:00:00'])]
-    public ?\DateTimeInterface $week_end_hour = null;
+    #[ORM\Column(name: '`week_end_hour`', type: 'itsm_clock_time', nullable: false, options: ['default' => '00:00:00'])]
+    public string $week_end_hour = '00:00:00';
 
-    #[ORM\Column(name: '`saturday_begin_hour`', type: 'time', nullable: false, options: ['default' => '00:00:00'])]
-    public ?\DateTimeInterface $saturday_begin_hour = null;
+    #[ORM\Column(name: '`saturday_begin_hour`', type: 'itsm_clock_time', nullable: false, options: ['default' => '00:00:00'])]
+    public string $saturday_begin_hour = '00:00:00';
 
-    #[ORM\Column(name: '`saturday_end_hour`', type: 'time', nullable: false, options: ['default' => '00:00:00'])]
-    public ?\DateTimeInterface $saturday_end_hour = null;
+    #[ORM\Column(name: '`saturday_end_hour`', type: 'itsm_clock_time', nullable: false, options: ['default' => '00:00:00'])]
+    public string $saturday_end_hour = '00:00:00';
 
     #[ORM\Column(name: '`use_saturday`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $use_saturday = false;
 
-    #[ORM\Column(name: '`monday_begin_hour`', type: 'time', nullable: false, options: ['default' => '00:00:00'])]
-    public ?\DateTimeInterface $monday_begin_hour = null;
+    #[ORM\Column(name: '`monday_begin_hour`', type: 'itsm_clock_time', nullable: false, options: ['default' => '00:00:00'])]
+    public string $monday_begin_hour = '00:00:00';
 
-    #[ORM\Column(name: '`monday_end_hour`', type: 'time', nullable: false, options: ['default' => '00:00:00'])]
-    public ?\DateTimeInterface $monday_end_hour = null;
+    #[ORM\Column(name: '`monday_end_hour`', type: 'itsm_clock_time', nullable: false, options: ['default' => '00:00:00'])]
+    public string $monday_end_hour = '00:00:00';
 
     #[ORM\Column(name: '`use_monday`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $use_monday = false;

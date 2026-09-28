@@ -75,6 +75,8 @@ jobs:
         run: php tests/database-portability/application.php tests/config
       - name: Test ORM mappings, persistence and FK purge lifecycles
         run: php tests/database-portability/orm.php tests/config
+      - name: Compare ORM and adapter record contracts
+        run: php tests/database-portability/orm-records.php tests/config
       - name: Test scoped reporting and monthly statistics
         run: php tests/database-portability/reporting.php tests/config
       - name: Test search semantics and pagination
