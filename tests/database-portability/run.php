@@ -127,7 +127,7 @@ try {
                         $references[$reference] = 0;
                         continue;
                     }
-                    $DB->insertOrDie($target, ['name' => 'Foreign key contract parent']);
+                    $DB->insertOrDie($target, $DB->fieldExists($target, 'name') ? ['name' => 'Foreign key contract parent'] : ['comment' => 'Foreign key fixture']);
                     $references[$reference] = $DB->insertId();
                 }
                 $DB->insertOrDie($child, $references);

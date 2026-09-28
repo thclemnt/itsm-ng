@@ -73,6 +73,10 @@ jobs:
         run: php tests/database-portability/run.php tests/config
       - name: Test application workflow
         run: php tests/database-portability/application.php tests/config
+      - name: Test ORM mappings, persistence and FK purge lifecycles
+        run: php tests/database-portability/orm.php tests/config
+      - name: Test scoped reporting and monthly statistics
+        run: php tests/database-portability/reporting.php tests/config
       - name: Test search semantics and pagination
         run: php tests/database-portability/search.php tests/config
       - name: Plan all core search columns
@@ -94,6 +98,7 @@ jobs:
           done
           python3 tests/database-portability/web.py http://127.0.0.1:8059 --host=127.0.0.1 --database=itsm_port_web --user=test
           php tests/database-portability/run.php "$GLPI_CONFIG_DIR"
+          python3 tests/database-portability/web-reports.py http://127.0.0.1:8059
       - name: Test MySQL API compatibility
         if: matrix.database.provider == 'mysql'
         run: >-

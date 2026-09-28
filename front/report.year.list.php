@@ -155,8 +155,8 @@ if (isset($_POST["item_type"]) && is_array($_POST["item_type"])) {
             if (isset($_POST["year"][0]) && ($_POST["year"][0] != 0)) {
                 $ors = [];
                 foreach ($_POST["year"] as $val2) {
-                    $ors[] = new QueryExpression("YEAR(" . $DB->quoteName('glpi_infocoms.buy_date') . ") = " . $DB->quote($val2));
-                    $ors[] = new QueryExpression("YEAR(" . $DB->quoteName('glpi_contracts.begin_date') . ") = " . $DB->quote($val2));
+                    $ors[] = \itsmng\Reporting\Criteria::year('glpi_infocoms.buy_date', $val2);
+                    $ors[] = \itsmng\Reporting\Criteria::year('glpi_contracts.begin_date', $val2);
                 }
                 if (count($ors)) {
                     $criteria['WHERE'][] = [

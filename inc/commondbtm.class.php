@@ -587,14 +587,33 @@ class CommonDBTM extends CommonGLPI
     {
         global $DB;
 
+        $mapped = \itsmng\Database\MappedStorage::supports($this->getTable());
+        $changedColumns = [];
+        if ($mapped) {
+            $values = [];
+            foreach ($updates as $field) {
+                if (isset($this->fields[$field])) {
+                    $values[$field] = $this->fields[$field];
+                }
+            }
+            if ($values) {
+                $changedColumns = (new \itsmng\Database\MappedStorage($DB))->update(
+                    $this->getTable(),
+                    (int)$this->fields['id'],
+                    $values
+                );
+            }
+        }
+
         foreach ($updates as $field) {
             if (isset($this->fields[$field])) {
-                $DB->update(
-                    $this->getTable(),
-                    [$field => $this->fields[$field]],
-                    ['id' => $this->fields['id']]
-                );
-                if ($DB->affectedRows() == 0) {
+                if ($mapped) {
+                    $changed = in_array($field, $changedColumns, true);
+                } else {
+                    $DB->update($this->getTable(), [$field => $this->fields[$field]], ['id' => $this->fields['id']]);
+                    $changed = $DB->affectedRows() > 0;
+                }
+                if (!$changed) {
                     if (isset($oldvalues[$field])) {
                         unset($oldvalues[$field]);
                     }
@@ -640,7 +659,12 @@ class CommonDBTM extends CommonGLPI
                 $params[$key] = $value;
             }
 
-            $result = $DB->insert($this->getTable(), $params);
+            if (\itsmng\Database\MappedStorage::supports($this->getTable())) {
+                $this->fields['id'] = (new \itsmng\Database\MappedStorage($DB))->insert($this->getTable(), $params);
+                $result = true;
+            } else {
+                $result = $DB->insert($this->getTable(), $params);
+            }
             if ($result) {
                 if (
                     !isset($this->fields['id'])
@@ -709,12 +733,9 @@ class CommonDBTM extends CommonGLPI
             $this->cleanRelationData();
             $this->cleanRelationTable();
 
-            $result = $DB->delete(
-                $this->getTable(),
-                [
-                  'id' => $this->fields['id']
-                ]
-            );
+            $result = \itsmng\Database\MappedStorage::supports($this->getTable())
+                ? (new \itsmng\Database\MappedStorage($DB))->delete($this->getTable(), (int)$this->fields['id'])
+                : $DB->delete($this->getTable(), ['id' => $this->fields['id']]);
             if ($result) {
                 $this->post_deleteFromDB();
                 return true;
@@ -4816,7 +4837,7 @@ class CommonDBTM extends CommonGLPI
 
         $ok = false;
         if (is_array($crit) && (count($crit) > 0)) {
-            $crit['FIELDS'] = [$this::getTable() => 'id'];
+            $crit['FIELDS'] = [$this::getTable() => static::getIndexName()];
             $ok = true;
             $iterator = $DB->request($this->getTable(), $crit);
             foreach ($iterator as $row) {

@@ -150,26 +150,14 @@ function display_infocoms_report($itemtype, $begin, $end)
                       $childitemtype::getTable() => 'id'
                    ]
                 ];
-                $criteria['WHERE'] =  getEntitiesRestrictCriteria($itemtable);
+                $criteria['WHERE'] =  getEntitiesRestrictCriteria($childitemtype::getTable());
             }
             break;
     }
 
-    if (!empty($begin)) {
-        $criteria['WHERE'][] = [
-           'OR'  => [
-              'glpi_infocoms.buy_date'   => ['>=', $begin],
-              'glpi_infocoms.use_date'   => ['>=', $begin]
-           ]
-        ];
-    }
-    if (!empty($end)) {
-        $criteria['WHERE'][] = [
-           'OR'  => [
-              'glpi_infocoms.buy_date'   => ['<=', $end],
-              'glpi_infocoms.use_date'   => ['<=', $end]
-           ]
-        ];
+    $dates = \itsmng\Reporting\Criteria::financialDates((string)$begin, (string)$end);
+    if ($dates) {
+        $criteria['WHERE'][] = $dates;
     }
     $iterator = $DB->request($criteria);
 

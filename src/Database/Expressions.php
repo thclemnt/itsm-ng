@@ -37,6 +37,12 @@ final class Expressions
         return $this->platform instanceof PostgreSQLPlatform ? "EXTRACT($part FROM $date)" : "$part($date)";
     }
 
+    public function yearMonth(string $date): string
+    {
+        return $this->platform instanceof PostgreSQLPlatform
+            ? "TO_CHAR($date, 'YYYY-MM')" : "DATE_FORMAT($date, '%Y-%m')";
+    }
+
     public function epoch(string $date = 'CURRENT_TIMESTAMP'): string
     {
         return $this->platform instanceof PostgreSQLPlatform ? "EXTRACT(EPOCH FROM $date)" : "UNIX_TIMESTAMP($date)";

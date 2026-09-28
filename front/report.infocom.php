@@ -108,6 +108,7 @@ function display_infocoms_report($itemtype, $begin, $end)
 {
     global $DB, $valeurtot, $valeurnettetot, $valeurnettegraphtot, $valeurgraphtot, $CFG_GLPI, $stat, $chart_opts;
 
+    $display_entity = Session::isMultiEntitiesMode();
     $itemtable = getTableForItemType($itemtype);
     // report need name and ticket_tco, many asset type don't have it therefore are not compatible
     if (!$DB->fieldExists($itemtable, "ticket_tco", false)) {
@@ -147,25 +148,10 @@ function display_infocoms_report($itemtype, $begin, $end)
        'ORDERBY'      => ['entname ASC', 'buy_date', 'use_date']
     ];
 
-    if (!empty($begin)) {
-        $criteria['WHERE'][] = [
-           'OR'  => [
-              'glpi_infocoms.buy_date'   => ['>=', $begin],
-              'glpi_infocoms.use_date'   => ['>=', $begin]
-           ]
-        ];
+    $dates = \itsmng\Reporting\Criteria::financialDates((string)$begin, (string)$end);
+    if ($dates) {
+        $criteria['WHERE'][] = $dates;
     }
-
-    if (!empty($end)) {
-        $criteria['WHERE'][] = [
-           'OR'  => [
-              'glpi_infocoms.buy_date'   => ['<=', $end],
-              'glpi_infocoms.use_date'   => ['<=', $end]
-           ]
-        ];
-    }
-
-    $display_entity = Session::isMultiEntitiesMode();
     $iterator = $DB->request($criteria);
 
     if (

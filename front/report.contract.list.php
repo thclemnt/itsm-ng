@@ -117,6 +117,7 @@ if (isset($_POST["item_type"]) && is_array($_POST["item_type"])) {
             ($val == 'Project')
               || ($val == 'SoftwareLicense')
         ) {
+            $criteria['SELECT'][] = new QueryExpression("'' AS location");
             if ($val == 'SoftwareLicense') {
                 $criteria['ORDERBY'] = ["entname ASC", "itemname ASC"];
                 $criteria['SELECT'] = array_merge(
@@ -141,9 +142,9 @@ if (isset($_POST["item_type"]) && is_array($_POST["item_type"])) {
             if (isset($_POST["year"][0]) && ($_POST["year"][0] != 0)) {
                 $ors = [];
                 foreach ($_POST["year"] as $val2) {
-                    $ors[] = new QueryExpression('YEAR(' . $DB->quoteName('glpi_contracts.begin_date') . ') = ' . $DB->quote($val2));
+                    $ors[] = \itsmng\Reporting\Criteria::year('glpi_contracts.begin_date', $val2);
                     if ($val == 'SoftwareLicense') {
-                        $ors[] = new QueryExpression('YEAR(' . $DB->quoteName('glpi_infocoms.buy_date') . ') = ' . $DB->quote($val2));
+                        $ors[] = \itsmng\Reporting\Criteria::year('glpi_infocoms.buy_date', $val2);
                     }
                 }
                 if (count($ors)) {
@@ -183,9 +184,10 @@ if (isset($_POST["item_type"]) && is_array($_POST["item_type"])) {
             }
 
             if (isset($_POST["year"][0]) && ($_POST["year"][0] != 0)) {
+                $ors = [];
                 foreach ($_POST["year"] as $val2) {
-                    $ors[] = new QueryExpression('YEAR(' . $DB->quoteName('glpi_infocoms.buy_date') . ') = ' . $DB->quoteValue($val2));
-                    $ors[] = new QueryExpression('YEAR(' . $DB->quoteName('glpi_contracts.begin_date') . ') = ' . $DB->quoteValue($val2));
+                    $ors[] = \itsmng\Reporting\Criteria::year('glpi_infocoms.buy_date', $val2);
+                    $ors[] = \itsmng\Reporting\Criteria::year('glpi_contracts.begin_date', $val2);
                 }
                 if (count($ors)) {
                     $criteria['WHERE'][] = ['OR' => $ors];

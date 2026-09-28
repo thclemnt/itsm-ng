@@ -1316,44 +1316,14 @@ class Reservation extends CommonDBChild
         $now = $_SESSION["glpi_currenttime"];
 
         // Print reservation in progress
-        $iterator = $DB->request([
-           'SELECT'    => [
-              'begin',
-              'end',
-              'items_id',
-              'glpi_reservationitems.entities_id',
-              'users_id',
-              'glpi_reservations.comment',
-              'reservationitems_id',
-              'completename'
-           ],
-           'FROM'      => 'glpi_reservations',
-           'LEFT JOIN' => [
-              'glpi_reservationitems' => [
-                 'ON' => [
-                    'glpi_reservationitems' => 'id',
-                    'glpi_reservations'     => 'reservationitems_id'
-                 ]
-              ],
-              'glpi_entities' => [
-                 'ON' => [
-                    'glpi_reservationitems' => 'entities_id',
-                    'glpi_entities'         => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'end'       => ['>', $now],
-              'users_id'  => $ID
-           ],
-           'ORDERBY'   => 'begin'
-        ]);
+        $rows = (new \itsmng\Database\Repository\ReservationRepository(\itsmng\Database\Orm::create($DB)))
+            ->forUser((int)$ID, $now, false, \itsmng\Reporting\Criteria::entities());
 
         $ri = new ReservationItem();
         echo "<table class='tab_cadre_fixehov' aria-label='Current and future reservations'>";
         echo "<tr><th colspan='6'>" . __('Current and future reservations') . "</th></tr>\n";
 
-        if (count($iterator) == 0) {
+        if (count($rows) == 0) {
             echo "<tr class='tab_bg_2'>";
             echo "<td class='center' colspan='6'>" . __('No reservation') . "</td></tr\n>";
         } else {
@@ -1364,7 +1334,8 @@ class Reservation extends CommonDBChild
             echo "<th>" . __('By') . "</th>";
             echo "<th>" . __('Comments') . "</th><th>&nbsp;</th></tr>\n";
 
-            while ($data = $iterator->next()) {
+            foreach ($rows as $data) {
+                $data['completename'] = Dropdown::getDropdownName('glpi_entities', $data['entities_id']);
                 echo "<tr class='tab_bg_2'>";
                 echo "<td class='center'>" . Html::convDateTime($data["begin"]) . "</td>";
                 echo "<td class='center'>" . Html::convDateTime($data["end"]) . "</td>";
@@ -1398,44 +1369,14 @@ class Reservation extends CommonDBChild
         echo "</table></div>\n";
 
         // Print old reservations
-        $iterator = $DB->request([
-           'SELECT'    => [
-              'begin',
-              'end',
-              'items_id',
-              'glpi_reservationitems.entities_id',
-              'users_id',
-              'glpi_reservations.comment',
-              'reservationitems_id',
-              'completename'
-           ],
-           'FROM'      => 'glpi_reservations',
-           'LEFT JOIN' => [
-              'glpi_reservationitems' => [
-                 'ON' => [
-                    'glpi_reservationitems' => 'id',
-                    'glpi_reservations'     => 'reservationitems_id'
-                 ]
-              ],
-              'glpi_entities'         => [
-                 'ON' => [
-                    'glpi_reservationitems' => 'entities_id',
-                    'glpi_entities'         => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'end'       => ['<=', $now],
-              'users_id'  => $ID
-           ],
-           'ORDERBY'   => 'begin DESC'
-        ]);
+        $rows = (new \itsmng\Database\Repository\ReservationRepository(\itsmng\Database\Orm::create($DB)))
+            ->forUser((int)$ID, $now, true, \itsmng\Reporting\Criteria::entities());
 
         echo "<div class='spaced'>";
         echo "<table class='tab_cadre_fixehov' aria-label='Past Reservations'>";
         echo "<tr><th colspan='6'>" . __('Past reservations') . "</th></tr>\n";
 
-        if (count($iterator) == 0) {
+        if (count($rows) == 0) {
             echo "<tr class='tab_bg_2'>";
             echo "<td class='center' colspan='6'>" . __('No reservation') . "</td></tr>\n";
         } else {
@@ -1446,7 +1387,8 @@ class Reservation extends CommonDBChild
             echo "<th>" . __('By') . "</th>";
             echo "<th>" . __('Comments') . "</th><th>&nbsp;</th></tr>\n";
 
-            while ($data = $iterator->next()) {
+            foreach ($rows as $data) {
+                $data['completename'] = Dropdown::getDropdownName('glpi_entities', $data['entities_id']);
                 echo "<tr class='tab_bg_2'>";
                 echo "<td class='center'>" . Html::convDateTime($data["begin"]) . "</td>";
                 echo "<td class='center'>" . Html::convDateTime($data["end"]) . "</td>";

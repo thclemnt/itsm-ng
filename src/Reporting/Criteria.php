@@ -1,0 +1,45 @@
+<?php
+
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+namespace itsmng\Reporting;
+
+final class Criteria
+{
+    /** Same non-recursive entity scope used by the report entry points. */
+    public static function entities(): ?array
+    {
+        if (!empty($_SESSION['glpishowallentities'])) {
+            return null;
+        }
+        return array_map('intval', (array)($_SESSION['glpiactiveentities'] ?? (isCommandLine() || \Session::isCron() ? [0] : [])));
+    }
+
+    /** Either date must itself fall inside the entire requested interval. */
+    public static function financialDates(string $begin, string $end): array
+    {
+        $dates = [];
+        foreach (['buy_date', 'use_date'] as $field) {
+            $bounds = [];
+            if ($begin !== '') {
+                $bounds[] = ['glpi_infocoms.' . $field => ['>=', $begin]];
+            }
+            if ($end !== '') {
+                $bounds[] = ['glpi_infocoms.' . $field => ['<=', $end]];
+            }
+            if ($bounds) {
+                $dates[] = ['AND' => $bounds];
+            }
+        }
+        return $dates ? ['OR' => $dates] : [];
+    }
+
+    /** Range predicates preserve date indexes and work on both database engines. */
+    public static function year(string $column, mixed $year): array
+    {
+        if (!is_scalar($year) || !preg_match('/^[1-9][0-9]{3}$/D', (string)$year) || (int)$year >= 9999) {
+            throw new \InvalidArgumentException('Invalid report year');
+        }
+        return ['AND' => [[$column => ['>=', $year . '-01-01']], [$column => ['<', ((int)$year + 1) . '-01-01']]]];
+    }
+}

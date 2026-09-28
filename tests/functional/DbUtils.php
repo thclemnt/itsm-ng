@@ -1117,7 +1117,7 @@ class DbUtils extends DbTestCase
 
         $this->string(
             $result[0]['date'][1]->getValue()
-        )->isIdenticalTo("ADDDATE('2018-11-09', INTERVAL 1 DAY)");
+        )->isIdenticalTo("DATE_ADD('2018-11-09', INTERVAL 1 DAY)");
 
         $result = $this->testedInstance->getDateCriteria('date', '2018-11-08', '2018-11-09');
         $this->array($result)->hasSize(2);
@@ -1130,7 +1130,7 @@ class DbUtils extends DbTestCase
 
         $this->string(
             $result[1]['date'][1]->getValue()
-        )->isIdenticalTo("ADDDATE('2018-11-09', INTERVAL 1 DAY)");
+        )->isIdenticalTo("DATE_ADD('2018-11-09', INTERVAL 1 DAY)");
     }
 
     protected function autoNameProvider()

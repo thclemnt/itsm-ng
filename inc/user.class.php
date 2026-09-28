@@ -4080,14 +4080,6 @@ class User extends CommonDBTM
               ]
            ]
         ];
-        if ($count) {
-            $criteria['SELECT'] = ['COUNT' => 'glpi_users.id AS CPT'];
-            $criteria['DISTINCT'] = true;
-        } else {
-            $criteria['SELECT'] = 'glpi_users.*';
-            $criteria['DISTINCT'] = true;
-        }
-
         if ($joinprofile) {
             $criteria['LEFT JOIN']['glpi_profiles'] = [
                'ON' => [
@@ -4151,7 +4143,22 @@ class User extends CommonDBTM
             }
         }
         $criteria['WHERE'] = $WHERE;
-        return $DB->request($criteria);
+        $matching = $criteria;
+        $matching['SELECT'] = 'glpi_users.id';
+        unset($matching['ORDERBY'], $matching['LIMIT'], $matching['START']);
+        // Deduplicate by identity before reading full users. PostgreSQL JSON
+        // values have no equality operator for SELECT DISTINCT users.*.
+        $result = [
+            'SELECT' => $count ? ['COUNT' => 'glpi_users.id AS CPT'] : 'glpi_users.*',
+            'FROM' => 'glpi_users',
+            'WHERE' => ['glpi_users.id' => new QuerySubQuery($matching)],
+        ];
+        foreach (['ORDERBY', 'LIMIT', 'START'] as $key) {
+            if (isset($criteria[$key])) {
+                $result[$key] = $criteria[$key];
+            }
+        }
+        return $DB->request($result);
     }
 
 

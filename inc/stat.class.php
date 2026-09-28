@@ -916,6 +916,7 @@ class Stat extends CommonGLPI
         array $add_criteria = []
     ) {
         $DB = \DBConnection::getReadConnection();
+        $expressions = new \itsmng\Database\Expressions($DB->getDoctrineConnection()->getDatabasePlatform());
 
         if (!$item = getItemForItemtype($itemtype)) {
             return;
@@ -1196,7 +1197,7 @@ class Stat extends CommonGLPI
                 $WHERE[] = getDateCriteria("$table.date", $begin, $end);
 
                 $date_unix = new QueryExpression(
-                    "FROM_UNIXTIME(UNIX_TIMESTAMP(" . $DB->quoteName("$table.date") . "),'%Y-%m') AS " . $DB->quoteName('date_unix')
+                    $expressions->yearMonth($DB->quoteName("$table.date")) . " AS " . $DB->quoteName('date_unix')
                 );
 
                 $criteria = [
@@ -1207,7 +1208,7 @@ class Stat extends CommonGLPI
                    'FROM'      => $table,
                    'WHERE'     => $WHERE,
                    'GROUPBY'   => 'date_unix',
-                   'ORDERBY'   => "$table.date"
+                   'ORDERBY'   => 'date_unix'
                 ];
                 break;
 
@@ -1217,7 +1218,7 @@ class Stat extends CommonGLPI
                 $WHERE[] = getDateCriteria("$table.solvedate", $begin, $end);
 
                 $date_unix = new QueryExpression(
-                    "FROM_UNIXTIME(UNIX_TIMESTAMP(" . $DB->quoteName("$table.solvedate") . "),'%Y-%m') AS " . $DB->quoteName('date_unix')
+                    $expressions->yearMonth($DB->quoteName("$table.solvedate")) . " AS " . $DB->quoteName('date_unix')
                 );
 
                 $criteria = [
@@ -1228,7 +1229,7 @@ class Stat extends CommonGLPI
                    'FROM'      => $table,
                    'WHERE'     => $WHERE,
                    'GROUPBY'   => 'date_unix',
-                   'ORDERBY'   => "$table.solvedate"
+                   'ORDERBY'   => 'date_unix'
                 ];
                 break;
 
@@ -1244,7 +1245,7 @@ class Stat extends CommonGLPI
                 $WHERE[] = new QueryExpression("$table.solvedate > $table.time_to_resolve");
 
                 $date_unix = new QueryExpression(
-                    "FROM_UNIXTIME(UNIX_TIMESTAMP(" . $DB->quoteName("$table.solvedate") . "),'%Y-%m') AS " . $DB->quoteName('date_unix')
+                    $expressions->yearMonth($DB->quoteName("$table.solvedate")) . " AS " . $DB->quoteName('date_unix')
                 );
 
                 $criteria = [
@@ -1255,7 +1256,7 @@ class Stat extends CommonGLPI
                    'FROM'      => $table,
                    'WHERE'     => $WHERE,
                    'GROUPBY'   => 'date_unix',
-                   'ORDERBY'   => "$table.solvedate"
+                   'ORDERBY'   => 'date_unix'
                 ];
                 break;
 
@@ -1265,7 +1266,7 @@ class Stat extends CommonGLPI
                 $WHERE[] = getDateCriteria("$table.closedate", $begin, $end);
 
                 $date_unix = new QueryExpression(
-                    "FROM_UNIXTIME(UNIX_TIMESTAMP(" . $DB->quoteName("$table.closedate") . "),'%Y-%m') AS " . $DB->quoteName('date_unix')
+                    $expressions->yearMonth($DB->quoteName("$table.closedate")) . " AS " . $DB->quoteName('date_unix')
                 );
 
                 $criteria = [
@@ -1276,7 +1277,7 @@ class Stat extends CommonGLPI
                    'FROM'      => $table,
                    'WHERE'     => $WHERE,
                    'GROUPBY'   => 'date_unix',
-                   'ORDERBY'   => "$table.closedate"
+                   'ORDERBY'   => 'date_unix'
                 ];
                 break;
 
@@ -1287,7 +1288,7 @@ class Stat extends CommonGLPI
                 $WHERE[] = getDateCriteria("$table.solvedate", $begin, $end);
 
                 $date_unix = new QueryExpression(
-                    "FROM_UNIXTIME(UNIX_TIMESTAMP(" . $DB->quoteName("$table.solvedate") . "),'%Y-%m') AS " . $DB->quoteName('date_unix')
+                    $expressions->yearMonth($DB->quoteName("$table.solvedate")) . " AS " . $DB->quoteName('date_unix')
                 );
 
                 $criteria = [
@@ -1298,7 +1299,7 @@ class Stat extends CommonGLPI
                    'FROM'      => $table,
                    'WHERE'     => $WHERE,
                    'GROUPBY'   => 'date_unix',
-                   'ORDERBY'   => "$table.solvedate"
+                   'ORDERBY'   => 'date_unix'
                 ];
                 break;
 
@@ -1308,7 +1309,7 @@ class Stat extends CommonGLPI
                 $WHERE[] = getDateCriteria("$table.solvedate", $begin, $end);
 
                 $date_unix = new QueryExpression(
-                    "FROM_UNIXTIME(UNIX_TIMESTAMP(" . $DB->quoteName("$table.solvedate") . "),'%Y-%m') AS " . $DB->quoteName('date_unix')
+                    $expressions->yearMonth($DB->quoteName("$table.solvedate")) . " AS " . $DB->quoteName('date_unix')
                 );
 
                 $criteria = [
@@ -1319,7 +1320,7 @@ class Stat extends CommonGLPI
                    'FROM'      => $table,
                    'WHERE'     => $WHERE,
                    'GROUPBY'   => 'date_unix',
-                   'ORDERBY'   => "$table.solvedate"
+                   'ORDERBY'   => 'date_unix'
                 ];
                 break;
 
@@ -1329,7 +1330,7 @@ class Stat extends CommonGLPI
                 $WHERE[] = getDateCriteria("$table.closedate", $begin, $end);
 
                 $date_unix = new QueryExpression(
-                    "FROM_UNIXTIME(UNIX_TIMESTAMP(" . $DB->quoteName("$table.closedate") . "),'%Y-%m') AS " . $DB->quoteName('date_unix')
+                    $expressions->yearMonth($DB->quoteName("$table.closedate")) . " AS " . $DB->quoteName('date_unix')
                 );
 
                 $criteria = [
@@ -1340,7 +1341,7 @@ class Stat extends CommonGLPI
                    'FROM'      => $table,
                    'WHERE'     => $WHERE,
                    'GROUPBY'   => 'date_unix',
-                   'ORDERBY'   => "$table.closedate"
+                   'ORDERBY'   => 'date_unix'
                 ];
                 break;
 
@@ -1354,7 +1355,7 @@ class Stat extends CommonGLPI
                 $WHERE[] = getDateCriteria("$table.solvedate", $begin, $end);
 
                 $date_unix = new QueryExpression(
-                    "FROM_UNIXTIME(UNIX_TIMESTAMP(" . $DB->quoteName("$table.solvedate") . "),'%Y-%m') AS " . $DB->quoteName('date_unix')
+                    $expressions->yearMonth($DB->quoteName("$table.solvedate")) . " AS " . $DB->quoteName('date_unix')
                 );
 
                 $criteria = [
@@ -1365,7 +1366,7 @@ class Stat extends CommonGLPI
                    'FROM'      => $table,
                    'WHERE'     => $WHERE,
                    'GROUPBY'   => 'date_unix',
-                   'ORDERBY'   => "$table.solvedate"
+                   'ORDERBY'   => 'date_unix'
                 ];
                 break;
 
@@ -1375,7 +1376,7 @@ class Stat extends CommonGLPI
                 $WHERE[] = getDateCriteria("$table.solvedate", $begin, $end);
 
                 $date_unix = new QueryExpression(
-                    "FROM_UNIXTIME(UNIX_TIMESTAMP(" . $DB->quoteName("$table.solvedate") . "),'%Y-%m') AS " . $DB->quoteName('date_unix')
+                    $expressions->yearMonth($DB->quoteName("$table.solvedate")) . " AS " . $DB->quoteName('date_unix')
                 );
 
                 $criteria = [
@@ -1386,7 +1387,7 @@ class Stat extends CommonGLPI
                    'FROM'      => $table,
                    'WHERE'     => $WHERE,
                    'GROUPBY'   => 'date_unix',
-                   'ORDERBY'   => "$table.solvedate"
+                   'ORDERBY'   => 'date_unix'
                 ];
                 break;
 
@@ -1396,7 +1397,7 @@ class Stat extends CommonGLPI
                 $WHERE[] = getDateCriteria("$table.closedate", $begin, $end);
 
                 $date_unix = new QueryExpression(
-                    "FROM_UNIXTIME(UNIX_TIMESTAMP(" . $DB->quoteName("$table.closedate") . "),'%Y-%m') AS " . $DB->quoteName('date_unix')
+                    $expressions->yearMonth($DB->quoteName("$table.closedate")) . " AS " . $DB->quoteName('date_unix')
                 );
 
                 $INNERJOIN['glpi_ticketsatisfactions'] = [
@@ -1414,7 +1415,7 @@ class Stat extends CommonGLPI
                    'FROM'      => $table,
                    'WHERE'     => $WHERE,
                    'GROUPBY'   => 'date_unix',
-                   'ORDERBY'   => "$table.closedate"
+                   'ORDERBY'   => 'date_unix'
                 ];
                 break;
 
@@ -1428,7 +1429,7 @@ class Stat extends CommonGLPI
                 $WHERE[] = getDateCriteria("$table.closedate", $begin, $end);
 
                 $date_unix = new QueryExpression(
-                    "FROM_UNIXTIME(UNIX_TIMESTAMP(" . $DB->quoteName("$table.closedate") . "),'%Y-%m') AS " . $DB->quoteName('date_unix')
+                    $expressions->yearMonth($DB->quoteName("$table.closedate")) . " AS " . $DB->quoteName('date_unix')
                 );
 
                 $INNERJOIN['glpi_ticketsatisfactions'] = [
@@ -1446,7 +1447,7 @@ class Stat extends CommonGLPI
                    'FROM'      => $table,
                    'WHERE'     => $WHERE,
                    'GROUPBY'   => 'date_unix',
-                   'ORDERBY'   => "$table.closedate"
+                   'ORDERBY'   => 'date_unix'
                 ];
                 break;
 
@@ -1461,7 +1462,7 @@ class Stat extends CommonGLPI
                 $WHERE[] = getDateCriteria("$table.closedate", $begin, $end);
 
                 $date_unix = new QueryExpression(
-                    "FROM_UNIXTIME(UNIX_TIMESTAMP(" . $DB->quoteName("$table.closedate") . "),'%Y-%m') AS " . $DB->quoteName('date_unix')
+                    $expressions->yearMonth($DB->quoteName("$table.closedate")) . " AS " . $DB->quoteName('date_unix')
                 );
 
                 $INNERJOIN['glpi_ticketsatisfactions'] = [
@@ -1479,7 +1480,7 @@ class Stat extends CommonGLPI
                    'FROM'      => $table,
                    'WHERE'     => $WHERE,
                    'GROUPBY'   => 'date_unix',
-                   'ORDERBY'   => "$table.closedate"
+                   'ORDERBY'   => 'date_unix'
                 ];
                 break;
         }

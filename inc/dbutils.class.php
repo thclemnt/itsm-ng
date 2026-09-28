@@ -1843,7 +1843,7 @@ final class DbUtils
 
         if (is_string($end) && preg_match($date_pattern, $end) === 1) {
             $end_expr = new QueryExpression(
-                'ADDDATE(' . $DB->quoteValue($end) . ', INTERVAL 1 DAY)'
+                (new \itsmng\Database\Expressions($DB->getDoctrineConnection()->getDatabasePlatform()))->dateAdd($DB->quoteValue($end), 1, 'DAY')
             );
             $criteria[] = [$field => ['<=', $end_expr]];
         } elseif ($end !== null && $end !== '') {

@@ -184,38 +184,27 @@ class Report extends CommonGLPI
         // 1. Get counts of itemtype
         $items     = $CFG_GLPI["asset_types"];
 
-        $linkitems = $CFG_GLPI['directconnect_types'];
+        $assets = new \itsmng\Database\Repository\AssetRepository(\itsmng\Database\Orm::create($DB));
 
         echo "<table class='tab_cadrehov' aria-label='Show default report'>";
 
         foreach ($items as $itemtype) {
             $table_item = getTableForItemType($itemtype);
-            $criteria = [
-               'COUNT'  => 'cpt',
-               'FROM'   => $table_item,
-               'WHERE'  => [
-                  "$table_item.is_deleted"   => 0,
-                  "$table_item.is_template"  => 0
-               ] + getEntitiesRestrictCriteria($table_item)
-            ];
-
-            if (in_array($itemtype, $linkitems)) {
-                $criteria['LEFT JOIN'] = [
-                   'glpi_computers_items' => [
-                      'ON' => [
-                         'glpi_computers_items'  => 'items_id',
-                         $table_item             => 'id', [
-                            'AND' => [
-                               'glpi_computers_items.itemtype' => $itemtype
-                            ]
-                         ]
-                      ]
-                   ]
-                ];
+            if (isset(\itsmng\Database\Repository\AssetRepository::TYPES[$itemtype])) {
+                $number = $assets->count($itemtype, \itsmng\Reporting\Criteria::entities());
+            } else {
+                // Plugin assets retain their registered table and visibility rules.
+                $filters = [];
+                foreach (['is_deleted', 'is_template'] as $flag) {
+                    if ($DB->fieldExists($table_item, $flag)) {
+                        $filters["$table_item.$flag"] = 0;
+                    }
+                }
+                $number = (int)$DB->request([
+                    'COUNT' => 'cpt', 'FROM' => $table_item,
+                    'WHERE' => $filters + getEntitiesRestrictCriteria($table_item),
+                ])->next()['cpt'];
             }
-
-            $result = $DB->request($criteria)->next();
-            $number = (int)$result['cpt'];
 
             echo "<tr class='tab_bg_2'><td>" . $itemtype::getTypeName(Session::getPluralNumber()) . "</td>";
             echo "<td class='numeric'>$number</td></tr>";
@@ -230,6 +219,9 @@ class Report extends CommonGLPI
               'glpi_operatingsystems.name AS name'
            ],
            'FROM'      => 'glpi_items_operatingsystems',
+           'INNER JOIN' => [
+               'glpi_computers' => ['ON' => ['glpi_items_operatingsystems' => 'items_id', 'glpi_computers' => 'id']],
+           ],
            'LEFT JOIN' => [
               'glpi_operatingsystems' => [
                  'ON' => [
@@ -238,7 +230,12 @@ class Report extends CommonGLPI
                  ]
               ]
            ],
-           'WHERE'     => ['is_deleted' => 0],
+           'WHERE'     => [
+               'glpi_items_operatingsystems.itemtype' => 'Computer',
+               'glpi_items_operatingsystems.is_deleted' => 0,
+               'glpi_computers.is_deleted' => 0,
+               'glpi_computers.is_template' => 0,
+           ] + getEntitiesRestrictCriteria('glpi_computers'),
            'GROUPBY'   => 'glpi_operatingsystems.name'
         ]);
 
@@ -285,17 +282,8 @@ class Report extends CommonGLPI
                'GROUPBY'   => "$type_table.name"
             ];
 
-            if (in_array($itemtype, $linkitems)) {
-                $criteria['LEFT JOIN']['glpi_computers_items'] = [
-                   'ON' => [
-                      'glpi_computers_items'  => 'items_id',
-                      $table_item             => 'id', [
-                         'AND' => [
-                            'glpi_computers_items.itemtype'  => $itemtype
-                         ]
-                      ]
-                   ]
-                ];
+            if (!$DB->fieldExists($table_item, 'is_template')) {
+                unset($criteria['WHERE']["$table_item.is_template"]);
             }
 
             $iterator = $DB->request($criteria);
@@ -341,7 +329,7 @@ class Report extends CommonGLPI
 
         // This SQL request matches the NetworkPort, then its NetworkName and IPAddreses. It also
         //      match opposite NetworkPort, then its NetworkName and IPAddresses.
-        // Results are groupes by NetworkPort. Then all IPs are concatenated by comma as separator.
+        // Addresses are aggregated per port to avoid multiplying the two endpoints.
 
         if (count($joincrit) === 3) {
             $andcrit = array_pop($joincrit);
@@ -359,13 +347,13 @@ class Report extends CommonGLPI
               'PORT_1.name AS port_1',
               'PORT_1.mac AS mac_1',
               'PORT_1.logical_number AS logical_1',
-              new QueryExpression('GROUP_CONCAT(' . $DB->quoteName('ADDR_1.name') . ' SEPARATOR ' . $DB->quote(',') . ') AS ' . $DB->quoteName('ip_1')),
+              new QueryExpression(\itsmng\Reporting\NetworkReport::addresses($DB, 'PORT_1') . ' AS ' . $DB->quoteName('ip_1')),
               'PORT_2.itemtype AS itemtype_2',
               'PORT_2.items_id AS items_id_2',
               'PORT_2.id AS id_2',
               'PORT_2.name AS port_2',
               'PORT_2.mac AS mac_2',
-              new QueryExpression('GROUP_CONCAT(' . $DB->quoteName('ADDR_2.name') . ' SEPARATOR ' . $DB->quote(',') . ') AS ' . $DB->quoteName('ip_2'))
+              new QueryExpression(\itsmng\Reporting\NetworkReport::addresses($DB, 'PORT_2') . ' AS ' . $DB->quoteName('ip_2'))
            ], $select),
            'FROM'         => $from,
            'INNER JOIN'   => $innerjoin + [
@@ -374,28 +362,6 @@ class Report extends CommonGLPI
               ]
            ],
            'LEFT JOIN'    => [
-              'glpi_networknames AS NAME_1' => [
-                 'ON'  => [
-                    'PORT_1' => 'id',
-                    'NAME_1' => 'items_id', [
-                       'AND'    => [
-                          'NAME_1.itemtype'    => 'NetworkPort',
-                          'NAME_1.is_deleted'  => 0
-                       ]
-                    ]
-                 ]
-              ],
-              'glpi_ipaddresses AS ADDR_1'  => [
-                 'ON'  => [
-                    'NAME_1' => 'id',
-                    'ADDR_1' => 'items_id', [
-                       'AND'    => [
-                          'ADDR_1.itemtype'    => 'NetworkName',
-                          'ADDR_1.is_deleted'  => 0
-                       ]
-                    ]
-                 ]
-              ],
               'glpi_networkports_networkports AS LINK'  => [
                  'ON'  => [
                     'LINK'   => 'networkports_id_1',
@@ -410,37 +376,15 @@ class Report extends CommonGLPI
                  'ON'  => [
                     'PORT_2' => 'id',
                     new QueryExpression(
-                        'IF(' . $DB->quoteName('LINK.networkports_id_1') . ' = ' . $DB->quoteName('PORT_1.id') . ', ' .
-                          $DB->quoteName('LINK.networkports_id_2') . ', ' .
-                          $DB->quoteName('LINK.networkports_id_1') . ')'
-                    )
+                        'CASE WHEN ' . $DB->quoteName('LINK.networkports_id_1') . ' = ' . $DB->quoteName('PORT_1.id') . ' THEN ' .
+                          $DB->quoteName('LINK.networkports_id_2') . ' ELSE ' .
+                          $DB->quoteName('LINK.networkports_id_1') . ' END'
+                    ),
+                    ['AND' => ['PORT_2.is_deleted' => 0] + getEntitiesRestrictCriteria('PORT_2')]
                  ]
               ],
-              'glpi_networknames AS NAME_2' => [
-               'ON'  => [
-                    'PORT_2' => 'id',
-                    'NAME_2' => 'items_id', [
-                       'AND'    => [
-                          'NAME_2.itemtype'     => 'NetworkPort',
-                          'NAME_2.is_deleted'   => 0
-                       ]
-                    ]
-               ]
-              ],
-              'glpi_ipaddresses AS ADDR_2'  => [
-               'ON'  => [
-                    'NAME_2' => 'id',
-                    'ADDR_2' => 'items_id', [
-                       'AND'    => [
-                          'ADDR_2.itemtype'    => 'NetworkName',
-                          'ADDR_2.is_deleted'  => 0
-                       ]
-                    ]
-               ]
-              ]
            ] + $leftjoin,
-           'WHERE'        => $where,
-           'GROUPBY'      => ['PORT_1.id']
+           'WHERE'        => $where + getEntitiesRestrictCriteria('PORT_1')
         ];
 
         if (count($order)) {
