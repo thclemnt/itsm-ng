@@ -8,7 +8,7 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_locations')]
-#[ORM\UniqueConstraint(name: 'locations_unicity', columns: ['entities_id', 'locations_id', 'name'])]
+#[ORM\UniqueConstraint(name: 'locations_unicity', columns: ['entities_id', 'parent_key', 'name'])]
 class Location
 {
     #[ORM\Id]
@@ -26,8 +26,9 @@ class Location
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
     public ?string $name = null;
 
-    #[ORM\Column(name: '`locations_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $locations_id = 0;
+    #[ORM\ManyToOne(targetEntity: Location::class)]
+    #[ORM\JoinColumn(name: 'locations_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Location $locations = null;
 
     #[ORM\Column(name: '`completename`', type: 'text', nullable: true)]
     public ?string $completename = null;
@@ -79,4 +80,6 @@ class Location
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_creation = null;
+    #[ORM\Column(name: '`parent_key`', type: 'bigint', nullable: true, insertable: false, updatable: false, generated: 'ALWAYS', columnDefinition: 'BIGINT GENERATED ALWAYS AS (COALESCE(locations_id, 0)) STORED')]
+    public ?int $parent_key = null;
 }

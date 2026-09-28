@@ -8,7 +8,7 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_knowbaseitemcategories')]
-#[ORM\UniqueConstraint(name: 'knowbaseitemcategories_unicity', columns: ['entities_id', 'knowbaseitemcategories_id', 'name'])]
+#[ORM\UniqueConstraint(name: 'knowbaseitemcategories_unicity', columns: ['entities_id', 'parent_key', 'name'])]
 class KnowbaseItemCategory
 {
     #[ORM\Id]
@@ -23,8 +23,9 @@ class KnowbaseItemCategory
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_recursive = false;
 
-    #[ORM\Column(name: '`knowbaseitemcategories_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $knowbaseitemcategories_id = 0;
+    #[ORM\ManyToOne(targetEntity: KnowbaseItemCategory::class)]
+    #[ORM\JoinColumn(name: 'knowbaseitemcategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?KnowbaseItemCategory $knowbaseitemcategories = null;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
     public ?string $name = null;
@@ -49,4 +50,6 @@ class KnowbaseItemCategory
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_creation = null;
+    #[ORM\Column(name: '`parent_key`', type: 'bigint', nullable: true, insertable: false, updatable: false, generated: 'ALWAYS', columnDefinition: 'BIGINT GENERATED ALWAYS AS (COALESCE(knowbaseitemcategories_id, 0)) STORED')]
+    public ?int $parent_key = null;
 }

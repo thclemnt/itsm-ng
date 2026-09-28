@@ -8,7 +8,7 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_businesscriticities')]
-#[ORM\UniqueConstraint(name: 'businesscriticities_unicity', columns: ['businesscriticities_id', 'name'])]
+#[ORM\UniqueConstraint(name: 'businesscriticities_unicity', columns: ['parent_key', 'name'])]
 class BusinessCriticity
 {
     #[ORM\Id]
@@ -35,8 +35,9 @@ class BusinessCriticity
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_creation = null;
 
-    #[ORM\Column(name: '`businesscriticities_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $businesscriticities_id = 0;
+    #[ORM\ManyToOne(targetEntity: BusinessCriticity::class)]
+    #[ORM\JoinColumn(name: 'businesscriticities_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?BusinessCriticity $businesscriticities = null;
 
     #[ORM\Column(name: '`completename`', type: 'text', nullable: true)]
     public ?string $completename = null;
@@ -49,4 +50,6 @@ class BusinessCriticity
 
     #[ORM\Column(name: '`sons_cache`', type: 'text', length: 4294967295, nullable: true)]
     public ?string $sons_cache = null;
+    #[ORM\Column(name: '`parent_key`', type: 'bigint', nullable: true, insertable: false, updatable: false, generated: 'ALWAYS', columnDefinition: 'BIGINT GENERATED ALWAYS AS (COALESCE(businesscriticities_id, 0)) STORED')]
+    public ?int $parent_key = null;
 }

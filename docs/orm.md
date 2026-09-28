@@ -1059,3 +1059,45 @@ same ID. PHP 8.3 ITIL category/template/followup/solution tests pass 25 methods 
 1,258 assertions; ticket/change/problem/task/followup tests pass 79 methods and
 4,241 assertions. Rendering assertions execute PHP; browser interactions and
 notification delivery were not exercised.
+
+### Tree parents and derived caches
+
+Nine tree dropdowns now map their parent as a nullable Doctrine association:
+business criticalities, document categories, ITIL categories, knowledgebase
+categories, locations, software categories, software license types, states and
+task categories. Roots use NULL, while the separate Entity hierarchy keeps its
+real ID-zero root and existing sentinel convention.
+
+Five existing sibling-name unique indexes include the parent. Their replacement
+uses a read-only generated `parent_key` that coalesces a missing parent to zero, preserving
+root-level uniqueness when parents become NULL. Entity ownership has an
+independent supporting index before an old unique index is replaced, which
+avoids breaking MariaDB's FK index dependency. Names under different parents
+remain valid; uniqueness rules are not added to trees that previously lacked them.
+
+During maintenance, inspect `db:tree_parents`, run `db:tree_parents --apply`, then
+`db:foreign_keys --apply`. Preflight checks all parent references, cycles and
+sibling duplicates before any DDL. A retry repairs missing unique indexes after
+an interrupted migration. PostgreSQL applies the migration transactionally;
+MySQL/MariaDB DDL remains separately committed.
+
+`TreeRepository` supplies scalar projections and typed updates for derived
+complete names, levels and ancestor/descendant caches. `CommonTreeDropdown` keeps
+model hooks for child reparenting, uses mapped reads for import lookup and child
+lists, and updates derived fields without recursively invoking those hooks.
+`DbUtils` tree cache access uses the same ORM repository. Unmapped plugin tables
+retain explicit legacy paths. ITIL category updates now propagate a rejected
+cyclic move instead of passing `false` to `array_key_exists()`.
+
+Coverage is 576 enforced relationships, 186 pending candidates, 62 polymorphic
+references, one ambiguous reference and 1,390 legacy SQL call sites. Complete
+relationship/query coverage remains outstanding.
+
+Validation: fresh PostgreSQL/MariaDB contracts pass 1,051/653 assertions and all
+355 mapped-table CRUD checks. Both engines pass tree lifecycle/migration,
+location/state/group assignments, entity ownership, knowledgebase, software, ITIL
+classification, reporting, application and search suites. Tests explicitly cover
+cold and warm caches, quoted names, subtree moves, cycle rejection, purge and
+replacement, root uniqueness, duplicate/orphan preflight and interrupted-index
+retry. PHP 8.3 hierarchy/database-helper/software tests pass 72 methods and 7,145
+assertions. Live browser interaction and notification delivery were not tested.

@@ -8,7 +8,7 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_documentcategories')]
-#[ORM\UniqueConstraint(name: 'documentcategories_unicity', columns: ['documentcategories_id', 'name'])]
+#[ORM\UniqueConstraint(name: 'documentcategories_unicity', columns: ['parent_key', 'name'])]
 class DocumentCategory
 {
     #[ORM\Id]
@@ -22,8 +22,9 @@ class DocumentCategory
     #[ORM\Column(name: '`comment`', type: 'text', nullable: true)]
     public ?string $comment = null;
 
-    #[ORM\Column(name: '`documentcategories_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $documentcategories_id = 0;
+    #[ORM\ManyToOne(targetEntity: DocumentCategory::class)]
+    #[ORM\JoinColumn(name: 'documentcategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?DocumentCategory $documentcategories = null;
 
     #[ORM\Column(name: '`completename`', type: 'text', nullable: true)]
     public ?string $completename = null;
@@ -42,4 +43,6 @@ class DocumentCategory
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_creation = null;
+    #[ORM\Column(name: '`parent_key`', type: 'bigint', nullable: true, insertable: false, updatable: false, generated: 'ALWAYS', columnDefinition: 'BIGINT GENERATED ALWAYS AS (COALESCE(documentcategories_id, 0)) STORED')]
+    public ?int $parent_key = null;
 }

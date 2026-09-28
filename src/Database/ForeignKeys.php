@@ -199,6 +199,13 @@ final class ForeignKeys
         'glpi_itilfollowuptemplates' => [...OptionalReferences::RELATIONS['glpi_itilfollowuptemplates'], ...EntityOwnership::RELATIONS['glpi_itilfollowuptemplates']],
         'glpi_itilsolutions' => [...OptionalReferences::RELATIONS['glpi_itilsolutions']],
         'glpi_solutiontemplates' => [...OptionalReferences::RELATIONS['glpi_solutiontemplates'], ...EntityOwnership::RELATIONS['glpi_solutiontemplates']],
+        'glpi_businesscriticities' => [...OptionalReferences::RELATIONS['glpi_businesscriticities'], ...EntityOwnership::RELATIONS['glpi_businesscriticities']],
+        'glpi_documentcategories' => [...OptionalReferences::RELATIONS['glpi_documentcategories']],
+        'glpi_knowbaseitemcategories' => [...OptionalReferences::RELATIONS['glpi_knowbaseitemcategories'], ...EntityOwnership::RELATIONS['glpi_knowbaseitemcategories']],
+        'glpi_locations' => [...OptionalReferences::RELATIONS['glpi_locations'], ...EntityOwnership::RELATIONS['glpi_locations']],
+        'glpi_softwarecategories' => [...OptionalReferences::RELATIONS['glpi_softwarecategories']],
+        'glpi_softwarelicensetypes' => [...OptionalReferences::RELATIONS['glpi_softwarelicensetypes'], ...EntityOwnership::RELATIONS['glpi_softwarelicensetypes']],
+        'glpi_states' => [...OptionalReferences::RELATIONS['glpi_states'], ...EntityOwnership::RELATIONS['glpi_states']],
     ];
 
     public static function name(string $table, string $column): string

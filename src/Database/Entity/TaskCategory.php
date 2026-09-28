@@ -22,8 +22,9 @@ class TaskCategory
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_recursive = false;
 
-    #[ORM\Column(name: '`taskcategories_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $taskcategories_id = 0;
+    #[ORM\ManyToOne(targetEntity: TaskCategory::class)]
+    #[ORM\JoinColumn(name: 'taskcategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?TaskCategory $taskcategories = null;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
     public ?string $name = null;

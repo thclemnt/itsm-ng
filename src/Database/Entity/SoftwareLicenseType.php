@@ -27,8 +27,9 @@ class SoftwareLicenseType
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_creation = null;
 
-    #[ORM\Column(name: '`softwarelicensetypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $softwarelicensetypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: SoftwareLicenseType::class)]
+    #[ORM\JoinColumn(name: 'softwarelicensetypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?SoftwareLicenseType $softwarelicensetypes = null;
 
     #[ORM\Column(name: '`level`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $level = 0;

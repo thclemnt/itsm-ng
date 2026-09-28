@@ -21,8 +21,9 @@ class SoftwareCategory
     #[ORM\Column(name: '`comment`', type: 'text', nullable: true)]
     public ?string $comment = null;
 
-    #[ORM\Column(name: '`softwarecategories_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $softwarecategories_id = 0;
+    #[ORM\ManyToOne(targetEntity: SoftwareCategory::class)]
+    #[ORM\JoinColumn(name: 'softwarecategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?SoftwareCategory $softwarecategories = null;
 
     #[ORM\Column(name: '`completename`', type: 'text', nullable: true)]
     public ?string $completename = null;

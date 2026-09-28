@@ -759,14 +759,10 @@ final class DbUtils
             $use_cache
             && ($IDf > 0)
         ) {
-            $iterator = $DB->request([
-               'SELECT' => 'sons_cache',
-               'FROM'   => $table,
-               'WHERE'  => ['id' => $IDf]
-            ]);
+            $iterator = $this->getTreeRows($table, ['sons_cache'], ['id' => $IDf]);
 
             if (count($iterator) > 0) {
-                $db_sons = trim($iterator->next()['sons_cache'] ?? '');
+                $db_sons = trim($iterator[0]['sons_cache'] ?? '');
                 if (!empty($db_sons)) {
                     $sons = $this->importArrayFromDB($db_sons, true);
                 }
@@ -800,15 +796,7 @@ final class DbUtils
                 $use_cache
                 && ($IDf > 0)
             ) {
-                $DB->update(
-                    $table,
-                    [
-                      'sons_cache' => $this->exportArrayToDB($sons)
-                    ],
-                    [
-                      'id' => $IDf
-                    ]
-                );
+                $this->updateTreeCache($table, (int)$IDf, 'sons_cache', $this->exportArrayToDB($sons));
             }
         }
 
@@ -817,6 +805,28 @@ final class DbUtils
         }
 
         return $sons;
+    }
+
+    private function getTreeRows(string $table, array $fields, array $criteria): array
+    {
+        global $DB;
+
+        if (\itsmng\Database\MappedStorage::supports($table)) {
+            return (new \itsmng\Database\Repository\TreeRepository(\itsmng\Database\Orm::create($DB)))->rows($table, $fields, $criteria);
+        }
+        return array_values(iterator_to_array($DB->request(['SELECT' => $fields, 'FROM' => $table, 'WHERE' => $criteria])));
+    }
+
+    private function updateTreeCache(string $table, int $id, string $field, string $value): void
+    {
+        global $DB;
+
+        if (\itsmng\Database\MappedStorage::supports($table)) {
+            (new \itsmng\Database\Repository\TreeRepository(\itsmng\Database\Orm::create($DB)))
+                ->updateDerived($table, [$id], [$field => \itsmng\Database\LegacyValues::decode($value)]);
+        } else {
+            $DB->update($table, [$field => $value], ['id' => $id]);
+        }
     }
 
     /** Select tree IDs without hydrating rows; mapped optional roots use SQL NULL. */
@@ -872,13 +882,9 @@ final class DbUtils
         }
 
         if ($use_cache) {
-            $iterator = $DB->request([
-               'SELECT' => ['id', 'ancestors_cache', $parentIDfield],
-               'FROM'   => $table,
-               'WHERE'  => ['id' => $items_id]
-            ]);
+            $iterator = $this->getTreeRows($table, ['id', 'ancestors_cache', $parentIDfield], ['id' => $items_id]);
 
-            while ($row = $iterator->next()) {
+            foreach ($iterator as $row) {
                 if ($row['id'] > 0) {
                     $rancestors = $row['ancestors_cache'];
                     $parent     = $row[$parentIDfield];
@@ -902,15 +908,7 @@ final class DbUtils
                         }
 
                         // Store cache datas in DB
-                        $DB->update(
-                            $table,
-                            [
-                              'ancestors_cache' => $this->exportArrayToDB($loc_id_found)
-                            ],
-                            [
-                              'id' => $row['id']
-                            ]
-                        );
+                        $this->updateTreeCache($table, (int)$row['id'], 'ancestors_cache', $this->exportArrayToDB($loc_id_found));
 
                         $ancestors = array_replace($ancestors, $loc_id_found);
                     }
@@ -923,14 +921,10 @@ final class DbUtils
                 $IDf = $id;
                 while ($IDf > 0) {
                     // Get next elements
-                    $iterator = $DB->request([
-                       'SELECT' => [$parentIDfield],
-                       'FROM'   => $table,
-                       'WHERE'  => ['id' => $IDf]
-                    ]);
+                    $iterator = $this->getTreeRows($table, [$parentIDfield], ['id' => $IDf]);
 
                     if (count($iterator) > 0) {
-                        $result = $iterator->next();
+                        $result = $iterator[0];
                         $IDf = $result[$parentIDfield];
                     } else {
                         $IDf = 0;

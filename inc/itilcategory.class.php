@@ -368,6 +368,9 @@ class ITILCategory extends CommonTreeDropdown
     public function prepareInputForUpdate($input)
     {
         $input = parent::prepareInputForUpdate($input);
+        if ($input === false) {
+            return false;
+        }
 
         if (array_key_exists('code', $input)) {
             $input['code'] = trim((string)$input['code']);

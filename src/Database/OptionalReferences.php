@@ -285,7 +285,20 @@ final class OptionalReferences
         'glpi_users' => ['default_requesttypes_id' => 'glpi_requesttypes'],
     ];
 
+    public const TREE_PARENTS = [
+        'glpi_businesscriticities' => ['businesscriticities_id' => 'glpi_businesscriticities'],
+        'glpi_documentcategories' => ['documentcategories_id' => 'glpi_documentcategories'],
+        'glpi_itilcategories' => ['itilcategories_id' => 'glpi_itilcategories'],
+        'glpi_knowbaseitemcategories' => ['knowbaseitemcategories_id' => 'glpi_knowbaseitemcategories'],
+        'glpi_locations' => ['locations_id' => 'glpi_locations'],
+        'glpi_softwarecategories' => ['softwarecategories_id' => 'glpi_softwarecategories'],
+        'glpi_softwarelicensetypes' => ['softwarelicensetypes_id' => 'glpi_softwarelicensetypes'],
+        'glpi_states' => ['states_id' => 'glpi_states'],
+        'glpi_taskcategories' => ['taskcategories_id' => 'glpi_taskcategories'],
+    ];
+
     public const RELATIONS = [
+        ...self::TREE_PARENTS,
         ...self::ITIL_CLASSIFICATION,
         ...self::PLANNING_METADATA,
         ...self::INVENTORY_METADATA,
@@ -368,8 +381,9 @@ final class OptionalReferences
         'glpi_changetasks' => [...self::GROUPS['glpi_changetasks'], ...self::ITIL_CLASSIFICATION['glpi_changetasks']],
         'glpi_problemtasks' => [...self::GROUPS['glpi_problemtasks'], ...self::ITIL_CLASSIFICATION['glpi_problemtasks']],
         'glpi_tickettasks' => [...self::GROUPS['glpi_tickettasks'], ...self::ITIL_CLASSIFICATION['glpi_tickettasks']],
-        'glpi_itilcategories' => [...self::GROUPS['glpi_itilcategories'], ...self::ITIL_CLASSIFICATION['glpi_itilcategories']],
+        'glpi_itilcategories' => [...self::GROUPS['glpi_itilcategories'], ...self::ITIL_CLASSIFICATION['glpi_itilcategories'], ...self::TREE_PARENTS['glpi_itilcategories']],
         'glpi_tasktemplates' => [...self::GROUPS['glpi_tasktemplates'], ...self::ITIL_CLASSIFICATION['glpi_tasktemplates']],
+        'glpi_taskcategories' => ['knowbaseitemcategories_id' => 'glpi_knowbaseitemcategories', ...self::TREE_PARENTS['glpi_taskcategories']],
     ];
 
     public static function isEmptySelection(mixed $value): bool

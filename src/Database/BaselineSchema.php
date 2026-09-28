@@ -166,6 +166,9 @@ final class BaselineSchema
             }
         }
         Migration\InventoryUniqueness::addToTable($schema->getTable('glpi_items_operatingsystems'), Migration\InventoryUniqueness::indexName($platform));
+        foreach (array_keys(Migration\TreeUniqueness::TABLES) as $table) {
+            Migration\TreeUniqueness::addToTable($schema->getTable($table), $platform);
+        }
         if ($foreignKeys) {
             (new ForeignKeys())->addToSchema($schema);
         }
