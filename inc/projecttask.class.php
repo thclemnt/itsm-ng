@@ -178,11 +178,9 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
      **/
     public static function cloneProjectTask($oldid, $newid)
     {
-        global $DB;
 
         Toolbox::deprecated('Use clone');
-        $iterator = $DB->request(['FROM' => 'glpi_projecttasks', 'WHERE' => ['projects_id' => $oldid]]);
-        while ($data = $iterator->next()) {
+        foreach ((new static())->find(['projects_id' => $oldid]) as $data) {
             $cd                  = new self();
             unset($data['id']);
             $data['projects_id'] = $newid;
@@ -253,12 +251,7 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
                         break;
                     case Group::getType():
                         foreach ($actors as $actor) {
-                            $group_iterator = $DB->request([
-                               'SELECT' => 'users_id',
-                               'FROM'   => Group_User::getTable(),
-                               'WHERE'  => ['groups_id' => $actor['items_id']]
-                            ]);
-                            while ($row = $group_iterator->next()) {
+                            foreach ((new Group_User())->find(['groups_id' => $actor['items_id']]) as $row) {
                                 $users[$row['users_id']] = $row['users_id'];
                             }
                         }
@@ -492,21 +485,7 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
     **/
     public static function getAllForProject($ID)
     {
-        global $DB;
-
-        $tasks = [];
-        $iterator = $DB->request([
-           'FROM'   => 'glpi_projecttasks',
-           'WHERE'  => [
-              'projects_id'  => $ID
-           ],
-           'ORDERBY'   => ['plan_start_date', 'real_start_date']
-        ]);
-
-        while ($data = $iterator->next()) {
-            $tasks[] = $data;
-        }
-        return $tasks;
+        return array_values((new static())->find(['projects_id' => $ID], ['plan_start_date', 'real_start_date']));
     }
 
 
@@ -519,21 +498,7 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
     **/
     public static function getAllForProjectTask($ID)
     {
-        global $DB;
-
-        $tasks = [];
-        $iterator = $DB->request([
-           'FROM'   => 'glpi_projecttasks',
-           'WHERE'  => [
-              'projecttasks_id'  => $ID
-           ],
-           'ORDERBY'   => ['plan_start_date', 'real_start_date']
-        ]);
-
-        while ($data = $iterator->next()) {
-            $tasks[] = $data;
-        }
-        return $tasks;
+        return array_values((new static())->find(['projecttasks_id' => $ID], ['plan_start_date', 'real_start_date']));
     }
 
 
@@ -548,27 +513,12 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'FROM'         => 'glpi_projecttasks_tickets',
-           'INNER JOIN'   => [
-              'glpi_projecttasks'  => [
-                 'ON' => [
-                    'glpi_projecttasks_tickets'   => 'projecttasks_id',
-                    'glpi_projecttasks'           => 'id'
-                 ]
-              ]
-           ],
-           'FIELDS' =>  'tickets_id',
-           'WHERE'        => [
-              'glpi_projecttasks.projects_id'   => $ID
-           ]
-        ]);
-
-        $tasks = [];
-        while ($data = $iterator->next()) {
-            $tasks[] = $data['tickets_id'];
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            return (new \itsmng\Database\Repository\ProjectRepository($em))->ticketIds((int)$ID === 0 ? null : (int)$ID);
+        } finally {
+            $em->clear();
         }
-        return $tasks;
     }
 
 
@@ -818,37 +768,12 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
     {
         global $DB;
 
-        $item = new static();
-        $time = 0;
-
-        if ($item->getFromDB($projecttasks_id)) {
-            $time += $item->fields['effective_duration'];
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            return (new \itsmng\Database\Repository\ProjectRepository($em))->taskDuration((int)$projecttasks_id);
+        } finally {
+            $em->clear();
         }
-
-        $iterator = $DB->request([
-           'SELECT'    => new QueryExpression('SUM(glpi_tickets.actiontime) AS duration'),
-           'FROM'      => self::getTable(),
-           'LEFT JOIN' => [
-              'glpi_projecttasks_tickets'   => [
-                 'FKEY'   => [
-                    'glpi_projecttasks_tickets'   => 'projecttasks_id',
-                    self::getTable()              => 'id'
-                 ]
-              ],
-              'glpi_tickets'                => [
-                 'FKEY'   => [
-                    'glpi_projecttasks_tickets'   => 'tickets_id',
-                    'glpi_tickets'                => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [self::getTable() . '.id' => $projecttasks_id]
-        ]);
-
-        if ($row = $iterator->next()) {
-            $time += $row['duration'];
-        }
-        return $time;
     }
 
 
@@ -863,16 +788,12 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['projects_id' => $projects_id]
-        ]);
-        $time = 0;
-        while ($data = $iterator->next()) {
-            $time += static::getTotalEffectiveDuration($data['id']);
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            return (new \itsmng\Database\Repository\ProjectRepository($em))->effectiveDuration((int)$projects_id === 0 ? null : (int)$projects_id);
+        } finally {
+            $em->clear();
         }
-        return $time;
     }
 
 
@@ -887,16 +808,12 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT' => new QueryExpression('SUM(planned_duration) AS duration'),
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['projects_id' => $projects_id]
-        ]);
-
-        while ($data = $iterator->next()) {
-            return $data['duration'];
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            return (new \itsmng\Database\Repository\ProjectRepository($em))->plannedDuration((int)$projects_id === 0 ? null : (int)$projects_id);
+        } finally {
+            $em->clear();
         }
-        return 0;
     }
 
 
@@ -1616,7 +1533,6 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
     */
     public static function getDataToDisplayOnGantt($ID)
     {
-        global $DB;
 
         $todisplay = [];
 
@@ -1624,14 +1540,7 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
         // echo $ID.'<br>';
         if ($task->getFromDB($ID)) {
             $subtasks = [];
-            foreach (
-                $DB->request(
-                    'glpi_projecttasks',
-                    ['projecttasks_id' => $ID,
-                                        'ORDER'           => ['plan_start_date',
-                                                                   'real_start_date']]
-                ) as $data
-            ) {
+            foreach (static::getAllForProjectTask($ID) as $data) {
                 $subtasks += static::getDataToDisplayOnGantt($data['id']);
             }
 
@@ -1718,21 +1627,12 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
     */
     public static function getDataToDisplayOnGanttForProject($ID)
     {
-        global $DB;
 
         $todisplay = [];
 
         $task      = new self();
         // Get all tasks without father
-        foreach (
-            $DB->request(
-                'glpi_projecttasks',
-                ['projects_id'     => $ID,
-                                    'projecttasks_id' => 0,
-                                    'ORDER'           => ['plan_start_date',
-                                                               'real_start_date']]
-            ) as $data
-        ) {
+        foreach ((new static())->find(['projects_id' => $ID, 'projecttasks_id' => 0], ['plan_start_date', 'real_start_date']) as $data) {
             if ($task->getFromDB($data['id'])) {
                 $todisplay += static::getDataToDisplayOnGantt($data['id']);
             }
@@ -2058,19 +1958,11 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
             return false;
         }
 
-        $iterator = $DB->request([
-           'SELECT' => [
-              new QueryExpression('CAST(AVG(' . $DB->quoteName('percent_done') . ') AS UNSIGNED) AS percent_done')
-           ],
-           'FROM'   => ProjectTask::getTable(),
-           'WHERE'  => [
-              'projecttasks_id' => $ID
-           ]
-        ]);
-        if ($iterator->count()) {
-            $percent_done = $iterator->next()['percent_done'];
-        } else {
-            $percent_done = 0;
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            $percent_done = (new \itsmng\Database\Repository\ProjectRepository($em))->taskProgress((int)$ID);
+        } finally {
+            $em->clear();
         }
         $projecttask->update([
            'id'                 => $ID,

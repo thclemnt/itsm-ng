@@ -56,12 +56,13 @@ final class RecordRepository
     }
 
     /** Snapshot identifiers before lifecycle hooks mutate the selected relationships. */
-    public function identifiers(string $table, string $column, array $criteria): array
+    public function identifiers(string $table, string $column, array $criteria, array|string $order = []): array
     {
         $metadata = $this->em->getClassMetadata(EntityRegistry::TABLES[$table]);
         $query = $this->em->createQueryBuilder()->from($metadata->name, 'r');
         $compiler = new \itsmng\Database\RecordCriteria($query, $metadata);
         $query->select($compiler->column($column) . ' AS record_id')->where($compiler->where($criteria));
+        $compiler->order($order);
         return array_map('intval', array_column($query->getQuery()->getScalarResult(), 'record_id'));
     }
 

@@ -11,6 +11,10 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\UniqueConstraint(name: 'itils_projects_unicity', columns: ['itemtype', 'items_id', 'projects_id'])]
 class ItilProject
 {
+    #[ORM\ManyToOne(targetEntity: Project::class)]
+    #[ORM\JoinColumn(name: 'projects_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?Project $projects = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
@@ -21,7 +25,4 @@ class ItilProject
 
     #[ORM\Column(name: '`items_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $items_id = 0;
-
-    #[ORM\Column(name: '`projects_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $projects_id = 0;
 }

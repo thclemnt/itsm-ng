@@ -779,40 +779,18 @@ final class DbUtils
             $sons[$IDf] = $IDf;
             // current ID found to be added
             $found = [];
-            // First request init the  varriables
-            $iterator = $DB->request([
-               'SELECT' => 'id',
-               'FROM'   => $table,
-               'WHERE'  => [$parentIDfield => $IDf],
-               'ORDER'  => 'name'
-            ]);
-
-            if (count($iterator) > 0) {
-                while ($row = $iterator->next()) {
-                    $sons[$row['id']]    = $row['id'];
-                    $found[$row['id']]   = $row['id'];
-                }
+            foreach ($this->getTreeChildIds($table, $parentIDfield, $IDf, 'name') as $id) {
+                $sons[$id] = $id;
+                $found[$id] = $id;
             }
 
-            // Get the leafs of previous found item
-            while (count($found) > 0) {
-                // Get next elements
-                $iterator = $DB->request([
-                   'SELECT' => 'id',
-                   'FROM'   => $table,
-                   'WHERE'  => [$parentIDfield => $found]
-                ]);
-
-                // CLear the found array
-                unset($found);
+            while ($found) {
+                $children = $this->getTreeChildIds($table, $parentIDfield, $found);
                 $found = [];
-
-                if (count($iterator) > 0) {
-                    while ($row = $iterator->next()) {
-                        if (!isset($sons[$row['id']])) {
-                            $sons[$row['id']]    = $row['id'];
-                            $found[$row['id']]   = $row['id'];
-                        }
+                foreach ($children as $id) {
+                    if (!isset($sons[$id])) {
+                        $sons[$id] = $id;
+                        $found[$id] = $id;
                     }
                 }
             }
@@ -839,6 +817,19 @@ final class DbUtils
         }
 
         return $sons;
+    }
+
+    /** Select tree IDs without hydrating rows; mapped optional roots use SQL NULL. */
+    private function getTreeChildIds(string $table, string $parentColumn, $parents, array|string $order = []): array
+    {
+        global $DB;
+
+        if (isset(\itsmng\Database\EntityRegistry::TABLES[$table])) {
+            return \itsmng\Database\MappedReads::identifiers($DB, $table, 'id', [$parentColumn => $parents], $order);
+        }
+        return array_map('intval', array_column(iterator_to_array($DB->request([
+            'SELECT' => 'id', 'FROM' => $table, 'WHERE' => [$parentColumn => $parents], 'ORDER' => $order,
+        ])), 'id'));
     }
 
     /**

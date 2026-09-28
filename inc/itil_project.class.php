@@ -578,10 +578,9 @@ class Itil_Project extends CommonDBRelation
      **/
     public static function cloneItilProject($oldid, $newid)
     {
-        global $DB;
 
         Toolbox::deprecated('Use clone');
-        $itil_items = $DB->request(self::getTable(), ['WHERE'  => ['projects_id' => $oldid]]);
+        $itil_items = (new static())->find(['projects_id' => $oldid]);
         foreach ($itil_items as $data) {
             unset($data['id']);
             $data['projects_id'] = $newid;

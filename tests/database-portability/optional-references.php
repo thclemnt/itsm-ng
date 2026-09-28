@@ -33,7 +33,7 @@ $DB->beginTransaction();
 try {
     $fixtures = new FixtureRecords($DB);
     $storage = new \itsmng\Database\MappedStorage($DB);
-    foreach (OptionalReferences::RELATIONS as $table => $relations) {
+    foreach (OptionalReferences::MODELS as $table => $relations) {
         $column = array_key_first($relations);
         $target = $relations[$column];
         $parent = $fixtures->create($target, ['name' => 'Optional model']);
@@ -93,7 +93,7 @@ try {
 $platform = $connection->getDatabasePlatform();
 $removed = [];
 try {
-    foreach (OptionalReferences::RELATIONS as $table => $relations) {
+    foreach (OptionalReferences::MODELS as $table => $relations) {
         foreach ($relations as $column => $target) {
             $connection->executeStatement($platform->getDropForeignKeySQL(ForeignKeys::name($table, $column), $table));
             $removed[] = [$table, $column];
@@ -103,7 +103,7 @@ try {
     try {
         $fixtures = new FixtureRecords($DB);
         $zeroRows = [];
-        foreach (OptionalReferences::RELATIONS as $table => $relations) {
+        foreach (OptionalReferences::MODELS as $table => $relations) {
             $column = array_key_first($relations);
             $zeroRows[$table] = [$column, $fixtures->create($table, [$column => 0])];
         }

@@ -131,8 +131,6 @@ class ProjectTaskTeam extends CommonDBRelation
     **/
     public static function getTeamFor($tasks_id)
     {
-        global $DB;
-
         $team = [];
         // Define empty types
         foreach (static::$available_types as $type) {
@@ -141,12 +139,7 @@ class ProjectTaskTeam extends CommonDBRelation
             }
         }
 
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['projecttasks_id' => $tasks_id]
-        ]);
-
-        while ($data = $iterator->next()) {
+        foreach ((new static())->find(['projecttasks_id' => $tasks_id]) as $data) {
             $team[$data['itemtype']][] = $data;
         }
 
@@ -156,8 +149,6 @@ class ProjectTaskTeam extends CommonDBRelation
 
     public function prepareInputForAdd($input)
     {
-        global $DB;
-
         if (!isset($input['itemtype'])) {
             Session::addMessageAfterRedirect(
                 __('An item type is mandatory'),
@@ -196,12 +187,7 @@ class ProjectTaskTeam extends CommonDBRelation
                 );
                 break;
             case Group::getType():
-                $group_iterator = $DB->request([
-                   'SELECT' => 'users_id',
-                   'FROM'   => Group_User::getTable(),
-                   'WHERE'  => ['groups_id' => $input['items_id']]
-                ]);
-                while ($row = $group_iterator->next()) {
+                foreach ((new Group_User())->find(['groups_id' => $input['items_id']]) as $row) {
                     Planning::checkAlreadyPlanned(
                         $row['users_id'],
                         $task->fields['plan_start_date'],

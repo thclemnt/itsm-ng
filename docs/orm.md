@@ -225,3 +225,44 @@ The full FK contracts pass 619 PostgreSQL / 221 MariaDB assertions. All-table
 mapped writes, application flows, reporting and search regressions also pass.
 The existing SIM-card tests now load their named device fixture instead of
 constructing an empty device object with an invalid ID.
+
+Project costs, project teams, task teams, asset links and ITIL links now have
+required parent associations. Project ancestry, task ancestry and a task's direct
+project are nullable mapped associations. Subtasks can still belong only to a
+parent task, without a direct project; clearing a parent uses NULL at storage.
+Together these add eight FKs, bringing the audited total to 155.
+
+For an existing installation, run `db:project_hierarchy` to inspect the
+`20260928_nullable_project_hierarchy` plan. Stop writers during maintenance, apply
+it with `--apply`, then run `db:foreign_keys --apply`. The migration checks all
+three relationships for nonzero orphans and real parent records with ID zero
+before changing any column. DBAL changes only those columns' nullability and
+defaults, then normalizes zero references. PostgreSQL applies schema and data in
+one transaction; MySQL schema statements commit separately, and rerunning the
+migration resumes from the actual schema. Fresh installers use the same nullable
+definitions and normalization. The earlier optional-model migration is unchanged.
+
+`ProjectRepository` uses DQL for task/project durations, linked ticket IDs and
+progress calculations. Project duration uses two aggregates regardless of task
+count. Each task's own duration is counted once, while a ticket linked to several
+tasks contributes once per association, preserving existing behavior. Progress
+weights every direct task and active subproject equally and rounds consistently
+on both engines; empty aggregates produce zero. The model still performs updates
+so progress propagation, history and notifications retain their hooks.
+
+Project/task lists, Gantt root/subtask selection, team lists, group-member planning
+checks, cost lists/latest cost and clone reads now use ORM. Project cost and both
+team classes contain no direct database requests. `projects.php` verifies these
+queries, optional ancestry, purge behavior and old-schema migration refusal and
+idempotence. Existing PHP 8.3 project suites pass 11 methods with 379 assertions;
+fresh installations pass on PostgreSQL and MariaDB. Project planning, Kanban and
+some ITIL-link rendering queries still need dedicated mapped repositories.
+
+Shared descendant traversal now selects mapped IDs, including nullable project
+roots, while retaining entity zero's real-root meaning and existing tree caches.
+The DbUtils/project regression run passes 29 methods with 6,055 assertions.
+Full FK contracts pass 627 PostgreSQL / 229 MariaDB assertions, with all-table
+ORM writes, optional-reference migrations, reporting, search and application
+workflows passing on fresh installations. The current static inventory has
+607 pending relationship candidates, 62 polymorphic candidates, one ambiguous
+candidate and 1,537 legacy call sites; complete conversion remains unfinished.

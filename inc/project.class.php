@@ -1866,13 +1866,12 @@ class Project extends CommonDBTM implements ExtraVisibilityCriteria
     */
     public static function getDataToDisplayOnGantt($ID, $showall = true)
     {
-        global $DB;
 
         $todisplay = [];
         $project   = new self();
         if ($project->getFromDB($ID)) {
             $projects = [];
-            foreach ($DB->request('glpi_projects', ['projects_id' => $ID]) as $data) {
+            foreach ((new static())->find(['projects_id' => $ID]) as $data) {
                 $projects += static::getDataToDisplayOnGantt($data['id']);
             }
             ksort($projects);
@@ -1975,7 +1974,6 @@ class Project extends CommonDBTM implements ExtraVisibilityCriteria
     */
     public static function showGantt($ID)
     {
-        global $DB;
 
         if ($ID > 0) {
             $project = new Project();
@@ -1987,15 +1985,10 @@ class Project extends CommonDBTM implements ExtraVisibilityCriteria
         } else {
             $todisplay = [];
             // Get all root projects
-            $iterator = $DB->request([
-               'FROM'   => 'glpi_projects',
-               'WHERE'  => [
-                  'projects_id'           => 0,
-                  'show_on_global_gantt'  => 1,
-                  'is_template'           => 0
-               ] + getEntitiesRestrictCriteria('glpi_projects', '', '', true)
-            ]);
-            while ($data = $iterator->next()) {
+            $iterator = (new static())->find([
+                'projects_id' => 0, 'show_on_global_gantt' => 1, 'is_template' => 0,
+            ] + getEntitiesRestrictCriteria('glpi_projects', '', '', true));
+            foreach ($iterator as $data) {
                 $todisplay += static::getDataToDisplayOnGantt($data['id'], false);
             }
             ksort($todisplay);
@@ -2667,38 +2660,11 @@ JAVASCRIPT;
             return false;
         }
 
-        $query1 = new \QuerySubQuery([
-           'SELECT' => [
-              'percent_done'
-           ],
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'projects_id'  => $ID,
-              'is_deleted'   => 0
-           ]
-        ]);
-        $query2 = new \QuerySubQuery([
-           'SELECT' => [
-              'percent_done'
-           ],
-           'FROM'   => ProjectTask::getTable(),
-           'WHERE'  => [
-              'projects_id' => $ID
-           ]
-        ]);
-        $union = new QueryUnion([$query1, $query2], false, 'all_items');
-        $iterator = $DB->request([
-           'SELECT' => [
-              new QueryExpression('CAST(AVG(' . $DB->quoteName('percent_done') . ') AS UNSIGNED) AS percent_done')
-           ],
-           'FROM'   => $union
-        ]);
-
-        if ($iterator->count()) {
-            $avg = $iterator->next()['percent_done'];
-            $percent_done = is_null($avg) ? 0 : $avg;
-        } else {
-            $percent_done = 0;
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            $percent_done = (new \itsmng\Database\Repository\ProjectRepository($em))->projectProgress((int)$ID);
+        } finally {
+            $em->clear();
         }
 
         $project->update([

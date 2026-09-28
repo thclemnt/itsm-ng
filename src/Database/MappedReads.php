@@ -34,14 +34,14 @@ final class MappedReads
         }
     }
 
-    public static function identifiers(\DBAdapter $database, string $table, string $column, array $criteria): array
+    public static function identifiers(\DBAdapter $database, string $table, string $column, array $criteria, array|string $order = []): array
     {
         if (!isset(EntityRegistry::TABLES[$table])) {
             throw new UnsupportedCriteria('Unmapped table requires a registered entity.');
         }
         $em = Orm::create($database);
         try {
-            return (new RecordRepository($em))->identifiers($table, $column, $criteria);
+            return (new RecordRepository($em))->identifiers($table, $column, $criteria, $order);
         } finally {
             $em->clear();
         }

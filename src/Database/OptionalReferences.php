@@ -7,7 +7,7 @@ namespace itsmng\Database;
 /** Audited optional references whose legacy dropdown value zero means no selection. */
 final class OptionalReferences
 {
-    public const RELATIONS = [
+    public const MODELS = [
         'glpi_devicebatteries' => ['devicebatterymodels_id' => 'glpi_devicebatterymodels'],
         'glpi_devicecases' => ['devicecasemodels_id' => 'glpi_devicecasemodels'],
         'glpi_devicecontrols' => ['devicecontrolmodels_id' => 'glpi_devicecontrolmodels'],
@@ -28,6 +28,13 @@ final class OptionalReferences
         'glpi_pdus' => ['pdumodels_id' => 'glpi_pdumodels'],
         'glpi_racks' => ['rackmodels_id' => 'glpi_rackmodels'],
     ];
+
+    public const PROJECT_HIERARCHY = [
+        'glpi_projects' => ['projects_id' => 'glpi_projects'],
+        'glpi_projecttasks' => ['projects_id' => 'glpi_projects', 'projecttasks_id' => 'glpi_projecttasks'],
+    ];
+
+    public const RELATIONS = [...self::MODELS, ...self::PROJECT_HIERARCHY];
 
     public static function isEmptySelection(mixed $value): bool
     {

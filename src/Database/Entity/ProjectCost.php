@@ -10,13 +10,14 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'glpi_projectcosts')]
 class ProjectCost
 {
+    #[ORM\ManyToOne(targetEntity: Project::class)]
+    #[ORM\JoinColumn(name: 'projects_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?Project $projects = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
-
-    #[ORM\Column(name: '`projects_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $projects_id = 0;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
     public ?string $name = null;

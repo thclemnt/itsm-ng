@@ -211,14 +211,8 @@ class ProjectCost extends CommonDBChild
     **/
     public static function cloneProject($oldid, $newid)
     {
-        global $DB;
-
         Toolbox::deprecated('Use clone');
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['projects_id' => $oldid]
-        ]);
-        while ($data = $iterator->next()) {
+        foreach ((new static())->find(['projects_id' => $oldid]) as $data) {
             $cd                   = new self();
             unset($data['id']);
             $data['projects_id'] = $newid;
@@ -266,19 +260,8 @@ class ProjectCost extends CommonDBChild
     **/
     public function getLastCostForProject($projects_id)
     {
-        global $DB;
-
-        $iterator = $DB->request([
-           'FROM'   => $this->getTable(),
-           'WHERE'  => ['projects_id' => $projects_id],
-           'ORDER'  => ['end_date DESC', 'id DESC']
-        ]);
-
-        if (count($iterator)) {
-            return $iterator->next();
-        }
-
-        return [];
+        $rows = $this->find(['projects_id' => $projects_id], ['end_date DESC', 'id DESC'], 1);
+        return $rows ? reset($rows) : [];
     }
 
     /**
@@ -376,7 +359,7 @@ class ProjectCost extends CommonDBChild
     **/
     public static function showForProject(Project $project, $withtemplate = 0)
     {
-        global $DB, $CFG_GLPI;
+        global $CFG_GLPI;
 
         $ID = $project->fields['id'];
 
@@ -390,11 +373,7 @@ class ProjectCost extends CommonDBChild
 
         echo "<div class='center'>";
 
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['projects_id' => $ID],
-           'ORDER'  => ['begin_date']
-        ]);
+        $iterator = (new static())->find(['projects_id' => $ID], ['begin_date']);
 
         $rand   = mt_rand();
 
@@ -441,7 +420,7 @@ class ProjectCost extends CommonDBChild
                 )
             );
 
-            while ($data = $iterator->next()) {
+            foreach ($iterator as $data) {
                 echo "<tr class='tab_bg_2' " .
                       ($canedit
                          ? "style='cursor:pointer' onClick=\"viewEditCost" . $data['projects_id'] . "_" .

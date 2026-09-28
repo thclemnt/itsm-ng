@@ -17,7 +17,7 @@ final class NormalizeOptionalReferences
         $counts = [];
         $quote = $connection->getDatabasePlatform()->quoteIdentifier(...);
         $manager = $connection->createSchemaManager();
-        foreach (OptionalReferences::RELATIONS as $table => $relations) {
+        foreach (OptionalReferences::MODELS as $table => $relations) {
             $columns = $manager->listTableColumns($table);
             foreach ($relations as $column => $target) {
                 if ($columns[$column]->getNotnull()) {

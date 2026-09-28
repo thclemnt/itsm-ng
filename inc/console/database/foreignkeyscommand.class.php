@@ -34,7 +34,7 @@ class ForeignKeysCommand extends AbstractCommand
             foreach (array_keys($problems) as $reference) {
                 [$table, $column] = explode('.', $reference, 2);
                 if (isset(\itsmng\Database\OptionalReferences::RELATIONS[$table][$column])) {
-                    $output->writeln('Run db:optional_references to audit the zero-to-NULL migration for optional model references.');
+                    $output->writeln('Run db:optional_references for model references and db:project_hierarchy for project ancestry before enforcing their foreign keys.');
                     break;
                 }
             }

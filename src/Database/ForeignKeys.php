@@ -19,6 +19,11 @@ final class ForeignKeys
      */
     public const RELATIONS = [
         ...OptionalReferences::RELATIONS,
+        'glpi_items_projects' => ['projects_id' => 'glpi_projects'],
+        'glpi_itils_projects' => ['projects_id' => 'glpi_projects'],
+        'glpi_projectcosts' => ['projects_id' => 'glpi_projects'],
+        'glpi_projectteams' => ['projects_id' => 'glpi_projects'],
+        'glpi_projecttaskteams' => ['projecttasks_id' => 'glpi_projecttasks'],
         'glpi_items_devicebatteries' => ['devicebatteries_id' => 'glpi_devicebatteries'],
         'glpi_items_devicecases' => ['devicecases_id' => 'glpi_devicecases'],
         'glpi_items_devicecontrols' => ['devicecontrols_id' => 'glpi_devicecontrols'],
