@@ -10,16 +10,18 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'glpi_pdus_plugs')]
 class PduPlug
 {
+    #[ORM\ManyToOne(targetEntity: PDU::class)]
+    #[ORM\JoinColumn(name: 'pdus_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?PDU $pdus = null;
+
+    #[ORM\ManyToOne(targetEntity: Plug::class)]
+    #[ORM\JoinColumn(name: 'plugs_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?Plug $plugs = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
-
-    #[ORM\Column(name: '`plugs_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $plugs_id = 0;
-
-    #[ORM\Column(name: '`pdus_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $pdus_id = 0;
 
     #[ORM\Column(name: '`number_plugs`', type: 'integer', nullable: true, options: ['default' => '0'])]
     public ?int $number_plugs = null;

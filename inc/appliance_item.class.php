@@ -127,12 +127,7 @@ class Appliance_Item extends CommonDBRelation
         }
         $entity_restrict_js = json_encode(array_values($entity_restrict));
 
-        $items = $DB->request([
-            'FROM' => self::getTable(),
-            'WHERE' => [
-                self::$items_id_1 => $ID
-            ]
-        ]);
+        $items = \itsmng\Database\MappedReads::matching($DB, self::getTable(), ['appliances_id' => $ID]);
 
         Session::initNavigateListItems(
             self::getType(),
@@ -225,8 +220,6 @@ class Appliance_Item extends CommonDBRelation
             ];
             renderTwigForm($form);
         }
-
-        $items = iterator_to_array($items);
 
         $fields = [
             __('Itemtype'),

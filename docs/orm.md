@@ -379,3 +379,31 @@ polymorphic targets, selectors, escaped dictionary names and cross-entity report
 rendering. The suite, software lifecycle and reporting contracts pass on both
 providers. The static inventory is now 1,503 remaining legacy SQL call sites;
 foreign-key coverage remains 159 enforced relationships.
+
+### Infrastructure relationships
+
+Twelve additional required associations now have restrictive database FKs and
+explicit `ManyToOne` mappings: appliance membership and its nested relations,
+certificate assignments, domain records and assignments, cluster/enclosure/rack
+contents, and both parent columns on PDU-plug and PDU-rack relations. Parent
+cleanup remains hook-driven, including nested appliance relations and the
+`_linked_purge` marker required when deleting a domain's records. Unrelated
+assignments survive parent purge. Constraint installation audits existing data
+and does not invent parents or silently discard orphan rows.
+
+Assignment lists for appliances, clusters, enclosures, racks and PDU plugs now
+use mapped reads. Enclosure occupancy, nested appliance labels and PDU side/used
+queries also use ORM; the public PDU methods retain a countable iterator result.
+`DomainRepository` joins record types for the domain record view, ordering by
+type/name/ID with explicit NULL placement so the two providers agree. Domain
+purge snapshots mapped record IDs before invoking lifecycle hooks.
+
+`infrastructure.php` exercises all twelve parent purge paths, nested cleanup,
+unrelated-row preservation, record ordering, public assignment views, enclosure
+occupancy and single/multiple PDU side selection on both providers. All 355-table
+ORM write checks, reporting, search and application contracts pass after upgrade.
+The existing PHP 8.3 infrastructure suites pass 21 methods / 606 assertions.
+Fresh PostgreSQL and MariaDB installations also succeed. Coverage is now 171
+foreign keys, with 591 pending relationship candidates, 62 polymorphic references,
+one ambiguous reference and 1,492 remaining legacy SQL call sites. Optional
+infrastructure dropdowns and polymorphic asset targets still need further work.

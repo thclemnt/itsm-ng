@@ -11,13 +11,14 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\UniqueConstraint(name: 'domains_items_unicity', columns: ['domains_id', 'itemtype', 'items_id'])]
 class DomainItem
 {
+    #[ORM\ManyToOne(targetEntity: Domain::class)]
+    #[ORM\JoinColumn(name: 'domains_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?Domain $domains = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
-
-    #[ORM\Column(name: '`domains_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $domains_id = 0;
 
     #[ORM\Column(name: '`items_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $items_id = 0;

@@ -179,15 +179,10 @@ class Appliance_Item_Relation extends CommonDBRelation
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              Appliance_Item::getForeignKeyField() => $appliances_items_id
-           ]
-        ]);
+        $rows = \itsmng\Database\MappedReads::matching($DB, self::getTable(), ['appliances_items_id' => $appliances_items_id]);
 
         $relations = [];
-        while ($row = $iterator->next()) {
+        foreach ($rows as $row) {
             $itemtype = $row['itemtype'];
             $item = new $itemtype();
             $item->getFromDB($row['items_id']);

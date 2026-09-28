@@ -105,13 +105,7 @@ class Item_Rack extends CommonDBRelation
         }
         $canedit = $rack->canEdit($ID);
 
-        $items = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'racks_id' => $rack->getID()
-           ],
-           'ORDER' => 'position DESC'
-        ]);
+        $items = \itsmng\Database\MappedReads::matching($DB, self::getTable(), ['racks_id' => $rack->getID()], ['position DESC']);
         $link = new self();
 
         if ($canedit) {
@@ -132,7 +126,6 @@ class Item_Rack extends CommonDBRelation
         echo "<i id='sviewgraph' class='pointer fa fa-th-large selected' title='" . __('View graphical representation') . "'></i>";
         echo "</div>";
 
-        $items = iterator_to_array($items);
         echo "<div id='viewlist'>";
 
         echo "<h2>" . __("Racked items") . "</h2>";

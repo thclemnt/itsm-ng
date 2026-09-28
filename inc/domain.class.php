@@ -69,14 +69,9 @@ class Domain extends CommonDropdown
 
         $record = new DomainRecord();
 
-        $iterator = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => $record->getTable(),
-           'WHERE'  => [
-              'domains_id'   => $this->fields['id']
-           ]
-        ]);
-        while ($row = $iterator->next()) {
+        $ids = \itsmng\Database\MappedReads::identifiers($DB, $record->getTable(), 'id', ['domains_id' => $this->fields['id']]);
+        foreach ($ids as $id) {
+            $row = ['id' => $id];
             $row['_linked_purge'] = 1; //flag call when we remove a record from a domain
             $record->delete($row, true);
         }

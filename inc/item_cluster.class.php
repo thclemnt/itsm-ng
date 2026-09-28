@@ -94,12 +94,7 @@ class Item_Cluster extends CommonDBRelation
         }
         $canedit = $cluster->canEdit($ID);
 
-        $items = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'clusters_id' => $ID
-           ]
-        ]);
+        $items = \itsmng\Database\MappedReads::matching($DB, self::getTable(), ['clusters_id' => $ID]);
 
         Session::initNavigateListItems(
             self::getType(),
@@ -126,7 +121,6 @@ class Item_Cluster extends CommonDBRelation
             echo "</div>";
         }
 
-        $items = iterator_to_array($items);
 
         if (!count($items)) {
             echo "<table class='tab_cadre_fixe' aria-label='No item Found'><tr><th>" . __('No item found') . "</th></tr>";

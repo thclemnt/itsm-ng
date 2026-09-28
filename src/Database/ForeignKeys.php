@@ -19,6 +19,16 @@ final class ForeignKeys
      */
     public const RELATIONS = [
         ...OptionalReferences::RELATIONS,
+        'glpi_appliances_items' => ['appliances_id' => 'glpi_appliances'],
+        'glpi_appliances_items_relations' => ['appliances_items_id' => 'glpi_appliances_items'],
+        'glpi_certificates_items' => ['certificates_id' => 'glpi_certificates'],
+        'glpi_domainrecords' => ['domains_id' => 'glpi_domains'],
+        'glpi_domains_items' => ['domains_id' => 'glpi_domains'],
+        'glpi_items_clusters' => ['clusters_id' => 'glpi_clusters'],
+        'glpi_items_enclosures' => ['enclosures_id' => 'glpi_enclosures'],
+        'glpi_items_racks' => ['racks_id' => 'glpi_racks'],
+        'glpi_pdus_plugs' => ['pdus_id' => 'glpi_pdus', 'plugs_id' => 'glpi_plugs'],
+        'glpi_pdus_racks' => ['pdus_id' => 'glpi_pdus', 'racks_id' => 'glpi_racks'],
         'glpi_softwareversions' => ['softwares_id' => 'glpi_softwares'],
         'glpi_softwarelicenses' => ['softwares_id' => 'glpi_softwares'],
         'glpi_items_softwareversions' => ['softwareversions_id' => 'glpi_softwareversions'],

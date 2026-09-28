@@ -11,13 +11,14 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\UniqueConstraint(name: 'items_racks_item', columns: ['itemtype', 'items_id', 'is_reserved'])]
 class ItemRack
 {
+    #[ORM\ManyToOne(targetEntity: Rack::class)]
+    #[ORM\JoinColumn(name: 'racks_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?Rack $racks = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
-
-    #[ORM\Column(name: '`racks_id`', type: 'integer', nullable: false)]
-    public int $racks_id = 0;
 
     #[ORM\Column(name: '`itemtype`', type: 'string', length: 255, nullable: false)]
     public string $itemtype = '';

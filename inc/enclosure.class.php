@@ -318,15 +318,10 @@ class Enclosure extends CommonDBTM
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'FROM'   => Item_Enclosure::getTable(),
-           'WHERE'  => [
-              'enclosures_id' => $this->getID()
-           ]
-        ]);
+        $rows = \itsmng\Database\MappedReads::matching($DB, Item_Enclosure::getTable(), ['enclosures_id' => $this->getID()]);
 
         $filled = [];
-        while ($row = $iterator->next()) {
+        foreach ($rows as $row) {
             if (
                 empty($itemtype) || empty($items_id)
                 || $itemtype != $row['itemtype'] || $items_id != $row['items_id']

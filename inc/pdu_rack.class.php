@@ -759,14 +759,7 @@ JAVASCRIPT;
     {
         global $DB;
 
-        return $DB->request([
-           'FROM'  => self::getTable(),
-           'WHERE' => [
-              'racks_id' => $rack->getID(),
-              'side'     => $side
-           ],
-           'ORDER' => 'position ASC'
-        ]);
+        return new ArrayIterator(\itsmng\Database\MappedReads::matching($DB, self::getTable(), ['racks_id' => $rack->getID(), 'side' => $side], ['position ASC']));
     }
 
     /**
@@ -778,9 +771,7 @@ JAVASCRIPT;
     {
         global $DB;
 
-        return $DB->request([
-           'FROM'  => self::getTable()
-        ]);
+        return new ArrayIterator(\itsmng\Database\MappedReads::matching($DB, self::getTable(), []));
     }
 
     /**

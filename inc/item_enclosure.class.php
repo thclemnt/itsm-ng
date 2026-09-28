@@ -84,12 +84,7 @@ class Item_Enclosure extends CommonDBRelation
         }
         $canedit = $enclosure->canEdit($ID);
 
-        $items = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'enclosures_id' => $enclosure->getID()
-           ]
-        ]);
+        $items = \itsmng\Database\MappedReads::matching($DB, self::getTable(), ['enclosures_id' => $enclosure->getID()]);
 
         Session::initNavigateListItems(
             self::getType(),
@@ -116,7 +111,6 @@ class Item_Enclosure extends CommonDBRelation
             echo "</div>";
         }
 
-        $items = iterator_to_array($items);
 
         if (!count($items)) {
             echo "<table class='tab_cadre_fixe' aria-label='No Item Found'><tr><th>" . __('No item found') . "</th></tr>";
