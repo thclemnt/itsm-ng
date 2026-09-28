@@ -84,11 +84,13 @@ class SoftwareLicense
     #[ORM\Column(name: '`users_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $users_id = 0;
 
-    #[ORM\Column(name: '`groups_id_tech`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $groups_id_tech = 0;
+    #[ORM\ManyToOne(targetEntity: Group::class)]
+    #[ORM\JoinColumn(name: 'groups_id_tech', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Group $groups_tech = null;
 
-    #[ORM\Column(name: '`groups_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $groups_id = 0;
+    #[ORM\ManyToOne(targetEntity: Group::class)]
+    #[ORM\JoinColumn(name: 'groups_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Group $groups = null;
 
     #[ORM\Column(name: '`is_helpdesk_visible`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_helpdesk_visible = false;

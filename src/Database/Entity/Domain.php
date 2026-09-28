@@ -34,8 +34,9 @@ class Domain
     #[ORM\Column(name: '`users_id_tech`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $users_id_tech = 0;
 
-    #[ORM\Column(name: '`groups_id_tech`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $groups_id_tech = 0;
+    #[ORM\ManyToOne(targetEntity: Group::class)]
+    #[ORM\JoinColumn(name: 'groups_id_tech', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Group $groups_tech = null;
 
     #[ORM\Column(name: '`others`', type: 'string', length: 255, nullable: true)]
     public ?string $others = null;

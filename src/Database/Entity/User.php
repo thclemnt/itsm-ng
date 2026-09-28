@@ -260,8 +260,9 @@ class User
     #[ORM\Column(name: '`sync_field`', type: 'string', length: 255, nullable: true)]
     public ?string $sync_field = null;
 
-    #[ORM\Column(name: '`groups_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $groups_id = 0;
+    #[ORM\ManyToOne(targetEntity: Group::class)]
+    #[ORM\JoinColumn(name: 'groups_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Group $groups = null;
 
     #[ORM\Column(name: '`users_id_supervisor`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $users_id_supervisor = 0;

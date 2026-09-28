@@ -578,6 +578,10 @@ $RELATION = [
    ],
 
    'glpi_groups' => [
+      'glpi_appliances' => ['groups_id', 'groups_id_tech'],
+      'glpi_items_devicesimcards' => 'groups_id',
+      'glpi_planningexternalevents' => 'groups_id',
+      'glpi_queuedchats' => 'groups_id',
       'glpi_cartridgeitems'        => 'groups_id_tech',
       'glpi_certificates'          => [
          'groups_id_tech',

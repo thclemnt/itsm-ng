@@ -171,6 +171,8 @@ class Certificate extends DbTestCase
         $manufacturerId = (new \Manufacturer())->add(['name' => $this->getUniqueString()]);
         $locationId = (new \Location())->add(['name' => $this->getUniqueString()]);
         $this->integer((int)$locationId)->isGreaterThan(0);
+        $groupId = (new \Group())->add(['name' => $this->getUniqueString()]);
+        $this->integer((int)$groupId)->isGreaterThan(0);
         $stateId = (new \State())->add(['name' => $this->getUniqueString()]);
         $this->integer((int)$manufacturerId)->isGreaterThan(0);
         $this->integer((int)$stateId)->isGreaterThan(0);
@@ -184,11 +186,11 @@ class Certificate extends DbTestCase
            'dns_name'            => $this->getUniqueString(),
            'dns_suffix'          => $this->getUniqueString(),
            'users_id_tech'       => $this->getUniqueInteger(),
-           'groups_id_tech'      => $this->getUniqueInteger(),
+           'groups_id_tech'      => $groupId,
            'locations_id'        => $locationId,
            'manufacturers_id'    => $manufacturerId,
            'users_id'            => $this->getUniqueInteger(),
-           'groups_id'           => $this->getUniqueInteger(),
+           'groups_id'           => $groupId,
            'is_autosign'         => 1,
            'date_expiration'     => date('Y-m-d', time() + MONTH_TIMESTAMP),
            'states_id'           => $stateId,

@@ -674,130 +674,78 @@ class Group extends CommonTreeDropdown
         } else {
             $groups_ids = [$this->getID()];
         }
-        // include items of members
-        $groups_criteria = [];
-        if ($user) {
-            $ufield = str_replace('groups', 'users', $field);
-            $groups_criteria['OR'] = [
-               $field => $groups_ids,
-               [
-                  $field  => 0,
-                  $ufield => new QuerySubQuery(
-                      [
-                        'SELECT' => 'users_id',
-                        'FROM'   => 'glpi_groups_users',
-                        'WHERE'  => [
-                           'groups_id'  => $groups_ids,
-                        ]
-                      ]
-                  )
-               ]
-            ];
-        } else {
-            $groups_criteria[$field] = $groups_ids;
-        }
-
-        // Count the total of item
-        $nb  = [];
-        $tot = 0;
-        $savfield = $field;
-        $restrict = [];
-        foreach ($types as $itemtype) {
-            $nb[$itemtype] = 0;
-            if (!($item = getItemForItemtype($itemtype))) {
-                continue;
-            }
-            if (!$item->canView()) {
-                continue;
-            }
-            if ($itemtype == 'Consumable') {
-                $field = 'items_id';
-            } else {
-                $field = $savfield;
-            }
-            if (!$item->isField($field)) {
-                continue;
-            }
-            $restrict[$itemtype] = $groups_criteria;
-
-            if ($itemtype == 'Consumable') {
-                $restrict[$itemtype] = [
-                   $field               => $groups_ids,
-                   'itemtype'           => 'Group',
-                   'consumableitems_id' =>  new QuerySubQuery(
-                       [
-                         'SELECT' => 'id',
-                         'FROM'   => 'glpi_consumableitems',
-                         'WHERE'  => getEntitiesRestrictCriteria('glpi_consumableitems', '', '', true)
-                       ]
-                   ),
-                ];
-            }
-
-            if ($item->isEntityAssign() && $itemtype != 'Consumable') {
-                $restrict[$itemtype] += getEntitiesRestrictCriteria(
-                    $item->getTable(),
-                    '',
-                    '',
-                    $item->maybeRecursive()
-                );
-            }
-            if ($item->maybeTemplate()) {
-                $restrict[$itemtype]['is_template'] = 0;
-            }
-            if ($item->maybeDeleted()) {
-                $restrict[$itemtype]['is_deleted'] = 0;
-            }
-            $tot += $nb[$itemtype] = countElementsInTable($item->getTable(), $restrict[$itemtype]);
-        }
-        $max = $_SESSION['glpilist_limit'];
-        if ($start >= $tot) {
-            $start = 0;
-        }
-        $res = [];
-        foreach ($types as $itemtype) {
-            if (!($item = getItemForItemtype($itemtype))) {
-                continue;
-            }
-            if ($start >= $nb[$itemtype]) {
-                // No need to read
-                $start -= $nb[$itemtype];
-            } else {
-                $request = [
-                   'SELECT' => 'id',
-                   'FROM'   => $item->getTable(),
-                   'WHERE'  => $restrict[$itemtype],
-                   'ORDER'  => 'name',
-                   'LIMIT'  => $max,
-                   'START'  => $start
-                ];
-
-                if ($itemtype == 'Consumable') {
-                    $request['SELECT'] = 'glpi_consumableitems.id';
-                    $request['LEFT JOIN'] = [
-                       'glpi_consumableitems' => [
-                          'FKEY'   => [
-                             'glpi_consumables'     => 'consumableitems_id',
-                             'glpi_consumableitems' => 'id'
-                          ]
-                       ]
-                    ];
+        $types = array_values(array_unique($types));
+        $counts = [];
+        $scopes = [];
+        $total = 0;
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            $repository = new \itsmng\Database\Repository\GroupItemRepository($em);
+            foreach ($types as $type) {
+                $item = getItemForItemtype($type);
+                if (!$item || !$item->canView() || !$item->isField($type === 'Consumable' ? 'items_id' : $field)) {
+                    continue;
                 }
-
-                $iterator = $DB->request($request);
-                while ($data = $iterator->next()) {
-                    $res[] = ['itemtype' => $itemtype,
-                                   'items_id' => $data['id']];
-                    $max--;
+                $scope = [];
+                if ($type === 'Consumable') {
+                    $scope = getEntitiesRestrictCriteria('glpi_consumableitems', '', '', true);
+                } else {
+                    if ($item->isEntityAssign()) {
+                        $scope = getEntitiesRestrictCriteria($item::getTable(), '', '', $item->maybeRecursive());
+                    }
+                    if ($item->maybeTemplate()) {
+                        $scope['is_template'] = 0;
+                    }
+                    if ($item->maybeDeleted()) {
+                        $scope['is_deleted'] = 0;
+                    }
                 }
-                // For next type
+                if ($repository::supports($type)) {
+                    $counts[$type] = $repository->count($type, $field, $groups_ids, (bool)$user, $scope);
+                } else {
+                    $criteria = [$field => $groups_ids];
+                    if ($user) {
+                        $criteria = ['OR' => [$criteria, [
+                            $field => 0,
+                            str_replace('groups', 'users', $field) => \itsmng\Database\MappedReads::identifiers($DB, 'glpi_groups_users', 'users_id', ['groups_id' => $groups_ids]),
+                        ]]];
+                    }
+                    $scope = ['AND' => [$scope, $criteria]];
+                    $counts[$type] = countElementsInTable($item::getTable(), $scope);
+                }
+                $scopes[$type] = $scope;
+                $total += $counts[$type];
+            }
+            $remaining = max(1, (int)$_SESSION['glpilist_limit']);
+            $start = $start >= $total ? 0 : max(0, (int)$start);
+            $res = [];
+            foreach ($counts as $type => $count) {
+                if ($start >= $count) {
+                    $start -= $count;
+                    continue;
+                }
+                if ($repository::supports($type)) {
+                    $ids = $repository->ids($type, $field, $groups_ids, (bool)$user, $scopes[$type], $remaining, $start);
+                } else {
+                    $item = getItemForItemtype($type);
+                    $ids = array_map('intval', array_column(iterator_to_array($DB->request([
+                        'SELECT' => 'id', 'FROM' => $item::getTable(), 'WHERE' => $scopes[$type],
+                        'ORDER' => ['name', 'id'], 'LIMIT' => $remaining, 'START' => $start,
+                    ])), 'id'));
+                }
+                foreach ($ids as $id) {
+                    $res[] = ['itemtype' => $type, 'items_id' => $id];
+                    --$remaining;
+                }
                 $start = 0;
+                if ($remaining === 0) {
+                    break;
+                }
             }
-            if (!$max) {
-                break;
-            }
+            return $total;
+        } finally {
+            $em->clear();
         }
-        return $tot;
     }
 
 
@@ -1008,28 +956,23 @@ class Group extends CommonTreeDropdown
 
         global $DB;
 
+        // A default group must be a remaining membership after purge cleanup.
+        $replacement = (int)($this->input['_replace_by'] ?? 0);
+        $user = new User();
+        foreach ($user->findIds(['groups_id' => $this->getID()]) as $id) {
+            $default = $replacement && Group_User::isUserInGroup($id, $replacement) ? $replacement : 0;
+            $user->update(['id' => $id, 'groups_id' => $default, '_disablenotif' => true]);
+        }
         parent::cleanRelationData();
 
-        if ($this->isUsedInConsumables()) {
-            // Replace relation with Consumable
-            $newval = (isset($this->input['_replace_by']) ? $this->input['_replace_by'] : 0);
-
-            $fields_updates = [
-               'items_id' => $newval,
-            ];
-            if (empty($newval)) {
-                $fields_updates['itemtype'] = 'NULL';
-                $fields_updates['date_out'] = 'NULL';
-            }
-
-            $DB->update(
-                'glpi_consumables',
-                $fields_updates,
-                [
-                  'items_id' => $this->fields['id'],
-                  'itemtype' => self::class,
-                ]
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            (new \itsmng\Database\Repository\ConsumableRepository($em))->replaceGroup(
+                (int)$this->getID(),
+                (int)($this->input['_replace_by'] ?? 0)
             );
+        } finally {
+            $em->clear();
         }
     }
 

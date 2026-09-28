@@ -38,7 +38,7 @@ final class ProjectRepository
             $membership = "(team.itemtype = :user_type AND team.items_id = :viewer)";
             $query->setParameter('viewer', $user)->setParameter('user_type', 'User');
             if ($groups) {
-                $ownership[] = 'r.groups_id IN (:groups)';
+                $ownership[] = 'IDENTITY(r.groups) IN (:groups)';
                 $membership .= ' OR (team.itemtype = :group_type AND team.items_id IN (:groups))';
                 $query->setParameter('groups', array_values(array_map('intval', $groups)))->setParameter('group_type', 'Group');
             }

@@ -57,8 +57,9 @@ class ItemDeviceSimcard
     #[ORM\Column(name: '`users_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $users_id = 0;
 
-    #[ORM\Column(name: '`groups_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $groups_id = 0;
+    #[ORM\ManyToOne(targetEntity: Group::class)]
+    #[ORM\JoinColumn(name: 'groups_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Group $groups = null;
 
     #[ORM\Column(name: '`pin`', type: 'string', length: 255, nullable: false, options: ['default' => ''])]
     public string $pin = '';

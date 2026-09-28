@@ -231,7 +231,7 @@ class Computer extends CommonDBTM
                         true
                     );
                 }
-                if (isset($changes['groups_id']) || isset($changes['users_id'])) {
+                if (array_key_exists('groups_id', $changes) || isset($changes['users_id'])) {
                     Session::addMessageAfterRedirect(
                         __('User or group updated. The connected items have been moved in the same values.'),
                         true

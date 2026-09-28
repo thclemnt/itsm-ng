@@ -850,3 +850,51 @@ components, stock, software, reporting, search and application workflows. PHP 8.
 location, computer, datacenter, license, certificate CRUD/clone and ticket location
 rule tests pass 30 methods / 978 assertions. No notification cron was run; listing
 rendering was verified in PHP rather than through browser interactions.
+
+### Group assignments, hierarchy and paginated items
+
+Forty-one additional group references across 31 tables now use nullable
+`ManyToOne` associations with restrictive FKs. This includes asset ownership and
+technical groups, tasks/templates, project ownership, user defaults, categories,
+planning events, queued chat and the group hierarchy itself. Missing cleanup
+registrations for appliances, SIM assignments, planning events and queued chat
+are included. Group roots use NULL; group trees have no zero-dependent sibling
+uniqueness constraint. Explicit NULL moves now update tree names and levels,
+including descendant names.
+
+Use `php bin/console db:group_references` to inspect an existing database, apply
+with `--apply` during maintenance with writers stopped, then run
+`php bin/console db:foreign_keys --apply`. The migration audits all nonzero
+references before DDL, normalizes empty selections and supports idempotent retries.
+Fresh installs apply it automatically.
+
+`GroupItemRepository` provides counts and bounded pages for core group item
+listings. It preserves entity scope, deleted/template exclusions, descendant
+groups and member fallback only when the asset has no assigned group. Membership
+uses EXISTS so overlapping memberships do not duplicate assets. Pages cross type
+boundaries and use explicit NULL/name/ID ordering on both engines; types without
+a name column order by ID. Consumable pages return actual stock IDs, correcting
+the former model-ID projection, while applying the model's entity scope. Plugin
+types without registered entities retain a bounded adapter path.
+
+Consumable group replacement/purge uses ORM updates. Replacement keeps usage
+dates; purge clears recipient type/ID and returns stock. Other recipient types
+with the same numeric ID remain untouched. Project visibility uses its mapped
+group association. User defaults move to a replacement only if the user already
+belongs to it; otherwise they clear. Clearing an optional default group is now
+accepted by user validation, so group deletion cannot leave an orphaned default.
+
+`groups.php` verifies all 41 replacement/purge paths, hierarchy roots and moves,
+member fallback, cross-type pagination, consumable identities and lifecycle,
+default-group membership rules, migration refusal and retries. Computer and
+certificate fixtures now create real groups. Coverage is 365 enforced
+relationships, 397 pending candidates, 62 polymorphic references, one ambiguous
+reference and 1,413 legacy SQL sites.
+
+Fresh PostgreSQL and MariaDB installs pass the 365-FK contract and complete ORM
+mapping/writes, group migration/lifecycle, asset propagation, location/state
+regressions, project hierarchy/visibility/planning, stock, consumables, reporting,
+search and application workflows. The parent-purge suite also passes after fixing
+an unnamed-tree-node warning. PHP 8.3 tree, asset, membership, planning,
+certificate CRUD/clone and default-group ticket-rule tests pass 33 methods /
+1,029 assertions. Notification cron and browser interaction were not exercised.

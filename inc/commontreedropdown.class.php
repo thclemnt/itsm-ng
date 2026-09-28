@@ -133,7 +133,7 @@ abstract class CommonTreeDropdown extends CommonDropdown
             $input['name'] = addslashes((string) $this->fields['name']);
         }
         // leading/ending space will break findID/import
-        $input['name'] = trim((string) $input['name']);
+        $input['name'] = trim((string) ($input['name'] ?? ''));
 
         if (
             isset($input[$this->getForeignKeyField()])
@@ -200,7 +200,7 @@ abstract class CommonTreeDropdown extends CommonDropdown
     {
         global $GLPI_CACHE;
 
-        if (isset($input[$this->getForeignKeyField()])) {
+        if (array_key_exists($this->getForeignKeyField(), $input)) {
             // Can't move a parent under a child
             if (
                 in_array(

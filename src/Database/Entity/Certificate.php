@@ -55,8 +55,9 @@ class Certificate
     #[ORM\Column(name: '`users_id_tech`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $users_id_tech = 0;
 
-    #[ORM\Column(name: '`groups_id_tech`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $groups_id_tech = 0;
+    #[ORM\ManyToOne(targetEntity: Group::class)]
+    #[ORM\JoinColumn(name: 'groups_id_tech', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Group $groups_tech = null;
 
     #[ORM\ManyToOne(targetEntity: Location::class)]
     #[ORM\JoinColumn(name: 'locations_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
@@ -75,8 +76,9 @@ class Certificate
     #[ORM\Column(name: '`users_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $users_id = 0;
 
-    #[ORM\Column(name: '`groups_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $groups_id = 0;
+    #[ORM\ManyToOne(targetEntity: Group::class)]
+    #[ORM\JoinColumn(name: 'groups_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Group $groups = null;
 
     #[ORM\Column(name: '`is_autosign`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_autosign = false;

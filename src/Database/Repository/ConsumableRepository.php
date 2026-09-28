@@ -15,6 +15,18 @@ final class ConsumableRepository
     {
     }
 
+    /** Group purge returns assigned stock; replacement preserves its usage dates. */
+    public function replaceGroup(int $group, int $replacement): void
+    {
+        $query = $this->em->createQueryBuilder()->update(Entity\Consumable::class, 'c')
+            ->set('c.items_id', ':replacement')->setParameter('replacement', $replacement)
+            ->where('c.itemtype = :type AND c.items_id = :group')->setParameter('type', 'Group')->setParameter('group', $group);
+        if ($replacement === 0) {
+            $query->set('c.itemtype', 'NULL')->set('c.date_out', 'NULL');
+        }
+        $query->getQuery()->execute();
+    }
+
     /** Returning stock keeps its last recipient as historical information. */
     public function returnToStock(int $id): void
     {
