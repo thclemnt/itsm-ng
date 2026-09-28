@@ -319,17 +319,22 @@ class KnowbaseItem extends DbTestCase
         $this->calling($m_kbi)->canViewItem[3] = true;
 
         // Replace global DB with mocked DB
+        $database = $DB;
         $DB = $m_db;
+        try {
+            // Expected : [1, 3]
+            $this->array(\KnowbaseItem::getForCategory(1, $m_kbi))
+               ->hasSize(2)
+               ->containsValues([1, 3]);
 
-        // Expected : [1, 3]
-        $this->array(\KnowbaseItem::getForCategory(1, $m_kbi))
-           ->hasSize(2)
-           ->containsValues([1, 3]);
-
-        // Expected : [-1]
-        $this->array(\KnowbaseItem::getForCategory(1, $m_kbi))
-           ->hasSize(1)
-           ->contains(-1);
+            // Expected : [-1]
+            $this->array(\KnowbaseItem::getForCategory(1, $m_kbi))
+               ->hasSize(1)
+               ->contains(-1);
+        } finally {
+            // DbTestCase must roll back the same connection it started.
+            $DB = $database;
+        }
     }
 
     protected function testGetListRequestProvider(): array

@@ -8,6 +8,14 @@ application permissions, validation, hooks, history and notifications remain in
 `CommonDBTM` and its subclasses.
 
 Core `CommonDBTM::getFromDB()` reads now use `RecordRepository` and ORM hydration.
+Structured `find()`, `getFromDBByCrit()` and simple `getFromDBByRequest()` reads
+also compile to DQL through `RecordCriteria`. Parameters use mapped types,
+relationship filters use association identities, and ordering, limits and offsets
+execute in the database. Nested AND/OR/NOT, comparisons, lists, NULL, bitmasks and
+case-insensitive PostgreSQL LIKE filters are covered. Date parameters accept both
+mutable and immutable PHP dates. Raw SQL expressions, joins, subqueries, JSON
+comparisons and regex predicates retain the explicit legacy path until their
+callers have dedicated mapped queries. Database errors never trigger that fallback.
 The repository preserves the legacy scalar row interface, including integer flags,
 representable bigint values, date strings and JSON values. Plugin tables still use
 the legacy path until their mappings are registered.
@@ -93,7 +101,7 @@ relationship candidates, polymorphic references and legacy SQL/driver call sites
 This is an intentionally incomplete static inventory: it cannot prove discovery of
 serialized references, dynamic SQL or alternate connection variables. Each
 candidate needs semantic review before installing its FK. The current inventory
-contains 825 candidate reference columns: 68 enforced, 694 pending, 62 polymorphic
+contains 825 candidate reference columns: 96 enforced, 666 pending, 62 polymorphic
 and one ambiguous (`users.auths_id`, whose target depends on authentication type).
 
 `tools/database/generate-mappings.php` is a development scaffold for explicit
@@ -124,3 +132,12 @@ exercised on both databases with the actual constraints enabled.
 With all 68 constraints enabled, the PHP 8.3 CommonDBTM, User, Ticket, Calendar,
 Contract and Profile suites pass 103 methods and 5,206 assertions. Both database
 providers pass explicit-ID/import sequencing and raw-value preservation checks.
+
+The criteria-read stage adds 28 constraints for knowledge-base, reminder and RSS
+sharing, saved-search user preferences, and knowledge-base/reminder translations.
+These are mapped associations with restrictive foreign keys; actual parent purge
+hooks are exercised for content and recipients on both engines. `orm-criteria.php`
+compares structured predicate results with the existing query API and verifies
+that supported model reads bypass the legacy SQL adapter. The all-table write
+contract now exercises 341 tables with mutable scalar fields, with the remaining
+tables covered by insert/read/delete and association lifecycle tests.

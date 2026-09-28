@@ -376,6 +376,20 @@ class CommonDBTM extends CommonGLPI
     {
         global $DB;
 
+        try {
+            $rows = \itsmng\Database\MappedReads::matching($DB, $this->getTable(), $crit, limit: 2);
+            if (count($rows) === 1) {
+                return $this->getFromDB($rows[0][$this->getIndexName()]);
+            }
+            if (count($rows) > 1) {
+                $count = \itsmng\Database\MappedReads::countMatching($DB, $this->getTable(), $crit);
+                trigger_error(sprintf('getFromDBByCrit expects to get one result, %s found.', $count), E_USER_WARNING);
+            }
+            return false;
+        } catch (\itsmng\Database\UnsupportedCriteria $unsupported) {
+            // SQL expressions and plugin tables still need dedicated mapped queries.
+        }
+
         $crit = ['SELECT' => 'id',
                  'FROM'   => $this->getTable(),
                  'WHERE'  => $crit];
@@ -421,6 +435,35 @@ class CommonDBTM extends CommonGLPI
            'COUNT' => '',
            'GROUPBY' => '',
         ]);
+        $simpleKeys = ['WHERE', 'ORDER', 'ORDERBY', 'LIMIT', 'START'];
+        if (!array_diff(array_keys($request), $simpleKeys) && is_array($request['WHERE'] ?? [])) {
+            try {
+                $requestedLimit = is_numeric($request['LIMIT'] ?? null) && (int)$request['LIMIT'] > 0 ? (int)$request['LIMIT'] : null;
+                $limit = $requestedLimit === null ? 2 : min(2, $requestedLimit);
+                $offset = $requestedLimit === null ? 0 : max(0, (int)($request['START'] ?? 0));
+                $rows = \itsmng\Database\MappedReads::matching(
+                    $DB,
+                    $this->getTable(),
+                    $request['WHERE'] ?? [],
+                    $request['ORDER'] ?? $request['ORDERBY'] ?? [],
+                    $limit,
+                    $offset
+                );
+                if (count($rows) === 1) {
+                    $this->fields = $rows[0];
+                    $this->post_getFromDB();
+                    return true;
+                }
+                if (count($rows) > 1) {
+                    $count = max(0, \itsmng\Database\MappedReads::countMatching($DB, $this->getTable(), $request['WHERE'] ?? []) - $offset);
+                    $count = $requestedLimit === null ? $count : min($count, $requestedLimit);
+                    Toolbox::logWarning(sprintf('getFromDBByRequest expects to get one result, %s found!', $count));
+                }
+                return false;
+            } catch (\itsmng\Database\UnsupportedCriteria $unsupported) {
+                // Remaining SQL constructs use the existing path until mapped.
+            }
+        }
         $request['FROM'] = $this->getTable();
         $request['SELECT'] = $this->getTable() . '.*';
 
@@ -492,6 +535,13 @@ class CommonDBTM extends CommonGLPI
     public function find($condition = [], $order = [], $limit = null)
     {
         global $DB;
+
+        try {
+            $rows = \itsmng\Database\MappedReads::matching($DB, $this->getTable(), $condition, $order, $limit === null ? null : (int)$limit);
+            return array_column($rows, null, 'id');
+        } catch (\itsmng\Database\UnsupportedCriteria $unsupported) {
+            // Remaining SQL constructs use the existing path until mapped.
+        }
 
         $criteria = [
            'FROM'   => $this->getTable()

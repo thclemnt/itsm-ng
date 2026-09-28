@@ -76,7 +76,7 @@ try {
                 'bigint', 'decimal' => '7', 'float' => 7.5,
                 'date' => '2025-02-03', 'datetime', 'datetimetz' => '2025-02-03 12:34:56',
                 'itsm_clock_time' => '24:00:00', 'json' => ['orm' => true],
-                default => 'ORM update',
+                default => substr('ORM update', 0, $mapping->length ?? 10),
             };
             (new RecordWriter($em))->update($table, $id, [$mapping->columnName => $value]);
             $em->clear();

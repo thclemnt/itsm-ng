@@ -57,8 +57,14 @@ try {
             if ($table === 'glpi_rules') {
                 $values['sub_type'] = 'RuleTicket';
             }
-            $DB->insertOrDie($table, $values);
-            $parents[$table] = $DB->insertId();
+            if ($table === 'glpi_entities') {
+                $parents[$table] = (new Entity())->add($values + ['entities_id' => 0]);
+            } elseif ($table === 'glpi_profiles') {
+                $parents[$table] = (new Profile())->add($values);
+            } else {
+                $DB->insertOrDie($table, $values);
+                $parents[$table] = $DB->insertId();
+            }
         }
         return $parents[$table];
     };
@@ -116,7 +122,7 @@ try {
     verify($email->delete(['id' => $id], true), 'CommonDBTM purge');
 
     // Every parent purge must clean every new required association, with real FKs enabled.
-    foreach (['glpi_contracts', 'glpi_suppliers', 'glpi_contacts', 'glpi_reservationitems', 'glpi_changes', 'glpi_problems', 'glpi_tickets', 'glpi_groups', 'glpi_calendars', 'glpi_holidays', 'glpi_rules', 'glpi_networkports', 'glpi_vlans', 'glpi_ipnetworks', 'glpi_ipaddresses', 'glpi_cartridgeitems', 'glpi_printermodels', 'glpi_consumableitems', 'glpi_projecttasks', 'glpi_notifications', 'glpi_notificationtemplates'] as $target) {
+    foreach (['glpi_contracts', 'glpi_suppliers', 'glpi_contacts', 'glpi_reservationitems', 'glpi_changes', 'glpi_problems', 'glpi_tickets', 'glpi_groups', 'glpi_calendars', 'glpi_holidays', 'glpi_rules', 'glpi_networkports', 'glpi_vlans', 'glpi_ipnetworks', 'glpi_ipaddresses', 'glpi_cartridgeitems', 'glpi_printermodels', 'glpi_consumableitems', 'glpi_projecttasks', 'glpi_notifications', 'glpi_notificationtemplates', 'glpi_knowbaseitems', 'glpi_reminders', 'glpi_rssfeeds', 'glpi_savedsearches', 'glpi_users', 'glpi_profiles', 'glpi_entities'] as $target) {
         $parentId = $parent($target);
         foreach (\itsmng\Database\ForeignKeys::RELATIONS as $table => $relations) {
             if (!in_array($target, $relations, true)) {

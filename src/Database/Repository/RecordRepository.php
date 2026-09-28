@@ -27,6 +27,34 @@ final class RecordRepository
         return $record === null ? null : $this->toRow($record);
     }
 
+    /** Select complete mapped records with bound criteria and database-side limits. */
+    public function matching(string $table, array $criteria = [], array|string $order = [], ?int $limit = null, int $offset = 0, bool $legacyValues = true): array
+    {
+        $metadata = $this->em->getClassMetadata(EntityRegistry::TABLES[$table]);
+        $query = $this->em->createQueryBuilder()->select('r')->from($metadata->name, 'r');
+        $compiler = new \itsmng\Database\RecordCriteria($query, $metadata, $legacyValues);
+        $query->where($compiler->where($criteria));
+        $compiler->order($order);
+        if ($limit !== null && $limit > 0) {
+            $query->setMaxResults($limit);
+        }
+        $query->setFirstResult(max(0, $offset));
+        $rows = [];
+        foreach ($query->getQuery()->toIterable() as $record) {
+            $rows[] = $this->toRow($record);
+            $this->em->detach($record);
+        }
+        return $rows;
+    }
+
+    public function countMatching(string $table, array $criteria): int
+    {
+        $metadata = $this->em->getClassMetadata(EntityRegistry::TABLES[$table]);
+        $query = $this->em->createQueryBuilder()->select('COUNT(r.id)')->from($metadata->name, 'r');
+        $query->where((new \itsmng\Database\RecordCriteria($query, $metadata))->where($criteria));
+        return (int)$query->getQuery()->getSingleScalarResult();
+    }
+
     public function toRow(object $record): array
     {
         $metadata = $this->em->getClassMetadata($record::class);

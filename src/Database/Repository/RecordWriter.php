@@ -100,7 +100,7 @@ final class RecordWriter
                     'boolean' => (bool)(int)$value,
                     'integer', 'smallint' => (int)$value,
                     'float' => (float)$value,
-                    'date', 'datetime', 'datetimetz' => $value instanceof \DateTimeInterface ? $value : new \DateTime((string)$value),
+                    'date', 'datetime', 'datetimetz' => $value instanceof \DateTimeInterface ? \DateTime::createFromInterface($value) : new \DateTime((string)$value),
                     'json' => is_array($value) ? $value : json_decode((string)$value, true, flags: JSON_THROW_ON_ERROR),
                     default => is_scalar($value) || $value instanceof \Stringable ? (string)$value : throw new \InvalidArgumentException('Mapped fields require typed values, not SQL expressions.'),
                 };

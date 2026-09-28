@@ -67,6 +67,21 @@ final class ForeignKeys
         'glpi_tickets_tickets' => ['tickets_id_1' => 'glpi_tickets', 'tickets_id_2' => 'glpi_tickets'],
         'glpi_notificationtargets' => ['notifications_id' => 'glpi_notifications'],
         'glpi_notificationtemplatetranslations' => ['notificationtemplates_id' => 'glpi_notificationtemplates'],
+        'glpi_knowbaseitems_users' => ['knowbaseitems_id' => 'glpi_knowbaseitems', 'users_id' => 'glpi_users'],
+        'glpi_knowbaseitems_profiles' => ['knowbaseitems_id' => 'glpi_knowbaseitems', 'profiles_id' => 'glpi_profiles'],
+        'glpi_groups_knowbaseitems' => ['knowbaseitems_id' => 'glpi_knowbaseitems', 'groups_id' => 'glpi_groups'],
+        'glpi_entities_knowbaseitems' => ['knowbaseitems_id' => 'glpi_knowbaseitems', 'entities_id' => 'glpi_entities'],
+        'glpi_reminders_users' => ['reminders_id' => 'glpi_reminders', 'users_id' => 'glpi_users'],
+        'glpi_profiles_reminders' => ['reminders_id' => 'glpi_reminders', 'profiles_id' => 'glpi_profiles'],
+        'glpi_groups_reminders' => ['reminders_id' => 'glpi_reminders', 'groups_id' => 'glpi_groups'],
+        'glpi_entities_reminders' => ['reminders_id' => 'glpi_reminders', 'entities_id' => 'glpi_entities'],
+        'glpi_rssfeeds_users' => ['rssfeeds_id' => 'glpi_rssfeeds', 'users_id' => 'glpi_users'],
+        'glpi_profiles_rssfeeds' => ['rssfeeds_id' => 'glpi_rssfeeds', 'profiles_id' => 'glpi_profiles'],
+        'glpi_groups_rssfeeds' => ['rssfeeds_id' => 'glpi_rssfeeds', 'groups_id' => 'glpi_groups'],
+        'glpi_entities_rssfeeds' => ['rssfeeds_id' => 'glpi_rssfeeds', 'entities_id' => 'glpi_entities'],
+        'glpi_savedsearches_users' => ['savedsearches_id' => 'glpi_savedsearches', 'users_id' => 'glpi_users'],
+        'glpi_knowbaseitemtranslations' => ['knowbaseitems_id' => 'glpi_knowbaseitems'],
+        'glpi_remindertranslations' => ['reminders_id' => 'glpi_reminders'],
     ];
 
     public static function name(string $table, string $column): string

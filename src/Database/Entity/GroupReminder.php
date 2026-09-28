@@ -10,16 +10,18 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'glpi_groups_reminders')]
 class GroupReminder
 {
+    #[ORM\ManyToOne(targetEntity: Reminder::class)]
+    #[ORM\JoinColumn(name: 'reminders_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?Reminder $reminders = null;
+
+    #[ORM\ManyToOne(targetEntity: Group::class)]
+    #[ORM\JoinColumn(name: 'groups_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?Group $groups = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
-
-    #[ORM\Column(name: '`reminders_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $reminders_id = 0;
-
-    #[ORM\Column(name: '`groups_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $groups_id = 0;
 
     #[ORM\Column(name: '`entities_id`', type: 'integer', nullable: false, options: ['default' => '-1'])]
     public int $entities_id = -1;

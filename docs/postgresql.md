@@ -11,7 +11,7 @@ This branch is a development port, **not a complete or production-ready PostgreS
 - `LegacySql` is a lexical bridge for the application's pre-escaped strings and backtick identifiers. It is not an SQL dialect translator. Prefer raw bound values with DBAL in new code. PostgreSQL rejects NUL text rather than silently truncating it.
 - `Expressions` delegates date arithmetic to Doctrine platforms. Search has separate input, options, provider, projection, criteria, joins, sorting and output classes behind the existing `Search` facade. The SQL-rewriting `SearchProjection` bridge is removed. See [search architecture](search.md) for the two-phase planner and its compatibility boundaries.
 
-Doctrine ORM now maps all columns of all 355 core tables. Core record-by-ID reads use ORM, and all 355 tables use ORM persistence below the existing `CommonDBTM` lifecycle; asset counts, reservations, calendars and financial reports use DQL repositories. Entity managers are scoped to one operation and share the adapter connection and transaction. See [mapped persistence and reporting](orm.md) for the ownership boundaries. The legacy baseline still owns installation and indexes; do not run ORM schema synchronization against an installation.
+Doctrine ORM now maps all columns of all 355 core tables. Core record-by-ID and supported structured criteria reads use ORM, and all 355 tables use ORM persistence below the existing `CommonDBTM` lifecycle; asset counts, reservations, calendars and financial reports use DQL repositories. Entity managers are scoped to one operation and share the adapter connection and transaction. See [mapped persistence and reporting](orm.md) for the ownership boundaries. The legacy baseline still owns installation and indexes; do not run ORM schema synchronization against an installation.
 
 ## Fresh PostgreSQL installation
 
@@ -158,3 +158,14 @@ table passes ORM write checks; populated reporting and search contracts pass on
 both engines. The PHP 8.3 DB, DBmysqlIterator, CommonDBTM, User and Ticket suites
 pass 135 methods and 8,942 assertions. Both engines pass HTTP report checks.
 The CI matrix now includes PHP 8.2 and 8.3; remote CI results are not yet available.
+
+The subsequent criteria-read and sharing-relationship stage enables 96 foreign
+keys. PostgreSQL passes 568 database-contract assertions and MariaDB 170; both
+pass all-table mapped writes, parent purges, populated reporting, application
+workflows and the new criteria-read contract. Knowledge-base, reminder, RSS,
+saved-search, profile and entity suites pass 29 methods and 813 assertions on
+PHP 8.3 with all 96 constraints enabled. The inventory still lists 666 pending
+relationship candidates, 62 polymorphic references and one ambiguous reference;
+full query and relationship conversion remains unfinished.
+The shared CommonDBTM suite also passes 19 methods and 616 assertions with these
+constraints enabled. HTTP report routes pass on both engines after the read change.

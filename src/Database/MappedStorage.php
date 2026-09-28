@@ -59,22 +59,9 @@ final class MappedStorage
                 throw new \InvalidArgumentException('Mapped persistence requires values, not SQL expressions.');
             }
             // Decode CommonDBTM pre-escaping once before binding typed parameters.
-            $value = self::decode($value);
+            $value = LegacyValues::decode($value);
         }
         return $values;
     }
 
-    private static function decode(mixed $value): mixed
-    {
-        if ($value === 'NULL' || $value === 'null') {
-            return null;
-        }
-        if (!is_string($value)) {
-            return $value;
-        }
-        return preg_replace_callback('/\\\\(.)/s', static fn ($m) => match ($m[1]) {
-            'n' => "\n", 'r' => "\r", 't' => "\t", 'b' => "\x08", '0' => "\0", 'Z' => "\x1a",
-            '%', '_' => $m[0], default => $m[1],
-        }, $value);
-    }
 }

@@ -10,14 +10,16 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'glpi_knowbaseitems_users')]
 class KnowbaseItemUser
 {
+    #[ORM\ManyToOne(targetEntity: KnowbaseItem::class)]
+    #[ORM\JoinColumn(name: 'knowbaseitems_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?KnowbaseItem $knowbaseitems = null;
+
+    #[ORM\ManyToOne(targetEntity: User::class)]
+    #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?User $users = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
-
-    #[ORM\Column(name: '`knowbaseitems_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $knowbaseitems_id = 0;
-
-    #[ORM\Column(name: '`users_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $users_id = 0;
 }
