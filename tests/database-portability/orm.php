@@ -156,6 +156,9 @@ try {
             foreach ($relations as $column => $reference) {
                 $values[$column] = $reference === 'glpi_entities' ? 0 : $parent($reference);
             }
+            if ($table === 'glpi_infocoms') {
+                $values += ['itemtype' => 'Computer', 'items_id' => (new FixtureRecords($DB))->create('glpi_computers')];
+            }
             $DB->insertOrDie($table, $values);
         }
         $item = getItemForItemtype(getItemTypeForTable($target));

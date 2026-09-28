@@ -835,18 +835,13 @@ JS;
             return false;
         }
 
-        $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => 'glpi_infocoms',
-           'WHERE'  => [
-              'itemtype'  => $itemtype,
-              'items_id'  => $device_id
-           ]
-        ])->next();
+        $count = \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), [
+            'itemtype' => $itemtype, 'items_id' => $device_id,
+        ]);
 
         $add    = "add";
         $text   = __('Add');
-        if ($result['cpt'] > 0) {
+        if ($count > 0) {
             $add  = "";
             $text = _x('button', 'Show');
         } elseif (!Infocom::canUpdate()) {
@@ -2226,22 +2221,18 @@ JS;
      *
      * @param array $where Where clause
      *
-     * @return DBmysqlIterator
+     * @return array List of distinct itemtype rows
      */
     public static function getTypes($where)
     {
         global $DB;
 
-        $types_iterator = $DB->request([
-           'SELECT'          => 'itemtype',
-           'DISTINCT'        => true,
-           'FROM'            => 'glpi_infocoms',
-           'WHERE'           => [
-              'NOT'          => ['itemtype' => self::getExcludedTypes()]
-           ] + $where,
-           'ORDER'           => 'itemtype'
-        ]);
-        return $types_iterator;
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            return (new \itsmng\Database\Repository\InfocomRepository($em))->types($where);
+        } finally {
+            $em->clear();
+        }
     }
 
 

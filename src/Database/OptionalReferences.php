@@ -73,8 +73,18 @@ final class OptionalReferences
         'glpi_projectcosts' => ['budgets_id' => 'glpi_budgets'],
     ];
 
+    public const FINANCIAL_METADATA = [
+        'glpi_suppliers' => ['suppliertypes_id' => 'glpi_suppliertypes'],
+        'glpi_infocoms' => ['suppliers_id' => 'glpi_suppliers', 'businesscriticities_id' => 'glpi_businesscriticities'],
+        'glpi_budgets' => ['locations_id' => 'glpi_locations'],
+        'glpi_contracts' => ['states_id' => 'glpi_states'],
+    ];
+
     public const RELATIONS = [
-        ...self::MODELS, ...self::PROJECT_HIERARCHY, ...self::INFRASTRUCTURE, ...self::ASSET_CLASSIFICATION, ...self::STOCK, ...self::FINANCIAL,
+        ...self::MODELS, ...self::PROJECT_HIERARCHY, ...self::INFRASTRUCTURE, ...self::ASSET_CLASSIFICATION, ...self::STOCK, ...self::FINANCIAL, ...self::FINANCIAL_METADATA,
+        'glpi_infocoms' => [...self::FINANCIAL['glpi_infocoms'], ...self::FINANCIAL_METADATA['glpi_infocoms']],
+        'glpi_budgets' => [...self::FINANCIAL['glpi_budgets'], ...self::FINANCIAL_METADATA['glpi_budgets']],
+        'glpi_contracts' => [...self::FINANCIAL['glpi_contracts'], ...self::FINANCIAL_METADATA['glpi_contracts']],
         'glpi_racks' => [...self::MODELS['glpi_racks'], ...self::INFRASTRUCTURE['glpi_racks']],
         'glpi_pdus' => [...self::MODELS['glpi_pdus'], ...self::INFRASTRUCTURE['glpi_pdus']],
     ];

@@ -51,8 +51,9 @@ class Budget
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_creation = null;
 
-    #[ORM\Column(name: '`locations_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $locations_id = 0;
+    #[ORM\ManyToOne(targetEntity: Location::class)]
+    #[ORM\JoinColumn(name: 'locations_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Location $locations = null;
 
     #[ORM\ManyToOne(targetEntity: BudgetType::class)]
     #[ORM\JoinColumn(name: 'budgettypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]

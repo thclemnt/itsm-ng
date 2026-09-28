@@ -147,9 +147,7 @@ class Location extends DbTestCase
                 ]);
             }
         )
-           ->isInstanceOf('GlpitestSQLError')
-           ->message
-              ->matches("#Duplicate entry '.+' for key '(" . $location_2->getTable() . "\\.)?unicity'#");
+           ->isInstanceOf(\Doctrine\DBAL\Exception\UniqueConstraintViolationException::class);
 
         $this->boolean($location_2->getFromDB($location_2_id))->isTrue();
         $this->string($location_2->fields['name'])->isIdenticalTo('Non unique location');

@@ -40,8 +40,9 @@ class Infocom
     #[ORM\Column(name: '`warranty_info`', type: 'string', length: 255, nullable: true)]
     public ?string $warranty_info = null;
 
-    #[ORM\Column(name: '`suppliers_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $suppliers_id = 0;
+    #[ORM\ManyToOne(targetEntity: Supplier::class)]
+    #[ORM\JoinColumn(name: 'suppliers_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Supplier $suppliers = null;
 
     #[ORM\Column(name: '`order_number`', type: 'string', length: 255, nullable: true)]
     public ?string $order_number = null;
@@ -101,6 +102,7 @@ class Infocom
     #[ORM\Column(name: '`decommission_date`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $decommission_date = null;
 
-    #[ORM\Column(name: '`businesscriticities_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $businesscriticities_id = 0;
+    #[ORM\ManyToOne(targetEntity: BusinessCriticity::class)]
+    #[ORM\JoinColumn(name: 'businesscriticities_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?BusinessCriticity $businesscriticities = null;
 }

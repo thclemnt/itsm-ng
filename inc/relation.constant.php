@@ -1139,6 +1139,7 @@ $RELATION = [
    ],
 
    'glpi_states' => [
+      'glpi_contracts'                 => 'states_id',
       'glpi_certificates'              => 'states_id',
       'glpi_clusters'                  => 'states_id',
       'glpi_computers'                 => 'states_id',

@@ -519,7 +519,7 @@ class Supplier extends CommonDBTM
         echo "</tr>";
 
         $num = 0;
-        while ($row = $types_iterator->next()) {
+        foreach ($types_iterator as $row) {
             $itemtype = $row['itemtype'];
 
             if (!($item = getItemForItemtype($itemtype))) {
@@ -527,80 +527,39 @@ class Supplier extends CommonDBTM
             }
 
             if ($item->canView()) {
-                $linktype  = $itemtype;
-                $linkfield = 'id';
-                $itemtable = getTableForItemType($itemtype);
-
-                $criteria = [
-                   'SELECT'       => [],
-                   'FROM'         => 'glpi_infocoms',
-                   'INNER JOIN'   => [
-                      $itemtable  => [
-                         'ON' => [
-                            'glpi_infocoms'   => 'items_id',
-                            $itemtable        => 'id'
-                         ]
-                      ]
-                   ]
-                ];
-
-                // Set $linktype for entity restriction AND link to search engine
-                if ($itemtype == 'Cartridge') {
-                    $criteria['INNER JOIN']['glpi_cartridgeitems'] = [
-                       'ON' => [
-                          'glpi_cartridgeitems'   => 'id',
-                          'glpi_cartridges'       => 'cartridgeitems_id'
-                       ]
+                [$linktype, $linkfield] = \itsmng\Database\Repository\InfocomRepository::linkFor($itemtype);
+                if (\itsmng\Database\Repository\InfocomRepository::supports($itemtype)) {
+                    $em = \itsmng\Database\Orm::create($DB);
+                    try {
+                        $projection = (new \itsmng\Database\Repository\InfocomRepository($em))->forSupplier(
+                            $itemtype,
+                            (int)$instID,
+                            \itsmng\Reporting\Criteria::entities(),
+                            (int)$_SESSION['glpilist_limit']
+                        );
+                        $nb = $projection['count'];
+                        $iterator = $projection['rows'];
+                    } finally {
+                        $em->clear();
+                    }
+                } else {
+                    // Unmapped plugin items retain their registered table and visibility rules.
+                    $itemtable = getTableForItemType($itemtype);
+                    $linktable = getTableForItemType($linktype);
+                    $criteria = [
+                        'SELECT' => ["$itemtable.*", "$linktable." . $linktype::getNameField()],
+                        'FROM' => 'glpi_infocoms',
+                        'INNER JOIN' => [$itemtable => ['ON' => ['glpi_infocoms' => 'items_id', $itemtable => 'id']]],
+                        'WHERE' => ['glpi_infocoms.itemtype' => $itemtype, 'glpi_infocoms.suppliers_id' => $instID]
+                            + getEntitiesRestrictCriteria($linktable),
+                        'ORDERBY' => ['glpi_infocoms.entities_id', "$linktable." . $linktype::getNameField()],
                     ];
-
-                    $linktype  = 'CartridgeItem';
-                    $linkfield = 'cartridgeitems_id';
+                    if ($linkfield !== 'id') {
+                        $criteria['INNER JOIN'][$linktable] = ['ON' => [$itemtable => $linkfield, $linktable => 'id']];
+                    }
+                    $iterator = $DB->request($criteria);
+                    $nb = count($iterator);
                 }
-
-                if ($itemtype == 'Consumable') {
-                    $criteria['INNER JOIN']['glpi_consumableitems'] = [
-                       'ON' => [
-                          'glpi_consumableitems'  => 'id',
-                          'glpi_consumables'      => 'cartridgeitems_id'
-                       ]
-                    ];
-
-                    $linktype  = 'ConsumableItem';
-                    $linkfield = 'consumableitems_id';
-                }
-
-                if ($itemtype == 'Item_DeviceControl') {
-                    $criteria['INNER JOIN']['glpi_devicecontrols'] = [
-                       'ON' => [
-                          'glpi_items_devicecontrols'   => 'devicecontrols_id',
-                          'glpi_devicecontrols'         => 'id'
-                       ]
-                    ];
-
-                    $linktype = 'DeviceControl';
-                    $linkfield = 'devicecontrols_id';
-                }
-
-                $linktable = getTableForItemType($linktype);
-
-                $criteria['SELECT'] = [
-                   'glpi_infocoms.entities_id',
-                   $linktype::getNameField(),
-                   "$itemtable.*"
-                ];
-
-                $criteria['WHERE'] = [
-                   'glpi_infocoms.itemtype'      => $itemtype,
-                   'glpi_infocoms.suppliers_id'  => $instID,
-                ] + getEntitiesRestrictCriteria($linktable);
-
-                $criteria['ORDERBY'] = [
-                   'glpi_infocoms.entities_id',
-                   "$linktable." . $linktype::getNameField()
-                ];
-
-                $iterator = $DB->request($criteria);
-                $nb = count($iterator);
 
                 if ($nb > $_SESSION['glpilist_limit']) {
                     echo "<tr class='tab_bg_1'>";
@@ -631,7 +590,7 @@ class Supplier extends CommonDBTM
                     echo "<td class='center'>-</td><td class='center'>-</td></tr>";
                 } elseif ($nb) {
                     $prem = true;
-                    while ($data = $iterator->next()) {
+                    foreach ($iterator as $data) {
                         $name = $data[$linktype::getNameField()];
                         if ($_SESSION["glpiis_ids_visible"] || empty($data["name"])) {
                             $name = sprintf(__('%1$s (%2$s)'), $name, $data["id"]);
@@ -687,13 +646,10 @@ class Supplier extends CommonDBTM
     {
         global $DB;
 
-        $suppliers = $DB->request([
-           'SELECT' => ["id"],
-           'FROM' => 'glpi_suppliers',
-           'WHERE' => ['email' => $email]
-        ]);
-
-        return $suppliers;
+        return array_map(
+            static fn (int $id): array => ['id' => $id],
+            \itsmng\Database\MappedReads::identifiers($DB, self::getTable(), 'id', ['email' => $email])
+        );
     }
 
 

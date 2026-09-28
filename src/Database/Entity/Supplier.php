@@ -24,8 +24,9 @@ class Supplier
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
     public ?string $name = null;
 
-    #[ORM\Column(name: '`suppliertypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $suppliertypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: SupplierType::class)]
+    #[ORM\JoinColumn(name: 'suppliertypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?SupplierType $suppliertypes = null;
 
     #[ORM\Column(name: '`address`', type: 'text', nullable: true)]
     public ?string $address = null;

@@ -690,3 +690,42 @@ financial migration and application contracts pass on PostgreSQL and MariaDB.
 The PHP 8.3 contract and cost suites pass 7 methods / 132 assertions. These are
 PHP rendering checks, not browser interactions. The inventory now records 1,423
 legacy SQL sites; FK coverage remains 207 enforced relationships.
+
+### Supplier purchases and financial metadata
+
+Five additional nullable associations now have restrictive FKs: supplier type,
+infocom supplier and business criticity, budget location, and contract state.
+Contract states are also registered with the application's replacement/purge
+cleanup, so deleting a state clears affected contracts instead of leaving orphans.
+Supplier purge retains financial records and clears their supplier reference.
+
+Existing installations use `php bin/console db:financial_metadata` to inspect
+changes, then `--apply` with application writers stopped, followed by
+`php bin/console db:foreign_keys --apply`. The migration audits before DDL,
+normalizes legacy zeros to NULL and supports idempotent retries. Fresh installs
+perform this normalization automatically.
+
+`InfocomRepository` supplies distinct financial item types and supplier purchase
+projections. Stock and component purchases use their mapped model association
+for names, links and entity scope. This fixes the consumable query's incorrect
+cartridge-column join and extends component handling beyond controllers. Deleted
+and template records retain their existing display behavior. Oversized groups
+execute a count without hydrating item rows, then display the existing search
+link; smaller groups fetch at most the configured list limit.
+
+Supplier email lookup and financial modal-link counts use mapped reads.
+`Infocom::getTypes()` and `Supplier::getSuppliersByEmail()` now return row arrays;
+core consumers use foreach instead of database-iterator methods. Unmapped plugin
+financial lists retain their compatibility path.
+
+The new `financial-metadata.php` and `suppliers.php` suites cover replacement,
+purge, legacy empty selections, migration refusal/retry, model entity isolation,
+email identities, list bounds and populated HTML. Fresh PostgreSQL and MariaDB
+installs pass the 212-FK enforcement contract, ORM mapping/writes, budget/reporting,
+search and application tests. PHP 8.3 supplier, supplier-type, location, contract
+and infocom tests pass 18 methods / 402 assertions. Rendering checks are in PHP,
+not a browser. The location uniqueness test now expects Doctrine's portable
+unique-constraint exception and still verifies the rejected update changes no data.
+
+Coverage is now 212 enforced relationships, 550 pending candidates, 62 polymorphic
+references, one ambiguous reference and 1,420 legacy SQL sites.
