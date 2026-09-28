@@ -28,8 +28,9 @@ class SolutionTemplate
     #[ORM\Column(name: '`content`', type: 'text', nullable: true)]
     public ?string $content = null;
 
-    #[ORM\Column(name: '`solutiontypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $solutiontypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: SolutionType::class)]
+    #[ORM\JoinColumn(name: 'solutiontypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?SolutionType $solutiontypes = null;
 
     #[ORM\Column(name: '`comment`', type: 'text', nullable: true)]
     public ?string $comment = null;

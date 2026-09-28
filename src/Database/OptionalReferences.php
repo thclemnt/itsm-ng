@@ -267,7 +267,26 @@ final class OptionalReferences
         'glpi_projecttasktemplates' => ['projects_id' => 'glpi_projects', 'projecttasks_id' => 'glpi_projecttasks', 'projectstates_id' => 'glpi_projectstates', 'projecttasktypes_id' => 'glpi_projecttasktypes'],
     ];
 
+    public const ITIL_CLASSIFICATION = [
+        'glpi_changes' => ['itilcategories_id' => 'glpi_itilcategories'],
+        'glpi_changetasks' => ['taskcategories_id' => 'glpi_taskcategories', 'tasktemplates_id' => 'glpi_tasktemplates'],
+        'glpi_itilcategories' => ['tickettemplates_id_incident' => 'glpi_tickettemplates', 'tickettemplates_id_demand' => 'glpi_tickettemplates', 'changetemplates_id' => 'glpi_changetemplates', 'problemtemplates_id' => 'glpi_problemtemplates', 'knowbaseitemcategories_id' => 'glpi_knowbaseitemcategories'],
+        'glpi_itilfollowups' => ['requesttypes_id' => 'glpi_requesttypes'],
+        'glpi_itilfollowuptemplates' => ['requesttypes_id' => 'glpi_requesttypes'],
+        'glpi_itilsolutions' => ['solutiontypes_id' => 'glpi_solutiontypes'],
+        'glpi_problems' => ['itilcategories_id' => 'glpi_itilcategories'],
+        'glpi_problemtasks' => ['taskcategories_id' => 'glpi_taskcategories', 'tasktemplates_id' => 'glpi_tasktemplates'],
+        'glpi_queuedchats' => ['itilcategories_id' => 'glpi_itilcategories'],
+        'glpi_solutiontemplates' => ['solutiontypes_id' => 'glpi_solutiontypes'],
+        'glpi_taskcategories' => ['knowbaseitemcategories_id' => 'glpi_knowbaseitemcategories'],
+        'glpi_tasktemplates' => ['taskcategories_id' => 'glpi_taskcategories'],
+        'glpi_tickets' => ['itilcategories_id' => 'glpi_itilcategories', 'requesttypes_id' => 'glpi_requesttypes'],
+        'glpi_tickettasks' => ['taskcategories_id' => 'glpi_taskcategories', 'tasktemplates_id' => 'glpi_tasktemplates'],
+        'glpi_users' => ['default_requesttypes_id' => 'glpi_requesttypes'],
+    ];
+
     public const RELATIONS = [
+        ...self::ITIL_CLASSIFICATION,
         ...self::PLANNING_METADATA,
         ...self::INVENTORY_METADATA,
         ...self::MODELS,
@@ -337,14 +356,20 @@ final class OptionalReferences
         'glpi_phones' => [...self::ASSET_CLASSIFICATION['glpi_phones'], ...self::MANUFACTURERS['glpi_phones'], ...self::STATES['glpi_phones'], ...self::LOCATIONS['glpi_phones'], ...self::GROUPS['glpi_phones'], ...self::INVENTORY_METADATA['glpi_phones']],
         'glpi_printers' => [...self::ASSET_CLASSIFICATION['glpi_printers'], ...self::MANUFACTURERS['glpi_printers'], ...self::STATES['glpi_printers'], ...self::LOCATIONS['glpi_printers'], ...self::GROUPS['glpi_printers'], ...self::INVENTORY_METADATA['glpi_printers']],
         'glpi_projects' => [...self::PROJECT_HIERARCHY['glpi_projects'], ...self::GROUPS['glpi_projects'], ...self::PLANNING_METADATA['glpi_projects']],
-        'glpi_queuedchats' => [...self::LOCATIONS['glpi_queuedchats'], ...self::GROUPS['glpi_queuedchats']],
+        'glpi_queuedchats' => [...self::LOCATIONS['glpi_queuedchats'], ...self::GROUPS['glpi_queuedchats'], ...self::ITIL_CLASSIFICATION['glpi_queuedchats']],
         'glpi_racks' => [...self::MODELS['glpi_racks'], ...self::INFRASTRUCTURE['glpi_racks'], ...self::MANUFACTURERS['glpi_racks'], ...self::STATES['glpi_racks'], ...self::LOCATIONS['glpi_racks'], ...self::GROUPS['glpi_racks']],
         'glpi_softwarelicenses' => [...self::FINANCIAL['glpi_softwarelicenses'], ...self::MANUFACTURERS['glpi_softwarelicenses'], ...self::STATES['glpi_softwarelicenses'], ...self::LOCATIONS['glpi_softwarelicenses'], ...self::GROUPS['glpi_softwarelicenses']],
         'glpi_softwares' => [...self::MANUFACTURERS['glpi_softwares'], ...self::LOCATIONS['glpi_softwares'], ...self::GROUPS['glpi_softwares']],
         'glpi_softwareversions' => [...self::STATES['glpi_softwareversions'], ...self::INVENTORY_METADATA['glpi_softwareversions']],
-        'glpi_users' => [...self::LOCATIONS['glpi_users'], ...self::GROUPS['glpi_users']],
+        'glpi_users' => [...self::LOCATIONS['glpi_users'], ...self::GROUPS['glpi_users'], ...self::ITIL_CLASSIFICATION['glpi_users']],
         'glpi_projecttasks' => [...self::PROJECT_HIERARCHY['glpi_projecttasks'], ...self::PLANNING_METADATA['glpi_projecttasks']],
         'glpi_planningexternalevents' => [...self::GROUPS['glpi_planningexternalevents'], ...self::PLANNING_METADATA['glpi_planningexternalevents']],
+        'glpi_tickets' => [...self::LOCATIONS['glpi_tickets'], ...self::ITIL_CLASSIFICATION['glpi_tickets']],
+        'glpi_changetasks' => [...self::GROUPS['glpi_changetasks'], ...self::ITIL_CLASSIFICATION['glpi_changetasks']],
+        'glpi_problemtasks' => [...self::GROUPS['glpi_problemtasks'], ...self::ITIL_CLASSIFICATION['glpi_problemtasks']],
+        'glpi_tickettasks' => [...self::GROUPS['glpi_tickettasks'], ...self::ITIL_CLASSIFICATION['glpi_tickettasks']],
+        'glpi_itilcategories' => [...self::GROUPS['glpi_itilcategories'], ...self::ITIL_CLASSIFICATION['glpi_itilcategories']],
+        'glpi_tasktemplates' => [...self::GROUPS['glpi_tasktemplates'], ...self::ITIL_CLASSIFICATION['glpi_tasktemplates']],
     ];
 
     public static function isEmptySelection(mixed $value): bool

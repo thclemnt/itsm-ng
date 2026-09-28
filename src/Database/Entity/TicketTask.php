@@ -23,8 +23,9 @@ class TicketTask
     #[ORM\Column(name: '`uuid`', type: 'string', length: 255, nullable: true)]
     public ?string $uuid = null;
 
-    #[ORM\Column(name: '`taskcategories_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $taskcategories_id = 0;
+    #[ORM\ManyToOne(targetEntity: TaskCategory::class)]
+    #[ORM\JoinColumn(name: 'taskcategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?TaskCategory $taskcategories = null;
 
     #[ORM\Column(name: '`date`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date = null;
@@ -66,8 +67,9 @@ class TicketTask
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_creation = null;
 
-    #[ORM\Column(name: '`tasktemplates_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $tasktemplates_id = 0;
+    #[ORM\ManyToOne(targetEntity: TaskTemplate::class)]
+    #[ORM\JoinColumn(name: 'tasktemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?TaskTemplate $tasktemplates = null;
 
     #[ORM\Column(name: '`timeline_position`', type: 'smallint', nullable: false, options: ['default' => '0'])]
     public int $timeline_position = 0;

@@ -36,8 +36,9 @@ class ITILFollowup
     #[ORM\Column(name: '`is_private`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_private = false;
 
-    #[ORM\Column(name: '`requesttypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $requesttypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: RequestType::class)]
+    #[ORM\JoinColumn(name: 'requesttypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?RequestType $requesttypes = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_mod = null;

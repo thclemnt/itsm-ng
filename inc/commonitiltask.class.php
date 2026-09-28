@@ -672,7 +672,7 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
     protected function computeFriendlyName()
     {
 
-        if (isset($this->fields['taskcategories_id'])) {
+        if (array_key_exists('taskcategories_id', $this->fields)) {
             if ($this->fields['taskcategories_id']) {
                 return Dropdown::getDropdownName(
                     'glpi_taskcategories',

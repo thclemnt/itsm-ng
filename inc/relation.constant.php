@@ -678,6 +678,7 @@ $RELATION = [
    ],
 
    'glpi_itilcategories' => [
+      'glpi_queuedchats' => 'itilcategories_id',
       'glpi_changes'        => 'itilcategories_id',
       'glpi_itilcategories' => 'itilcategories_id',
       'glpi_problems'       => 'itilcategories_id',

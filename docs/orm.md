@@ -1022,3 +1022,40 @@ application workflow pass on both engines. PHP 8.3 project/planning tests pass
 18 methods and 519 assertions; a final shared-trait run including reminders
 passes 11 methods and 247 assertions. These are database and PHP rendering checks;
 no live-browser or notification-cron validation is claimed.
+
+### ITIL classification and request sources
+
+Twenty-three additional references use nullable Doctrine associations and
+`RESTRICT` foreign keys. They cover categories on tickets, changes, problems and
+queued chats; task categories and templates; category-to-template and knowledge
+category links; request sources on tickets, followups, templates and user
+preferences; and solution types on solutions and templates. Model replacement
+and purge hooks normalize missing selections to NULL while preserving dependent
+records. Unclassified task/followup labels and template AJAX values retain their
+meaning when references are NULL.
+
+Existing databases require maintenance mode: inspect `db:itil_classification`,
+then run `db:itil_classification --apply` and `db:foreign_keys --apply`.
+The migration rejects nonzero orphans before DDL, converts legacy zeros, and is
+idempotent. Installation uses the same registry.
+
+`ITILClassificationRepository` selects template categories using the actual
+Ticket/Change/Problem template association. Equal IDs in different template
+tables no longer select or mark unrelated categories. The template tab applies
+entity scope. Category-code lookup binds values and fetches at most two rows to
+preserve ambiguity detection. Request-source defaults use a bounded ORM query;
+add/update hooks clear competing defaults with a typed DQL update.
+
+Coverage is 567 enforced relationships, 195 pending candidates, 62 polymorphic
+references, one ambiguous reference and 1,399 legacy SQL call sites. This remains
+an incremental migration, with all-table relationship and query coverage still
+unfinished.
+
+Validation: fresh PostgreSQL/MariaDB installs pass 1,042/644 FK and portability
+assertions, all 355 mapped-table CRUD checks, classification lifecycle/migration,
+reporting, search, application and project-planning tests. A shared-category test
+also verifies template-family indicators when different template tables have the
+same ID. PHP 8.3 ITIL category/template/followup/solution tests pass 25 methods and
+1,258 assertions; ticket/change/problem/task/followup tests pass 79 methods and
+4,241 assertions. Rendering assertions execute PHP; browser interactions and
+notification delivery were not exercised.

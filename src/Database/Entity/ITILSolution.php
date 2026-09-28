@@ -21,8 +21,9 @@ class ITILSolution
     #[ORM\Column(name: '`items_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $items_id = 0;
 
-    #[ORM\Column(name: '`solutiontypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $solutiontypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: SolutionType::class)]
+    #[ORM\JoinColumn(name: 'solutiontypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?SolutionType $solutiontypes = null;
 
     #[ORM\Column(name: '`solutiontype_name`', type: 'string', length: 255, nullable: true)]
     public ?string $solutiontype_name = null;

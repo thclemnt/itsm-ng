@@ -37,8 +37,9 @@ class ITILCategory
     #[ORM\Column(name: '`level`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $level = 0;
 
-    #[ORM\Column(name: '`knowbaseitemcategories_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $knowbaseitemcategories_id = 0;
+    #[ORM\ManyToOne(targetEntity: KnowbaseItemCategory::class)]
+    #[ORM\JoinColumn(name: 'knowbaseitemcategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?KnowbaseItemCategory $knowbaseitemcategories = null;
 
     #[ORM\Column(name: '`users_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $users_id = 0;
@@ -59,17 +60,21 @@ class ITILCategory
     #[ORM\Column(name: '`is_helpdeskvisible`', type: 'boolean', nullable: false, options: ['default' => true])]
     public bool $is_helpdeskvisible = true;
 
-    #[ORM\Column(name: '`tickettemplates_id_incident`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $tickettemplates_id_incident = 0;
+    #[ORM\ManyToOne(targetEntity: TicketTemplate::class)]
+    #[ORM\JoinColumn(name: 'tickettemplates_id_incident', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?TicketTemplate $tickettemplates_incident = null;
 
-    #[ORM\Column(name: '`tickettemplates_id_demand`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $tickettemplates_id_demand = 0;
+    #[ORM\ManyToOne(targetEntity: TicketTemplate::class)]
+    #[ORM\JoinColumn(name: 'tickettemplates_id_demand', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?TicketTemplate $tickettemplates_demand = null;
 
-    #[ORM\Column(name: '`changetemplates_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $changetemplates_id = 0;
+    #[ORM\ManyToOne(targetEntity: ChangeTemplate::class)]
+    #[ORM\JoinColumn(name: 'changetemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?ChangeTemplate $changetemplates = null;
 
-    #[ORM\Column(name: '`problemtemplates_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $problemtemplates_id = 0;
+    #[ORM\ManyToOne(targetEntity: ProblemTemplate::class)]
+    #[ORM\JoinColumn(name: 'problemtemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?ProblemTemplate $problemtemplates = null;
 
     #[ORM\Column(name: '`is_incident`', type: 'integer', nullable: false, options: ['default' => '1'])]
     public int $is_incident = 1;

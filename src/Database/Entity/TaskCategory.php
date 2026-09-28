@@ -55,6 +55,7 @@ class TaskCategory
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_creation = null;
 
-    #[ORM\Column(name: '`knowbaseitemcategories_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $knowbaseitemcategories_id = 0;
+    #[ORM\ManyToOne(targetEntity: KnowbaseItemCategory::class)]
+    #[ORM\JoinColumn(name: 'knowbaseitemcategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?KnowbaseItemCategory $knowbaseitemcategories = null;
 }

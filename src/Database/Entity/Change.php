@@ -64,8 +64,9 @@ class Change
     #[ORM\Column(name: '`priority`', type: 'integer', nullable: false, options: ['default' => '1'])]
     public int $priority = 1;
 
-    #[ORM\Column(name: '`itilcategories_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $itilcategories_id = 0;
+    #[ORM\ManyToOne(targetEntity: ITILCategory::class)]
+    #[ORM\JoinColumn(name: 'itilcategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?ITILCategory $itilcategories = null;
 
     #[ORM\Column(name: '`impactcontent`', type: 'text', length: 4294967295, nullable: true)]
     public ?string $impactcontent = null;

@@ -192,6 +192,13 @@ final class ForeignKeys
         'glpi_ticketvalidations' => [...EntityOwnership::RELATIONS['glpi_ticketvalidations'], 'tickets_id' => 'glpi_tickets'],
         'glpi_useremails' => ['users_id' => 'glpi_users'],
         'glpi_users' => [...OptionalReferences::RELATIONS['glpi_users'], ...EntityOwnership::RELATIONS['glpi_users']],
+        'glpi_changes' => [...OptionalReferences::RELATIONS['glpi_changes'], ...EntityOwnership::RELATIONS['glpi_changes']],
+        'glpi_problems' => [...OptionalReferences::RELATIONS['glpi_problems'], ...EntityOwnership::RELATIONS['glpi_problems']],
+        'glpi_taskcategories' => [...OptionalReferences::RELATIONS['glpi_taskcategories'], ...EntityOwnership::RELATIONS['glpi_taskcategories']],
+        'glpi_itilfollowups' => [...OptionalReferences::RELATIONS['glpi_itilfollowups']],
+        'glpi_itilfollowuptemplates' => [...OptionalReferences::RELATIONS['glpi_itilfollowuptemplates'], ...EntityOwnership::RELATIONS['glpi_itilfollowuptemplates']],
+        'glpi_itilsolutions' => [...OptionalReferences::RELATIONS['glpi_itilsolutions']],
+        'glpi_solutiontemplates' => [...OptionalReferences::RELATIONS['glpi_solutiontemplates'], ...EntityOwnership::RELATIONS['glpi_solutiontemplates']],
     ];
 
     public static function name(string $table, string $column): string

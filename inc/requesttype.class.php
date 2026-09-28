@@ -178,13 +178,8 @@ class RequestType extends CommonDropdown
         }
 
         if (count($update)) {
-            $DB->update(
-                $this->getTable(),
-                $update,
-                [
-                  'id' => ['<>', $this->fields['id']]
-                ]
-            );
+            (new \itsmng\Database\Repository\ITILClassificationRepository(\itsmng\Database\Orm::create($DB)))
+                ->clearOtherDefaults((int)$this->fields['id'], array_keys($update));
         }
     }
 
@@ -230,13 +225,8 @@ class RequestType extends CommonDropdown
         }
 
         if (count($update)) {
-            $DB->update(
-                $this->getTable(),
-                $update,
-                [
-                  'id' => ['<>', $this->fields['id']]
-                ]
-            );
+            (new \itsmng\Database\Repository\ITILClassificationRepository(\itsmng\Database\Orm::create($DB)))
+                ->clearOtherDefaults((int)$this->fields['id'], array_keys($update));
         }
     }
 
@@ -252,14 +242,8 @@ class RequestType extends CommonDropdown
     {
         global $DB;
 
-        if (!in_array($source, ['mail', 'mailfollowup', 'helpdesk', 'followup'])) {
-            return 0;
-        }
-
-        foreach ($DB->request('glpi_requesttypes', ['is_' . $source . '_default' => 1, 'is_active' => 1]) as $data) {
-            return $data['id'];
-        }
-        return 0;
+        return (new \itsmng\Database\Repository\ITILClassificationRepository(\itsmng\Database\Orm::create($DB)))
+            ->defaultRequestType((string)$source);
     }
 
 

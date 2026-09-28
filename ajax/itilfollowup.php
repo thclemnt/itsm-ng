@@ -60,6 +60,6 @@ if (
         );
     }
 
-    $template->fields = array_map('html_entity_decode', $template->fields);
+    $template->fields = array_map(static fn ($value) => is_string($value) ? html_entity_decode($value) : $value, $template->fields);
     echo json_encode($template->fields);
 }

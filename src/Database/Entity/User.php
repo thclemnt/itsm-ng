@@ -135,8 +135,9 @@ class User
     #[ORM\Column(name: '`task_private`', type: 'boolean', nullable: true)]
     public ?bool $task_private = null;
 
-    #[ORM\Column(name: '`default_requesttypes_id`', type: 'integer', nullable: true)]
-    public ?int $default_requesttypes_id = null;
+    #[ORM\ManyToOne(targetEntity: RequestType::class)]
+    #[ORM\JoinColumn(name: 'default_requesttypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?RequestType $default_requesttypes = null;
 
     #[ORM\Column(name: '`password_forget_token`', type: 'string', length: 40, nullable: true, options: ['fixed' => true])]
     public ?string $password_forget_token = null;

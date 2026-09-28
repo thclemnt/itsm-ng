@@ -28,8 +28,9 @@ class TaskTemplate
     #[ORM\Column(name: '`content`', type: 'text', nullable: true)]
     public ?string $content = null;
 
-    #[ORM\Column(name: '`taskcategories_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $taskcategories_id = 0;
+    #[ORM\ManyToOne(targetEntity: TaskCategory::class)]
+    #[ORM\JoinColumn(name: 'taskcategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?TaskCategory $taskcategories = null;
 
     #[ORM\Column(name: '`actiontime`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $actiontime = 0;

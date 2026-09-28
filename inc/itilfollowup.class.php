@@ -684,7 +684,7 @@ class ITILFollowup extends CommonDBChild
     protected function computeFriendlyName()
     {
 
-        if (isset($this->fields['requesttypes_id'])) {
+        if (array_key_exists('requesttypes_id', $this->fields)) {
             if ($this->fields['requesttypes_id']) {
                 return Dropdown::getDropdownName('glpi_requesttypes', $this->fields['requesttypes_id']);
             }

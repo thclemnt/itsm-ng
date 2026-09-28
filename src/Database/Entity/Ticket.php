@@ -43,8 +43,9 @@ class Ticket
     #[ORM\Column(name: '`users_id_recipient`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $users_id_recipient = 0;
 
-    #[ORM\Column(name: '`requesttypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $requesttypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: RequestType::class)]
+    #[ORM\JoinColumn(name: 'requesttypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?RequestType $requesttypes = null;
 
     #[ORM\Column(name: '`content`', type: 'text', length: 4294967295, nullable: true)]
     public ?string $content = null;
@@ -58,8 +59,9 @@ class Ticket
     #[ORM\Column(name: '`priority`', type: 'integer', nullable: false, options: ['default' => '1'])]
     public int $priority = 1;
 
-    #[ORM\Column(name: '`itilcategories_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $itilcategories_id = 0;
+    #[ORM\ManyToOne(targetEntity: ITILCategory::class)]
+    #[ORM\JoinColumn(name: 'itilcategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?ITILCategory $itilcategories = null;
 
     #[ORM\Column(name: '`type`', type: 'integer', nullable: false, options: ['default' => '1'])]
     public int $type = 1;
