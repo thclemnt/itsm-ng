@@ -10,6 +10,10 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'glpi_devicegenerics')]
 class DeviceGeneric
 {
+    #[ORM\ManyToOne(targetEntity: DeviceGenericModel::class)]
+    #[ORM\JoinColumn(name: 'devicegenericmodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?DeviceGenericModel $devicegenericmodels = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
@@ -38,9 +42,6 @@ class DeviceGeneric
 
     #[ORM\Column(name: '`states_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $states_id = 0;
-
-    #[ORM\Column(name: '`devicegenericmodels_id`', type: 'integer', nullable: true)]
-    public ?int $devicegenericmodels_id = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_mod = null;

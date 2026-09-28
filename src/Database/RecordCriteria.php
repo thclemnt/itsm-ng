@@ -30,7 +30,7 @@ final class RecordCriteria
                 $parts[] = ($column === 'NOT' ? 'NOT ' : '') . '(' . $expression . ')';
                 continue;
             }
-            [$expression, $type] = $this->field($column);
+            [$expression, $type, $optional] = $this->field($column);
             if ($type === Types::JSON && $value !== null) {
                 throw new UnsupportedCriteria('JSON comparisons require a mapped platform-aware query.');
             }
@@ -49,6 +49,10 @@ final class RecordCriteria
             if ($operator === 'REGEXP' || $operator === 'NOT REGEX') {
                 throw new UnsupportedCriteria('Regular expressions require a mapped query.');
             }
+            if ($optional && $this->legacyValues && in_array($operator, ['=', '!=', '<>'], true) && OptionalReferences::isEmptySelection($value)) {
+                $parts[] = $expression . ($operator === '=' ? ' IS NULL' : ' IS NOT NULL');
+                continue;
+            }
             if ($operator === 'IN') {
                 if (!is_array($value)) {
                     throw new UnsupportedCriteria('Subqueries require a mapped query.');
@@ -56,8 +60,13 @@ final class RecordCriteria
                 if (!$value) {
                     throw new \RuntimeException('Empty IN are not allowed');
                 }
+                $includeEmpty = $optional && $this->legacyValues && (bool)array_filter($value, OptionalReferences::isEmptySelection(...));
+                if ($includeEmpty) {
+                    $value = array_filter($value, static fn ($entry) => !OptionalReferences::isEmptySelection($entry));
+                }
                 $parameters = array_map(fn ($entry) => $this->value($entry, $type), array_values($value));
-                $parts[] = $expression . ' ' . $operator . ' (' . implode(', ', $parameters) . ')';
+                $list = $parameters ? $expression . ' IN (' . implode(', ', $parameters) . ')' : '';
+                $parts[] = $includeEmpty ? '(' . $expression . ' IS NULL' . ($list ? ' OR ' . $list : '') . ')' : $list;
             } elseif ($operator === '&' || $operator === '|') {
                 $parts[] = ($operator === '&' ? 'BIT_AND' : 'BIT_OR') . '(' . $expression . ', ' . $this->value($value, Types::INTEGER) . ') <> 0';
             } elseif ($operator === 'LIKE' || $operator === 'NOT LIKE') {
@@ -95,7 +104,7 @@ final class RecordCriteria
         return $this->field($column)[0];
     }
 
-    /** @return array{string, string} DQL expression and Doctrine parameter type. */
+    /** @return array{string, string, bool} DQL expression, parameter type and legacy empty-reference policy. */
     private function field(string $column): array
     {
         $column = str_replace('`', '', $column);
@@ -107,14 +116,14 @@ final class RecordCriteria
         }
         foreach ($this->metadata->associationMappings as $field => $mapping) {
             if ($mapping->joinColumns[0]->name === $column) {
-                return ['IDENTITY(r.' . $field . ')', Types::INTEGER];
+                return ['IDENTITY(r.' . $field . ')', Types::INTEGER, isset(OptionalReferences::RELATIONS[$this->metadata->getTableName()][$column])];
             }
         }
         $field = $this->metadata->getFieldName($column);
         if (!$this->metadata->hasField($field)) {
             throw new UnsupportedCriteria('Unmapped column in record criteria: ' . $column);
         }
-        return ['r.' . $field, $this->metadata->getTypeOfField($field)];
+        return ['r.' . $field, $this->metadata->getTypeOfField($field), false];
     }
 
     private function value(mixed $value, string $type): string

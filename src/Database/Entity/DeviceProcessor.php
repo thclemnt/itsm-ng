@@ -10,6 +10,10 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'glpi_deviceprocessors')]
 class DeviceProcessor
 {
+    #[ORM\ManyToOne(targetEntity: DeviceProcessorModel::class)]
+    #[ORM\JoinColumn(name: 'deviceprocessormodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?DeviceProcessorModel $deviceprocessormodels = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
@@ -41,9 +45,6 @@ class DeviceProcessor
 
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_recursive = false;
-
-    #[ORM\Column(name: '`deviceprocessormodels_id`', type: 'integer', nullable: true)]
-    public ?int $deviceprocessormodels_id = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_mod = null;

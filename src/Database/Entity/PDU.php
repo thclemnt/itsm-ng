@@ -10,6 +10,10 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'glpi_pdus')]
 class PDU
 {
+    #[ORM\ManyToOne(targetEntity: PDUModel::class)]
+    #[ORM\JoinColumn(name: 'pdumodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?PDUModel $pdumodels = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
@@ -32,9 +36,6 @@ class PDU
 
     #[ORM\Column(name: '`otherserial`', type: 'string', length: 255, nullable: true)]
     public ?string $otherserial = null;
-
-    #[ORM\Column(name: '`pdumodels_id`', type: 'integer', nullable: true)]
-    public ?int $pdumodels_id = null;
 
     #[ORM\Column(name: '`users_id_tech`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $users_id_tech = 0;

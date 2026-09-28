@@ -10,6 +10,10 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'glpi_devicegraphiccards')]
 class DeviceGraphicCard
 {
+    #[ORM\ManyToOne(targetEntity: DeviceGraphicCardModel::class)]
+    #[ORM\JoinColumn(name: 'devicegraphiccardmodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?DeviceGraphicCardModel $devicegraphiccardmodels = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
@@ -35,9 +39,6 @@ class DeviceGraphicCard
 
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_recursive = false;
-
-    #[ORM\Column(name: '`devicegraphiccardmodels_id`', type: 'integer', nullable: true)]
-    public ?int $devicegraphiccardmodels_id = null;
 
     #[ORM\Column(name: '`chipset`', type: 'string', length: 255, nullable: true)]
     public ?string $chipset = null;

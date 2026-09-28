@@ -180,8 +180,6 @@ abstract class CommonDevice extends CommonDropdown
     **/
     public function canUnrecurs()
     {
-        global $DB;
-
         $ID = $this->fields['id'];
         if (
             ($ID < 0)
@@ -197,37 +195,15 @@ abstract class CommonDevice extends CommonDropdown
 
         // RELATION : device -> item_device -> item
         $linktype  = static::getItem_DeviceType();
-        $linktable = getTableForItemType($linktype);
-
-        $result = $DB->request(
-            [
-              'SELECT'    => [
-                 'itemtype',
-                 new QueryExpression('GROUP_CONCAT(DISTINCT ' . DBmysql::quoteName('items_id') . ') AS ids'),
-              ],
-              'FROM'      => $linktable,
-              'WHERE'     => [
-                 $this->getForeignKeyField() => $ID,
-              ],
-              'GROUPBY'   => [
-                 'itemtype',
-              ]
-            ]
-        );
-
-        foreach ($result as $data) {
-            if (!empty($data["itemtype"])) {
-                $itemtable = getTableForItemType($data["itemtype"]);
-                if ($item = getItemForItemtype($data["itemtype"])) {
-                    // For each itemtype which are entity dependant
-                    if ($item->isEntityAssign()) {
-                        if (
-                            countElementsInTable($itemtable, ['id'  => $data["ids"],
-                                                              'NOT' => ['entities_id' => $entities ]]) > 0
-                        ) {
-                            return false;
-                        }
-                    }
+        $links = new $linktype();
+        $linked = [];
+        foreach ($links->find([$this->getForeignKeyField() => $ID]) as $row) {
+            $linked[$row['itemtype']][$row['items_id']] = (int)$row['items_id'];
+        }
+        foreach ($linked as $type => $ids) {
+            if ($type && ($item = getItemForItemtype($type)) && $item->isEntityAssign()) {
+                if (countElementsInTable($item->getTable(), ['id' => array_values($ids), 'NOT' => ['entities_id' => $entities]]) > 0) {
+                    return false;
                 }
             }
         }
@@ -460,8 +436,6 @@ abstract class CommonDevice extends CommonDropdown
     **/
     public function import(array $input)
     {
-        global $DB;
-
         if (!isset($input['designation']) || empty($input['designation'])) {
             return 0;
         }
@@ -485,15 +459,9 @@ abstract class CommonDevice extends CommonDropdown
             }
         }
 
-        $iterator = $DB->request([
-           'SELECT' => ['id'],
-           'FROM'   => $this->getTable(),
-           'WHERE'  => $where
-        ]);
-
-        if (count($iterator) > 0) {
-            $line = $iterator->next();
-            return $line['id'];
+        $matches = $this->find($where, 'id', 1);
+        if ($matches) {
+            return array_key_first($matches);
         }
 
         return $this->add($input);

@@ -18,6 +18,7 @@ final class ForeignKeys
      * entities_id=0 is a real root entity, not an absent relationship.
      */
     public const RELATIONS = [
+        ...OptionalReferences::RELATIONS,
         'glpi_groups_users' => ['users_id' => 'glpi_users', 'groups_id' => 'glpi_groups'],
         'glpi_profiles_users' => ['users_id' => 'glpi_users', 'profiles_id' => 'glpi_profiles', 'entities_id' => 'glpi_entities'],
         'glpi_profilerights' => ['profiles_id' => 'glpi_profiles'],

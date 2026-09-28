@@ -192,3 +192,20 @@ relationship candidates, 62 polymorphic references and one ambiguous reference.
 The shared-cleanup regression run passes 153 methods and 12,430 assertions across
 database utilities, models, templates, notifications, users, tickets, calendars
 and history on PHP 8.3.
+
+Optional model references now bring FK coverage to 130. Existing installations
+must review the zero-to-NULL migration before adding these constraints:
+
+```sh
+php bin/console db:optional_references --config-dir=/path/to/config
+php bin/console db:optional_references --config-dir=/path/to/config --apply
+php bin/console db:foreign_keys --config-dir=/path/to/config --apply
+```
+
+Run the apply commands during maintenance. The migration covers only the 19
+explicitly listed nullable model columns; it refuses nonzero orphans and real
+model rows with ID zero rather than discarding references. New installations run
+the seed normalization automatically. Both providers pass fresh installation,
+optional-model lifecycle/search/migration tests, and the full database contracts
+(602 PostgreSQL / 204 MariaDB assertions). The current inventory has 632 pending
+relationship candidates, 62 polymorphic references and one ambiguous reference.

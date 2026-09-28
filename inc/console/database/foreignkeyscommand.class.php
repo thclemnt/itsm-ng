@@ -31,6 +31,13 @@ class ForeignKeysCommand extends AbstractCommand
             $output->writeln(sprintf('<error>%s: %d orphaned references</error>', $relationship, $count));
         }
         if ($problems) {
+            foreach (array_keys($problems) as $reference) {
+                [$table, $column] = explode('.', $reference, 2);
+                if (isset(\itsmng\Database\OptionalReferences::RELATIONS[$table][$column])) {
+                    $output->writeln('Run db:optional_references to audit the zero-to-NULL migration for optional model references.');
+                    break;
+                }
+            }
             return 1;
         }
         $plan = $keys->plan($connection);

@@ -2748,6 +2748,7 @@ class Toolbox
             }
 
             $DB->synchronizeSequences();
+            (new \itsmng\Database\Migration\NormalizeOptionalReferences())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\ForeignKeys())->apply($DB->getDoctrineConnection());
 
             // update default language

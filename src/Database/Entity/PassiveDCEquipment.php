@@ -10,6 +10,10 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'glpi_passivedcequipments')]
 class PassiveDCEquipment
 {
+    #[ORM\ManyToOne(targetEntity: PassiveDCEquipmentModel::class)]
+    #[ORM\JoinColumn(name: 'passivedcequipmentmodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?PassiveDCEquipmentModel $passivedcequipmentmodels = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
@@ -32,9 +36,6 @@ class PassiveDCEquipment
 
     #[ORM\Column(name: '`otherserial`', type: 'string', length: 255, nullable: true)]
     public ?string $otherserial = null;
-
-    #[ORM\Column(name: '`passivedcequipmentmodels_id`', type: 'integer', nullable: true)]
-    public ?int $passivedcequipmentmodels_id = null;
 
     #[ORM\Column(name: '`passivedcequipmenttypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $passivedcequipmenttypes_id = 0;

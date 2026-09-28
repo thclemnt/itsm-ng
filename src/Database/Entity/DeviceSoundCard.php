@@ -10,6 +10,10 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'glpi_devicesoundcards')]
 class DeviceSoundCard
 {
+    #[ORM\ManyToOne(targetEntity: DeviceSoundCardModel::class)]
+    #[ORM\JoinColumn(name: 'devicesoundcardmodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?DeviceSoundCardModel $devicesoundcardmodels = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
@@ -32,9 +36,6 @@ class DeviceSoundCard
 
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_recursive = false;
-
-    #[ORM\Column(name: '`devicesoundcardmodels_id`', type: 'integer', nullable: true)]
-    public ?int $devicesoundcardmodels_id = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_mod = null;

@@ -101,7 +101,7 @@ relationship candidates, polymorphic references and legacy SQL/driver call sites
 This is an intentionally incomplete static inventory: it cannot prove discovery of
 serialized references, dynamic SQL or alternate connection variables. Each
 candidate needs semantic review before installing its FK. The current inventory
-contains 825 candidate reference columns: 111 enforced, 651 pending, 62 polymorphic
+contains 825 candidate reference columns: 130 enforced, 632 pending, 62 polymorphic
 and one ambiguous (`users.auths_id`, whose target depends on authentication type).
 
 `tools/database/generate-mappings.php` is a development scaffold for explicit
@@ -180,3 +180,27 @@ The full FK contracts pass 583 PostgreSQL / 185 MariaDB assertions at this stage
 The PHP 8.3 DbUtils, CommonDBTM, ITILTemplate, ChangeTemplatePredefinedField,
 Notification, NotificationTemplate, Notification_NotificationTemplate, User,
 Ticket, Calendar and Log suites pass 153 methods with 12,430 assertions.
+
+Nineteen optional model references (component models, enclosure, rack, PDU and
+passive equipment models) now use nullable mapped associations and real FKs.
+`OptionalReferences` explicitly lists where zero means an empty dropdown choice;
+it never includes root entity zero or infers optionality from column names.
+`MappedStorage` converts legacy empty choices to NULL before binding. Structured
+legacy equality, inequality and list predicates retain their empty-selection
+meaning; raw ORM queries use NULL directly. Direct SQL writers must also use NULL.
+Model purge clears these references through the existing model update hooks, or
+assigns the requested replacement model.
+
+For existing installations, `db:optional_references` audits the named, idempotent
+`20260928_optional_model_references` migration without changing data. During
+maintenance, run it with `--apply` before `db:foreign_keys --apply`. It validates
+every audited column, refuses nonzero orphans and a real model with ID zero,
+then transactionally normalizes only empty references. It changes no schema and
+never deletes records. Fresh installation normalizes its seed data before adding
+FKs. `optional-references.php` checks all 19 model lifecycles, empty-selection
+filters, replacement and purge, real Rack searches, and migration refusal/retry.
+The full contracts pass 602 PostgreSQL / 204 MariaDB assertions and fresh installs
+pass on both engines. Component, rack, CommonDBTM and DbUtils suites pass 52 methods
+with 6,899 assertions on PHP 8.3. `CommonDevice` now uses mapped reads throughout,
+including an asset-scope check that examines every linked ID instead of comparing
+against a comma-separated SQL aggregate.

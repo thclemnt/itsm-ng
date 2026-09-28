@@ -24,7 +24,7 @@ final class MappedStorage
     {
         $em = Orm::create($this->db);
         try {
-            return (new RecordWriter($em))->insert($table, self::values($values));
+            return (new RecordWriter($em))->insert($table, OptionalReferences::normalizeLegacy($table, self::values($values)));
         } finally {
             $em->clear();
         }
@@ -35,7 +35,7 @@ final class MappedStorage
     {
         $em = Orm::create($this->db);
         try {
-            return (new RecordWriter($em))->update($table, $id, self::values($values));
+            return (new RecordWriter($em))->update($table, $id, OptionalReferences::normalizeLegacy($table, self::values($values)));
         } finally {
             $em->clear();
         }

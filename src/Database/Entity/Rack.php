@@ -10,6 +10,10 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'glpi_racks')]
 class Rack
 {
+    #[ORM\ManyToOne(targetEntity: RackModel::class)]
+    #[ORM\JoinColumn(name: 'rackmodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?RackModel $rackmodels = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
@@ -35,9 +39,6 @@ class Rack
 
     #[ORM\Column(name: '`otherserial`', type: 'string', length: 255, nullable: true)]
     public ?string $otherserial = null;
-
-    #[ORM\Column(name: '`rackmodels_id`', type: 'integer', nullable: true)]
-    public ?int $rackmodels_id = null;
 
     #[ORM\Column(name: '`manufacturers_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $manufacturers_id = 0;
