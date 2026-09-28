@@ -930,7 +930,8 @@ JAVASCRIPT;
             return $input;
         }
 
-        if ($input['position'] == 0) {
+        $position = $input['position'] ?? $this->fields['position'] ?? 0;
+        if ($position == 0) {
             return $input;
             Session::addMessageAfterRedirect(
                 __('Position must be set'),
@@ -942,7 +943,7 @@ JAVASCRIPT;
 
         $where = [
            'dcrooms_id'   => $input['dcrooms_id'],
-           'position'     => $input['position'],
+           'position'     => $position,
            'is_deleted'   => false
         ];
 

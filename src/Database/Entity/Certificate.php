@@ -10,6 +10,10 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'glpi_certificates')]
 class Certificate
 {
+    #[ORM\ManyToOne(targetEntity: CertificateType::class)]
+    #[ORM\JoinColumn(name: 'certificatetypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?CertificateType $certificatetypes = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
@@ -41,9 +45,6 @@ class Certificate
 
     #[ORM\Column(name: '`template_name`', type: 'string', length: 255, nullable: true)]
     public ?string $template_name = null;
-
-    #[ORM\Column(name: '`certificatetypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $certificatetypes_id = 0;
 
     #[ORM\Column(name: '`dns_name`', type: 'string', length: 255, nullable: true)]
     public ?string $dns_name = null;

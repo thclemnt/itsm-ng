@@ -10,6 +10,10 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'glpi_domains')]
 class Domain
 {
+    #[ORM\ManyToOne(targetEntity: DomainType::class)]
+    #[ORM\JoinColumn(name: 'domaintypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?DomainType $domaintypes = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
@@ -23,9 +27,6 @@ class Domain
 
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_recursive = false;
-
-    #[ORM\Column(name: '`domaintypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $domaintypes_id = 0;
 
     #[ORM\Column(name: '`date_expiration`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_expiration = null;

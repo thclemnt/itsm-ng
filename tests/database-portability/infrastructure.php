@@ -42,6 +42,9 @@ try {
         $metadata = Orm::create($DB)->getClassMetadata(EntityRegistry::TABLES[$table]);
         $values = $metadata->hasField('itemtype') ? ['itemtype' => 'Computer', 'items_id' => $asset] : [];
         foreach (ForeignKeys::RELATIONS[$table] as $column => $parentTable) {
+            if (isset(\itsmng\Database\OptionalReferences::RELATIONS[$table][$column])) {
+                continue;
+            }
             $parentValues = $parentTable === 'glpi_appliances_items' ? ['itemtype' => 'Computer', 'items_id' => $asset] : [];
             $parent = $fixtures->create($parentTable, $parentValues);
             $child = $fixtures->create($table, [$column => $parent] + $values);

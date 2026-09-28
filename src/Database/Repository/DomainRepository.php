@@ -18,7 +18,7 @@ final class DomainRepository
     public function records(int $domain): array
     {
         $query = $this->em->createQueryBuilder()->select('r')->from(Entity\DomainRecord::class, 'r')
-            ->leftJoin(Entity\DomainRecordType::class, 't', 'WITH', 't.id = r.domainrecordtypes_id')
+            ->leftJoin('r.domainrecordtypes', 't')
             ->where('r.domains = :domain')->setParameter('domain', $domain, Types::INTEGER)
             ->addSelect('CASE WHEN t.name IS NULL THEN 0 ELSE 1 END AS HIDDEN type_order')
             ->addSelect('CASE WHEN r.name IS NULL THEN 0 ELSE 1 END AS HIDDEN name_order')

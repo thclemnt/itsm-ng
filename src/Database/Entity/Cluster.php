@@ -10,6 +10,10 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'glpi_clusters')]
 class Cluster
 {
+    #[ORM\ManyToOne(targetEntity: ClusterType::class)]
+    #[ORM\JoinColumn(name: 'clustertypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?ClusterType $clustertypes = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
@@ -44,9 +48,6 @@ class Cluster
 
     #[ORM\Column(name: '`comment`', type: 'text', nullable: true)]
     public ?string $comment = null;
-
-    #[ORM\Column(name: '`clustertypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $clustertypes_id = 0;
 
     #[ORM\Column(name: '`autoupdatesystems_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $autoupdatesystems_id = 0;

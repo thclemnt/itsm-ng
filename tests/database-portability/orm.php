@@ -38,6 +38,17 @@ foreach ($metadata as $meta) {
             $columns[] = $join->name;
         }
     }
+    $associations = [];
+    foreach ($meta->associationMappings as $association) {
+        $associations[$association->joinColumns[0]->name] = $em->getClassMetadata($association->targetEntity)->getTableName();
+    }
+    $expectedAssociations = \itsmng\Database\ForeignKeys::RELATIONS[$meta->getTableName()] ?? [];
+    ksort($associations);
+    ksort($expectedAssociations);
+    verify($associations === $expectedAssociations, 'ORM associations match the FK registry: ' . $meta->getTableName());
+    foreach (\itsmng\Database\OptionalReferences::RELATIONS[$meta->getTableName()] ?? [] as $column => $target) {
+        verify(($associations[$column] ?? null) === $target, 'Optional reference retained in merged relation groups: ' . $meta->getTableName() . '.' . $column);
+    }
     sort($columns);
     $expected = array_map(fn ($column) => $column->getName(), $schema->getTable($meta->getTableName())->getColumns());
     sort($expected);

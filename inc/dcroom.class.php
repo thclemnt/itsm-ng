@@ -358,12 +358,7 @@ class DCRoom extends CommonDBTM
         }
         $canedit = $datacenter->canEdit($ID);
 
-        $rooms = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'datacenters_id' => $datacenter->getID()
-           ]
-        ]);
+        $rooms = \itsmng\Database\MappedReads::matching($DB, self::getTable(), ['datacenters_id' => $datacenter->getID()]);
 
         echo "<div class='firstbloc'>";
         Html::showSimpleForm(
@@ -411,7 +406,7 @@ class DCRoom extends CommonDBTM
 
             $dcroom = new self();
             echo $header;
-            while ($room = $rooms->next()) {
+            foreach ($rooms as $room) {
                 $dcroom->getFromResultSet($room);
                 echo "<tr lass='tab_bg_1'>";
                 if ($canedit) {
@@ -446,16 +441,10 @@ class DCRoom extends CommonDBTM
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'FROM'   => Rack::getTable(),
-           'WHERE'  => [
-              'dcrooms_id'   => $this->getID(),
-              'is_deleted'   => 0
-           ]
-        ]);
+        $racks = \itsmng\Database\MappedReads::matching($DB, Rack::getTable(), ['dcrooms_id' => $this->getID(), 'is_deleted' => false]);
 
         $filled = [];
-        while ($rack = $iterator->next()) {
+        foreach ($racks as $rack) {
             if (preg_match('/(\d+),\s?(\d+)/', (string) $rack['position'])) {
                 $position = $rack['position'];
                 if (empty($current) || $current != $position) {

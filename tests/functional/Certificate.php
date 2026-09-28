@@ -165,13 +165,16 @@ class Certificate extends DbTestCase
 
     public function _getIn($method = "")
     {
+        $type = new \CertificateType();
+        $typeId = $type->add(['name' => $this->getUniqueString(), 'entities_id' => 0]);
+        $this->integer((int)$typeId)->isGreaterThan(0);
         return [
            'name'                => $method,
            'entities_id'         => 0,
            'serial'              => $this->getUniqueString(),
            'otherserial'         => $this->getUniqueString(),
            'comment'             => $this->getUniqueString(),
-           'certificatetypes_id' => $this->getUniqueInteger(),
+           'certificatetypes_id' => $typeId,
            'dns_name'            => $this->getUniqueString(),
            'dns_suffix'          => $this->getUniqueString(),
            'users_id_tech'       => $this->getUniqueInteger(),

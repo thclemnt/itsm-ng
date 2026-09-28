@@ -10,6 +10,10 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'glpi_pdus')]
 class PDU
 {
+    #[ORM\ManyToOne(targetEntity: PDUType::class)]
+    #[ORM\JoinColumn(name: 'pdutypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?PDUType $pdutypes = null;
+
     #[ORM\ManyToOne(targetEntity: PDUModel::class)]
     #[ORM\JoinColumn(name: 'pdumodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     public ?PDUModel $pdumodels = null;
@@ -60,9 +64,6 @@ class PDU
 
     #[ORM\Column(name: '`manufacturers_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $manufacturers_id = 0;
-
-    #[ORM\Column(name: '`pdutypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $pdutypes_id = 0;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_mod = null;

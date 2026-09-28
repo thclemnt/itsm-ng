@@ -34,7 +34,23 @@ final class OptionalReferences
         'glpi_projecttasks' => ['projects_id' => 'glpi_projects', 'projecttasks_id' => 'glpi_projecttasks'],
     ];
 
-    public const RELATIONS = [...self::MODELS, ...self::PROJECT_HIERARCHY];
+    public const INFRASTRUCTURE = [
+        'glpi_appliances' => ['appliancetypes_id' => 'glpi_appliancetypes', 'applianceenvironments_id' => 'glpi_applianceenvironments'],
+        'glpi_certificates' => ['certificatetypes_id' => 'glpi_certificatetypes'],
+        'glpi_clusters' => ['clustertypes_id' => 'glpi_clustertypes'],
+        'glpi_domains' => ['domaintypes_id' => 'glpi_domaintypes'],
+        'glpi_domainrecords' => ['domainrecordtypes_id' => 'glpi_domainrecordtypes'],
+        'glpi_domains_items' => ['domainrelations_id' => 'glpi_domainrelations'],
+        'glpi_racks' => ['racktypes_id' => 'glpi_racktypes', 'dcrooms_id' => 'glpi_dcrooms'],
+        'glpi_dcrooms' => ['datacenters_id' => 'glpi_datacenters'],
+        'glpi_pdus' => ['pdutypes_id' => 'glpi_pdutypes'],
+    ];
+
+    public const RELATIONS = [
+        ...self::MODELS, ...self::PROJECT_HIERARCHY, ...self::INFRASTRUCTURE,
+        'glpi_racks' => [...self::MODELS['glpi_racks'], ...self::INFRASTRUCTURE['glpi_racks']],
+        'glpi_pdus' => [...self::MODELS['glpi_pdus'], ...self::INFRASTRUCTURE['glpi_pdus']],
+    ];
 
     public static function isEmptySelection(mixed $value): bool
     {

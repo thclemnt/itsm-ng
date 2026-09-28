@@ -76,6 +76,10 @@ $RELATION = [
       'glpi_appliances_items' => 'appliances_id'
    ],
 
+   'glpi_applianceenvironments' => [
+      'glpi_appliances' => 'applianceenvironments_id',
+   ],
+
    'glpi_appliancetypes' => [
       'glpi_appliances' => 'appliancetypes_id'
    ],
@@ -394,6 +398,10 @@ $RELATION = [
    'glpi_domains'    => [
       'glpi_domainrecords'  => 'domains_id',
       'glpi_domains_items' => ['items_id', 'itemtype']
+   ],
+
+   'glpi_domainrelations' => [
+      'glpi_domains_items' => 'domainrelations_id',
    ],
 
    'glpi_domaintypes' => [

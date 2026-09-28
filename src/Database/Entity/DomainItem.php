@@ -11,6 +11,10 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\UniqueConstraint(name: 'domains_items_unicity', columns: ['domains_id', 'itemtype', 'items_id'])]
 class DomainItem
 {
+    #[ORM\ManyToOne(targetEntity: DomainRelation::class)]
+    #[ORM\JoinColumn(name: 'domainrelations_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?DomainRelation $domainrelations = null;
+
     #[ORM\ManyToOne(targetEntity: Domain::class)]
     #[ORM\JoinColumn(name: 'domains_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
     public ?Domain $domains = null;
@@ -26,6 +30,4 @@ class DomainItem
     #[ORM\Column(name: '`itemtype`', type: 'string', length: 100, nullable: false)]
     public string $itemtype = '';
 
-    #[ORM\Column(name: '`domainrelations_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $domainrelations_id = 0;
 }

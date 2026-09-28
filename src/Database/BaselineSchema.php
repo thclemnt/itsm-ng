@@ -160,7 +160,7 @@ final class BaselineSchema
         if ($table !== null) {
             throw new \RuntimeException('Unterminated baseline table.');
         }
-        foreach (OptionalReferences::PROJECT_HIERARCHY as $tableName => $relations) {
+        foreach (OptionalReferences::RELATIONS as $tableName => $relations) {
             foreach ($relations as $column => $target) {
                 $schema->getTable($tableName)->getColumn($column)->setNotnull(false)->setDefault(null);
             }

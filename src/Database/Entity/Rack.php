@@ -10,6 +10,14 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'glpi_racks')]
 class Rack
 {
+    #[ORM\ManyToOne(targetEntity: RackType::class)]
+    #[ORM\JoinColumn(name: 'racktypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?RackType $racktypes = null;
+
+    #[ORM\ManyToOne(targetEntity: DCRoom::class)]
+    #[ORM\JoinColumn(name: 'dcrooms_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?DCRoom $dcrooms = null;
+
     #[ORM\ManyToOne(targetEntity: RackModel::class)]
     #[ORM\JoinColumn(name: 'rackmodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     public ?RackModel $rackmodels = null;
@@ -43,9 +51,6 @@ class Rack
     #[ORM\Column(name: '`manufacturers_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $manufacturers_id = 0;
 
-    #[ORM\Column(name: '`racktypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $racktypes_id = 0;
-
     #[ORM\Column(name: '`states_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $states_id = 0;
 
@@ -75,9 +80,6 @@ class Rack
 
     #[ORM\Column(name: '`is_deleted`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_deleted = false;
-
-    #[ORM\Column(name: '`dcrooms_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $dcrooms_id = 0;
 
     #[ORM\Column(name: '`room_orientation`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $room_orientation = 0;

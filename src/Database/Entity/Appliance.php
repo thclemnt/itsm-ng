@@ -11,6 +11,14 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\UniqueConstraint(name: 'appliances_unicity', columns: ['externalidentifier'])]
 class Appliance
 {
+    #[ORM\ManyToOne(targetEntity: ApplianceType::class)]
+    #[ORM\JoinColumn(name: 'appliancetypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?ApplianceType $appliancetypes = null;
+
+    #[ORM\ManyToOne(targetEntity: ApplianceEnvironment::class)]
+    #[ORM\JoinColumn(name: 'applianceenvironments_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?ApplianceEnvironment $applianceenvironments = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
@@ -28,9 +36,6 @@ class Appliance
     #[ORM\Column(name: '`is_deleted`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_deleted = false;
 
-    #[ORM\Column(name: '`appliancetypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $appliancetypes_id = 0;
-
     #[ORM\Column(name: '`comment`', type: 'text', nullable: true)]
     public ?string $comment = null;
 
@@ -39,9 +44,6 @@ class Appliance
 
     #[ORM\Column(name: '`manufacturers_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $manufacturers_id = 0;
-
-    #[ORM\Column(name: '`applianceenvironments_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $applianceenvironments_id = 0;
 
     #[ORM\Column(name: '`users_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $users_id = 0;

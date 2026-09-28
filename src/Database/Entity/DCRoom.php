@@ -10,6 +10,10 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'glpi_dcrooms')]
 class DCRoom
 {
+    #[ORM\ManyToOne(targetEntity: Datacenter::class)]
+    #[ORM\JoinColumn(name: 'datacenters_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Datacenter $datacenters = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
@@ -35,9 +39,6 @@ class DCRoom
 
     #[ORM\Column(name: '`blueprint`', type: 'text', nullable: true)]
     public ?string $blueprint = null;
-
-    #[ORM\Column(name: '`datacenters_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $datacenters_id = 0;
 
     #[ORM\Column(name: '`is_deleted`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_deleted = false;

@@ -436,3 +436,45 @@ suite pass on PostgreSQL and MariaDB. PHP 8.3 rack/cluster suites pass 204 asser
 The form checks inspect rendered HTML; they are not a live browser interaction
 test. The inventory now reports 1,478 remaining legacy SQL call sites, with FK
 coverage unchanged at 171 relationships.
+
+### Optional infrastructure references
+
+Eleven additional relationships now use nullable `ManyToOne` mappings and
+restrictive foreign keys: appliance type/environment, certificate type, cluster
+type, domain type, record type, domain assignment relation, rack type/room,
+room datacenter and PDU type. Legacy empty selections become NULL at the mapped
+write boundary. Empty-selection predicates and search criteria retain their
+existing meaning. Parent replacement reassigns children; parent purge clears
+optional references without deleting the children.
+
+Existing installations must run `php bin/console db:infrastructure_references`
+to review the migration, stop application writers, then run it with `--apply`
+before `php bin/console db:foreign_keys --apply`. The migration audits every
+reference before changing any schema, refusing nonzero orphans and real parents
+with ID zero. It changes nullability/defaults and normalizes zero references.
+PostgreSQL applies it transactionally; MySQL DDL commits separately and retries
+are idempotent. Fresh installations perform this normalization before FK creation.
+Project ancestry and infrastructure migrations share the same audited migration
+implementation.
+
+The legacy relation registry now includes appliance environments and domain
+assignment relations so parent lifecycle hooks clear those references. Domain
+relation purge correctly protects the two built-in relations. Rack room-only
+updates retain the existing position for collision checks. Datacenter room lists
+and room occupancy now use ORM reads, and domain records join their mapped type
+association. `DCRoom` no longer executes direct adapter queries.
+
+`infrastructure-optional.php` covers all eleven references, empty selections,
+replacement/purge, built-in relation protection, room search/rendering, migration
+refusal before DDL, legacy normalization and idempotent retries. ORM metadata
+checks also compare every association with the FK registry and verify that
+merging optional-reference groups preserves existing relationships.
+
+Fresh installs and upgrades pass on PostgreSQL and MariaDB. Both providers pass
+the portability contract, mapped writes across all 355 tables, infrastructure,
+placement, project migration, reporting, search and application checks. The
+existing PHP 8.3 infrastructure suites pass 21 methods / 612 assertions; their
+certificate fixtures now create a real type instead of an invalid random ID.
+Rendered view checks are not live browser interaction tests. Coverage is now
+182 foreign keys, with 580 pending relationship candidates, 62 polymorphic
+references, one ambiguous reference and 1,476 remaining legacy SQL call sites.
