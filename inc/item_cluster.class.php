@@ -175,14 +175,7 @@ class Item_Cluster extends CommonDBRelation
     {
         global $DB, $CFG_GLPI;
 
-        //get all used items
-        $used = [];
-        $iterator = $DB->request([
-           'FROM'   => $this->getTable()
-        ]);
-        while ($row = $iterator->next()) {
-            $used [$row['itemtype']][] = $row['items_id'];
-        }
+        $used = (new \itsmng\Database\Repository\PlacementRepository(\itsmng\Database\Orm::create($DB)))->clusterSelection();
         $jsUsed = json_encode($used);
 
         $loadItemDropdownScript = <<<JS

@@ -218,26 +218,7 @@ class PDU_Rack extends CommonDBRelation
     {
         global $DB;
 
-        // search used racked (or sided mounted) pdus
-        $used = [];
-        foreach (
-            $DB->request([
-            'FROM' => $this->getTable()
-            ]) as $not_racked
-        ) {
-            $used[] = $not_racked['pdus_id'];
-        }
-        foreach (
-            $DB->request([
-            'SELECT' => 'items_id',
-            'FROM'   => Item_Rack::getTable(),
-            'WHERE'  => [
-              'itemtype' => 'PDU'
-            ]
-            ]) as $racked
-        ) {
-            $used[] = $racked['items_id'];
-        };
+        $used = (new \itsmng\Database\Repository\PlacementRepository(\itsmng\Database\Orm::create($DB)))->pduSelection();
 
         echo "<div class='center'>";
 
@@ -320,12 +301,7 @@ class PDU_Rack extends CommonDBRelation
         $pdu     = new PDU();
         $canedit = $rack->canEdit($rack->getID());
         $rand    = mt_rand();
-        $items   = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'racks_id' => $rack->getID()
-           ]
-        ]);
+        $items = \itsmng\Database\MappedReads::matching($DB, self::getTable(), ['racks_id' => $rack->getID()]);
 
         if (!count($items)) {
             echo "<table class='tab_cadre_fixe' aria-label='No item Found'><tr><th>" . __('No item found') . "</th></tr>";
@@ -391,13 +367,7 @@ class PDU_Rack extends CommonDBRelation
 
         $found_pdus = [];
         // find pdus from this relation
-        $iterator = $DB->request([
-           'FROM' => self::getTable(),
-           'WHERE' => [
-              'racks_id' => $rack->getID()
-           ],
-           'ORDER' => 'side'
-        ]);
+        $iterator = \itsmng\Database\MappedReads::matching($DB, self::getTable(), ['racks_id' => $rack->getID()], ['side']);
         foreach ($iterator as $current) {
             $found_pdus[] = [
                'pdus_id'  => $current['pdus_id'],
@@ -408,13 +378,7 @@ class PDU_Rack extends CommonDBRelation
             ];
         }
         // find pdus from item_rack relation
-        $iterator = $DB->request([
-           'FROM' => Item_Rack::getTable(),
-           'WHERE' => [
-              'racks_id' => $rack->getID(),
-              'itemtype' => 'PDU'
-           ]
-        ]);
+        $iterator = \itsmng\Database\MappedReads::matching($DB, Item_Rack::getTable(), ['racks_id' => $rack->getID(), 'itemtype' => 'PDU']);
         foreach ($iterator as $current) {
             $found_pdus[] = [
                'pdus_id'  => $current['items_id'],

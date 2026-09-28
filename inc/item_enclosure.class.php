@@ -196,25 +196,7 @@ class Item_Enclosure extends CommonDBRelation
             ]
         );
 
-        //get all used items
-        $used = [];
-        $iterator = $DB->request([
-           'FROM'   => $this->getTable()
-        ]);
-        while ($row = $iterator->next()) {
-            $used [$row['itemtype']][] = $row['items_id'];
-        }
-
-        // get used items by racks
-        $iterator = $DB->request([
-           'FROM'  => Item_Rack::getTable(),
-           'WHERE' => [
-              'is_reserved' => 0
-           ]
-        ]);
-        while ($row = $iterator->next()) {
-            $used [$row['itemtype']][] = $row['items_id'];
-        }
+        $used = (new \itsmng\Database\Repository\PlacementRepository(\itsmng\Database\Orm::create($DB)))->enclosureSelection();
 
         Ajax::updateItemOnSelectEvent(
             "dropdown_itemtype$rand",

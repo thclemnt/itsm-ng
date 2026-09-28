@@ -544,13 +544,7 @@ class Rack extends CommonDBTM
         }
         $canedit = $room->canEdit($room_id);
 
-        $racks = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'dcrooms_id'   => $room->getID(),
-              'is_deleted'   => 0
-           ]
-        ]);
+        $racks = \itsmng\Database\MappedReads::matching($DB, self::getTable(), ['dcrooms_id' => $room->getID(), 'is_deleted' => false]);
 
         Session::initNavigateListItems(
             self::getType(),
@@ -568,7 +562,6 @@ class Rack extends CommonDBTM
         echo "<i id='sviewgraph' class='pointer fa fa-th-large selected' title='" . __('View graphical representation') . "'></i>";
         echo "</div>";
 
-        $racks = iterator_to_array($racks);
         echo "<div id='viewlist'>";
 
         $rack = new self();
@@ -983,15 +976,10 @@ JAVASCRIPT;
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'FROM'   => Item_Rack::getTable(),
-           'WHERE'  => [
-              'racks_id'   => $this->getID()
-           ]
-        ]);
+        $iterator = \itsmng\Database\MappedReads::matching($DB, Item_Rack::getTable(), ['racks_id' => $this->getID()]);
 
         $filled = [];
-        while ($row = $iterator->next()) {
+        foreach ($iterator as $row) {
             $item = new $row['itemtype']();
             if (!$item->getFromDB($row['items_id'])) {
                 continue;

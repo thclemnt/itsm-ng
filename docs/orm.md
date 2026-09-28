@@ -407,3 +407,32 @@ Fresh PostgreSQL and MariaDB installations also succeed. Coverage is now 171
 foreign keys, with 591 pending relationship candidates, 62 polymorphic references,
 one ambiguous reference and 1,492 remaining legacy SQL call sites. Optional
 infrastructure dropdowns and polymorphic asset targets still need further work.
+
+### Physical placement queries
+
+`PlacementRepository` provides rack, enclosure, cluster and PDU exclusion sets
+through scalar ORM projections. Physical exclusions remain global across entities;
+otherwise an asset already placed elsewhere could become selectable again. Rack
+selection reads its assignments once, including typed reservation flags, then
+combines enclosure and side-PDU IDs. Enclosure selection retains its exception
+for reserved rack positions. Cluster membership stays independent of physical
+placement. Repeated IDs are deduplicated without merging different asset types.
+
+Room rack lists, rack occupancy/statistics and PDU summaries now use mapped
+records. `Rack`, `Item_Rack`, `Item_Enclosure`, `Item_Cluster` and `PDU_Rack` no
+longer execute direct adapter queries. Geometry, weight/power calculations and
+parent access checks retain their existing behavior.
+
+The rack edit form now passes a class name and the rack's entity criteria to its
+asset selector, fixing an object-versus-string error and a missing assignment
+entity field. Its reservation checkbox has an explicit change handler and updates
+the actual exclusion input; reserved edits initialize the reserved exclusion set.
+
+`placements.php` covers global exclusions, free assets, reservation differences,
+both PDU placement modes, two-unit/full-depth and half-width/rear geometry,
+current-asset exclusion, weight/power totals, scoped room/PDU rendering and the
+normal/reserved edit form's rendered inputs. These checks and the infrastructure
+suite pass on PostgreSQL and MariaDB. PHP 8.3 rack/cluster suites pass 204 assertions.
+The form checks inspect rendered HTML; they are not a live browser interaction
+test. The inventory now reports 1,478 remaining legacy SQL call sites, with FK
+coverage unchanged at 171 relationships.
