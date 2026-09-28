@@ -10,6 +10,10 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'glpi_softwareversions')]
 class SoftwareVersion
 {
+    #[ORM\ManyToOne(targetEntity: Software::class)]
+    #[ORM\JoinColumn(name: 'softwares_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?Software $softwares = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
@@ -20,9 +24,6 @@ class SoftwareVersion
 
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_recursive = false;
-
-    #[ORM\Column(name: '`softwares_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $softwares_id = 0;
 
     #[ORM\Column(name: '`states_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $states_id = 0;

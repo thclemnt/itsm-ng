@@ -997,15 +997,10 @@ class SoftwareLicense extends CommonTreeDropdown
     {
         global $DB;
 
-        $result = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => 'glpi_softwarelicenses',
-           'WHERE'  => [
-              'softwareversions_id_buy'  => $softwareversions_id
-           ] + getEntitiesRestrictCriteria('glpi_softwarelicenses', '', $entity)
-        ])->next();
-
-        return $result['cpt'];
+        return (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+            ->countMatching('glpi_softwarelicenses', [
+                'softwareversions_id_buy' => $softwareversions_id,
+            ] + getEntitiesRestrictCriteria('glpi_softwarelicenses', '', $entity));
     }
 
 
@@ -1020,33 +1015,8 @@ class SoftwareLicense extends CommonTreeDropdown
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'COUNT'  => 'cpt',
-           'FROM'   => 'glpi_softwarelicenses',
-           'WHERE'  => [
-              'softwares_id' => $softwares_id,
-              'is_template'  => 0,
-              'number'       => -1
-           ] + getEntitiesRestrictCriteria('glpi_softwarelicenses', '', '', true)
-        ]);
-
-        if ($line = $iterator->next()) {
-            if ($line['cpt'] > 0) {
-                // At least 1 unlimited license, means unlimited
-                return -1;
-            }
-        }
-
-        $result = $DB->request([
-           'SELECT' => ['SUM' => 'number AS numsum'],
-           'FROM'   => 'glpi_softwarelicenses',
-           'WHERE'  => [
-              'softwares_id' => $softwares_id,
-              'is_template'  => 0,
-              'number'       => ['>', 0]
-           ] + getEntitiesRestrictCriteria('glpi_softwarelicenses', '', '', true)
-        ])->next();
-        return ($result['numsum'] ? $result['numsum'] : 0);
+        return (new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB)))
+            ->licenseQuantity((int)$softwares_id, getEntitiesRestrictCriteria('glpi_softwarelicenses', '', '', true));
     }
 
 

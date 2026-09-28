@@ -19,6 +19,10 @@ final class ForeignKeys
      */
     public const RELATIONS = [
         ...OptionalReferences::RELATIONS,
+        'glpi_softwareversions' => ['softwares_id' => 'glpi_softwares'],
+        'glpi_softwarelicenses' => ['softwares_id' => 'glpi_softwares'],
+        'glpi_items_softwareversions' => ['softwareversions_id' => 'glpi_softwareversions'],
+        'glpi_items_softwarelicenses' => ['softwarelicenses_id' => 'glpi_softwarelicenses'],
         'glpi_items_projects' => ['projects_id' => 'glpi_projects'],
         'glpi_itils_projects' => ['projects_id' => 'glpi_projects'],
         'glpi_projectcosts' => ['projects_id' => 'glpi_projects'],

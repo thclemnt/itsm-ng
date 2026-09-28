@@ -34,7 +34,7 @@ final class FinancialRepository
                 ->andWhere('a.is_template = :false')->setParameter('false', false, Types::BOOLEAN)
                 ->orderBy('e.completename')->addOrderBy('i.buy_date')->addOrderBy('i.use_date');
         } elseif ($itemtype === 'SoftwareLicense') {
-            $query->innerJoin(Entity\Software::class, 's', 'WITH', 's.id = a.softwares_id');
+            $query->innerJoin('a.softwares', 's');
         } elseif (is_a($itemtype, \CommonDBChild::class, true)) {
             $parent = EntityRegistry::TABLES[$itemtype::$itemtype::getTable()];
             $metadata = $this->em->getClassMetadata($class);

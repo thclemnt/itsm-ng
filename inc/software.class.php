@@ -184,7 +184,7 @@ class Software extends CommonDBTM
 
         // SoftwareLicense does not extends CommonDBConnexity
         $sl = new SoftwareLicense();
-        $sl->deleteByCriteria(['softwares_id' => $this->fields['id']]);
+        $sl->deleteByCriteria(['softwares_id' => $this->fields['id']], true);
 
         $this->deleteChildrenAndRelationsFromDb(
             [
@@ -1112,113 +1112,17 @@ class Software extends CommonDBTM
             echo "</td></tr></table></div>\n";
         }
 
-        $item = array_keys($item);
-
-        // Search for software version
-        $req = $DB->request("glpi_softwareversions", ["softwares_id" => $item]);
-        $i   = 0;
-
-        if ($nb = $req->numrows()) {
-            foreach ($req as $from) {
-                $found = false;
-
-                foreach (
-                    $DB->request(
-                        "glpi_softwareversions",
-                        ["softwares_id" => $ID,
-                                            "name"         => $from["name"]]
-                    ) as $dest
-                ) {
-                    // Update version ID on License
-                    $DB->update(
-                        'glpi_softwarelicenses',
-                        [
-                          'softwareversions_id_buy' => $dest['id']
-                        ],
-                        [
-                          'softwareversions_id_buy' => $from['id']
-                        ]
-                    );
-
-                    $DB->update(
-                        'glpi_softwarelicenses',
-                        [
-                          'softwareversions_id_use' => $dest['id']
-                        ],
-                        [
-                          'softwareversions_id_use' => $from['id']
-                        ]
-                    );
-
-                    // Move installation to existing version in destination software
-                    $found = $DB->update(
-                        'glpi_items_softwareversions',
-                        [
-                          'softwareversions_id' => $dest['id']
-                        ],
-                        [
-                          'softwareversions_id' => $from['id']
-                        ]
-                    );
-                }
-
-                if ($found) {
-                    // Installation has be moved, delete the source version
-                    $result = $DB->delete(
-                        'glpi_softwareversions',
-                        [
-                          'id'  => $from['id']
-                        ]
-                    );
-                } else {
-                    // Move version to destination software
-                    $result = $DB->update(
-                        'glpi_softwareversions',
-                        [
-                          'softwares_id' => $ID,
-                          'entities_id'  => $this->getField('entities_id')
-                        ],
-                        [
-                          'id' => $from['id']
-                        ]
-                    );
-                }
-
-                if ($result) {
-                    $i++;
-                }
-                if ($html) {
-                    Html::changeProgressBarPosition($i, $nb + 1);
-                }
-            }
-        }
-
-        // Move software license
-        $result = $DB->update(
-            'glpi_softwarelicenses',
-            [
-              'softwares_id' => $ID
-            ],
-            [
-              'softwares_id' => $item
-            ]
+        (new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB)))->merge(
+            (int)$ID,
+            (int)$this->getField('entities_id'),
+            array_keys($item),
+            static fn (int $source): bool => (new self())->putInTrash($source, __('Software deleted after merging')),
+            $html ? static fn (int $done, int $total) => Html::changeProgressBarPosition($done, $total) : null
         );
-
-        if ($result) {
-            $i++;
-        }
-
-        if ($i == ($nb + 1)) {
-            //error_log ("All merge operations ok.");
-            $soft = new self();
-            foreach ($item as $old) {
-                $soft->putInTrash($old, __('Software deleted after merging'));
-            }
-        }
         if ($html) {
-            Html::changeProgressBarPosition($i, $nb + 1, __('Task completed.'));
+            Html::changeProgressBarPosition(1, 1, __('Task completed.'));
         }
-        return $i == ($nb + 1);
+        return true;
     }
 
 

@@ -336,18 +336,14 @@ class Item_SoftwareVersion extends CommonDBRelation
 
         $item = new $itemtype();
         if ($item->getFromDB($items_id)) {
-            $result = $DB->update(
-                $this->getTable(),
-                [
-                  'is_template_item'  => $item->maybeTemplate() ? $item->getField('is_template') : 0,
-                  'is_deleted_item'   => $item->maybeDeleted() ? $item->getField('is_deleted') : 0
-                ],
-                [
-                  'items_id' => $items_id,
-                  'itemtype' => $itemtype
-                ]
-            );
-            return $result;
+            (new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB)))
+                ->updateAssetFlags(
+                    $itemtype,
+                    (int)$items_id,
+                    $item->maybeTemplate() && (bool)$item->getField('is_template'),
+                    $item->maybeDeleted() && (bool)$item->getField('is_deleted')
+                );
+            return true;
         }
         return false;
     }

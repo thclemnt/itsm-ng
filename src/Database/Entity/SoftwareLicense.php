@@ -10,13 +10,14 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'glpi_softwarelicenses')]
 class SoftwareLicense
 {
+    #[ORM\ManyToOne(targetEntity: Software::class)]
+    #[ORM\JoinColumn(name: 'softwares_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?Software $softwares = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
-
-    #[ORM\Column(name: '`softwares_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $softwares_id = 0;
 
     #[ORM\Column(name: '`softwarelicenses_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $softwarelicenses_id = 0;

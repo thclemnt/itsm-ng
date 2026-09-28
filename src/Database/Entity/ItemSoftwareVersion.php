@@ -11,6 +11,10 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\UniqueConstraint(name: 'items_softwareversions_unicity', columns: ['itemtype', 'items_id', 'softwareversions_id'])]
 class ItemSoftwareVersion
 {
+    #[ORM\ManyToOne(targetEntity: SoftwareVersion::class)]
+    #[ORM\JoinColumn(name: 'softwareversions_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?SoftwareVersion $softwareversions = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
@@ -21,9 +25,6 @@ class ItemSoftwareVersion
 
     #[ORM\Column(name: '`itemtype`', type: 'string', length: 100, nullable: false)]
     public string $itemtype = '';
-
-    #[ORM\Column(name: '`softwareversions_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $softwareversions_id = 0;
 
     #[ORM\Column(name: '`is_deleted_item`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_deleted_item = false;

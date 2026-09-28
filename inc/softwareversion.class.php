@@ -274,36 +274,11 @@ class SoftwareVersion extends CommonDBChild
             }
         }
 
-        // Make a select box
-        $criteria = [
-           'SELECT'    => [
-              'glpi_softwareversions.*',
-              'glpi_states.name AS sname'
-           ],
-           'DISTINCT'  => true,
-           'FROM'      => 'glpi_softwareversions',
-           'LEFT JOIN' => [
-              'glpi_states'  => [
-                 'ON' => [
-                    'glpi_softwareversions' => 'states_id',
-                    'glpi_states'           => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_softwareversions.softwares_id'   => $p['softwares_id']
-           ],
-           'ORDERBY'   => 'name'
-        ];
-
-        if (count($p['used'])) {
-            $criteria['WHERE']['NOT'] = ['glpi_softwareversions.id' => $p['used']];
-        }
-
-        $iterator = $DB->request($criteria);
+        $rows = (new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB)))
+            ->versions((int)$p['softwares_id'], $p['used']);
 
         $values = [];
-        while ($data = $iterator->next()) {
+        foreach ($rows as $data) {
             $ID     = $data['id'];
             $output = $data['name'];
 
@@ -349,25 +324,8 @@ class SoftwareVersion extends CommonDBChild
          HTML;
         }
 
-        $iterator = $DB->request([
-           'SELECT'    => [
-              'glpi_softwareversions.*',
-              'glpi_states.name AS sname'
-           ],
-           'FROM'      => 'glpi_softwareversions',
-           'LEFT JOIN' => [
-              'glpi_states'  => [
-                 'ON' => [
-                    'glpi_softwareversions' => 'states_id',
-                    'glpi_states'           => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'softwares_id' => $softwares_id
-           ],
-           'ORDERBY'   => 'name'
-        ]);
+        $rows = (new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB)))
+            ->versions((int)$softwares_id);
 
         Session::initNavigateListItems(
             'SoftwareVersion',
@@ -380,7 +338,7 @@ class SoftwareVersion extends CommonDBChild
             )
         );
 
-        if (count($iterator)) {
+        if (count($rows)) {
             echo "<table class='tab_cadre_fixehov' aria-label='Comments'><tr>";
             echo "<th>" . self::getTypeName(Session::getPluralNumber()) . "</th>";
             echo "<th>" . __('Status') . "</th>";
@@ -389,9 +347,11 @@ class SoftwareVersion extends CommonDBChild
             echo "<th>" . __('Comments') . "</th>";
             echo "</tr>\n";
 
-            for ($tot = $nb = 0; $data = $iterator->next(); $tot += $nb) {
+            $tot = 0;
+            foreach ($rows as $data) {
                 Session::addToNavigateListItems('SoftwareVersion', $data['id']);
                 $nb = Item_SoftwareVersion::countForVersion($data['id']);
+                $tot += $nb;
 
                 echo "<tr class='tab_bg_2'>";
                 echo "<td><a href='" . SoftwareVersion::getFormURLWithID($data['id']) . "'>";

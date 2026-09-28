@@ -317,3 +317,38 @@ completion filters, user/group/profile scopes, duplicate memberships, subscripti
 add/remove hooks, malformed/lookalike settings and rollback. CI runs the suite on
 both engines. The existing PHP 8.3 ProjectTask, Project, Group_User and Planning
 suites pass 10 methods with 436 assertions.
+
+### Software inventory associations and merge
+
+Software versions and licenses now own required `ManyToOne` software references;
+installation and license-assignment records own required version/license
+references. These four audited, restrictive foreign keys bring enforcement to
+159 relationships. Existing installations use `db:foreign_keys --apply` after
+reviewing its orphan audit. No missing parent or zero sentinel is silently fixed.
+Software purge now forces license purge, including already trashed licenses, so
+assignment cleanup hooks run before the parent disappears.
+
+`SoftwareRepository` supplies version/status listings, license quantities and
+asset-flag synchronization. License totals preserve entity/recursive scope,
+template exclusion and unlimited-license precedence in one aggregate query.
+Boolean asset flags use Doctrine boolean parameters on both providers. Financial
+license reports join the mapped software association.
+
+Software merge locks the selected software rows in ID order and moves versions,
+installations and licenses within the shared transaction. A deterministic first
+matching destination version is used. Existing destination installations retain
+their metadata when the unique installation key overlaps; non-overlapping links
+retain their own metadata as they move. NULL and literal `NULL` version names are
+distinct. Source trash hooks run after reassignment, and a failed hook rolls back
+the relationship changes and earlier lifecycle writes. Self-selection and empty
+merges are harmless. Database rollback does not undo external plugin side effects.
+
+`software.php` exercises quantities and scope, mapped/public version lists,
+boolean flags, collision handling, metadata preservation, empty/self merges,
+rollback inside a caller transaction and parent purge on both engines. The
+existing PHP 8.3 software and dictionary suites pass 45 methods / 584 assertions.
+Full mapped writes (355 tables), reporting, search and application contracts also
+pass on PostgreSQL and MariaDB. The coverage inventory still reports 603 pending
+relationship candidates, 62 polymorphic references, one ambiguous reference and
+1,513 legacy SQL call sites; these counts are a migration backlog, not a claim of
+complete ORM conversion.
