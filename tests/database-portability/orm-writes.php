@@ -64,6 +64,7 @@ try {
         $create($table);
     }
     $updates = 0;
+    $nullableDefaults = 0;
     foreach ($created as $table => $id) {
         $em = Orm::create($DB);
         $record = (new RecordRepository($em))->find($table, 'id', $id);
@@ -71,6 +72,27 @@ try {
             throw new RuntimeException('ORM inserted row is unreadable: ' . $table);
         }
         $metadata = $em->getClassMetadata(EntityRegistry::TABLES[$table]);
+        foreach ($metadata->fieldMappings as $mapping) {
+            if (!$mapping->nullable || !isset($mapping->options['default']) || $mapping->columnName === 'name') {
+                continue;
+            }
+            $default = match ($mapping->type) {
+                'boolean' => (int)$mapping->options['default'],
+                'integer', 'smallint' => (int)$mapping->options['default'],
+                'float' => (float)$mapping->options['default'],
+                default => (string)$mapping->options['default'],
+            };
+            if ($record[$mapping->columnName] !== $default) {
+                throw new RuntimeException('Omitted nullable field lost its schema default: ' . $table . '.' . $mapping->columnName);
+            }
+            (new RecordWriter($em))->update($table, $id, [$mapping->columnName => null]);
+            $em->clear();
+            $record = (new RecordRepository($em))->find($table, 'id', $id);
+            if ($record[$mapping->columnName] !== null) {
+                throw new RuntimeException('Explicit NULL was replaced with a default: ' . $table . '.' . $mapping->columnName);
+            }
+            ++$nullableDefaults;
+        }
         // Update a stored non-identifier field on each table, using real type conversion.
         foreach ($metadata->fieldMappings as $field => $mapping) {
             if (in_array($field, $metadata->identifier, true) || $field === 'id' || ($mapping->notUpdatable ?? false)) {
@@ -128,4 +150,4 @@ try {
 } finally {
     $DB->rollBack();
 }
-echo $DB->getProvider() . ': ORM insert/read/delete for ' . count($created) . " tables; $updates table updates passed.\n";
+echo $DB->getProvider() . ': ORM insert/read/delete for ' . count($created) . " tables; $updates table updates and $nullableDefaults nullable defaults passed.\n";

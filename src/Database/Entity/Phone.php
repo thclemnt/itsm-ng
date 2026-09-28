@@ -48,11 +48,13 @@ class Phone
     #[ORM\Column(name: '`locations_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $locations_id = 0;
 
-    #[ORM\Column(name: '`phonetypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $phonetypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: PhoneType::class)]
+    #[ORM\JoinColumn(name: 'phonetypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?PhoneType $phonetypes = null;
 
-    #[ORM\Column(name: '`phonemodels_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $phonemodels_id = 0;
+    #[ORM\ManyToOne(targetEntity: PhoneModel::class)]
+    #[ORM\JoinColumn(name: 'phonemodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?PhoneModel $phonemodels = null;
 
     #[ORM\Column(name: '`brand`', type: 'string', length: 255, nullable: true)]
     public ?string $brand = null;
@@ -94,7 +96,7 @@ class Phone
     public int $states_id = 0;
 
     #[ORM\Column(name: '`ticket_tco`', type: 'decimal', precision: 20, scale: 4, nullable: true, options: ['default' => '0.0000'])]
-    public ?string $ticket_tco = null;
+    public ?string $ticket_tco = '0.0000';
 
     #[ORM\Column(name: '`is_dynamic`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_dynamic = false;

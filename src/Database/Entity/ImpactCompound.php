@@ -16,7 +16,7 @@ class ImpactCompound
     public ?int $id = null;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true, options: ['default' => ''])]
-    public ?string $name = null;
+    public ?string $name = '';
 
     #[ORM\Column(name: '`color`', type: 'string', length: 255, nullable: false, options: ['default' => ''])]
     public string $color = '';

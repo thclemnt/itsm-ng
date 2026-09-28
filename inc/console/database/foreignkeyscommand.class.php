@@ -34,7 +34,7 @@ class ForeignKeysCommand extends AbstractCommand
             foreach (array_keys($problems) as $reference) {
                 [$table, $column] = explode('.', $reference, 2);
                 if (isset(\itsmng\Database\OptionalReferences::RELATIONS[$table][$column])) {
-                    $output->writeln('Run db:optional_references for model references, db:project_hierarchy for project ancestry, and db:infrastructure_references for optional infrastructure references before enforcing their foreign keys.');
+                    $output->writeln('Normalize optional references with db:optional_references (device models), db:project_hierarchy (project ancestry), db:infrastructure_references (infrastructure), and db:asset_classification (asset models/types) before enforcing their foreign keys.');
                     break;
                 }
             }

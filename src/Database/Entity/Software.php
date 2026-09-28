@@ -64,7 +64,7 @@ class Software
     public int $groups_id = 0;
 
     #[ORM\Column(name: '`ticket_tco`', type: 'decimal', precision: 20, scale: 4, nullable: true, options: ['default' => '0.0000'])]
-    public ?string $ticket_tco = null;
+    public ?string $ticket_tco = '0.0000';
 
     #[ORM\Column(name: '`is_helpdesk_visible`', type: 'boolean', nullable: false, options: ['default' => true])]
     public bool $is_helpdesk_visible = true;

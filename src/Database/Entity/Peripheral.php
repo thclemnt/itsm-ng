@@ -48,11 +48,13 @@ class Peripheral
     #[ORM\Column(name: '`locations_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $locations_id = 0;
 
-    #[ORM\Column(name: '`peripheraltypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $peripheraltypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: PeripheralType::class)]
+    #[ORM\JoinColumn(name: 'peripheraltypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?PeripheralType $peripheraltypes = null;
 
-    #[ORM\Column(name: '`peripheralmodels_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $peripheralmodels_id = 0;
+    #[ORM\ManyToOne(targetEntity: PeripheralModel::class)]
+    #[ORM\JoinColumn(name: 'peripheralmodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?PeripheralModel $peripheralmodels = null;
 
     #[ORM\Column(name: '`brand`', type: 'string', length: 255, nullable: true)]
     public ?string $brand = null;
@@ -82,7 +84,7 @@ class Peripheral
     public int $states_id = 0;
 
     #[ORM\Column(name: '`ticket_tco`', type: 'decimal', precision: 20, scale: 4, nullable: true, options: ['default' => '0.0000'])]
-    public ?string $ticket_tco = null;
+    public ?string $ticket_tco = '0.0000';
 
     #[ORM\Column(name: '`is_dynamic`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_dynamic = false;

@@ -26,7 +26,7 @@ class NetworkPortFiberchannel
     public int $netpoints_id = 0;
 
     #[ORM\Column(name: '`wwn`', type: 'string', length: 16, nullable: true, options: ['default' => ''])]
-    public ?string $wwn = null;
+    public ?string $wwn = '';
 
     #[ORM\Column(name: '`speed`', type: 'integer', nullable: false, options: ['default' => '10'])]
     public int $speed = 10;

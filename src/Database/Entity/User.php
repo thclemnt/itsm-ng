@@ -251,7 +251,7 @@ class User
     public ?\DateTimeInterface $date_creation = null;
 
     #[ORM\Column(name: '`highcontrast_css`', type: 'boolean', nullable: true, options: ['default' => false])]
-    public ?bool $highcontrast_css = null;
+    public ?bool $highcontrast_css = false;
 
     #[ORM\Column(name: '`plannings`', type: 'text', nullable: true)]
     public ?string $plannings = null;
@@ -281,13 +281,13 @@ class User
     public ?string $default_dashboard_mini_ticket = null;
 
     #[ORM\Column(name: '`access_zoom_level`', type: 'smallint', nullable: true, options: ['default' => '100'])]
-    public ?int $access_zoom_level = null;
+    public ?int $access_zoom_level = 100;
 
     #[ORM\Column(name: '`access_font`', type: 'string', length: 100, nullable: true)]
     public ?string $access_font = null;
 
     #[ORM\Column(name: '`access_shortcuts`', type: 'boolean', nullable: true, options: ['default' => false])]
-    public ?bool $access_shortcuts = null;
+    public ?bool $access_shortcuts = false;
 
     #[ORM\Column(name: '`access_custom_shortcuts`', type: 'json', nullable: true)]
     public ?array $access_custom_shortcuts = null;
@@ -305,7 +305,7 @@ class User
     public ?string $menu_small = null;
 
     #[ORM\Column(name: '`compact_mode_ui`', type: 'boolean', nullable: true, options: ['default' => false])]
-    public ?bool $compact_mode_ui = null;
+    public ?bool $compact_mode_ui = false;
 
     #[ORM\Column(name: '`menu_open`', type: 'text', length: 4294967295, nullable: true)]
     public ?string $menu_open = null;

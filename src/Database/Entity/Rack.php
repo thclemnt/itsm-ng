@@ -70,7 +70,7 @@ class Rack
     public ?int $depth = null;
 
     #[ORM\Column(name: '`number_units`', type: 'integer', nullable: true, options: ['default' => '0'])]
-    public ?int $number_units = null;
+    public ?int $number_units = 0;
 
     #[ORM\Column(name: '`is_template`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_template = false;

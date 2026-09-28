@@ -32,6 +32,19 @@ $schema = (new \itsmng\Database\BaselineSchema())->build($DB->getDoctrineConnect
 $metadata = $em->getMetadataFactory()->getAllMetadata();
 verify(count($metadata) === count($schema->getTables()), 'Every core table is mapped');
 foreach ($metadata as $meta) {
+    $newRecord = new $meta->name();
+    foreach ($meta->fieldMappings as $property => $mapping) {
+        $column = $schema->getTable($meta->getTableName())->getColumn($mapping->columnName);
+        if (!$column->getNotnull() && $column->getDefault() !== null) {
+            $default = match ($mapping->type) {
+                'boolean' => (bool)(int)$column->getDefault(),
+                'integer', 'smallint' => (int)$column->getDefault(),
+                'float' => (float)$column->getDefault(),
+                default => (string)$column->getDefault(),
+            };
+            verify($newRecord->$property === $default, 'Nullable entity default matches the baseline: ' . $meta->getTableName() . '.' . $mapping->columnName);
+        }
+    }
     $columns = array_map(fn ($field) => $field->columnName, $meta->fieldMappings);
     foreach ($meta->associationMappings as $association) {
         foreach ($association->joinColumns as $join) {

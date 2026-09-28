@@ -25,7 +25,7 @@ class IPAddress
     public string $itemtype = '';
 
     #[ORM\Column(name: '`version`', type: 'smallint', nullable: true, options: ['unsigned' => true, 'default' => '0'])]
-    public ?int $version = null;
+    public ?int $version = 0;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
     public ?string $name = null;

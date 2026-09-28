@@ -63,8 +63,8 @@ class Monitor extends DbTestCase
            'have_hdmi' => 0,
            'have_displayport' => 0,
            'locations_id' => 0,
-           'monitortypes_id' => 0,
-           'monitormodels_id' => 0,
+           'monitortypes_id' => null,
+           'monitormodels_id' => null,
            'manufacturers_id' => 0,
            'is_global' => 0,
            'is_deleted' => 0,
@@ -100,6 +100,8 @@ class Monitor extends DbTestCase
         $monitor = getItemByTypeName('Monitor', '_test_monitor01');
 
         $expected = Monitor::getMonitorFields($added, $date);
+        ksort($monitor->fields);
+        ksort($expected);
         $this->array($monitor->fields)->isIdenticalTo($expected);
         return $monitor;
     }
@@ -126,7 +128,8 @@ class Monitor extends DbTestCase
 
         $this->string($clonedMonitor->fields['name'])->isEqualTo("$expected[name] (copy)");
         unset($clonedMonitor->fields['name'], $expected['name']);
-
+        ksort($clonedMonitor->fields);
+        ksort($expected);
         $this->array($clonedMonitor->fields)->isIdenticalTo($expected);
     }
 }

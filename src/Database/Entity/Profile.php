@@ -19,7 +19,7 @@ class Profile
     public ?string $name = null;
 
     #[ORM\Column(name: '`interface`', type: 'string', length: 255, nullable: true, options: ['default' => 'helpdesk'])]
-    public ?string $interface = null;
+    public ?string $interface = 'helpdesk';
 
     #[ORM\Column(name: '`is_default`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_default = false;

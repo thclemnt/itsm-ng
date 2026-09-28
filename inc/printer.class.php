@@ -461,19 +461,12 @@ class Printer extends CommonDBTM
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT' => 'computers_id',
-           'FROM'   => 'glpi_computers_items',
-           'WHERE'  => [
-              'itemtype'  => $this->getType(),
-              'items_id'  => $this->fields['id']
-           ]
-        ]);
-        $tab = [];
-        while ($data = $iterator->next()) {
-            $tab['Computer'][$data['computers_id']] = $data['computers_id'];
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            return (new \itsmng\Database\Repository\AssetRepository($em))->linkedItems($this->getType(), (int)$this->getID());
+        } finally {
+            $em->clear();
         }
-        return $tab;
     }
 
 

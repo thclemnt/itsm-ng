@@ -21,6 +21,26 @@ final class AssetRepository
     {
     }
 
+    /** Connection identities, including locked/deleted links, as required by lifecycle callers. */
+    public function linkedItems(string $itemtype, int $id): array
+    {
+        $query = $this->em->createQueryBuilder()->from(Entity\ComputerItem::class, 'link')
+            ->setParameter('id', $id, Types::INTEGER)->orderBy('link.id');
+        if ($itemtype === 'Computer') {
+            $query->select('link.itemtype AS itemtype', 'link.items_id AS item_id')->where('link.computers = :id');
+        } else {
+            $query->select('IDENTITY(link.computers) AS item_id')->where('link.itemtype = :type AND link.items_id = :id')
+                ->setParameter('type', $itemtype, Types::STRING);
+        }
+        $items = [];
+        foreach ($query->getQuery()->getScalarResult() as $row) {
+            $target = $itemtype === 'Computer' ? $row['itemtype'] : 'Computer';
+            $targetId = (int)$row['item_id'];
+            $items[$target][$targetId] = $targetId;
+        }
+        return $items;
+    }
+
     /** null = all authorized entities; an empty list deliberately matches none. */
     public function count(string $itemtype, ?array $entities): int
     {

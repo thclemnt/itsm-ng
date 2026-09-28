@@ -478,3 +478,41 @@ certificate fixtures now create a real type instead of an invalid random ID.
 Rendered view checks are not live browser interaction tests. Coverage is now
 182 foreign keys, with 580 pending relationship candidates, 62 polymorphic
 references, one ambiguous reference and 1,476 remaining legacy SQL call sites.
+
+### Asset classification and computer connections
+
+Computer, monitor, printer, phone, peripheral and network equipment model/type
+columns now have twelve nullable `ManyToOne` associations and restrictive foreign
+keys. Their empty dropdown selections normalize to NULL, while replacements and
+parent purge retain the assets. Existing installations can review
+`php bin/console db:asset_classification`, stop application writers, apply it with
+`--apply`, then run `php bin/console db:foreign_keys --apply`. It uses the shared
+audited nullable-reference migration and refuses nonzero orphans before any DDL.
+The installer applies this normalization for fresh databases as well.
+
+The computer parent of `glpi_computers_items` now has a required association and
+foreign key. Computer purge removes its connections through lifecycle hooks,
+preserving attached assets and other computers' connections. The polymorphic
+target remains a discriminator/ID pair pending a separate schema redesign.
+`AssetRepository::linkedItems()` replaces the five duplicated adapter queries
+with scalar ORM projections. It retains deleted/locked connections, distinguishes
+target types with overlapping IDs and deduplicates repeated connections.
+
+Existing asset tests exposed thirty nullable entity fields whose initial values
+incorrectly ignored non-null schema defaults. Their typed defaults and the mapping
+generator now preserve those defaults, including asset cost totals, user
+preferences, LDAP login fields and network metadata. Explicit NULL inserts and
+updates still store NULL. Existing stored NULL values are not rewritten. Mapping
+tests compare defaults against the baseline; all-table write tests check stored
+defaults and explicit NULL updates. The generator was also exercised in an
+isolated directory and reproduced all thirty defaults.
+
+`asset-classification.php` tests all twelve replacement/purge paths, empty
+criteria, both connection directions, inherited computer lookup, duplicate and
+deleted connections, parent purge, orphan refusal and migration retries. Fresh
+installs and upgrades succeed on PostgreSQL and MariaDB. Both providers pass the
+195-FK contract, complete mapping and all-table write checks, reporting, search,
+application and placement suites. The PHP 8.3 asset suites pass 17 methods / 509
+assertions. Coverage now stands at 195 foreign keys, 567 pending relationship
+candidates, 62 polymorphic references, one ambiguous reference and 1,471 remaining
+legacy SQL call sites; complete conversion is still in progress.

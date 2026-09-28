@@ -18,8 +18,9 @@ class ComputerItem
     #[ORM\Column(name: '`items_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $items_id = 0;
 
-    #[ORM\Column(name: '`computers_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $computers_id = 0;
+    #[ORM\ManyToOne(targetEntity: Computer::class)]
+    #[ORM\JoinColumn(name: 'computers_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?Computer $computers = null;
 
     #[ORM\Column(name: '`itemtype`', type: 'string', length: 100, nullable: false)]
     public string $itemtype = '';

@@ -107,14 +107,16 @@ foreach ($names as $tableName => $class) {
         if ($options) {
             $args .= ', options: ' . $export($options);
         }
-        if ($nullable || $column->getAutoincrement() || str_starts_with($phpType, '\\')) {
-            $phpType = '?' . $phpType;
+        if (($nullable && $default === null) || $column->getAutoincrement() || str_starts_with($phpType, '\\')) {
             $value = 'null';
         } else {
             $value = var_export(match ($phpType) {
                 'int' => (int)$default, 'float' => (float)$default, 'bool' => (bool)(int)$default,
                 'array' => $default === null ? [] : json_decode($default, true, flags: JSON_THROW_ON_ERROR), default => (string)$default,
             }, true);
+        }
+        if ($nullable || $column->getAutoincrement() || str_starts_with($phpType, '\\')) {
+            $phpType = '?' . $phpType;
         }
         if ($column->getAutoincrement() && !in_array($name, $keys, true)) {
             // Generated non-identifier values (dashboard id) are returned after INSERT.

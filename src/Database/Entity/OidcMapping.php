@@ -15,28 +15,28 @@ class OidcMapping
     public int $id = 0;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true, options: ['default' => ''])]
-    public ?string $name = null;
+    public ?string $name = '';
 
     #[ORM\Column(name: '`given_name`', type: 'string', length: 255, nullable: true, options: ['default' => ''])]
-    public ?string $given_name = null;
+    public ?string $given_name = '';
 
     #[ORM\Column(name: '`family_name`', type: 'string', length: 255, nullable: true, options: ['default' => ''])]
-    public ?string $family_name = null;
+    public ?string $family_name = '';
 
     #[ORM\Column(name: '`picture`', type: 'string', length: 255, nullable: true, options: ['default' => ''])]
-    public ?string $picture = null;
+    public ?string $picture = '';
 
     #[ORM\Column(name: '`email`', type: 'string', length: 255, nullable: true, options: ['default' => ''])]
-    public ?string $email = null;
+    public ?string $email = '';
 
     #[ORM\Column(name: '`locale`', type: 'string', length: 255, nullable: true, options: ['default' => ''])]
-    public ?string $locale = null;
+    public ?string $locale = '';
 
     #[ORM\Column(name: '`phone_number`', type: 'string', length: 255, nullable: true, options: ['default' => ''])]
-    public ?string $phone_number = null;
+    public ?string $phone_number = '';
 
     #[ORM\Column(name: '`group`', type: 'string', length: 255, nullable: true, options: ['default' => ''])]
-    public ?string $group = null;
+    public ?string $group = '';
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_mod = null;

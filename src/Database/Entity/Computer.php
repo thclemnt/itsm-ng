@@ -54,11 +54,13 @@ class Computer
     #[ORM\Column(name: '`networks_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $networks_id = 0;
 
-    #[ORM\Column(name: '`computermodels_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $computermodels_id = 0;
+    #[ORM\ManyToOne(targetEntity: ComputerModel::class)]
+    #[ORM\JoinColumn(name: 'computermodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?ComputerModel $computermodels = null;
 
-    #[ORM\Column(name: '`computertypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $computertypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: ComputerType::class)]
+    #[ORM\JoinColumn(name: 'computertypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?ComputerType $computertypes = null;
 
     #[ORM\Column(name: '`is_template`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_template = false;
@@ -85,7 +87,7 @@ class Computer
     public int $states_id = 0;
 
     #[ORM\Column(name: '`ticket_tco`', type: 'decimal', precision: 20, scale: 4, nullable: true, options: ['default' => '0.0000'])]
-    public ?string $ticket_tco = null;
+    public ?string $ticket_tco = '0.0000';
 
     #[ORM\Column(name: '`uuid`', type: 'string', length: 255, nullable: true)]
     public ?string $uuid = null;

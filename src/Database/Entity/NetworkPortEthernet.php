@@ -26,7 +26,7 @@ class NetworkPortEthernet
     public int $netpoints_id = 0;
 
     #[ORM\Column(name: '`type`', type: 'string', length: 10, nullable: true, options: ['default' => ''])]
-    public ?string $type = null;
+    public ?string $type = '';
 
     #[ORM\Column(name: '`speed`', type: 'integer', nullable: false, options: ['default' => '10'])]
     public int $speed = 10;

@@ -24,7 +24,7 @@ class PduPlug
     public ?int $id = null;
 
     #[ORM\Column(name: '`number_plugs`', type: 'integer', nullable: true, options: ['default' => '0'])]
-    public ?int $number_plugs = null;
+    public ?int $number_plugs = 0;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_mod = null;

@@ -57,11 +57,13 @@ class NetworkEquipment
     #[ORM\Column(name: '`networks_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $networks_id = 0;
 
-    #[ORM\Column(name: '`networkequipmenttypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $networkequipmenttypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: NetworkEquipmentType::class)]
+    #[ORM\JoinColumn(name: 'networkequipmenttypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?NetworkEquipmentType $networkequipmenttypes = null;
 
-    #[ORM\Column(name: '`networkequipmentmodels_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $networkequipmentmodels_id = 0;
+    #[ORM\ManyToOne(targetEntity: NetworkEquipmentModel::class)]
+    #[ORM\JoinColumn(name: 'networkequipmentmodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?NetworkEquipmentModel $networkequipmentmodels = null;
 
     #[ORM\Column(name: '`manufacturers_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $manufacturers_id = 0;
@@ -85,7 +87,7 @@ class NetworkEquipment
     public int $states_id = 0;
 
     #[ORM\Column(name: '`ticket_tco`', type: 'decimal', precision: 20, scale: 4, nullable: true, options: ['default' => '0.0000'])]
-    public ?string $ticket_tco = null;
+    public ?string $ticket_tco = '0.0000';
 
     #[ORM\Column(name: '`is_dynamic`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_dynamic = false;

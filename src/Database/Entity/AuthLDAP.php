@@ -34,7 +34,7 @@ class AuthLDAP
     public ?string $condition = null;
 
     #[ORM\Column(name: '`login_field`', type: 'string', length: 255, nullable: true, options: ['default' => 'uid'])]
-    public ?string $login_field = null;
+    public ?string $login_field = 'uid';
 
     #[ORM\Column(name: '`sync_field`', type: 'string', length: 255, nullable: true)]
     public ?string $sync_field = null;

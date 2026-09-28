@@ -46,8 +46,17 @@ final class OptionalReferences
         'glpi_pdus' => ['pdutypes_id' => 'glpi_pdutypes'],
     ];
 
+    public const ASSET_CLASSIFICATION = [
+        'glpi_computers' => ['computermodels_id' => 'glpi_computermodels', 'computertypes_id' => 'glpi_computertypes'],
+        'glpi_monitors' => ['monitormodels_id' => 'glpi_monitormodels', 'monitortypes_id' => 'glpi_monitortypes'],
+        'glpi_printers' => ['printermodels_id' => 'glpi_printermodels', 'printertypes_id' => 'glpi_printertypes'],
+        'glpi_phones' => ['phonemodels_id' => 'glpi_phonemodels', 'phonetypes_id' => 'glpi_phonetypes'],
+        'glpi_peripherals' => ['peripheralmodels_id' => 'glpi_peripheralmodels', 'peripheraltypes_id' => 'glpi_peripheraltypes'],
+        'glpi_networkequipments' => ['networkequipmentmodels_id' => 'glpi_networkequipmentmodels', 'networkequipmenttypes_id' => 'glpi_networkequipmenttypes'],
+    ];
+
     public const RELATIONS = [
-        ...self::MODELS, ...self::PROJECT_HIERARCHY, ...self::INFRASTRUCTURE,
+        ...self::MODELS, ...self::PROJECT_HIERARCHY, ...self::INFRASTRUCTURE, ...self::ASSET_CLASSIFICATION,
         'glpi_racks' => [...self::MODELS['glpi_racks'], ...self::INFRASTRUCTURE['glpi_racks']],
         'glpi_pdus' => [...self::MODELS['glpi_pdus'], ...self::INFRASTRUCTURE['glpi_pdus']],
     ];

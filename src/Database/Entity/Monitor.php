@@ -75,11 +75,13 @@ class Monitor
     #[ORM\Column(name: '`locations_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $locations_id = 0;
 
-    #[ORM\Column(name: '`monitortypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $monitortypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: MonitorType::class)]
+    #[ORM\JoinColumn(name: 'monitortypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?MonitorType $monitortypes = null;
 
-    #[ORM\Column(name: '`monitormodels_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $monitormodels_id = 0;
+    #[ORM\ManyToOne(targetEntity: MonitorModel::class)]
+    #[ORM\JoinColumn(name: 'monitormodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?MonitorModel $monitormodels = null;
 
     #[ORM\Column(name: '`manufacturers_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $manufacturers_id = 0;
@@ -106,7 +108,7 @@ class Monitor
     public int $states_id = 0;
 
     #[ORM\Column(name: '`ticket_tco`', type: 'decimal', precision: 20, scale: 4, nullable: true, options: ['default' => '0.0000'])]
-    public ?string $ticket_tco = null;
+    public ?string $ticket_tco = '0.0000';
 
     #[ORM\Column(name: '`is_dynamic`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_dynamic = false;

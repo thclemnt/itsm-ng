@@ -490,17 +490,12 @@ class Computer extends CommonDBTM
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT' => ['itemtype', 'items_id'],
-           'FROM'   => 'glpi_computers_items',
-           'WHERE'  => ['computers_id' => $this->getID()]
-        ]);
-
-        $tab = [];
-        while ($data = $iterator->next()) {
-            $tab[$data['itemtype']][$data['items_id']] = $data['items_id'];
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            return (new \itsmng\Database\Repository\AssetRepository($em))->linkedItems(Computer::class, (int)$this->getID());
+        } finally {
+            $em->clear();
         }
-        return $tab;
     }
 
 

@@ -36,7 +36,7 @@ class DocumentItem
     public ?\DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`users_id`', type: 'integer', nullable: true, options: ['default' => '0'])]
-    public ?int $users_id = null;
+    public ?int $users_id = 0;
 
     #[ORM\Column(name: '`timeline_position`', type: 'smallint', nullable: false, options: ['default' => '0'])]
     public int $timeline_position = 0;

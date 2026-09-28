@@ -72,11 +72,13 @@ class Printer
     #[ORM\Column(name: '`networks_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $networks_id = 0;
 
-    #[ORM\Column(name: '`printertypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $printertypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: PrinterType::class)]
+    #[ORM\JoinColumn(name: 'printertypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?PrinterType $printertypes = null;
 
-    #[ORM\Column(name: '`printermodels_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $printermodels_id = 0;
+    #[ORM\ManyToOne(targetEntity: PrinterModel::class)]
+    #[ORM\JoinColumn(name: 'printermodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?PrinterModel $printermodels = null;
 
     #[ORM\Column(name: '`manufacturers_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $manufacturers_id = 0;
@@ -109,7 +111,7 @@ class Printer
     public int $states_id = 0;
 
     #[ORM\Column(name: '`ticket_tco`', type: 'decimal', precision: 20, scale: 4, nullable: true, options: ['default' => '0.0000'])]
-    public ?string $ticket_tco = null;
+    public ?string $ticket_tco = '0.0000';
 
     #[ORM\Column(name: '`is_dynamic`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_dynamic = false;

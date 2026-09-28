@@ -24,7 +24,7 @@ class PDURack
     public ?int $id = null;
 
     #[ORM\Column(name: '`side`', type: 'integer', nullable: true, options: ['default' => '0'])]
-    public ?int $side = null;
+    public ?int $side = 0;
 
     #[ORM\Column(name: '`position`', type: 'integer', nullable: false)]
     public int $position = 0;
