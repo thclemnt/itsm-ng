@@ -260,8 +260,15 @@ class ProjectCost extends CommonDBChild
     **/
     public function getLastCostForProject($projects_id)
     {
-        $rows = $this->find(['projects_id' => $projects_id], ['end_date DESC', 'id DESC'], 1);
-        return $rows ? reset($rows) : [];
+        global $DB;
+
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            $rows = (new \itsmng\Database\Repository\CostRepository($em))->rows(self::getType(), (int)$projects_id, true);
+            return $rows[0] ?? [];
+        } finally {
+            $em->clear();
+        }
     }
 
     /**
@@ -359,7 +366,7 @@ class ProjectCost extends CommonDBChild
     **/
     public static function showForProject(Project $project, $withtemplate = 0)
     {
-        global $CFG_GLPI;
+        global $DB, $CFG_GLPI;
 
         $ID = $project->fields['id'];
 
@@ -373,7 +380,12 @@ class ProjectCost extends CommonDBChild
 
         echo "<div class='center'>";
 
-        $iterator = (new static())->find(['projects_id' => $ID], ['begin_date']);
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            $iterator = (new \itsmng\Database\Repository\CostRepository($em))->rows(self::getType(), (int)$ID);
+        } finally {
+            $em->clear();
+        }
 
         $rand   = mt_rand();
 

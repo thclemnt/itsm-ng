@@ -202,14 +202,8 @@ class ContractCost extends CommonDBChild
     **/
     public static function cloneContract($oldid, $newid)
     {
-        global $DB;
-
         Toolbox::deprecated('Use clone');
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['contracts_id' => $oldid]
-        ]);
-        while ($data = $iterator->next()) {
+        foreach ((new static())->find(['contracts_id' => $oldid]) as $data) {
             $cd                   = new self();
             unset($data['id']);
             $data['contracts_id'] = $newid;
@@ -258,16 +252,13 @@ class ContractCost extends CommonDBChild
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'FROM'   => $this->getTable(),
-           'WHERE'  => ['contracts_id' => $contracts_id],
-           'ORDER'  => ['end_date DESC', 'id DESC']
-        ]);
-        if ($result = $iterator->next()) {
-            return $result;
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            $rows = (new \itsmng\Database\Repository\CostRepository($em))->rows(self::getType(), (int)$contracts_id, true);
+            return $rows[0] ?? [];
+        } finally {
+            $em->clear();
         }
-
-        return [];
     }
 
     /**
@@ -368,11 +359,12 @@ class ContractCost extends CommonDBChild
 
         echo "<div class='center'>";
 
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['contracts_id' => $ID],
-           'ORDER'  => 'begin_date'
-        ]);
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            $iterator = (new \itsmng\Database\Repository\CostRepository($em))->rows(self::getType(), (int)$ID);
+        } finally {
+            $em->clear();
+        }
         $rand   = mt_rand();
 
         if (
@@ -421,7 +413,7 @@ class ContractCost extends CommonDBChild
             );
 
             $total = 0;
-            while ($data = $iterator->next()) {
+            foreach ($iterator as $data) {
                 echo "<tr class='tab_bg_2' " .
                       ($canedit
                          ? "style='cursor:pointer' onClick=\"viewEditCost" . $data['contracts_id'] . "_" .

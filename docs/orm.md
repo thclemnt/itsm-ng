@@ -662,3 +662,31 @@ contract, contract-cost, project-cost, license and infocom suites pass 14 method
 
 The audit now records 207 enforced relationships, 555 pending candidates,
 62 polymorphic references, one ambiguous reference and 1,430 legacy SQL sites.
+
+### Budget reports and cost history
+
+`BudgetRepository` now selects financial item details and groups spending by
+entity through mapped infocom/budget and cost/parent associations. It supports
+all five cost types, asset records, cartridges, consumables and device components.
+The existing rules remain explicit: historical spending survives soft deletion;
+contract templates are excluded from the item list but retained in contract
+spending totals. Type discovery for totals retains its infocom entity scope,
+while projected amounts use the actual parent entity. Empty scopes match nothing.
+Cost types discovered through infocoms are deduplicated before adding their costs.
+Only entities represented in the totals are loaded for rendering.
+
+`CostRepository` handles core cost history and action-time sums. Lists order NULL
+begin dates first, while latest-cost selection orders NULL end dates last and
+breaks ties by ID. Latest selection uses a database limit. Contract/project and
+ITIL cost views, defaults and summaries use these mapped reads. Contract cloning
+uses mapped `find()` before invoking the existing application add lifecycle.
+Unmapped plugin budget types and cost models retain their compatibility path.
+
+`budgets.php` checks grouped decimal values, fractional labour, entity isolation,
+empty scopes, deleted/template rules, duplicate type discovery, date ordering,
+application latest-cost/summary methods and populated budget/cost HTML. It also
+checks that the repositories bypass legacy SQL execution. Budget, reporting,
+financial migration and application contracts pass on PostgreSQL and MariaDB.
+The PHP 8.3 contract and cost suites pass 7 methods / 132 assertions. These are
+PHP rendering checks, not browser interactions. The inventory now records 1,423
+legacy SQL sites; FK coverage remains 207 enforced relationships.
