@@ -821,43 +821,12 @@ class Certificate extends CommonDBTM
         $message      = [];
         foreach (array_keys(Entity::getEntitiesToNotify('use_certificates_alert')) as $entity) {
             $before = Entity::getUsedConfig('send_certificates_alert_before_delay', $entity);
-            // Check licenses
-            $result = $DB->request(
-                [
-                  'SELECT'    => [
-                     'glpi_certificates.*',
-                  ],
-                  'FROM'      => self::getTable(),
-                  'LEFT JOIN' => [
-                     'glpi_alerts' => [
-                        'FKEY'   => [
-                           'glpi_alerts'       => 'items_id',
-                           'glpi_certificates' => 'id',
-                           [
-                              'AND' => [
-                                 'glpi_alerts.itemtype' => __CLASS__,
-                                 'glpi_alerts.type'     => Alert::END,
-                              ],
-                           ],
-                        ]
-                     ]
-                  ],
-                  'WHERE'     => [
-                     'glpi_alerts.date'              => null,
-                     'glpi_certificates.is_deleted'  => 0,
-                     'glpi_certificates.is_template' => 0,
-                     [
-                        'NOT' => ['glpi_certificates.date_expiration' => null],
-                     ],
-                     [
-                        'RAW' => [
-                           'DATEDIFF(' . DBmysql::quoteName('glpi_certificates.date_expiration') . ', CURDATE())' => ['<', $before]
-                        ]
-                     ],
-                     'glpi_certificates.entities_id' => $entity,
-                  ],
-                ]
-            );
+            $em = \itsmng\Database\Orm::create($DB);
+            try {
+                $result = (new \itsmng\Database\Repository\CertificateRepository($em))->expiring((int)$entity, (int)$before);
+            } finally {
+                $em->clear();
+            }
 
             $message = "";
             $items   = [];

@@ -416,13 +416,9 @@ class Domain extends CommonDropdown
             $where['NOT'] = ['id' => $p['used']];
         }
 
-        $iterator = $DB->request([
-           'FROM'      => self::getTable(),
-           'WHERE'     => $where
-        ]);
-
+        $rows = \itsmng\Database\MappedReads::matching($DB, self::getTable(), $where);
         $values = [0 => Dropdown::EMPTY_VALUE];
-        while ($data = $iterator->next()) {
+        foreach ($rows as $data) {
             $values[$data['id']] = $data['name'];
         }
 
@@ -591,20 +587,16 @@ class Domain extends CommonDropdown
      *
      * @return array
      */
-    public static function expiredDomainsCriteria($entities_id): array
+    public static function expiredDomainsCriteria($entities_id, ?DateTimeImmutable $today = null): array
     {
-        global $DB;
-
-        $delay = Entity::getUsedConfig('send_domains_alert_expired_delay', $entities_id);
+        $delay = max(0, (int)Entity::getUsedConfig('send_domains_alert_expired_delay', $entities_id));
+        $today = ($today ?? new DateTimeImmutable('today'))->setTime(0, 0);
         return [
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'NOT' => ['date_expiration' => null],
-              'entities_id'  => $entities_id,
-              'is_deleted'   => 0,
-              new QueryExpression("DATEDIFF(CURDATE(), " . $DB->quoteName('date_expiration') . ") > $delay"),
-              new QueryExpression("DATEDIFF(CURDATE(), " . $DB->quoteName('date_expiration') . ") > 0")
-           ]
+            'FROM' => self::getTable(),
+            'WHERE' => [
+                'entities_id' => $entities_id, 'is_deleted' => false,
+                'date_expiration' => ['<', $today->modify('-' . $delay . ' days')->format('Y-m-d H:i:s')],
+            ],
         ];
     }
 
@@ -615,20 +607,17 @@ class Domain extends CommonDropdown
      *
      * @return array
      */
-    public static function closeExpiriesDomainsCriteria($entities_id): array
+    public static function closeExpiriesDomainsCriteria($entities_id, ?DateTimeImmutable $today = null): array
     {
-        global $DB;
-
-        $delay = Entity::getUsedConfig('send_domains_alert_close_expiries_delay', $entities_id);
+        $delay = (int)Entity::getUsedConfig('send_domains_alert_close_expiries_delay', $entities_id);
+        $today = ($today ?? new DateTimeImmutable('today'))->setTime(0, 0);
         return [
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'NOT' => ['date_expiration' => null],
-              'entities_id'  => $entities_id,
-              'is_deleted'   => 0,
-              new QueryExpression("DATEDIFF(CURDATE(), " . $DB->quoteName('date_expiration') . ") > -$delay"),
-              new QueryExpression("DATEDIFF(CURDATE(), " . $DB->quoteName('date_expiration') . ") < 0")
-           ]
+            'FROM' => self::getTable(),
+            'WHERE' => [
+                'entities_id' => $entities_id, 'is_deleted' => false,
+                'date_expiration' => ['>=', $today->modify('+1 day')->format('Y-m-d H:i:s')],
+                ['date_expiration' => ['<', $today->modify(sprintf('%+d days', $delay))->format('Y-m-d H:i:s')]],
+            ],
         ];
     }
 
@@ -665,8 +654,8 @@ class Domain extends CommonDropdown
 
             foreach ($querys as $type => $query) {
                 $domain_infos[$type] = [];
-                $iterator = $DB->request($query);
-                while ($data = $iterator->next()) {
+                $rows = \itsmng\Database\MappedReads::matching($DB, self::getTable(), $query['WHERE']);
+                foreach ($rows as $data) {
                     $message                        = $data["name"] . ": " .
                        Html::convDate($data["date_expiration"]) . "<br>\n";
                     $domain_infos[$type][$entity][] = $data;
@@ -763,20 +752,13 @@ class Domain extends CommonDropdown
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'id'              => $used,
-              'domaintypes_id'  => $domaintype
-           ]
-        ]);
-
-        $used = [];
-        while ($data = $iterator->next()) {
-            $used[$data['id']] = $data['id'];
+        if (!$used) {
+            return [];
         }
-        return $used;
+        $ids = \itsmng\Database\MappedReads::identifiers($DB, self::getTable(), 'id', [
+            'id' => $used, 'domaintypes_id' => $domaintype,
+        ]);
+        return array_combine($ids, $ids);
     }
 
     public static function getAdditionalMenuLinks()

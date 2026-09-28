@@ -96,6 +96,8 @@ jobs:
         run: php tests/database-portability/stock-concurrency.php tests/config
       - name: Consumable stock, summaries and alert selection
         run: php tests/database-portability/consumables.php tests/config
+      - name: Domain and certificate expiration
+        run: php tests/database-portability/expiration.php tests/config
       - name: Rack and enclosure placement queries
         run: php tests/database-portability/placements.php tests/config
       - name: Infrastructure relationships and placement

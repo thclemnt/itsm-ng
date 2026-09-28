@@ -117,19 +117,16 @@ class Domain extends DbTestCase
            getItemByTypeName('Entity', '_test_child_2', true)       => 1,
         ]);
 
-        $iterator = $DB->request(\Domain::expiredDomainsCriteria($entity->fields['id']));
-        $this->string($iterator->getSql())->isIdenticalTo(
-            "SELECT * FROM `glpi_domains` WHERE " .
-         "NOT (`date_expiration` IS NULL) AND `entities_id` = '{$entity->fields['id']}' AND `is_deleted` = '0' ".
-         "AND DATEDIFF(CURDATE(), `date_expiration`) > 1 AND DATEDIFF(CURDATE(), `date_expiration`) > 0"
-        );
-
-        $iterator = $DB->request(\Domain::closeExpiriesDomainsCriteria($entity->fields['id']));
-        $this->string($iterator->getSql())->isIdenticalTo(
-            "SELECT * FROM `glpi_domains` WHERE " .
-         "NOT (`date_expiration` IS NULL) AND `entities_id` = '{$entity->fields['id']}' AND `is_deleted` = '0' ".
-         "AND DATEDIFF(CURDATE(), `date_expiration`) > -7 AND DATEDIFF(CURDATE(), `date_expiration`) < 0"
-        );
+        $today = new \DateTimeImmutable('2026-09-28 16:30:00');
+        $this->array(\Domain::expiredDomainsCriteria($entity->fields['id'], $today)['WHERE'])->isEqualTo([
+            'entities_id' => $entity->fields['id'], 'is_deleted' => false,
+            'date_expiration' => ['<', '2026-09-27 00:00:00'],
+        ]);
+        $this->array(\Domain::closeExpiriesDomainsCriteria($entity->fields['id'], $today)['WHERE'])->isEqualTo([
+            'entities_id' => $entity->fields['id'], 'is_deleted' => false,
+            'date_expiration' => ['>=', '2026-09-29 00:00:00'],
+            ['date_expiration' => ['<', '2026-10-05 00:00:00']],
+        ]);
     }
 
     public function testTransfer()

@@ -616,3 +616,17 @@ Stock, reporting and application contracts also pass on both engines, and the
 PHP 8.3 consumable/cartridge suites pass 6 methods / 249 assertions. `Consumable`
 and `ConsumableItem` no longer execute direct adapter queries. The inventory now
 reports 1,435 legacy SQL sites; FK coverage remains 198 enforced relationships.
+
+### Domain and certificate expiration
+
+Domain expiration selection and dropdowns now use mapped reads. Calendar-day
+boundaries replace MySQL `DATEDIFF` expressions, preserving strict delays and
+excluding today from domain reminders. `CertificateRepository` uses typed dates
+and excludes certificates with an existing end-of-life alert. Notification
+sending remains in the application lifecycle.
+
+`expiration.php` passes on PostgreSQL and MariaDB: midnight/delay boundaries,
+NULL dates, entity scope, deleted/template records, alert deduplication and
+selectors. It tests selection without sending notifications. The PHP 8.3 domain
+and certificate suites pass 10 methods / 208 assertions. The audit now reports
+1,431 legacy SQL sites; FK coverage remains 198 enforced relationships.
