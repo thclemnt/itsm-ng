@@ -1617,7 +1617,6 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
         global $DB, $CFG_GLPI;
 
         $interv = [];
-        $ttask  = new self();
 
         if (
             !isset($options['begin']) || ($options['begin'] == 'NULL')
@@ -1638,110 +1637,38 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
         $begin     = $options['begin'];
         $end       = $options['end'];
 
-        // Get items to print
-        $ADDWHERE = [];
-
-        if ($whogroup === "mine") {
-            if (isset($_SESSION['glpigroups'])) {
-                $whogroup = $_SESSION['glpigroups'];
-            } elseif ($who > 0) {
-                $whogroup = array_column(Group_User::getUserGroups($who), 'id');
-            }
+        $groups = null;
+        if ($whogroup === 'mine') {
+            $groups = $_SESSION['glpigroups'] ?? ($who > 0 ? \itsmng\Database\MappedReads::identifiers($DB, Group_User::getTable(), 'groups_id', ['users_id' => $who]) : []);
+        } elseif (is_array($whogroup)) {
+            $groups = $whogroup;
+        } elseif ((int)$whogroup > 0) {
+            $groups = [(int)$whogroup];
         }
-
-        if ($who > 0) {
-            $ADDWHERE['glpi_projecttaskteams.itemtype'] = 'User';
-            $ADDWHERE['glpi_projecttaskteams.items_id'] = $who;
+        $profileScope = $groups === null && (int)$who <= 0
+            ? getEntitiesRestrictCriteria('glpi_profiles_users', '', $_SESSION['glpiactive_entity'], true)
+            : [];
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            $rows = (new \itsmng\Database\Repository\ProjectTaskRepository($em))->planning(
+                (int)$who,
+                $groups,
+                $profileScope,
+                new DateTime($begin),
+                new DateTime($end),
+                !empty($options['display_done_events']),
+                isset($options['not_planned'])
+            );
+        } finally {
+            $em->clear();
         }
-
-        if ($whogroup > 0) {
-            $ADDWHERE['glpi_projecttaskteams.itemtype'] = 'Group';
-            $ADDWHERE['glpi_projecttaskteams.items_id'] = $whogroup;
-        }
-
-        if (!count($ADDWHERE)) {
-            $ADDWHERE = [
-               'glpi_projecttaskteams.itemtype' => 'User',
-               'glpi_projecttaskteams.items_id' => new \QuerySubQuery([
-                  'SELECT'          => 'glpi_profiles_users.users_id',
-                  'DISTINCT'        => true,
-                  'FROM'            => 'glpi_profiles',
-                  'LEFT JOIN'       => [
-                     'glpi_profiles_users'   => [
-                        'ON' => [
-                           'glpi_profiles_users'   => 'profiles_id',
-                           'glpi_profiles'         => 'id'
-                        ]
-                     ]
-                  ],
-                  'WHERE'           => [
-                     'glpi_profiles.interface'  => 'central'
-                  ] + getEntitiesRestrictCriteria('glpi_profiles_users', '', $_SESSION['glpiactive_entity'], 1)
-               ])
-            ];
-        }
-
-        if (!isset($options['display_done_events']) || !$options['display_done_events']) {
-            $ADDWHERE['glpi_projecttasks.percent_done'] = ['<', 100];
-            $ADDWHERE[] = ['OR' => [
-               ['glpi_projectstates.is_finished'  => 0],
-               ['glpi_projectstates.is_finished'  => null]
-            ]];
-        }
-
-        $SELECT = [$ttask->getTable() . '.*'];
-        $WHERE = $ADDWHERE;
-        if (isset($options['not_planned'])) {
-            //not planned case
-            $bdate = "DATE_SUB(" . $DB->quoteName($ttask->getTable() . '.date') .
-               ", INTERVAL " . $DB->quoteName($ttask->getTable() . '.planned_duration') . " SECOND)";
-            $SELECT[] = new QueryExpression($bdate . ' AS ' . $DB->quoteName('notp_date'));
-            $edate = "DATE_ADD(" . $DB->quoteName($ttask->getTable() . '.date') .
-               ", INTERVAL " . $DB->quoteName($ttask->getTable() . '.planned_duration') . " SECOND)";
-            $SELECT[] = new QueryExpression($edate . ' AS ' . $DB->quoteName('notp_edate'));
-
-            $WHERE = [
-               $ttask->getTable() . '.plan_start_date'   => null,
-               $ttask->getTable() . '.plan_end_date'     => null,
-               $ttask->getTable() . '.planned_duration'  => ['>', 0],
-               //begin is replaced with creation tim minus duration
-               new QueryExpression($edate . " >= '" . $begin . "'"),
-               new QueryExpression($bdate . " <= '" . $end . "'")
-            ];
-        } else {
-            //std case: get tasks for current view dates
-            $WHERE[$ttask->getTable() . '.plan_end_date'] = ['>=', $begin];
-            $WHERE[$ttask->getTable() . '.plan_start_date'] = ['<=', $end];
-        }
-
-        $iterator = $DB->request([
-           'SELECT'       => $SELECT,
-           'FROM'         => 'glpi_projecttaskteams',
-           'INNER JOIN'   => [
-              $ttask->getTable() => [
-                 'ON' => [
-                    'glpi_projecttaskteams' => 'projecttasks_id',
-                    $ttask->getTable()      => 'id'
-                 ]
-              ]
-           ],
-           'LEFT JOIN'    => [
-              'glpi_projectstates' => [
-                 'ON' => [
-                    $ttask->getTable()   => 'projectstates_id',
-                    'glpi_projectstates' => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'        => $WHERE,
-           'ORDERBY'      => $ttask->getTable() . '.plan_start_date'
-        ]);
+        $groupKey = $groups === null ? '0' : implode(',', array_map('intval', $groups));
 
         $interv = [];
         $task   = new self();
 
-        if (count($iterator)) {
-            while ($data = $iterator->next()) {
+        if ($rows) {
+            foreach ($rows as $data) {
                 if ($task->getFromDB($data["id"])) {
                     if (isset($data['notp_date'])) {
                         $data['plan_start_date'] = $data['notp_date'];
@@ -1750,7 +1677,7 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
                     $key = $data["plan_start_date"] .
                            "$$$" . "ProjectTask" .
                            "$$$" . $data["id"] .
-                           "$$$" . $who . "$$$" . $whogroup;
+                           "$$$" . $who . "$$$" . $groupKey;
                     $interv[$key]['color']            = $options['color'];
                     $interv[$key]['event_type_color'] = $options['event_type_color'];
                     $interv[$key]['itemtype']         = 'ProjectTask';
@@ -1788,8 +1715,7 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
                     );
                     $interv[$key]["status"]   = $task->fields["percent_done"];
 
-                    $ttask->getFromDB($data["id"]);
-                    $interv[$key]["editable"] = $ttask->canUpdateItem();
+                    $interv[$key]["editable"] = $task->canUpdateItem();
                 }
             }
         }

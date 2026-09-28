@@ -125,6 +125,25 @@ try {
     check(!$DB->inTransaction(), 'Rollback clears transaction state.');
 
     $DB->beginTransaction();
+    $connection->insert($name, ['name' => 'outer savepoint']);
+    try {
+        $connection->transactional(static function () use ($connection, $name): void {
+            $connection->insert($name, ['name' => 'inner savepoint']);
+            throw new RuntimeException('Nested rollback probe');
+        });
+    } catch (RuntimeException $error) {
+        if ($error->getMessage() !== 'Nested rollback probe') {
+            throw $error;
+        }
+    }
+    check($DB->inTransaction() && $connection->isTransactionActive(), 'Savepoint rollback preserves the shared transaction state.');
+    check((int)$connection->fetchOne("SELECT COUNT(*) FROM $name WHERE name = 'outer savepoint'") === 1
+        && (int)$connection->fetchOne("SELECT COUNT(*) FROM $name WHERE name = 'inner savepoint'") === 0, 'Nested rollback preserves outer writes only.');
+    $DB->rollBack();
+    check((int)$connection->fetchOne("SELECT COUNT(*) FROM $name WHERE name = 'outer savepoint'") === 0, 'Outer rollback remains effective after a failed nested operation.');
+
+
+    $DB->beginTransaction();
     $DB->insert($name, ['name' => 'committed']);
     check($DB->commit(), 'Commit.');
     check((int)$connection->fetchOne("SELECT COUNT(*) FROM $name WHERE name = 'committed'") === 1, 'Commit persists.');

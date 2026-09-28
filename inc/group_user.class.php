@@ -990,115 +990,44 @@ class Group_User extends CommonDBRelation
     }
 
 
-    public function post_addItem()
+    private function updatePlanningSubscriptions(bool $add): void
     {
         global $DB;
 
-        // add new user to plannings
-        $groups_id  = $this->fields['groups_id'];
-        $planning_k = 'group_' . $groups_id . '_users';
-
-        // find users with the current group in their plannings
-        $user_inst = new User();
-        $users = $user_inst->find([
-           'plannings' => ['LIKE', "%$planning_k%"]
-        ]);
-
-        // add the new user to found plannings
-        $query = $DB->buildUpdate(
-            User::getTable(),
-            [
-              'plannings' => new QueryParam(),
-            ],
-            [
-              'id'        => new QueryParam()
-            ]
-        );
-        $stmt = $DB->prepare($query);
-        $in_transaction = $DB->inTransaction();
-        if (!$in_transaction) {
-            $DB->beginTransaction();
-        }
-        foreach ($users as $user) {
-            $users_id  = $user['id'];
-            $plannings = importArrayFromDB($user['plannings']);
-            $nb_users  = count($plannings['plannings'][$planning_k]['users']);
-
-            // add the planning for the user
-            $plannings['plannings'][$planning_k]['users']['user_' . $this->fields['users_id']] = [
-               'color'   => Planning::getPaletteColor('bg', $nb_users),
-               'display' => true,
-               'type'    => 'user'
-            ];
-
-            // if current user logged, append also to its session
-            if ($users_id == Session::getLoginUserID()) {
-                $_SESSION['glpi_plannings'] = $plannings;
+        $member = 'user_' . $this->fields['users_id'];
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            $session = (new \itsmng\Database\Repository\PlanningRepository($em))->updateGroupSubscriptions(
+                (int)$this->fields['groups_id'],
+                (int)Session::getLoginUserID(),
+                static function (array $settings, string $key) use ($add, $member): array {
+                    if ($add) {
+                        $settings['plannings'][$key]['users'][$member] = [
+                            'color' => Planning::getPaletteColor('bg', count($settings['plannings'][$key]['users'])),
+                            'display' => true,
+                            'type' => 'user',
+                        ];
+                    } else {
+                        unset($settings['plannings'][$key]['users'][$member]);
+                    }
+                    return $settings;
+                }
+            );
+            if ($session !== null) {
+                $_SESSION['glpi_plannings'] = $session;
             }
-
-            // save the planning completed to db
-            $json_plannings = exportArrayToDB($plannings);
-            $stmt->bind_param('si', $json_plannings, $users_id);
-            $stmt->execute();
+        } finally {
+            $em->clear();
         }
-
-        if (!$in_transaction) {
-            $DB->commit();
-        }
-        $stmt->close();
     }
 
+    public function post_addItem()
+    {
+        $this->updatePlanningSubscriptions(true);
+    }
 
     public function post_purgeItem()
     {
-        global $DB;
-
-        // remove user from plannings
-        $groups_id  = $this->fields['groups_id'];
-        $planning_k = 'group_' . $groups_id . '_users';
-
-        // find users with the current group in their plannings
-        $user_inst = new User();
-        $users = $user_inst->find([
-           'plannings' => ['LIKE', "%$planning_k%"]
-        ]);
-
-        // remove the deleted user to found plannings
-        $query = $DB->buildUpdate(
-            User::getTable(),
-            [
-              'plannings' => new QueryParam(),
-            ],
-            [
-              'id'        => new QueryParam()
-            ]
-        );
-        $stmt = $DB->prepare($query);
-        $in_transaction = $DB->inTransaction();
-        if (!$in_transaction) {
-            $DB->beginTransaction();
-        }
-        foreach ($users as $user) {
-            $users_id  = $user['id'];
-            $plannings = importArrayFromDB($user['plannings']);
-
-            // delete planning for the user
-            unset($plannings['plannings'][$planning_k]['users']['user_' . $this->fields['users_id']]);
-
-            // if current user logged, append also to its session
-            if ($users_id == Session::getLoginUserID()) {
-                $_SESSION['glpi_plannings'] = $plannings;
-            }
-
-            // save the planning completed to db
-            $json_plannings = exportArrayToDB($plannings);
-            $stmt->bind_param('si', $json_plannings, $users_id);
-            $stmt->execute();
-        }
-
-        if (!$in_transaction) {
-            $DB->commit();
-        }
-        $stmt->close();
+        $this->updatePlanningSubscriptions(false);
     }
 }

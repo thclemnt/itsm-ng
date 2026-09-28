@@ -4,8 +4,10 @@
 
 namespace itsmng\Database\Repository;
 
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Entity\DropdownTranslation;
+use itsmng\Database\Entity\ProfileUser;
 use itsmng\Database\Entity\ProjectState;
 use itsmng\Database\Entity\ProjectTask;
 use itsmng\Database\Entity\ProjectTaskType;
@@ -18,6 +20,56 @@ final class ProjectTaskRepository
 {
     public function __construct(private EntityManager $em)
     {
+    }
+
+    /** Explicit groups take precedence; null selects the user or eligible central-profile users. */
+    public function planning(int $user, ?array $groups, array $profileScope, \DateTimeInterface $begin, \DateTimeInterface $end, bool $showDone, bool $unplanned): array
+    {
+        if ($groups === [] || $begin > $end) {
+            return [];
+        }
+        $query = $this->em->createQueryBuilder()->select('task')->from(ProjectTask::class, 'task');
+        if ($groups !== null) {
+            $actor = 'team.itemtype = :actor_type AND team.items_id IN (:actors)';
+            $query->setParameter('actor_type', 'Group')->setParameter('actors', array_values(array_map('intval', $groups)));
+        } elseif ($user > 0) {
+            $actor = 'team.itemtype = :actor_type AND team.items_id = :actor';
+            $query->setParameter('actor_type', 'User')->setParameter('actor', $user, Types::INTEGER);
+        } else {
+            $scope = new RecordCriteria($query, $this->em->getClassMetadata(ProfileUser::class));
+            $actor = 'team.itemtype = :actor_type AND team.items_id IN (SELECT IDENTITY(r.users) FROM ' . ProfileUser::class . ' r JOIN r.profiles profile WHERE profile.interface = :interface AND ' . $scope->where($profileScope) . ')';
+            $query->setParameter('actor_type', 'User')->setParameter('interface', 'central');
+        }
+        $query->where('EXISTS (SELECT team.id FROM ' . ProjectTaskTeam::class . ' team WHERE IDENTITY(team.projecttasks) = task.id AND ' . $actor . ')');
+        if (!$showDone) {
+            $query->leftJoin(ProjectState::class, 'state', 'WITH', 'state.id = task.projectstates_id')
+                ->andWhere('task.percent_done < 100 AND (state.is_finished IS NULL OR state.is_finished = :finished)')
+                ->setParameter('finished', false, Types::BOOLEAN);
+        }
+        if ($unplanned) {
+            $query->andWhere('task.plan_start_date IS NULL AND task.plan_end_date IS NULL AND task.planned_duration > 0')
+                ->andWhere("DATE_ADD(task.date, task.planned_duration, 'SECOND') >= :begin")
+                ->andWhere("DATE_SUB(task.date, task.planned_duration, 'SECOND') <= :end");
+        } else {
+            $query->andWhere('task.plan_end_date >= :begin AND task.plan_start_date <= :end');
+        }
+        $query->setParameter('begin', \DateTime::createFromInterface($begin), Types::DATETIME_MUTABLE)
+            ->setParameter('end', \DateTime::createFromInterface($end), Types::DATETIME_MUTABLE)
+            ->orderBy('task.plan_start_date')->addOrderBy('task.id');
+        $records = new RecordRepository($this->em);
+        $rows = [];
+        foreach ($query->getQuery()->toIterable() as $task) {
+            $row = $records->toRow($task);
+            if ($unplanned) {
+                // Typed hydration supplies the creation date; presentation receives the legacy date format.
+                $creation = \DateTimeImmutable::createFromInterface($task->date);
+                $row['notp_date'] = $creation->setTimestamp($creation->getTimestamp() - $task->planned_duration)->format('Y-m-d H:i:s');
+                $row['notp_edate'] = $creation->setTimestamp($creation->getTimestamp() + $task->planned_duration)->format('Y-m-d H:i:s');
+            }
+            $rows[] = $row;
+            $this->em->detach($task);
+        }
+        return $rows;
     }
 
     public function forTeam(array $criteria): array

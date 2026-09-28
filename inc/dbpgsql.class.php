@@ -435,7 +435,7 @@ SQL, [$this->dbschema, $table]);
 
     public function inTransaction()
     {
-        return in_array(pg_transaction_status($this->dbh), [PGSQL_TRANSACTION_INTRANS, PGSQL_TRANSACTION_INERROR], true);
+        return $this->getDoctrineConnection()->isTransactionActive();
     }
 
     public function close()

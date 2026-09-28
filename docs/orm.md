@@ -289,3 +289,31 @@ checklist ownership, restricted team projections, translation fallback, joined
 sorting, duration aggregation and calendar export. Both database jobs run it in
 CI. The Project model no longer executes direct SELECT requests; its search-option
 SQL expression and the task planning query remain pending conversion.
+
+Project planning now uses mapped task/team/profile queries and Doctrine date
+arithmetic for both planned overlap and creation-date/duration windows. Explicit
+groups retain precedence over a user selector; an empty “mine” group selection
+returns no events. The default selector includes central-profile users in the
+active entity or a recursive ancestor profile assignment. Membership filtering
+uses EXISTS, so several matching teams cannot duplicate an event.
+
+Unplanned tasks now retain actor and completion filters instead of replacing them
+with date predicates. The event formatter still clips bounds to the requested
+window and evaluates editability through the existing model. Group event keys
+contain their IDs rather than PHP's array-to-string result. `ProjectTask` no longer
+contains direct adapter SQL requests or native date SQL expressions.
+
+Group membership hooks update saved calendar subscriptions through
+`PlanningRepository`. It locks subscriber rows inside the shared transaction,
+checks the actual subscription key, preserves unrelated settings, and binds the
+resulting JSON through DQL. A failure rolls back the whole subscription batch;
+only the current subscriber's session is updated after that operation succeeds.
+PostgreSQL's adapter now reports DBAL's transaction state, avoiding a transient
+native-driver status after savepoint rollback. The transport contract explicitly
+checks nested rollback and preservation of outer writes on both providers.
+
+`project-planning.php` covers inclusive bounds, clipping, unplanned windows,
+completion filters, user/group/profile scopes, duplicate memberships, subscription
+add/remove hooks, malformed/lookalike settings and rollback. CI runs the suite on
+both engines. The existing PHP 8.3 ProjectTask, Project, Group_User and Planning
+suites pass 10 methods with 436 assertions.
