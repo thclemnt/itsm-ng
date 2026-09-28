@@ -393,11 +393,10 @@ class KnowbaseItemTranslation extends CommonDBChild
     **/
     public static function getNumberOfTranslationsForItem($item)
     {
+        global $DB;
 
-        return countElementsInTable(
-            getTableForItemType(__CLASS__),
-            ['knowbaseitems_id' => $item->getID()]
-        );
+        return (new \itsmng\Database\Repository\KnowledgeBaseRepository(\itsmng\Database\Orm::create($DB)))
+            ->translationCount((int)$item->getID());
     }
 
 
@@ -412,17 +411,8 @@ class KnowbaseItemTranslation extends CommonDBChild
     {
         global $DB;
 
-        $tab = [];
-
-        $iterator = $DB->request([
-           'FROM'   => getTableForItemType(__CLASS__),
-           'WHERE'  => ['knowbaseitems_id' => $item->getID()]
-        ]);
-
-        while ($data = $iterator->next()) {
-            $tab[$data['language']] = $data['language'];
-        }
-        return $tab;
+        return (new \itsmng\Database\Repository\KnowledgeBaseRepository(\itsmng\Database\Orm::create($DB)))
+            ->translatedLanguages((int)$item->getID());
     }
 
     public function pre_updateInDB()

@@ -101,7 +101,7 @@ relationship candidates, polymorphic references and legacy SQL/driver call sites
 This is an intentionally incomplete static inventory: it cannot prove discovery of
 serialized references, dynamic SQL or alternate connection variables. Each
 candidate needs semantic review before installing its FK. The current inventory
-contains 825 candidate reference columns: 96 enforced, 666 pending, 62 polymorphic
+contains 825 candidate reference columns: 100 enforced, 662 pending, 62 polymorphic
 and one ambiguous (`users.auths_id`, whose target depends on authentication type).
 
 `tools/database/generate-mappings.php` is a development scaffold for explicit
@@ -141,3 +141,21 @@ compares structured predicate results with the existing query API and verifies
 that supported model reads bypass the legacy SQL adapter. The all-table write
 contract now exercises 341 tables with mutable scalar fields, with the remaining
 tables covered by insert/read/delete and association lifecycle tests.
+
+Knowledge-base comments, revisions and linked-item records now have article
+foreign keys. The nullable parent-comment reference is a mapped self association
+with its own FK. Deleting a comment moves its direct replies to that comment's
+parent (or the root), preserving other authors' replies without leaving orphans.
+`KnowledgeBaseRepository` reads a comment tree in one query and assembles it in
+memory, detects reachable ancestry cycles, and applies revision pagination in the
+database. Revision numbers, tab counts, translation-language lists, FAQ publication
+and atomic view increments also use mapped queries. Existing access checks remain
+in the model. Article search/visibility SQL is still pending conversion.
+
+`knowledgebase.php` checks these behaviors on both engines. The FK contract builds
+valid dependency graphs before attempting each invalid reference, and catches
+only errors from the intended mutation; fixture failures cannot count as evidence
+of FK enforcement. All 100 FK checks pass, alongside all-table ORM writes and
+parent purge contracts (572 PostgreSQL / 174 MariaDB database assertions).
+Fresh installs pass on both providers, and the PHP 8.3 knowledge-base model suites
+pass 20 methods with 404 assertions under FK enforcement.

@@ -11,6 +11,7 @@ if (!is_file($directory . '/config_db.php')) {
 define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
+require __DIR__ . '/FixtureRecords.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
     exit(1);
@@ -141,15 +142,16 @@ try {
                         $references[$reference] = 0;
                         continue;
                     }
-                    $DB->insertOrDie($target, $DB->fieldExists($target, 'name') ? ['name' => 'Foreign key contract parent'] : ['comment' => 'Foreign key fixture']);
-                    $references[$reference] = $DB->insertId();
+                    $references[$reference] = (new FixtureRecords($DB))->create($target);
                 }
-                $DB->insertOrDie($child, $references);
-                $childId = $DB->insertId();
-                $connection->update($child, [$column => 2147483647], ['id' => $childId]);
-                throw new LogicException('Missing foreign-key enforcement: ' . $child . '.' . $column);
-            } catch (ForeignKeyConstraintViolationException $e) {
-                check(true, 'Orphan rejected for ' . $child . '.' . $column);
+                $childId = (new FixtureRecords($DB))->create($child, $references);
+                // Only failure of this exact mutation proves this constraint works.
+                try {
+                    $connection->update($child, [$column => 2147483647], ['id' => $childId]);
+                    throw new LogicException('Missing foreign-key enforcement: ' . $child . '.' . $column);
+                } catch (ForeignKeyConstraintViolationException $e) {
+                    check(true, 'Orphan rejected for ' . $child . '.' . $column);
+                }
             } finally {
                 $connection->rollBack();
             }

@@ -36,7 +36,13 @@ try {
         $metadata = $em->getClassMetadata(EntityRegistry::TABLES[$table]);
         $values = [];
         foreach (ForeignKeys::RELATIONS[$table] ?? [] as $column => $parent) {
-            $values[$column] = $parent === 'glpi_entities' ? 0 : $create($parent);
+            $nullable = false;
+            foreach ($metadata->associationMappings as $mapping) {
+                if ($mapping->joinColumns[0]->name === $column) {
+                    $nullable = $mapping->joinColumns[0]->nullable;
+                }
+            }
+            $values[$column] = $nullable ? null : ($parent === 'glpi_entities' ? 0 : $create($parent));
         }
         if ($metadata->hasField('name')) {
             $values['name'] = $stamp;

@@ -80,6 +80,8 @@ jobs:
         run: php tests/database-portability/orm-writes.php tests/config
       - name: Test shared ORM criteria and typed predicates
         run: php tests/database-portability/orm-criteria.php tests/config
+      - name: Test mapped knowledge-base trees and lifecycles
+        run: php tests/database-portability/knowledgebase.php tests/config
       - name: Compare ORM and adapter record contracts
         run: php tests/database-portability/orm-records.php tests/config
       - name: Test scoped reporting and monthly statistics

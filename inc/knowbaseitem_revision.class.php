@@ -46,6 +46,8 @@ class KnowbaseItem_Revision extends CommonDBTM
 
     public function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)
     {
+        global $DB;
+
         if (!$item->canUpdateItem()) {
             return '';
         }
@@ -65,10 +67,8 @@ class KnowbaseItem_Revision extends CommonDBTM
                 ];
             }
 
-            $nb = countElementsInTable(
-                'glpi_knowbaseitems_revisions',
-                $where
-            );
+            $nb = (new \itsmng\Database\Repository\KnowledgeBaseRepository(\itsmng\Database\Orm::create($DB)))
+                ->revisionCount((int)$where['knowbaseitems_id'], $where['language']);
         }
         return self::createTabEntry(self::getTypeName($nb), $nb);
     }
@@ -110,10 +110,8 @@ class KnowbaseItem_Revision extends CommonDBTM
             ];
         }
 
-        $number = countElementsInTable(
-            'glpi_knowbaseitems_revisions',
-            $where
-        );
+        $repository = new \itsmng\Database\Repository\KnowledgeBaseRepository(\itsmng\Database\Orm::create($DB));
+        $number = $repository->revisionCount((int)$where['knowbaseitems_id'], $where['language']);
 
         // No revisions in database
         if ($number < 1) {
@@ -154,10 +152,7 @@ class KnowbaseItem_Revision extends CommonDBTM
                 "<td></td>" .
                 "</tr>";
 
-        $revisions = $DB->request(
-            'glpi_knowbaseitems_revisions',
-            $where + ['ORDER' => 'id DESC']
-        );
+        $revisions = $repository->revisions((int)$where['knowbaseitems_id'], $where['language'], (int)$_SESSION['glpilist_limit'], $start);
 
         $is_checked = true;
         foreach ($revisions as $revision) {
@@ -345,23 +340,7 @@ class KnowbaseItem_Revision extends CommonDBTM
     {
         global $DB;
 
-        $result = $DB->request([
-           'SELECT' => ['MAX' => 'revision AS revision'],
-           'FROM'   => 'glpi_knowbaseitems_revisions',
-           'WHERE'  => [
-              'knowbaseitems_id'   => $this->fields['knowbaseitems_id'],
-              'language'           => $this->fields['language']
-           ]
-        ])->next();
-
-        $rev = $result['revision'];
-        if ($rev === null) {
-            //no revisions yet
-            $rev = 1;
-        } else {
-            ++$rev;
-        }
-
-        return $rev;
+        return (new \itsmng\Database\Repository\KnowledgeBaseRepository(\itsmng\Database\Orm::create($DB)))
+            ->nextRevision((int)$this->fields['knowbaseitems_id'], \itsmng\Database\LegacyValues::decode($this->fields['language']));
     }
 }

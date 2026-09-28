@@ -1000,15 +1000,8 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
     {
         global $DB;
 
-        $DB->update(
-            $this->getTable(),
-            [
-              'is_faq' => 1
-            ],
-            [
-              'id' => $this->fields['id']
-            ]
-        );
+        (new \itsmng\Database\Repository\KnowledgeBaseRepository(\itsmng\Database\Orm::create($DB)))
+            ->publish((int)$this->getID());
     }
 
     /**
@@ -1020,16 +1013,8 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
     {
         global $DB;
 
-        //update counter view
-        $DB->update(
-            'glpi_knowbaseitems',
-            [
-              'view'   => new \QueryExpression($DB->quoteName('view') . ' + 1')
-            ],
-            [
-              'id' => $this->getID()
-            ]
-        );
+        (new \itsmng\Database\Repository\KnowledgeBaseRepository(\itsmng\Database\Orm::create($DB)))
+            ->incrementViews((int)$this->getID());
     }
 
 

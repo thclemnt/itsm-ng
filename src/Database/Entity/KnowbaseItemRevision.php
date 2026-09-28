@@ -11,13 +11,14 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\UniqueConstraint(name: 'knowbaseitems_revisions_unicity', columns: ['knowbaseitems_id', 'revision', 'language'])]
 class KnowbaseItemRevision
 {
+    #[ORM\ManyToOne(targetEntity: KnowbaseItem::class)]
+    #[ORM\JoinColumn(name: 'knowbaseitems_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?KnowbaseItem $knowbaseitems = null;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
-
-    #[ORM\Column(name: '`knowbaseitems_id`', type: 'integer', nullable: false)]
-    public int $knowbaseitems_id = 0;
 
     #[ORM\Column(name: '`revision`', type: 'integer', nullable: false)]
     public int $revision = 0;

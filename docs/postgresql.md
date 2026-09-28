@@ -169,3 +169,13 @@ relationship candidates, 62 polymorphic references and one ambiguous reference;
 full query and relationship conversion remains unfinished.
 The shared CommonDBTM suite also passes 19 methods and 616 assertions with these
 constraints enabled. HTTP report routes pass on both engines after the read change.
+
+The knowledge-base stage raises FK coverage to 100, including a nullable
+parent-comment self association. Its mapped repository replaces comment-tree,
+revision, translation/count, FAQ-flag and view-counter queries. Replies remain
+visible when a parent comment is purged. Both providers pass fresh installation,
+the stricter per-constraint rejection contract (572 PostgreSQL / 174 MariaDB
+assertions), all-table persistence and knowledge-base workflow checks. The PHP 8.3
+knowledge-base suites pass 20 methods and 404 assertions. The remaining inventory
+contains 662 pending relationship candidates; article search and visibility SQL
+are among the queries still awaiting migration.

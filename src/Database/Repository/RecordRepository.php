@@ -47,11 +47,11 @@ final class RecordRepository
         return $rows;
     }
 
-    public function countMatching(string $table, array $criteria): int
+    public function countMatching(string $table, array $criteria, bool $legacyValues = true): int
     {
         $metadata = $this->em->getClassMetadata(EntityRegistry::TABLES[$table]);
         $query = $this->em->createQueryBuilder()->select('COUNT(r.id)')->from($metadata->name, 'r');
-        $query->where((new \itsmng\Database\RecordCriteria($query, $metadata))->where($criteria));
+        $query->where((new \itsmng\Database\RecordCriteria($query, $metadata, $legacyValues))->where($criteria));
         return (int)$query->getQuery()->getSingleScalarResult();
     }
 

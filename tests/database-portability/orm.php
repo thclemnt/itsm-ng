@@ -9,6 +9,7 @@ if (!is_file($directory . '/config_db.php')) {
 define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
+require __DIR__ . '/FixtureRecords.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
     exit(1);
@@ -62,8 +63,7 @@ try {
             } elseif ($table === 'glpi_profiles') {
                 $parents[$table] = (new Profile())->add($values);
             } else {
-                $DB->insertOrDie($table, $values);
-                $parents[$table] = $DB->insertId();
+                $parents[$table] = (new FixtureRecords($DB))->create($table, $values);
             }
         }
         return $parents[$table];

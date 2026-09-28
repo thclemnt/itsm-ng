@@ -111,6 +111,8 @@ class KnowbaseItem_Comment extends CommonDBTM
 
     public function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)
     {
+        global $DB;
+
         if (!$item->canUpdateItem()) {
             return '';
         }
@@ -130,10 +132,8 @@ class KnowbaseItem_Comment extends CommonDBTM
                 ];
             }
 
-            $nb = countElementsInTable(
-                'glpi_knowbaseitems_comments',
-                $where
-            );
+            $nb = (new \itsmng\Database\Repository\KnowledgeBaseRepository(\itsmng\Database\Orm::create($DB)))
+                ->commentCount((int)$where['knowbaseitems_id'], $where['language']);
         }
         return self::createTabEntry(self::getTypeName($nb), $nb);
     }
@@ -152,7 +152,7 @@ class KnowbaseItem_Comment extends CommonDBTM
     **/
     public static function showForItem(CommonDBTM $item, $withtemplate = 0)
     {
-        global $CFG_GLPI;
+        global $DB, $CFG_GLPI;
 
         // Total Number of comments
         if ($item->getType() == KnowbaseItem::getType()) {
@@ -171,10 +171,8 @@ class KnowbaseItem_Comment extends CommonDBTM
         $kbitem = new KnowbaseItem();
         $kbitem->getFromDB($kbitem_id);
 
-        $number = countElementsInTable(
-            'glpi_knowbaseitems_comments',
-            $where
-        );
+        $number = (new \itsmng\Database\Repository\KnowledgeBaseRepository(\itsmng\Database\Orm::create($DB)))
+            ->commentCount((int)$where['knowbaseitems_id'], $where['language']);
 
         $cancomment = $kbitem->canComment();
         if ($cancomment) {
@@ -303,24 +301,17 @@ class KnowbaseItem_Comment extends CommonDBTM
     {
         global $DB;
 
-        $where = [
-           'knowbaseitems_id'  => $kbitem_id,
-           'language'          => $lang,
-           'parent_comment_id' => $parent
-        ];
+        return (new \itsmng\Database\Repository\KnowledgeBaseRepository(\itsmng\Database\Orm::create($DB)))
+            ->comments((int)$kbitem_id, \itsmng\Database\LegacyValues::decode($lang), $parent === null ? null : (int)$parent);
+    }
 
-        $db_comments = $DB->request(
-            'glpi_knowbaseitems_comments',
-            $where + ['ORDER' => 'id ASC']
-        );
+    public function cleanDBonPurge()
+    {
+        global $DB;
 
-        $comments = [];
-        foreach ($db_comments as $db_comment) {
-            $db_comment['answers'] = self::getCommentsForKbItem($kbitem_id, $lang, $db_comment['id']);
-            $comments[] = $db_comment;
-        }
-
-        return $comments;
+        // Keep other authors' replies visible at the deleted comment's level.
+        (new \itsmng\Database\Repository\KnowledgeBaseRepository(\itsmng\Database\Orm::create($DB)))
+            ->preserveReplies((int)$this->getID(), $this->fields['parent_comment_id']);
     }
 
     /**

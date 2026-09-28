@@ -12,8 +12,8 @@ use Doctrine\DBAL\Schema\Schema;
 final class ForeignKeys
 {
     /**
-     * Required, non-polymorphic associations whose parent purge hooks remove
-     * their children before deletion. RESTRICT keeps those hooks authoritative.
+     * Non-polymorphic associations with valid targets or SQL NULL. Parent purge
+     * hooks remove or reassign children; RESTRICT keeps those hooks authoritative.
      * users_id/suppliers_id on ticket actors are excluded (anonymous email actors).
      * entities_id=0 is a real root entity, not an absent relationship.
      */
@@ -82,6 +82,9 @@ final class ForeignKeys
         'glpi_savedsearches_users' => ['savedsearches_id' => 'glpi_savedsearches', 'users_id' => 'glpi_users'],
         'glpi_knowbaseitemtranslations' => ['knowbaseitems_id' => 'glpi_knowbaseitems'],
         'glpi_remindertranslations' => ['reminders_id' => 'glpi_reminders'],
+        'glpi_knowbaseitems_comments' => ['knowbaseitems_id' => 'glpi_knowbaseitems', 'parent_comment_id' => 'glpi_knowbaseitems_comments'],
+        'glpi_knowbaseitems_revisions' => ['knowbaseitems_id' => 'glpi_knowbaseitems'],
+        'glpi_knowbaseitems_items' => ['knowbaseitems_id' => 'glpi_knowbaseitems'],
     ];
 
     public static function name(string $table, string $column): string
