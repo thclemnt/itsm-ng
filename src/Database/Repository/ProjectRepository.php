@@ -10,12 +10,63 @@ use Doctrine\ORM\QueryBuilder;
 use itsmng\Database\Entity\Project;
 use itsmng\Database\Entity\ProjectTask;
 use itsmng\Database\Entity\ProjectTaskTicket;
+use itsmng\Database\Entity\ProjectTeam;
+use itsmng\Database\Entity\ProjectState;
+use itsmng\Database\RecordCriteria;
+use itsmng\Database\EntityRegistry;
 
 /** Project calculations through mapped associations, without per-task aggregate queries. */
 final class ProjectRepository
 {
     public function __construct(private EntityManager $em)
     {
+    }
+
+    /** Visibility is an EXISTS predicate so several team memberships never duplicate a project. */
+    public function visibleProjects(array $criteria, bool $readAll, int $user, array $groups, bool $active): array
+    {
+        $query = $this->em->createQueryBuilder()->select('r', 'state.is_finished AS is_finished')
+            ->from(Project::class, 'r')->leftJoin(ProjectState::class, 'state', 'WITH', 'state.id = r.projectstates_id');
+        $compiler = new RecordCriteria($query, $this->em->getClassMetadata(Project::class));
+        $query->where($compiler->where($criteria));
+        if ($active) {
+            $query->andWhere('r.is_deleted = :deleted')->setParameter('deleted', false, Types::BOOLEAN)
+                ->andWhere('(state.is_finished IS NULL OR state.is_finished = :finished)')->setParameter('finished', false, Types::BOOLEAN);
+        }
+        if (!$readAll) {
+            $ownership = ['r.users_id = :viewer'];
+            $membership = "(team.itemtype = :user_type AND team.items_id = :viewer)";
+            $query->setParameter('viewer', $user)->setParameter('user_type', 'User');
+            if ($groups) {
+                $ownership[] = 'r.groups_id IN (:groups)';
+                $membership .= ' OR (team.itemtype = :group_type AND team.items_id IN (:groups))';
+                $query->setParameter('groups', array_values(array_map('intval', $groups)))->setParameter('group_type', 'Group');
+            }
+            $ownership[] = 'EXISTS (SELECT team.id FROM ' . ProjectTeam::class . ' team WHERE IDENTITY(team.projects) = r.id AND (' . $membership . '))';
+            $query->andWhere('(' . implode(' OR ', $ownership) . ')');
+        }
+        $rows = [];
+        $records = new RecordRepository($this->em);
+        foreach ($query->orderBy('r.id')->getQuery()->toIterable() as $result) {
+            $project = $result[0];
+            $row = $records->toRow($project);
+            $row['is_finished'] = $result['is_finished'] === null ? null : (int)$result['is_finished'];
+            $rows[$row['id']] = $row;
+            $this->em->detach($project);
+        }
+        return $rows;
+    }
+
+    public function teamMembers(string $table, array $ids, array $fields): array
+    {
+        if (!$ids) {
+            return [];
+        }
+        $class = EntityRegistry::TABLES[$table];
+        $query = $this->em->createQueryBuilder()->from($class, 'r');
+        $compiler = new RecordCriteria($query, $this->em->getClassMetadata($class));
+        $query->select(...array_map($compiler->column(...), $fields));
+        return $query->where($compiler->where(['id' => array_values(array_unique($ids))]))->getQuery()->getScalarResult();
     }
 
     /** Preserve a ticket entry per task association, including tickets shared by tasks. */

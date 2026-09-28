@@ -1059,39 +1059,7 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
            'fname'            => __('Father')
         ];
 
-        $criteria = [
-           'SELECT' => [
-              'glpi_projecttasks.*',
-              'glpi_projecttasktypes.name AS tname',
-              'glpi_projectstates.name AS sname',
-              'glpi_projectstates.color',
-              'father.name AS fname',
-              'father.id AS fID'
-           ],
-           'FROM'   => 'glpi_projecttasks',
-           'LEFT JOIN' => [
-             'glpi_projecttasktypes'        => [
-                 'ON'  => [
-                    'glpi_projecttasktypes' => 'id',
-                    'glpi_projecttasks'     => 'projecttasktypes_id'
-                 ]
-              ],
-              'glpi_projectstates'          => [
-                 'ON'  => [
-                    'glpi_projectstates' => 'id',
-                    'glpi_projecttasks'  => 'projectstates_id'
-                 ]
-              ],
-              'glpi_projecttasks AS father' => [
-                 'ON'  => [
-                    'father' => 'id',
-                    'glpi_projecttasks'  => 'projecttasks_id'
-                 ]
-              ]
-           ],
-           'WHERE'  => [], //$where
-           'ORDERBY'   => [] // $sort $order";
-        ];
+        $criteria = ['WHERE' => [], 'ORDERBY' => []];
 
         if (isset($_GET["order"]) && ($_GET["order"] == "DESC")) {
             $order = "DESC";
@@ -1155,38 +1123,6 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
             echo "</div>";
         }
 
-        if (Session::haveTranslations('ProjectTaskType', 'name')) {
-            $criteria['SELECT'][] = 'namet2.value AS transname2';
-            $criteria['LEFT JOIN']['glpi_dropdowntranslations AS namet2'] = [
-               'ON'  => [
-                  'namet2'             => 'items_id',
-                  'glpi_projecttasks'  => 'projecttasktypes_id', [
-                     'AND' => [
-                        'namet2.itemtype' => 'ProjectTaskType',
-                        'namet2.language' => $_SESSION['glpilanguage'],
-                        'namet2.field'    => 'name'
-                     ]
-                  ]
-               ]
-            ];
-        }
-
-        if (Session::haveTranslations('ProjectState', 'name')) {
-            $criteria['SELECT'][] = 'namet3.value AS transname3';
-            $criteria['LEFT JOIN']['glpi_dropdowntranslations AS namet3'] = [
-               'ON'  => [
-                  'namet3'             => 'items_id',
-                  'glpi_projectstates' => 'id', [
-                     'AND' => [
-                        'namet3.itemtype' => 'ProjectState',
-                        'namet3.language' => $_SESSION['glpilanguage'],
-                        'namet3.field'    => 'name'
-                     ]
-                  ]
-               ]
-            ];
-        }
-
         Session::initNavigateListItems(
             'ProjectTask',
             //TRANS : %1$s is the itemtype name,
@@ -1198,8 +1134,19 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
             )
         );
 
-        $iterator = $DB->request($criteria);
-        if (count($criteria)) {
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            $rows = (new \itsmng\Database\Repository\ProjectTaskRepository($em))->listing(
+                $criteria['WHERE'],
+                $criteria['ORDERBY'],
+                Session::haveTranslations('ProjectTaskType', 'name') ? $_SESSION['glpilanguage'] : null,
+                Session::haveTranslations('ProjectState', 'name') ? $_SESSION['glpilanguage'] : null
+            );
+            $durations = (new \itsmng\Database\Repository\ProjectTaskRepository($em))->effectiveDurations(array_column($rows, 'id'));
+        } finally {
+            $em->clear();
+        }
+        if ($rows) {
             echo "<table class='tab_cadre_fixehov' aria-label='Criteria'>";
 
             $header = '<tr>';
@@ -1216,7 +1163,7 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
             $header .= "</tr>\n";
             echo $header;
 
-            while ($data = $iterator->next()) {
+            foreach ($rows as $data) {
                 Session::addToNavigateListItems('ProjectTask', $data['id']);
                 $rand = mt_rand();
                 echo "<tr class='tab_bg_2'>";
@@ -1247,7 +1194,7 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
                 echo "<td>" . Html::convDateTime($data['plan_end_date']) . "</td>";
                 echo "<td>" . Html::timestampToString($data['planned_duration'], false) . "</td>";
                 echo "<td>" . Html::timestampToString(
-                    self::getTotalEffectiveDuration($data['id']),
+                    $durations[$data['id']] ?? 0,
                     false
                 ) . "</td>";
                 echo "<td>";
@@ -2005,23 +1952,15 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
 
         global $DB;
 
-        $query = [
-           'FROM'       => self::getTable(),
-           'INNER JOIN' => [
-              ProjectTaskTeam::getTable() => [
-                 'ON' => [
-                    ProjectTaskTeam::getTable() => 'projecttasks_id',
-                    self::getTable()            => 'id',
-                 ],
-              ],
-           ],
-           'WHERE'      => $criteria,
-        ];
-
-        $tasks_iterator = $DB->request($query);
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            $tasks = (new \itsmng\Database\Repository\ProjectTaskRepository($em))->forTeam($criteria);
+        } finally {
+            $em->clear();
+        }
 
         $vcalendars = [];
-        foreach ($tasks_iterator as $task) {
+        foreach ($tasks as $task) {
             $item = new self();
             $item->getFromResultSet($task);
             $vcalendar = $item->getAsVCalendar();

@@ -266,3 +266,26 @@ ORM writes, optional-reference migrations, reporting, search and application
 workflows passing on fresh installations. The current static inventory has
 607 pending relationship candidates, 62 polymorphic candidates, one ambiguous
 candidate and 1,537 legacy call sites; complete conversion remains unfinished.
+
+Kanban project selection now uses `ProjectRepository::visibleProjects()` with
+mapped entity predicates and correlated team-membership checks. Matching both a
+user and a group produces one project card. Active and inactive selectors share
+the same visibility rules; retaining the current inactive selection does not
+bypass entity or actor restrictions. Direct board access applies those same
+rules, and an empty global selection never falls back to unassigned tasks.
+Team-member projections select only the display fields. Checklist rows are loaded
+in a batch across the displayed cards instead of once per card.
+
+`ProjectTaskRepository` supplies translated task listings with mapped state, type
+and parent joins. Joined-column ordering is explicit, missing translations retain
+the original label fallback, and an empty listing shows the existing empty-state
+message. Effective durations are aggregated in one query for the displayed tasks.
+Calendar export selects the mapped tasks through their team associations and
+preserves the task identifier when relation identifiers differ.
+
+`project-views.php` covers user/group ownership and membership, recursive entity
+scope, inactive/current selections, direct and global boards, empty visibility,
+checklist ownership, restricted team projections, translation fallback, joined
+sorting, duration aggregation and calendar export. Both database jobs run it in
+CI. The Project model no longer executes direct SELECT requests; its search-option
+SQL expression and the task planning query remain pending conversion.
