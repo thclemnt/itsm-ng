@@ -1,7 +1,7 @@
 # Mapped persistence and reporting
 
 Doctrine ORM 3 is an explicit dependency alongside DBAL 4.4+ (PHP 8.2+). The attributes in
-`src/Database/Entity` now map all 3,561 columns of all 355 baseline tables,
+`src/Database/Entity` now map all 3,563 columns of all 355 baseline tables,
 including the dashboard's composite primary key and explicitly assigned IDs.
 `EntityRegistry` lists each table and mapped class. These are persistence records;
 application permissions, validation, hooks, history and notifications remain in
@@ -947,3 +947,44 @@ planning/visibility, asset propagation, search and application workflows.
 Ownership and network regressions pass on both providers. PHP 8.3 entity,
 networking and software functional tests pass 28 methods / 693 assertions.
 Verification did not exercise browser interactions or notification cron.
+
+
+### Inventory metadata and operating-system uniqueness
+
+31 further relationships use nullable ORM associations and restrictive FKs:
+device classifications/interfaces, update systems, network classifications,
+phone power supplies, VM classifications, filesystems, OS metadata and kernel
+versions. Legacy empty selections become NULL. Run
+`php bin/console db:inventory_metadata --apply` during maintenance, followed by
+`php bin/console db:foreign_keys --apply`; fresh installs include both changes.
+The migration rejects nonzero orphans before any schema change.
+
+The OS assignment's existing uniqueness rule still treats an absent OS or
+architecture as a single value. Two generated, read-only ORM columns supply the
+normalized unique key on PostgreSQL and MariaDB. References remain nullable.
+Duplicate assignments stop the migration before DDL; retries also restore an
+index missing after an interrupted migration. No duplicates are silently deleted.
+
+`InventoryRepository` joins OS and filesystem associations for item listings.
+OS sorting accepts known fields and UI column numbers, uses deterministic NULL
+ordering, and retains deleted assignment history. OS and disk `getFromItem()` now
+return row arrays; callers relying on `DBmysqlIterator::next()` must switch to
+iteration. Their legacy clone entry points read through ORM and retain model
+hooks. VM UUID matching uses a bound, case-insensitive query limited to two rows,
+retaining format/byte-order variants and refusing ambiguous matches. The default
+OS report also joins the mapped association.
+
+Shared relation history skips unsaved placeholder records and retains explicitly
+NULL previous associations. This avoids attempting to write a history row with
+an empty OS ID when cloning an assignment without a selected OS. Tests cover
+all new replacement/purge paths, uniqueness with NULL, migration preflight and
+retry, item-type isolation, views, cloning, UUID matching and ORM execution.
+
+Coverage is 532 enforced relationships, 230 pending candidates, 62 polymorphic
+references, one ambiguous reference and 1,407 legacy SQL sites. Fresh PostgreSQL
+and MariaDB installs pass FK enforcement (1,007 / 609 assertions), complete ORM
+mapping and all-table writes, reporting, components, software, asset propagation,
+entity ownership, search and application tests. Browser interaction and
+notification cron were not exercised.
+PHP 8.3 inventory, software-association and group-membership tests pass 32 methods
+and 598 assertions, including duplicate OS rejection through Doctrine exceptions.

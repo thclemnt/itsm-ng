@@ -8,7 +8,7 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_items_operatingsystems')]
-#[ORM\UniqueConstraint(name: 'items_operatingsystems_unicity', columns: ['items_id', 'itemtype', 'operatingsystems_id', 'operatingsystemarchitectures_id'])]
+#[ORM\UniqueConstraint(name: 'items_operatingsystems_unicity', columns: ['items_id', 'itemtype', 'operatingsystem_key', 'architecture_key'])]
 class ItemOperatingSystem
 {
     #[ORM\Id]
@@ -22,20 +22,25 @@ class ItemOperatingSystem
     #[ORM\Column(name: '`itemtype`', type: 'string', length: 255, nullable: true)]
     public ?string $itemtype = null;
 
-    #[ORM\Column(name: '`operatingsystems_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $operatingsystems_id = 0;
+    #[ORM\ManyToOne(targetEntity: OperatingSystem::class)]
+    #[ORM\JoinColumn(name: 'operatingsystems_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?OperatingSystem $operatingsystems = null;
 
-    #[ORM\Column(name: '`operatingsystemversions_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $operatingsystemversions_id = 0;
+    #[ORM\ManyToOne(targetEntity: OperatingSystemVersion::class)]
+    #[ORM\JoinColumn(name: 'operatingsystemversions_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?OperatingSystemVersion $operatingsystemversions = null;
 
-    #[ORM\Column(name: '`operatingsystemservicepacks_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $operatingsystemservicepacks_id = 0;
+    #[ORM\ManyToOne(targetEntity: OperatingSystemServicePack::class)]
+    #[ORM\JoinColumn(name: 'operatingsystemservicepacks_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?OperatingSystemServicePack $operatingsystemservicepacks = null;
 
-    #[ORM\Column(name: '`operatingsystemarchitectures_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $operatingsystemarchitectures_id = 0;
+    #[ORM\ManyToOne(targetEntity: OperatingSystemArchitecture::class)]
+    #[ORM\JoinColumn(name: 'operatingsystemarchitectures_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?OperatingSystemArchitecture $operatingsystemarchitectures = null;
 
-    #[ORM\Column(name: '`operatingsystemkernelversions_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $operatingsystemkernelversions_id = 0;
+    #[ORM\ManyToOne(targetEntity: OperatingSystemKernelVersion::class)]
+    #[ORM\JoinColumn(name: 'operatingsystemkernelversions_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?OperatingSystemKernelVersion $operatingsystemkernelversions = null;
 
     #[ORM\Column(name: '`license_number`', type: 'string', length: 255, nullable: true)]
     public ?string $license_number = null;
@@ -43,8 +48,9 @@ class ItemOperatingSystem
     #[ORM\Column(name: '`licenseid`', type: 'string', length: 255, nullable: true)]
     public ?string $licenseid = null;
 
-    #[ORM\Column(name: '`operatingsystemeditions_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $operatingsystemeditions_id = 0;
+    #[ORM\ManyToOne(targetEntity: OperatingSystemEdition::class)]
+    #[ORM\JoinColumn(name: 'operatingsystemeditions_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?OperatingSystemEdition $operatingsystemeditions = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_mod = null;
@@ -64,4 +70,10 @@ class ItemOperatingSystem
 
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_recursive = false;
+    #[ORM\Column(name: 'operatingsystem_key', type: 'bigint', nullable: true, insertable: false, updatable: false, generated: 'ALWAYS', columnDefinition: 'BIGINT GENERATED ALWAYS AS (COALESCE(operatingsystems_id, 0)) STORED')]
+    public ?int $operatingsystem_key = null;
+
+    #[ORM\Column(name: 'architecture_key', type: 'bigint', nullable: true, insertable: false, updatable: false, generated: 'ALWAYS', columnDefinition: 'BIGINT GENERATED ALWAYS AS (COALESCE(operatingsystemarchitectures_id, 0)) STORED')]
+    public ?int $architecture_key = null;
+
 }

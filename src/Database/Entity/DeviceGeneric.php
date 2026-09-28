@@ -22,8 +22,9 @@ class DeviceGeneric
     #[ORM\Column(name: '`designation`', type: 'string', length: 255, nullable: true)]
     public ?string $designation = null;
 
-    #[ORM\Column(name: '`devicegenerictypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $devicegenerictypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: DeviceGenericType::class)]
+    #[ORM\JoinColumn(name: 'devicegenerictypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?DeviceGenericType $devicegenerictypes = null;
 
     #[ORM\Column(name: '`comment`', type: 'text', nullable: true)]
     public ?string $comment = null;

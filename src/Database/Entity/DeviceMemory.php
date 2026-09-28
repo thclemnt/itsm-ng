@@ -35,8 +35,9 @@ class DeviceMemory
     #[ORM\Column(name: '`size_default`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $size_default = 0;
 
-    #[ORM\Column(name: '`devicememorytypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $devicememorytypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: DeviceMemoryType::class)]
+    #[ORM\JoinColumn(name: 'devicememorytypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?DeviceMemoryType $devicememorytypes = null;
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
     #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]

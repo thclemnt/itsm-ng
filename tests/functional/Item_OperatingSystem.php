@@ -101,7 +101,7 @@ class Item_OperatingSystem extends DbTestCase
                 $ios->add($input);
             }
         )
-           ->isInstanceOf('GlpitestSQLError')
+           ->isInstanceOf(\Doctrine\DBAL\Exception\UniqueConstraintViolationException::class)
            ->message
               ->matches("#Duplicate entry '.+' for key '(".$ios->getTable()."\.)?unicity'#");
 

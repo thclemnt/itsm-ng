@@ -39,8 +39,9 @@ class PassiveDCEquipment
     #[ORM\Column(name: '`otherserial`', type: 'string', length: 255, nullable: true)]
     public ?string $otherserial = null;
 
-    #[ORM\Column(name: '`passivedcequipmenttypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $passivedcequipmenttypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: PassiveDCEquipmentType::class)]
+    #[ORM\JoinColumn(name: 'passivedcequipmenttypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?PassiveDCEquipmentType $passivedcequipmenttypes = null;
 
     #[ORM\Column(name: '`users_id_tech`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $users_id_tech = 0;

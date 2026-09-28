@@ -22,8 +22,9 @@ class DeviceCase
     #[ORM\Column(name: '`designation`', type: 'string', length: 255, nullable: true)]
     public ?string $designation = null;
 
-    #[ORM\Column(name: '`devicecasetypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $devicecasetypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: DeviceCaseType::class)]
+    #[ORM\JoinColumn(name: 'devicecasetypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?DeviceCaseType $devicecasetypes = null;
 
     #[ORM\Column(name: '`comment`', type: 'text', nullable: true)]
     public ?string $comment = null;

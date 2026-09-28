@@ -165,6 +165,7 @@ final class BaselineSchema
                 $schema->getTable($tableName)->getColumn($column)->setNotnull(false)->setDefault(null);
             }
         }
+        Migration\InventoryUniqueness::addToTable($schema->getTable('glpi_items_operatingsystems'), Migration\InventoryUniqueness::indexName($platform));
         if ($foreignKeys) {
             (new ForeignKeys())->addToSchema($schema);
         }

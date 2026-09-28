@@ -25,14 +25,17 @@ class ComputerVirtualMachine
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: false, options: ['default' => ''])]
     public string $name = '';
 
-    #[ORM\Column(name: '`virtualmachinestates_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $virtualmachinestates_id = 0;
+    #[ORM\ManyToOne(targetEntity: VirtualMachineState::class)]
+    #[ORM\JoinColumn(name: 'virtualmachinestates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?VirtualMachineState $virtualmachinestates = null;
 
-    #[ORM\Column(name: '`virtualmachinesystems_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $virtualmachinesystems_id = 0;
+    #[ORM\ManyToOne(targetEntity: VirtualMachineSystem::class)]
+    #[ORM\JoinColumn(name: 'virtualmachinesystems_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?VirtualMachineSystem $virtualmachinesystems = null;
 
-    #[ORM\Column(name: '`virtualmachinetypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $virtualmachinetypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: VirtualMachineType::class)]
+    #[ORM\JoinColumn(name: 'virtualmachinetypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?VirtualMachineType $virtualmachinetypes = null;
 
     #[ORM\Column(name: '`uuid`', type: 'string', length: 255, nullable: false, options: ['default' => ''])]
     public string $uuid = '';

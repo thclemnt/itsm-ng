@@ -22,8 +22,9 @@ class DeviceGraphicCard
     #[ORM\Column(name: '`designation`', type: 'string', length: 255, nullable: true)]
     public ?string $designation = null;
 
-    #[ORM\Column(name: '`interfacetypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $interfacetypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: InterfaceType::class)]
+    #[ORM\JoinColumn(name: 'interfacetypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?InterfaceType $interfacetypes = null;
 
     #[ORM\Column(name: '`comment`', type: 'text', nullable: true)]
     public ?string $comment = null;

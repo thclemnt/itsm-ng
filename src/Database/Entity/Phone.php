@@ -62,8 +62,9 @@ class Phone
     #[ORM\Column(name: '`brand`', type: 'string', length: 255, nullable: true)]
     public ?string $brand = null;
 
-    #[ORM\Column(name: '`phonepowersupplies_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $phonepowersupplies_id = 0;
+    #[ORM\ManyToOne(targetEntity: PhonePowerSupply::class)]
+    #[ORM\JoinColumn(name: 'phonepowersupplies_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?PhonePowerSupply $phonepowersupplies = null;
 
     #[ORM\Column(name: '`number_line`', type: 'string', length: 255, nullable: true)]
     public ?string $number_line = null;

@@ -47,15 +47,17 @@ class Computer
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_mod = null;
 
-    #[ORM\Column(name: '`autoupdatesystems_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $autoupdatesystems_id = 0;
+    #[ORM\ManyToOne(targetEntity: AutoUpdateSystem::class)]
+    #[ORM\JoinColumn(name: 'autoupdatesystems_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?AutoUpdateSystem $autoupdatesystems = null;
 
     #[ORM\ManyToOne(targetEntity: Location::class)]
     #[ORM\JoinColumn(name: 'locations_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     public ?Location $locations = null;
 
-    #[ORM\Column(name: '`networks_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $networks_id = 0;
+    #[ORM\ManyToOne(targetEntity: Network::class)]
+    #[ORM\JoinColumn(name: 'networks_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Network $networks = null;
 
     #[ORM\ManyToOne(targetEntity: ComputerModel::class)]
     #[ORM\JoinColumn(name: 'computermodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]

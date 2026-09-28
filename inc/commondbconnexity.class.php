@@ -482,7 +482,7 @@ abstract class CommonDBConnexity extends CommonDBTM
         ];
         $previousItemArray = [];
 
-        if (isset($this->oldvalues[$items_id])) {
+        if (array_key_exists($items_id, $this->oldvalues)) {
             $previousItemArray[$items_id] = $this->oldvalues[$items_id];
         } else {
             $previousItemArray[$items_id] = $this->fields[$items_id];
@@ -490,7 +490,7 @@ abstract class CommonDBConnexity extends CommonDBTM
 
         if (preg_match('/^itemtype/', $itemtype)) {
             $newItemArray[$itemtype] = $this->fields[$itemtype];
-            if (isset($this->oldvalues[$itemtype])) {
+            if (array_key_exists($itemtype, $this->oldvalues)) {
                 $previousItemArray[$itemtype] = $this->oldvalues[$itemtype];
             } else {
                 $previousItemArray[$itemtype] = $this->fields[$itemtype];

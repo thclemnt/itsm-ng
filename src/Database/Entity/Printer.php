@@ -72,8 +72,9 @@ class Printer
     #[ORM\JoinColumn(name: 'locations_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     public ?Location $locations = null;
 
-    #[ORM\Column(name: '`networks_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $networks_id = 0;
+    #[ORM\ManyToOne(targetEntity: Network::class)]
+    #[ORM\JoinColumn(name: 'networks_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Network $networks = null;
 
     #[ORM\ManyToOne(targetEntity: PrinterType::class)]
     #[ORM\JoinColumn(name: 'printertypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]

@@ -500,27 +500,13 @@ class ComputerVirtualMachine extends CommonDBChild
             return false;
         }
 
-        $iterator = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => 'glpi_computers',
-           'WHERE'  => [
-              'RAW' => [
-                 'LOWER(uuid)'  => self::getUUIDRestrictCriteria($fields['uuid'])
-              ]
-           ]
-        ]);
-
-        //Virtual machine found, return ID
-        if (count($iterator) == 1) {
-            $result = $iterator->next();
-            return $result['id'];
-        } elseif (count($iterator) > 1) {
-            Toolbox::logWarning(
-                sprintf(
-                    'findVirtualMachine expects to get one result, %1$s found!',
-                    count($iterator)
-                )
-            );
+        $ids = (new \itsmng\Database\Repository\InventoryRepository(\itsmng\Database\Orm::create($DB)))
+            ->computerIdsByUuids(self::getUUIDRestrictCriteria($fields['uuid']));
+        if (count($ids) === 1) {
+            return $ids[0];
+        }
+        if (count($ids) > 1) {
+            Toolbox::logWarning('findVirtualMachine expects one result; at least two computers match the UUID.');
         }
 
         return false;

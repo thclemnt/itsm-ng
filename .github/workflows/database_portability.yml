@@ -118,6 +118,8 @@ jobs:
         run: php tests/database-portability/entity-ownership.php tests/config
       - name: Mapped IPv4 and IPv6 network matching
         run: php tests/database-portability/network-search.php tests/config
+      - name: Inventory metadata, operating systems and filesystems
+        run: php tests/database-portability/inventory-metadata.php tests/config
       - name: Rack and enclosure placement queries
         run: php tests/database-portability/placements.php tests/config
       - name: Infrastructure relationships and placement

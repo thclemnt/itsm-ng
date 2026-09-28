@@ -36,8 +36,9 @@ class SoftwareVersion
     #[ORM\Column(name: '`comment`', type: 'text', nullable: true)]
     public ?string $comment = null;
 
-    #[ORM\Column(name: '`operatingsystems_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $operatingsystems_id = 0;
+    #[ORM\ManyToOne(targetEntity: OperatingSystem::class)]
+    #[ORM\JoinColumn(name: 'operatingsystems_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?OperatingSystem $operatingsystems = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_mod = null;

@@ -123,17 +123,8 @@ class Item_Disk extends CommonDBChild
     **/
     public static function cloneItem($type, $oldid, $newid)
     {
-        global $DB;
-
         Toolbox::deprecated('Use clone');
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'itemtype'  => $type,
-              'items_id'  => $oldid
-           ]
-        ]);
-        while ($data = $iterator->next()) {
+        foreach ((new self())->find(['itemtype' => $type, 'items_id' => $oldid]) as $data) {
             $cd                  = new self();
             unset($data['id']);
             $data['items_id']    = $newid;
@@ -286,32 +277,14 @@ class Item_Disk extends CommonDBChild
      * @param string     $sort  Field to sort on
      * @param string     $order Sort order
      *
-     * @return DBmysqlIterator
+     * @return array
      */
-    public static function getFromItem(CommonDBTM $item, $sort = null, $order = null): DBmysqlIterator
+    public static function getFromItem(CommonDBTM $item, $sort = null, $order = null): array
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT'    => [
-              Filesystem::getTable() . '.name AS fsname',
-              self::getTable() . '.*'
-           ],
-           'FROM'      => self::getTable(),
-           'LEFT JOIN' => [
-              Filesystem::getTable() => [
-                 'FKEY' => [
-                    self::getTable()        => 'filesystems_id',
-                    Filesystem::getTable()  => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'itemtype'     => $item->getType(),
-              'items_id'     => $item->fields['id']
-           ]
-        ]);
-        return $iterator;
+        return (new \itsmng\Database\Repository\InventoryRepository(\itsmng\Database\Orm::create($DB)))
+            ->disks($item->getType(), (int)$item->getID());
     }
 
     /**
@@ -386,7 +359,7 @@ class Item_Disk extends CommonDBChild
             );
 
             $disk = new self();
-            while ($data = $iterator->next()) {
+            foreach ($iterator as $data) {
                 $disk->getFromResultSet($data);
                 echo "<tr class='tab_bg_2" . (isset($data['is_deleted']) && $data['is_deleted'] ? " tab_bg_2_2'" : "'") . "'>";
                 echo "<td>" . $disk->getLink() . "</td>";

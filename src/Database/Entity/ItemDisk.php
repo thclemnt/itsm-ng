@@ -34,8 +34,9 @@ class ItemDisk
     #[ORM\Column(name: '`mountpoint`', type: 'string', length: 255, nullable: true)]
     public ?string $mountpoint = null;
 
-    #[ORM\Column(name: '`filesystems_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $filesystems_id = 0;
+    #[ORM\ManyToOne(targetEntity: Filesystem::class)]
+    #[ORM\JoinColumn(name: 'filesystems_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Filesystem $filesystems = null;
 
     #[ORM\Column(name: '`totalsize`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $totalsize = 0;

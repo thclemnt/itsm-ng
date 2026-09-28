@@ -35,8 +35,9 @@ class DeviceBattery
     #[ORM\Column(name: '`capacity`', type: 'integer', nullable: true)]
     public ?int $capacity = null;
 
-    #[ORM\Column(name: '`devicebatterytypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $devicebatterytypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: DeviceBatteryType::class)]
+    #[ORM\JoinColumn(name: 'devicebatterytypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?DeviceBatteryType $devicebatterytypes = null;
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
     #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]

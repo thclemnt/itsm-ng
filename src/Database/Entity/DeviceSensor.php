@@ -18,11 +18,13 @@ class DeviceSensor
     #[ORM\Column(name: '`designation`', type: 'string', length: 255, nullable: true)]
     public ?string $designation = null;
 
-    #[ORM\Column(name: '`devicesensortypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $devicesensortypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: DeviceSensorType::class)]
+    #[ORM\JoinColumn(name: 'devicesensortypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?DeviceSensorType $devicesensortypes = null;
 
-    #[ORM\Column(name: '`devicesensormodels_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $devicesensormodels_id = 0;
+    #[ORM\ManyToOne(targetEntity: DeviceSensorModel::class)]
+    #[ORM\JoinColumn(name: 'devicesensormodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?DeviceSensorModel $devicesensormodels = null;
 
     #[ORM\Column(name: '`comment`', type: 'text', nullable: true)]
     public ?string $comment = null;

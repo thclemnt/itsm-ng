@@ -75,61 +75,14 @@ class Item_OperatingSystem extends CommonDBRelation
      * @param string     $sort  Field to sort on
      * @param string     $order Sort order
      *
-     * @return DBmysqlIterator
+     * @return array
      */
-    public static function getFromItem(CommonDBTM $item, $sort = null, $order = null): DBmysqlIterator
+    public static function getFromItem(CommonDBTM $item, $sort = null, $order = null): array
     {
         global $DB;
 
-        if ($sort === null) {
-            $sort = "glpi_items_operatingsystems.id";
-        }
-        if ($order === null) {
-            $order = 'ASC';
-        }
-
-        $iterator = $DB->request([
-           'SELECT'    => [
-              'glpi_items_operatingsystems.id AS assocID',
-              'glpi_operatingsystems.name',
-              'glpi_operatingsystemversions.name AS version',
-              'glpi_operatingsystemarchitectures.name AS architecture',
-              'glpi_operatingsystemservicepacks.name AS servicepack'
-           ],
-           'FROM'      => 'glpi_items_operatingsystems',
-           'LEFT JOIN' => [
-              'glpi_operatingsystems'             => [
-                 'ON' => [
-                    'glpi_items_operatingsystems' => 'operatingsystems_id',
-                    'glpi_operatingsystems'       => 'id'
-                 ]
-              ],
-              'glpi_operatingsystemservicepacks'  => [
-                 'ON' => [
-                    'glpi_items_operatingsystems'       => 'operatingsystemservicepacks_id',
-                    'glpi_operatingsystemservicepacks'  => 'id'
-                 ]
-              ],
-              'glpi_operatingsystemarchitectures' => [
-                 'ON' => [
-                    'glpi_items_operatingsystems'       => 'operatingsystemarchitectures_id',
-                    'glpi_operatingsystemarchitectures' => 'id'
-                 ]
-              ],
-              'glpi_operatingsystemversions'      => [
-                 'ON' => [
-                    'glpi_items_operatingsystems'    => 'operatingsystemversions_id',
-                    'glpi_operatingsystemversions'   => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_items_operatingsystems.itemtype' => $item->getType(),
-              'glpi_items_operatingsystems.items_id' => $item->getID()
-           ],
-           'ORDERBY'   => "$sort $order"
-        ]);
-        return $iterator;
+        return (new \itsmng\Database\Repository\InventoryRepository(\itsmng\Database\Orm::create($DB)))
+            ->operatingSystems($item->getType(), (int)$item->getID(), (string)($sort ?? 'glpi_items_operatingsystems.id'), (string)($order ?? 'ASC'));
     }
 
     /**
@@ -162,7 +115,7 @@ class Item_OperatingSystem extends CommonDBRelation
         }
 
         if (
-            (isset($_GET["sort"]) && !empty($_GET["sort"]))
+            isset($_GET["sort"])
             && isset($columns[$_GET["sort"]])
         ) {
             $sort = $_GET["sort"];
@@ -179,7 +132,7 @@ class Item_OperatingSystem extends CommonDBRelation
         $i      = 0;
 
         $os = [];
-        while ($data = $iterator->next()) {
+        foreach ($iterator as $data) {
             $os[$data['assocID']] = $data;
         }
 
@@ -424,18 +377,9 @@ class Item_OperatingSystem extends CommonDBRelation
      */
     public static function cloneItem($itemtype, $oldid, $newid, $newitemtype = '')
     {
-        global $DB;
-
         Toolbox::deprecated('Use clone');
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'itemtype'  => $itemtype,
-              'items_id'  => $oldid
-           ]
-        ]);
-
-        while ($row = $iterator->next()) {
+        $rows = (new self())->find(['itemtype' => $itemtype, 'items_id' => $oldid]);
+        foreach ($rows as $row) {
             $input             = Toolbox::addslashes_deep($row);
             $input['items_id'] = $newid;
             if (!empty($newitemtype)) {

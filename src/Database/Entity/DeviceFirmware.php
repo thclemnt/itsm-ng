@@ -35,8 +35,9 @@ class DeviceFirmware
     #[ORM\Column(name: '`version`', type: 'string', length: 255, nullable: true)]
     public ?string $version = null;
 
-    #[ORM\Column(name: '`devicefirmwaretypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $devicefirmwaretypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: DeviceFirmwareType::class)]
+    #[ORM\JoinColumn(name: 'devicefirmwaretypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?DeviceFirmwareType $devicefirmwaretypes = null;
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
     #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]

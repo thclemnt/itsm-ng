@@ -35,8 +35,9 @@ class DeviceSimcard
     #[ORM\Column(name: '`voltage`', type: 'integer', nullable: true)]
     public ?int $voltage = null;
 
-    #[ORM\Column(name: '`devicesimcardtypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $devicesimcardtypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: DeviceSimcardType::class)]
+    #[ORM\JoinColumn(name: 'devicesimcardtypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?DeviceSimcardType $devicesimcardtypes = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_mod = null;

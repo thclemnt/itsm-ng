@@ -15,8 +15,9 @@ class OperatingSystemKernelVersion
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
 
-    #[ORM\Column(name: '`operatingsystemkernels_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $operatingsystemkernels_id = 0;
+    #[ORM\ManyToOne(targetEntity: OperatingSystemKernel::class)]
+    #[ORM\JoinColumn(name: 'operatingsystemkernels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?OperatingSystemKernel $operatingsystemkernels = null;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
     public ?string $name = null;

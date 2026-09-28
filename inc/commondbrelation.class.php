@@ -834,7 +834,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
 
         if ($item1 instanceof CommonDBTM && $item2 instanceof CommonDBTM) {
             if (
-                $item1->dohistory
+                $item1->dohistory && !$item1->isNewItem()
                 && static::$logs_for_item_1
             ) {
                 $changes = [
@@ -851,7 +851,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
                 );
             }
 
-            if ($item2->dohistory && static::$logs_for_item_2) {
+            if ($item2->dohistory && !$item2->isNewItem() && static::$logs_for_item_2) {
                 $changes = [
                    '0',
                    '',
@@ -909,7 +909,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
             }
             /// TODO clean management of it
             if (
-                $new1 && $new1->dohistory
+                $new1 && $new1->dohistory && !$new1->isNewItem()
                 && static::$logs_for_item_1
             ) {
                 Log::history(
@@ -921,7 +921,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
                 );
             }
             if (
-                $new2 && $new2->dohistory
+                $new2 && $new2->dohistory && !$new2->isNewItem()
                 && static::$logs_for_item_2
             ) {
                 Log::history(
@@ -937,7 +937,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
         if (isset($items_1['previous']) || isset($items_2['previous'])) {
             if (
                 $previous2
-                && $previous1 && $previous1->dohistory
+                && $previous1 && $previous1->dohistory && !$previous1->isNewItem()
                 && static::$logs_for_item_1
             ) {
                 $changes[0] = '0';
@@ -957,7 +957,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
 
             if (
                 $previous1
-                && $previous2 && $previous2->dohistory
+                && $previous2 && $previous2->dohistory && !$previous2->isNewItem()
                 && static::$logs_for_item_2
             ) {
                 $changes[0] = '0';
@@ -977,7 +977,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
 
             if (
                 $new2
-                && $new1 && $new1->dohistory
+                && $new1 && $new1->dohistory && !$new1->isNewItem()
                 && static::$logs_for_item_1
             ) {
                 $changes[0] = '0';
@@ -994,7 +994,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
 
             if (
                 $new1
-                && $new2 && $new2->dohistory
+                && $new2 && $new2->dohistory && !$new2->isNewItem()
                 && static::$logs_for_item_2
             ) {
                 $changes[0] = '0';
@@ -1031,7 +1031,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
 
             if ($item1 instanceof CommonDBTM && $item2 instanceof CommonDBTM) {
                 if (
-                    $item1->dohistory
+                    $item1->dohistory && !$item1->isNewItem()
                     && static::$logs_for_item_1
                 ) {
                     $changes = [
@@ -1050,7 +1050,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
                 }
 
                 if (
-                    $item2->dohistory
+                    $item2->dohistory && !$item2->isNewItem()
                     && static::$logs_for_item_2
                 ) {
                     $changes = [
@@ -1090,7 +1090,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
 
             if ($item1 instanceof CommonDBTM && $item2 instanceof CommonDBTM) {
                 if (
-                    $item1->dohistory
+                    $item1->dohistory && !$item1->isNewItem()
                     && static::$logs_for_item_1
                 ) {
                     $changes = [
@@ -1108,7 +1108,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
                 }
 
                 if (
-                    $item2->dohistory
+                    $item2->dohistory && !$item2->isNewItem()
                     && static::$logs_for_item_2
                 ) {
                     $changes = [
@@ -1144,7 +1144,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
 
         if ($item1 instanceof CommonDBTM && $item2 instanceof CommonDBTM) {
             if (
-                $item1->dohistory
+                $item1->dohistory && !$item1->isNewItem()
                 && static::$logs_for_item_1
             ) {
                 $changes = [
@@ -1162,7 +1162,7 @@ abstract class CommonDBRelation extends CommonDBConnexity
             }
 
             if (
-                $item2->dohistory
+                $item2->dohistory && !$item2->isNewItem()
                 && static::$logs_for_item_2
             ) {
                 $changes = [
