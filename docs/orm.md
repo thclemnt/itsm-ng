@@ -1101,3 +1101,36 @@ cold and warm caches, quoted names, subtree moves, cycle rejection, purge and
 replacement, root uniqueness, duplicate/orphan preflight and interrupted-index
 retry. PHP 8.3 hierarchy/database-helper/software tests pass 72 methods and 7,145
 assertions. Live browser interaction and notification delivery were not tested.
+
+### Asset owners and technicians
+
+Thirty-one user assignments across 21 asset tables now use nullable Doctrine
+associations with RESTRICT foreign keys. This includes owners and technicians
+for inventory, software, certificates and appliances, plus SIM-card users.
+Missing appliance and SIM-card entries in the user relation registry are now
+explicit so replacement and purge hooks process those assignments too.
+
+For existing databases, inspect `db:asset_users`, apply it during maintenance
+with `db:asset_users --apply`, then run `db:foreign_keys --apply`. The migration
+normalizes zero assignments to NULL and rejects nonzero orphans before DDL.
+Fresh installs include the nullable columns and constraints automatically.
+
+`UserItemRepository` supplies typed ORM membership and inventory queries, streams
+results with entity/status labels and applies entity, deletion and template
+filters in the query. The user inventory tab checks item access before rendering
+each row. Public saved-search ownership and consumable returns during user purge
+now use ORM updates; private searches still use their deletion hooks. Consumables
+assigned to a group with the same numeric ID are preserved.
+
+Coverage is 607 enforced relationships, 155 pending candidates, 62 polymorphic
+references, one ambiguous reference and 1,385 legacy SQL call sites. Full
+relationship and query conversion remains unfinished.
+
+Validation: fresh PostgreSQL/MariaDB installs pass 1,082/684 contract assertions,
+all 355 mapped-table CRUD checks, assignment replacement/purge and migration,
+asset propagation, group assignments, entity ownership, software, consumables,
+inventory metadata, reporting, application and search suites. PHP 8.3 functional
+tests pass across eight affected classes (62 methods); the computer suite alone
+passes 349 assertions after replacing arbitrary user IDs with real fixtures.
+All 30 changed PHP files pass syntax checks and formatting checks pass. Rendering
+tests execute PHP; browser interaction and notification delivery were not tested.

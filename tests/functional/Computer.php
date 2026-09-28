@@ -67,6 +67,13 @@ class Computer extends DbTestCase
         return (int)$id;
     }
 
+    private function getNewUserId(): int
+    {
+        $id = (new \User())->add(['name' => 'asset-user-' . parent::getUniqueString()]);
+        $this->integer((int)$id)->isGreaterThan(0);
+        return (int)$id;
+    }
+
     private function getNewComputer()
     {
         $computer = getItemByTypeName('Computer', '_test_pc01');
@@ -116,7 +123,7 @@ class Computer extends DbTestCase
         $in = ['id'           => $computer->getField('id'),
                'contact'      => $this->getUniqueString(),
                'contact_num'  => $this->getUniqueString(),
-               'users_id'     => $this->getUniqueInteger(),
+               'users_id'     => $this->getNewUserId(),
                'groups_id'    => $this->getNewGroupId(),
                'states_id'    => $this->getNewStateId(),
                'locations_id' => $this->getNewLocationId(),
@@ -161,7 +168,7 @@ class Computer extends DbTestCase
         $in2 = ['id'          => $computer->getField('id'),
                'contact'      => $this->getUniqueString(),
                'contact_num'  => $this->getUniqueString(),
-               'users_id'     => $this->getUniqueInteger(),
+               'users_id'     => $this->getNewUserId(),
                'groups_id'    => $this->getNewGroupId(),
                'states_id'    => $this->getNewStateId(),
                'locations_id' => $this->getNewLocationId(),
@@ -283,7 +290,7 @@ class Computer extends DbTestCase
         $in = ['id'           => $computer->getField('id'),
                'contact'      => $this->getUniqueString(),
                'contact_num'  => $this->getUniqueString(),
-               'users_id'     => $this->getUniqueInteger(),
+               'users_id'     => $this->getNewUserId(),
                'groups_id'    => $this->getNewGroupId(),
                'states_id'    => $this->getNewStateId(),
                'locations_id' => $this->getNewLocationId(),

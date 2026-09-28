@@ -2763,6 +2763,7 @@ class Toolbox
             (new \itsmng\Database\Migration\PlanningMetadataReferences())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\Migration\ITILClassificationReferences())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\Migration\TreeParentReferences())->apply($DB->getDoctrineConnection());
+            (new \itsmng\Database\Migration\AssetUserReferences())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\ForeignKeys())->apply($DB->getDoctrineConnection());
 
             // update default language

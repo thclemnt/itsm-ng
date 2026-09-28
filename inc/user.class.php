@@ -362,30 +362,8 @@ class User extends CommonDBTM
             ]
         );
 
-        // Set no user to public bookmark
-        $DB->update(
-            SavedSearch::getTable(),
-            [
-              'users_id' => 0
-            ],
-            [
-              'users_id' => $this->fields['id']
-            ]
-        );
-
-        // Set no user to consumables
-        $DB->update(
-            'glpi_consumables',
-            [
-              'items_id' => 0,
-              'itemtype' => 'NULL',
-              'date_out' => 'NULL'
-            ],
-            [
-              'items_id' => $this->fields['id'],
-              'itemtype' => 'User'
-            ]
-        );
+        (new \itsmng\Database\Repository\UserItemRepository(\itsmng\Database\Orm::create($DB)))
+            ->releaseUserResources((int)$this->fields['id']);
 
         $this->deleteChildrenAndRelationsFromDb(
             [
@@ -4542,29 +4520,13 @@ class User extends CommonDBTM
             $field_group = 'groups_id';
         }
 
-        $group_where = "";
-        $groups      = [];
-
-        $iterator = $DB->request([
-           'SELECT'    => [
-              'glpi_groups_users.groups_id',
-              'glpi_groups.name'
-           ],
-           'FROM'      => 'glpi_groups_users',
-           'LEFT JOIN' => [
-              'glpi_groups' => [
-                 'FKEY' => [
-                    'glpi_groups_users'  => 'groups_id',
-                    'glpi_groups'        => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => ['glpi_groups_users.users_id' => $ID]
-        ]);
+        $repository = new \itsmng\Database\Repository\UserItemRepository(\itsmng\Database\Orm::create($DB));
+        $groups = [];
+        $iterator = $repository->groups((int)$ID);
         $number = count($iterator);
 
         $group_where = [];
-        while ($data = $iterator->next()) {
+        foreach ($iterator as $data) {
             $group_where[$field_group][] = $data['groups_id'];
             $groups[$data["groups_id"]] = $data["name"];
         }
@@ -4597,13 +4559,19 @@ class User extends CommonDBTM
                     $iterator_params['WHERE']['is_deleted'] = 0;
                 }
 
-                $item_iterator = $DB->request($iterator_params);
+                $scope = $item->isEntityAssign() ? getEntitiesRestrictCriteria($itemtable, '', '', $item->maybeRecursive()) : [];
+                $item_iterator = \itsmng\Database\Repository\UserItemRepository::supports($itemtype)
+                    ? $repository->items($itemtype, $field_user, [(int)$ID], $scope)
+                    : $item->find([$iterator_params['WHERE'], $scope]);
 
                 $type_name = $item->getTypeName();
 
-                while ($data = $item_iterator->next()) {
+                foreach ($item_iterator as $data) {
                     $cansee = $item->can($data["id"], READ);
-                    if (!isset($data["name"])) {
+                    if (!$cansee) {
+                        continue;
+                    }
+                    if (!array_key_exists("name", $data)) {
                         $linked_component = new ($itemtype::getDeviceType())();
                         $linked_component->getFromDB($data[getForeignKeyFieldForItemType($itemtype::getDeviceType())]);
                         $link = $linked_component->fields['designation'] . " (" . $data['id'] . ")";
@@ -4622,10 +4590,9 @@ class User extends CommonDBTM
                         $linktype = self::getTypeName(1);
                     }
                     echo "<tr class='tab_bg_1'><td class='center'>$type_name</td>";
-                    echo "<td class='center'>" . Dropdown::getDropdownName(
-                        "glpi_entities",
-                        $data["entities_id"]
-                    ) . "</td>";
+                    echo "<td class='center'>" . (array_key_exists('_entity_name', $data)
+                        ? htmlspecialchars((string)$data['_entity_name'], ENT_QUOTES, 'UTF-8')
+                        : Dropdown::getDropdownName("glpi_entities", $data["entities_id"])) . "</td>";
                     echo "<td class='center'>$link</td>";
                     echo "<td class='center'>";
                     if (isset($data["serial"]) && !empty($data["serial"])) {
@@ -4641,7 +4608,9 @@ class User extends CommonDBTM
                     }
                     echo "</td><td class='center'>";
                     if (isset($data["states_id"])) {
-                        echo Dropdown::getDropdownName("glpi_states", $data['states_id']);
+                        echo array_key_exists('_state_name', $data)
+                            ? htmlspecialchars((string)$data['_state_name'], ENT_QUOTES, 'UTF-8')
+                            : Dropdown::getDropdownName("glpi_states", $data['states_id']);
                     } else {
                         echo '&nbsp;';
                     }
@@ -4685,13 +4654,19 @@ class User extends CommonDBTM
                         $iterator_params['WHERE']['is_deleted'] = 0;
                     }
 
-                    $group_iterator = $DB->request($iterator_params);
+                    $scope = $item->isEntityAssign() ? getEntitiesRestrictCriteria($itemtable, '', '', $item->maybeRecursive()) : [];
+                    $group_iterator = \itsmng\Database\Repository\UserItemRepository::supports($itemtype)
+                        ? $repository->items($itemtype, $field_group, array_keys($groups), $scope)
+                        : $item->find([$iterator_params['WHERE'], $scope]);
 
                     $type_name = $item->getTypeName();
 
-                    while ($data = $group_iterator->next()) {
-                        $nb++;
+                    foreach ($group_iterator as $data) {
                         $cansee = $item->can($data["id"], READ);
+                        if (!$cansee) {
+                            continue;
+                        }
+                        $nb++;
                         $link   = $data["name"];
                         if ($cansee) {
                             $link_item = $item::getFormURLWithID($data['id']);
@@ -4709,10 +4684,9 @@ class User extends CommonDBTM
                             );
                         }
                         echo "<tr class='tab_bg_1'><td class='center'>$type_name</td>";
-                        echo "<td class='center'>" . Dropdown::getDropdownName(
-                            "glpi_entities",
-                            $data["entities_id"]
-                        );
+                        echo "<td class='center'>" . (array_key_exists('_entity_name', $data)
+                            ? htmlspecialchars((string)$data['_entity_name'], ENT_QUOTES, 'UTF-8')
+                            : Dropdown::getDropdownName("glpi_entities", $data["entities_id"]));
                         echo "</td><td class='center'>$link</td>";
                         echo "<td class='center'>";
                         if (isset($data["serial"]) && !empty($data["serial"])) {
@@ -4728,7 +4702,9 @@ class User extends CommonDBTM
                         }
                         echo "</td><td class='center'>";
                         if (isset($data["states_id"])) {
-                            echo Dropdown::getDropdownName("glpi_states", $data['states_id']);
+                            echo array_key_exists('_state_name', $data)
+                            ? htmlspecialchars((string)$data['_state_name'], ENT_QUOTES, 'UTF-8')
+                            : Dropdown::getDropdownName("glpi_states", $data['states_id']);
                         } else {
                             echo '&nbsp;';
                         }
