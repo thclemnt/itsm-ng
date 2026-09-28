@@ -31,11 +31,13 @@ class ProjectTaskTemplate
     #[ORM\Column(name: '`comment`', type: 'text', length: 4294967295, nullable: true)]
     public ?string $comment = null;
 
-    #[ORM\Column(name: '`projects_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $projects_id = 0;
+    #[ORM\ManyToOne(targetEntity: Project::class)]
+    #[ORM\JoinColumn(name: 'projects_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Project $projects = null;
 
-    #[ORM\Column(name: '`projecttasks_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $projecttasks_id = 0;
+    #[ORM\ManyToOne(targetEntity: ProjectTask::class)]
+    #[ORM\JoinColumn(name: 'projecttasks_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?ProjectTask $projecttasks = null;
 
     #[ORM\Column(name: '`plan_start_date`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $plan_start_date = null;
@@ -55,11 +57,13 @@ class ProjectTaskTemplate
     #[ORM\Column(name: '`effective_duration`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $effective_duration = 0;
 
-    #[ORM\Column(name: '`projectstates_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $projectstates_id = 0;
+    #[ORM\ManyToOne(targetEntity: ProjectState::class)]
+    #[ORM\JoinColumn(name: 'projectstates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?ProjectState $projectstates = null;
 
-    #[ORM\Column(name: '`projecttasktypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $projecttasktypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: ProjectTaskType::class)]
+    #[ORM\JoinColumn(name: 'projecttasktypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?ProjectTaskType $projecttasktypes = null;
 
     #[ORM\Column(name: '`users_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $users_id = 0;

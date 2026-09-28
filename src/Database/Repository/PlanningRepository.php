@@ -8,12 +8,30 @@ use Doctrine\DBAL\LockMode;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Entity\User;
+use itsmng\Database\Entity\PlanningExternalEvent;
+use itsmng\Database\RecordCriteria;
 
-/** Persist group planning subscriptions without bypassing the shared transaction. */
+/** Mapped calendar projections and transactional group planning subscriptions. */
 final class PlanningRepository
 {
     public function __construct(private EntityManager $em)
     {
+    }
+
+    /** Select events once, including events with no category, with typed date and actor predicates. */
+    public function externalEvents(array $criteria): array
+    {
+        $query = $this->em->createQueryBuilder()->select('r', 'category.color AS cat_color')
+            ->from(PlanningExternalEvent::class, 'r')->leftJoin('r.planningeventcategories', 'category');
+        $compiler = new RecordCriteria($query, $this->em->getClassMetadata(PlanningExternalEvent::class));
+        $query->where($compiler->where($criteria))->orderBy('r.begin')->addOrderBy('r.id');
+        $records = new RecordRepository($this->em);
+        $rows = [];
+        foreach ($query->getQuery()->toIterable() as $result) {
+            $rows[] = $records->toRow($result[0]) + ['cat_color' => $result['cat_color']];
+            $this->em->detach($result[0]);
+        }
+        return $rows;
     }
 
     public function updateGroupSubscriptions(int $group, int $currentUser, callable $update): ?array

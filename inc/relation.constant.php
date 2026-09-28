@@ -1010,6 +1010,7 @@ $RELATION = [
    ],
 
    'glpi_projects' => [
+      'glpi_projecttasktemplates' => 'projects_id',
       '_glpi_itils_projects'   => 'projects_id',
       '_glpi_items_projects'   => 'projects_id',
       '_glpi_projectcosts'     => 'projects_id',
@@ -1017,6 +1018,15 @@ $RELATION = [
       '_glpi_projecttasks'     => 'projects_id',
       '_glpi_projectteams'     => 'projects_id',
       'glpi_items_kanbans'     => ['items_id', 'itemtype'],
+   ],
+
+   'glpi_planningeventcategories' => [
+      'glpi_planningexternalevents' => 'planningeventcategories_id',
+      'glpi_planningexternaleventtemplates' => 'planningeventcategories_id',
+   ],
+
+   'glpi_planningexternaleventtemplates' => [
+      'glpi_planningexternalevents' => 'planningexternaleventtemplates_id',
    ],
 
    'glpi_projectstates' => [

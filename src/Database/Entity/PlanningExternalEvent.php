@@ -19,8 +19,9 @@ class PlanningExternalEvent
     #[ORM\Column(name: '`uuid`', type: 'string', length: 255, nullable: true)]
     public ?string $uuid = null;
 
-    #[ORM\Column(name: '`planningexternaleventtemplates_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $planningexternaleventtemplates_id = 0;
+    #[ORM\ManyToOne(targetEntity: PlanningExternalEventTemplate::class)]
+    #[ORM\JoinColumn(name: 'planningexternaleventtemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?PlanningExternalEventTemplate $planningexternaleventtemplates = null;
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
     #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
@@ -60,8 +61,9 @@ class PlanningExternalEvent
     #[ORM\Column(name: '`state`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $state = 0;
 
-    #[ORM\Column(name: '`planningeventcategories_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $planningeventcategories_id = 0;
+    #[ORM\ManyToOne(targetEntity: PlanningEventCategory::class)]
+    #[ORM\JoinColumn(name: 'planningeventcategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?PlanningEventCategory $planningeventcategories = null;
 
     #[ORM\Column(name: '`background`', type: 'smallint', nullable: false, options: ['default' => '0'])]
     public int $background = 0;

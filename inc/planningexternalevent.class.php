@@ -376,12 +376,9 @@ class PlanningExternalEvent extends CommonDBTM implements CalDAVCompatibleItemIn
 
         global $DB;
 
-        $query = [
-           'FROM'  => self::getTable(),
-           'WHERE' => $criteria,
-        ];
-
-        $event_iterator = $DB->request($query);
+        $event_iterator = (new \itsmng\Database\Repository\PlanningRepository(
+            \itsmng\Database\Orm::create($DB)
+        ))->externalEvents($criteria);
 
         $vcalendars = [];
         foreach ($event_iterator as $event) {

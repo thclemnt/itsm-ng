@@ -259,7 +259,16 @@ final class OptionalReferences
         'glpi_softwareversions' => ['operatingsystems_id' => 'glpi_operatingsystems'],
     ];
 
+    public const PLANNING_METADATA = [
+        'glpi_planningexternalevents' => ['planningeventcategories_id' => 'glpi_planningeventcategories', 'planningexternaleventtemplates_id' => 'glpi_planningexternaleventtemplates'],
+        'glpi_planningexternaleventtemplates' => ['planningeventcategories_id' => 'glpi_planningeventcategories'],
+        'glpi_projects' => ['projectstates_id' => 'glpi_projectstates', 'projecttypes_id' => 'glpi_projecttypes'],
+        'glpi_projecttasks' => ['projectstates_id' => 'glpi_projectstates', 'projecttasktypes_id' => 'glpi_projecttasktypes', 'projecttasktemplates_id' => 'glpi_projecttasktemplates'],
+        'glpi_projecttasktemplates' => ['projects_id' => 'glpi_projects', 'projecttasks_id' => 'glpi_projecttasks', 'projectstates_id' => 'glpi_projectstates', 'projecttasktypes_id' => 'glpi_projecttasktypes'],
+    ];
+
     public const RELATIONS = [
+        ...self::PLANNING_METADATA,
         ...self::INVENTORY_METADATA,
         ...self::MODELS,
         ...self::PROJECT_HIERARCHY,
@@ -327,13 +336,15 @@ final class OptionalReferences
         'glpi_peripherals' => [...self::ASSET_CLASSIFICATION['glpi_peripherals'], ...self::MANUFACTURERS['glpi_peripherals'], ...self::STATES['glpi_peripherals'], ...self::LOCATIONS['glpi_peripherals'], ...self::GROUPS['glpi_peripherals']],
         'glpi_phones' => [...self::ASSET_CLASSIFICATION['glpi_phones'], ...self::MANUFACTURERS['glpi_phones'], ...self::STATES['glpi_phones'], ...self::LOCATIONS['glpi_phones'], ...self::GROUPS['glpi_phones'], ...self::INVENTORY_METADATA['glpi_phones']],
         'glpi_printers' => [...self::ASSET_CLASSIFICATION['glpi_printers'], ...self::MANUFACTURERS['glpi_printers'], ...self::STATES['glpi_printers'], ...self::LOCATIONS['glpi_printers'], ...self::GROUPS['glpi_printers'], ...self::INVENTORY_METADATA['glpi_printers']],
-        'glpi_projects' => [...self::PROJECT_HIERARCHY['glpi_projects'], ...self::GROUPS['glpi_projects']],
+        'glpi_projects' => [...self::PROJECT_HIERARCHY['glpi_projects'], ...self::GROUPS['glpi_projects'], ...self::PLANNING_METADATA['glpi_projects']],
         'glpi_queuedchats' => [...self::LOCATIONS['glpi_queuedchats'], ...self::GROUPS['glpi_queuedchats']],
         'glpi_racks' => [...self::MODELS['glpi_racks'], ...self::INFRASTRUCTURE['glpi_racks'], ...self::MANUFACTURERS['glpi_racks'], ...self::STATES['glpi_racks'], ...self::LOCATIONS['glpi_racks'], ...self::GROUPS['glpi_racks']],
         'glpi_softwarelicenses' => [...self::FINANCIAL['glpi_softwarelicenses'], ...self::MANUFACTURERS['glpi_softwarelicenses'], ...self::STATES['glpi_softwarelicenses'], ...self::LOCATIONS['glpi_softwarelicenses'], ...self::GROUPS['glpi_softwarelicenses']],
         'glpi_softwares' => [...self::MANUFACTURERS['glpi_softwares'], ...self::LOCATIONS['glpi_softwares'], ...self::GROUPS['glpi_softwares']],
         'glpi_softwareversions' => [...self::STATES['glpi_softwareversions'], ...self::INVENTORY_METADATA['glpi_softwareversions']],
         'glpi_users' => [...self::LOCATIONS['glpi_users'], ...self::GROUPS['glpi_users']],
+        'glpi_projecttasks' => [...self::PROJECT_HIERARCHY['glpi_projecttasks'], ...self::PLANNING_METADATA['glpi_projecttasks']],
+        'glpi_planningexternalevents' => [...self::GROUPS['glpi_planningexternalevents'], ...self::PLANNING_METADATA['glpi_planningexternalevents']],
     ];
 
     public static function isEmptySelection(mixed $value): bool

@@ -40,8 +40,9 @@ class PlanningExternalEventTemplate
     #[ORM\Column(name: '`state`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $state = 0;
 
-    #[ORM\Column(name: '`planningeventcategories_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $planningeventcategories_id = 0;
+    #[ORM\ManyToOne(targetEntity: PlanningEventCategory::class)]
+    #[ORM\JoinColumn(name: 'planningeventcategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?PlanningEventCategory $planningeventcategories = null;
 
     #[ORM\Column(name: '`background`', type: 'smallint', nullable: false, options: ['default' => '0'])]
     public int $background = 0;

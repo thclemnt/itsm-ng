@@ -8,9 +8,7 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Entity\DropdownTranslation;
 use itsmng\Database\Entity\ProfileUser;
-use itsmng\Database\Entity\ProjectState;
 use itsmng\Database\Entity\ProjectTask;
-use itsmng\Database\Entity\ProjectTaskType;
 use itsmng\Database\Entity\ProjectTaskTeam;
 use itsmng\Database\Entity\ProjectTaskTicket;
 use itsmng\Database\RecordCriteria;
@@ -42,7 +40,7 @@ final class ProjectTaskRepository
         }
         $query->where('EXISTS (SELECT team.id FROM ' . ProjectTaskTeam::class . ' team WHERE IDENTITY(team.projecttasks) = task.id AND ' . $actor . ')');
         if (!$showDone) {
-            $query->leftJoin(ProjectState::class, 'state', 'WITH', 'state.id = task.projectstates_id')
+            $query->leftJoin('task.projectstates', 'state')
                 ->andWhere('task.percent_done < 100 AND (state.is_finished IS NULL OR state.is_finished = :finished)')
                 ->setParameter('finished', false, Types::BOOLEAN);
         }
@@ -110,12 +108,12 @@ final class ProjectTaskRepository
         $query = $this->em->createQueryBuilder()
             ->select('r', 'dtype.name AS tname', 'state.name AS sname', 'state.color AS color', 'father.name AS fname', 'father.id AS fID')
             ->from(ProjectTask::class, 'r')
-            ->leftJoin(ProjectTaskType::class, 'dtype', 'WITH', 'dtype.id = r.projecttasktypes_id')
-            ->leftJoin(ProjectState::class, 'state', 'WITH', 'state.id = r.projectstates_id')
+            ->leftJoin('r.projecttasktypes', 'dtype')
+            ->leftJoin('r.projectstates', 'state')
             ->leftJoin('r.projecttasks', 'father');
         $compiler = new RecordCriteria($query, $this->em->getClassMetadata(ProjectTask::class));
         $query->where($compiler->where($criteria));
-        foreach (['transname2' => [$typeLanguage, 'ProjectTaskType', 'r.projecttasktypes_id'], 'transname3' => [$stateLanguage, 'ProjectState', 'r.projectstates_id']] as $alias => [$language, $type, $id]) {
+        foreach (['transname2' => [$typeLanguage, 'ProjectTaskType', 'IDENTITY(r.projecttasktypes)'], 'transname3' => [$stateLanguage, 'ProjectState', 'IDENTITY(r.projectstates)']] as $alias => [$language, $type, $id]) {
             if ($language !== null) {
                 $join = $alias . '_row';
                 $query->leftJoin(DropdownTranslation::class, $join, 'WITH', "$join.items_id = $id AND $join.itemtype = :{$alias}_type AND $join.language = :{$alias}_language AND $join.field = :{$alias}_field")

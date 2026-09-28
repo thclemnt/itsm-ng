@@ -1181,17 +1181,9 @@ class Planning extends CommonGLPI
      */
     public static function showAddGroupUsersForm()
     {
-        global $DB;
-
         echo Group::getTypeName(1) . " : <br>";
 
-        $groups = $DB->request([
-            'FROM'   => 'glpi_groups',
-            'WHERE'  => [
-                'entities_id' => $_SESSION['glpiactive_entity']
-            ],
-            'ORDER'  => 'name'
-        ]);
+        $groups = (new Group())->find(['entities_id' => $_SESSION['glpiactive_entity']], ['name', 'id']);
 
         echo "<select name='groups_id' id='dropdown_groups_id'>";
         echo "<option value='0'>-----</option>";
@@ -1291,8 +1283,6 @@ class Planning extends CommonGLPI
      */
     public static function showAddGroupForm()
     {
-        global $DB;
-
         echo Group::getTypeName(1) . " : <br>";
 
         $where_condition = [
@@ -1313,11 +1303,7 @@ class Planning extends CommonGLPI
             }
         }
 
-        $groups = $DB->request([
-            'FROM'   => 'glpi_groups',
-            'WHERE'  => $where_condition,
-            'ORDER'  => 'name'
-        ]);
+        $groups = (new Group())->find($where_condition, ['name', 'id']);
 
         echo "<select name='groups_id' id='dropdown_groups_id'>";
         echo "<option value='0'>-----</option>";

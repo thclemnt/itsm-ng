@@ -396,10 +396,11 @@ trait PlanningEvent
 
         $events    = [];
         $event_obj = new static();
+        $event_obj->getEmpty();
         $itemtype  = $event_obj->getType();
         $item_fk   = getForeignKeyFieldForItemType($itemtype);
         $table     = self::getTable();
-        $has_bg    = $DB->fieldExists($table, 'background');
+        $has_bg    = array_key_exists('background', $event_obj->fields);
 
         if (
             !isset($options['begin']) || $options['begin'] == 'NULL'
@@ -439,6 +440,8 @@ trait PlanningEvent
                 $whogroup = $_SESSION['glpigroups'];
             } elseif ($who > 0) {
                 $whogroup = array_column(Group_User::getUserGroups($who), 'id');
+            } else {
+                $whogroup = [];
             }
         }
 
@@ -447,7 +450,7 @@ trait PlanningEvent
             $nreadpriv = ["$table.users_id" => $who];
 
             // guests accounts
-            if ($DB->fieldExists($table, 'users_id_guests')) {
+            if (array_key_exists('users_id_guests', $event_obj->fields)) {
                 $nreadpriv = ['OR' => [
                    "$table.users_id" => $who,
                    "$table.users_id_guests" => ['LIKE', '%"' . $who . '"%'],
@@ -455,14 +458,14 @@ trait PlanningEvent
             }
         }
 
-        if ($whogroup > 0) {
+        if (is_array($whogroup) ? count($whogroup) > 0 : $whogroup > 0) {
             if ($itemtype == 'Reminder') {
                 $ngrouppriv = ["glpi_groups_reminders.groups_id" => $whogroup];
             } else {
                 $ngrouppriv = [$itemtype::getTableField('groups_id') => $whogroup];
             }
             if (!empty($nreadpriv)) {
-                $nreadpriv['OR'] = [$nreadpriv, $ngrouppriv];
+                $nreadpriv = ['OR' => [$nreadpriv, $ngrouppriv]];
             } else {
                 $nreadpriv = $ngrouppriv;
             }
@@ -490,7 +493,7 @@ trait PlanningEvent
            'end'   => ['>', $begin]
         ] + [$NASSIGN]; // "encapsulate" nassign to prevent OR overriding
 
-        if ($DB->fieldExists($table, 'is_planned')) {
+        if (array_key_exists('is_planned', $event_obj->fields)) {
             $WHERE["$table.is_planned"] = 1;
         }
 
@@ -504,14 +507,13 @@ trait PlanningEvent
                   'state'  => Planning::TODO,
                   'AND'    => [
                      'state'  => Planning::INFO,
-                     'end'    => ['>', new QueryExpression('NOW()')]
+                     'end'    => ['>', date('Y-m-d H:i:s')]
                   ]
                ]
             ];
         }
 
-        $event_obj->getEmpty();
-        if (isset($event_obj->fields['rrule'])) {
+        if (array_key_exists('rrule', $event_obj->fields)) {
             unset($WHERE['end']);
             $WHERE[] = [
                'OR' => [
@@ -529,10 +531,10 @@ trait PlanningEvent
            'ORDER'           => 'begin'
         ] + $visibility_criteria;
 
-        if (isset($event_obj->fields['planningeventcategories_id'])) {
+        if (array_key_exists('planningeventcategories_id', $event_obj->fields)) {
             $c_table = PlanningEventCategory::getTable();
             $criteria['SELECT'][] = "$c_table.color AS cat_color";
-            $criteria['JOIN'] = [
+            $criteria['LEFT JOIN'] = [
                $c_table => [
                   'FKEY' => [
                      $c_table => 'id',
@@ -542,18 +544,20 @@ trait PlanningEvent
             ];
         }
 
-        $iterator = $DB->request($criteria);
+        $iterator = $itemtype === 'PlanningExternalEvent'
+            ? (new \itsmng\Database\Repository\PlanningRepository(\itsmng\Database\Orm::create($DB)))->externalEvents($WHERE)
+            : $DB->request($criteria);
 
         $events_toadd = [];
 
         if (count($iterator)) {
-            while ($data = $iterator->next()) {
+            foreach ($iterator as $data) {
                 if ($event_obj->getFromDB($data["id"]) && $event_obj->canViewItem()) {
                     $key = $data["begin"] .
                            "$$" . $itemtype .
                            "$$" . $data["id"] .
                            "$$" . $who .
-                           "$$" . $whogroup;
+                           "$$" . (is_array($whogroup) ? implode(',', $whogroup) : $whogroup);
                     if (isset($options['from_group_users'])) {
                         $key .= "_gu";
                     }

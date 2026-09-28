@@ -11,7 +11,6 @@ use itsmng\Database\Entity\Project;
 use itsmng\Database\Entity\ProjectTask;
 use itsmng\Database\Entity\ProjectTaskTicket;
 use itsmng\Database\Entity\ProjectTeam;
-use itsmng\Database\Entity\ProjectState;
 use itsmng\Database\RecordCriteria;
 use itsmng\Database\EntityRegistry;
 
@@ -26,7 +25,7 @@ final class ProjectRepository
     public function visibleProjects(array $criteria, bool $readAll, int $user, array $groups, bool $active): array
     {
         $query = $this->em->createQueryBuilder()->select('r', 'state.is_finished AS is_finished')
-            ->from(Project::class, 'r')->leftJoin(ProjectState::class, 'state', 'WITH', 'state.id = r.projectstates_id');
+            ->from(Project::class, 'r')->leftJoin('r.projectstates', 'state');
         $compiler = new RecordCriteria($query, $this->em->getClassMetadata(Project::class));
         $query->where($compiler->where($criteria));
         if ($active) {

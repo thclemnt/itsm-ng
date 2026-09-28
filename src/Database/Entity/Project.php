@@ -35,11 +35,13 @@ class Project
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_recursive = false;
 
-    #[ORM\Column(name: '`projectstates_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $projectstates_id = 0;
+    #[ORM\ManyToOne(targetEntity: ProjectState::class)]
+    #[ORM\JoinColumn(name: 'projectstates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?ProjectState $projectstates = null;
 
-    #[ORM\Column(name: '`projecttypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $projecttypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: ProjectType::class)]
+    #[ORM\JoinColumn(name: 'projecttypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?ProjectType $projecttypes = null;
 
     #[ORM\Column(name: '`date`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date = null;

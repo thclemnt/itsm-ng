@@ -988,3 +988,37 @@ entity ownership, search and application tests. Browser interaction and
 notification cron were not exercised.
 PHP 8.3 inventory, software-association and group-membership tests pass 32 methods
 and 598 assertions, including duplicate OS rejection through Doctrine exceptions.
+
+### Project and planning metadata
+
+Twelve more references use nullable Doctrine `ManyToOne` associations and
+`RESTRICT` foreign keys: project states/types, task states/types/templates,
+task-template project/task/state/type references, and external-event
+categories/templates. Legacy zero selections normalize to SQL NULL. Project and
+calendar purge hooks clear or replace these references without deleting unrelated
+records. Task-template AJAX loading preserves NULL and numeric values.
+
+For existing databases, stop application writers and run `db:planning_metadata`
+to inspect the plan, then `db:planning_metadata --apply` and
+`db:foreign_keys --apply`. Nonzero orphan checks precede every schema change;
+retries are idempotent. Fresh installs apply the same relationship definitions.
+
+Project repositories now join mapped state/type associations. External-event
+calendar and iCalendar queries use `PlanningRepository`, with bound dates and
+actor predicates and a left category join. Uncategorized events remain visible;
+recurrence expansion and access checks are retained. Empty group subscriptions
+cannot become queries for unassigned events. Group planning selectors use mapped
+reads and preserve entity and membership scope. Other planning item types still
+use the shared legacy query path and remain part of the outstanding migration.
+
+Coverage is now 544 enforced relationships, 218 pending candidates, 62 polymorphic
+references, one ambiguous reference and 1,404 legacy SQL call sites. The branch
+has not completed the application-wide ORM migration.
+
+Validation: PostgreSQL and MariaDB fresh-install contracts pass 1,019 and 621
+assertions respectively, plus all 355 mapped-table CRUD tests. Planning metadata
+lifecycle/migration, reporting, project views/planning/hierarchy, search and the
+application workflow pass on both engines. PHP 8.3 project/planning tests pass
+18 methods and 519 assertions; a final shared-trait run including reminders
+passes 11 methods and 247 assertions. These are database and PHP rendering checks;
+no live-browser or notification-cron validation is claimed.

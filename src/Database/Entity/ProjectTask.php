@@ -67,11 +67,13 @@ class ProjectTask
     #[ORM\Column(name: '`effective_duration`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $effective_duration = 0;
 
-    #[ORM\Column(name: '`projectstates_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $projectstates_id = 0;
+    #[ORM\ManyToOne(targetEntity: ProjectState::class)]
+    #[ORM\JoinColumn(name: 'projectstates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?ProjectState $projectstates = null;
 
-    #[ORM\Column(name: '`projecttasktypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $projecttasktypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: ProjectTaskType::class)]
+    #[ORM\JoinColumn(name: 'projecttasktypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?ProjectTaskType $projecttasktypes = null;
 
     #[ORM\Column(name: '`users_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $users_id = 0;
@@ -85,8 +87,9 @@ class ProjectTask
     #[ORM\Column(name: '`is_milestone`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_milestone = false;
 
-    #[ORM\Column(name: '`projecttasktemplates_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $projecttasktemplates_id = 0;
+    #[ORM\ManyToOne(targetEntity: ProjectTaskTemplate::class)]
+    #[ORM\JoinColumn(name: 'projecttasktemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?ProjectTaskTemplate $projecttasktemplates = null;
 
     #[ORM\Column(name: '`is_template`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_template = false;
