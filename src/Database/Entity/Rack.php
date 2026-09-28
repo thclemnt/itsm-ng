@@ -48,8 +48,9 @@ class Rack
     #[ORM\Column(name: '`otherserial`', type: 'string', length: 255, nullable: true)]
     public ?string $otherserial = null;
 
-    #[ORM\Column(name: '`manufacturers_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $manufacturers_id = 0;
+    #[ORM\ManyToOne(targetEntity: Manufacturer::class)]
+    #[ORM\JoinColumn(name: 'manufacturers_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Manufacturer $manufacturers = null;
 
     #[ORM\Column(name: '`states_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $states_id = 0;

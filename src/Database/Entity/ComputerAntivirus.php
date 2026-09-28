@@ -15,14 +15,16 @@ class ComputerAntivirus
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
 
-    #[ORM\Column(name: '`computers_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $computers_id = 0;
+    #[ORM\ManyToOne(targetEntity: Computer::class)]
+    #[ORM\JoinColumn(name: 'computers_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?Computer $computers = null;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
     public ?string $name = null;
 
-    #[ORM\Column(name: '`manufacturers_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $manufacturers_id = 0;
+    #[ORM\ManyToOne(targetEntity: Manufacturer::class)]
+    #[ORM\JoinColumn(name: 'manufacturers_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Manufacturer $manufacturers = null;
 
     #[ORM\Column(name: '`antivirus_version`', type: 'string', length: 255, nullable: true)]
     public ?string $antivirus_version = null;

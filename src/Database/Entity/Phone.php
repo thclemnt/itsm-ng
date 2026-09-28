@@ -71,8 +71,9 @@ class Phone
     #[ORM\Column(name: '`have_hp`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $have_hp = false;
 
-    #[ORM\Column(name: '`manufacturers_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $manufacturers_id = 0;
+    #[ORM\ManyToOne(targetEntity: Manufacturer::class)]
+    #[ORM\JoinColumn(name: 'manufacturers_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Manufacturer $manufacturers = null;
 
     #[ORM\Column(name: '`is_global`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_global = false;

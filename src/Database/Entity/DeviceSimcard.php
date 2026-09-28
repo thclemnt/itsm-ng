@@ -27,8 +27,9 @@ class DeviceSimcard
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_recursive = false;
 
-    #[ORM\Column(name: '`manufacturers_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $manufacturers_id = 0;
+    #[ORM\ManyToOne(targetEntity: Manufacturer::class)]
+    #[ORM\JoinColumn(name: 'manufacturers_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Manufacturer $manufacturers = null;
 
     #[ORM\Column(name: '`voltage`', type: 'integer', nullable: true)]
     public ?int $voltage = null;

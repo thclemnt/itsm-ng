@@ -729,3 +729,40 @@ unique-constraint exception and still verifies the rejected update changes no da
 
 Coverage is now 212 enforced relationships, 550 pending candidates, 62 polymorphic
 references, one ambiguous reference and 1,420 legacy SQL sites.
+
+### Manufacturers and antivirus ownership
+
+All 34 declared manufacturer references now use nullable `ManyToOne` mappings and
+restrictive FKs. This covers asset and infrastructure records, stock models,
+software/licenses, antivirus records and device definitions. Manufacturer
+replacement reassigns every dependent record; purge keeps the records and clears
+the reference. Legacy empty selections continue to map to SQL NULL. Optional
+reference groups are merged explicitly so manufacturer mappings do not replace
+existing model/type associations. Required associations now include the complete
+merged optional-reference set for their table.
+
+Antivirus records also have a required computer association and restrictive FK.
+Computer purge removes antivirus children through the existing application
+lifecycle, while preserving other computers' records. The antivirus view and
+legacy clone API use mapped reads; the clone keeps flags, manufacturer, quoted
+names and deleted history. The view continues to exclude deleted antivirus rows.
+
+For an existing installation, inspect `php bin/console db:manufacturer_references`,
+apply it with `--apply` during maintenance with writers stopped, then run
+`php bin/console db:foreign_keys --apply`. The latter also audits and installs the
+required antivirus-computer constraint. Nonzero orphaned references are refused;
+the migration does not invent parents or discard records. Fresh installations
+normalize the manufacturer references automatically.
+
+`manufacturers.php` checks replacement/purge across all 34 tables, legacy empty
+selection reads/writes, unrelated records, antivirus rendering/cloning/computer
+purge, and migration refusal/retry. Its migration test puts an orphan in the last
+table and verifies that the first table's schema remains unchanged.
+
+Fresh PostgreSQL and MariaDB installs pass the 247-FK contract, complete ORM
+mapping/writes, manufacturer migration/lifecycle, component, software, stock,
+reporting, search and application checks. The existing PHP 8.3 computer, software,
+license, cartridge and consumable suites pass 32 methods / 829 assertions.
+Antivirus rendering was exercised in PHP, not a browser. The audit now records
+247 enforced relationships, 515 pending candidates, 62 polymorphic references,
+one ambiguous reference and 1,418 legacy SQL sites.
