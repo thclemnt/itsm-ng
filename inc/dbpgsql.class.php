@@ -195,6 +195,9 @@ class DBpgsql extends DBAdapter
                 $row[$i] = (int)$value;
             } elseif (in_array($type, ['float4', 'float8'], true)) {
                 $row[$i] = (float)$value;
+            } elseif ($type === 'bool') {
+                // Keep the legacy model contract while storing real SQL booleans.
+                $row[$i] = $value === 't' ? 1 : 0;
             } elseif ($type === 'timestamptz') {
                 $row[$i] = (new DateTimeImmutable($value))->format('Y-m-d H:i:s');
             }
@@ -443,13 +446,13 @@ SQL, [$this->dbschema, $table]);
     public function getLock($name)
     {
         $result = $this->queryParams('SELECT pg_try_advisory_lock(hashtextextended($1, 0))', [$this->dbdefault . '.' . $name]);
-        return $result && $this->fetchRow($result)[0] === 't';
+        return $result && $this->fetchRow($result)[0] === 1;
     }
 
     public function releaseLock($name)
     {
         $result = $this->queryParams('SELECT pg_advisory_unlock(hashtextextended($1, 0))', [$this->dbdefault . '.' . $name]);
-        return $result && $this->fetchRow($result)[0] === 't';
+        return $result && $this->fetchRow($result)[0] === 1;
     }
 
     public function areTimezonesAvailable(string &$msg = '')

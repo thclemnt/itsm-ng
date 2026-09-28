@@ -3038,36 +3038,27 @@ class Ticket extends CommonITILObject
            'computation'        => self::generateSLAOLAComputation('internal_time_to_own')
         ];
 
-        $max_date = '99999999';
+        $max_date = $DB->quoteValue('9999-12-31 23:59:59');
+        $escalations = [];
+        foreach (['time_to_own', 'internal_time_to_own', 'time_to_resolve', 'internal_time_to_resolve'] as $deadline) {
+            $condition = str_ends_with($deadline, '_own')
+                ? $DB->quoteName('TABLE.takeintoaccount_delay_stat') . ' <= 0'
+                : $DB->quoteName('TABLE.solvedate') . ' IS NULL';
+            $escalations[] = 'COALESCE(CASE WHEN ' . $condition . ' THEN '
+                . $DB->quoteName('TABLE.' . $deadline) . ' END, ' . $max_date . ')';
+        }
         $tab[] = [
            'id'                 => '188',
            'table'              => $this->getTable(),
            'field'              => 'next_escalation_level',
+           'computationaggregate' => false,
            'name'               => __('Next escalation level'),
            'datatype'           => 'date',
            'usehaving'          => true,
            'maybefuture'        => true,
            'massiveaction'      => false,
-           // Get least value from TTO/TTR fields:
-           // - use TTO fields only if ticket not already taken into account,
-           // - use TTR fields only if ticket not already solved,
-           // - replace NULL or not kept values with 99999999 to be sure that they will not be returned by the LEAST function,
-           // - replace 99999999 by empty string to keep only valid values.
-           'computation'        => "REPLACE(
-            LEAST(
-               IF(" . $DB->quoteName('TABLE.takeintoaccount_delay_stat') . " <= 0,
-                  COALESCE(" . $DB->quoteName('TABLE.time_to_own') . ", $max_date),
-                  $max_date),
-               IF(" . $DB->quoteName('TABLE.takeintoaccount_delay_stat') . " <= 0,
-                  COALESCE(" . $DB->quoteName('TABLE.internal_time_to_own') . ", $max_date),
-                  $max_date),
-               IF(" . $DB->quoteName('TABLE.solvedate') . " IS NULL,
-                  COALESCE(" . $DB->quoteName('TABLE.time_to_resolve') . ", $max_date),
-                  $max_date),
-               IF(" . $DB->quoteName('TABLE.solvedate') . " IS NULL,
-                  COALESCE(" . $DB->quoteName('TABLE.internal_time_to_resolve') . ", $max_date),
-                  $max_date)
-            ), $max_date, '')"
+           // Keep datetime types throughout; NULL denotes no pending deadline.
+           'computation'        => 'NULLIF(LEAST(' . implode(', ', $escalations) . '), ' . $max_date . ')'
         ];
 
         $tab[] = [

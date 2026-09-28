@@ -21,7 +21,7 @@ use Doctrine\DBAL\Schema\Table;
 use itsmng\Database\BaselineSchema;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\LegacySql;
-use itsmng\Database\SearchProjection;
+use itsmng\Database\BooleanColumns;
 
 if (!str_starts_with($DB->dbdefault, 'itsm_port_')) {
     throw new RuntimeException('Refusing to use a database not named itsm_port_*.');
@@ -174,8 +174,17 @@ try {
         $DB->setTimezone('Europe/Paris');
         check($connection->fetchOne('SHOW TIMEZONE') === 'Europe/Paris', 'Session timezone.');
         check(LegacySql::postgres("SELECT 'GROUP_CONCAT(`x`)  ?' AS `value`", true) === "SELECT 'GROUP_CONCAT(`x`)  ?' AS \"value\"", 'SQL values must not be rewritten.');
-        $projection = (new SearchProjection())->postgres("SELECT GROUP_CONCAT(DISTINCT `name` SEPARATOR ',') AS names", false);
-        check(str_contains($projection, 'STRING_AGG(DISTINCT'), 'Search aggregation.');
+        $columnTypes = $connection->fetchAllKeyValue("SELECT table_name || '.' || column_name, data_type FROM information_schema.columns WHERE table_schema = current_schema()");
+        foreach (BooleanColumns::TABLES as $tableName => $columns) {
+            foreach ($columns as $column) {
+                check(($columnTypes[$tableName . '.' . $column] ?? '') === 'boolean', 'Native boolean column: ' . $tableName . '.' . $column);
+            }
+        }
+        foreach (['glpi_savedsearches.do_count', 'glpi_calendarsegments.day', 'glpi_itilfollowups.timeline_position'] as $column) {
+            check($columnTypes[$column] === 'smallint', 'Enums remain integers: ' . $column);
+        }
+        $bools = $DB->fetchAssoc($DB->query('SELECT TRUE AS yes, FALSE AS no, NULL::boolean AS optional'));
+        check($bools === ['yes' => 1, 'no' => 0, 'optional' => null], 'Legacy boolean result contract preserves NULL.');
         $connection->beginTransaction();
         ob_start();
         try {

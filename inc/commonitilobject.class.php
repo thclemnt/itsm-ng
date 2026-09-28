@@ -4347,28 +4347,21 @@ abstract class CommonITILObject extends CommonDBTM
     {
         global $DB;
 
+        $deadline = $DB->quoteName($table . '.' . $type);
+        $status = $DB->quoteName($table . '.status');
+        $solved = $DB->quoteName($table . '.solvedate');
+        $taken = $DB->quoteName($table . '.takeintoaccount_delay_stat');
         switch ($type) {
             case 'internal_time_to_own':
             case 'time_to_own':
-                return 'IF(' . $DB->quoteName($table . '.' . $type) . ' IS NOT NULL
-            AND ' . $DB->quoteName($table . '.status') . ' <> ' . self::WAITING . '
-            AND (' . $DB->quoteName($table . '.takeintoaccount_delay_stat') . '
-                        > TIME_TO_SEC(TIMEDIFF(' . $DB->quoteName($table . '.' . $type) . ',
-                                               ' . $DB->quoteName($table . '.date') . '))
-                 OR (' . $DB->quoteName($table . '.takeintoaccount_delay_stat') . ' = 0
-                      AND ' . $DB->quoteName($table . '.' . $type) . ' < NOW())),
-            1, 0)';
-                break;
+                $duration = $DB->expressions()->secondsBetween($deadline, $DB->quoteName($table . '.date'));
+                return "CASE WHEN $deadline IS NOT NULL AND $status <> " . self::WAITING
+                    . " AND ($taken > $duration OR ($taken = 0 AND $deadline < CURRENT_TIMESTAMP)) THEN 1 ELSE 0 END";
 
             case 'internal_time_to_resolve':
             case 'time_to_resolve':
-                return 'IF(' . $DB->quoteName($table . '.' . $type) . ' IS NOT NULL
-            AND ' . $DB->quoteName($table . '.status') . ' <> 4
-            AND (' . $DB->quoteName($table . '.solvedate') . ' > ' . $DB->quoteName($table . '.' . $type) . '
-                  OR (' . $DB->quoteName($table . '.solvedate') . ' IS NULL
-                     AND ' . $DB->quoteName($table . '.' . $type) . ' < NOW())),
-            1, 0)';
-                break;
+                return "CASE WHEN $deadline IS NOT NULL AND $status <> " . self::WAITING
+                    . " AND ($solved > $deadline OR ($solved IS NULL AND $deadline < CURRENT_TIMESTAMP)) THEN 1 ELSE 0 END";
         }
     }
 

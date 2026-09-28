@@ -743,7 +743,7 @@ class SoftwareLicense extends CommonTreeDropdown
                                     '',
                                     true
                                 ) .
-                                               " AND NEWTABLE.`is_template` = 0
+                                               " AND NEWTABLE.`is_template` = '0'
                                                AND (NEWTABLE.`expire` IS NULL
                                                    OR NEWTABLE.`expire` > NOW())"];
 

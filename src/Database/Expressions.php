@@ -47,6 +47,13 @@ final class Expressions
         return $this->platform->getDateDiffExpression($end, $start);
     }
 
+    public function secondsBetween(string $end, string $start): string
+    {
+        return $this->platform instanceof PostgreSQLPlatform
+            ? "EXTRACT(EPOCH FROM ($end - $start))"
+            : "TIMESTAMPDIFF(SECOND, $start, $end)";
+    }
+
     public function concat(string ...$parts): string
     {
         return $this->platform->getConcatExpression(...$parts);

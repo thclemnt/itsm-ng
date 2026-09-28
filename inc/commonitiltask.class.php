@@ -771,7 +771,7 @@ abstract class CommonITILTask extends CommonDBTM implements CalDAVCompatibleItem
 
         $task_condition = '';
         if ($task->maybePrivate() && !Session::haveRight("task", CommonITILTask::SEEPRIVATE)) {
-            $task_condition = "AND (`NEWTABLE`.`is_private` = 0
+            $task_condition = "AND (`NEWTABLE`.`is_private` = '0'
                                  OR `NEWTABLE`.`users_id` = '" . Session::getLoginUserID() . "')";
         }
 

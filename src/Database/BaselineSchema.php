@@ -107,6 +107,9 @@ final class BaselineSchema
                 'date' => 'date', 'time' => 'time', 'json' => 'json',
                 default => throw new \RuntimeException('Unsupported baseline type: ' . $type),
             };
+            if ($postgres && BooleanColumns::contains($table->getName(), $name)) {
+                $dbalType = 'boolean';
+            }
             if ($type === 'varchar' || $type === 'char') {
                 $options['length'] = (int)$size;
                 $options['fixed'] = $type === 'char';
@@ -123,6 +126,9 @@ final class BaselineSchema
             if (preg_match("/\\bDEFAULT\\s+('(?:[^'\\\\]|\\\\.|'')*'|NULL|CURRENT_TIMESTAMP|[+-]?\\d+(?:\\.\\d+)?)/i", $rest, $default)) {
                 $value = $default[1];
                 $options['default'] = strcasecmp($value, 'NULL') === 0 ? null : (str_starts_with($value, "'") ? stripcslashes(substr($value, 1, -1)) : $value);
+                if ($dbalType === 'boolean' && $options['default'] !== null) {
+                    $options['default'] = (bool)(int)$options['default'];
+                }
             }
             if (preg_match("/\\bCOMMENT\\s+'((?:[^'\\\\]|\\\\.)*)'/i", $rest, $comment)) {
                 $options['comment'] = stripcslashes($comment[1]);
@@ -147,7 +153,7 @@ final class BaselineSchema
                 }
             }
             $table->addColumn('`' . $name . '`', $dbalType, $options);
-            if ($unsigned && $postgres) {
+            if ($unsigned && $postgres && $dbalType !== 'boolean') {
                 $this->extraSql[$table->getName()][] = 'ALTER TABLE ' . $table->getQuotedName($platform) . ' ADD CHECK (' . $platform->quoteSingleIdentifier($name) . ' >= 0)';
             }
         }

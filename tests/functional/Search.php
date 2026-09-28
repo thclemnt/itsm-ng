@@ -104,14 +104,14 @@ class Search extends DbTestCase
            ."LEFT\s*JOIN\s*`glpi_items_operatingsystems`\s*AS\s*`glpi_items_operatingsystems_OperatingSystem`\s*"
            ."ON\s*\(`glpi_items_operatingsystems_OperatingSystem`\.`items_id`\s*=\s*`glpi_computers`\.`id`\s*"
            ."AND `glpi_items_operatingsystems_OperatingSystem`\.`itemtype`\s*=\s*'Computer'\s*"
-           ."AND `glpi_items_operatingsystems_OperatingSystem`\.`is_deleted`\s*=\s*0\s*\)\s*"
+           ."AND `glpi_items_operatingsystems_OperatingSystem`\.`is_deleted`\s*=\s*'0'\s*\)\s*"
            ."LEFT\s*JOIN\s*`glpi_operatingsystems`\s*"
            ."ON\s*\(`glpi_items_operatingsystems_OperatingSystem`\.`operatingsystems_id`\s*=\s*`glpi_operatingsystems`\.`id`\s*\)"
            ."/im");
 
         //try to match WHERE clause
         $this->string($data['sql']['search'])
-           ->matches("/(\(`glpi_operatingsystems`\.`name`\s*LIKE\s*'%windows%'\s*\)\s*\))/im");
+           ->matches("/(\(`glpi_operatingsystems`\.`name`\s*LIKE\s*'%windows%'\s*\))/im");
     }
 
 
@@ -140,7 +140,7 @@ class Search extends DbTestCase
               . 'LEFT JOIN\s*`glpi_items_softwareversions`\s*AS\s*`glpi_items_softwareversions_[^`]+_Software`\s*ON\s*\('
               . '`glpi_items_softwareversions_[^`]+_Software`\.`items_id`\s*=\s*`glpi_computers`.`id`'
               . '\s*AND\s*`glpi_items_softwareversions_[^`]+_Software`\.`itemtype`\s*=\s*\'Computer\''
-              . '\s*AND\s*`glpi_items_softwareversions_[^`]+_Software`\.`is_deleted`\s*=\s*0'
+              . '\s*AND\s*`glpi_items_softwareversions_[^`]+_Software`\.`is_deleted`\s*=\s*\'0\''
               . '\)/im');
     }
 
@@ -170,7 +170,8 @@ class Search extends DbTestCase
         $data = $this->doSearch('Software', $search_params);
 
         $this->string($data['sql']['search'])
-           ->matches("/HAVING\s*\(`ITEM_Computer_2`\s+IS\s+NOT\s+NULL\s*\)/");
+           ->contains("NOT (`glpi_softwares`.`id` IN (")
+           ->contains("`glpi_computers`.`id` IS NULL");
     }
 
     public function testMetaComputerUser()
@@ -392,22 +393,24 @@ class Search extends DbTestCase
            ->matches('/LEFT JOIN\s*`glpi_softwares`\s*ON\s*\(`glpi_softwareversions_Software`\.`softwares_id`\s*=\s*`glpi_softwares`\.`id`\)/im')
            ->matches('/LEFT JOIN\s*`glpi_infocoms`\s*AS\s*`glpi_infocoms_Budget`\s*ON\s*\(`glpi_computers`\.`id`\s*=\s*`glpi_infocoms_Budget`\.`items_id`\s*AND\s*`glpi_infocoms_Budget`.`itemtype`\s*=\s*\'Computer\'\)/im')
            ->matches('/LEFT JOIN\s*`glpi_budgets`\s*ON\s*\(`glpi_infocoms_Budget`\.`budgets_id`\s*=\s*`glpi_budgets`\.`id`/im')
-           ->matches('/LEFT JOIN\s*`glpi_computers_items`\s*AS `glpi_computers_items_Printer`\s*ON\s*\(`glpi_computers_items_Printer`\.`computers_id`\s*=\s*`glpi_computers`\.`id`\s*AND\s*`glpi_computers_items_Printer`.`itemtype`\s*=\s*\'Printer\'\s*AND\s*`glpi_computers_items_Printer`.`is_deleted`\s*=\s*0\)/im')
+           ->matches('/LEFT JOIN\s*`glpi_computers_items`\s*AS `glpi_computers_items_Printer`\s*ON\s*\(`glpi_computers_items_Printer`\.`computers_id`\s*=\s*`glpi_computers`\.`id`\s*AND\s*`glpi_computers_items_Printer`.`itemtype`\s*=\s*\'Printer\'\s*AND\s*`glpi_computers_items_Printer`.`is_deleted`\s*=\s*\'0\'\)/im')
            ->matches('/LEFT JOIN\s*`glpi_printers`\s*ON\s*\(`glpi_computers_items_Printer`\.`items_id`\s*=\s*`glpi_printers`\.`id`/im')
            // match where parts
-           ->contains("`glpi_computers`.`is_deleted` = 0")
-           ->contains("AND `glpi_computers`.`is_template` = 0")
+           ->contains("`glpi_computers`.`is_deleted` = '0'")
+           ->contains("AND `glpi_computers`.`is_template` = '0'")
            ->contains("`glpi_computers`.`entities_id` IN ('1', '2', '3')")
            ->contains("OR (`glpi_computers`.`is_recursive`='1'".
                       " AND `glpi_computers`.`entities_id` IN (0))")
            ->contains("`glpi_computers`.`name`  LIKE '%test%'")
-           ->contains("AND (`glpi_softwares`.`id` = '10784')")
-           ->contains("OR (`glpi_computers`.`id`  LIKE '%test2%'")
-           ->contains("AND (`glpi_locations`.`id` = '11')")
+           ->contains("(`glpi_softwares`.`id` = '10784')")
+           ->contains("(`glpi_computers`.`id`  LIKE '%test2%'")
+           ->contains("(`glpi_locations`.`id` = '11')")
            ->contains("(`glpi_users`.`id` = '2')")
-           ->contains("OR (`glpi_users`.`id` = '3')")
+           ->contains("(`glpi_users`.`id` = '3')")
            // match having
-           ->matches("/HAVING\s*\(`ITEM_Budget_2`\s+<>\s+5\)\s+AND\s+\(\(`ITEM_Printer_1`\s+NOT LIKE\s+'%HP%'\s+OR\s+`ITEM_Printer_1`\s+IS NULL\)\s*\)/");
+           ->contains("NOT (`glpi_computers`.`id` IN (")
+           ->contains("`glpi_budgets`.`id` = 5")
+           ->contains("`glpi_printers`.`name`  LIKE '%HP%'");
     }
 
     public function testViewCriterion()
@@ -428,8 +431,8 @@ class Search extends DbTestCase
         ]);
 
         $this->string($data['sql']['search'])
-           ->contains("`glpi_computers`.`is_deleted` = 0")
-           ->contains("AND `glpi_computers`.`is_template` = 0")
+           ->contains("`glpi_computers`.`is_deleted` = '0'")
+           ->contains("AND `glpi_computers`.`is_template` = '0'")
            ->contains("`glpi_computers`.`entities_id` IN ('1', '2', '3')")
            ->contains("OR (`glpi_computers`.`is_recursive`='1'".
                       " AND `glpi_computers`.`entities_id` IN (0))")
@@ -441,7 +444,7 @@ class Search extends DbTestCase
            ->matches("/OR\s*\(`glpi_computertypes`\.`name`\s*LIKE '%test%'\s*\)/")
            ->matches("/OR\s*\(`glpi_computermodels`\.`name`\s*LIKE '%test%'\s*\)/")
            ->matches("/OR\s*\(`glpi_locations`\.`completename`\s*LIKE '%test%'\s*\)/")
-           ->matches("/OR\s*\(CONVERT\(`glpi_computers`\.`date_mod` USING utf8\)\s*LIKE '%test%'\s*\)\)/");
+           ->matches("/OR\s*\(`glpi_computers`\.`date_mod`\s*LIKE '%test%'\s*\)\)/");
     }
 
     public function testSearchOnRelationTable()
@@ -462,7 +465,7 @@ class Search extends DbTestCase
         ]);
 
         $this->string($data['sql']['search'])
-           ->contains("`glpi_changes`.`id` AS `ITEM_Change_Ticket_3`")
+           ->contains("MIN(`glpi_changes`.`id`) AS `ITEM_Change_Ticket_3`")
            ->contains("`glpi_changes_tickets`.`changes_id` = `glpi_changes`.`id`")
            ->contains("`glpi_changes`.`id` = '1'");
     }
@@ -1505,15 +1508,15 @@ class Search extends DbTestCase
            ->contains("LEFT JOIN `glpi_users`  AS `glpi_users_users_id_recipient`")
 
            // Check that SELECT criteria applies on corresponding table alias
-           ->contains("`glpi_users_users_id_lastupdater`.`realname` AS `ITEM_Ticket_64_realname`")
-           ->contains("`glpi_users_users_id_recipient`.`realname` AS `ITEM_Ticket_22_realname`")
+           ->contains("MIN(`glpi_users_users_id_lastupdater`.`realname`) AS `ITEM_Ticket_64_realname`")
+           ->contains("MIN(`glpi_users_users_id_recipient`.`realname`) AS `ITEM_Ticket_22_realname`")
 
            // Check that WHERE criteria applies on corresponding table alias
            ->contains("`glpi_users_users_id_lastupdater`.`id` = '{$user_tech_id}'")
            ->contains("`glpi_users_users_id_recipient`.`id` = '{$user_normal_id}'")
 
            // Check that ORDER applies on corresponding table alias
-           ->contains("`glpi_users_users_id_recipient`.`name` ASC");
+           ->contains("MIN(`glpi_users_users_id_recipient`.`name`) AS `__sort_2`");
     }
 
     public function testSearchAllAssets()
@@ -1548,8 +1551,8 @@ class Search extends DbTestCase
 
         foreach ($types as $type) {
             $this->string($data['sql']['search'])
-               ->contains("`$type`.`is_deleted` = 0")
-               ->contains("AND `$type`.`is_template` = 0")
+               ->contains("`$type`.`is_deleted` = '0'")
+               ->contains("AND `$type`.`is_template` = '0'")
                ->contains("`$type`.`entities_id` IN ('1', '2', '3')")
                ->contains("OR (`$type`.`is_recursive`='1'".
                            " AND `$type`.`entities_id` IN (0))")
@@ -1570,9 +1573,9 @@ class Search extends DbTestCase
         $data = $this->doSearch('SearchTest\\Computer', $search_params);
 
         $this->string($data['sql']['search'])
-           ->contains("`glpi_computers`.`name` AS `ITEM_SearchTest\Computer_1`")
-           ->contains("`glpi_computers`.`id` AS `ITEM_SearchTest\Computer_1_id`")
-           ->contains("ORDER BY `ITEM_SearchTest\Computer_1` ASC");
+           ->contains("MIN(`glpi_computers`.`name`) AS `ITEM_SearchTest\Computer_1`")
+           ->contains("MIN(`glpi_computers`.`id`) AS `ITEM_SearchTest\Computer_1_id`")
+           ->contains("MIN(`__search_page`.`__sort`) ASC, `glpi_computers`.`id` ASC");
     }
 
     public function testGroupParamAfterMeta()
