@@ -29,8 +29,10 @@ class DevicePci
     #[ORM\JoinColumn(name: 'manufacturers_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     public ?Manufacturer $manufacturers = null;
 
-    #[ORM\Column(name: '`devicenetworkcardmodels_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $devicenetworkcardmodels_id = 0;
+    // Legacy network-card model metadata remains distinct from the PCI model.
+    #[ORM\ManyToOne(targetEntity: DeviceNetworkCardModel::class)]
+    #[ORM\JoinColumn(name: 'devicenetworkcardmodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?DeviceNetworkCardModel $devicenetworkcardmodels = null;
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
     #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]

@@ -326,6 +326,7 @@ $RELATION = [
 
    'glpi_devicenetworkcardmodels' => [
       'glpi_devicenetworkcards' => 'devicenetworkcardmodels_id',
+      'glpi_devicepcis' => 'devicenetworkcardmodels_id',
    ],
 
    'glpi_devicenetworkcards' => [

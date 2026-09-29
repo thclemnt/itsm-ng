@@ -2195,3 +2195,34 @@ The inventory records 727 enforced references, 33 pending ordinary references,
 62 polymorphic references, one ambiguous reference and 1231 direct legacy SQL call
 sites. The static SQL count does not include the legacy table-helper calls removed
 from these VM views. Full relationship and query conversion remains unfinished.
+
+### Legacy PCI network-card model metadata
+
+PCI devices contain two separate model fields: the active `devicepcimodels_id`
+association and the older `devicenetworkcardmodels_id` column added by the 9.2.3
+upgrade. The latter is now a nullable Doctrine association to network-card models
+with a restrictive FK. Its values are preserved independently of the active PCI
+model; the migration does not rename, reinterpret or discard legacy identifiers.
+
+Existing installations use `db:legacy_component_models --apply`, followed by
+`db:foreign_keys --apply`. The migration audits nonzero references before DDL,
+normalizes zero to NULL, and supports idempotent retry. It is also included in the
+normal upgrade path; fresh schemas include the nullable mapping and constraint.
+Model replacement/purge now maintains this previously missing lifecycle relation,
+leaving the PCI device, its actual model and installed-component associations
+intact.
+
+`tests/database-portability/legacy-component-models.php` verifies independent model
+identities, replacement/purge scoping, installed-component preservation, legacy
+zero writes/criteria, actual PCI-model search, migration planning, orphan refusal,
+valid-value preservation and retry. The focused contract passed on fresh and
+upgraded PostgreSQL and MariaDB databases, and also under PHP 8.3. The PHP 8.3
+network-card functional method passed with 12 assertions. Both engines passed
+complete mapping/parent-purge, all-table ORM CRUD, criteria, reporting, application,
+search, all 17 component-association types and optional-model migration contracts.
+Base portability assertions: 1208 PostgreSQL and 805 MariaDB.
+
+The inventory records 728 enforced references, 32 pending ordinary references,
+62 polymorphic references, one ambiguous reference and 1231 legacy SQL call sites.
+This change expands mapped relationship coverage; full relationship and runtime
+query conversion remains unfinished.

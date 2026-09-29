@@ -29,6 +29,10 @@ final class OptionalReferences
         'glpi_racks' => ['rackmodels_id' => 'glpi_rackmodels'],
     ];
 
+    public const LEGACY_COMPONENT_MODELS = [
+        'glpi_devicepcis' => ['devicenetworkcardmodels_id' => 'glpi_devicenetworkcardmodels'],
+    ];
+
     public const PROJECT_HIERARCHY = [
         'glpi_projects' => ['projects_id' => 'glpi_projects'],
         'glpi_projecttasks' => ['projects_id' => 'glpi_projects', 'projecttasks_id' => 'glpi_projecttasks'],
@@ -477,7 +481,7 @@ final class OptionalReferences
         'glpi_devicememories' => [...self::MODELS['glpi_devicememories'], ...self::MANUFACTURERS['glpi_devicememories'], ...self::INVENTORY_METADATA['glpi_devicememories']],
         'glpi_devicemotherboards' => [...self::MODELS['glpi_devicemotherboards'], ...self::MANUFACTURERS['glpi_devicemotherboards']],
         'glpi_devicenetworkcards' => [...self::MODELS['glpi_devicenetworkcards'], ...self::MANUFACTURERS['glpi_devicenetworkcards']],
-        'glpi_devicepcis' => [...self::MODELS['glpi_devicepcis'], ...self::MANUFACTURERS['glpi_devicepcis']],
+        'glpi_devicepcis' => [...self::MODELS['glpi_devicepcis'], ...self::LEGACY_COMPONENT_MODELS['glpi_devicepcis'], ...self::MANUFACTURERS['glpi_devicepcis']],
         'glpi_devicepowersupplies' => [...self::MODELS['glpi_devicepowersupplies'], ...self::MANUFACTURERS['glpi_devicepowersupplies']],
         'glpi_deviceprocessors' => [...self::MODELS['glpi_deviceprocessors'], ...self::MANUFACTURERS['glpi_deviceprocessors']],
         'glpi_devicesensors' => [...self::MANUFACTURERS['glpi_devicesensors'], ...self::STATES['glpi_devicesensors'], ...self::LOCATIONS['glpi_devicesensors'], ...self::INVENTORY_METADATA['glpi_devicesensors']],
