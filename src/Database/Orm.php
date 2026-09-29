@@ -22,6 +22,7 @@ final class Orm
         }
         $config = new Configuration();
         $config->addCustomNumericFunction('BIT_COUNT', Query\BitCount::class);
+        $config->addCustomNumericFunction('EPOCH_SECONDS', Query\EpochSeconds::class);
         $config->setMetadataDriverImpl(new AttributeDriver([__DIR__ . '/Entity']));
         $config->setProxyDir(GLPI_CACHE_DIR . '/orm');
         $config->setProxyNamespace('itsmng\\Database\\Proxy');

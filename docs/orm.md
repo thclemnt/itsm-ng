@@ -1374,3 +1374,40 @@ rootless history links, multi-batch retention, active-run preservation, task/log
 purges and migration orphan/cycle refusal and idempotence. All 12 changed PHP
 files pass syntax checks; formatting and diff checks pass. Rendering checks use
 PHP output. No real scheduled task bodies or notification deliveries ran.
+
+### Scheduled-task selection and alert decisions
+
+`CronTaskRepository` now selects the next task, lists plugin tasks for lifecycle
+unregistration, lists used item types, finds overdue runs and evaluates error
+notification eligibility. `CronTask` and `CronTaskLog` have no remaining direct
+query/request/update/delete calls. Notification dispatch remains in the model.
+
+Selection applies active-plugin prefixes, local-hour windows (including overnight
+windows), elapsed frequency, modes and per-task locks in the mapped query. It
+returns one row, prioritizing core tasks, then never-run tasks and due time, with
+ID as a stable tie-breaker. Forced runs retain their allowed-mode check and skip
+locks, windows and frequency; they still cannot claim an already-running task.
+Namespaced plugin matching requires the namespace separator; plugin names are
+literal prefixes rather than SQL wildcard patterns.
+
+The shared `EPOCH_SECONDS` DQL function compiles the instant conversion for each
+provider. Frequency and watcher checks use elapsed seconds so daylight-saving
+changes cannot shorten or extend an interval. Allowed hours use the application
+session's local timezone. The watcher preserves the existing two-frequency OR
+two-hour threshold. Error decisions count five failures among the last ten
+completed runs and suppress repeats when an alert exists within the previous
+calendar day; progress logs do not displace completed runs.
+
+The audit now lists 1,347 legacy SQL call sites. Relationship coverage remains
+630 enforced, 132 pending, 62 polymorphic and one ambiguous; full conversion is
+still unfinished.
+
+Validation: the scheduler contract passes on PostgreSQL and MariaDB, including
+spring/fall DST, exact time boundaries, overnight windows, forced modes, literal
+plugin matching, stable ordering, file locks, overdue detection, alert scope and
+suppression, and plugin lifecycle cleanup. The same contract passes under PHP
+8.3/MariaDB; existing CronTask functional tests pass three methods and 57
+assertions. Both engines also pass cron-log lifecycle/concurrency, shared ORM
+criteria, reporting, application and search regression suites. Five changed PHP
+files pass syntax checks; formatting and diff checks pass. No real task body or
+notification delivery was executed, and remote CI has not run.
