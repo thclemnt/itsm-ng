@@ -328,7 +328,7 @@ class KnowbaseItem_Comment extends CommonDBTM
         $html = '';
         foreach ($comments as $comment) {
             $user = new User();
-            $user->getFromDB($comment['users_id']);
+            $hasUser = $user->getFromDB($comment['users_id']);
 
             $html .= "<li class='comment" . ($level > 0 ? ' subcomment' : '') . "' id='kbcomment{$comment['id']}'>";
             $html .= "<div class='h_item left'>";
@@ -344,7 +344,7 @@ class KnowbaseItem_Comment extends CommonDBTM
             $html .= "</div>";
             $html .= "<span class='h_user_name'>";
             $userdata = getUserName($user->getID(), 2);
-            $html .= $user->getLink() . "&nbsp;";
+            $html .= ($hasUser ? $user->getLink() : __('Unknown user')) . "&nbsp;";
             $html .= Html::showToolTip(
                 $userdata["comment"],
                 ['link' => $userdata['link'], 'display' => false]

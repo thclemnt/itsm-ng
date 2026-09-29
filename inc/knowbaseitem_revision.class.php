@@ -140,14 +140,14 @@ class KnowbaseItem_Revision extends CommonDBTM
         echo $header;
 
         $user = new User();
-        $user->getFromDB($item->fields['users_id']);
+        $hasUser = $user->getFromDB($item->fields['users_id']);
 
         //current contents
         echo "<tr class='tab_bg_2'>";
         echo "<td>(" . __('cur')  . ")</td>" .
                 "<td><input type='radio' name='oldid' value='0' style='visibility:hidden'/>" .
                 "<input type='radio' name='diff' value='0' checked='checked'/></td>" .
-                "<td>" . $user->getLink() . "</td>" .
+                "<td>" . ($hasUser ? $user->getLink() : __('Unknown user')) . "</td>" .
                 "<td class='tab_date'>" . $item->fields['date_mod'] . "</td>" .
                 "<td></td>" .
                 "</tr>";

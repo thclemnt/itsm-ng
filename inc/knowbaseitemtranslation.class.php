@@ -417,6 +417,9 @@ class KnowbaseItemTranslation extends CommonDBChild
 
     public function pre_updateInDB()
     {
+        if (!array_intersect($this->updates, ['name', 'answer', 'language'])) {
+            return;
+        }
         $revision = new KnowbaseItem_Revision();
         $translation = new KnowbaseItemTranslation();
         $translation->getFromDB($this->getID());

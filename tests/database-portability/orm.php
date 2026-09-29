@@ -156,7 +156,7 @@ try {
             foreach ($relations as $column => $reference) {
                 $values[$column] = $reference === 'glpi_entities' ? 0 : $parent($reference);
             }
-            if ($table === 'glpi_infocoms') {
+            if (in_array($table, ['glpi_infocoms', 'glpi_documents_items'], true)) {
                 $values += ['itemtype' => 'Computer', 'items_id' => (new FixtureRecords($DB))->create('glpi_computers')];
             }
             $DB->insertOrDie($table, $values);

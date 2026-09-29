@@ -31,8 +31,9 @@ class Document
     #[ORM\Column(name: '`filepath`', type: 'string', length: 255, nullable: true)]
     public ?string $filepath = null;
 
-    #[ORM\Column(name: '`documentcategories_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $documentcategories_id = 0;
+    #[ORM\ManyToOne(targetEntity: DocumentCategory::class)]
+    #[ORM\JoinColumn(name: 'documentcategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?DocumentCategory $documentcategories = null;
 
     #[ORM\Column(name: '`mime`', type: 'string', length: 255, nullable: true)]
     public ?string $mime = null;
@@ -49,8 +50,9 @@ class Document
     #[ORM\Column(name: '`link`', type: 'string', length: 255, nullable: true)]
     public ?string $link = null;
 
-    #[ORM\Column(name: '`users_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $users_id = 0;
+    #[ORM\ManyToOne(targetEntity: User::class)]
+    #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?User $users = null;
 
     #[ORM\Column(name: '`tickets_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $tickets_id = 0;

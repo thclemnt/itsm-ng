@@ -1530,12 +1530,8 @@ final class DbUtils
         }
 
         if ($ID) {
-            $iterator = $DB->request(
-                'glpi_users',
-                [
-                  'WHERE' => ['id' => $ID]
-                ]
-            );
+            $data = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+                ->find('glpi_users', 'id', (int)$ID);
 
             if ($link == 2) {
                 $user = ["name"    => "",
@@ -1543,8 +1539,7 @@ final class DbUtils
                          "link"    => ""];
             }
 
-            if (count($iterator) == 1) {
-                $data     = $iterator->next();
+            if ($data !== null) {
                 $username = $this->formatUserName(
                     $data["id"],
                     $data["name"],

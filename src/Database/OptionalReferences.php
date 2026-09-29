@@ -325,7 +325,18 @@ final class OptionalReferences
         'glpi_reservations' => ['users_id' => 'glpi_users'],
     ];
 
+    public const CONTENT_METADATA = [
+        'glpi_documents' => ['users_id' => 'glpi_users', 'documentcategories_id' => 'glpi_documentcategories'],
+        'glpi_documents_items' => ['users_id' => 'glpi_users'],
+        'glpi_knowbaseitems' => ['users_id' => 'glpi_users'],
+        'glpi_knowbaseitems_comments' => ['users_id' => 'glpi_users'],
+        'glpi_knowbaseitems_revisions' => ['users_id' => 'glpi_users'],
+        'glpi_knowbaseitemtranslations' => ['users_id' => 'glpi_users'],
+        'glpi_notepads' => ['users_id' => 'glpi_users', 'users_id_lastupdater' => 'glpi_users'],
+    ];
+
     public const RELATIONS = [
+        ...self::CONTENT_METADATA,
         ...self::RESERVATION_USERS,
         ...self::ASSET_USERS,
         ...self::TREE_PARENTS,

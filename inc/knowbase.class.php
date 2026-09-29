@@ -342,11 +342,11 @@ JAVASCRIPT;
 
         foreach ($categories as $category) {
             $node = [
-               'id'     => $category['id'],
-               'parent' => $category[$cat_fk],
+               'id'     => (string)$category['id'],
+               'parent' => (string)($category[$cat_fk] ?? 0),
                'text'   => $category['name'],
                'a_attr' => [
-                  'data-id' => $category['id']
+                  'data-id' => (string)$category['id']
                ],
             ];
 

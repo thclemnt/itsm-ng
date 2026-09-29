@@ -27,8 +27,9 @@ class KnowbaseItem
     #[ORM\Column(name: '`is_faq`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_faq = false;
 
-    #[ORM\Column(name: '`users_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $users_id = 0;
+    #[ORM\ManyToOne(targetEntity: User::class)]
+    #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?User $users = null;
 
     #[ORM\Column(name: '`view`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $view = 0;

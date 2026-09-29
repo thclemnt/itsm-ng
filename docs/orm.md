@@ -1174,3 +1174,41 @@ rejected-edit state restoration, user replacement/purge (including legacy NULL
 dates), group isolation, entity/type filters, daily boundaries, alert suppression,
 and migration orphan refusal/idempotence. Alert selection and PHP rendering were
 tested; notification delivery and browser interactions were not exercised.
+
+### Content authors and document views
+
+Eight user relationships now use nullable Doctrine associations on documents,
+document attachments, knowledge-base articles/comments/revisions/translations,
+and note authors/editors. Document categories add a ninth nullable association.
+Deleting a user or category retains the content; replacement updates its audited
+references. Existing installations should inspect `db:content_metadata`, apply
+it during maintenance, then run `db:foreign_keys --apply`. Nonzero orphans stop
+preflight before DDL, and empty legacy references become NULL.
+
+`ContentRepository` supplies notes with editor pictures, attachment IDs, document
+counts/headings and scoped document lists. Document relationships resolve the
+opposite endpoint in either direction and apply entity restrictions to that
+endpoint. Each timeline association retains its own row. The shared user-name
+helper now loads mapped user records; its string/link/tooltip outputs remain the
+same. Document and note view/clone queries no longer call the legacy DB adapter.
+
+Author cleanup does not generate new content revisions or overwrite note editor
+history. Actual knowledge-base text edits still snapshot revisions, and note
+content edits still record the editor. Missing comment/revision authors render
+as unknown users. The knowledge-base tree formatter converts nullable parent
+IDs to its existing synthetic root ID, preserving the jsTree data contract.
+
+Coverage is 617 enforced relationships, 145 pending candidates, 62 polymorphic
+references, one ambiguous reference and 1,368 legacy SQL call sites. The complete
+relationship and query migration remains unfinished.
+
+Validation: PostgreSQL/MariaDB pass 1,092/694 database-contract assertions,
+metadata and parent-purge checks, CRUD across all 355 tables, and content,
+knowledge-base, reporting, application and search suites. Fresh installs pass the
+content contract on both engines, including PHP 8.3 on MariaDB. Seven affected
+PHP 8.3 functional classes pass across 63 methods; the four knowledge-base classes
+pass 17 methods and 348 assertions after the jsTree fix. Tests cover author and
+category replacement/purge, revision preservation, missing authors, both document
+link directions, entity filtering, timeline duplicates, explicit NULL ordering,
+and orphan preflight/idempotence. Rendering checks execute PHP; browser
+interactions and notification delivery were not exercised.

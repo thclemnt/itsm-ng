@@ -348,19 +348,13 @@ class Document_Item extends CommonDBRelation
             $newitemtype = $itemtype;
         }
 
-        $iterator = $DB->request([
-           'FIELDS' => ['documents_id'],
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'items_id'  => $oldid,
-              'itemtype'  => $itemtype
-           ]
-        ]);
-        while ($data = $iterator->next()) {
+        $ids = (new \itsmng\Database\Repository\ContentRepository(\itsmng\Database\Orm::create($DB)))
+            ->documentIds($itemtype, (int)$oldid);
+        foreach ($ids as $documentId) {
             $docitem = new self();
             $docitem->add(
                 [
-                'documents_id' => $data["documents_id"],
+                'documents_id' => $documentId,
                 'itemtype'     => $newitemtype,
                 'items_id'     => $newid]
             );
@@ -494,7 +488,7 @@ class Document_Item extends CommonDBRelation
                     $soft = new Software();
                 }
 
-                while ($data = $iterator->next()) {
+                foreach ($iterator as $data) {
                     $linkname_extra = "";
                     if ($item instanceof ITILFollowup || $item instanceof ITILSolution) {
                         $linkname_extra = "(" . $item::getTypeName(1) . ")";
@@ -696,16 +690,8 @@ class Document_Item extends CommonDBRelation
                     $entities = $entity;
                 }
             }
-            $limit = getEntitiesRestrictRequest(" AND ", "glpi_documents", '', $entities, true);
-
-            $count = $DB->request([
-               'COUNT'     => 'cpt',
-               'FROM'      => 'glpi_documents',
-               'WHERE'     => [
-                  'is_deleted' => 0
-               ] + getEntitiesRestrictCriteria('glpi_documents', '', $entities, true)
-            ])->next();
-            $nb = $count['cpt'];
+            $repository = new \itsmng\Database\Repository\ContentRepository(\itsmng\Database\Orm::create($DB));
+            $nb = $repository->documentCount(getEntitiesRestrictCriteria('glpi_documents', '', $entities, true));
 
             if ($item->getType() == 'Document') {
                 $used[$item->getID()] = $item->getID();
@@ -777,21 +763,8 @@ class Document_Item extends CommonDBRelation
                 && ($nb > count($used))
             ) {
                 $values = getItemByEntity(Document::class, $entities);
-                $criteria = [
-                   'FROM'   => 'glpi_documentcategories',
-                   'WHERE'  => [
-                      'id' => new QuerySubQuery([
-                         'SELECT'          => 'documentcategories_id',
-                         'DISTINCT'        => true,
-                         'FROM'            => 'glpi_documents',
-                      ])
-                   ],
-                   'ORDER'  => 'name'
-                ];
-                $iterator = $DB->request($criteria);
-
                 $headings = [];
-                while ($data = $iterator->next()) {
+                foreach ($repository->documentHeadings() as $data) {
                     $headings[$data['id']] = $data['name'];
                 }
 
@@ -933,73 +906,17 @@ class Document_Item extends CommonDBRelation
             $linkparam = "&amp;tickets_id=" . $item->fields['id'];
         }
 
-        $criteria = [
-           'SELECT'    => [
-              'glpi_documents_items.id AS assocID',
-              'glpi_documents_items.date_creation AS assocdate',
-              'glpi_entities.id AS entityID',
-              'glpi_entities.completename AS entity',
-              'glpi_documentcategories.completename AS headings',
-              'glpi_documents.*'
-           ],
-           'FROM'      => 'glpi_documents_items',
-           'LEFT JOIN' => [
-              'glpi_documents'  => [
-                 'ON' => [
-                    'glpi_documents_items'  => 'documents_id',
-                    'glpi_documents'        => 'id'
-                 ]
-              ],
-              'glpi_entities'   => [
-                 'ON' => [
-                    'glpi_documents'  => 'entities_id',
-                    'glpi_entities'   => 'id'
-                 ]
-              ],
-              'glpi_documentcategories'  => [
-                 'ON' => [
-                    'glpi_documentcategories'  => 'id',
-                    'glpi_documents'           => 'documentcategories_id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_documents_items.items_id'  => $item->getID(),
-              'glpi_documents_items.itemtype'  => $item->getType()
-           ],
-           'ORDERBY'   => [
-              "$sort $order"
-           ]
-        ];
-
-        if (Session::getLoginUserID()) {
-            $criteria['WHERE'] = $criteria['WHERE'] + getEntitiesRestrictCriteria('glpi_documents', '', '', true);
-        } else {
-            // Anonymous access from FAQ
-            $criteria['WHERE']['glpi_documents.entities_id'] = 0;
-        }
-
-        // Document : search links in both order using union
-        $doc_criteria = [];
-        if ($item->getType() == 'Document') {
-            $owhere = $criteria['WHERE'];
-            $o2where =  $owhere + ['glpi_documents_items.documents_id' => $item->getID()];
-            unset($o2where['glpi_documents_items.items_id']);
-            $criteria['WHERE'] = [
-               'OR' => [
-                  $owhere,
-                  $o2where
-               ]
-            ];
-        }
-
-        $iterator = $DB->request($criteria);
+        $scope = Session::getLoginUserID()
+            ? getEntitiesRestrictCriteria('glpi_documents', '', '', true)
+            : ['entities_id' => 0];
+        $iterator = (new \itsmng\Database\Repository\ContentRepository(\itsmng\Database\Orm::create($DB)))
+            ->documents($item->getType(), (int)$item->getID(), $scope, $sort, $order);
         $number = count($iterator);
         $i      = 0;
 
         $documents = [];
         $used      = [];
-        while ($data = $iterator->next()) {
+        foreach ($iterator as $data) {
             $documents[$data['assocID']] = $data;
             $used[$data['id']]           = $data['id'];
         }

@@ -2113,6 +2113,9 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
 
     public function pre_updateInDB()
     {
+        if (!array_intersect($this->updates, ['name', 'answer'])) {
+            return;
+        }
         $revision = new KnowbaseItem_Revision();
         $kb = new KnowbaseItem();
         $kb->getFromDB($this->getID());

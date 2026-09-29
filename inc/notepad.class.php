@@ -102,7 +102,9 @@ class Notepad extends CommonDBChild
     public function prepareInputForUpdate($input)
     {
 
-        $input['users_id_lastupdater'] = Session::getLoginUserID();
+        if (array_key_exists('content', $input)) {
+            $input['users_id_lastupdater'] = Session::getLoginUserID();
+        }
         return $input;
     }
 
@@ -118,18 +120,9 @@ class Notepad extends CommonDBChild
      **/
     public static function cloneItem($itemtype, $oldid, $newid)
     {
-        global $DB;
-
         Toolbox::deprecated('Use clone');
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'items_id'  => $oldid,
-              'itemtype'  => $itemtype
-           ]
-        ]);
-
-        while ($data = $iterator->next()) {
+        $iterator = (new self())->find(['items_id' => $oldid, 'itemtype' => $itemtype]);
+        foreach ($iterator as $data) {
             $cd               = new self();
             unset($data['id']);
             $data['items_id'] = $newid;
@@ -186,32 +179,8 @@ class Notepad extends CommonDBChild
     {
         global $DB;
 
-        $data = [];
-        $iterator = $DB->request([
-           'SELECT'    => [
-              'glpi_notepads.*',
-              'glpi_users.picture'
-           ],
-           'FROM'      => self::getTable(),
-           'LEFT JOIN' => [
-              'glpi_users'   => [
-                 'ON' => [
-                    self::getTable()  => 'users_id_lastupdater',
-                    'glpi_users'      => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'itemtype'  => $item->getType(),
-              'items_id'  => $item->getID()
-           ],
-           'ORDERBY'   => 'date_mod DESC'
-        ]);
-
-        while ($note = $iterator->next()) {
-            $data[] = $note;
-        }
-        return $data;
+        return (new \itsmng\Database\Repository\ContentRepository(\itsmng\Database\Orm::create($DB)))
+            ->notes($item->getType(), (int)$item->getID());
     }
 
 
