@@ -2520,3 +2520,47 @@ The static inventory records 739 enforced references, 21 pending ordinary
 references, 62 polymorphic references, one ambiguous reference and 1186 legacy
 SQL call sites. Full relationship coverage and runtime query conversion remain
 unfinished.
+
+### History queries and retention through ORM
+
+`HistoryRepository` now handles history insertion, scoped counts and pages,
+distinct filter values, item cleanup and retention deletion. The `Log` and
+`PurgeLogs` runtime classes no longer issue adapter SQL. History writes retain
+the existing escaped-change boundary and Unicode truncation, then bind raw
+values through the mapping. Actor names and literal `NULL` strings are preserved;
+the generated history ID still updates `glpi_maxhistory`.
+
+History pages bind item type and ID independently of optional filters. Sorting
+uses an ID tie breaker and explicit NULL ordering for consistent pages across
+providers. Facets group their selected fields and order by the latest matching
+ID, replacing nonportable DISTINCT/GROUP BY queries ordered by an unselected ID.
+Counts and pages use the same structured filters. The HTTP endpoint decodes the
+original JSON request rather than its legacy SQL-escaped copy, fixing silently
+ignored filters containing JSON syntax and preserving names with backslashes.
+History query filters now accept unescaped values.
+
+Retention runs mapped bulk deletes without loading every log into memory. A typed
+cutoff replaces MySQL date expressions and clamps calendar-month subtraction at
+month ends, including leap years. All existing per-category retention settings
+remain in effect. KEEP_ALL and invalid settings delete nothing; DELETE_ALL also
+removes undated rows; dated policies retain them. `getDateModRestriction()` now
+returns typed criteria, an empty array for DELETE_ALL, or false when disabled;
+callers must compare explicitly with false.
+
+The history contract passes on PostgreSQL and MariaDB, including fresh schemas,
+literal values, scoped and tied pagination, NULL ordering, compound filters,
+facets, application rendering, calendar boundaries and every retention setting.
+Retention tests protect neighboring rows that differ in each individual scope
+field. They call retention helpers inside rolled-back fixture transactions,
+not cron bodies. Authenticated HTTP checks pass on both providers for pagination,
+filtering and escaped HTML output; this is not browser interaction proof.
+PHP 8.3 passes the MariaDB history contract and changed-file syntax checks.
+The existing Log functional suite passes seven methods and 600 assertions.
+Both providers also pass mappings and parent purges, application workflows,
+reporting, search, project planning and cron-log contracts.
+
+The static inventory records 1167 remaining legacy SQL call sites, down by 19.
+Foreign-key coverage is unchanged: 739 enforced references, 21 pending ordinary
+references, 62 polymorphic references and one ambiguous reference. History's
+polymorphic subject still needs a design that accounts for historical records;
+this query conversion does not claim to enforce that relationship.

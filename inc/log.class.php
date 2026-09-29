@@ -88,13 +88,10 @@ class Log extends CommonDBTM
             if ($item instanceof CommonDBTM) {
                 $items_id = $item->getID();
             }
-            $nb = countElementsInTable(
-                'glpi_logs',
-                [
+            $nb = (new \itsmng\Database\Repository\HistoryRepository(\itsmng\Database\Orm::create(DBConnection::getReadConnection())))->count([
                     'itemtype' => $item->getType(),
                     'items_id' => $items_id
-                ]
-            );
+                ]);
         }
         return self::createTabEntry(self::getTypeName(1), $nb);
     }
@@ -210,7 +207,7 @@ class Log extends CommonDBTM
      * @param $itemtype_link   (default '')
      * @param $linked_action   (default '0')
      *
-     * @return boolean success
+     * @return int|false Generated history ID, or false for empty changes
     **/
     public static function history($items_id, $itemtype, $changes, $itemtype_link = '', $linked_action = '0')
     {
@@ -225,7 +222,6 @@ class Log extends CommonDBTM
             return false;
         }
 
-        // create a query to insert history
         $id_search_option = $changes[0];
         $old_value        = $changes[1];
         $new_value        = $changes[2];
@@ -260,26 +256,18 @@ class Log extends CommonDBTM
             $new_value = Toolbox::substr($new_value, 0, 250);
         }
 
-        $old_value = $DB->escape($old_value);
-        $new_value = $DB->escape($new_value);
-
         $params = [
            'items_id'          => $items_id,
            'itemtype'          => $itemtype,
            'itemtype_link'     => $itemtype_link,
            'linked_action'     => $linked_action,
-           'user_name'         => addslashes($username),
+           'user_name'         => $username,
            'date_mod'          => $date_mod,
            'id_search_option'  => $id_search_option,
            'old_value'         => $old_value,
            'new_value'         => $new_value
         ];
-        $result = $DB->insert(self::getTable(), $params);
-
-        if ($result && $DB->affectedRows($result) > 0) {
-            return $_SESSION['glpi_maxhistory'] = $DB->insertId();
-        }
-        return false;
+        return $_SESSION['glpi_maxhistory'] = (new \itsmng\Database\Repository\HistoryRepository(\itsmng\Database\Orm::create($DB)))->append($params);
     }
 
 
@@ -292,13 +280,13 @@ class Log extends CommonDBTM
     **/
     public static function showForItem(CommonDBTM $item, $withtemplate = 0)
     {
-        global $CFG_GLPI;
+        global $CFG_GLPI, $_UGET;
 
         $itemtype = $item->getType();
         $items_id = $item->getField('id');
 
         // Total Number of events
-        $total_number    = countElementsInTable("glpi_logs", ['items_id' => $items_id, 'itemtype' => $itemtype ]);
+        $total_number    = self::countForItem($item);
         // No Events in database
         if ($total_number < 1) {
             echo "<div class='center'>";
@@ -316,7 +304,13 @@ class Log extends CommonDBTM
            'field' => _n('Field', 'Fields', 1),
            'change' => _x('name', 'Update')
         ];
-        $filters = isset($_GET['filters']) ? $_GET['filters'] : [];
+        $filters = $_UGET['filters'] ?? [];
+        if (is_string($filters)) {
+            $filters = json_decode($filters, true);
+        }
+        if (!is_array($filters)) {
+            $filters = [];
+        }
         $history_url = $CFG_GLPI['root_doc'] . '/ajax/v2/log.php?itemtype=' . urlencode($itemtype)
             . '&items_id=' . urlencode((string) $items_id);
         if (!empty($filters)) {
@@ -331,13 +325,19 @@ class Log extends CommonDBTM
         ]);
     }
 
+    public static function countForItem(CommonDBTM $item, array $filters = []): int
+    {
+        $repository = new \itsmng\Database\Repository\HistoryRepository(\itsmng\Database\Orm::create(DBConnection::getReadConnection()));
+        return $repository->count(['items_id' => (int)$item->getID(), 'itemtype' => $item->getType()] + $filters);
+    }
+
     /**
      * Retrieve last history Data for an item
      *
      * @param CommonDBTM $item       Object instance
      * @param integer    $start      First line to retrieve (default 0)
      * @param integer    $limit      Max number of line to retrieve (0 for all) (default 0)
-     * @param array      $sqlfilters SQL filters applied to history (default [])
+     * @param array      $sqlfilters Structured filters with unescaped values (default [])
      *
      * @return array of localized log entry (TEXT only, no HTML)
     **/
@@ -356,34 +356,11 @@ class Log extends CommonDBTM
 
         $SEARCHOPTION = Search::getOptions($itemtype);
 
-        $order_by = 'id DESC';
-        $sortable_fields = ['id', 'date_mod', 'user_name', 'id_search_option', 'linked_action'];
-        if (!empty($options['sort']) && in_array($options['sort'], $sortable_fields, true)) {
-            $order = 'DESC';
-            if (!empty($options['order']) && in_array(strtoupper($options['order']), ['ASC', 'DESC'], true)) {
-                $order = strtoupper($options['order']);
-            }
-            $order_by = $options['sort'] . ' ' . $order;
-        }
-
-        $query = [
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'items_id'  => $items_id,
-              'itemtype'  => $itemtype
-           ] + $sqlfilters,
-           'ORDER'  => $order_by
-        ];
-
-        if ($limit) {
-            $query['START'] = (int)$start;
-            $query['LIMIT'] = (int)$limit;
-        }
-
-        $iterator = $DBread->request($query);
-
+        $repository = new \itsmng\Database\Repository\HistoryRepository(\itsmng\Database\Orm::create($DBread));
+        $rows = $repository->forItem($itemtype, (int)$items_id, $sqlfilters, (int)$start, (int)$limit, is_string($options['sort'] ?? null) ? $options['sort'] : 'id', is_string($options['order'] ?? null) ? $options['order'] : 'DESC');
+        $users = new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DBread));
         $changes = [];
-        while ($data = $iterator->next()) {
+        foreach ($rows as $data) {
             $tmp = [];
             $tmp['display_history'] = true;
             $tmp['id']              = $data["id"];
@@ -736,8 +713,7 @@ class Log extends CommonDBTM
                         if ($oldval_expl[0] == '&nbsp;') {
                             $oldval = $data["old_value"];
                         } else {
-                            $old_iterator = $DBread->request('glpi_users', ['name' => $oldval_expl[0]]);
-                            while ($val = $old_iterator->next()) {
+                            foreach ($users->matching('glpi_users', ['name' => $oldval_expl[0]], 'id', legacyValues: false) as $val) {
                                 $oldval = sprintf(
                                     __('%1$s %2$s'),
                                     formatUserName(
@@ -754,8 +730,7 @@ class Log extends CommonDBTM
                         if ($newval_expl[0] == '&nbsp;') {
                             $newval = $data["new_value"];
                         } else {
-                            $new_iterator = $DBread->request('glpi_users', ['name' => $newval_expl[0]]);
-                            while ($val = $new_iterator->next()) {
+                            foreach ($users->matching('glpi_users', ['name' => $newval_expl[0]], 'id', legacyValues: false) as $val) {
                                 $newval = sprintf(
                                     __('%1$s %2$s'),
                                     formatUserName(
@@ -794,19 +769,11 @@ class Log extends CommonDBTM
         $itemtype = $item->getType();
         $items_id = $item->getField('id');
 
-        $iterator = $DB->request([
-           'SELECT'          => 'user_name',
-           'DISTINCT'        => true,
-           'FROM'            => self::getTable(),
-           'WHERE'  => [
-                 'items_id'  => $items_id,
-                 'itemtype'  => $itemtype
-              ],
-           'ORDER'  => 'id DESC'
-        ]);
+        $rows = (new \itsmng\Database\Repository\HistoryRepository(\itsmng\Database\Orm::create($DB)))
+            ->facets($itemtype, (int)$items_id, ['user_name']);
 
         $values = [];
-        while ($data = $iterator->next()) {
+        foreach ($rows as $data) {
             if (empty($data['user_name'])) {
                 continue;
             }
@@ -835,21 +802,11 @@ class Log extends CommonDBTM
         $itemtype = $item->getType();
         $items_id = $item->getField('id');
 
-        $affected_fields = ['linked_action', 'itemtype_link', 'id_search_option'];
-
-        $iterator = $DB->request([
-           'SELECT'  => $affected_fields,
-           'FROM'    => self::getTable(),
-           'WHERE'   => [
-                 'items_id'  => $items_id,
-                 'itemtype'  => $itemtype
-              ],
-           'GROUPBY' => $affected_fields,
-           'ORDER'   => 'id DESC'
-        ]);
+        $rows = (new \itsmng\Database\Repository\HistoryRepository(\itsmng\Database\Orm::create($DB)))
+            ->facets($itemtype, (int)$items_id, ['linked_action', 'itemtype_link', 'id_search_option']);
 
         $values = [];
-        while ($data = $iterator->next()) {
+        foreach ($rows as $data) {
             $key = null;
             $value = null;
 
@@ -1008,19 +965,11 @@ class Log extends CommonDBTM
         $itemtype = $item->getType();
         $items_id = $item->getField('id');
 
-        $iterator = $DB->request([
-           'SELECT'          => 'linked_action',
-           'DISTINCT'        => true,
-           'FROM'            => self::getTable(),
-           'WHERE'  => [
-                 'items_id'  => $items_id,
-                 'itemtype'  => $itemtype
-              ],
-           'ORDER'           => 'id DESC'
-        ]);
+        $rows = (new \itsmng\Database\Repository\HistoryRepository(\itsmng\Database\Orm::create($DB)))
+            ->facets($itemtype, (int)$items_id, ['linked_action']);
 
         $values = [];
-        while ($data = $iterator->next()) {
+        foreach ($rows as $data) {
             $key = $data["linked_action"];
             $value = null;
 
@@ -1177,7 +1126,7 @@ class Log extends CommonDBTM
     }
 
     /**
-     * Convert filters values into SQL filters usable in 'WHERE' condition of request build with 'DBmysqlIterator'.
+     * Convert filter values into structured criteria for the mapped history repository.
      *
      * @param array $filters  Filters values.
      *    Filters values must be passed as indexed array using following rules :
@@ -1221,7 +1170,7 @@ class Log extends CommonDBTM
                         } elseif ($key === 'itemtype_link') {
                             $values = array_filter(
                                 $values,
-                                fn($value) => getItemForItemtype($value) !== false
+                                fn ($value) => getItemForItemtype($value) !== false
                             );
                         }
 
