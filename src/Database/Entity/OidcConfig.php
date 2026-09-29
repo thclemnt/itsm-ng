@@ -23,11 +23,11 @@ class OidcConfig
     #[ORM\Column(name: '`ClientSecret`', type: 'string', length: 255, nullable: true)]
     public ?string $ClientSecret = null;
 
-    #[ORM\Column(name: '`is_activate`', type: 'smallint', nullable: false, options: ['default' => '0'])]
-    public int $is_activate = 0;
+    #[ORM\Column(name: '`is_activate`', type: 'boolean', nullable: false, options: ['default' => false])]
+    public bool $is_activate = false;
 
-    #[ORM\Column(name: '`is_forced`', type: 'smallint', nullable: false, options: ['default' => '0'])]
-    public int $is_forced = 0;
+    #[ORM\Column(name: '`is_forced`', type: 'boolean', nullable: false, options: ['default' => false])]
+    public bool $is_forced = false;
 
     #[ORM\Column(name: '`scope`', type: 'string', length: 255, nullable: true)]
     public ?string $scope = null;
@@ -38,8 +38,8 @@ class OidcConfig
     #[ORM\Column(name: '`cert`', type: 'string', length: 255, nullable: true)]
     public ?string $cert = null;
 
-    #[ORM\Column(name: '`sso_link_users`', type: 'smallint', nullable: false, options: ['default' => '1'])]
-    public int $sso_link_users = 1;
+    #[ORM\Column(name: '`sso_link_users`', type: 'boolean', nullable: false, options: ['default' => true])]
+    public bool $sso_link_users = true;
 
     #[ORM\Column(name: '`logout`', type: 'string', length: 255, nullable: true)]
     public ?string $logout = null;

@@ -8,6 +8,8 @@ namespace itsmng\Database;
 final class BooleanColumns
 {
     public const TABLES = [
+        'glpi_oidc_config' => ['is_activate', 'is_forced', 'sso_link_users'],
+        'glpi_oidc_users' => ['update'],
         'glpi_appliances' => ['is_recursive', 'is_deleted', 'is_helpdesk_visible'],
         'glpi_appliancetypes' => ['is_recursive'],
         'glpi_authldaps' => ['use_tls', 'use_dn', 'is_default', 'is_active', 'can_support_pagesize'],

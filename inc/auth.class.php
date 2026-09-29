@@ -1803,23 +1803,10 @@ class Auth extends CommonGLPI
                'logout'       => URL::sanitizeURL(trim((string) $_POST["logout"])),
                'sso_link_users' => $_POST['sso_link_users'],
             ];
-            $DB->updateOrInsert("glpi_oidc_config", $oidc_result, ['id'   => 0]);
+            (new \itsmng\Database\Repository\OidcRepository(\itsmng\Database\Orm::create($DB)))->saveConfiguration($oidc_result);
         }
-        $criteria = "SELECT * FROM glpi_oidc_config";
-        $iterators = $DB->request($criteria);
-        $oidc_db = [];
-        foreach ($iterators as $iterator) {
-            $oidc_db['Provider'] = $iterator['Provider'];
-            $oidc_db['ClientID'] = $iterator['ClientID'];
-            $oidc_db['ClientSecret'] = Toolbox::sodiumDecrypt($iterator['ClientSecret']);
-            $oidc_db['is_activate'] = $iterator['is_activate'];
-            $oidc_db['is_forced'] = $iterator['is_forced'];
-            $oidc_db['scope'] = $iterator['scope'];
-            $oidc_db['proxy'] = $iterator['proxy'];
-            $oidc_db['cert'] = $iterator['cert'];
-            $oidc_db['logout'] = $iterator['logout'];
-            $oidc_db['sso_link_users'] = $iterator['sso_link_users'];
-        }
+        $oidc_db = (new \itsmng\Database\Repository\OidcRepository(\itsmng\Database\Orm::create($DB)))->configuration();
+        $oidc_db['ClientSecret'] = Toolbox::sodiumDecrypt((string)($oidc_db['ClientSecret'] ?? ''));
 
         $form = [
            'action' => $CFG_GLPI['root_doc'] . '/front/auth.oidc.php',

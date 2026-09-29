@@ -49,22 +49,9 @@ class Oidc extends CommonDBTM
         global $DB, $CFG_GLPI;
 
         //Get config from DB and use it to setup oidc
-        $criteria = "SELECT * FROM glpi_oidc_config";
-        $iterators = $DB->request($criteria);
-        foreach ($iterators as $iterator) {
-            $oidc_db["Provider"] = $iterator["Provider"];
-            $oidc_db["ClientID"] = $iterator["ClientID"];
-            $oidc_db["ClientSecret"] = @Toolbox::sodiumDecrypt(
-                $iterator["ClientSecret"],
-            );
-            $oidc_db["scope"] = explode(
-                ",",
-                addslashes(str_replace(" ", "", $iterator["scope"])),
-            );
-            $oidc_db["proxy"] = $iterator["proxy"];
-            $oidc_db["cert"] = $iterator["cert"];
-            $oidc_db["sso_link_users"] = $iterator["sso_link_users"];
-        }
+        $oidc_db = (new \itsmng\Database\Repository\OidcRepository(\itsmng\Database\Orm::create($DB)))->configuration();
+        $oidc_db['ClientSecret'] = @Toolbox::sodiumDecrypt((string)($oidc_db['ClientSecret'] ?? ''));
+        $oidc_db['scope'] = explode(',', addslashes(str_replace(' ', '', (string)($oidc_db['scope'] ?? ''))));
 
         $oidc = new Jumbojett\OpenIDConnectClient(
             $oidc_db["Provider"],
@@ -156,8 +143,7 @@ class Oidc extends CommonDBTM
         $ID = false;
 
         // Check for custom mapping for the username
-        $mapping_iterator = $DB->request("SELECT * FROM glpi_oidc_mapping");
-        $mapping = $mapping_iterator->next();
+        $mapping = (new \itsmng\Database\Repository\OidcRepository(\itsmng\Database\Orm::create($DB)))->mapping();
 
         $auth_username = null;
         if ($mapping && !empty($mapping['name']) && isset($user_array[$mapping['name']])) {
@@ -168,20 +154,13 @@ class Oidc extends CommonDBTM
             $auth_username = $user_array["name"] ?? $user_array["sub"] ?? null;
         }
 
-        if ($auth_username) {
-            $iterator = $DB->request([
-                'FROM' => 'glpi_users',
-                'WHERE' => ['name' => $auth_username]
-            ]);
+        if (!is_string($auth_username)) {
+            $auth_username = null;
+        }
 
-            foreach ($iterator as $user_data) {
-                $canLink = $oidc_db["sso_link_users"] || $user_data["authtype"] == Auth::EXTERNAL;
-                if ($canLink) {
-                    $ID = $user_data["id"];
-                    $newUser = false;
-                    break;
-                }
-            }
+        if ($auth_username) {
+            $ID = (new \itsmng\Database\Repository\OidcRepository(\itsmng\Database\Orm::create($DB)))->linkableUser((string)$auth_username, (bool)$oidc_db['sso_link_users']);
+            $newUser = $ID === null;
         }
 
         $user = new User();
@@ -209,17 +188,8 @@ class Oidc extends CommonDBTM
             die();
         }
 
-        $request = $DB->request("glpi_oidc_mapping");
-        while ($data = $request->next()) {
-            $mapping_date_mod = $data["date_mod"];
-        }
-        $request = $DB->request("glpi_users", ["id" => $ID]);
-        while ($data = $request->next()) {
-            $user_date_mod = $data["date_mod"];
-        }
-
-        //if ($mapping_date_mod > $user_date_mod)
         self::addUserData($user_array, $ID);
+        $user->getFromDB($ID);
 
         $auth = new Auth();
         $auth->auth_succeded = true;
@@ -265,153 +235,18 @@ class Oidc extends CommonDBTM
     {
         global $DB;
 
-        $criteria = "SELECT * FROM glpi_oidc_mapping";
-        $iterators = $DB->request($criteria);
-
-        while ($data = $iterators->next()) {
-            $result[] = $data;
-        }
-
-        if (isset($result)) {
-            if (isset($user_array[$result[0]["name"]])) {
-                $DB->updateOrInsert(
-                    "glpi_users",
-                    ["name" => $DB->escape($user_array[$result[0]["name"]])],
-                    ["id" => $id],
-                );
-            }
-
-            if (isset($user_array[$result[0]["given_name"]])) {
-                $DB->updateOrInsert(
-                    "glpi_users",
-                    [
-                        "firstname" => $DB->escape(
-                            $user_array[$result[0]["given_name"]],
-                        ),
-                    ],
-                    ["id" => $id],
-                );
-            }
-
-            if (isset($user_array[$result[0]["family_name"]])) {
-                $DB->updateOrInsert(
-                    "glpi_users",
-                    [
-                        "realname" => $DB->escape(
-                            $user_array[$result[0]["family_name"]],
-                        ),
-                    ],
-                    ["id" => $id],
-                );
-            }
-
-            if (isset($user_array[$result[0]["picture"]])) {
-                $DB->updateOrInsert(
-                    "glpi_users",
-                    [
-                        "picture" => $DB->escape(
-                            $user_array[$result[0]["picture"]],
-                        ),
-                    ],
-                    ["id" => $id],
-                );
-            }
-
-            if (isset($user_array[$result[0]["email"]])) {
-                $email = trim((string) $user_array[$result[0]["email"]]);
-                if ($email !== '' && !UserEmail::isEmailForUser($id, $email)) {
-                    $useremail = new UserEmail();
-                    $useremail->add([
-                        'users_id'   => $id,
-                        'email'      => $email,
-                        'is_dynamic' => 0
-                    ]);
-                }
-            }
-
-            if (isset($user_array[$result[0]["locale"]])) {
-                $DB->updateOrInsert(
-                    "glpi_users",
-                    [
-                        "language" => $DB->escape(
-                            $user_array[$result[0]["locale"]],
-                        ),
-                    ],
-                    ["id" => $id],
-                );
-            }
-
-            if (isset($user_array[$result[0]["phone_number"]])) {
-                $DB->updateOrInsert(
-                    "glpi_users",
-                    [
-                        "phone" => $DB->escape(
-                            $user_array[$result[0]["phone_number"]],
-                        ),
-                    ],
-                    ["id" => $id],
-                );
-            }
-
-            $DB->updateOrInsert(
-                "glpi_users",
-                ["date_mod" => $_SESSION["glpi_currenttime"]],
-                ["id" => $id],
+        $DB->getDoctrineConnection()->transactional(static function () use ($DB, $user_array, $id): void {
+            $email = (new \itsmng\Database\Repository\OidcRepository(\itsmng\Database\Orm::create($DB)))->synchronizeProfile(
+                (int)$id,
+                $user_array,
+                new \DateTimeImmutable($_SESSION['glpi_currenttime'] ?? 'now')
             );
-
-            if (isset($user_array[$result[0]["group"]])) {
-                foreach ($data = $user_array[$result[0]["group"]] as $value) {
-                    $id_group_create = 0;
-                    $request = $DB->request("glpi_groups");
-
-                    while ($data = $request->next()) {
-                        if ($data["name"] == $value) {
-                            $id_group_create = $data["id"];
-                            break;
-                        }
-                    }
-
-                    $querry = "INSERT IGNORE INTO `glpi_groups` (`id`, `name`, `completename`) VALUES ($id_group_create, '$value', '$value');";
-                    $DB->queryOrDie($querry);
-                    $request = $DB->request("glpi_groups");
-
-                    while ($data = $request->next()) {
-                        $id_group = $data["id"];
-                        if ($data["name"] == $value) {
-                            break;
-                        }
-                    }
-
-                    $querry = "INSERT IGNORE INTO `glpi_groups_users` (`id`, `users_id`, `groups_id`) VALUES ('0', '$id', '$id_group');";
-                    $DB->queryOrDie($querry);
-                }
+            if ($email !== null && $email !== '' && !UserEmail::isEmailForUser($id, $email)) {
+                (new UserEmail())->add(['users_id' => $id, 'email' => $email, 'is_dynamic' => 0]);
             }
-        }
-
-        $request = $DB->request("glpi_oidc_users");
-
-        while ($data = $request->next()) {
-            $user_id = $data["id"];
-
-            if ($data["user_id"] == $id) {
-                $find = true;
-            }
-        }
-
-        if (!isset($find)) {
-            $DB->updateOrInsert(
-                "glpi_oidc_users",
-                ["user_id" => $id, "update" => 1],
-                ["id" => 0],
-            );
-        } else {
-            $DB->updateOrInsert(
-                "glpi_oidc_users",
-                ["user_id" => $id, "update" => 1],
-                ["id" => $user_id],
-            );
-        }
+        });
     }
+
 
     /**
      * Show user config form
@@ -438,34 +273,13 @@ class Oidc extends CommonDBTM
                 "group" => $_POST["group"],
                 "date_mod" => $_SESSION["glpi_currenttime"],
             ];
-            $DB->updateOrInsert("glpi_oidc_mapping", $oidc_result, ["id" => 0]);
+            (new \itsmng\Database\Repository\OidcRepository(\itsmng\Database\Orm::create($DB)))->saveMapping($oidc_result);
         }
 
-        $criteria = "SELECT * FROM glpi_oidc_mapping";
-        $iterators = $DB->request($criteria);
-        $oidc_db = [
-            "name" => null,
-            "given_name" => null,
-            "family_name" => null,
-            "picture" => null,
-            "email" => null,
-            "locale" => null,
-            "phone_number" => null,
-            "group" => null,
-            "date_mod" => null,
-        ];
-
-        foreach ($iterators as $iterator) {
-            $oidc_db["name"] = $iterator["name"];
-            $oidc_db["given_name"] = $iterator["given_name"];
-            $oidc_db["family_name"] = $iterator["family_name"];
-            $oidc_db["picture"] = $iterator["picture"];
-            $oidc_db["email"] = $iterator["email"];
-            $oidc_db["locale"] = $iterator["locale"];
-            $oidc_db["phone_number"] = $iterator["phone_number"];
-            $oidc_db["group"] = $iterator["group"];
-            $oidc_db["date_mod"] = $iterator["date_mod"];
-        }
+        $oidc_db = (new \itsmng\Database\Repository\OidcRepository(\itsmng\Database\Orm::create($DB)))->mapping() + array_fill_keys(
+            ['name', 'given_name', 'family_name', 'picture', 'email', 'locale', 'phone_number', 'group', 'date_mod'],
+            null
+        );
 
         $form = [
             "action" => $CFG_GLPI["root_doc"] . "/front/auth.oidc_profile.php",

@@ -353,6 +353,8 @@ class User extends CommonDBTM
         // Personal recalls and their delivery markers belong to the deleted recipient.
         (new PlanningRecall())->deleteByCriteria(['users_id' => $this->getID()]);
 
+        (new \itsmng\Database\Repository\OidcRepository(\itsmng\Database\Orm::create($DB)))->deleteUserState((int)$this->getID());
+
         // ObjectLock does not extends CommonDBConnexity
         $ol = new ObjectLock();
         $ol->deleteByCriteria(['users_id' => $this->fields['id']]);

@@ -1856,3 +1856,51 @@ passed the focused planning contract and four project/planning functional classe
 (10 methods, 296 assertions). No browser or notification-dispatch test was run.
 The inventory now records 715 enforced references, 45 pending ordinary references,
 62 polymorphic references, one ambiguous reference and 1286 legacy SQL call sites.
+
+### OIDC profile persistence and refresh-state ownership
+
+`OidcRepository` now handles local configuration, claim mapping, eligible-user
+lookup, profile synchronization, group membership and refresh states through
+Doctrine. The OIDC bootstrap check selects only the current user's pending state.
+Configuration and mapping address their singleton ID directly. The refresh CLI
+uses a typed bulk update, and login/logout configuration paths use the repository.
+Authentication with the provider and the existing account-linking policy remain
+in the OIDC controller.
+
+The refresh-state entity has a required user association and unique `user_id`.
+User purge deletes only that user's state before the FK is enforced. Profile
+synchronization finds state by its user association; it cannot overwrite the last
+unrelated row returned by the old table scan. User fields and groups are persisted
+without manual SQL escaping or `INSERT IGNORE`. Existing membership flags survive
+repeat synchronization. The mapping row serializes OIDC group creation, and a user
+row lock serializes each user's state changes. Profile and group writes share a
+transaction; invalid claims roll back instead of leaving partially updated data.
+Email creation still uses `UserEmail` validation and default-address lifecycle.
+
+The `is_activate`, `is_forced`, `sso_link_users` and refresh `update` flags are now
+boolean ORM fields and native PostgreSQL booleans. Run
+`db:oidc_references --apply` then `db:foreign_keys --apply` during maintenance on an
+existing database. The migration audits orphan states, duplicate users, unexpected
+singleton IDs, and nonbinary flags before any DDL. MariaDB flags are audited even
+when schema introspection identifies the integer storage as boolean. PostgreSQL
+DDL is transactional; MySQL DDL is refused inside an application transaction.
+Fresh installation and normal upgrades include the schema changes.
+
+`tests/database-portability/oidc.php` checks configuration rendering, mapping,
+linking policy, quoted claims and group names, repeated synchronization, unrelated
+user-state isolation, email lifecycle, pending refreshes, user purge, invalid-claim
+rollback, migration rejection, native booleans and retry behavior. It exercises
+only local persistence and never contacts an identity provider or initiates login.
+
+Validation passed on fresh and upgraded PostgreSQL/MariaDB databases. The full
+mapping and parent-purge suites, ORM CRUD across all 355 tables, criteria,
+reporting, application and search contracts passed. Base portability assertions:
+1196 PostgreSQL, 793 MariaDB. PHP 8.3 passed the focused OIDC contract and the Auth
+functional suite (3 methods, 117 assertions). Configuration forms were rendered
+in PHP; browser interaction and an external provider exchange were not tested.
+Group membership deduplication uses resolved IDs so MariaDB's case-insensitive
+name matching does not cause duplicate pending inserts.
+
+The inventory now reports 716 enforced references, 44 pending ordinary references,
+62 polymorphic references, one ambiguous reference and 1273 legacy SQL call sites.
+Full relationship and query conversion remains unfinished.

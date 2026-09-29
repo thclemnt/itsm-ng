@@ -163,6 +163,7 @@ final class BaselineSchema
         foreach (['glpi_slms', 'glpi_slas', 'glpi_olas'] as $tableName) {
             Migration\ServiceLevelCalendars::configureTable($schema->getTable($tableName));
         }
+        Migration\OidcReferences::configureTable($schema->getTable('glpi_oidc_users'));
         $this->extraSql['glpi_slms'][] = Migration\ServiceLevelCalendars::checkSql();
         foreach (OptionalReferences::RELATIONS as $tableName => $relations) {
             foreach ($relations as $column => $target) {

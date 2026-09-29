@@ -1364,6 +1364,7 @@ $RELATION = [
          'users_id_tech',
          'users_id',
       ],
+      '_glpi_oidc_users'              => 'user_id',
       '_glpi_planningrecalls'         => 'users_id',
       '_glpi_planningexternalevents'  => 'users_id',
       '_glpi_projecttasktemplates'    => 'users_id',

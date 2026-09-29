@@ -57,8 +57,7 @@ class OidcUpdateCommand extends AbstractCommand
 
         global $DB;
 
-        $querry = "UPDATE glpi_oidc_users SET `update` = 0;";
-        $DB->queryOrDie($querry);
+        (new \itsmng\Database\Repository\OidcRepository(\itsmng\Database\Orm::create($DB)))->requestRefresh();
 
         return 0; // Success
     }

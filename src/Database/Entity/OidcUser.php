@@ -8,6 +8,7 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_oidc_users')]
+#[ORM\UniqueConstraint(name: 'oidc_users_user', columns: ['user_id'])]
 class OidcUser
 {
     #[ORM\Id]
@@ -15,9 +16,10 @@ class OidcUser
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
 
-    #[ORM\Column(name: '`user_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $user_id = 0;
+    #[ORM\ManyToOne(targetEntity: User::class)]
+    #[ORM\JoinColumn(name: 'user_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?User $users = null;
 
-    #[ORM\Column(name: '`update`', type: 'smallint', nullable: false, options: ['default' => '0'])]
-    public int $update = 0;
+    #[ORM\Column(name: '`update`', type: 'boolean', nullable: false, options: ['default' => false])]
+    public bool $update = false;
 }
