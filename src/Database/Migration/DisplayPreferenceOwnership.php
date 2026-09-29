@@ -10,14 +10,14 @@ use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Table;
 use itsmng\Database\OptionalReferences;
 
-/** NULL means shared board state; its identity must remain unique after migration. */
-final class KanbanOwnership
+/** NULL means default display preferences; its identity must remain unique after migration. */
+final class DisplayPreferenceOwnership
 {
-    public const VERSION = '20260929_kanban_ownership';
+    public const VERSION = '20260929_display_preference_ownership';
 
     public static function indexName(AbstractPlatform $platform): string
     {
-        return $platform instanceof PostgreSQLPlatform ? 'glpi_items_kanbans_unicity' : 'unicity';
+        return $platform instanceof PostgreSQLPlatform ? 'glpi_displaypreferences_unicity' : 'unicity';
     }
 
     public static function addToTable(Table $table, AbstractPlatform $platform): void
@@ -27,12 +27,12 @@ final class KanbanOwnership
 
     private function uniquenessPlan(Connection $connection): array
     {
-        return (new SharedOwnerUniqueness())->plan($connection, 'glpi_items_kanbans');
+        return (new SharedOwnerUniqueness())->plan($connection, 'glpi_displaypreferences');
     }
 
     public function plan(Connection $connection): array
     {
-        $plan = (new NullableReferences(OptionalReferences::KANBAN_OWNERS, 'Kanban owner'))->plan($connection);
+        $plan = (new NullableReferences(OptionalReferences::DISPLAY_PREFERENCE_OWNERS, 'display preference owner'))->plan($connection);
         array_push($plan['sql'], ...$this->uniquenessPlan($connection));
         return $plan;
     }
@@ -41,10 +41,10 @@ final class KanbanOwnership
     {
         $plan = $this->plan($connection); // Audit owners and duplicate states before changing either.
         if ($plan['sql'] && $connection->isTransactionActive() && !$connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
-            throw new \RuntimeException('MySQL Kanban DDL must run outside an application transaction.');
+            throw new \RuntimeException('MySQL display preference DDL must run outside an application transaction.');
         }
         $apply = function () use ($connection): array {
-            $counts = (new NullableReferences(OptionalReferences::KANBAN_OWNERS, 'Kanban owner'))->apply($connection);
+            $counts = (new NullableReferences(OptionalReferences::DISPLAY_PREFERENCE_OWNERS, 'display preference owner'))->apply($connection);
             foreach ($this->uniquenessPlan($connection) as $sql) {
                 $connection->executeStatement($sql);
             }

@@ -57,16 +57,8 @@ class DisplayPreference extends CommonDBTM
     public function prepareInputForAdd($input)
     {
         global $DB;
-
-        $result = $DB->request([
-           'SELECT' => ['MAX' => 'rank AS maxrank'],
-           'FROM'   => $this->getTable(),
-           'WHERE'  => [
-              'itemtype'  => $input['itemtype'],
-              'users_id'  => $input['users_id']
-           ]
-        ])->next();
-        $input['rank'] = $result['maxrank'] + 1;
+        $input['rank'] = (new \itsmng\Database\Repository\DisplayPreferenceRepository(\itsmng\Database\Orm::create($DB)))
+            ->nextRank(\itsmng\Database\LegacyValues::decode($input['itemtype']), (int)$input['users_id']);
         return $input;
     }
 
@@ -119,31 +111,8 @@ class DisplayPreference extends CommonDBTM
     public static function getForTypeUser($itemtype, $user_id)
     {
         global $DB;
-
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'itemtype'  => $itemtype,
-              'OR'        => [
-                 ['users_id' => $user_id],
-                 ['users_id' => 0]
-              ]
-           ],
-           'ORDER'  => ['users_id', 'rank']
-        ]);
-
-        $default_prefs = [];
-        $user_prefs = [];
-
-        while ($data = $iterator->next()) {
-            if ($data["users_id"] != 0) {
-                $user_prefs[] = $data["num"];
-            } else {
-                $default_prefs[] = $data["num"];
-            }
-        }
-
-        return count($user_prefs) ? $user_prefs : $default_prefs;
+        return (new \itsmng\Database\Repository\DisplayPreferenceRepository(\itsmng\Database\Orm::create($DB)))
+            ->columns($itemtype, (int)$user_id);
     }
 
 
@@ -155,49 +124,29 @@ class DisplayPreference extends CommonDBTM
     public function activatePerso(array $input)
     {
         global $DB;
-
-        if (!Session::haveRight(self::$rightname, self::PERSONAL)) {
+        $owner = (int)$input['users_id'];
+        if ($owner <= 0 || !self::canConfigureOwner($owner)) {
             return false;
         }
-
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'itemtype'  => $input['itemtype'],
-              'users_id'  => 0
-           ]
-        ]);
-
-        if (count($iterator)) {
-            while ($data = $iterator->next()) {
-                unset($data["id"]);
-                $data["users_id"] = $input["users_id"];
-                $this->fields     = $data;
-                $this->addToDB();
-            }
-        } else {
-            // No items in the global config
-            $searchopt = Search::getOptions($input["itemtype"]);
-            if (count($searchopt) > 1) {
-                $done = false;
-
-                foreach ($searchopt as $key => $val) {
-                    if (
-                        is_array($val)
-                        && ($key != 1)
-                        && !$done
-                    ) {
-                        $data["users_id"] = $input["users_id"];
-                        $data["itemtype"] = $input["itemtype"];
-                        $data["rank"]     = 1;
-                        $data["num"]      = $key;
-                        $this->fields     = $data;
-                        $this->addToDB();
-                        $done = true;
-                    }
+        $type = \itsmng\Database\LegacyValues::decode($input['itemtype']);
+        $repository = new \itsmng\Database\Repository\DisplayPreferenceRepository(\itsmng\Database\Orm::create($DB));
+        $fallback = null;
+        if (!$repository->rows($type, 0)) {
+            foreach (Search::getOptions($type) as $key => $value) {
+                if (is_numeric($key) && (int)$key > 1 && is_array($value) && empty($value['nodisplay'])) {
+                    $fallback = (int)$key;
+                    break;
                 }
             }
         }
+        return $repository->activate($type, $owner, $fallback);
+    }
+
+    public static function canConfigureOwner(int $owner): bool
+    {
+        return $owner === 0
+            ? Session::haveRight(self::$rightname, self::GENERAL)
+            : $owner > 0 && $owner === (int)Session::getLoginUserID() && Session::haveRight(self::$rightname, self::PERSONAL);
     }
 
 
@@ -210,59 +159,11 @@ class DisplayPreference extends CommonDBTM
     public function orderItem(array $input, $action)
     {
         global $DB;
-
-        // Get current item
-        $result = $DB->request([
-           'SELECT' => 'rank',
-           'FROM'   => $this->getTable(),
-           'WHERE'  => ['id' => $input['id']]
-        ])->next();
-        $rank1  = $result['rank'];
-
-        // Get previous or next item
-        $where = [];
-        $order = 'rank ';
-        switch ($action) {
-            case "up":
-                $where['rank'] = ['<', $rank1];
-                $order .= 'DESC';
-                break;
-
-            case "down":
-                $where['rank'] = ['>', $rank1];
-                $order .= 'ASC';
-                break;
-
-            default:
-                return false;
+        if (!self::canConfigureOwner((int)$input['users_id'])) {
+            return false;
         }
-
-        $result = $DB->request([
-           'SELECT' => ['id', 'rank'],
-           'FROM'   => $this->getTable(),
-           'WHERE'  => [
-              'itemtype'  => $input['itemtype'],
-              'users_id'  => $input["users_id"]
-           ] + $where,
-           'ORDER'  => $order,
-           'LIMIT'  => 1
-        ])->next();
-
-        $rank2  = $result['rank'];
-        $ID2    = $result['id'];
-
-        // Update items
-        $DB->update(
-            $this->getTable(),
-            ['rank' => $rank2],
-            ['id' => $input['id']]
-        );
-
-        $DB->update(
-            $this->getTable(),
-            ['rank' => $rank1],
-            ['id' => $ID2]
-        );
+        return (new \itsmng\Database\Repository\DisplayPreferenceRepository(\itsmng\Database\Orm::create($DB)))
+            ->move(\itsmng\Database\LegacyValues::decode($input['itemtype']), (int)$input['users_id'], (int)$input['id'], $action);
     }
 
 
@@ -291,15 +192,9 @@ class DisplayPreference extends CommonDBTM
         $IDuser = Session::getLoginUserID();
         $personal_write = Session::haveRight(self::$rightname, self::PERSONAL);
         // Defined items
-        $iterator = $DB->request([
-           'FROM'   => $this->getTable(),
-           'WHERE'  => [
-              'itemtype'  => $itemtype,
-              'users_id'  => $IDuser
-           ],
-           'ORDER'  => 'rank'
-        ]);
-        $numrows = count($iterator);
+        $preferences = (new \itsmng\Database\Repository\DisplayPreferenceRepository(\itsmng\Database\Orm::create($DB)))
+            ->rows($itemtype, (int)$IDuser);
+        $numrows = count($preferences);
 
         echo '<h2>' . __('Personal View') . '</h2>';
 
@@ -456,7 +351,7 @@ class DisplayPreference extends CommonDBTM
         }
 
         $i = 0;
-        while ($data = $iterator->next()) {
+        foreach ($preferences as $data) {
             $newValue = [];
             if (($data["num"] != 1) && isset($searchopt[$data["num"]])) {
                 $newValue['name'] = $searchopt[$data["num"]]["name"];
@@ -543,15 +438,9 @@ class DisplayPreference extends CommonDBTM
         $global_write = Session::haveRight(self::$rightname, self::GENERAL);
 
         // Defined items
-        $iterator = $DB->request([
-           'FROM'   => $this->getTable(),
-           'WHERE'  => [
-              'itemtype'  => $itemtype,
-              'users_id'  => $IDuser
-           ],
-           'ORDER'  => 'rank'
-        ]);
-        $numrows = count($iterator);
+        $preferences = (new \itsmng\Database\Repository\DisplayPreferenceRepository(\itsmng\Database\Orm::create($DB)))
+            ->rows($itemtype, (int)$IDuser);
+        $numrows = count($preferences);
 
         echo '<h2>' . __('Select default items to show') . '</h2>';
 
@@ -624,7 +513,7 @@ class DisplayPreference extends CommonDBTM
             $values[] = ['name' => $searchopt[80]["name"]];
         }
         $i = 0;
-        while ($data = $iterator->next()) {
+        foreach ($preferences as $data) {
             $newValue = [];
             if (
                 ($data["num"] != 1)
@@ -698,17 +587,10 @@ class DisplayPreference extends CommonDBTM
 
         $url = Toolbox::getItemTypeFormURL(__CLASS__);
 
-        $iterator = $DB->request([
-           'SELECT'  => ['itemtype'],
-           'COUNT'   => 'nb',
-           'FROM'    => self::getTable(),
-           'WHERE'   => [
-              'users_id'  => $users_id
-           ],
-           'GROUPBY' => 'itemtype'
-        ]);
+        $preferences = (new \itsmng\Database\Repository\DisplayPreferenceRepository(\itsmng\Database\Orm::create($DB)))
+            ->countsByType((int)$users_id);
 
-        if (count($iterator) > 0) {
+        if (count($preferences) > 0) {
             $rand = mt_rand();
             echo "<div class='spaced'>";
             Html::openMassiveActionsForm('mass' . __CLASS__ . $rand);
@@ -729,7 +611,7 @@ class DisplayPreference extends CommonDBTM
             echo Html::getCheckAllAsCheckbox('mass' . __CLASS__ . $rand);
             echo "</th>";
             echo "<th colspan='2'>" . _n('Type', 'Types', 1) . "</th></tr>";
-            while ($data = $iterator->next()) {
+            foreach ($preferences as $data) {
                 echo "<tr class='tab_bg_1'><td width='10'>";
                 Html::showMassiveActionCheckBox(__CLASS__, $data["itemtype"]);
                 echo "</td>";

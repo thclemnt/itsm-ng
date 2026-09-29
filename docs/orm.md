@@ -2405,3 +2405,68 @@ portability assertions).
 The static inventory now records 736 enforced references, 24 pending ordinary
 references, 62 polymorphic references, one ambiguous reference and 1201 legacy
 SQL call sites. Full relationship and runtime query conversion remains unfinished.
+
+
+### Display preference ownership and ORM queries
+
+Display preferences now map their user owner with a restrictive foreign key.
+Default columns have a NULL owner; the generated `owner_key` preserves unique
+(owner, item type, column) identities for defaults as well as personal lists.
+The new `SharedOwnerUniqueness` schema helper serves both display preferences and
+Kanban state. User purge continues to delete private preferences, including when
+replacing a user, without changing defaults or the replacement user's settings.
+
+Existing installations run `db:display_preference_ownership --apply`, followed
+by `db:foreign_keys --apply`, during maintenance. The normal upgrade path and
+fresh schemas include this change. The migration audits orphan owners and
+normalized duplicate identities before DDL, converts zero owners to NULL, and
+supports idempotent retries. PostgreSQL applies the migration transactionally;
+MySQL DDL requires stopped writers and runs outside application transactions.
+
+`DisplayPreferenceRepository` supplies column selection, ranks, per-owner lists,
+activation, ordering and grouped counts. Personal columns replace the entire
+default list; the absence of a personal list falls back to defaults. Tied ranks
+sort deterministically by ID. Reordering locks the selected owner/type rows,
+renumbers them and flushes within one transaction. Invalid directions, missing
+rows and moves beyond either end leave the list unchanged. Activation locks the
+user, copies defaults atomically, and preserves an existing personal list.
+Fallback activation selects a displayable numeric search field instead of
+coercing a search-option group heading to column zero.
+
+The form controller verifies owner rights and the selected row's owner and item
+type before changing it. Personal rights apply to the signed-in user's list;
+default-list changes require the general display-preference right. A forged ID
+cannot reorder or purge another user's preferences or a different item type.
+All display-preference runtime queries and rank updates now use ORM mappings.
+
+The newer modal endpoint (`ajax/v2/displaypreferences.php`) uses the same mapped
+repository. Mutating operations lock the user for personal settings, or the real
+root entity for application-wide defaults, before reading the list; this also
+serializes saves for an initially empty default list. Its complete-list save updates retained records in place, removes
+unselected columns and inserts new ones in one transaction. Locked columns are
+included and existing `noremove` columns survive. Personal saves still require
+explicit activation; deleting the personal list restores default-column lookup.
+Injected failures verify that partial inserts and rank changes are rolled back.
+Legacy upgrade helpers in `inc/migration.class.php` remain separate conversion
+work; the application preference editors no longer execute adapter SQL.
+
+`tests/database-portability/display-preferences.php` covers default/personal
+selection, escaped input, activation/fallback, rights and scope, stable ordering,
+bulk replacement, protected columns, mid-operation rollback, owner purge, form
+rendering and migration refusal/preservation/retry. Fresh and upgraded PostgreSQL
+and MariaDB pass this contract. The shared Kanban migration and concurrency
+contract also passes on both providers. Authenticated HTTP tests exercise both
+the legacy form and modal endpoint, including forged owner/type requests,
+bulk ordering, activation, deletion and fallback. This does not constitute
+browser interaction proof.
+
+PHP 8.3 passes the MariaDB contract, changed-file syntax checks and four existing
+Search functional methods (330 assertions). PostgreSQL checks use host PHP 8.5;
+the PHP 8.3 container lacks a PostgreSQL driver. Both engines pass mapping and
+parent-purge checks, ORM CRUD across all 355 tables, criteria, reporting,
+application, search and project-planning contracts. Base portability assertions:
+1220 PostgreSQL and 814 MariaDB.
+
+The inventory records 737 enforced references, 23 pending ordinary references,
+62 polymorphic references, one ambiguous reference and 1188 legacy SQL call sites.
+Full relationship coverage and conversion of all runtime queries remain unfinished.

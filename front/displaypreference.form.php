@@ -43,6 +43,20 @@ Session::checkRightsOr('search_config', [DisplayPreference::PERSONAL,
 
 $setupdisplay = new DisplayPreference();
 
+if ($_POST) {
+    $owner = (int)($_POST['users_id'] ?? -1);
+    if (!DisplayPreference::canConfigureOwner($owner)) {
+        Html::displayRightError();
+    }
+    if (isset($_POST['id']) && (
+        !$setupdisplay->getFromDB((int)$_POST['id'])
+        || (int)$setupdisplay->fields['users_id'] !== $owner
+        || $setupdisplay->fields['itemtype'] !== \itsmng\Database\LegacyValues::decode($_POST['itemtype'] ?? '')
+    )) {
+        Html::displayRightError();
+    }
+}
+
 if (isset($_POST["activate"])) {
     $setupdisplay->activatePerso($_POST);
 } elseif (isset($_POST["disable"])) {

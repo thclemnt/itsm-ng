@@ -8,7 +8,7 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_displaypreferences')]
-#[ORM\UniqueConstraint(name: 'displaypreferences_unicity', columns: ['users_id', 'itemtype', 'num'])]
+#[ORM\UniqueConstraint(name: 'displaypreferences_unicity', columns: ['owner_key', 'itemtype', 'num'])]
 class DisplayPreference
 {
     #[ORM\Id]
@@ -25,6 +25,10 @@ class DisplayPreference
     #[ORM\Column(name: '`rank`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $rank = 0;
 
-    #[ORM\Column(name: '`users_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $users_id = 0;
+    #[ORM\ManyToOne(targetEntity: User::class)]
+    #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?User $owner = null;
+
+    #[ORM\Column(name: 'owner_key', type: 'bigint', nullable: true, insertable: false, updatable: false, generated: 'ALWAYS', columnDefinition: 'BIGINT GENERATED ALWAYS AS (COALESCE(users_id, 0)) STORED')]
+    public ?string $owner_key = null;
 }

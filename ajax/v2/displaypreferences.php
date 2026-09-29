@@ -43,7 +43,7 @@ Session::checkLoginUser();
 global $DB, $CFG_GLPI;
 
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
-$itemtype = $_POST['itemtype'] ?? $_GET['itemtype'] ?? '';
+$itemtype = \itsmng\Database\LegacyValues::decode($_POST['itemtype'] ?? $_GET['itemtype'] ?? '');
 $view = $_POST['view'] ?? $_GET['view'] ?? 'personal';
 
 if ($itemtype !== 'AllAssets' && !class_exists($itemtype)) {
@@ -69,6 +69,7 @@ if ($view !== 'global' && !$can_personal && $can_global) {
 }
 
 $users_id = ($view === 'global') ? $global_view : $personal_view;
+$preferences = new \itsmng\Database\Repository\DisplayPreferenceRepository(\itsmng\Database\Orm::create($DB));
 
 switch ($action) {
     case 'load':
@@ -142,10 +143,8 @@ switch ($action) {
             }
         }
 
-        $has_personal = countElementsInTable(DisplayPreference::getTable(), [
-            'itemtype' => $itemtype,
-            'users_id' => $personal_view
-        ]) > 0;
+        $personal_rows = $preferences->rows($itemtype, (int)$personal_view);
+        $has_personal = $personal_rows !== [];
 
         $default_if_no_personal = ($_POST['default_if_no_personal'] ?? $_GET['default_if_no_personal'] ?? 0) == 1;
 
@@ -154,31 +153,14 @@ switch ($action) {
             $users_id = $global_view;
         }
 
-        $iterator = $DB->request([
-            'FROM'   => DisplayPreference::getTable(),
-            'WHERE'  => [
-                'itemtype'  => $itemtype,
-                'users_id'  => $users_id
-            ],
-            'ORDER'  => 'rank'
-        ]);
-
-        while ($data = $iterator->next()) {
+        $rows = $view === 'global' ? $preferences->rows($itemtype, 0) : $personal_rows;
+        foreach ($rows as $data) {
             if (isset($searchopt[$data['num']])) {
                 $selected[] = $data['num'];
             }
         }
-
         if ($users_id === $personal_view && count($selected) === 0) {
-            $iterator = $DB->request([
-                'FROM'   => DisplayPreference::getTable(),
-                'WHERE'  => [
-                    'itemtype'  => $itemtype,
-                    'users_id'  => $global_view
-                ],
-                'ORDER'  => 'rank'
-            ]);
-            while ($data = $iterator->next()) {
+            foreach ($preferences->rows($itemtype, 0) as $data) {
                 if (isset($searchopt[$data['num']])) {
                     $selected[] = $data['num'];
                 }
@@ -207,7 +189,7 @@ switch ($action) {
         }
         $dp = new DisplayPreference();
         $dp->activatePerso([
-            'itemtype' => $itemtype,
+            'itemtype' => addslashes($itemtype),
             'users_id' => $personal_view
         ]);
         echo json_encode(['success' => true]);
@@ -220,7 +202,7 @@ switch ($action) {
         }
         $dp = new DisplayPreference();
         $deleted = $dp->deleteByCriteria([
-            'itemtype' => $itemtype,
+            'itemtype' => addslashes($itemtype),
             'users_id' => $personal_view
         ]);
         if ($deleted) {
@@ -238,20 +220,6 @@ switch ($action) {
         if ($view !== 'global' && !$can_personal) {
             echo json_encode(['success' => false, 'message' => __('You are not allowed to edit this view')]);
             exit;
-        }
-
-        if ($view !== 'global') {
-            $personal_count = countElementsInTable(DisplayPreference::getTable(), [
-                'itemtype' => $itemtype,
-                'users_id' => $personal_view
-            ]);
-            if ($personal_count === 0) {
-                echo json_encode([
-                    'success' => false,
-                    'message' => __('No personal criteria. Create personal parameters?')
-                ]);
-                exit;
-            }
         }
 
         $order = $_POST['order'] ?? [];
@@ -288,23 +256,10 @@ switch ($action) {
                 $valid[] = (int) $locked_num;
             }
         }
-        $existing_iterator = $DB->request([
-            'SELECT' => ['num'],
-            'FROM'   => DisplayPreference::getTable(),
-            'WHERE'  => [
-                'itemtype' => $itemtype,
-                'users_id' => $users_id
-            ]
-        ]);
-        $existing_noremove = [];
-        while ($existing = $existing_iterator->next()) {
-            $num = (int) $existing['num'];
-            if (
-                isset($searchopt[$num])
-                && isset($searchopt[$num]['noremove'])
-                && $searchopt[$num]['noremove'] === true
-            ) {
-                $existing_noremove[] = $num;
+        $noremove = [];
+        foreach ($searchopt as $num => $option) {
+            if (is_numeric($num) && is_array($option) && ($option['noremove'] ?? false) === true) {
+                $noremove[] = (int)$num;
             }
         }
         $valid = array_values(array_unique($valid));
@@ -318,30 +273,11 @@ switch ($action) {
             }
         }
         $valid = array_values(array_unique($valid));
-        foreach ($existing_noremove as $num) {
-            if (!in_array($num, $valid, true)) {
-                $valid[] = $num;
-            }
-        }
-
-        $dp = new DisplayPreference();
-        $dp->deleteByCriteria([
-            'itemtype' => $itemtype,
-            'users_id' => $users_id
+        $saved = $preferences->replaceColumns($itemtype, (int)$users_id, $valid, $noremove);
+        echo json_encode($saved ? ['success' => true] : [
+            'success' => false,
+            'message' => __('No personal criteria. Create personal parameters?'),
         ]);
-
-        $rank = 1;
-        foreach ($valid as $num) {
-            $dp->add([
-                'itemtype' => $itemtype,
-                'users_id' => $users_id,
-                'num' => $num,
-                'rank' => $rank
-            ]);
-            $rank++;
-        }
-
-        echo json_encode(['success' => true]);
         break;
 
     default:
