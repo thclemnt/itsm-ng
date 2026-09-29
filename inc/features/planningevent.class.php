@@ -61,7 +61,7 @@ trait PlanningEvent
 {
     public function post_getEmpty()
     {
-        if (isset($this->fields["users_id"])) {
+        if (array_key_exists("users_id", $this->fields)) {
             $this->fields["users_id"] = Session::getLoginUserID();
         }
 
@@ -1023,7 +1023,7 @@ trait PlanningEvent
             ];
         }
 
-        if (isset($this->fields['users_id'])) {
+        if (array_key_exists('users_id', $this->fields)) {
             $tab[] = [
                'id'            => '70',
                'table'         => User::getTable(),

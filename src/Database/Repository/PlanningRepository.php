@@ -8,6 +8,8 @@ use Doctrine\DBAL\LockMode;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Entity\User;
+use itsmng\Database\Entity\PlanningRecall;
+use itsmng\Database\Entity\Alert;
 use itsmng\Database\Entity\PlanningExternalEvent;
 use itsmng\Database\RecordCriteria;
 
@@ -30,6 +32,41 @@ final class PlanningRepository
         foreach ($query->getQuery()->toIterable() as $result) {
             $rows[] = $records->toRow($result[0]) + ['cat_color' => $result['cat_color']];
             $this->em->detach($result[0]);
+        }
+        return $rows;
+    }
+
+    /** Recompute each recipient's date as typed state in one unit of work. */
+    public function rescheduleRecalls(string $type, int $item, \DateTimeImmutable $begin): void
+    {
+        $this->em->getConnection()->transactional(function () use ($type, $item, $begin): void {
+            $recalls = $this->em->createQueryBuilder()->select('r')->from(PlanningRecall::class, 'r')
+                ->where('r.itemtype = :type AND r.items_id = :item')
+                ->setParameter('type', $type)->setParameter('item', $item, Types::INTEGER)
+                ->getQuery()->getResult();
+            foreach ($recalls as $recall) {
+                $recall->when = \DateTime::createFromImmutable($begin)->setTimestamp($begin->getTimestamp() - $recall->before_time);
+            }
+            $this->em->flush();
+            foreach ($recalls as $recall) {
+                $this->em->detach($recall);
+            }
+        });
+    }
+
+    /** Select due, undelivered recalls; dispatch and delivery markers remain model responsibilities. */
+    public function dueRecalls(\DateTimeImmutable $before): array
+    {
+        $query = $this->em->createQueryBuilder()->select('r')->from(PlanningRecall::class, 'r')
+            ->where('r.when < :before')->setParameter('before', $before, Types::DATETIMETZ_IMMUTABLE)
+            ->andWhere('NOT EXISTS (SELECT a.id FROM ' . Alert::class . ' a WHERE a.items_id = r.id AND a.itemtype = :type AND a.type = :action)')
+            ->setParameter('type', 'PlanningRecall')->setParameter('action', \Alert::ACTION, Types::INTEGER)
+            ->orderBy('r.when')->addOrderBy('r.id');
+        $records = new RecordRepository($this->em);
+        $rows = [];
+        foreach ($query->getQuery()->toIterable() as $recall) {
+            $rows[] = $records->toRow($recall);
+            $this->em->detach($recall);
         }
         return $rows;
     }

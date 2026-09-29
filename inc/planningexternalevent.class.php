@@ -87,7 +87,7 @@ class PlanningExternalEvent extends CommonDBTM implements CalDAVCompatibleItemIn
         // the current user can update only this own events without UPDATE right
         // but not bg one, see above
         if (
-            $this->fields['users_id'] != Session::getLoginUserID()
+            ((int)Session::getLoginUserID() <= 0 || $this->fields['users_id'] != Session::getLoginUserID())
             && !Session::haveRight(self::$rightname, UPDATE)
         ) {
             return false;
@@ -106,7 +106,7 @@ class PlanningExternalEvent extends CommonDBTM implements CalDAVCompatibleItemIn
         // the current user can update only this own events without PURGE right
         // but not bg one, see above
         if (
-            $this->fields['users_id'] != Session::getLoginUserID()
+            ((int)Session::getLoginUserID() <= 0 || $this->fields['users_id'] != Session::getLoginUserID())
             && !Session::haveRight(self::$rightname, PURGE)
         ) {
             return false;

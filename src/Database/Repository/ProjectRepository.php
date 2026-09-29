@@ -33,15 +33,22 @@ final class ProjectRepository
                 ->andWhere('(state.is_finished IS NULL OR state.is_finished = :finished)')->setParameter('finished', false, Types::BOOLEAN);
         }
         if (!$readAll) {
-            $ownership = ['r.users_id = :viewer'];
-            $membership = "(team.itemtype = :user_type AND team.items_id = :viewer)";
-            $query->setParameter('viewer', $user)->setParameter('user_type', 'User');
+            $ownership = [];
+            $membership = [];
+            if ($user > 0) {
+                $ownership[] = 'IDENTITY(r.users) = :viewer';
+                $membership[] = '(team.itemtype = :user_type AND team.items_id = :viewer)';
+                $query->setParameter('viewer', $user, Types::INTEGER)->setParameter('user_type', 'User');
+            }
             if ($groups) {
                 $ownership[] = 'IDENTITY(r.groups) IN (:groups)';
-                $membership .= ' OR (team.itemtype = :group_type AND team.items_id IN (:groups))';
+                $membership[] = '(team.itemtype = :group_type AND team.items_id IN (:groups))';
                 $query->setParameter('groups', array_values(array_map('intval', $groups)))->setParameter('group_type', 'Group');
             }
-            $ownership[] = 'EXISTS (SELECT team.id FROM ' . ProjectTeam::class . ' team WHERE IDENTITY(team.projects) = r.id AND (' . $membership . '))';
+            if (!$membership) {
+                return [];
+            }
+            $ownership[] = 'EXISTS (SELECT team.id FROM ' . ProjectTeam::class . ' team WHERE IDENTITY(team.projects) = r.id AND (' . implode(' OR ', $membership) . '))';
             $query->andWhere('(' . implode(' OR ', $ownership) . ')');
         }
         $rows = [];

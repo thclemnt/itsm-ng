@@ -22,8 +22,9 @@ class PlanningRecall
     #[ORM\Column(name: '`itemtype`', type: 'string', length: 100, nullable: false)]
     public string $itemtype = '';
 
-    #[ORM\Column(name: '`users_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $users_id = 0;
+    #[ORM\ManyToOne(targetEntity: User::class)]
+    #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?User $users = null;
 
     #[ORM\Column(name: '`before_time`', type: 'integer', nullable: false, options: ['default' => '-10'])]
     public int $before_time = -10;

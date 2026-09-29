@@ -104,11 +104,11 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
         if ($project->getFromDB($this->fields['projects_id'])) {
             return (Session::haveRight('project', Project::READALL)
                     || (Session::haveRight('project', Project::READMY)
-                        && (($project->fields["users_id"] === Session::getLoginUserID())
+                        && (((int)Session::getLoginUserID() > 0 && $project->fields["users_id"] === Session::getLoginUserID())
                             || $project->isInTheManagerGroup()
                             || $project->isInTheTeam()))
                     || (Session::haveRight(self::$rightname, self::READMY)
-                        && (($this->fields["users_id"] === Session::getLoginUserID())
+                        && (((int)Session::getLoginUserID() > 0 && $this->fields["users_id"] === Session::getLoginUserID())
                             || $this->isInTheTeam())));
         }
         return false;
@@ -144,7 +144,7 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
         if ($project->getFromDB($this->fields['projects_id'])) {
             return (Session::haveRight('project', UPDATE)
                     || (Session::haveRight(self::$rightname, self::UPDATEMY)
-                        && (($this->fields["users_id"] === Session::getLoginUserID())
+                        && (((int)Session::getLoginUserID() > 0 && $this->fields["users_id"] === Session::getLoginUserID())
                             || $this->isInTheTeam())));
         }
         return false;

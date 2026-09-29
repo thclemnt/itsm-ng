@@ -348,6 +348,11 @@ class User extends CommonDBTM
         (new \itsmng\Database\Repository\ITILUserRepository(\itsmng\Database\Orm::create($DB)))
             ->reassignReferences((int)$this->getID(), empty($this->input['_replace_by']) ? null : (int)$this->input['_replace_by']);
 
+        (new \itsmng\Database\Repository\UserItemRepository(\itsmng\Database\Orm::create($DB)))
+            ->reassignPlanningOwners((int)$this->getID(), empty($this->input['_replace_by']) ? null : (int)$this->input['_replace_by']);
+        // Personal recalls and their delivery markers belong to the deleted recipient.
+        (new PlanningRecall())->deleteByCriteria(['users_id' => $this->getID()]);
+
         // ObjectLock does not extends CommonDBConnexity
         $ol = new ObjectLock();
         $ol->deleteByCriteria(['users_id' => $this->fields['id']]);

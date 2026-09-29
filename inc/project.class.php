@@ -101,7 +101,7 @@ class Project extends CommonDBTM implements ExtraVisibilityCriteria
         return (Session::haveRight(self::$rightname, self::READALL)
                 || (Session::haveRight(self::$rightname, self::READMY)
                     && (
-                        ($this->fields["users_id"] === Session::getLoginUserID())
+                        ((int)Session::getLoginUserID() > 0 && $this->fields["users_id"] === Session::getLoginUserID())
                         || $this->isInTheManagerGroup()
                         || $this->isInTheTeam()
                     ))
@@ -415,7 +415,7 @@ class Project extends CommonDBTM implements ExtraVisibilityCriteria
 
         $teamtable = 'glpi_projectteams';
         $ors = [
-           'glpi_projects.users_id'   => Session::getLoginUserID(),
+           'glpi_projects.users_id'   => ((int)Session::getLoginUserID() > 0 ? Session::getLoginUserID() : -1),
            [
               "$teamtable.itemtype"   => 'User',
               "$teamtable.items_id"   => Session::getLoginUserID()
@@ -2440,7 +2440,7 @@ class Project extends CommonDBTM implements ExtraVisibilityCriteria
     public function canModifyGlobalState()
     {
         // Only project manager (or managing group) may change the Kanban's state
-        return $this->fields["users_id"] === Session::getLoginUserID() || $this->isInTheManagerGroup();
+        return ((int)Session::getLoginUserID() > 0 && $this->fields["users_id"] === Session::getLoginUserID()) || $this->isInTheManagerGroup();
     }
 
     public function forceGlobalState()

@@ -1811,3 +1811,48 @@ excluded. Broader checks pass 1,186 PostgreSQL / 787 MariaDB portability asserti
 full mapping and parent-purge coverage, ORM CRUD for all 355 tables, criteria,
 reporting, application workflows, search and service-level contracts. Rendering
 was verified in PHP; browser interaction and remote CI were not exercised.
+
+### Project and planning owners and recall scheduling
+
+Projects, project tasks, task templates and external planning events now map their
+optional owner as a nullable `User` association. Empty legacy owners become NULL;
+nonzero orphan owners stop the migration before DDL. Planning recalls have a
+required recipient association. Invalid legacy recall recipients must be repaired
+before `db:foreign_keys --apply`; the migration never deletes them automatically.
+The schema now enforces five additional user relationships.
+
+For existing installations, run `db:planning_owners --apply` followed by
+`db:foreign_keys --apply` during maintenance. Fresh installations and the normal
+upgrade sequence include these mappings. The nullable-owner migration is
+idempotent and uses the shared audited migration implementation.
+
+User purge clears or explicitly replaces project and event owners through mapped
+DQL without replaying workflow hooks. In particular, removing an event owner must
+not transfer the event to the operator or reschedule it. Personal recalls are
+removed through their model lifecycle, including delivery alerts; they are not
+transferred to a replacement user. Ownership access checks require a positive
+current-user ID. Ownerless events retain their owner search option, and new events
+still default to the logged-in user.
+
+`PlanningRepository` selects due recalls through typed date predicates and a
+correlated `NOT EXISTS` delivery-marker query. Rescheduling loads only recalls for
+the specified item and changes their mapped timestamp values in one transaction.
+Each timestamp uses that recipient's signed seconds offset; repeated rescheduling
+always starts from the supplied event start. This removes MySQL date arithmetic
+from application code and does not add a provider-specific SQL rewrite. Notification
+dispatch remains in the existing model lifecycle.
+
+`tests/database-portability/planning-owners.php` covers owner and group visibility,
+per-recipient offsets, repeated rescheduling, discriminator scoping, strict due-date
+boundaries, delivery markers, user purge and replacement, search options, and
+legacy migration preflight/retry behavior. Tests never execute the recall cron or
+send notifications.
+
+Validation passed on PostgreSQL and MariaDB: fresh installation, ownership upgrade,
+focused planning contracts, complete mapping and parent-purge checks, ORM CRUD for
+all 355 tables, criteria, reporting, application and search contracts. The base
+portability suite passed 1191 PostgreSQL and 792 MariaDB assertions. PHP 8.3 also
+passed the focused planning contract and four project/planning functional classes
+(10 methods, 296 assertions). No browser or notification-dispatch test was run.
+The inventory now records 715 enforced references, 45 pending ordinary references,
+62 polymorphic references, one ambiguous reference and 1286 legacy SQL call sites.

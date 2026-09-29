@@ -61,6 +61,16 @@ final class UserItemRepository
         }
     }
 
+    /** Preserve planning history without replaying scheduling and ownership hooks. */
+    public function reassignPlanningOwners(int $user, ?int $replacement): void
+    {
+        foreach ([Entity\Project::class, Entity\ProjectTask::class, Entity\ProjectTaskTemplate::class, Entity\PlanningExternalEvent::class] as $class) {
+            $this->em->createQueryBuilder()->update($class, 'r')->set('r.users', ':replacement')
+                ->where('IDENTITY(r.users) = :user')->setParameter('user', $user, Types::INTEGER)
+                ->setParameter('replacement', $replacement, Types::INTEGER)->getQuery()->execute();
+        }
+    }
+
     public function releaseUserResources(int $user): void
     {
         // Private saved searches are deleted by their model hooks before this step.

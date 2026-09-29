@@ -350,6 +350,13 @@ final class OptionalReferences
         'glpi_items_devicesimcards' => ['lines_id' => 'glpi_lines'],
     ];
 
+    public const PLANNING_OWNERS = [
+        'glpi_projects' => ['users_id' => 'glpi_users'],
+        'glpi_projecttasks' => ['users_id' => 'glpi_users'],
+        'glpi_projecttasktemplates' => ['users_id' => 'glpi_users'],
+        'glpi_planningexternalevents' => ['users_id' => 'glpi_users'],
+    ];
+
     public const SERVICE_LEVELS = ['glpi_tickets' => [
         'slas_id_tto' => 'glpi_slas', 'slas_id_ttr' => 'glpi_slas', 'slalevels_id_ttr' => 'glpi_slalevels',
         'olas_id_tto' => 'glpi_olas', 'olas_id_ttr' => 'glpi_olas', 'olalevels_id_ttr' => 'glpi_olalevels',
@@ -419,6 +426,7 @@ final class OptionalReferences
         ...self::TREE_PARENTS,
         ...self::ITIL_CLASSIFICATION,
         ...self::PLANNING_METADATA,
+        'glpi_projecttasktemplates' => [...self::PLANNING_METADATA['glpi_projecttasktemplates'], ...self::PLANNING_OWNERS['glpi_projecttasktemplates']],
         ...self::INVENTORY_METADATA,
         ...self::MODELS,
         ...self::PROJECT_HIERARCHY,
@@ -486,15 +494,15 @@ final class OptionalReferences
         'glpi_peripherals' => [...self::ASSET_CLASSIFICATION['glpi_peripherals'], ...self::MANUFACTURERS['glpi_peripherals'], ...self::STATES['glpi_peripherals'], ...self::LOCATIONS['glpi_peripherals'], ...self::GROUPS['glpi_peripherals'], ...self::ASSET_USERS['glpi_peripherals']],
         'glpi_phones' => [...self::ASSET_CLASSIFICATION['glpi_phones'], ...self::MANUFACTURERS['glpi_phones'], ...self::STATES['glpi_phones'], ...self::LOCATIONS['glpi_phones'], ...self::GROUPS['glpi_phones'], ...self::INVENTORY_METADATA['glpi_phones'], ...self::ASSET_USERS['glpi_phones']],
         'glpi_printers' => [...self::ASSET_CLASSIFICATION['glpi_printers'], ...self::MANUFACTURERS['glpi_printers'], ...self::STATES['glpi_printers'], ...self::LOCATIONS['glpi_printers'], ...self::GROUPS['glpi_printers'], ...self::INVENTORY_METADATA['glpi_printers'], ...self::ASSET_USERS['glpi_printers']],
-        'glpi_projects' => [...self::PROJECT_HIERARCHY['glpi_projects'], ...self::GROUPS['glpi_projects'], ...self::PLANNING_METADATA['glpi_projects']],
+        'glpi_projects' => [...self::PLANNING_OWNERS['glpi_projects'], ...self::PROJECT_HIERARCHY['glpi_projects'], ...self::GROUPS['glpi_projects'], ...self::PLANNING_METADATA['glpi_projects']],
         'glpi_queuedchats' => [...self::LOCATIONS['glpi_queuedchats'], ...self::GROUPS['glpi_queuedchats'], ...self::ITIL_CLASSIFICATION['glpi_queuedchats']],
         'glpi_racks' => [...self::MODELS['glpi_racks'], ...self::INFRASTRUCTURE['glpi_racks'], ...self::MANUFACTURERS['glpi_racks'], ...self::STATES['glpi_racks'], ...self::LOCATIONS['glpi_racks'], ...self::GROUPS['glpi_racks'], ...self::ASSET_USERS['glpi_racks']],
         'glpi_softwarelicenses' => [...self::FINANCIAL['glpi_softwarelicenses'], ...self::MANUFACTURERS['glpi_softwarelicenses'], ...self::STATES['glpi_softwarelicenses'], ...self::LOCATIONS['glpi_softwarelicenses'], ...self::GROUPS['glpi_softwarelicenses'], ...self::ASSET_USERS['glpi_softwarelicenses'], ...self::SOFTWARE_METADATA['glpi_softwarelicenses']],
         'glpi_softwares' => [...self::MANUFACTURERS['glpi_softwares'], ...self::LOCATIONS['glpi_softwares'], ...self::GROUPS['glpi_softwares'], ...self::ASSET_USERS['glpi_softwares'], ...self::SOFTWARE_METADATA['glpi_softwares']],
         'glpi_softwareversions' => [...self::STATES['glpi_softwareversions'], ...self::INVENTORY_METADATA['glpi_softwareversions']],
         'glpi_users' => [...self::USER_METADATA['glpi_users'], ...self::LOCATIONS['glpi_users'], ...self::GROUPS['glpi_users'], ...self::ITIL_CLASSIFICATION['glpi_users']],
-        'glpi_projecttasks' => [...self::PROJECT_HIERARCHY['glpi_projecttasks'], ...self::PLANNING_METADATA['glpi_projecttasks']],
-        'glpi_planningexternalevents' => [...self::GROUPS['glpi_planningexternalevents'], ...self::PLANNING_METADATA['glpi_planningexternalevents']],
+        'glpi_projecttasks' => [...self::PLANNING_OWNERS['glpi_projecttasks'], ...self::PROJECT_HIERARCHY['glpi_projecttasks'], ...self::PLANNING_METADATA['glpi_projecttasks']],
+        'glpi_planningexternalevents' => [...self::PLANNING_OWNERS['glpi_planningexternalevents'], ...self::GROUPS['glpi_planningexternalevents'], ...self::PLANNING_METADATA['glpi_planningexternalevents']],
         'glpi_tickets' => [...self::SERVICE_LEVELS['glpi_tickets'], ...self::LOCATIONS['glpi_tickets'], ...self::ITIL_CLASSIFICATION['glpi_tickets'], ...self::ITIL_USERS['glpi_tickets']],
         'glpi_changetasks' => [...self::GROUPS['glpi_changetasks'], ...self::ITIL_CLASSIFICATION['glpi_changetasks'], ...self::ITIL_USERS['glpi_changetasks']],
         'glpi_problemtasks' => [...self::GROUPS['glpi_problemtasks'], ...self::ITIL_CLASSIFICATION['glpi_problemtasks'], ...self::ITIL_USERS['glpi_problemtasks']],
