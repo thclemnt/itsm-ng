@@ -134,6 +134,8 @@ final class ForeignKeys
         'glpi_monitors' => [...OptionalReferences::RELATIONS['glpi_monitors'], ...EntityOwnership::RELATIONS['glpi_monitors']],
         'glpi_netpoints' => [...OptionalReferences::RELATIONS['glpi_netpoints'], ...EntityOwnership::RELATIONS['glpi_netpoints']],
         'glpi_networkequipments' => [...OptionalReferences::RELATIONS['glpi_networkequipments'], ...EntityOwnership::RELATIONS['glpi_networkequipments']],
+        'glpi_networknames' => [...OptionalReferences::NETWORK_NAMES['glpi_networknames'], ...EntityOwnership::RELATIONS['glpi_networknames']],
+        'glpi_networkaliases' => [...OptionalReferences::NETWORK_NAMES['glpi_networkaliases'], ...EntityOwnership::RELATIONS['glpi_networkaliases'], 'networknames_id' => 'glpi_networknames'],
         'glpi_networkportaggregates' => ['networkports_id' => 'glpi_networkports'],
         'glpi_networkportaliases' => [...OptionalReferences::NETWORK_PORT_METADATA['glpi_networkportaliases'], 'networkports_id' => 'glpi_networkports'],
         'glpi_networkportdialups' => ['networkports_id' => 'glpi_networkports'],

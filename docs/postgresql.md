@@ -41,7 +41,7 @@ This schema change applies to **fresh PostgreSQL installations**. Earlier experi
 
 ## Foreign keys
 
-The current registry enforces 679 relationships on both providers. Another 83
+The current registry enforces 682 relationships on both providers. Another 80
 candidates, 62 polymorphic references and one ambiguous reference remain to be
 resolved. Run `php tools/database/audit-coverage.php` for the current inventory;
 [mapped persistence and reporting](orm.md) documents each migration stage.

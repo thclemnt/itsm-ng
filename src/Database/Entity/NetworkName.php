@@ -31,8 +31,9 @@ class NetworkName
     #[ORM\Column(name: '`comment`', type: 'text', nullable: true)]
     public ?string $comment = null;
 
-    #[ORM\Column(name: '`fqdns_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $fqdns_id = 0;
+    #[ORM\ManyToOne(targetEntity: FQDN::class)]
+    #[ORM\JoinColumn(name: 'fqdns_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?FQDN $fqdns_id = null;
 
     #[ORM\Column(name: '`is_deleted`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_deleted = false;

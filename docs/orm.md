@@ -1576,3 +1576,45 @@ search suites. Authenticated HTTP checks with CSRF and SQL/fatal-log assertions
 pass for all report routes on both engines. All 22 changed PHP files pass syntax
 checks; formatting and diff checks pass. No interactive browser test or remote
 CI run was performed.
+
+### Domain names and aliases
+
+Network names and aliases now hold nullable FQDN associations; aliases also have
+a required network-name association. All three are protected by RESTRICT foreign
+keys. Domain replacement/purge retains labels and changes only their association;
+network-name purge removes its aliases through existing lifecycle hooks.
+Inspect `db:network_names`, apply it with writers stopped, then run
+`db:foreign_keys --apply` on existing installations. Nonzero domain orphans are
+rejected before nullable-column DDL; legacy zero domains become NULL. Required
+alias parents are audited by foreign-key installation. Fresh installs include
+the new mappings.
+
+`FQDN`, `FQDNLabel`, `NetworkName` and `NetworkAlias` no longer issue direct legacy
+database queries. Lookup, detach and child reads use mapped criteria; the new
+`NetworkNameRepository` owns scoped domain/equipment listings, alias projections
+and their matching counts. Domain views exclude foreign-entity labels and aliases.
+Equipment counts and lists consistently exclude deleted ports.
+
+IP and alias sorting select one name per page slot. IP order uses the first
+complete binary address tuple, with a physical-ID tie-breaker; independent
+column minima would produce incorrect composite addresses. Alias order uses the
+first visible non-NULL alias, with missing values last. Bound pagination and a
+name-ID tie-breaker prevent duplicate names and unstable pages. Alias views also
+support ordering by their target's real name. Network-name table options now use
+explicit `limit` and `offset` instead of accepting arbitrary `SQL_options`.
+
+Coverage is 682 enforced relationships, 80 pending candidates, 62 polymorphic
+references, one ambiguous reference and 1,326 legacy SQL call sites. Complete
+relationship and query conversion remains outstanding.
+
+Validation: fresh installs and network-name contracts pass on PostgreSQL and
+MariaDB, including PHP 8.3/MariaDB. Tests cover domain replacement/purge, alias
+cleanup, scoped counts and pages, composite IP ordering, multiple aliases,
+missing sort values, deleted/foreign names and ports, name attachment/detachment,
+exact/wildcard lookup, populated view rendering and migration refusal/idempotence.
+PostgreSQL/MariaDB pass 1,157/759 database-contract assertions, full mappings,
+parent purges, ORM CRUD for all 355 tables, criteria, reporting, application and
+search suites. The affected PHP 8.3 functional class passes seven methods and
+141 assertions. All 14 changed PHP files pass syntax checks; formatting and diff
+checks pass. View verification used PHP rendering, not an interactive browser;
+remote CI was not run.

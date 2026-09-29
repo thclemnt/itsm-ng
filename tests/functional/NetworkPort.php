@@ -164,7 +164,7 @@ class NetworkPort extends DbTestCase
             'itemtype'    => 'NetworkPort',
             'name'        => 'test1',
             'comment'     => 'test1 comment',
-            'fqdns_id'    => 0,
+            'fqdns_id'    => null,
             'is_deleted'  => 0,
             'is_dynamic'  => 0,
         ];
