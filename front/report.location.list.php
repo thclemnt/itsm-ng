@@ -45,35 +45,9 @@ if (isset($_POST["locations_id"]) && $_POST["locations_id"]) {
     echo "<div class='center spaced'><h2>" . sprintf(__('Network report by location: %s'), $name) .
          "</h2></div>";
 
-    $where = [];
-    if (!empty($_POST['locations_id'])) {
-        $sons = getSonsOf('glpi_locations', $_POST['locations_id']);
-        $where = ['glpi_locations.id' => $sons];
-    }
+    $sons = getSonsOf('glpi_locations', (int)$_POST['locations_id']);
 
-    Report::reportForNetworkInformations(
-        'glpi_locations', //from
-        ['PORT_1' => 'id', 'glpi_networkportethernets' => 'networkports_id'], //joincrit
-        $where, //where
-        ['glpi_netpoints.name AS extra'], //select
-        [], //left join
-        [
-           'glpi_netpoints'  => [
-              'ON'  => [
-                 'glpi_netpoints'  => 'locations_id',
-                 'glpi_locations'  => 'id'
-              ]
-           ],
-           'glpi_networkportethernets'   => [
-              'ON'  => [
-                 'glpi_networkportethernets'   => 'netpoints_id',
-                 'glpi_netpoints'              => 'id'
-              ]
-           ]
-        ], //inner join
-        ['glpi_locations.completename', 'PORT_1.name'], //order
-        Netpoint::getTypeName()
-    );
+    Report::showNetworkReport('location', array_values($sons), Netpoint::getTypeName());
 
     Html::footer();
 } else {

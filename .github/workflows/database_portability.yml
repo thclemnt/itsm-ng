@@ -132,6 +132,8 @@ jobs:
         run: php tests/database-portability/itil-users.php tests/config
       - name: ITIL actor associations, uniqueness and migration
         run: php tests/database-portability/actors.php tests/config
+      - name: Network port associations and subtype lifecycle
+        run: php tests/database-portability/network-ports.php tests/config
       - name: User metadata, profile preferences and identity queries
         run: php tests/database-portability/user-metadata.php tests/config
       - name: ORM scheduler windows, plugins, locks and alert decisions

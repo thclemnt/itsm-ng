@@ -1531,3 +1531,48 @@ assertions. Affected PHP 8.3 functional tests pass six methods and 205 assertion
 All 16 changed PHP files pass syntax checks; formatting and diff checks pass.
 Rendering was verified through PHP output, not browser interaction. Notification
 delivery was not exercised.
+
+### Network reports and port subtype relationships
+
+The equipment, outlet and location report routes now call
+`Report::showNetworkReport()` with an explicit report kind and selected IDs.
+`NetworkReportRepository` joins mapped ports, wires, Ethernet subtypes, outlets
+and locations through DQL. Endpoint visibility applies to both cable orientations;
+deleted or foreign-entity peers remain absent. Address hydration uses a separate
+mapped query in batches of 500 port IDs, avoiding endpoint fan-out and vendor
+aggregate functions. Addresses are distinct and sorted. Unwired ports and outlets
+without locations remain reportable; both endpoint port numbers are projected.
+The old SQL-shaped `reportForNetworkInformations()` API and address SQL helper
+have been removed; custom callers should use the typed report entry point.
+
+Fifteen more references use Doctrine associations and RESTRICT foreign keys:
+seven required subtype-to-port links, the optional alias origin, Ethernet/fibre
+card and outlet metadata, and Wi-Fi card, network and upstream Wi-Fi references.
+Port purge removes all owned subtype rows even with a stale discriminator.
+Reference cleanup distinguishes a model's public lookup key from its physical
+row ID, including Wi-Fi replacement and purge.
+
+Existing installations should inspect `db:network_ports`, apply it with writers
+stopped, then run `db:foreign_keys --apply`. Optional legacy zeros become NULL;
+nonzero orphans cause refusal before nullable-column DDL. Foreign-key installation
+also audits required parents. MySQL DDL commits separately and migration retries
+are idempotent. Fresh installs include all fifteen associations. Serialized
+aggregate membership remains pending structural migration.
+
+Coverage is 679 enforced relationships, 83 pending candidates, 62 polymorphic
+references, one ambiguous reference and 1,336 legacy SQL call sites. Full
+relationship and query conversion remains unfinished.
+
+Validation: both engines pass fresh installation, all new relationship
+replacement/purge paths, stale subtype cleanup, Wi-Fi physical/public identity
+checks and migration orphan refusal/idempotence. Reporting covers all three
+selectors, both cable orientations, distinct addresses, deleted/foreign peers,
+unwired ports, nullable locations and execution without legacy SQL calls.
+PHP 8.3/MariaDB passes the network and reporting contracts and seven functional
+methods with 141 assertions, including the corrected subtype-clone check.
+PostgreSQL/MariaDB pass 1,154/756 database-contract assertions, complete mapping
+and parent-purge checks, CRUD across all 355 tables, ORM criteria, application and
+search suites. Authenticated HTTP checks with CSRF and SQL/fatal-log assertions
+pass for all report routes on both engines. All 22 changed PHP files pass syntax
+checks; formatting and diff checks pass. No interactive browser test or remote
+CI run was performed.

@@ -16,17 +16,21 @@ class NetworkPortWifi
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
 
-    #[ORM\Column(name: '`networkports_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $networkports_id = 0;
+    #[ORM\ManyToOne(targetEntity: NetworkPort::class)]
+    #[ORM\JoinColumn(name: 'networkports_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?NetworkPort $networkports_id = null;
 
-    #[ORM\Column(name: '`items_devicenetworkcards_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $items_devicenetworkcards_id = 0;
+    #[ORM\ManyToOne(targetEntity: ItemDeviceNetworkCard::class)]
+    #[ORM\JoinColumn(name: 'items_devicenetworkcards_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?ItemDeviceNetworkCard $items_devicenetworkcards_id = null;
 
-    #[ORM\Column(name: '`wifinetworks_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $wifinetworks_id = 0;
+    #[ORM\ManyToOne(targetEntity: WifiNetwork::class)]
+    #[ORM\JoinColumn(name: 'wifinetworks_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?WifiNetwork $wifinetworks_id = null;
 
-    #[ORM\Column(name: '`networkportwifis_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $networkportwifis_id = 0;
+    #[ORM\ManyToOne(targetEntity: NetworkPortWifi::class)]
+    #[ORM\JoinColumn(name: 'networkportwifis_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?NetworkPortWifi $networkportwifis_id = null;
 
     #[ORM\Column(name: '`version`', type: 'string', length: 20, nullable: true)]
     public ?string $version = null;

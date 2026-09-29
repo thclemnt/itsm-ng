@@ -16,14 +16,17 @@ class NetworkPortFiberchannel
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
 
-    #[ORM\Column(name: '`networkports_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $networkports_id = 0;
+    #[ORM\ManyToOne(targetEntity: NetworkPort::class)]
+    #[ORM\JoinColumn(name: 'networkports_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?NetworkPort $networkports_id = null;
 
-    #[ORM\Column(name: '`items_devicenetworkcards_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $items_devicenetworkcards_id = 0;
+    #[ORM\ManyToOne(targetEntity: ItemDeviceNetworkCard::class)]
+    #[ORM\JoinColumn(name: 'items_devicenetworkcards_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?ItemDeviceNetworkCard $items_devicenetworkcards_id = null;
 
-    #[ORM\Column(name: '`netpoints_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $netpoints_id = 0;
+    #[ORM\ManyToOne(targetEntity: Netpoint::class)]
+    #[ORM\JoinColumn(name: 'netpoints_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Netpoint $netpoints_id = null;
 
     #[ORM\Column(name: '`wwn`', type: 'string', length: 16, nullable: true, options: ['default' => ''])]
     public ?string $wwn = '';

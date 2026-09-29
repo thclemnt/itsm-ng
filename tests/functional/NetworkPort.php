@@ -144,8 +144,8 @@ class NetworkPort extends DbTestCase
         unset($networkportethernet['date_creation']);
         $expected = [
             'networkports_id'             => $new_id,
-            'items_devicenetworkcards_id' => 0,
-            'netpoints_id'                => 0,
+            'items_devicenetworkcards_id' => null,
+            'netpoints_id'                => null,
             'type'                        => 'T',
             'speed'                       => 1000,
         ];
@@ -287,10 +287,10 @@ class NetworkPort extends DbTestCase
 
         $instantiation = $networkport->getInstantiation();
         $clonedInstantiation = $clonedNetworkport->getInstantiation();
-        $instantiationFields = $networkport->fields;
+        $instantiationFields = $instantiation->fields;
 
         // Check the networkport instantiation values. Id, networkports_id and dates must be different, everything else must be equal
-        foreach ($fields as $k => $v) {
+        foreach ($instantiationFields as $k => $v) {
             switch ($k) {
                 case 'id':
                     $this->variable($clonedInstantiation->getField($k))->isNotEqualTo($instantiation->getField($k));

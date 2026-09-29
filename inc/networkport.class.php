@@ -462,6 +462,13 @@ class NetworkPort extends CommonDBChild
 
         $this->deleteChildrenAndRelationsFromDb(
             [
+              NetworkPortAggregate::class,
+              NetworkPortAlias::class,
+              NetworkPortDialup::class,
+              NetworkPortEthernet::class,
+              NetworkPortFiberchannel::class,
+              NetworkPortLocal::class,
+              NetworkPortWifi::class,
               NetworkName::class,
               NetworkPort_NetworkPort::class,
               NetworkPort_Vlan::class,

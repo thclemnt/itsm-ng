@@ -878,14 +878,30 @@ class CommonDBTM extends CommonGLPI
                     }
 
                     foreach ($field as $f) {
+                        $referenceId = $this->getID();
+                        $replacementId = $newval;
+                        if (
+                            $this->getIndexName() !== 'id'
+                            && (\itsmng\Database\ForeignKeys::RELATIONS[$tablename][$f] ?? null) === $this->getTable()
+                        ) {
+                            // Mapped FKs reference the physical ID, even when the public model key differs.
+                            $referenceId = $this->fields['id'];
+                            if ($newval) {
+                                $replacement = getItemForItemtype($this->getType());
+                                if (!$replacement->getFromDB($newval)) {
+                                    throw new InvalidArgumentException('Unknown replacement for ' . $this->getType());
+                                }
+                                $replacementId = $replacement->fields['id'];
+                            }
+                        }
                         $object = getItemForItemtype($itemtype);
                         if (!$object || $object->getIndexName() === $f) {
                             continue;
                         }
                         $idName = $object->getIndexName();
-                        foreach ($object->findIds([$f => $this->getID()]) as $id) {
+                        foreach ($object->findIds([$f => $referenceId]) as $id) {
                             $related = getItemForItemtype($itemtype);
-                            $related->update([$idName => $id, $f => $newval, '_disablenotif' => true]);
+                            $related->update([$idName => $id, $f => $replacementId, '_disablenotif' => true]);
                         }
                     }
                 }

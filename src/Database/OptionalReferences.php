@@ -350,6 +350,13 @@ final class OptionalReferences
         'glpi_items_devicesimcards' => ['lines_id' => 'glpi_lines'],
     ];
 
+    public const NETWORK_PORT_METADATA = [
+        'glpi_networkportaliases' => ['networkports_id_alias' => 'glpi_networkports'],
+        'glpi_networkportethernets' => ['items_devicenetworkcards_id' => 'glpi_items_devicenetworkcards', 'netpoints_id' => 'glpi_netpoints'],
+        'glpi_networkportfiberchannels' => ['items_devicenetworkcards_id' => 'glpi_items_devicenetworkcards', 'netpoints_id' => 'glpi_netpoints'],
+        'glpi_networkportwifis' => ['items_devicenetworkcards_id' => 'glpi_items_devicenetworkcards', 'wifinetworks_id' => 'glpi_wifinetworks', 'networkportwifis_id' => 'glpi_networkportwifis'],
+    ];
+
     public const ITIL_ACTORS = [
         'glpi_tickets_users' => ['users_id' => 'glpi_users'],
         'glpi_problems_users' => ['users_id' => 'glpi_users'],
@@ -377,6 +384,7 @@ final class OptionalReferences
     public const CRON_LOG_PARENTS = ['glpi_crontasklogs' => ['crontasklogs_id' => 'glpi_crontasklogs']];
 
     public const RELATIONS = [
+        ...self::NETWORK_PORT_METADATA,
         ...self::ITIL_ACTORS,
         ...self::CRON_LOG_PARENTS,
         ...self::CONTACT_LINE_METADATA,

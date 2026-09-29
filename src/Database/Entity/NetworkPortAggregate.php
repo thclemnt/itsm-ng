@@ -16,8 +16,9 @@ class NetworkPortAggregate
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
 
-    #[ORM\Column(name: '`networkports_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $networkports_id = 0;
+    #[ORM\ManyToOne(targetEntity: NetworkPort::class)]
+    #[ORM\JoinColumn(name: 'networkports_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?NetworkPort $networkports_id = null;
 
     #[ORM\Column(name: '`networkports_id_list`', type: 'text', nullable: true)]
     public ?string $networkports_id_list = null;

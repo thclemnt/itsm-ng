@@ -91,7 +91,7 @@ try {
     fixture('glpi_networkports_networkports', ['networkports_id_1' => $ports[0], 'networkports_id_2' => $ports[1]]);
     $renderNetwork = static function () use ($switch): string {
         ob_start();
-        Report::reportForNetworkInformations('glpi_networkequipments AS ITEM', ['PORT_1' => 'items_id', 'ITEM' => 'id', ['AND' => ['PORT_1.itemtype' => 'NetworkEquipment']]], ['ITEM.id' => $switch]);
+        Report::showNetworkReport('equipment', [$switch]);
         return ob_get_clean();
     };
     $html = $renderNetwork();
@@ -99,6 +99,45 @@ try {
     $DB->update('glpi_networkports', ['entities_id' => 0], ['id' => $ports[1]]);
     $html = $renderNetwork();
     verify(!str_contains($html, '192.0.2.'), 'Opposite endpoint cannot leak addresses from another entity');
+
+    $network = new \itsmng\Database\Repository\NetworkReportRepository(\itsmng\Database\Orm::create($DB));
+    verify($network->rows('equipment', [$switch], []) === [], 'Empty network scope grants no rows');
+    verify($network->rows('equipment', [], null) === [], 'Empty network selection grants no rows');
+    $rows = $network->rows('equipment', [$switch], [$entity]);
+    verify(count($rows) === 1 && $rows[0]['id_2'] === null && $rows[0]['ip_2'] === null, 'Hidden peer stays absent from endpoint and address projections');
+    $DB->update('glpi_networkports', ['entities_id' => $entity, 'logical_number' => 7, 'is_deleted' => 1], ['id' => $ports[1]]);
+    $rows = $network->rows('equipment', [$switch], [$entity]);
+    verify(count($rows) === 1 && $rows[0]['id_2'] === null, 'Deleted peer and local endpoint excluded');
+    $DB->update('glpi_networkports', ['is_deleted' => 0], ['id' => $ports[1]]);
+    $duplicateName = fixture('glpi_networknames', ['name' => 'Duplicate addresses', 'items_id' => $ports[0], 'itemtype' => 'NetworkPort']);
+    fixture('glpi_ipaddresses', ['name' => '192.0.1.1', 'items_id' => $duplicateName, 'itemtype' => 'NetworkName']);
+    fixture('glpi_ipaddresses', ['name' => 'deleted-address', 'items_id' => $duplicateName, 'itemtype' => 'NetworkName', 'is_deleted' => 1]);
+    fixture('glpi_ipaddresses', ['name' => 'wrong-type-address', 'items_id' => $duplicateName, 'itemtype' => 'Computer']);
+    $deletedName = fixture('glpi_networknames', ['items_id' => $ports[0], 'itemtype' => 'NetworkPort', 'is_deleted' => 1]);
+    fixture('glpi_ipaddresses', ['name' => 'deleted-name-address', 'items_id' => $deletedName, 'itemtype' => 'NetworkName']);
+    $rows = $network->rows('equipment', [$switch], [$entity]);
+    verify(count($rows) === 2 && $rows[0]['ip_1'] === '192.0.1.1,192.0.1.2' && (int)$rows[0]['logical_2'] === 7, 'Both cable orientations preserve sorted distinct addresses and peer port numbers');
+    $location = fixture('glpi_locations', ['name' => 'Report room', 'completename' => 'Report room', 'entities_id' => $entity]);
+    $outlet = fixture('glpi_netpoints', ['name' => 'Report outlet', 'locations_id' => $location, 'entities_id' => $entity]);
+    fixture('glpi_networkportethernets', ['networkports_id' => $ports[0], 'netpoints_id' => $outlet]);
+    $rows = $network->rows('location', [$location], [$entity]);
+    verify(count($rows) === 1 && $rows[0]['extra'] === 'Report outlet', 'Location report joins mapped Ethernet and outlet associations');
+    $rows = $network->rows('outlet', [$outlet], [$entity]);
+    verify(count($rows) === 1 && $rows[0]['extra'] === 'Report room', 'Outlet report projects its optional location');
+    $DB->update('glpi_netpoints', ['locations_id' => null], ['id' => $outlet]);
+    $rows = $network->rows('outlet', [$outlet], [$entity]);
+    verify(count($rows) === 1 && $rows[0]['extra'] === null, 'Unlocated outlet remains reportable');
+    verify($network->rows('location', [$location], [$entity]) === [], 'Unlocated outlet cannot match a location');
+    $unwired = fixture('glpi_networkports', ['name' => 'Unwired report port', 'itemtype' => 'NetworkEquipment', 'items_id' => $switch, 'entities_id' => $entity]);
+    $rows = $network->rows('equipment', [$switch], [$entity]);
+    verify(count($rows) === 3 && (int)$rows[2]['id_1'] === $unwired && $rows[2]['id_2'] === null && $rows[2]['ip_1'] === null, 'Unwired port with no address retained');
+    $SQL_TOTAL_REQUEST = 0;
+    $renderNetwork();
+    ob_start();
+    Report::showNetworkReport('outlet', [$outlet], Location::getTypeName());
+    $outletHtml = ob_get_clean();
+    verify(str_contains($outletHtml, '192.0.1.1,192.0.1.2'), 'Mapped outlet report renders addresses');
+    verify($SQL_TOTAL_REQUEST === 0, 'Network report queries and device hydration bypass legacy SQL execution');
 
     $reservable = fixture('glpi_reservationitems', ['itemtype' => 'Computer', 'items_id' => $computer, 'entities_id' => $entity]);
     $hidden = fixture('glpi_reservationitems', ['itemtype' => 'Computer', 'items_id' => $other, 'entities_id' => 0]);

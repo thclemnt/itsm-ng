@@ -277,101 +277,15 @@ class Report extends CommonGLPI
     }
 
 
-    /**
-     * Get report information
-     *
-     * @param string $from      From table
-     * @param array  $joincrit  Join criteria
-     * @param array  $where     Where clause
-     * @param array  $select    Extra select clause
-     * @param array  $leftjoin  Extra LEFT JOIN clause
-     * @param array  $innerjoin Extra INNER JOIN clause
-     * @param array  $order     Order clause
-     * @param string $extra     ?
-     *
-     * @return void
-     *
-     * @since 10.0.0
-    **/
-    public static function reportForNetworkInformations(
-        $from,
-        array $joincrit,
-        array $where = [],
-        array $select = [],
-        array $leftjoin = [],
-        array $innerjoin = [],
-        array $order = [],
-        $extra = ''
-    ) {
+    /** Render a mapped network report for selected equipment, outlets or locations. */
+    public static function showNetworkReport(string $kind, array $ids, string $extra = ''): void
+    {
         global $DB;
 
-        // This SQL request matches the NetworkPort, then its NetworkName and IPAddreses. It also
-        //      match opposite NetworkPort, then its NetworkName and IPAddresses.
-        // Addresses are aggregated per port to avoid multiplying the two endpoints.
+        $rows = (new \itsmng\Database\Repository\NetworkReportRepository(\itsmng\Database\Orm::create($DB)))
+            ->rows($kind, $ids, \itsmng\Reporting\Criteria::entities());
 
-        if (count($joincrit) === 3) {
-            $andcrit = array_pop($joincrit);
-            $andcrit['AND']['PORT_1.is_deleted'] = 0;
-            $joincrit[] = $andcrit;
-        } else {
-            $joincrit[]['AND']['PORT_1.is_deleted'] = 0;
-        }
-
-        $criteria = [
-           'SELECT'       => array_merge([
-              'PORT_1.itemtype AS itemtype_1',
-              'PORT_1.items_id AS items_id_1',
-              'PORT_1.id AS id_1',
-              'PORT_1.name AS port_1',
-              'PORT_1.mac AS mac_1',
-              'PORT_1.logical_number AS logical_1',
-              new QueryExpression(\itsmng\Reporting\NetworkReport::addresses($DB, 'PORT_1') . ' AS ' . $DB->quoteName('ip_1')),
-              'PORT_2.itemtype AS itemtype_2',
-              'PORT_2.items_id AS items_id_2',
-              'PORT_2.id AS id_2',
-              'PORT_2.name AS port_2',
-              'PORT_2.mac AS mac_2',
-              new QueryExpression(\itsmng\Reporting\NetworkReport::addresses($DB, 'PORT_2') . ' AS ' . $DB->quoteName('ip_2'))
-           ], $select),
-           'FROM'         => $from,
-           'INNER JOIN'   => $innerjoin + [
-              'glpi_networkports AS PORT_1' => [
-                 'ON' => $joincrit
-              ]
-           ],
-           'LEFT JOIN'    => [
-              'glpi_networkports_networkports AS LINK'  => [
-                 'ON'  => [
-                    'LINK'   => 'networkports_id_1',
-                    'PORT_1' => 'id', [
-                       'OR'     => [
-                          'LINK.networkports_id_2'   => new QueryExpression($DB->quoteName('PORT_1.id'))
-                       ]
-                    ]
-                 ]
-              ],
-              'glpi_networkports AS PORT_2' => [
-                 'ON'  => [
-                    'PORT_2' => 'id',
-                    new QueryExpression(
-                        'CASE WHEN ' . $DB->quoteName('LINK.networkports_id_1') . ' = ' . $DB->quoteName('PORT_1.id') . ' THEN ' .
-                          $DB->quoteName('LINK.networkports_id_2') . ' ELSE ' .
-                          $DB->quoteName('LINK.networkports_id_1') . ' END'
-                    ),
-                    ['AND' => ['PORT_2.is_deleted' => 0] + getEntitiesRestrictCriteria('PORT_2')]
-                 ]
-              ],
-           ] + $leftjoin,
-           'WHERE'        => $where + getEntitiesRestrictCriteria('PORT_1')
-        ];
-
-        if (count($order)) {
-            $criteria['ORDER'] = $order;
-        }
-
-        $iterator = $DB->request($criteria);
-
-        if (count($iterator)) {
+        if ($rows) {
             echo "<table class='tab_cadre_fixehov'aria-label='Devices'>";
             echo "<tr>";
             if (!empty($extra)) {
@@ -398,7 +312,7 @@ class Report extends CommonGLPI
             echo "<th>" . __('Device name') . "</th>";
             echo "</tr>\n";
 
-            while ($line = $iterator->next()) {
+            foreach ($rows as $line) {
                 echo "<tr class='tab_bg_1'>";
 
                 // To ensure that the NetworkEquipment remain the first item, we test its type
