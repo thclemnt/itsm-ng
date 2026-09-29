@@ -85,9 +85,9 @@ $RELATION = [
    ],
 
    'glpi_authldaps' => [
-      'glpi_authldapreplicates' => 'authldaps_id',
+      '_glpi_authldapreplicates' => 'authldaps_id',
       'glpi_entities'           => 'authldaps_id',
-      'glpi_users'              => 'auths_id',
+      '_glpi_users'              => 'auths_id',
    ],
 
    'glpi_authmails' => [

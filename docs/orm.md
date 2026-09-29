@@ -2012,3 +2012,42 @@ Tests did not connect to a mailbox, execute collection cron or send notification
 The inventory now has 722 enforced references, 38 pending ordinary references,
 62 polymorphic references, one ambiguous reference and 1255 legacy SQL call sites.
 Full relationship and query conversion remains unfinished.
+
+### LDAP configuration and required replica ownership
+
+`AuthLdapReplicate.authldaps` is now a required association with an enforced FK.
+Directory purge deletes its replicas through their model lifecycle; an explicit
+replacement reassigns them. Existing installations run `db:foreign_keys --apply`;
+invalid existing parent references stop the audit, including zero-valued parents.
+The migration does not silently delete or repair those records. Fresh installs
+include the constraint.
+
+`LdapRepository` handles directory lists/counts, default lookup and maintenance,
+email-import source selection, replica endpoints, known authentication sources,
+local synchronization candidates and group identifiers. Flags use typed booleans;
+login and DN lookups bind raw values. Import still compares all existing logins,
+while synchronization applies the existing source/authentication filter. Candidate
+rows are streamed and detached, preserving bounded ORM identity-map usage.
+
+Deleting or replacing a directory now updates users' source IDs through a scoped
+ORM update. The former generic user update replayed photo synchronization against
+the directory being deleted and also matched unrelated mail/local accounts with
+the same numeric source ID. Maintenance now covers LDAP, unauthenticated and
+alternate-authentication accounts while leaving local and mail accounts alone.
+The shared `users.auths_id` column remains an ambiguous LDAP/mail reference and
+still requires a schema redesign; this change does not claim to enforce its FK.
+
+`tests/database-portability/ldap-configuration.php` covers directory/default and
+email-import selection, replica forms/endpoints, quoted login and DN values,
+entity-scoped groups, import/synchronization candidates, transaction rollback,
+replica purge/replacement and authentication-type scoping. Fresh and upgraded
+PostgreSQL and MariaDB focused contracts passed. Both engines also passed the
+complete mapping/parent-purge, all-table ORM CRUD, criteria, reporting, application,
+search and mail-collection suites. Base portability assertions: 1203 PostgreSQL
+and 800 MariaDB. PHP 8.3 passed the focused contract and seven existing local LDAP
+and replica functional methods (89 assertions). External LDAP authentication and
+synchronization were not validated.
+
+The inventory now reports 723 enforced references, 37 pending ordinary references,
+62 polymorphic references, one ambiguous reference and 1244 legacy SQL call sites.
+Full relationship and query conversion remains unfinished.
