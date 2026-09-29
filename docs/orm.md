@@ -2226,3 +2226,39 @@ The inventory records 728 enforced references, 32 pending ordinary references,
 62 polymorphic references, one ambiguous reference and 1231 legacy SQL call sites.
 This change expands mapped relationship coverage; full relationship and runtime
 query conversion remains unfinished.
+
+
+### Document queries and optional ticket ownership
+
+Document content lookup, extension and icon selection, category selection,
+attachment permissions and orphan selection now use Doctrine repositories.
+Reminder and knowledge-base attachments reuse their respective audience queries;
+ITIL attachments retain parent read checks, child-type discrimination and private
+followup/task author rights. File-retention counts also use mapped reads. The
+cleanup selector is separate from the existing document purge lifecycle.
+
+`Document.tickets` is now a nullable association with a restrictive foreign key.
+Run `db:document_ticket_references --apply`, then `db:foreign_keys --apply` on
+existing installations during maintenance. The normal upgrade path includes the
+migration, and fresh installs include the mapping and constraint. Migration
+planning is read-only; nonzero orphans block changes before DDL, zero becomes
+NULL, valid ticket IDs survive, and retries are idempotent. Ticket replacement
+reassigns the origin; ticket purge clears it while retaining the document.
+
+`tests/database-portability/documents.php` covers entity scope, content hashes,
+case-insensitive extensions, configured regex extensions, upload permission,
+category exclusions, ITIL child attachment permissions, reminder ownership,
+public FAQ scope, ticket lifecycle and the legacy-data migration. It tests orphan
+selection without executing cleanup. Fresh and upgraded PostgreSQL and MariaDB
+passed this contract. The seven selected PHP 8.3 Document functional methods
+passed with 414 assertions; the cron test was excluded. PHP 8.3 also passed the
+focused MariaDB contract and syntax checks. The PHP 8.3 test container has no
+PostgreSQL driver; PostgreSQL contracts ran on host PHP 8.5. Both engines passed
+complete mapping/parent-purge, all-table ORM CRUD, criteria, reporting, application,
+search, personal-content, knowledge-base and content-metadata contracts. Base
+portability assertions: 1209 PostgreSQL and 806 MariaDB.
+
+The static inventory records 729 enforced references, 31 pending ordinary
+references, 62 polymorphic references, one ambiguous reference and 1221 legacy
+SQL call sites. All 355 core tables remain mapped. This inventory is not proof
+that every relationship or runtime SQL path has been converted.

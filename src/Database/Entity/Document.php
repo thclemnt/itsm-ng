@@ -54,8 +54,9 @@ class Document
     #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     public ?User $users = null;
 
-    #[ORM\Column(name: '`tickets_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $tickets_id = 0;
+    #[ORM\ManyToOne(targetEntity: Ticket::class)]
+    #[ORM\JoinColumn(name: 'tickets_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Ticket $tickets = null;
 
     #[ORM\Column(name: '`sha1sum`', type: 'string', length: 40, nullable: true, options: ['fixed' => true])]
     public ?string $sha1sum = null;

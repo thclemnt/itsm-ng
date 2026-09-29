@@ -329,6 +329,10 @@ final class OptionalReferences
         'glpi_reservations' => ['users_id' => 'glpi_users'],
     ];
 
+    public const DOCUMENT_TICKETS = [
+        'glpi_documents' => ['tickets_id' => 'glpi_tickets'],
+    ];
+
     public const CONTENT_METADATA = [
         'glpi_documents' => ['users_id' => 'glpi_users', 'documentcategories_id' => 'glpi_documentcategories'],
         'glpi_documents_items' => ['users_id' => 'glpi_users'],
@@ -442,6 +446,7 @@ final class OptionalReferences
         ...self::CRON_LOG_PARENTS,
         ...self::CONTACT_LINE_METADATA,
         ...self::CONTENT_METADATA,
+        'glpi_documents' => [...self::CONTENT_METADATA['glpi_documents'], ...self::DOCUMENT_TICKETS['glpi_documents']],
         'glpi_knowbaseitems' => [...self::CONTENT_METADATA['glpi_knowbaseitems'], ...self::ARTICLE_CATEGORIES['glpi_knowbaseitems']],
         ...self::RESERVATION_USERS,
         ...self::ASSET_USERS,

@@ -7,6 +7,7 @@ namespace itsmng\Database\Repository;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
+use itsmng\Database\Entity\DocumentItem;
 use itsmng\Database\Entity\EntityKnowbaseItem;
 use itsmng\Database\Entity\GroupKnowbaseItem;
 use itsmng\Database\Entity\KnowbaseItem;
@@ -137,6 +138,13 @@ final class KnowledgeBaseRepository
             $category['items_count'] = $counts[$category['id']] ?? 0;
         }
         return ['categories' => $categories, 'uncategorized' => $counts[0] ?? 0];
+    }
+
+    public function hasDocument(int $document, KnowledgeBaseAccess $access): bool
+    {
+        return $this->visible($access)->select('k.id')
+            ->andWhere("EXISTS (SELECT d.id FROM " . DocumentItem::class . " d WHERE IDENTITY(d.documents) = :document AND d.itemtype = 'KnowbaseItem' AND d.items_id = k.id)")
+            ->setParameter('document', $document, Types::INTEGER)->setMaxResults(1)->getQuery()->getOneOrNullResult() !== null;
     }
 
     private function visible(KnowledgeBaseAccess $access): QueryBuilder

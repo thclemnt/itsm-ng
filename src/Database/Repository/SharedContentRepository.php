@@ -61,6 +61,22 @@ final class SharedContentRepository
         return $this->rows($query);
     }
 
+    public function reminderHasDocument(int $document, SharedContentAccess $access): bool
+    {
+        if ($access->user <= 0) {
+            return false;
+        }
+        $query = $this->em->createQueryBuilder()->select('r.id')->from(Entity\Reminder::class, 'r')
+            ->setParameter('viewer', $access->user, Types::INTEGER);
+        if ($access->readPublic) {
+            $this->visibility($query, 'reminder', $access);
+        } else {
+            $query->where('IDENTITY(r.users) = :viewer');
+        }
+        return $query->andWhere("EXISTS (SELECT d.id FROM " . Entity\DocumentItem::class . " d WHERE IDENTITY(d.documents) = :document AND d.itemtype = 'Reminder' AND d.items_id = r.id)")
+            ->setParameter('document', $document, Types::INTEGER)->setMaxResults(1)->getQuery()->getOneOrNullResult() !== null;
+    }
+
     private function visibility(QueryBuilder $query, string $kind, SharedContentAccess $access): void
     {
         [, $parent, $user, $group, $profile, $entity] = self::KINDS[$kind];
