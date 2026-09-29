@@ -1233,23 +1233,8 @@ class ITILFollowup extends CommonDBChild
         // Print Followups for a job
         $showprivate = Session::haveRight(self::$rightname, self::SEEPRIVATE);
 
-        $where = [
-           'itemtype'  => $itemtype,
-           'items_id'  => $ID
-        ];
-        if (!$showprivate) {
-            $where['OR'] = [
-               'is_private'   => 0,
-               'users_id'     => Session::getLoginUserID()
-            ];
-        }
-
-        // Get Followups
-        $iterator = $DB->request([
-           'FROM'   => 'glpi_itilfollowups',
-           'WHERE'  => $where,
-           'ORDER'  => 'date DESC'
-        ]);
+        $iterator = (new \itsmng\Database\Repository\ITILUserRepository(\itsmng\Database\Orm::create($DB)))
+            ->followups((string)$itemtype, (int)$ID, (int)Session::getLoginUserID(), $showprivate);
 
         $out = "";
         if (count($iterator)) {
@@ -1261,7 +1246,7 @@ class ITILFollowup extends CommonDBChild
             if (Session::haveRight('user', READ)) {
                 $showuserlink = 1;
             }
-            while ($data = $iterator->next()) {
+            foreach ($iterator as $data) {
                 $out .= "<tr class='tab_bg_3'>
                      <td class='center'>" . Html::convDateTime($data["date"]) . "</td>
                      <td class='center'>" . getUserName($data["users_id"], $showuserlink) . "</td>
@@ -1503,27 +1488,8 @@ class ITILFollowup extends CommonDBChild
             // The author is an observer or a requester -> can be support agent OR
             // requester depending on how GLPI is used so we must check the user's
             // profiles
-            $central_profiles = $DB->request([
-               'COUNT' => 'total',
-               'FROM' => Profile::getTable(),
-               'WHERE' => [
-                  'interface' => 'central',
-                  'id' => new QuerySubQuery([
-                     'SELECT' => ['profiles_id'],
-                     'FROM' => Profile_User::getTable(),
-                     'WHERE' => [
-                        'users_id' => $user_id
-                     ]
-                  ])
-               ]
-            ]);
-
-            // No profiles, let's assume it is a support agent to be safe
-            if (!count($central_profiles)) {
-                return false;
-            }
-
-            return $central_profiles->next()['total'] > 0;
+            return (new \itsmng\Database\Repository\ITILUserRepository(\itsmng\Database\Orm::create($DB)))
+                ->hasCentralProfile((int)$user_id);
         } elseif (in_array(CommonITILActor::REQUESTER, $roles)) {
             // The author is a requester -> not from support agent
             return false;

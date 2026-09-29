@@ -350,6 +350,19 @@ final class OptionalReferences
         'glpi_items_devicesimcards' => ['lines_id' => 'glpi_lines'],
     ];
 
+    public const ITIL_USERS = [
+        'glpi_tickets' => ['users_id_recipient' => 'glpi_users', 'users_id_lastupdater' => 'glpi_users'],
+        'glpi_problems' => ['users_id_recipient' => 'glpi_users', 'users_id_lastupdater' => 'glpi_users'],
+        'glpi_changes' => ['users_id_recipient' => 'glpi_users', 'users_id_lastupdater' => 'glpi_users'],
+        'glpi_tickettasks' => ['users_id' => 'glpi_users', 'users_id_editor' => 'glpi_users', 'users_id_tech' => 'glpi_users'],
+        'glpi_problemtasks' => ['users_id' => 'glpi_users', 'users_id_editor' => 'glpi_users', 'users_id_tech' => 'glpi_users'],
+        'glpi_changetasks' => ['users_id' => 'glpi_users', 'users_id_editor' => 'glpi_users', 'users_id_tech' => 'glpi_users'],
+        'glpi_ticketvalidations' => ['users_id' => 'glpi_users', 'users_id_validate' => 'glpi_users'],
+        'glpi_changevalidations' => ['users_id' => 'glpi_users', 'users_id_validate' => 'glpi_users'],
+        'glpi_itilfollowups' => ['users_id' => 'glpi_users', 'users_id_editor' => 'glpi_users'],
+        'glpi_itilsolutions' => ['users_id' => 'glpi_users', 'users_id_editor' => 'glpi_users', 'users_id_approval' => 'glpi_users'],
+    ];
+
     public const USER_METADATA = ['glpi_users' => ['profiles_id' => 'glpi_profiles', 'usertitles_id' => 'glpi_usertitles', 'usercategories_id' => 'glpi_usercategories', 'users_id_supervisor' => 'glpi_users']];
 
     public const CRON_LOG_PARENTS = ['glpi_crontasklogs' => ['crontasklogs_id' => 'glpi_crontasklogs']];
@@ -440,13 +453,19 @@ final class OptionalReferences
         'glpi_users' => [...self::USER_METADATA['glpi_users'], ...self::LOCATIONS['glpi_users'], ...self::GROUPS['glpi_users'], ...self::ITIL_CLASSIFICATION['glpi_users']],
         'glpi_projecttasks' => [...self::PROJECT_HIERARCHY['glpi_projecttasks'], ...self::PLANNING_METADATA['glpi_projecttasks']],
         'glpi_planningexternalevents' => [...self::GROUPS['glpi_planningexternalevents'], ...self::PLANNING_METADATA['glpi_planningexternalevents']],
-        'glpi_tickets' => [...self::LOCATIONS['glpi_tickets'], ...self::ITIL_CLASSIFICATION['glpi_tickets']],
-        'glpi_changetasks' => [...self::GROUPS['glpi_changetasks'], ...self::ITIL_CLASSIFICATION['glpi_changetasks']],
-        'glpi_problemtasks' => [...self::GROUPS['glpi_problemtasks'], ...self::ITIL_CLASSIFICATION['glpi_problemtasks']],
-        'glpi_tickettasks' => [...self::GROUPS['glpi_tickettasks'], ...self::ITIL_CLASSIFICATION['glpi_tickettasks']],
+        'glpi_tickets' => [...self::LOCATIONS['glpi_tickets'], ...self::ITIL_CLASSIFICATION['glpi_tickets'], ...self::ITIL_USERS['glpi_tickets']],
+        'glpi_changetasks' => [...self::GROUPS['glpi_changetasks'], ...self::ITIL_CLASSIFICATION['glpi_changetasks'], ...self::ITIL_USERS['glpi_changetasks']],
+        'glpi_problemtasks' => [...self::GROUPS['glpi_problemtasks'], ...self::ITIL_CLASSIFICATION['glpi_problemtasks'], ...self::ITIL_USERS['glpi_problemtasks']],
+        'glpi_tickettasks' => [...self::GROUPS['glpi_tickettasks'], ...self::ITIL_CLASSIFICATION['glpi_tickettasks'], ...self::ITIL_USERS['glpi_tickettasks']],
         'glpi_itilcategories' => [...self::GROUPS['glpi_itilcategories'], ...self::ITIL_CLASSIFICATION['glpi_itilcategories'], ...self::TREE_PARENTS['glpi_itilcategories']],
         'glpi_tasktemplates' => [...self::GROUPS['glpi_tasktemplates'], ...self::ITIL_CLASSIFICATION['glpi_tasktemplates']],
         'glpi_taskcategories' => ['knowbaseitemcategories_id' => 'glpi_knowbaseitemcategories', ...self::TREE_PARENTS['glpi_taskcategories']],
+        'glpi_problems' => [...self::ITIL_CLASSIFICATION['glpi_problems'], ...self::ITIL_USERS['glpi_problems']],
+        'glpi_changes' => [...self::ITIL_CLASSIFICATION['glpi_changes'], ...self::ITIL_USERS['glpi_changes']],
+        'glpi_ticketvalidations' => [...self::ITIL_USERS['glpi_ticketvalidations']],
+        'glpi_changevalidations' => [...self::ITIL_USERS['glpi_changevalidations']],
+        'glpi_itilfollowups' => [...self::ITIL_CLASSIFICATION['glpi_itilfollowups'], ...self::ITIL_USERS['glpi_itilfollowups']],
+        'glpi_itilsolutions' => [...self::ITIL_CLASSIFICATION['glpi_itilsolutions'], ...self::ITIL_USERS['glpi_itilsolutions']],
     ];
 
     public static function isEmptySelection(mixed $value): bool

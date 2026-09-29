@@ -1455,3 +1455,42 @@ input-guard checks reject negative/unassigned profile IDs on both engines. All
 12 changed PHP files pass syntax checks; formatting and diff checks pass.
 Rendering tests use PHP output; LDAP import, browser interaction and notification
 delivery were not exercised.
+
+### Historical ITIL user references
+
+Twenty-four user references now use nullable Doctrine associations and RESTRICT
+foreign keys: ticket/problem/change recipients and last updaters, task authors,
+editors and technicians, validation authors and validators, followup authors and
+editors, and solution authors, editors and approvers. Existing installations
+should inspect `db:itil_users`, apply it during maintenance, then run
+`db:foreign_keys --apply`. The migration refuses nonzero orphans before DDL and
+normalizes legacy zero values to NULL. Fresh installs include these mappings.
+
+User purge/replacement maintains these historical associations through mapped
+bulk updates in `ITILUserRepository`. This operation does not replay the ordinary
+ITIL workflow update hooks: content, status, dates and approval metadata stay
+unchanged when only a user reference changes. Ordinary content editing still
+records its editor and runs the normal lifecycle. Actor-link cleanup remains in
+its existing lifecycle path.
+
+The followup summary and support-agent profile check now use ORM. Followup
+visibility is scoped by item type and ID, public/private rights and a positive
+viewer ID. An anonymous viewer cannot acquire ownership of an authorless private
+followup. Date ordering has an ID tie-breaker. The support-agent decision retains
+its assigned/observer/requester rules and checks central-profile membership with
+a bounded mapped join.
+
+Coverage is 658 enforced relationships, 104 pending candidates, 62 polymorphic
+references, one ambiguous reference and 1,339 legacy SQL call sites. Full
+relationship and query conversion remains unfinished.
+
+Validation: both engines pass fresh installation and the ITIL user contract,
+including replacement/purge of all 24 references, unchanged historical fields,
+ordinary editor updates, private visibility, support-agent decisions and migration
+orphan refusal/idempotence. PostgreSQL/MariaDB pass 1,133/735 database-contract
+assertions, complete mappings and parent purges, CRUD across all 355 tables,
+shared ORM criteria, reporting, application and search suites. PHP 8.3/MariaDB
+passes the new contract; six affected functional classes pass 24 methods and 829
+assertions. All 19 changed PHP files pass syntax checks; formatting and diff
+checks pass. The legacy summary rendering test emits its expected deprecation
+notice. Browser interaction and notification delivery were not exercised.

@@ -49,11 +49,13 @@ class Problem
     #[ORM\Column(name: '`time_to_resolve`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $time_to_resolve = null;
 
-    #[ORM\Column(name: '`users_id_recipient`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $users_id_recipient = 0;
+    #[ORM\ManyToOne(targetEntity: User::class)]
+    #[ORM\JoinColumn(name: 'users_id_recipient', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?User $recipient = null;
 
-    #[ORM\Column(name: '`users_id_lastupdater`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $users_id_lastupdater = 0;
+    #[ORM\ManyToOne(targetEntity: User::class)]
+    #[ORM\JoinColumn(name: 'users_id_lastupdater', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?User $lastUpdater = null;
 
     #[ORM\Column(name: '`urgency`', type: 'integer', nullable: false, options: ['default' => '1'])]
     public int $urgency = 1;

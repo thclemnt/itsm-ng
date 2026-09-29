@@ -40,17 +40,20 @@ class ITILSolution
     #[ORM\Column(name: '`date_approval`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_approval = null;
 
-    #[ORM\Column(name: '`users_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $users_id = 0;
+    #[ORM\ManyToOne(targetEntity: User::class)]
+    #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?User $author = null;
 
     #[ORM\Column(name: '`user_name`', type: 'string', length: 255, nullable: true)]
     public ?string $user_name = null;
 
-    #[ORM\Column(name: '`users_id_editor`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $users_id_editor = 0;
+    #[ORM\ManyToOne(targetEntity: User::class)]
+    #[ORM\JoinColumn(name: 'users_id_editor', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?User $editor = null;
 
-    #[ORM\Column(name: '`users_id_approval`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $users_id_approval = 0;
+    #[ORM\ManyToOne(targetEntity: User::class)]
+    #[ORM\JoinColumn(name: 'users_id_approval', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?User $approver = null;
 
     #[ORM\Column(name: '`user_name_approval`', type: 'string', length: 255, nullable: true)]
     public ?string $user_name_approval = null;

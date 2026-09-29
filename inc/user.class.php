@@ -345,6 +345,9 @@ class User extends CommonDBTM
 
         global $DB;
 
+        (new \itsmng\Database\Repository\ITILUserRepository(\itsmng\Database\Orm::create($DB)))
+            ->reassignReferences((int)$this->getID(), empty($this->input['_replace_by']) ? null : (int)$this->input['_replace_by']);
+
         // ObjectLock does not extends CommonDBConnexity
         $ol = new ObjectLock();
         $ol->deleteByCriteria(['users_id' => $this->fields['id']]);
