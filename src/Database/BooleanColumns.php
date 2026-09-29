@@ -157,7 +157,7 @@ final class BooleanColumns
         'glpi_savedsearches_alerts' => ['is_active'],
         'glpi_slalevels' => ['is_active', 'is_recursive'],
         'glpi_slas' => ['is_recursive', 'end_of_working_day'],
-        'glpi_slms' => ['is_recursive'],
+        'glpi_slms' => ['is_recursive', 'use_ticket_calendar'],
         'glpi_softwarelicenses' => ['is_recursive', 'is_valid', 'is_deleted', 'is_helpdesk_visible', 'is_template', 'allow_overquota'],
         'glpi_softwarelicensetypes' => ['is_recursive'],
         'glpi_softwares' => ['is_recursive', 'is_update', 'is_deleted', 'is_template', 'is_helpdesk_visible', 'is_valid'],

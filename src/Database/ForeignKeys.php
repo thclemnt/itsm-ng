@@ -20,6 +20,7 @@ final class ForeignKeys
     public const RELATIONS = [
         ...OptionalReferences::RELATIONS,
         ...EntityOwnership::RELATIONS,
+        'glpi_slms' => [...OptionalReferences::RELATIONS['glpi_slms'], ...EntityOwnership::RELATIONS['glpi_slms']],
         'glpi_slas' => [...EntityOwnership::RELATIONS['glpi_slas'], 'slms_id' => 'glpi_slms'],
         'glpi_slalevels' => [...EntityOwnership::RELATIONS['glpi_slalevels'], 'slas_id' => 'glpi_slas'],
         'glpi_slalevelactions' => ['slalevels_id' => 'glpi_slalevels'],

@@ -2748,6 +2748,7 @@ class Toolbox
             }
 
             $DB->synchronizeSequences();
+            (new \itsmng\Database\Migration\ServiceLevelCalendars())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\Migration\NormalizeOptionalReferences())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\Migration\ProjectHierarchy())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\Migration\InfrastructureReferences())->apply($DB->getDoctrineConnection());

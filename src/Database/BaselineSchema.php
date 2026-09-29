@@ -160,6 +160,10 @@ final class BaselineSchema
         if ($table !== null) {
             throw new \RuntimeException('Unterminated baseline table.');
         }
+        foreach (['glpi_slms', 'glpi_slas', 'glpi_olas'] as $tableName) {
+            Migration\ServiceLevelCalendars::configureTable($schema->getTable($tableName));
+        }
+        $this->extraSql['glpi_slms'][] = Migration\ServiceLevelCalendars::checkSql();
         foreach (OptionalReferences::RELATIONS as $tableName => $relations) {
             foreach ($relations as $column => $target) {
                 $schema->getTable($tableName)->getColumn($column)->setNotnull(false)->setDefault(null);

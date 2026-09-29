@@ -60,16 +60,53 @@ class SLM extends CommonDBTM
     }
 
     /**
-     * Force calendar of the SLM if value -1: calendar of the entity
+     * Resolve a ticket calendar for a service level configured to inherit it
      *
      * @param integer $calendars_id calendars_id of the ticket
      **/
     public function setTicketCalendar($calendars_id)
     {
 
-        if ($this->fields['calendars_id'] == -1) {
-            $this->fields['calendars_id'] = $calendars_id;
+        if ($this->usesTicketCalendar()) {
+            $this->fields['calendars_id'] = (int)$calendars_id > 0 ? (int)$calendars_id : null;
         }
+    }
+
+    public function usesTicketCalendar(): bool
+    {
+        return !empty($this->fields['use_ticket_calendar']);
+    }
+
+    public function prepareInputForAdd($input)
+    {
+        return $this->prepareCalendarInput($input);
+    }
+
+    public function prepareInputForUpdate($input)
+    {
+        return $this->prepareCalendarInput($input);
+    }
+
+    /** Translate the form choice (and legacy API sentinel) at the model boundary. */
+    private function prepareCalendarInput(array $input)
+    {
+        if (array_key_exists('calendar_selection', $input)) {
+            $input['calendars_id'] = $input['calendar_selection'];
+            unset($input['calendar_selection'], $input['use_ticket_calendar']);
+        }
+        if (array_key_exists('calendars_id', $input)) {
+            $selection = $input['calendars_id'];
+            $selection = ($selection === null || $selection === '') ? 0 : filter_var($selection, FILTER_VALIDATE_INT);
+            if ($selection === false || $selection < -1 || ($selection > 0 && !empty($input['use_ticket_calendar']))) {
+                Session::addMessageAfterRedirect(__('Invalid calendar selection'), false, ERROR);
+                return false;
+            }
+            $input['use_ticket_calendar'] = $selection === -1 || !empty($input['use_ticket_calendar']);
+            $input['calendars_id'] = $selection > 0 ? $selection : null;
+        } elseif (!empty($input['use_ticket_calendar'])) {
+            $input['calendars_id'] = null;
+        }
+        return $input;
     }
 
     public function defineTabs($options = [])
@@ -123,11 +160,11 @@ class SLM extends CommonDBTM
                        'value' => $this->fields['name'] ?? '',
                     ],
                     __('Calendar') => [
-                       'name' => 'calendars_id',
+                       'name' => 'calendar_selection',
                        'type' => 'select',
                        'values' => [-1 => __('Calendar of the ticket'), 0 => __('24/7')] +
                            getItemByEntity(Calendar::class, Session::getActiveEntity()),
-                       'value' => $this->fields['calendars_id'] ?? '',
+                       'value' => $this->usesTicketCalendar() ? -1 : ($this->fields['calendars_id'] ?? 0),
                        'actions' => getItemActionButtons(['info', 'add'], "Calendar"),
                     ],
                     __('Comments') => [
@@ -179,6 +216,14 @@ class SLM extends CommonDBTM
            'field'              => 'name',
            'name'               => _n('Calendar', 'Calendars', 1),
            'datatype'           => 'dropdown'
+        ];
+
+        $tab[] = [
+           'id'                 => '5',
+           'table'              => $this->getTable(),
+           'field'              => 'use_ticket_calendar',
+           'name'               => __('Calendar of the ticket'),
+           'datatype'           => 'bool'
         ];
 
         $tab[] = [

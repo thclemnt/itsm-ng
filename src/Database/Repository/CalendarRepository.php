@@ -4,8 +4,11 @@
 
 namespace itsmng\Database\Repository;
 
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use itsmng\Database\Entity\CalendarHoliday;
 use itsmng\Database\Entity\CalendarSegment;
+use itsmng\Database\Entity\Holiday;
 
 final class CalendarRepository
 {
@@ -83,6 +86,34 @@ final class CalendarRepository
         $time = self::seconds($time);
         foreach ($this->segments($calendar, $day, $day) as $row) {
             if ($row['begin'] !== null && $row['end'] !== null && self::seconds($row['begin']) <= $time && self::seconds($row['end']) >= $time) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+
+    public function isHoliday(int $calendar, \DateTimeImmutable $day): bool
+    {
+        $holidays = $this->em->createQueryBuilder()
+            ->select('h')->from(Holiday::class, 'h')
+            ->join(CalendarHoliday::class, 'link', 'WITH', 'link.holidays = h.id')
+            ->where('IDENTITY(link.calendars) = :calendar AND (h.is_perpetual = :yes OR (h.begin_date <= :day AND h.end_date >= :day))')
+            ->setParameter('calendar', $calendar, Types::INTEGER)->setParameter('yes', true, Types::BOOLEAN)
+            ->setParameter('day', $day, Types::DATE_IMMUTABLE)->getQuery()->toIterable();
+        $monthDay = $day->format('md');
+        foreach ($holidays as $holiday) {
+            $this->em->detach($holiday);
+            if ($holiday->begin_date === null || $holiday->end_date === null) {
+                continue;
+            }
+            if (!$holiday->is_perpetual) {
+                return true;
+            }
+            $begin = $holiday->begin_date->format('md');
+            $end = $holiday->end_date->format('md');
+            // Annual periods may cross New Year; compare month/day without a database dialect function.
+            if ($begin <= $end ? ($monthDay >= $begin && $monthDay <= $end) : ($monthDay >= $begin || $monthDay <= $end)) {
                 return true;
             }
         }

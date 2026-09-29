@@ -121,8 +121,6 @@ $RELATION = [
       '_glpi_calendars_holidays' => 'calendars_id',
       '_glpi_calendarsegments'   => 'calendars_id',
       'glpi_entities'            => 'calendars_id',
-      'glpi_olas'                => 'calendars_id',
-      'glpi_slas'                => 'calendars_id',
       'glpi_slms'                => 'calendars_id',
       'glpi_ticketrecurrents'    => 'calendars_id',
    ],

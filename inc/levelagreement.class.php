@@ -119,9 +119,14 @@ abstract class LevelAgreement extends CommonDBChild
     public function setTicketCalendar($calendars_id)
     {
 
-        if ($this->fields['calendars_id'] == -1) {
-            $this->fields['calendars_id'] = $calendars_id;
+        if ($this->usesTicketCalendar()) {
+            $this->fields['calendars_id'] = (int)$calendars_id > 0 ? (int)$calendars_id : null;
         }
+    }
+
+    public function usesTicketCalendar(): bool
+    {
+        return !empty($this->fields['use_ticket_calendar']);
     }
 
     public function post_getFromDB()
@@ -130,11 +135,14 @@ abstract class LevelAgreement extends CommonDBChild
         $slm = new SLM();
         if ($slm->getFromDB($this->fields['slms_id'])) {
             $this->fields['calendars_id'] = $slm->fields['calendars_id'];
+            $this->fields['use_ticket_calendar'] = $slm->usesTicketCalendar();
         }
     }
 
     public function post_getEmpty()
     {
+        $this->fields['calendars_id'] = null;
+        $this->fields['use_ticket_calendar'] = false;
         $this->fields['number_time'] = 4;
         $this->fields['definition_time'] = 'hour';
     }
@@ -242,7 +250,7 @@ abstract class LevelAgreement extends CommonDBChild
                       'id' => 'end_of_working_day',
                       'name' => 'end_of_working_day',
                       'value' => $this->fields['end_of_working_day'],
-                      $this->fields['calendars_id'] != 'day' ? 'disabled' : '' => true,
+                      $this->fields['definition_time'] != 'day' ? 'disabled' : '' => true,
                    ],
                    __('Comments') => [
                       'type' => 'textarea',
@@ -548,9 +556,9 @@ abstract class LevelAgreement extends CommonDBChild
                        'definition_time' => $la->fields['definition_time']]
                 );
                 echo "</td>";
-                if (!$slm->fields['calendars_id']) {
+                if (!$slm->usesTicketCalendar() && !$slm->fields['calendars_id']) {
                     $link =  __('24/7');
-                } elseif ($slm->fields['calendars_id'] == -1) {
+                } elseif ($slm->usesTicketCalendar()) {
                     $link = __('Calendar of the ticket');
                 } elseif ($calendar->getFromDB($slm->fields['calendars_id'])) {
                     $link = $calendar->getLink();

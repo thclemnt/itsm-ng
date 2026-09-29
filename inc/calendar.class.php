@@ -283,38 +283,9 @@ class Calendar extends CommonDropdown
             return $result_cache[$cache_key];
         }
 
-        $result = $DB->request([
-           'COUNT'        => 'cpt',
-           'FROM'         => 'glpi_calendars_holidays',
-           'INNER JOIN'   => [
-              'glpi_holidays'   => [
-                 'ON' => [
-                    'glpi_calendars_holidays'  => 'holidays_id',
-                    'glpi_holidays'            => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'        => [
-              'glpi_calendars_holidays.calendars_id' => $this->fields['id'],
-              'OR'                                   => [
-                 [
-                    'AND' => [
-                       'glpi_holidays.end_date'            => ['>=', $date],
-                       'glpi_holidays.begin_date'          => ['<=', $date]
-                    ]
-                 ],
-                 [
-                    'AND' => [
-                       'glpi_holidays.is_perpetual'  => 1,
-                       new \QueryExpression($DB->expressions()->datePart($DB->quoteName('end_date'), 'MONTH') . "*100 + " . $DB->expressions()->datePart($DB->quoteName('end_date'), 'DAY') . " >= " . date('nd', strtotime($date))),
-                       new \QueryExpression($DB->expressions()->datePart($DB->quoteName('begin_date'), 'MONTH') . "*100 + " . $DB->expressions()->datePart($DB->quoteName('begin_date'), 'DAY') . " <= " . date('nd', strtotime($date)))
-                    ]
-                 ]
-              ]
-           ]
-        ])->next();
-
-        $is_holiday = (int)$result['cpt'] > 0;
+        $day = new \DateTimeImmutable(date('Y-m-d', strtotime($date)));
+        $is_holiday = (new \itsmng\Database\Repository\CalendarRepository(\itsmng\Database\Orm::create($DB)))
+            ->isHoliday((int)$this->fields['id'], $day);
 
         $result_cache[$cache_key] = $is_holiday;
 

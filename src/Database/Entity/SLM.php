@@ -28,8 +28,12 @@ class SLM
     #[ORM\Column(name: '`comment`', type: 'text', nullable: true)]
     public ?string $comment = null;
 
-    #[ORM\Column(name: '`calendars_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $calendars_id = 0;
+    #[ORM\ManyToOne(targetEntity: Calendar::class)]
+    #[ORM\JoinColumn(name: 'calendars_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Calendar $calendars = null;
+
+    #[ORM\Column(name: '`use_ticket_calendar`', type: 'boolean', nullable: false, options: ['default' => false])]
+    public bool $use_ticket_calendar = false;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_mod = null;

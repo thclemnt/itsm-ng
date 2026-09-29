@@ -34,8 +34,6 @@ class SLA
     #[ORM\Column(name: '`number_time`', type: 'integer', nullable: false)]
     public int $number_time = 0;
 
-    #[ORM\Column(name: '`calendars_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $calendars_id = 0;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_mod = null;

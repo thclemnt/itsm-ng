@@ -1754,3 +1754,60 @@ Broader PostgreSQL/MariaDB checks pass 1,184/786 portability assertions, complet
 mapping and parent-purge coverage, ORM CRUD across all 355 tables, mapped criteria,
 reporting, application workflows and search. Remote CI and browser interaction
 were not exercised.
+
+### Explicit service-level calendar policy
+
+SLM calendar choice is now a nullable Calendar association plus the native boolean
+`use_ticket_calendar`. NULL with the flag off means 24/7; NULL with the flag on
+means use the ticket's entity calendar; a positive calendar reference means use
+that fixed calendar. A CHECK constraint rejects conflicting combinations and
+negative identifiers, and a RESTRICT FK protects the selected calendar.
+
+SLA and OLA have inherited their effective calendar from SLM since the earlier
+service-level split. Their two redundant `calendars_id` columns and obsolete
+relation declarations are removed. Mapped agreements follow their required SLM
+parent; model reads expose the effective calendar for duration calculations.
+Calendar replacement/purge updates the parent once, and every agreement resolves
+the result through that parent. Purging a fixed calendar selects 24/7, preserving
+the previous zero behavior. Ticket inheritance remains explicit even after an
+execution has resolved the calendar for a particular ticket.
+
+The form retains the three existing choices through `calendar_selection`.
+Legacy model/API writes using `calendars_id = -1` are translated at input; negative
+values are never stored. Canonical API clients can send `use_ticket_calendar`
+and a nullable `calendars_id`. Queries should use the explicit flag for inherited
+policies; SLM search option 5 exposes it as a boolean. Calendar ownership belongs
+to SLM, not to the redundant agreement columns. The agreement form's end-of-day
+checkbox now follows the selected duration unit.
+
+Existing installations should inspect and apply `db:service_level_calendars`
+with writers stopped before other optional-reference normalization, then apply
+`db:foreign_keys --apply`. The migration audits calendar targets and agreement
+parents before DDL, converts -1/0 policies, removes redundant columns, and installs
+the policy CHECK. PostgreSQL DDL is transactional; MySQL refuses an active
+application transaction and supports retries after partially committed DDL.
+Fresh installs build the same schema. Tests prove rollback, preflight refusal,
+recovery after the first DDL statement, preserved effective parent policy and
+idempotence.
+
+`CalendarRepository::isHoliday()` replaces the remaining calendar adapter query
+with scoped, typed ORM selection. Recurring dates are compared as month/day in
+PHP, including periods crossing New Year; nonrecurring intervals use bound dates.
+Both boundaries include the full calendar day. Existing segment methods and the
+calendar's per-date result cache remain in place. Calendar has no direct adapter
+queries.
+
+The audit now contains 823 relationship candidates after removal of the two
+redundant columns: 710 enforced, 50 pending, 62 polymorphic and one ambiguous.
+There are 1,288 legacy SQL call sites; the full conversion remains unfinished.
+
+Validation passes on upgraded and fresh PostgreSQL/MariaDB, including the focused
+PHP 8.3/MariaDB contract. Coverage includes all three policies, canonical and
+legacy input, boolean search, repeated resolution, entity inheritance, calendar
+replacement/purge, constrained invalid writes, forms, holiday boundaries and
+migration recovery. Twelve PHP 8.3 functional methods pass 577 assertions across
+Calendar and selected SLM methods, with notifications disabled and cron methods
+excluded. Broader checks pass 1,186 PostgreSQL / 787 MariaDB portability assertions,
+full mapping and parent-purge coverage, ORM CRUD for all 355 tables, criteria,
+reporting, application workflows, search and service-level contracts. Rendering
+was verified in PHP; browser interaction and remote CI were not exercised.

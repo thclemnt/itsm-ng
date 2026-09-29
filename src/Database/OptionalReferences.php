@@ -403,6 +403,7 @@ final class OptionalReferences
     public const CRON_LOG_PARENTS = ['glpi_crontasklogs' => ['crontasklogs_id' => 'glpi_crontasklogs']];
 
     public const RELATIONS = [
+        'glpi_slms' => ['calendars_id' => 'glpi_calendars'],
         ...self::SAVED_SEARCHES,
         'glpi_profiles' => self::ITIL_DEFAULTS['glpi_profiles'],
         'glpi_ticketrecurrents' => self::ITIL_DEFAULTS['glpi_ticketrecurrents'],

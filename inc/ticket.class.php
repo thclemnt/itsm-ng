@@ -7695,9 +7695,9 @@ class Ticket extends CommonITILObject
         if (isset($this->fields['slas_id_ttr']) && $this->fields['slas_id_ttr'] > 0) {
             $sla = new SLA();
             if ($sla->getFromDB($this->fields['slas_id_ttr'])) {
-                // not -1: calendar of the entity
-                if ($sla->getField('calendars_id') >= 0) {
-                    return $sla->getField('calendars_id');
+                // A fixed or always-open SLM calendar overrides entity inheritance.
+                if (!$sla->usesTicketCalendar()) {
+                    return (int)$sla->getField('calendars_id');
                 }
             }
         }
