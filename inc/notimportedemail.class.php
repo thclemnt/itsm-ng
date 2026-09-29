@@ -220,8 +220,7 @@ class NotImportedEmail extends CommonDBTM
     {
         global $DB;
 
-        $query = "TRUNCATE `glpi_notimportedemails`";
-        $DB->query($query);
+        (new \itsmng\Database\Repository\MailCollectorRepository(\itsmng\Database\Orm::create($DB)))->clearRejectedEmails();
     }
 
 

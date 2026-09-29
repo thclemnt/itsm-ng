@@ -21,8 +21,9 @@ class NotImportedEmail
     #[ORM\Column(name: '`to`', type: 'string', length: 255, nullable: false)]
     public string $to = '';
 
-    #[ORM\Column(name: '`mailcollectors_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $mailcollectors_id = 0;
+    #[ORM\ManyToOne(targetEntity: MailCollector::class)]
+    #[ORM\JoinColumn(name: 'mailcollectors_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?MailCollector $mailcollectors = null;
 
     #[ORM\Column(name: '`date`', type: 'datetimetz', nullable: false, options: ['default' => 'CURRENT_TIMESTAMP'])]
     public ?\DateTimeInterface $date = null;
@@ -36,6 +37,7 @@ class NotImportedEmail
     #[ORM\Column(name: '`reason`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $reason = 0;
 
-    #[ORM\Column(name: '`users_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $users_id = 0;
+    #[ORM\ManyToOne(targetEntity: User::class)]
+    #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?User $users = null;
 }

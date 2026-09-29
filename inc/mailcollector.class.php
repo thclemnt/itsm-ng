@@ -439,16 +439,8 @@ class MailCollector extends CommonDBTM
     {
         global $DB;
 
-        $query = [
-           'FROM'   => NotImportedEmail::getTable(),
-           'WHERE'  => [
-              'id' => $emails_ids,
-           ],
-           'ORDER'  => 'mailcollectors_id'
-        ];
-
         $todelete = [];
-        foreach ($DB->request($query) as $data) {
+        foreach ((new \itsmng\Database\Repository\MailCollectorRepository(\itsmng\Database\Orm::create($DB)))->rejectedEmails($emails_ids) as $data) {
             $todelete[$data['mailcollectors_id']][$data['messageid']] = $data;
         }
 
@@ -1161,7 +1153,7 @@ class MailCollector extends CommonDBTM
 
         // Wrap content for blacklisted items
         $itemstoclean = [];
-        foreach ($DB->request('glpi_blacklistedmailcontents') as $data) {
+        foreach ((new \itsmng\Database\Repository\MailCollectorRepository(\itsmng\Database\Orm::create($DB)))->blacklistedContents() as $data) {
             $toclean = trim((string) $data['content']);
             if (!empty($toclean)) {
                 $itemstoclean[] = str_replace(["\r\n", "\n", "\r"], $br_marker, $toclean);
@@ -1691,20 +1683,17 @@ class MailCollector extends CommonDBTM
         global $DB;
 
         NotImportedEmail::deleteLog();
-        $iterator = $DB->request([
-           'FROM'   => 'glpi_mailcollectors',
-           'WHERE'  => ['is_active' => 1]
-        ]);
+        $collectors = (new \itsmng\Database\Repository\MailCollectorRepository(\itsmng\Database\Orm::create($DB)))->collectors(activeOnly: true);
 
         $max = $task->fields['param'];
 
-        if (count($iterator) > 0) {
+        if (count($collectors) > 0) {
             $mc = new self();
 
-            while (
-                ($max > 0)
-                     && ($data = $iterator->next())
-            ) {
+            foreach ($collectors as $data) {
+                if ($max <= 0) {
+                    break;
+                }
                 $mc->maxfetch_emails = $max;
 
                 $task->log("Collect mails from " . $data["name"] . " (" . $data["host"] . ")\n");
@@ -1759,18 +1748,8 @@ class MailCollector extends CommonDBTM
         }
         $cron_status   = 0;
 
-        $iterator = $DB->request([
-           'FROM'   => 'glpi_mailcollectors',
-           'WHERE'  => [
-              'errors'    => ['>', 0],
-              'is_active' => 1
-           ]
-        ]);
-
-        $items = [];
-        while ($data = $iterator->next()) {
-            $items[$data['id']]  = $data;
-        }
+        $rows = (new \itsmng\Database\Repository\MailCollectorRepository(\itsmng\Database\Orm::create($DB)))->collectors(activeOnly: true, errorsOnly: true);
+        $items = array_column($rows, null, 'id');
 
         if (count($items)) {
             if (NotificationEvent::raiseEvent('error', new self(), ['items' => $items])) {
@@ -1821,7 +1800,7 @@ class MailCollector extends CommonDBTM
         echo "<tr class='tab_bg_2'><th>Mails receivers</th></tr>\n";
         echo "<tr class='tab_bg_1'><td><pre>\n&nbsp;\n";
 
-        foreach ($DB->request('glpi_mailcollectors') as $mc) {
+        foreach ((new \itsmng\Database\Repository\MailCollectorRepository(\itsmng\Database\Orm::create($DB)))->collectors() as $mc) {
             $msg  = "Name: '" . $mc['name'] . "'";
             $msg .= " Active: " . ($mc['is_active'] ? "Yes" : "No");
             echo wordwrap($msg . "\n", $width, "\n\t\t");
@@ -1898,18 +1877,7 @@ class MailCollector extends CommonDBTM
     {
         global $DB;
 
-        $criteria = [
-           'COUNT'  => 'cpt',
-           'FROM'   => 'glpi_mailcollectors'
-        ];
-
-        if (true === $active) {
-            $criteria['WHERE'] = ['is_active' => 1];
-        }
-
-        $result = $DB->request($criteria)->next();
-
-        return (int)$result['cpt'];
+        return (new \itsmng\Database\Repository\MailCollectorRepository(\itsmng\Database\Orm::create($DB)))->countCollectors($active === true);
     }
 
     /**

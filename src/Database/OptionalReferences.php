@@ -350,6 +350,10 @@ final class OptionalReferences
         'glpi_items_devicesimcards' => ['lines_id' => 'glpi_lines'],
     ];
 
+    public const REJECTED_EMAIL_REFERENCES = [
+        'glpi_notimportedemails' => ['mailcollectors_id' => 'glpi_mailcollectors', 'users_id' => 'glpi_users'],
+    ];
+
     public const PERSONAL_CONTENT_OWNERS = [
         'glpi_reminders' => ['users_id' => 'glpi_users'],
         'glpi_remindertranslations' => ['users_id' => 'glpi_users'],
@@ -416,6 +420,7 @@ final class OptionalReferences
     public const CRON_LOG_PARENTS = ['glpi_crontasklogs' => ['crontasklogs_id' => 'glpi_crontasklogs']];
 
     public const RELATIONS = [
+        ...self::REJECTED_EMAIL_REFERENCES,
         ...self::PERSONAL_CONTENT_OWNERS,
         'glpi_slms' => ['calendars_id' => 'glpi_calendars'],
         ...self::SAVED_SEARCHES,

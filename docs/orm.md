@@ -1977,3 +1977,38 @@ No browser interaction or real cron execution was tested.
 The inventory records 720 enforced references, 40 pending ordinary references,
 62 polymorphic references, one ambiguous reference and 1262 legacy SQL call sites.
 Full relationship and query conversion remains unfinished.
+
+### Mail collection state and rejected-email references
+
+Rejected emails now map their collector and requester as nullable associations,
+with two additional FKs. A deleted requester or collector leaves a historical log
+with a NULL reference; explicit replacement preserves the existing reassignment
+policy. Logs without a collector are excluded from retry selection. The upgrade
+command is `db:rejected_email_references --apply`, followed by
+`db:foreign_keys --apply`. Orphaned nonzero references stop the migration before
+DDL; absent zero references become NULL. Fresh installs and normal upgrades
+include the change.
+
+`MailCollectorRepository` now supplies collector lists/counts, active and failing
+collector selection, selected rejected emails and blacklisted content. Queries use
+mapped entities and typed booleans. Empty retry selections return no rows, and
+results have deterministic collector/ID ordering. `NotImportedEmail::deleteLog()`
+uses an ORM bulk delete, which participates in the caller's transaction instead of
+TRUNCATE's implicit commit and identity reset. Collection, mailbox operations,
+permissions and notifications remain in their existing lifecycle methods.
+The collector's subject still passes through the legacy pre-escaped model input
+boundary; removing that encoding requires a separate raw-input lifecycle change.
+
+The focused `tests/database-portability/mail-collection.php` contract covers
+selection/counts, content filtering, quoted subjects, empty retry selections,
+actual search joins, transactional log deletion, parent purge/replacement, and
+migration audit/retry behavior. Fresh and upgraded PostgreSQL and MariaDB runs
+passed. The full mapping/parent-purge, all-table ORM CRUD, criteria, reporting,
+application, search and personal-content suites passed on both engines. Base
+portability assertions: 1202 PostgreSQL and 799 MariaDB. PHP 8.3 passed the focused
+contract and three existing local collector functional methods (49 assertions).
+Tests did not connect to a mailbox, execute collection cron or send notifications.
+
+The inventory now has 722 enforced references, 38 pending ordinary references,
+62 polymorphic references, one ambiguous reference and 1255 legacy SQL call sites.
+Full relationship and query conversion remains unfinished.
