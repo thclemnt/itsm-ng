@@ -337,10 +337,9 @@ class ReminderTranslation extends CommonDBChild
     public static function getNumberOfTranslationsForItem($item)
     {
 
-        return countElementsInTable(
-            getTableForItemType(__CLASS__),
-            ['reminders_id' => $item->getID()]
-        );
+        global $DB;
+        return (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+            ->countMatching('glpi_remindertranslations', ['reminders_id' => (int)$item->getID()]);
     }
 
 
@@ -355,16 +354,6 @@ class ReminderTranslation extends CommonDBChild
     {
         global $DB;
 
-        $tab = [];
-
-        $iterator = $DB->request([
-           'FROM'   => getTableForItemType(__CLASS__),
-           'WHERE'  => ['reminders_id' => $item->getID()]
-        ]);
-
-        while ($data = $iterator->next()) {
-            $tab[$data['language']] = $data['language'];
-        }
-        return $tab;
+        return (new \itsmng\Database\Repository\SharedContentRepository(\itsmng\Database\Orm::create($DB)))->translatedLanguages((int)$item->getID());
     }
 }

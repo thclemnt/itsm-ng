@@ -22,8 +22,9 @@ class Reminder
     #[ORM\Column(name: '`date`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date = null;
 
-    #[ORM\Column(name: '`users_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $users_id = 0;
+    #[ORM\ManyToOne(targetEntity: User::class)]
+    #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?User $users = null;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
     public ?string $name = null;

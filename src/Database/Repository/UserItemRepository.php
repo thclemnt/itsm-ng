@@ -64,7 +64,17 @@ final class UserItemRepository
     /** Preserve planning history without replaying scheduling and ownership hooks. */
     public function reassignPlanningOwners(int $user, ?int $replacement): void
     {
-        foreach ([Entity\Project::class, Entity\ProjectTask::class, Entity\ProjectTaskTemplate::class, Entity\PlanningExternalEvent::class] as $class) {
+        $this->reassignOwners([Entity\Project::class, Entity\ProjectTask::class, Entity\ProjectTaskTemplate::class, Entity\PlanningExternalEvent::class], $user, $replacement);
+    }
+
+    public function reassignPersonalContentOwners(int $user, ?int $replacement): void
+    {
+        $this->reassignOwners([Entity\RSSFeed::class, Entity\ReminderTranslation::class], $user, $replacement);
+    }
+
+    private function reassignOwners(array $classes, int $user, ?int $replacement): void
+    {
+        foreach ($classes as $class) {
             $this->em->createQueryBuilder()->update($class, 'r')->set('r.users', ':replacement')
                 ->where('IDENTITY(r.users) = :user')->setParameter('user', $user, Types::INTEGER)
                 ->setParameter('replacement', $replacement, Types::INTEGER)->getQuery()->execute();

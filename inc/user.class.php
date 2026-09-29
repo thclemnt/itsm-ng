@@ -363,6 +363,9 @@ class User extends CommonDBTM
         $r = new Reminder();
         $r->deleteByCriteria(['users_id' => $this->fields['id']]);
 
+        (new \itsmng\Database\Repository\UserItemRepository(\itsmng\Database\Orm::create($DB)))
+            ->reassignPersonalContentOwners((int)$this->getID(), empty($this->input['_replace_by']) ? null : (int)$this->input['_replace_by']);
+
         // Delete private bookmark
         $ss = new SavedSearch();
         $ss->deleteByCriteria(

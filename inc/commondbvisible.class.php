@@ -51,11 +51,11 @@ abstract class CommonDBVisible extends CommonDBTM
     public function haveVisibilityAccess()
     {
         // Author
-        if ($this->fields['users_id'] == Session::getLoginUserID()) {
+        if ((int)Session::getLoginUserID() > 0 && $this->fields['users_id'] == Session::getLoginUserID()) {
             return true;
         }
         // Users
-        if (isset($this->users[Session::getLoginUserID()])) {
+        if ((int)Session::getLoginUserID() > 0 && isset($this->users[Session::getLoginUserID()])) {
             return true;
         }
 

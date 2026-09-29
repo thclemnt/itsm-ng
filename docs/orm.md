@@ -1936,3 +1936,44 @@ functional methods (279 assertions), with notifications disabled. No browser or
 cron execution was tested. The inventory is now 717 enforced references, 43 pending
 ordinary references, 62 polymorphic references, one ambiguous reference and 1267
 legacy SQL call sites. Full conversion remains unfinished.
+
+
+### Personal content ownership and shared listings
+
+Reminders, reminder translations and RSS feeds now have nullable user associations
+and enforced owner FKs. Existing installations use
+`db:personal_content_owners --apply` followed by `db:foreign_keys --apply` during
+maintenance. The migration audits orphan owners before DDL, converts the legacy
+zero sentinel to NULL and supports retries. Fresh installs and normal upgrades
+include these changes. User purge still deletes personal reminders through their
+model lifecycle; RSS feeds and translation authors are cleared or reassigned
+without changing content timestamps or replaying feed-fetch hooks.
+
+`SharedContentRepository` handles personal and public listings, reminder calendar
+selection, expiry selection and translation languages through ORM queries. Sharing
+uses correlated EXISTS predicates for users, groups, profiles and entities, so
+multiple audience rows do not multiply results. Public access requires the public
+READ right. Entity recursion, global group/profile audiences and ownerless shared
+content are preserved. Duplicate translations select the earliest matching ID.
+Anonymous viewers cannot gain ownership through a NULL/false comparison.
+
+Reminder calendar export hydrates sharing data before checking item permissions.
+The expiry predicate retains its actual cutoff: the former PHP array repeated the
+`end_view_date` key and discarded the age comparison. RSS search also checks public
+READ permission explicitly and scopes profile shares through the profile-share
+entity column.
+
+`tests/database-portability/personal-content.php` covers audience combinations,
+entity boundaries, duplicate shares/translations, date boundaries, actual search,
+reminder rendering, user/group calendar export, owner purge and replacement, and
+migration preflight/retry behavior. It never executes cleanup cron or contacts an
+external feed. Fresh and upgraded PostgreSQL/MariaDB contracts passed, as did the
+broader mapping, parent-purge, all-table ORM CRUD, criteria, reporting, application,
+search, knowledge-base and planning suites. Base portability assertions: 1200
+PostgreSQL and 797 MariaDB. PHP 8.3 also passed the focused contract and the
+functional Reminder, ReminderTranslation and RSSFeed tests (7 methods, 100 assertions) using a local RSS fixture server.
+No browser interaction or real cron execution was tested.
+
+The inventory records 720 enforced references, 40 pending ordinary references,
+62 polymorphic references, one ambiguous reference and 1262 legacy SQL call sites.
+Full relationship and query conversion remains unfinished.
