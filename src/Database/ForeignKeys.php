@@ -187,6 +187,7 @@ final class ForeignKeys
         'glpi_rssfeeds_users' => ['rssfeeds_id' => 'glpi_rssfeeds', 'users_id' => 'glpi_users'],
         'glpi_ruleactions' => ['rules_id' => 'glpi_rules'],
         'glpi_rulecriterias' => ['rules_id' => 'glpi_rules'],
+        'glpi_savedsearches_alerts' => ['savedsearches_id' => 'glpi_savedsearches'],
         'glpi_savedsearches_users' => ['savedsearches_id' => 'glpi_savedsearches', 'users_id' => 'glpi_users'],
         'glpi_softwarelicenses' => [...OptionalReferences::RELATIONS['glpi_softwarelicenses'], ...EntityOwnership::RELATIONS['glpi_softwarelicenses'], 'softwares_id' => 'glpi_softwares'],
         'glpi_softwares' => [...OptionalReferences::RELATIONS['glpi_softwares'], ...EntityOwnership::RELATIONS['glpi_softwares']],

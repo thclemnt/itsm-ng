@@ -1659,3 +1659,47 @@ guard repair. All 14 changed PHP files pass syntax checks; formatting and diff
 checks pass. Scheduler selection and pure date calculation were tested without
 executing cron tasks or delivering notifications. Browser interaction and remote
 CI were not exercised.
+
+### Saved searches, defaults and alerts
+
+Saved-search owners are nullable Doctrine associations to users; alert parents
+are required associations to saved searches. Both have RESTRICT foreign keys.
+User purge still deletes private searches and their alerts/default memberships
+through model hooks, while public searches retain a NULL owner. A missing owner
+cannot grant anonymous ownership or establish a user context for alert execution.
+The entity field's legacy `-1` sentinel remains pending explicit modeling; root
+entity zero is unchanged.
+
+Existing installations should inspect `db:saved_searches`, apply it with writers
+stopped, then run `db:foreign_keys --apply`. The owner migration rejects nonzero
+orphans before DDL, converts zero to NULL and supports idempotent retries. The
+foreign-key command audits required alert parents before installing constraints.
+Fresh installs include the new mappings and constraints.
+
+`SavedSearchRepository` supplies scoped public/private lists, default membership
+projection, distinct itemtypes, stale-search and active-alert selection, typed
+bulk settings and atomic usage counters. Public-access denial now produces no
+public results instead of an unfiltered query. NULL execution dates and strict
+date boundaries retain their existing meaning; scheduled statistics refresh does
+not increment usage. Failed refreshes use transaction savepoints so PostgreSQL
+can continue with other searches. Default selection and alert views use mapped
+model reads; default mutations retain lifecycle hooks. The SQL visibility-string
+compatibility API remains for existing callers, but does not execute queries.
+
+Coverage is 691 enforced relationships, 71 pending candidates, 62 polymorphic
+references and one ambiguous reference. Full ORM/query conversion is unfinished.
+
+The saved-search contract passes on upgraded and fresh PostgreSQL/MariaDB schemas,
+including PHP 8.3/MariaDB. It covers entity scoping, public-access denial, private
+ownership, default replacement/removal, NULL ownership, user/search purge,
+active-alert selection, statistics, enums/booleans, strict date boundaries,
+rendered lists/alerts and migration refusal/idempotence. Existing functional
+saved-search tests pass under PHP 8.3. Scheduler selection was tested without
+executing cron tasks or delivering notifications; rendering is not browser proof.
+
+Broader PostgreSQL/MariaDB validation passes 1,166/768 portability assertions,
+complete mapping and parent-purge checks, ORM CRUD for all 355 tables, criteria,
+reporting, application and search contracts. The two PHP 8.3 functional classes
+pass two methods and 26 assertions; the final default-lookup conversion also
+passes its 12-assertion functional method. All 14 changed PHP files pass syntax
+and style checks. The audit counts 1,311 remaining legacy SQL call sites.

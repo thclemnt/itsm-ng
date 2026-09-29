@@ -16,8 +16,9 @@ class SavedSearchAlert
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
 
-    #[ORM\Column(name: '`savedsearches_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $savedsearches_id = 0;
+    #[ORM\ManyToOne(targetEntity: SavedSearch::class)]
+    #[ORM\JoinColumn(name: 'savedsearches_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?SavedSearch $savedsearches = null;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
     public ?string $name = null;

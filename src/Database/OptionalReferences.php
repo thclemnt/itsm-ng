@@ -350,6 +350,8 @@ final class OptionalReferences
         'glpi_items_devicesimcards' => ['lines_id' => 'glpi_lines'],
     ];
 
+    public const SAVED_SEARCHES = ['glpi_savedsearches' => ['users_id' => 'glpi_users']];
+
     public const ITIL_DEFAULTS = [
         'glpi_profiles' => ['tickettemplates_id' => 'glpi_tickettemplates', 'changetemplates_id' => 'glpi_changetemplates', 'problemtemplates_id' => 'glpi_problemtemplates'],
         'glpi_ticketrecurrents' => ['tickettemplates_id' => 'glpi_tickettemplates', 'calendars_id' => 'glpi_calendars'],
@@ -396,6 +398,7 @@ final class OptionalReferences
     public const CRON_LOG_PARENTS = ['glpi_crontasklogs' => ['crontasklogs_id' => 'glpi_crontasklogs']];
 
     public const RELATIONS = [
+        ...self::SAVED_SEARCHES,
         'glpi_profiles' => self::ITIL_DEFAULTS['glpi_profiles'],
         'glpi_ticketrecurrents' => self::ITIL_DEFAULTS['glpi_ticketrecurrents'],
         ...self::NETWORK_NAMES,

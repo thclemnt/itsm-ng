@@ -74,7 +74,7 @@ try {
     }
     $search = new SavedSearch();
     verify(!$search->getFromDB($private), 'Private saved searches are deleted through lifecycle');
-    verify($search->getFromDB($public) && (int)$search->fields['users_id'] === 0, 'Public search remains with no owner');
+    verify($search->getFromDB($public) && $search->fields['users_id'] === null, 'Public search remains with no owner');
     verify($search->getFromDB($otherSearch) && (int)$search->fields['users_id'] === $unrelated, 'Other public search retains owner');
     $consumable = new Consumable();
     verify($consumable->getFromDB($stock) && $consumable->fields['itemtype'] === null && $consumable->fields['date_out'] === null && (int)$consumable->fields['items_id'] === 0, 'User consumables return to stock');

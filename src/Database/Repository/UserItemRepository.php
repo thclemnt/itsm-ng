@@ -64,9 +64,9 @@ final class UserItemRepository
     public function releaseUserResources(int $user): void
     {
         // Private saved searches are deleted by their model hooks before this step.
-        $this->em->createQueryBuilder()->update(Entity\SavedSearch::class, 's')->set('s.users_id', ':none')
-            ->where('s.users_id = :user AND s.is_private = :public')
-            ->setParameter('none', 0, Types::INTEGER)->setParameter('user', $user, Types::INTEGER)
+        $this->em->createQueryBuilder()->update(Entity\SavedSearch::class, 's')->set('s.users', ':none')
+            ->where('IDENTITY(s.users) = :user AND s.is_private = :public')
+            ->setParameter('none', null, Types::INTEGER)->setParameter('user', $user, Types::INTEGER)
             ->setParameter('public', false, Types::BOOLEAN)->getQuery()->execute();
         $this->em->createQueryBuilder()->update(Entity\Consumable::class, 'c')
             ->set('c.items_id', ':none')->set('c.itemtype', ':type')->set('c.date_out', ':date')

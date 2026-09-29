@@ -53,6 +53,18 @@ class SavedSearch extends CommonDBTM implements ExtraVisibilityCriteria
     public const COUNT_AUTO = 2;
 
 
+    private static function repository(): \itsmng\Database\Repository\SavedSearchRepository
+    {
+        global $DB;
+        return new \itsmng\Database\Repository\SavedSearchRepository(\itsmng\Database\Orm::create($DB));
+    }
+
+    private function isOwnedByCurrentUser(): bool
+    {
+        $viewer = (int)Session::getLoginUserID();
+        return $viewer > 0 && (int)($this->fields['users_id'] ?? 0) === $viewer;
+    }
+
     public static function getForbiddenActionsForMenu()
     {
         return ['add'];
@@ -67,7 +79,7 @@ class SavedSearch extends CommonDBTM implements ExtraVisibilityCriteria
     public function canUpdateItem()
     {
         return Session::haveRight(self::$rightname, UPDATE)
-               || $this->fields["users_id"] === Session::getLoginUserID();
+               || $this->isOwnedByCurrentUser();
     }
 
 
@@ -212,7 +224,7 @@ class SavedSearch extends CommonDBTM implements ExtraVisibilityCriteria
 
         if ($this->fields['is_private'] == 1) {
             return (Session::haveRight('config', UPDATE)
-                    || $this->fields['users_id'] == Session::getLoginUserID());
+                    || $this->isOwnedByCurrentUser());
         }
         return parent::canCreateItem();
     }
@@ -223,7 +235,7 @@ class SavedSearch extends CommonDBTM implements ExtraVisibilityCriteria
 
         if ($this->fields['is_private'] == 1) {
             return (Session::haveRight('config', READ)
-                    || $this->fields['users_id'] == Session::getLoginUserID());
+                    || $this->isOwnedByCurrentUser());
         }
         return parent::canViewItem();
     }
@@ -674,24 +686,19 @@ class SavedSearch extends CommonDBTM implements ExtraVisibilityCriteria
     **/
     public function markDefault($ID)
     {
-        global $DB;
-
         if (
-            $this->getFromDB($ID)
+            (int)Session::getLoginUserID() > 0
+            && $this->getFromDB($ID)
             && ($this->fields['type'] != self::URI)
         ) {
             $dd = new SavedSearch_User();
             // Is default view for this itemtype already exists ?
-            $iterator = $DB->request([
-               'SELECT' => 'id',
-               'FROM'   => 'glpi_savedsearches_users',
-               'WHERE'  => [
+            $rows = $dd->find([
                   'users_id'  => Session::getLoginUserID(),
                   'itemtype'  => $this->fields['itemtype']
-               ]
-            ]);
+            ], [], 1);
 
-            if ($result = $iterator->next()) {
+            if ($result = reset($rows)) {
                 // already exists update it
                 $updateID = $result['id'];
                 $dd->update([
@@ -718,25 +725,20 @@ class SavedSearch extends CommonDBTM implements ExtraVisibilityCriteria
     **/
     public function unmarkDefault($ID)
     {
-        global $DB;
-
         if (
-            $this->getFromDB($ID)
+            (int)Session::getLoginUserID() > 0
+            && $this->getFromDB($ID)
             && ($this->fields['type'] != self::URI)
         ) {
             $dd = new SavedSearch_User();
             // Is default view for this itemtype already exists ?
-            $iterator = $DB->request([
-               'SELECT' => 'id',
-               'FROM'   => 'glpi_savedsearches_users',
-               'WHERE'  => [
+            $rows = $dd->find([
                   'users_id'           => Session::getLoginUserID(),
                   'savedsearches_id'   => $ID,
                   'itemtype'           => $this->fields['itemtype']
-               ]
-            ]);
+            ], [], 1);
 
-            if ($result = $iterator->next()) {
+            if ($result = reset($rows)) {
                 // already exists delete it
                 $deleteID = $result['id'];
                 $dd->delete(['id' => $deleteID]);
@@ -754,15 +756,11 @@ class SavedSearch extends CommonDBTM implements ExtraVisibilityCriteria
     **/
     public function unmarkDefaults(array $ids)
     {
-        global $DB;
-
         if (Session::haveRight('config', UPDATE)) {
-            return $DB->delete(
-                'glpi_savedsearches_users',
-                [
-                  'savedsearches_id'   => $ids
-                ]
-            );
+            if ($ids) {
+                (new SavedSearch_User())->deleteByCriteria(['savedsearches_id' => $ids]);
+            }
+            return true;
         }
     }
 
@@ -774,62 +772,13 @@ class SavedSearch extends CommonDBTM implements ExtraVisibilityCriteria
      */
     public function displayMine()
     {
-        global $DB, $CFG_GLPI;
+        global $CFG_GLPI;
 
-        $table = $this->getTable();
-        $utable = 'glpi_savedsearches_users';
-        $criteria = [
-           'SELECT'    => [
-              "$table.*",
-              "$utable.id AS IS_DEFAULT"
-           ],
-           'FROM'      => $table,
-           'LEFT JOIN' => [
-              $utable => [
-                 'ON' => [
-                    $utable  => 'savedsearches_id',
-                    $table   => 'id', [
-                       'AND' => [
-                          "$table.itemtype"    => new \QueryExpression("$utable.itemtype"),
-                          "$utable.users_id"   => Session::getLoginUserID()
-                       ]
-                    ]
-                 ]
-              ]
-           ],
-           'WHERE'     => [],
-           'ORDERBY'   => [
-              'itemtype',
-              'name'
-           ]
-        ];
-
-        $public_criteria = $criteria;
-        if ($this->canView()) {
-            $public_criteria['WHERE'] = [
-               "$table.is_private"  => 0,
-            ] + getEntitiesRestrictCriteria($table, '', '', true);
-        }
-        $public_iterator = $DB->request($public_criteria);
-
-        $private_criteria = $criteria;
-        $private_criteria['WHERE'] = [
-           "$table.is_private"  => 1,
-           "$table.users_id"    => Session::getLoginUserID()
-        ] + getEntitiesRestrictCriteria($table, '', '', true);
-        $private_iterator = $DB->request($private_criteria);
-
-        // get saved searches
-        $searches = ['private'   => [],
-                     'public'    => []];
-
-        while ($data = $private_iterator->next()) {
-            $searches['private'][$data['id']] = $data;
-        }
-
-        while ($data = $public_iterator->next()) {
-            $searches['public'][$data['id']] = $data;
-        }
+        $searches = self::repository()->visible(
+            (int)Session::getLoginUserID(),
+            $this->canView(),
+            getEntitiesRestrictCriteria($this->getTable(), '', '', true)
+        );
 
         $ordered = [];
 
@@ -1191,18 +1140,7 @@ class SavedSearch extends CommonDBTM implements ExtraVisibilityCriteria
     **/
     public static function getUsedItemtypes()
     {
-        global $DB;
-
-        $types = [];
-        $iterator = $DB->request([
-           'SELECT'          => 'itemtype',
-           'DISTINCT'        => true,
-           'FROM'            => static::getTable()
-        ]);
-        while ($data = $iterator->next()) {
-            $types[] = $data['itemtype'];
-        }
-        return $types;
+        return self::repository()->itemtypes();
     }
 
 
@@ -1216,20 +1154,8 @@ class SavedSearch extends CommonDBTM implements ExtraVisibilityCriteria
     **/
     public static function updateExecutionTime($id, $time)
     {
-        global $DB;
-
-        if ($_SESSION['glpishow_count_on_tabs']) {
-            $DB->update(
-                static::getTable(),
-                [
-                  'last_execution_time'   => $time,
-                  'last_execution_date'   => date('Y-m-d H:i:s'),
-                  'counter'               => new \QueryExpression($DB->quoteName('counter') . ' + 1')
-                ],
-                [
-                  'id' => $id
-                ]
-            );
+        if (!empty($_SESSION['glpishow_count_on_tabs'])) {
+            self::repository()->recordExecution((int)$id, (int)$time);
         }
     }
 
@@ -1317,18 +1243,8 @@ class SavedSearch extends CommonDBTM implements ExtraVisibilityCriteria
      */
     public function setDoCount(array $ids, $do_count)
     {
-        global $DB;
-
-        $result = $DB->update(
-            $this->getTable(),
-            [
-              'do_count' => $do_count
-            ],
-            [
-              'id' => $ids
-            ]
-        );
-        return $result;
+        self::repository()->setCountMode($ids, (int)$do_count);
+        return true;
     }
 
 
@@ -1343,19 +1259,8 @@ class SavedSearch extends CommonDBTM implements ExtraVisibilityCriteria
      */
     public function setEntityRecur(array $ids, $eid, $recur)
     {
-        global $DB;
-
-        $result = $DB->update(
-            $this->getTable(),
-            [
-              'entities_id'  => $eid,
-              'is_recursive' => $recur
-            ],
-            [
-              'id' => $ids
-            ]
-        );
-        return $result;
+        self::repository()->setEntity($ids, (int)$eid, (bool)$recur);
+        return true;
     }
 
 
@@ -1381,72 +1286,37 @@ class SavedSearch extends CommonDBTM implements ExtraVisibilityCriteria
     {
         global $DB, $CFG_GLPI;
 
-        $cron_status = 0;
-
-        if ($CFG_GLPI['show_count_on_tabs'] != -1) {
-            $lastdate = new \DateTime($task->getField('lastrun'));
-            $lastdate->sub(new \DateInterval('P7D'));
-
-            $iterator = $DB->request(['FROM'   => self::getTable(),
-                                      'FIELDS' => ['id', 'query', 'itemtype', 'type'],
-                                      'WHERE'  => ['last_execution_date'
-                                                   => ['<' , $lastdate->format('Y-m-d H:i:s')]]]);
-
-            if ($iterator->numrows()) {
-                //prepare variables we'll use
-                $self = new self();
-                $now = date('Y-m-d H:i:s');
-
-                $query = $DB->buildUpdate(
-                    self::getTable(),
-                    [
-                      'last_execution_time'   => new QueryParam(),
-                      'last_execution_date'   => new QueryParam()
-                    ],
-                    [
-                      'id'                    => new QueryParam()
-                    ]
-                );
-                $stmt = $DB->prepare($query);
-
-                if (!isset($_SESSION['glpiname'])) {
-                    //required from search class
-                    $_SESSION['glpiname'] = 'crontab';
-                }
-                if (!isset($_SESSION['glpigroups'])) {
-                    $_SESSION['glpigroups'] = [];
-                }
-
-                $in_transaction = $DB->inTransaction();
-                if (!$in_transaction) {
-                    $DB->beginTransaction();
-                }
-                while ($row = $iterator->next()) {
-                    try {
-                        $self->fields = $row;
-                        if ($data = $self->execute(true)) {
-                            $execution_time = $data['data']['execution_time'];
-
-                            $stmt->bind_param('sss', $execution_time, $now, $row['id']);
-                            $stmt->execute();
-                        }
-                    } catch (\Exception $e) {
-                        Toolbox::logError($e);
-                    }
-                }
-
-                $stmt->close();
-                if (!$in_transaction) {
-                    $DB->commit();
-                }
-
-                $cron_status = 1;
-            }
-        } else {
+        if ($CFG_GLPI['show_count_on_tabs'] == -1) {
             Toolbox::logWarning('Count on tabs has been disabled; crontask is inefficient.');
+            return 0;
         }
-
-        return $cron_status;
+        $lastdate = (new \DateTimeImmutable($task->getField('lastrun')))->sub(new \DateInterval('P7D'));
+        $repository = self::repository();
+        $rows = $repository->stale($lastdate);
+        if (!$rows) {
+            return 0;
+        }
+        $_SESSION['glpiname'] ??= 'crontab';
+        $_SESSION['glpigroups'] ??= [];
+        $now = new \DateTimeImmutable();
+        $connection = $DB->getDoctrineConnection();
+        $connection->transactional(static function () use ($connection, $repository, $rows, $now): void {
+            foreach ($rows as $row) {
+                try {
+                    // A failed search must not poison the remaining PostgreSQL transaction.
+                    $connection->transactional(static function () use ($repository, $row, $now): void {
+                        $search = new self();
+                        $search->fields = $row;
+                        if ($data = $search->execute(true)) {
+                            $repository->recordExecution((int)$row['id'], (int)$data['data']['execution_time'], false, $now);
+                        }
+                    });
+                } catch (\Exception $error) {
+                    Toolbox::logError($error);
+                }
+            }
+        });
+        return 1;
     }
 
 
@@ -1569,7 +1439,7 @@ class SavedSearch extends CommonDBTM implements ExtraVisibilityCriteria
 
         $restrict = [
            self::getTable() . '.is_private' => 1,
-           self::getTable() . '.users_id'    => Session::getLoginUserID()
+           self::getTable() . '.users_id'    => (int)Session::getLoginUserID() > 0 ? (int)Session::getLoginUserID() : -1
         ];
 
         if (Session::haveRight(self::$rightname, READ)) {
