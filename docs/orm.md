@@ -2051,3 +2051,43 @@ synchronization were not validated.
 The inventory now reports 723 enforced references, 37 pending ordinary references,
 62 polymorphic references, one ambiguous reference and 1244 legacy SQL call sites.
 Full relationship and query conversion remains unfinished.
+
+### Notification queue queries and template ownership
+
+Email and chat queue entries now have nullable notification-template associations
+and two additional FKs. Existing installations use
+`db:queue_template_references --apply` followed by `db:foreign_keys --apply` during
+maintenance. Both queues are audited for orphaned references before any DDL;
+legacy zero references become NULL. Fresh installs and normal upgrades include
+the migration.
+
+Template purge retains the existing cancellation lifecycle and clears the template
+association on retained queue history. Pending entries become deleted, their
+rendered payload stays available, and unrelated templates' deliveries are untouched.
+The mailing enqueue functional test now expects NULL for a missing template.
+The chat history form displays its stored ticket title as escaped text, removing
+a copied email-body field that does not exist in the chat schema.
+
+`NotificationQueueRepository` replaces duplicate selection, pending selection and
+expiry deletion for both queues. Due-date comparisons use typed timestamps and
+boolean flags, with stable send-time/ID ordering. The public API still applies
+channel enablement, cron eligibility, per-channel limits and additional filters.
+Those filters cannot override the base pending/mode/date predicates. Nonpositive
+limits preserve the legacy unlimited behavior. Expiry deletes only already-deleted
+entries older than the cutoff and participates in the caller's transaction.
+Deduplication retains the existing item/entity/template and recipient policy.
+
+The focused `tests/database-portability/notification-queues.php` contract covers
+both queue types, cutoff/NULL boundaries, stable limits, channel policy, extra
+filters, deduplication, cleanup rollback, template purge, retained-history forms,
+and migration audit/retry across both tables. Fresh and upgraded PostgreSQL and
+MariaDB contracts passed. Both engines passed full mapping/parent-purge,
+all-table ORM CRUD, criteria, reporting, application, search and LDAP contracts.
+Base portability assertions: 1205 PostgreSQL and 802 MariaDB. PHP 8.3 passed the
+focused contract, template cloning and enqueue-only functional methods
+(18 functional assertions). No notification dispatch or cron body was run;
+form rendering was checked in PHP, without browser interaction.
+
+The inventory records 725 enforced references, 35 pending ordinary references,
+62 polymorphic references, one ambiguous reference and 1238 legacy SQL call sites.
+Full relationship and query conversion remains unfinished.

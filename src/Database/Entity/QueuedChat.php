@@ -21,8 +21,9 @@ class QueuedChat
     #[ORM\Column(name: '`items_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $items_id = 0;
 
-    #[ORM\Column(name: '`notificationtemplates_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $notificationtemplates_id = 0;
+    #[ORM\ManyToOne(targetEntity: NotificationTemplate::class)]
+    #[ORM\JoinColumn(name: 'notificationtemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?NotificationTemplate $notificationtemplates = null;
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
     #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]

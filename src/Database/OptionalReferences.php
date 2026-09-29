@@ -350,6 +350,11 @@ final class OptionalReferences
         'glpi_items_devicesimcards' => ['lines_id' => 'glpi_lines'],
     ];
 
+    public const QUEUE_TEMPLATES = [
+        'glpi_queuednotifications' => ['notificationtemplates_id' => 'glpi_notificationtemplates'],
+        'glpi_queuedchats' => ['notificationtemplates_id' => 'glpi_notificationtemplates'],
+    ];
+
     public const REJECTED_EMAIL_REFERENCES = [
         'glpi_notimportedemails' => ['mailcollectors_id' => 'glpi_mailcollectors', 'users_id' => 'glpi_users'],
     ];
@@ -420,6 +425,7 @@ final class OptionalReferences
     public const CRON_LOG_PARENTS = ['glpi_crontasklogs' => ['crontasklogs_id' => 'glpi_crontasklogs']];
 
     public const RELATIONS = [
+        ...self::QUEUE_TEMPLATES,
         ...self::REJECTED_EMAIL_REFERENCES,
         ...self::PERSONAL_CONTENT_OWNERS,
         'glpi_slms' => ['calendars_id' => 'glpi_calendars'],
@@ -507,7 +513,7 @@ final class OptionalReferences
         'glpi_phones' => [...self::ASSET_CLASSIFICATION['glpi_phones'], ...self::MANUFACTURERS['glpi_phones'], ...self::STATES['glpi_phones'], ...self::LOCATIONS['glpi_phones'], ...self::GROUPS['glpi_phones'], ...self::INVENTORY_METADATA['glpi_phones'], ...self::ASSET_USERS['glpi_phones']],
         'glpi_printers' => [...self::ASSET_CLASSIFICATION['glpi_printers'], ...self::MANUFACTURERS['glpi_printers'], ...self::STATES['glpi_printers'], ...self::LOCATIONS['glpi_printers'], ...self::GROUPS['glpi_printers'], ...self::INVENTORY_METADATA['glpi_printers'], ...self::ASSET_USERS['glpi_printers']],
         'glpi_projects' => [...self::PLANNING_OWNERS['glpi_projects'], ...self::PROJECT_HIERARCHY['glpi_projects'], ...self::GROUPS['glpi_projects'], ...self::PLANNING_METADATA['glpi_projects']],
-        'glpi_queuedchats' => [...self::LOCATIONS['glpi_queuedchats'], ...self::GROUPS['glpi_queuedchats'], ...self::ITIL_CLASSIFICATION['glpi_queuedchats']],
+        'glpi_queuedchats' => [...self::QUEUE_TEMPLATES['glpi_queuedchats'], ...self::LOCATIONS['glpi_queuedchats'], ...self::GROUPS['glpi_queuedchats'], ...self::ITIL_CLASSIFICATION['glpi_queuedchats']],
         'glpi_racks' => [...self::MODELS['glpi_racks'], ...self::INFRASTRUCTURE['glpi_racks'], ...self::MANUFACTURERS['glpi_racks'], ...self::STATES['glpi_racks'], ...self::LOCATIONS['glpi_racks'], ...self::GROUPS['glpi_racks'], ...self::ASSET_USERS['glpi_racks']],
         'glpi_softwarelicenses' => [...self::FINANCIAL['glpi_softwarelicenses'], ...self::MANUFACTURERS['glpi_softwarelicenses'], ...self::STATES['glpi_softwarelicenses'], ...self::LOCATIONS['glpi_softwarelicenses'], ...self::GROUPS['glpi_softwarelicenses'], ...self::ASSET_USERS['glpi_softwarelicenses'], ...self::SOFTWARE_METADATA['glpi_softwarelicenses']],
         'glpi_softwares' => [...self::MANUFACTURERS['glpi_softwares'], ...self::LOCATIONS['glpi_softwares'], ...self::GROUPS['glpi_softwares'], ...self::ASSET_USERS['glpi_softwares'], ...self::SOFTWARE_METADATA['glpi_softwares']],

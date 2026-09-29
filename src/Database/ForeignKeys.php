@@ -194,6 +194,7 @@ final class ForeignKeys
         'glpi_projecttaskteams' => ['projecttasks_id' => 'glpi_projecttasks'],
         'glpi_projecttasktemplates' => [...OptionalReferences::RELATIONS['glpi_projecttasktemplates'], ...EntityOwnership::RELATIONS['glpi_projecttasktemplates']],
         'glpi_projectteams' => ['projects_id' => 'glpi_projects'],
+        'glpi_queuednotifications' => [...OptionalReferences::RELATIONS['glpi_queuednotifications'], ...EntityOwnership::RELATIONS['glpi_queuednotifications']],
         'glpi_queuedchats' => [...OptionalReferences::RELATIONS['glpi_queuedchats'], ...EntityOwnership::RELATIONS['glpi_queuedchats']],
         'glpi_racks' => [...OptionalReferences::RELATIONS['glpi_racks'], ...EntityOwnership::RELATIONS['glpi_racks']],
         'glpi_reminders_users' => ['reminders_id' => 'glpi_reminders', 'users_id' => 'glpi_users'],

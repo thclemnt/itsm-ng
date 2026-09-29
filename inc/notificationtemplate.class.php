@@ -633,6 +633,7 @@ class NotificationTemplate extends CommonDBTM
 
     public function cleanDBonPurge()
     {
+        global $DB;
 
         $this->deleteChildrenAndRelationsFromDb(
             [
@@ -647,6 +648,8 @@ class NotificationTemplate extends CommonDBTM
 
         $queuedChat = new QueuedChat();
         $queuedChat->deleteByCriteria(['notificationtemplates_id' => $this->fields['id']]);
+
+        (new \itsmng\Database\Repository\NotificationQueueRepository(\itsmng\Database\Orm::create($DB)))->detachTemplate((int)$this->getID());
     }
 
     public function prepareInputForClone($input)

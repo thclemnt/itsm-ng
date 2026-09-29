@@ -158,20 +158,14 @@ class QueuedNotification extends CommonDBTM
             && isset($input['recipient'])
         ) {
             $criteria = [
-               'FROM'   => $this->getTable(),
-               'WHERE'  => [
-                  'is_deleted'   => 0,
-                  'itemtype'     => $input['itemtype'],
-                  'items_id'     => $input['items_id'],
-                  'entities_id'  => $input['entities_id'],
-                  'notificationtemplates_id' => $input['notificationtemplates_id'],
-                  'recipient'                => $input['recipient']
-
-               ]
+                'itemtype' => $input['itemtype'],
+                'items_id' => $input['items_id'],
+                'entities_id' => $input['entities_id'],
+                'notificationtemplates_id' => $input['notificationtemplates_id'],
+                'recipient' => $input['recipient'],
             ];
-            $iterator = $DB->request($criteria);
-            while ($data = $iterator->next()) {
-                $this->delete(['id' => $data['id']], 1);
+            foreach ((new \itsmng\Database\Repository\NotificationQueueRepository(\itsmng\Database\Orm::create($DB)))->duplicateIds('notification', $criteria) as $id) {
+                $this->delete(['id' => $id], 1);
             }
         }
 
@@ -499,18 +493,6 @@ class QueuedNotification extends CommonDBTM
             $send_time = date('Y-m-d H:i:s');
         }
 
-        $base_query = [
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'is_deleted'   => 0,
-              'mode'         => 'TOFILL',
-              'send_time'    => ['<', $send_time],
-           ] +  $extra_where,
-           'ORDER'  => 'send_time ASC',
-           'START'  => 0,
-           'LIMIT'  => $limit
-        ];
-
         $pendings = [];
         $modes = Notification_NotificationTemplate::getModes();
         foreach ($modes as $mode => $conf) {
@@ -528,15 +510,9 @@ class QueuedNotification extends CommonDBTM
                 continue;
             }
 
-            $query = $base_query;
-            $query['WHERE']['mode'] = $mode;
-
-            $iterator = $DB->request($query);
-            if ($iterator->numRows() > 0) {
-                $pendings[$mode] = [];
-                while ($row = $iterator->next()) {
-                    $pendings[$mode][] = $row;
-                }
+            $rows = (new \itsmng\Database\Repository\NotificationQueueRepository(\itsmng\Database\Orm::create($DB)))->pending('notification', (string)$mode, new \DateTimeImmutable($send_time), (int)$limit, $extra_where);
+            if ($rows) {
+                $pendings[$mode] = $rows;
             }
         }
 
@@ -601,16 +577,8 @@ class QueuedNotification extends CommonDBTM
 
         // Expire mails in queue
         if ($task->fields['param'] > 0) {
-            $secs      = $task->fields['param'] * DAY_TIMESTAMP;
-            $send_time = date("U") - $secs;
-            $DB->delete(
-                self::getTable(),
-                [
-                  'is_deleted'   => 1,
-                  new \QueryExpression('(UNIX_TIMESTAMP(' . $DB->quoteName('send_time') . ') < ' . $DB->quoteValue($send_time) . ')')
-                ]
-            );
-            $vol = $DB->affectedRows();
+            $before = (new \DateTimeImmutable())->setTimestamp(time() - (int)$task->fields['param'] * DAY_TIMESTAMP);
+            $vol = (new \itsmng\Database\Repository\NotificationQueueRepository(\itsmng\Database\Orm::create($DB)))->purgeExpired('notification', $before);
         }
 
         $task->setVolume($vol);
