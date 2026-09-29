@@ -16,8 +16,9 @@ class LinkItemtype
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
 
-    #[ORM\Column(name: '`links_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $links_id = 0;
+    #[ORM\ManyToOne(targetEntity: Link::class)]
+    #[ORM\JoinColumn(name: 'links_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public Link $links;
 
     #[ORM\Column(name: '`itemtype`', type: 'string', length: 100, nullable: false)]
     public string $itemtype = '';

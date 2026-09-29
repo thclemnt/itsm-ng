@@ -77,15 +77,11 @@ class Link_Itemtype extends CommonDBChild
             return false;
         }
 
-        $iterator = $DB->request([
-           'FROM'   => 'glpi_links_itemtypes',
-           'WHERE'  => ['links_id' => $links_id],
-           'ORDER'  => 'itemtype'
-        ]);
+        $iterator = (new \itsmng\Database\Repository\LinkRepository(\itsmng\Database\Orm::create($DB)))->itemtypes((int)$links_id);
         $types  = [];
         $used   = [];
         $numrows = count($iterator);
-        while ($data = $iterator->next()) {
+        foreach ($iterator as $data) {
             $types[$data['id']]      = $data;
             $used[$data['itemtype']] = $data['itemtype'];
         }
@@ -165,16 +161,14 @@ class Link_Itemtype extends CommonDBChild
 
     public function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)
     {
+        global $DB;
 
         if (!$withtemplate) {
             $nb = 0;
             switch ($item->getType()) {
                 case 'Link':
                     if ($_SESSION['glpishow_count_on_tabs']) {
-                        $nb = countElementsInTable(
-                            $this->getTable(),
-                            ['links_id' => $item->getID()]
-                        );
+                        $nb = (new \itsmng\Database\Repository\LinkRepository(\itsmng\Database\Orm::create($DB)))->countItemtypes((int)$item->getID());
                     }
                     return self::createTabEntry(_n(
                         'Associated item type',
@@ -209,11 +203,6 @@ class Link_Itemtype extends CommonDBChild
     {
         global $DB;
 
-        $DB->delete(
-            self::getTable(),
-            [
-              'itemtype'  => ['LIKE', "%Plugin$itemtype%"]
-            ]
-        );
+        (new \itsmng\Database\Repository\LinkRepository(\itsmng\Database\Orm::create($DB)))->deletePluginItemtypes((string)$itemtype);
     }
 }

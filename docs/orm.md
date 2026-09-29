@@ -2091,3 +2091,35 @@ form rendering was checked in PHP, without browser interaction.
 The inventory records 725 enforced references, 35 pending ordinary references,
 62 polymorphic references, one ambiguous reference and 1238 legacy SQL call sites.
 Full relationship and query conversion remains unfinished.
+
+### External-link queries and required definition ownership
+
+Link/item-type bindings now map their definition as a required Doctrine association
+with a restrictive FK. Existing installations apply it through
+`db:foreign_keys --apply`; orphaned bindings must be repaired before that audited
+operation proceeds. Fresh installs include the constraint. Definition purge still
+runs the existing child lifecycle, removing only its own bindings.
+
+`LinkRepository` supplies visible definitions and counts, associated types, plugin
+binding cleanup, domain tags and IP/MAC inventory projections. Definition lists and
+tab counts share the same entity/recursive visibility predicate. Domain selection
+is deterministic by ID. Network joins retain both polymorphic discriminators, and
+MAC grouping selects a deterministic minimum port ID instead of relying on MySQL's
+permissive grouping. Equipment-level IP tags no longer substitute the missing
+legacy equipment MAC field; MAC-only links use the equipment's network ports.
+`Link::getLinksDataForItem()` now returns rows as an array; core consumers use
+`foreach` and `count`.
+
+The focused `tests/database-portability/external-links.php` contract covers entity
+visibility, recursive links, counts, association and item rendering, domain and
+network tags, duplicate/unnamed ports, plugin binding cleanup and parent purge.
+It passed on fresh and upgraded PostgreSQL and MariaDB installations. PHP 8.3 also
+passed the focused contract and the existing Link functional method (95 assertions).
+Both engines also passed complete mapping/parent-purge, all-table ORM CRUD,
+criteria, reporting, application, search and network-name contracts. Base
+portability assertions: 1206 PostgreSQL and 803 MariaDB. Generated external URLs
+were not opened; rendering was checked in PHP.
+
+The inventory now records 726 enforced references, 34 pending ordinary references,
+62 polymorphic references, one ambiguous reference and 1231 legacy SQL call sites.
+Full relationship and query conversion remains unfinished.

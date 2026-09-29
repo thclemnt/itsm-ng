@@ -20,6 +20,7 @@ final class ForeignKeys
     public const RELATIONS = [
         ...OptionalReferences::RELATIONS,
         ...EntityOwnership::RELATIONS,
+        'glpi_links_itemtypes' => ['links_id' => 'glpi_links'],
         'glpi_authldapreplicates' => ['authldaps_id' => 'glpi_authldaps'],
         'glpi_objectlocks' => ['users_id' => 'glpi_users'],
         'glpi_oidc_users' => ['user_id' => 'glpi_users'],
