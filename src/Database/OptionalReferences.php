@@ -350,6 +350,15 @@ final class OptionalReferences
         'glpi_items_devicesimcards' => ['lines_id' => 'glpi_lines'],
     ];
 
+    public const ITIL_ACTORS = [
+        'glpi_tickets_users' => ['users_id' => 'glpi_users'],
+        'glpi_problems_users' => ['users_id' => 'glpi_users'],
+        'glpi_changes_users' => ['users_id' => 'glpi_users'],
+        'glpi_suppliers_tickets' => ['suppliers_id' => 'glpi_suppliers'],
+        'glpi_problems_suppliers' => ['suppliers_id' => 'glpi_suppliers'],
+        'glpi_changes_suppliers' => ['suppliers_id' => 'glpi_suppliers'],
+    ];
+
     public const ITIL_USERS = [
         'glpi_tickets' => ['users_id_recipient' => 'glpi_users', 'users_id_lastupdater' => 'glpi_users'],
         'glpi_problems' => ['users_id_recipient' => 'glpi_users', 'users_id_lastupdater' => 'glpi_users'],
@@ -368,6 +377,7 @@ final class OptionalReferences
     public const CRON_LOG_PARENTS = ['glpi_crontasklogs' => ['crontasklogs_id' => 'glpi_crontasklogs']];
 
     public const RELATIONS = [
+        ...self::ITIL_ACTORS,
         ...self::CRON_LOG_PARENTS,
         ...self::CONTACT_LINE_METADATA,
         ...self::CONTENT_METADATA,

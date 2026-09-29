@@ -2539,7 +2539,7 @@ abstract class CommonITILObject extends CommonDBTM
                 ] + $supplier_input;
 
                 foreach ($input["_additional_suppliers_assigns"] as $tmp) {
-                    if (isset($tmp['suppliers_id'])) {
+                    if (array_key_exists('suppliers_id', $tmp)) {
                         foreach ($tmp as $key => $val) {
                             $input2[$key] = $val;
                         }
@@ -2568,7 +2568,7 @@ abstract class CommonITILObject extends CommonDBTM
                 ] + $user_input;
 
                 foreach ($input["_additional_observers"] as $tmp) {
-                    if (isset($tmp['users_id'])) {
+                    if (array_key_exists('users_id', $tmp)) {
                         foreach ($tmp as $key => $val) {
                             $input2[$key] = $val;
                         }
@@ -2587,7 +2587,7 @@ abstract class CommonITILObject extends CommonDBTM
                 ] + $user_input;
 
                 foreach ($input["_additional_assigns"] as $tmp) {
-                    if (isset($tmp['users_id'])) {
+                    if (array_key_exists('users_id', $tmp)) {
                         foreach ($tmp as $key => $val) {
                             $input2[$key] = $val;
                         }
@@ -2605,7 +2605,7 @@ abstract class CommonITILObject extends CommonDBTM
                 ] + $user_input;
 
                 foreach ($input["_additional_requesters"] as $tmp) {
-                    if (isset($tmp['users_id'])) {
+                    if (array_key_exists('users_id', $tmp)) {
                         foreach ($tmp as $key => $val) {
                             $input2[$key] = $val;
                         }

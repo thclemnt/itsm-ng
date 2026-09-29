@@ -1,7 +1,7 @@
 # Mapped persistence and reporting
 
 Doctrine ORM 3 is an explicit dependency alongside DBAL 4.4+ (PHP 8.2+). The attributes in
-`src/Database/Entity` now map all 3,563 columns of all 355 baseline tables,
+`src/Database/Entity` now map every column of all 355 baseline tables,
 including the dashboard's composite primary key and explicitly assigned IDs.
 `EntityRegistry` lists each table and mapped class. These are persistence records;
 application permissions, validation, hooks, history and notifications remain in
@@ -1494,3 +1494,40 @@ passes the new contract; six affected functional classes pass 24 methods and 829
 assertions. All 19 changed PHP files pass syntax checks; formatting and diff
 checks pass. The legacy summary rendering test emits its expected deprecation
 notice. Browser interaction and notification delivery were not exercised.
+
+### Named and anonymous ITIL actors
+
+Ticket, problem and change user/supplier actors now use six nullable Doctrine
+associations and RESTRICT foreign keys. Email-only actors store NULL instead of
+zero. Parent updates, notification editors and parent/endpoint purge hooks retain
+anonymous actors correctly. Actor lists and alternate-email checks use the shared
+mapped criteria path; unregistered plugin tables retain its compatibility path.
+
+Each actor table has two read-only generated identity columns. A unique index
+allows one named actor per parent and role, regardless of alternate email, and
+one anonymous actor per parent, role and email. Unlike a unique index containing
+a nullable actor ID, it also rejects duplicate anonymous assignments at the
+database boundary. Distinct anonymous supplier emails can coexist.
+
+Existing installations should inspect `db:itil_actors`, stop application writers,
+apply it during maintenance, then run `db:foreign_keys --apply`. The migration
+rejects nonzero orphans and duplicate normalized identities before DDL; it never
+chooses which duplicate to delete. PostgreSQL changes are transactional. MySQL
+DDL commits separately, refuses an active application transaction and supports
+idempotent retries. Fresh installations include the new identity keys.
+
+Coverage is 664 enforced relationships, 98 pending candidates, 62 polymorphic
+references, one ambiguous reference and 1,337 legacy SQL call sites. Complete
+relationship and query conversion remains outstanding.
+
+Validation: fresh PostgreSQL and MariaDB installations pass. Actor contracts on
+both engines cover named and anonymous identities, database duplicate rejection,
+additional actors through parent updates, notification-form rendering, parent and
+endpoint purges, orphan/duplicate upgrade refusal and migration idempotence.
+PHP 8.3/MariaDB also verifies the active-transaction guard. Both providers pass
+complete mappings, CRUD across all 355 tables, parent purges, ORM criteria,
+reporting, application and search suites, with 1,139/741 database-contract
+assertions. Affected PHP 8.3 functional tests pass six methods and 205 assertions.
+All 16 changed PHP files pass syntax checks; formatting and diff checks pass.
+Rendering was verified through PHP output, not browser interaction. Notification
+delivery was not exercised.

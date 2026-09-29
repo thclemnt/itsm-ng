@@ -14,7 +14,7 @@ final class ForeignKeys
     /**
      * Non-polymorphic associations with valid targets or SQL NULL. Parent purge
      * hooks remove or reassign children; RESTRICT keeps those hooks authoritative.
-     * users_id/suppliers_id on ticket actors are excluded (anonymous email actors).
+     * Anonymous email actors have a nullable user/supplier association.
      * entities_id=0 is a real root entity, not an absent relationship.
      */
     public const RELATIONS = [
@@ -35,9 +35,9 @@ final class ForeignKeys
         'glpi_changes_groups' => ['changes_id' => 'glpi_changes', 'groups_id' => 'glpi_groups'],
         'glpi_changes_items' => ['changes_id' => 'glpi_changes'],
         'glpi_changes_problems' => ['changes_id' => 'glpi_changes', 'problems_id' => 'glpi_problems'],
-        'glpi_changes_suppliers' => ['changes_id' => 'glpi_changes'],
+        'glpi_changes_suppliers' => [...OptionalReferences::RELATIONS['glpi_changes_suppliers'], 'changes_id' => 'glpi_changes'],
         'glpi_changes_tickets' => ['changes_id' => 'glpi_changes', 'tickets_id' => 'glpi_tickets'],
-        'glpi_changes_users' => ['changes_id' => 'glpi_changes'],
+        'glpi_changes_users' => [...OptionalReferences::RELATIONS['glpi_changes_users'], 'changes_id' => 'glpi_changes'],
         'glpi_changetasks' => [...OptionalReferences::RELATIONS['glpi_changetasks'], 'changes_id' => 'glpi_changes'],
         'glpi_changetemplatehiddenfields' => ['changetemplates_id' => 'glpi_changetemplates'],
         'glpi_changetemplatemandatoryfields' => ['changetemplates_id' => 'glpi_changetemplates'],
@@ -150,9 +150,9 @@ final class ForeignKeys
         'glpi_planningexternaleventtemplates' => [...OptionalReferences::RELATIONS['glpi_planningexternaleventtemplates'], ...EntityOwnership::RELATIONS['glpi_planningexternaleventtemplates']],
         'glpi_printers' => [...OptionalReferences::RELATIONS['glpi_printers'], ...EntityOwnership::RELATIONS['glpi_printers']],
         'glpi_problemcosts' => [...OptionalReferences::RELATIONS['glpi_problemcosts'], ...EntityOwnership::RELATIONS['glpi_problemcosts'], 'problems_id' => 'glpi_problems'],
-        'glpi_problems_suppliers' => ['problems_id' => 'glpi_problems'],
+        'glpi_problems_suppliers' => [...OptionalReferences::RELATIONS['glpi_problems_suppliers'], 'problems_id' => 'glpi_problems'],
         'glpi_problems_tickets' => ['problems_id' => 'glpi_problems', 'tickets_id' => 'glpi_tickets'],
-        'glpi_problems_users' => ['problems_id' => 'glpi_problems'],
+        'glpi_problems_users' => [...OptionalReferences::RELATIONS['glpi_problems_users'], 'problems_id' => 'glpi_problems'],
         'glpi_problemtasks' => [...OptionalReferences::RELATIONS['glpi_problemtasks'], 'problems_id' => 'glpi_problems'],
         'glpi_problemtemplatehiddenfields' => ['problemtemplates_id' => 'glpi_problemtemplates'],
         'glpi_problemtemplatemandatoryfields' => ['problemtemplates_id' => 'glpi_problemtemplates'],
@@ -181,12 +181,12 @@ final class ForeignKeys
         'glpi_softwares' => [...OptionalReferences::RELATIONS['glpi_softwares'], ...EntityOwnership::RELATIONS['glpi_softwares']],
         'glpi_softwareversions' => [...OptionalReferences::RELATIONS['glpi_softwareversions'], ...EntityOwnership::RELATIONS['glpi_softwareversions'], 'softwares_id' => 'glpi_softwares'],
         'glpi_suppliers' => [...OptionalReferences::RELATIONS['glpi_suppliers'], ...EntityOwnership::RELATIONS['glpi_suppliers']],
-        'glpi_suppliers_tickets' => ['tickets_id' => 'glpi_tickets'],
+        'glpi_suppliers_tickets' => [...OptionalReferences::RELATIONS['glpi_suppliers_tickets'], 'tickets_id' => 'glpi_tickets'],
         'glpi_tasktemplates' => [...OptionalReferences::RELATIONS['glpi_tasktemplates'], ...EntityOwnership::RELATIONS['glpi_tasktemplates']],
         'glpi_ticketcosts' => [...OptionalReferences::RELATIONS['glpi_ticketcosts'], ...EntityOwnership::RELATIONS['glpi_ticketcosts'], 'tickets_id' => 'glpi_tickets'],
         'glpi_tickets' => [...OptionalReferences::RELATIONS['glpi_tickets'], ...EntityOwnership::RELATIONS['glpi_tickets']],
         'glpi_tickets_tickets' => ['tickets_id_1' => 'glpi_tickets', 'tickets_id_2' => 'glpi_tickets'],
-        'glpi_tickets_users' => ['tickets_id' => 'glpi_tickets'],
+        'glpi_tickets_users' => [...OptionalReferences::RELATIONS['glpi_tickets_users'], 'tickets_id' => 'glpi_tickets'],
         'glpi_ticketsatisfactions' => ['tickets_id' => 'glpi_tickets'],
         'glpi_tickettasks' => [...OptionalReferences::RELATIONS['glpi_tickettasks'], 'tickets_id' => 'glpi_tickets'],
         'glpi_tickettemplatehiddenfields' => ['tickettemplates_id' => 'glpi_tickettemplates'],

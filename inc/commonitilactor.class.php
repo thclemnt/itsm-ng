@@ -78,14 +78,14 @@ abstract class CommonITILActor extends CommonDBRelation
 
         // Anonymous user is valid if 'alternative_email' field is not empty
         if (
-            isset($input['users_id']) && ($input['users_id'] == 0)
+            array_key_exists('users_id', $input) && !$input['users_id']
             && isset($input['alternative_email']) && !empty($input['alternative_email'])
         ) {
             return true;
         }
         // Anonymous supplier is valid if 'alternative_email' field is not empty
         if (
-            isset($input['suppliers_id']) && ($input['suppliers_id'] == 0)
+            array_key_exists('suppliers_id', $input) && !$input['suppliers_id']
             && isset($input['alternative_email']) && !empty($input['alternative_email'])
         ) {
             return true;
@@ -99,15 +99,9 @@ abstract class CommonITILActor extends CommonDBRelation
     **/
     public function getActors($items_id)
     {
-        global $DB;
-
         $users = [];
-        $iterator = $DB->request([
-           'FROM'   => $this->getTable(),
-           'WHERE'  => [static::getItilObjectForeignKey() => $items_id],
-           'ORDER'  => 'id ASC'
-        ]);
-        while ($data = $iterator->next()) {
+        $rows = $this->find([static::getItilObjectForeignKey() => (int)$items_id], 'id');
+        foreach ($rows as $data) {
             $users[$data['type']][] = $data;
         }
         return $users;
@@ -120,21 +114,7 @@ abstract class CommonITILActor extends CommonDBRelation
     **/
     public function isAlternateEmailForITILObject($items_id, $email)
     {
-        global $DB;
-
-        $iterator = $DB->request([
-           'FROM'   => $this->getTable(),
-           'WHERE'  => [
-              static::getItilObjectForeignKey()   => $items_id,
-              'alternative_email'                 => $email
-           ],
-           'START'  => 0,
-           'LIMIT'  => 1
-        ]);
-        if (count($iterator) > 0) {
-            return true;
-        }
-        return false;
+        return $this->find([static::getItilObjectForeignKey() => (int)$items_id, 'alternative_email' => $email], limit: 1) !== [];
     }
 
 
@@ -171,7 +151,7 @@ abstract class CommonITILActor extends CommonDBRelation
 
         $this->check($ID, UPDATE);
 
-        if (!isset($this->fields['users_id'])) {
+        if (!array_key_exists('users_id', $this->fields)) {
             return false;
         }
         $item = new static::$itemtype_1();
@@ -253,7 +233,7 @@ abstract class CommonITILActor extends CommonDBRelation
 
         $this->check($ID, UPDATE);
 
-        if (!isset($this->fields['suppliers_id'])) {
+        if (!array_key_exists('suppliers_id', $this->fields)) {
             return false;
         }
         $item = new static::$itemtype_1();

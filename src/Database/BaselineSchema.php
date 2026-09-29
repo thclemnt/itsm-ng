@@ -165,6 +165,9 @@ final class BaselineSchema
                 $schema->getTable($tableName)->getColumn($column)->setNotnull(false)->setDefault(null);
             }
         }
+        foreach (array_keys(Migration\ActorUniqueness::TABLES) as $table) {
+            Migration\ActorUniqueness::addToTable($schema->getTable($table), $platform);
+        }
         Migration\InventoryUniqueness::addToTable($schema->getTable('glpi_items_operatingsystems'), Migration\InventoryUniqueness::indexName($platform));
         foreach (array_keys(Migration\TreeUniqueness::TABLES) as $table) {
             Migration\TreeUniqueness::addToTable($schema->getTable($table), $platform);
