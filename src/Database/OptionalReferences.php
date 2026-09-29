@@ -321,7 +321,12 @@ final class OptionalReferences
         'glpi_softwares' => ['users_id' => 'glpi_users', 'users_id_tech' => 'glpi_users'],
     ];
 
+    public const RESERVATION_USERS = [
+        'glpi_reservations' => ['users_id' => 'glpi_users'],
+    ];
+
     public const RELATIONS = [
+        ...self::RESERVATION_USERS,
         ...self::ASSET_USERS,
         ...self::TREE_PARENTS,
         ...self::ITIL_CLASSIFICATION,

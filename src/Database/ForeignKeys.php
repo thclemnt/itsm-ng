@@ -169,7 +169,7 @@ final class ForeignKeys
         'glpi_racks' => [...OptionalReferences::RELATIONS['glpi_racks'], ...EntityOwnership::RELATIONS['glpi_racks']],
         'glpi_reminders_users' => ['reminders_id' => 'glpi_reminders', 'users_id' => 'glpi_users'],
         'glpi_remindertranslations' => ['reminders_id' => 'glpi_reminders'],
-        'glpi_reservations' => ['reservationitems_id' => 'glpi_reservationitems'],
+        'glpi_reservations' => [...OptionalReferences::RELATIONS['glpi_reservations'], 'reservationitems_id' => 'glpi_reservationitems'],
         'glpi_rssfeeds_users' => ['rssfeeds_id' => 'glpi_rssfeeds', 'users_id' => 'glpi_users'],
         'glpi_ruleactions' => ['rules_id' => 'glpi_rules'],
         'glpi_rulecriterias' => ['rules_id' => 'glpi_rules'],

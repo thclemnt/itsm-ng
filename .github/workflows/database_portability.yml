@@ -128,6 +128,8 @@ jobs:
         run: php tests/database-portability/software-installations.php tests/config
       - name: Software associations, merge and license quantities
         run: php tests/database-portability/software.php tests/config
+      - name: Reservation ownership, availability and alert selection
+        run: php tests/database-portability/reservations.php tests/config
       - name: Asset user assignments and scoped inventory
         run: php tests/database-portability/asset-users.php tests/config
       - name: Tree parents, caches and root uniqueness

@@ -1134,3 +1134,43 @@ tests pass across eight affected classes (62 methods); the computer suite alone
 passes 349 assertions after replacing arbitrary user IDs with real fixtures.
 All 30 changed PHP files pass syntax checks and formatting checks pass. Rendering
 tests execute PHP; browser interaction and notification delivery were not tested.
+
+### Reservations and booking availability
+
+Reservation ownership is now a nullable `User` association with a RESTRICT FK.
+User replacement reassigns bookings; user purge preserves them with no owner.
+Existing installations should inspect `db:reservation_users`, apply it during
+maintenance, then apply `db:foreign_keys`. Nonzero orphans stop the migration
+before DDL; zero owners normalize to NULL. Fresh schemas include this mapping.
+
+`ReservationRepository` now handles conflict checks, recurrence-group lookup,
+calendar item selection, current/past lists and expiry-alert candidates with
+Doctrine queries. Group deletion snapshots IDs and retains model hooks. Calendar
+and item lists fetch user names in the booking query, including missing owners.
+Daily selection includes bookings starting in the final second of the day.
+Schedule validation only runs for date or reserved-item changes, so legacy
+bookings with missing dates do not block owner cleanup. Rejected edits restore
+the model fields; moving a booking also checks conflicts on its destination item.
+
+`ReservationItemRepository` resolves core asset types through the entity registry
+for availability, location labels and peripheral categories. Availability uses
+an anti-existence query and the same half-open overlap rule as booking validation:
+an item booked until 11:00 can be booked again starting at 11:00. Active/deleted
+flags, entity recursion and type selection remain query filters. Unmapped plugin
+asset listings retain their existing legacy query path until plugin mappings are
+available. Expiry selection binds timestamps instead of using MySQL epoch
+arithmetic; notification delivery remains in existing hooks and cron code.
+
+Coverage is 608 enforced relationships, 154 pending candidates, 62 polymorphic
+references, one ambiguous reference and 1,375 legacy SQL call sites. Complete
+relationship and query conversion remains outstanding.
+
+Validation: both engines pass the 1,083/685-assertion database contract, complete
+mapping and parent-purge checks, CRUD across all 355 mapped tables, and reservation,
+reporting, placement, application and search suites. Fresh PostgreSQL and MariaDB
+installs pass the reservation contract; the MariaDB fresh-install contract also
+passes on PHP 8.3. Tests cover adjacent intervals, occupied destination moves,
+rejected-edit state restoration, user replacement/purge (including legacy NULL
+dates), group isolation, entity/type filters, daily boundaries, alert suppression,
+and migration orphan refusal/idempotence. Alert selection and PHP rendering were
+tested; notification delivery and browser interactions were not exercised.
