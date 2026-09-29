@@ -15,8 +15,9 @@ class KnowbaseItem
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
 
-    #[ORM\Column(name: '`knowbaseitemcategories_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $knowbaseitemcategories_id = 0;
+    #[ORM\ManyToOne(targetEntity: KnowbaseItemCategory::class)]
+    #[ORM\JoinColumn(name: 'knowbaseitemcategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?KnowbaseItemCategory $knowbaseitemcategories = null;
 
     #[ORM\Column(name: '`name`', type: 'text', nullable: true)]
     public ?string $name = null;

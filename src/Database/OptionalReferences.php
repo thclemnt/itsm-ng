@@ -335,8 +335,13 @@ final class OptionalReferences
         'glpi_notepads' => ['users_id' => 'glpi_users', 'users_id_lastupdater' => 'glpi_users'],
     ];
 
+    public const ARTICLE_CATEGORIES = [
+        'glpi_knowbaseitems' => ['knowbaseitemcategories_id' => 'glpi_knowbaseitemcategories'],
+    ];
+
     public const RELATIONS = [
         ...self::CONTENT_METADATA,
+        'glpi_knowbaseitems' => [...self::CONTENT_METADATA['glpi_knowbaseitems'], ...self::ARTICLE_CATEGORIES['glpi_knowbaseitems']],
         ...self::RESERVATION_USERS,
         ...self::ASSET_USERS,
         ...self::TREE_PARENTS,

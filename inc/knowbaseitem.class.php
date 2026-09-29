@@ -129,7 +129,7 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
 
     public function canViewItem()
     {
-        if ($this->fields['users_id'] == Session::getLoginUserID()) {
+        if (Session::getLoginUserID() && $this->fields['users_id'] == Session::getLoginUserID()) {
             return true;
         }
         if (Session::haveRight(self::$rightname, self::KNOWBASEADMIN)) {
@@ -149,7 +149,8 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
     {
         // Personal knowbase or visibility and write access
         return (Session::haveRight(self::$rightname, self::KNOWBASEADMIN)
-                || (Session::getCurrentInterface() == "central"
+                || (Session::getLoginUserID()
+                    && Session::getCurrentInterface() == "central"
                     && $this->fields['users_id'] == Session::getLoginUserID())
                 || ((($this->fields["is_faq"] && Session::haveRight(self::$rightname, self::PUBLISHFAQ))
                      || (!$this->fields["is_faq"]
@@ -609,9 +610,7 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
                 ];
             }
         } else {
-            $where = [
-               0
-            ];
+            $where = [new QueryExpression('1 = 0')];
         }
         // Groups
         if ($forceall || $has_session_groups) {
@@ -2222,16 +2221,8 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
             $kbi = new self();
         }
 
-        $ids = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['knowbaseitemcategories_id' => $category_id],
-        ]);
-
-        // Get array of ids
-        $ids = array_map(function ($row) {
-            return $row['id'];
-        }, iterator_to_array($ids, false));
+        $ids = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+            ->identifiers(self::getTable(), 'id', ['knowbaseitemcategories_id' => $category_id], 'id');
 
         // Filter on canViewItem
         $ids = array_filter($ids, function ($id) use ($kbi) {

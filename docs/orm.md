@@ -1212,3 +1212,42 @@ category replacement/purge, revision preservation, missing authors, both documen
 link directions, entity filtering, timeline duplicates, explicit NULL ordering,
 and orphan preflight/idempotence. Rendering checks execute PHP; browser
 interactions and notification delivery were not exercised.
+
+### Article categories and knowledge-base visibility
+
+An article's category is now a nullable `KnowbaseItemCategory` association with
+a RESTRICT FK. Category replacement reassigns articles; category purge preserves
+them as uncategorized. Existing installations should inspect
+`db:article_categories`, apply it during maintenance, then apply
+`db:foreign_keys`. Empty category IDs become NULL; nonzero orphans stop the
+migration before DDL. Fresh schemas include this relationship.
+
+The category tree obtains its counts through `KnowledgeBaseRepository`, using
+mapped associations and bound Boolean values. `KnowledgeBaseAccess` captures the
+user, groups, profile and entity scope separately from query generation. Grant
+checks use `EXISTS`, so overlapping grants cannot multiply article counts.
+Public FAQ, recursive entity grants, global group/profile grants and administrator
+visibility are covered. One grouped count includes uncategorized articles; a
+second query loads category metadata. Empty branches are pruned in one pass from
+children to parents, retaining ancestors of visible articles.
+
+Category article IDs also use the mapped repository, retaining the model's
+per-article access checks. Ownership now requires a logged-in user: a NULL author
+cannot compare equal to an anonymous session and grant access. The remaining
+legacy denied-access predicate uses a Boolean comparison accepted by both engines.
+Full-text article search and other legacy visibility consumers still require
+conversion.
+
+Coverage is 618 enforced relationships, 144 pending candidates, 62 polymorphic
+references, one ambiguous reference and 1,365 legacy SQL call sites. The complete
+relationship and query migration remains unfinished.
+
+Validation: both engines pass the 1,093/695-assertion database contract, mapping
+and parent-purge checks, CRUD across all 355 tables, and knowledge-base, content,
+reporting, application and search suites. Fresh PostgreSQL and MariaDB installs
+pass the category contract, including PHP 8.3 on MariaDB. Six affected PHP 8.3
+functional classes pass 46 methods and 6,454 assertions. The new contract covers
+all grant types, overlapping grants, public FAQ scope, anonymous ownership,
+ancestor retention, category replacement/purge, NULL lookup and migration
+orphan refusal/idempotence. PHP syntax, formatting and diff checks pass. Browser
+interaction and notification delivery were not exercised.
