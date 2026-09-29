@@ -128,6 +128,8 @@ jobs:
         run: php tests/database-portability/software-installations.php tests/config
       - name: Software associations, merge and license quantities
         run: php tests/database-portability/software.php tests/config
+      - name: User metadata, profile preferences and identity queries
+        run: php tests/database-portability/user-metadata.php tests/config
       - name: ORM scheduler windows, plugins, locks and alert decisions
         run: php tests/database-portability/cron-scheduler.php tests/config
       - name: Cron log graph, concurrent claims and retention

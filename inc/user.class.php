@@ -973,7 +973,7 @@ class User extends CommonDBTM
         }
 
         // Security on default profile update
-        if (isset($input['profiles_id'])) {
+        if (isset($input['profiles_id']) && !\itsmng\Database\OptionalReferences::isEmptySelection($input['profiles_id'])) {
             if (!in_array($input['profiles_id'], Profile_User::getUserProfiles($input['id']))) {
                 unset($input['profiles_id']);
             }
@@ -2352,15 +2352,8 @@ class User extends CommonDBTM
             $timezones = $DB->getTimezones();
         }
 
-        $emails = iterator_to_array($DB->request([
-           'SELECT' => [
-              'id',
-              'is_default',
-              'email',
-           ],
-           'FROM'   => 'glpi_useremails',
-           'WHERE'  => ['users_id' => $ID]
-        ]));
+        $emails = (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+            ->emails((int)$ID);
         $emailsValues = [];
         $defaultEmailTitle = __('Default email');
         foreach ($emails as $email) {
@@ -2762,8 +2755,6 @@ class User extends CommonDBTM
     {
         global $CFG_GLPI, $DB;
 
-        $user_id = Session::getLoginUserID();
-
         // Affiche un formulaire User
         if (
             ($ID != Session::getLoginUserID())
@@ -2776,32 +2767,9 @@ class User extends CommonDBTM
                           || (($this->fields["authtype"] == Auth::NOT_YET_AUTHENTIFIED)
                               && !empty($this->fields["password"])));
 
-            // Get all available profile of user
-            $query = "SELECT DISTINCT `glpi_profiles`.`id`, `glpi_profiles`.`name`
-                   FROM `glpi_profiles`
-                   JOIN `glpi_profiles_users`
-                     ON (`glpi_profiles_users`.`profiles_id` = `glpi_profiles`.`id`)
-                   WHERE `glpi_profiles_users`.`users_id` = '$user_id'
-                   ORDER BY `glpi_profiles`.`id`";
-            $result = $DB->query($query);
-            // Initialize an empty array to store the results
-            $User_profile = array();
-
-            // Fetch all rows
-            while ($row = $DB->fetchRow($result)) {
-                // Use the 'id' column as the key and 'name' column as the value
-                $User_profile[$row[0]] = $row[1];
-            }
-
-            $emails = iterator_to_array($DB->request([
-               'SELECT' => [
-                  'id',
-                  'is_default',
-                  'email',
-               ],
-               'FROM'   => 'glpi_useremails',
-               'WHERE'  => ['users_id' => $ID]
-            ]));
+            $repository = new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB));
+            $User_profile = $repository->profiles((int)$ID);
+            $emails = $repository->emails((int)$ID);
             $emailsValues = [];
             $defaultEmailTitle = __('Default email');
             foreach ($emails as $email) {
@@ -4732,27 +4700,10 @@ class User extends CommonDBTM
     {
         global $DB, $CFG_GLPI;
 
-        $iterator = $DB->request([
-           'SELECT'    => 'users_id AS id',
-           'FROM'      => 'glpi_useremails',
-           'LEFT JOIN' => [
-              'glpi_users' => [
-                 'FKEY' => [
-                    'glpi_useremails' => 'users_id',
-                    'glpi_users'      => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_useremails.email' => $DB->escape(stripslashes($email))
-           ],
-           'ORDER'     => ['glpi_users.is_active DESC', 'is_deleted ASC']
-        ]);
-
-        //User still exists in DB
-        if (count($iterator)) {
-            $result = $iterator->next();
-            return $result['id'];
+        $id = (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+            ->preferredByEmail(stripslashes($email));
+        if ($id !== null) {
+            return $id;
         } else {
             if ($CFG_GLPI["is_users_auto_add"]) {
                 //Get all ldap servers with email field configured
@@ -4878,21 +4829,8 @@ class User extends CommonDBTM
     {
         global $DB;
 
-        if ($escape) {
-            $value = addslashes($value);
-        }
-
-        $iterator = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => self::getTable(),
-           'WHERE'  => [$field => $value]
-        ]);
-
-        if (count($iterator) == 1) {
-            $row = $iterator->next();
-            return (int)$row['id'];
-        }
-        return false;
+        return (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+            ->uniqueId((string)$field, $escape ? addslashes($value) : $value, true) ?? false;
     }
 
 

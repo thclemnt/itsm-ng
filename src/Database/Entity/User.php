@@ -77,18 +77,21 @@ class User
     #[ORM\Column(name: '`is_deleted`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_deleted = false;
 
-    #[ORM\Column(name: '`profiles_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $profiles_id = 0;
+    #[ORM\ManyToOne(targetEntity: Profile::class)]
+    #[ORM\JoinColumn(name: 'profiles_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Profile $profiles = null;
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
     #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
     public ?Entity $entities = null;
 
-    #[ORM\Column(name: '`usertitles_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $usertitles_id = 0;
+    #[ORM\ManyToOne(targetEntity: UserTitle::class)]
+    #[ORM\JoinColumn(name: 'usertitles_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?UserTitle $usertitles = null;
 
-    #[ORM\Column(name: '`usercategories_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $usercategories_id = 0;
+    #[ORM\ManyToOne(targetEntity: UserCategory::class)]
+    #[ORM\JoinColumn(name: 'usercategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?UserCategory $usercategories = null;
 
     #[ORM\Column(name: '`date_format`', type: 'integer', nullable: true)]
     public ?int $date_format = null;
@@ -266,8 +269,9 @@ class User
     #[ORM\JoinColumn(name: 'groups_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     public ?Group $groups = null;
 
-    #[ORM\Column(name: '`users_id_supervisor`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $users_id_supervisor = 0;
+    #[ORM\ManyToOne(targetEntity: User::class)]
+    #[ORM\JoinColumn(name: 'users_id_supervisor', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?User $supervisor = null;
 
     #[ORM\Column(name: '`timezone`', type: 'string', length: 50, nullable: true)]
     public ?string $timezone = null;

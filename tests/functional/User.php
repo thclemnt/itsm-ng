@@ -424,8 +424,8 @@ class User extends \DbTestCase
 
         $this->boolean($user->getFromDB($uid))->isTrue();
         $this->array($user->fields)
-           ->string['name']->isIdenticalTo('create_user')
-           ->integer['profiles_id']->isEqualTo(0);
+           ->string['name']->isIdenticalTo('create_user');
+        $this->variable($user->fields['profiles_id'])->isNull();
 
         $puser = new \Profile_User();
         $this->boolean($puser->getFromDBByCrit(['users_id' => $uid]))->isTrue();
@@ -446,8 +446,8 @@ class User extends \DbTestCase
 
         $this->boolean($user->getFromDB($uid2))->isTrue();
         $this->array($user->fields)
-           ->string['name']->isIdenticalTo('create_user2')
-           ->integer['profiles_id']->isEqualTo(0);
+           ->string['name']->isIdenticalTo('create_user2');
+        $this->variable($user->fields['profiles_id'])->isNull();
 
         $puser = new \Profile_User();
         $this->boolean($puser->getFromDBByCrit(['users_id' => $uid2]))->isTrue();
@@ -592,7 +592,7 @@ class User extends \DbTestCase
             }
             usort(
                 $relations,
-                static fn($left, $right) => strcmp(json_encode($left), json_encode($right))
+                static fn ($left, $right) => strcmp(json_encode($left), json_encode($right))
             );
             return $relations;
         };

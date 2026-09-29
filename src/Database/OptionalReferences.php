@@ -350,6 +350,8 @@ final class OptionalReferences
         'glpi_items_devicesimcards' => ['lines_id' => 'glpi_lines'],
     ];
 
+    public const USER_METADATA = ['glpi_users' => ['profiles_id' => 'glpi_profiles', 'usertitles_id' => 'glpi_usertitles', 'usercategories_id' => 'glpi_usercategories', 'users_id_supervisor' => 'glpi_users']];
+
     public const CRON_LOG_PARENTS = ['glpi_crontasklogs' => ['crontasklogs_id' => 'glpi_crontasklogs']];
 
     public const RELATIONS = [
@@ -435,7 +437,7 @@ final class OptionalReferences
         'glpi_softwarelicenses' => [...self::FINANCIAL['glpi_softwarelicenses'], ...self::MANUFACTURERS['glpi_softwarelicenses'], ...self::STATES['glpi_softwarelicenses'], ...self::LOCATIONS['glpi_softwarelicenses'], ...self::GROUPS['glpi_softwarelicenses'], ...self::ASSET_USERS['glpi_softwarelicenses'], ...self::SOFTWARE_METADATA['glpi_softwarelicenses']],
         'glpi_softwares' => [...self::MANUFACTURERS['glpi_softwares'], ...self::LOCATIONS['glpi_softwares'], ...self::GROUPS['glpi_softwares'], ...self::ASSET_USERS['glpi_softwares'], ...self::SOFTWARE_METADATA['glpi_softwares']],
         'glpi_softwareversions' => [...self::STATES['glpi_softwareversions'], ...self::INVENTORY_METADATA['glpi_softwareversions']],
-        'glpi_users' => [...self::LOCATIONS['glpi_users'], ...self::GROUPS['glpi_users'], ...self::ITIL_CLASSIFICATION['glpi_users']],
+        'glpi_users' => [...self::USER_METADATA['glpi_users'], ...self::LOCATIONS['glpi_users'], ...self::GROUPS['glpi_users'], ...self::ITIL_CLASSIFICATION['glpi_users']],
         'glpi_projecttasks' => [...self::PROJECT_HIERARCHY['glpi_projecttasks'], ...self::PLANNING_METADATA['glpi_projecttasks']],
         'glpi_planningexternalevents' => [...self::GROUPS['glpi_planningexternalevents'], ...self::PLANNING_METADATA['glpi_planningexternalevents']],
         'glpi_tickets' => [...self::LOCATIONS['glpi_tickets'], ...self::ITIL_CLASSIFICATION['glpi_tickets']],

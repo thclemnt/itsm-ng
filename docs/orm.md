@@ -1411,3 +1411,47 @@ assertions. Both engines also pass cron-log lifecycle/concurrency, shared ORM
 criteria, reporting, application and search regression suites. Five changed PHP
 files pass syntax checks; formatting and diff checks pass. No real task body or
 notification delivery was executed, and remote CI has not run.
+
+### User metadata and profile preferences
+
+Users now have nullable mapped associations for default profile, title, category
+and supervisor, enforced by four RESTRICT foreign keys. Existing installations
+should inspect `db:user_metadata`, apply it during maintenance, then run
+`db:foreign_keys --apply`. Preflight rejects nonzero orphans before DDL; legacy
+zero selections become NULL. Fresh installations include the mappings.
+
+Supervisor replacement and purge now update dependent users through model hooks.
+Profile deletion clears each affected default preference, or replaces it only
+when the user already has the replacement profile assigned. This does not grant
+new permissions. Clearing a default profile is valid user input; selecting an
+unassigned profile remains rejected.
+
+`UserRepository` supplies profile labels, scoped email lists, preferred account
+selection by email and unique identity lookup. Profile labels deduplicate grants
+across entities. Email lookup preserves active/nondeleted priority, then uses ID
+to break ties. Identity lookup fetches at most two IDs and rejects ambiguity;
+quoted and preescaped caller values retain their existing boundary contracts.
+The preference form now lists profiles belonging to the account being edited.
+
+The form's profile-permission check also uses ORM through `ProfileRepository`.
+It preserves the registered-rights comparison and central/helpdesk rules, denies
+unknown profiles and requires an active session profile outside cron. The legacy
+SQL criteria generator remains for other callers awaiting migration.
+
+Coverage is 634 enforced relationships, 128 pending candidates, 62 polymorphic
+references, one ambiguous reference and 1,341 legacy SQL call sites. Complete
+relationship and query conversion remains outstanding.
+
+Validation: PostgreSQL/MariaDB pass 1,109/711 database-contract assertions,
+complete mapping and parent-purge checks, CRUD across all 355 tables, shared ORM
+criteria, reporting, application and search suites. Fresh installations pass the
+user-metadata contract on both engines, including PHP 8.3/MariaDB. The affected
+PHP 8.3 user/profile functional cases pass 13 methods and 449 assertions. Tests
+cover all four relationship lifecycles, self-supervisor purge, authorized and
+unassigned profile replacement, nullable preference clearing, email priorities,
+ambiguous identities, scoped profile labels, rendered preferences, permission
+bitmasks/interface restrictions and migration orphan refusal/idempotence. Final
+input-guard checks reject negative/unassigned profile IDs on both engines. All
+12 changed PHP files pass syntax checks; formatting and diff checks pass.
+Rendering tests use PHP output; LDAP import, browser interaction and notification
+delivery were not exercised.

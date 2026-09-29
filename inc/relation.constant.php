@@ -1288,6 +1288,7 @@ $RELATION = [
    ],
 
    'glpi_users' => [
+      'glpi_users' => 'users_id_supervisor',
       'glpi_appliances' => ['users_id', 'users_id_tech'],
       'glpi_items_devicesimcards' => 'users_id',
       'glpi_cartridgeitems'           => 'users_id_tech',

@@ -282,6 +282,13 @@ class Profile extends CommonDBTM
 
     public function cleanDBonPurge()
     {
+        global $DB;
+
+        $repository = new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB));
+        foreach ($repository->defaultProfileReplacements((int)$this->getID(), (int)($this->input['_replace_by'] ?? 0)) as $row) {
+            $user = new User();
+            $user->update(['id' => $row['id'], 'profiles_id' => $row['profiles_id'] ?? 0, '_disablenotif' => true]);
+        }
 
         $this->deleteChildrenAndRelationsFromDb(
             [
@@ -644,31 +651,19 @@ class Profile extends CommonDBTM
         if (Session::isCron()) {
             return true;
         }
-        if (count($IDs) == 0) {
-            // Check all profiles (means more right than all possible profiles)
-            return (countElementsInTable('glpi_profiles')
-               == countElementsInTable(
-                   'glpi_profiles',
-                   self::getUnderActiveProfileRestrictCriteria()
-               ));
+        if (!isset($_SESSION['glpiactiveprofile'])) {
+            return false;
         }
-        $under_profiles = [];
-
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => self::getUnderActiveProfileRestrictCriteria()
-        ]);
-
-        while ($data = $iterator->next()) {
-            $under_profiles[$data['id']] = $data['id'];
-        }
-
-        foreach ($IDs as $ID) {
-            if (!isset($under_profiles[$ID])) {
-                return false;
+        $rights = [];
+        $interface = Session::getCurrentInterface();
+        foreach (ProfileRight::getAllPossibleRights() as $key => $default) {
+            $value = $_SESSION['glpiactiveprofile'][$key] ?? 0;
+            if (!is_array($value) && ($interface === 'central' || in_array($key, self::$helpdesk_rights))) {
+                $rights[$key] = (int)$value;
             }
         }
-        return true;
+        return (new \itsmng\Database\Repository\ProfileRepository(\itsmng\Database\Orm::create($DB)))
+            ->canManage($IDs, $rights, $interface, Profile::canCreate());
     }
 
 
