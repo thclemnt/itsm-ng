@@ -15,6 +15,9 @@ final class FixtureRecords
             throw new LogicException('Required fixture cycle needs explicit values: ' . $table);
         }
         $ancestors[$table] = true;
+        if ($table === 'glpi_crontasks' && !array_key_exists('name', $values)) {
+            $values['name'] = 'Fixture cron ' . bin2hex(random_bytes(8));
+        }
         $em = \itsmng\Database\Orm::create($this->database);
         $metadata = $em->getClassMetadata(\itsmng\Database\EntityRegistry::TABLES[$table]);
         foreach ($metadata->associationMappings as $mapping) {

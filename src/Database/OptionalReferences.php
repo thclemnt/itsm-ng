@@ -350,7 +350,10 @@ final class OptionalReferences
         'glpi_items_devicesimcards' => ['lines_id' => 'glpi_lines'],
     ];
 
+    public const CRON_LOG_PARENTS = ['glpi_crontasklogs' => ['crontasklogs_id' => 'glpi_crontasklogs']];
+
     public const RELATIONS = [
+        ...self::CRON_LOG_PARENTS,
         ...self::CONTACT_LINE_METADATA,
         ...self::CONTENT_METADATA,
         'glpi_knowbaseitems' => [...self::CONTENT_METADATA['glpi_knowbaseitems'], ...self::ARTICLE_CATEGORIES['glpi_knowbaseitems']],

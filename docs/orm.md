@@ -1336,3 +1336,41 @@ search, grouped option exclusions, NULL matching and orphan refusal/idempotence.
 Fourteen changed PHP files pass syntax checks; formatting and diff checks pass.
 Rendering tests exercise PHP output; browser interaction and notification
 delivery were not tested.
+
+### Scheduled-task logs and statistics
+
+Cron logs now have a required task association and a nullable parent-log
+association, both enforced by RESTRICT foreign keys. Existing installations
+should inspect `db:cron_logs`, apply it during maintenance, then run
+`db:foreign_keys --apply`. Preflight refuses missing tasks, nonzero missing
+parents and cyclic log hierarchies before changing the schema. Legacy root
+parent values of zero become NULL; fresh installs include these mappings.
+
+`CronLogRepository` handles task claims/completion, aggregate statistics,
+paginated history, scoped run details and retention. A claim and its start log
+commit together; completion and its final log also share a transaction. Two
+concurrent claims produce only one successful transition and one start log.
+Failed logging rolls back the state transition. Details require the owning task,
+so another task's log ID cannot retrieve its history.
+
+Retention deletes expired leaves in batches and keeps parents needed by newer
+children. It locks the task while cleaning and preserves the active run's start
+record. Removing an individual message reparents descendants; removing a task
+cleans its entire log graph through model hooks. Completion records whose root
+was manually removed still link to their own details. Scheduler selection,
+plugin unregistration and watcher queries remain pending ORM migration.
+
+Coverage is 630 enforced relationships, 132 pending candidates, 62 polymorphic
+references, one ambiguous reference and 1,353 legacy SQL call sites. Complete
+relationship and query conversion remains outstanding.
+
+Validation: PostgreSQL/MariaDB pass 1,105/707 database-contract assertions,
+complete mapping and parent-purge checks, CRUD across all 355 tables, and
+reporting, application and search contracts. Fresh installations pass the cron
+contract on both engines; PHP 8.3/MariaDB also passes it, and the existing CronTask
+functional class passes three methods and 57 assertions. Regression checks cover
+concurrent claims, failed-log rollback, scoped details, statistics, pagination,
+rootless history links, multi-batch retention, active-run preservation, task/log
+purges and migration orphan/cycle refusal and idempotence. All 12 changed PHP
+files pass syntax checks; formatting and diff checks pass. Rendering checks use
+PHP output. No real scheduled task bodies or notification deliveries ran.

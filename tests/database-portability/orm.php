@@ -78,7 +78,7 @@ try {
     $parents = [];
     $parent = static function (string $table) use (&$parents, $DB): int {
         if (!isset($parents[$table])) {
-            $values = $DB->fieldExists($table, 'name') ? ['name' => 'ORM fixture'] : ['comment' => 'Foreign key fixture'];
+            $values = $DB->fieldExists($table, 'name') ? ['name' => 'ORM fixture'] : [];
             if ($table === 'glpi_rules') {
                 $values['sub_type'] = 'RuleTicket';
             }
@@ -146,7 +146,7 @@ try {
     verify($email->delete(['id' => $id], true), 'CommonDBTM purge');
 
     // Every parent purge must clean every new required association, with real FKs enabled.
-    foreach (['glpi_contracts', 'glpi_suppliers', 'glpi_contacts', 'glpi_reservationitems', 'glpi_changes', 'glpi_problems', 'glpi_tickets', 'glpi_groups', 'glpi_calendars', 'glpi_holidays', 'glpi_rules', 'glpi_networkports', 'glpi_vlans', 'glpi_ipnetworks', 'glpi_ipaddresses', 'glpi_cartridgeitems', 'glpi_printermodels', 'glpi_consumableitems', 'glpi_projecttasks', 'glpi_notifications', 'glpi_notificationtemplates', 'glpi_knowbaseitems', 'glpi_reminders', 'glpi_rssfeeds', 'glpi_savedsearches', 'glpi_users', 'glpi_profiles', 'glpi_entities', 'glpi_tickettemplates', 'glpi_changetemplates', 'glpi_problemtemplates'] as $target) {
+    foreach (['glpi_contracts', 'glpi_suppliers', 'glpi_contacts', 'glpi_reservationitems', 'glpi_changes', 'glpi_problems', 'glpi_tickets', 'glpi_groups', 'glpi_calendars', 'glpi_holidays', 'glpi_rules', 'glpi_networkports', 'glpi_vlans', 'glpi_ipnetworks', 'glpi_ipaddresses', 'glpi_cartridgeitems', 'glpi_printermodels', 'glpi_consumableitems', 'glpi_projecttasks', 'glpi_notifications', 'glpi_notificationtemplates', 'glpi_knowbaseitems', 'glpi_reminders', 'glpi_rssfeeds', 'glpi_savedsearches', 'glpi_users', 'glpi_profiles', 'glpi_entities', 'glpi_tickettemplates', 'glpi_changetemplates', 'glpi_problemtemplates', 'glpi_crontasklogs', 'glpi_crontasks'] as $target) {
         $parentId = $parent($target);
         foreach (\itsmng\Database\ForeignKeys::RELATIONS as $table => $relations) {
             if (!in_array($target, $relations, true)) {

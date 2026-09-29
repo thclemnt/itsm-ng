@@ -15,11 +15,13 @@ class CronTaskLog
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
 
-    #[ORM\Column(name: '`crontasks_id`', type: 'integer', nullable: false)]
-    public int $crontasks_id = 0;
+    #[ORM\ManyToOne(targetEntity: CronTask::class)]
+    #[ORM\JoinColumn(name: 'crontasks_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?CronTask $task = null;
 
-    #[ORM\Column(name: '`crontasklogs_id`', type: 'integer', nullable: false)]
-    public int $crontasklogs_id = 0;
+    #[ORM\ManyToOne(targetEntity: CronTaskLog::class)]
+    #[ORM\JoinColumn(name: 'crontasklogs_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?CronTaskLog $parent = null;
 
     #[ORM\Column(name: '`date`', type: 'datetimetz', nullable: false, options: ['default' => 'CURRENT_TIMESTAMP'])]
     public ?\DateTimeInterface $date = null;
