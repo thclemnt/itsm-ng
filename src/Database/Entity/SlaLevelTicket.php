@@ -16,11 +16,13 @@ class SlaLevelTicket
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
 
-    #[ORM\Column(name: '`tickets_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $tickets_id = 0;
+    #[ORM\ManyToOne(targetEntity: Ticket::class)]
+    #[ORM\JoinColumn(name: 'tickets_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?Ticket $tickets = null;
 
-    #[ORM\Column(name: '`slalevels_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $slalevels_id = 0;
+    #[ORM\ManyToOne(targetEntity: SlaLevel::class)]
+    #[ORM\JoinColumn(name: 'slalevels_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?SlaLevel $slalevels = null;
 
     #[ORM\Column(name: '`date`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date = null;

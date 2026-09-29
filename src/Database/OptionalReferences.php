@@ -350,6 +350,11 @@ final class OptionalReferences
         'glpi_items_devicesimcards' => ['lines_id' => 'glpi_lines'],
     ];
 
+    public const SERVICE_LEVELS = ['glpi_tickets' => [
+        'slas_id_tto' => 'glpi_slas', 'slas_id_ttr' => 'glpi_slas', 'slalevels_id_ttr' => 'glpi_slalevels',
+        'olas_id_tto' => 'glpi_olas', 'olas_id_ttr' => 'glpi_olas', 'olalevels_id_ttr' => 'glpi_olalevels',
+    ]];
+
     public const SAVED_SEARCHES = ['glpi_savedsearches' => ['users_id' => 'glpi_users']];
 
     public const ITIL_DEFAULTS = [
@@ -489,7 +494,7 @@ final class OptionalReferences
         'glpi_users' => [...self::USER_METADATA['glpi_users'], ...self::LOCATIONS['glpi_users'], ...self::GROUPS['glpi_users'], ...self::ITIL_CLASSIFICATION['glpi_users']],
         'glpi_projecttasks' => [...self::PROJECT_HIERARCHY['glpi_projecttasks'], ...self::PLANNING_METADATA['glpi_projecttasks']],
         'glpi_planningexternalevents' => [...self::GROUPS['glpi_planningexternalevents'], ...self::PLANNING_METADATA['glpi_planningexternalevents']],
-        'glpi_tickets' => [...self::LOCATIONS['glpi_tickets'], ...self::ITIL_CLASSIFICATION['glpi_tickets'], ...self::ITIL_USERS['glpi_tickets']],
+        'glpi_tickets' => [...self::SERVICE_LEVELS['glpi_tickets'], ...self::LOCATIONS['glpi_tickets'], ...self::ITIL_CLASSIFICATION['glpi_tickets'], ...self::ITIL_USERS['glpi_tickets']],
         'glpi_changetasks' => [...self::GROUPS['glpi_changetasks'], ...self::ITIL_CLASSIFICATION['glpi_changetasks'], ...self::ITIL_USERS['glpi_changetasks']],
         'glpi_problemtasks' => [...self::GROUPS['glpi_problemtasks'], ...self::ITIL_CLASSIFICATION['glpi_problemtasks'], ...self::ITIL_USERS['glpi_problemtasks']],
         'glpi_tickettasks' => [...self::GROUPS['glpi_tickettasks'], ...self::ITIL_CLASSIFICATION['glpi_tickettasks'], ...self::ITIL_USERS['glpi_tickettasks']],

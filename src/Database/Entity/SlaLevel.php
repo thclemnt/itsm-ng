@@ -18,8 +18,9 @@ class SlaLevel
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
     public ?string $name = null;
 
-    #[ORM\Column(name: '`slas_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $slas_id = 0;
+    #[ORM\ManyToOne(targetEntity: SLA::class)]
+    #[ORM\JoinColumn(name: 'slas_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?SLA $slas = null;
 
     #[ORM\Column(name: '`execution_time`', type: 'integer', nullable: false)]
     public int $execution_time = 0;

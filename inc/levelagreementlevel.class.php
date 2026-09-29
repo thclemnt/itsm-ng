@@ -342,6 +342,12 @@ abstract class LevelAgreementLevel extends RuleTicket
         return Dropdown::showFromArray($name, $possible_values, $p);
     }
 
+    protected static function serviceRepository(): \itsmng\Database\Repository\ServiceLevelRepository
+    {
+        global $DB;
+        return new \itsmng\Database\Repository\ServiceLevelRepository(\itsmng\Database\Orm::create($DB), strtolower(static::$parentclass));
+    }
+
     /**
      * Get already used execution time for a OLA
      *
@@ -351,23 +357,7 @@ abstract class LevelAgreementLevel extends RuleTicket
     **/
     public static function getAlreadyUsedExecutionTime($las_id)
     {
-        global $DB;
-
-        $result = [];
-
-        $iterator = $DB->request([
-           'SELECT'          => 'execution_time',
-           'DISTINCT'        => true,
-           'FROM'            => static::getTable(),
-           'WHERE'           => [
-              static::$fkparent => $las_id
-           ]
-        ]);
-
-        while ($data = $iterator->next()) {
-            $result[$data['execution_time']] = $data['execution_time'];
-        }
-        return $result;
+        return static::serviceRepository()->executionTimes((int)$las_id);
     }
 
 

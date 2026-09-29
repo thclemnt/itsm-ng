@@ -15,8 +15,9 @@ class OlaLevelAction
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
 
-    #[ORM\Column(name: '`olalevels_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $olalevels_id = 0;
+    #[ORM\ManyToOne(targetEntity: OlaLevel::class)]
+    #[ORM\JoinColumn(name: 'olalevels_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?OlaLevel $olalevels = null;
 
     #[ORM\Column(name: '`action_type`', type: 'string', length: 255, nullable: true)]
     public ?string $action_type = null;

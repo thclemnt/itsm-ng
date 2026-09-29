@@ -49,6 +49,7 @@ class SLA
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_creation = null;
 
-    #[ORM\Column(name: '`slms_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $slms_id = 0;
+    #[ORM\ManyToOne(targetEntity: SLM::class)]
+    #[ORM\JoinColumn(name: 'slms_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?SLM $slms = null;
 }

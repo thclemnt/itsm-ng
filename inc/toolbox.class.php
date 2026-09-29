@@ -2769,6 +2769,7 @@ class Toolbox
             (new \itsmng\Database\Migration\ArticleCategoryReferences())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\Migration\SoftwareMetadataReferences())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\Migration\ContactLineReferences())->apply($DB->getDoctrineConnection());
+            (new \itsmng\Database\Migration\ServiceLevelReferences())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\Migration\SavedSearchReferences())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\Migration\ITILDefaultReferences())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\Migration\NetworkNameReferences())->apply($DB->getDoctrineConnection());

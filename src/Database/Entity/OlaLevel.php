@@ -18,8 +18,9 @@ class OlaLevel
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
     public ?string $name = null;
 
-    #[ORM\Column(name: '`olas_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $olas_id = 0;
+    #[ORM\ManyToOne(targetEntity: OLA::class)]
+    #[ORM\JoinColumn(name: 'olas_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?OLA $olas = null;
 
     #[ORM\Column(name: '`execution_time`', type: 'integer', nullable: false)]
     public int $execution_time = 0;

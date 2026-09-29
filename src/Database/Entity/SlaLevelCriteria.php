@@ -15,8 +15,9 @@ class SlaLevelCriteria
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
 
-    #[ORM\Column(name: '`slalevels_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $slalevels_id = 0;
+    #[ORM\ManyToOne(targetEntity: SlaLevel::class)]
+    #[ORM\JoinColumn(name: 'slalevels_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?SlaLevel $slalevels = null;
 
     #[ORM\Column(name: '`criteria`', type: 'string', length: 255, nullable: true)]
     public ?string $criteria = null;

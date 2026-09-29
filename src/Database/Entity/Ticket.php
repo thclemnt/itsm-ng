@@ -71,14 +71,17 @@ class Ticket
     #[ORM\Column(name: '`global_validation`', type: 'integer', nullable: false, options: ['default' => '1'])]
     public int $global_validation = 1;
 
-    #[ORM\Column(name: '`slas_id_ttr`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $slas_id_ttr = 0;
+    #[ORM\ManyToOne(targetEntity: SLA::class)]
+    #[ORM\JoinColumn(name: 'slas_id_ttr', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?SLA $slas_ttr = null;
 
-    #[ORM\Column(name: '`slas_id_tto`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $slas_id_tto = 0;
+    #[ORM\ManyToOne(targetEntity: SLA::class)]
+    #[ORM\JoinColumn(name: 'slas_id_tto', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?SLA $slas_tto = null;
 
-    #[ORM\Column(name: '`slalevels_id_ttr`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $slalevels_id_ttr = 0;
+    #[ORM\ManyToOne(targetEntity: SlaLevel::class)]
+    #[ORM\JoinColumn(name: 'slalevels_id_ttr', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?SlaLevel $slalevels_ttr = null;
 
     #[ORM\Column(name: '`time_to_resolve`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $time_to_resolve = null;
@@ -95,14 +98,17 @@ class Ticket
     #[ORM\Column(name: '`ola_waiting_duration`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $ola_waiting_duration = 0;
 
-    #[ORM\Column(name: '`olas_id_tto`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $olas_id_tto = 0;
+    #[ORM\ManyToOne(targetEntity: OLA::class)]
+    #[ORM\JoinColumn(name: 'olas_id_tto', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?OLA $olas_tto = null;
 
-    #[ORM\Column(name: '`olas_id_ttr`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $olas_id_ttr = 0;
+    #[ORM\ManyToOne(targetEntity: OLA::class)]
+    #[ORM\JoinColumn(name: 'olas_id_ttr', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?OLA $olas_ttr = null;
 
-    #[ORM\Column(name: '`olalevels_id_ttr`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $olalevels_id_ttr = 0;
+    #[ORM\ManyToOne(targetEntity: OlaLevel::class)]
+    #[ORM\JoinColumn(name: 'olalevels_id_ttr', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?OlaLevel $olalevels_ttr = null;
 
     #[ORM\Column(name: '`ola_ttr_begin_date`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $ola_ttr_begin_date = null;

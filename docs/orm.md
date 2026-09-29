@@ -1703,3 +1703,54 @@ reporting, application and search contracts. The two PHP 8.3 functional classes
 pass two methods and 26 assertions; the final default-lookup conversion also
 passes its 12-assertion functional method. All 14 changed PHP files pass syntax
 and style checks. The audit counts 1,311 remaining legacy SQL call sites.
+
+### Service-level agreements and escalation queues
+
+Eighteen more relationships have mapped Doctrine associations and RESTRICT
+foreign keys: SLA/OLA parents, escalation-level parents, level actions and
+criteria, both scheduled-ticket relations, and six optional ticket agreement/level
+references. Ticket assignments normalize zero to NULL. Required parents reject
+invalid references; existing lifecycle hooks delete dependent levels, actions,
+criteria and scheduled entries before parents, and clear ticket assignments.
+Calendar inheritance (`-1`) remains pending an explicit representation.
+
+For existing installations, inspect `db:service_levels`, apply it with writers
+stopped, then run `db:foreign_keys --apply`. The nullable-ticket migration audits
+nonzero orphans before DDL and supports idempotent retries; the foreign-key
+installer audits all required parents. MySQL DDL commits separately. Fresh
+installations include the associations and constraints.
+
+`ServiceLevelRepository` shares typed SLA/OLA queries for first/next levels,
+execution times, scheduled entries, ticket agreement lookup and distinct rule
+IDs. Active flags and dates have bound types. Next-level lookup requires the
+current level to belong to the requested agreement, retains strictly increasing
+execution delays, and resolves equal-delay candidates by ID. Scheduled entries
+sort by date and ID with NULL dates last on both engines. Due selection uses a
+bound clock and excludes NULL and exact-boundary timestamps. Escalation execution
+remains in the existing model workflow. Agreement lookup loads the complete model, including its inherited calendar,
+and returns boolean success instead of an unconsumed iterator generator.
+
+Agreement/level views, queue lookup/deletion, duplicate-schedule checks and purge
+selection use mapped reads. The shared agreement and level classes and both
+SLA/OLA level and queue classes contain no direct adapter queries. Coverage is
+709 enforced relationships, 53 pending candidates, 62 polymorphic references,
+one ambiguous reference and 1,289 legacy SQL call sites. Full conversion remains
+unfinished.
+
+The focused service-level contract passes on PostgreSQL and MariaDB, covering
+active/inactive levels, strict progression, ties, wrong-parent rejection, TTO/TTR
+separation, NULL and boundary dates, row types, mapped views, no-calendar date
+calculation, deduplicated rules, agreement/ticket/SLM purges and migration
+refusal/idempotence. Scheduler selection is tested without invoking cron bodies
+or delivering notifications; PHP rendering is not browser proof.
+
+Fresh installs and the focused contract also pass on both providers, including
+PHP 8.3/MariaDB. Five selected PHP 8.3 functional methods pass 418 assertions for
+service-level lifecycle, manual assignments, calendar-free calculations, waiting
+time and internal TTR. Notifications were disabled and cron tests excluded.
+All 24 changed PHP files pass syntax and style checks.
+
+Broader PostgreSQL/MariaDB checks pass 1,184/786 portability assertions, complete
+mapping and parent-purge coverage, ORM CRUD across all 355 tables, mapped criteria,
+reporting, application workflows and search. Remote CI and browser interaction
+were not exercised.
