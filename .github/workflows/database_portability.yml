@@ -128,6 +128,8 @@ jobs:
         run: php tests/database-portability/software-installations.php tests/config
       - name: Software associations, merge and license quantities
         run: php tests/database-portability/software.php tests/config
+      - name: Software metadata and license views
+        run: php tests/database-portability/software-metadata.php tests/config
       - name: Article categories and knowledge-base visibility
         run: php tests/database-portability/article-categories.php tests/config
       - name: Content authors, categories and scoped document links

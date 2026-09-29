@@ -888,48 +888,13 @@ class SoftwareLicense extends CommonTreeDropdown
         $tonotify = Entity::getEntitiesToNotify('use_licenses_alert');
         foreach (array_keys($tonotify) as $entity) {
             $before = Entity::getUsedConfig('send_licenses_alert_before_delay', $entity);
-            // Check licenses
-            $criteria = [
-               'SELECT' => [
-                  'glpi_softwarelicenses.*',
-                  'glpi_softwares.name AS softname'
-               ],
-               'FROM'   => 'glpi_softwarelicenses',
-               'INNER JOIN'   => [
-                  'glpi_softwares'  => [
-                     'ON'  => [
-                        'glpi_softwarelicenses' => 'softwares_id',
-                        'glpi_softwares'        => 'id'
-                     ]
-                  ]
-               ],
-               'LEFT JOIN'    => [
-                  'glpi_alerts'  => [
-                     'ON'  => [
-                        'glpi_softwarelicenses' => 'id',
-                        'glpi_alerts'           => 'items_id', [
-                           'AND' => [
-                              'glpi_alerts.itemtype'  => 'SoftwareLicense'
-                           ]
-                        ]
-                     ]
-                  ]
-               ],
-               'WHERE'        => [
-                  'glpi_alerts.date'   => null,
-                  'NOT'                => ['glpi_softwarelicenses.expire' => null],
-                  new QueryExpression('DATEDIFF(' . $DB->quoteName('glpi_softwarelicenses.expire') . ', CURDATE()) < ' . $before),
-                  'glpi_softwares.is_template'  => 0,
-                  'glpi_softwares.is_deleted'   => 0,
-                  'glpi_softwares.entities_id'  => $entity
-               ]
-            ];
-            $iterator = $DB->request($criteria);
+            $iterator = (new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB)))
+                ->expiringLicenses((int)$entity, (int)$before);
 
             $message = "";
             $items   = [];
 
-            while ($license = $iterator->next()) {
+            foreach ($iterator as $license) {
                 $name     = $license['softname'] . ' - ' . $license['name'] . ' - ' . $license['serial'];
                 //TRANS: %1$s the license name, %2$s is the expiration date
                 $message .= sprintf(
@@ -1115,56 +1080,15 @@ class SoftwareLicense extends CommonTreeDropdown
         }
 
         $rand  = mt_rand();
-        $iterator = $DB->request([
-           'SELECT'    => [
-              'glpi_softwarelicenses.*',
-              'buyvers.name AS buyname',
-              'usevers.name AS usename',
-              'glpi_entities.completename AS entity',
-              'glpi_softwarelicensetypes.name AS typename',
-              'glpi_states.name AS statename'
-           ],
-           'FROM'      => 'glpi_softwarelicenses',
-           'LEFT JOIN' => [
-              'glpi_softwareversions AS buyvers'  => [
-                 'ON' => [
-                    'glpi_softwarelicenses' => 'softwareversions_id_buy',
-                    'buyvers'               => 'id'
-                 ]
-              ],
-              'glpi_softwareversions AS usevers'  => [
-                 'ON' => [
-                    'glpi_softwarelicenses' => 'softwareversions_id_use',
-                    'usevers'               => 'id'
-                 ]
-              ],
-              'glpi_entities'                     => [
-                 'ON' => [
-                    'glpi_entities'         => 'id',
-                    'glpi_softwarelicenses' => 'entities_id'
-                 ]
-              ],
-              'glpi_softwarelicensetypes'         => [
-                 'ON' => [
-                    'glpi_softwarelicensetypes'   => 'id',
-                    'glpi_softwarelicenses'       => 'softwarelicensetypes_id'
-                 ]
-              ],
-              'glpi_states'                       => [
-                 'ON' => [
-                    'glpi_softwarelicenses' => 'states_id',
-                    'glpi_states'           => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_softwarelicenses.softwares_id'   => $softwares_id,
-              'glpi_softwarelicenses.is_template'    => 0
-           ] + getEntitiesRestrictCriteria('glpi_softwarelicenses', '', '', true),
-           'ORDERBY'   => $sort,
-           'START'     => (int)$start,
-           'LIMIT'     => (int)$_SESSION['glpilist_limit']
-        ]);
+        $iterator = (new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB)))
+            ->licenses(
+                (int)$softwares_id,
+                getEntitiesRestrictCriteria('glpi_softwarelicenses', '', '', true),
+                is_array($sort) ? '' : $sort,
+                $order,
+                (int)$_SESSION['glpilist_limit'],
+                (int)$start
+            );
         $num_displayed = count($iterator);
 
         if ($num_displayed) {
@@ -1211,7 +1135,7 @@ class SoftwareLicense extends CommonTreeDropdown
 
             $tot_assoc = 0;
             $tot       = 0;
-            while ($data = $iterator->next()) {
+            foreach ($iterator as $data) {
                 Session::addToNavigateListItems('SoftwareLicense', $data['id']);
                 $expired = true;
                 if (
@@ -1399,8 +1323,7 @@ class SoftwareLicense extends CommonTreeDropdown
         echo $header;
 
         $fk   = $item->getForeignKeyField();
-        $crit = [$fk     => $ID,
-                      'ORDER' => 'name'];
+        $crit = [$fk => $ID];
 
         if ($entity_assign) {
             if ($fk == 'entities_id') {
@@ -1414,7 +1337,8 @@ class SoftwareLicense extends CommonTreeDropdown
         }
         $nb = 0;
 
-        foreach ($DB->request($item->getTable(), $crit) as $data) {
+        foreach ((new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+            ->matching($item->getTable(), $crit, ['name', 'id']) as $data) {
             $nb++;
             echo "<tr class='tab_bg_1'>";
             echo "<td><a href='" . $item->getFormURL();

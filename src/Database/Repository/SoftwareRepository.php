@@ -70,6 +70,62 @@ final class SoftwareRepository
         return (int)$row['unlimited'] > 0 ? -1 : (int)$row['quantity'];
     }
 
+    /** License list labels come from mapped associations, with stable cross-provider ordering. */
+    public function licenses(int $software, array $scope, string $sort, string $direction, int $limit, int $offset): array
+    {
+        $columns = ['name' => 'r.name', 'serial' => 'r.serial', 'number' => 'r.number',
+            'entity' => 'e.completename', 'typename' => 't.name', 'buyname' => 'b.name',
+            'usename' => 'u.name', 'expire' => 'r.expire', 'statename' => 's.name'];
+        $direction = $direction === 'DESC' ? 'DESC' : 'ASC';
+        $query = $this->em->createQueryBuilder()->select(
+            'r',
+            'b.name AS buyname',
+            'u.name AS usename',
+            'e.completename AS entity',
+            't.name AS typename',
+            's.name AS statename'
+        )
+            ->from(Entity\SoftwareLicense::class, 'r')->leftJoin('r.buyVersion', 'b')->leftJoin('r.useVersion', 'u')
+            ->leftJoin('r.entities', 'e')->leftJoin('r.softwarelicensetypes', 't')->leftJoin('r.states', 's');
+        $query->where((new RecordCriteria($query, $this->em->getClassMetadata(Entity\SoftwareLicense::class)))->where([
+            'softwares_id' => $software, 'is_template' => false,
+        ] + $scope));
+        foreach (isset($columns[$sort]) ? [$columns[$sort]] : ['e.completename', 'r.name'] as $index => $column) {
+            $nullOrder = 'null_order_' . $index;
+            $query->addSelect('CASE WHEN ' . $column . ' IS NULL THEN 0 ELSE 1 END AS HIDDEN ' . $nullOrder)
+                ->addOrderBy($nullOrder, $direction)->addOrderBy($column, $direction);
+        }
+        $query->addOrderBy('r.id', $direction)->setFirstResult(max(0, $offset))->setMaxResults(max(1, $limit));
+        return $this->licenseRows($query);
+    }
+
+    /** Calendar-day cutoff; an existing dated license alert suppresses repeat selection. */
+    public function expiringLicenses(int $entity, int $days, ?\DateTimeImmutable $today = null): array
+    {
+        $cutoff = ($today ?? new \DateTimeImmutable('today'))->setTime(0, 0)->modify(sprintf('%+d days', $days));
+        $query = $this->em->createQueryBuilder()->select('r', 's.name AS softname')
+            ->from(Entity\SoftwareLicense::class, 'r')->innerJoin('r.softwares', 's')
+            ->where('IDENTITY(s.entities) = :entity AND s.is_deleted = :inactive AND s.is_template = :inactive')
+            ->setParameter('entity', $entity, Types::INTEGER)->setParameter('inactive', false, Types::BOOLEAN)
+            ->andWhere('r.expire < :cutoff')->setParameter('cutoff', $cutoff, Types::DATE_IMMUTABLE)
+            ->andWhere('NOT EXISTS (SELECT a.id FROM ' . Entity\Alert::class . ' a WHERE a.items_id = r.id AND a.itemtype = :type AND a.date IS NOT NULL)')
+            ->setParameter('type', 'SoftwareLicense', Types::STRING)->orderBy('r.id');
+        return $this->licenseRows($query);
+    }
+
+    private function licenseRows(\Doctrine\ORM\QueryBuilder $query): array
+    {
+        $records = new RecordRepository($this->em);
+        $rows = [];
+        foreach ($query->getQuery()->toIterable() as $result) {
+            $license = $result[0];
+            unset($result[0]);
+            $rows[] = $records->toRow($license) + $result;
+            $this->em->detach($license);
+        }
+        return $rows;
+    }
+
     public function updateAssetFlags(string $itemtype, int $item, bool $template, bool $deleted): void
     {
         $this->em->createQueryBuilder()->update(Entity\ItemSoftwareVersion::class, 'i')
@@ -106,7 +162,7 @@ final class SoftwareRepository
                 $matches = $records->matching('glpi_softwareversions', ['softwares_id' => $target, 'name' => $from['name']], ['id'], 1, legacyValues: false);
                 if ($matches) {
                     $destination = (int)$matches[0]['id'];
-                    foreach (['softwareversions_id_buy', 'softwareversions_id_use'] as $field) {
+                    foreach (['buyVersion', 'useVersion'] as $field) {
                         $this->em->createQueryBuilder()->update(Entity\SoftwareLicense::class, 'l')
                             ->set('l.' . $field, ':destination')->setParameter('destination', $destination, Types::INTEGER)
                             ->where('l.' . $field . ' = :source')->setParameter('source', $from['id'], Types::INTEGER)

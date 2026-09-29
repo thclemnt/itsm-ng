@@ -43,8 +43,9 @@ class Software
     #[ORM\Column(name: '`is_update`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_update = false;
 
-    #[ORM\Column(name: '`softwares_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $softwares_id = 0;
+    #[ORM\ManyToOne(targetEntity: Software::class)]
+    #[ORM\JoinColumn(name: 'softwares_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Software $updates = null;
 
     #[ORM\ManyToOne(targetEntity: Manufacturer::class)]
     #[ORM\JoinColumn(name: 'manufacturers_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
@@ -76,8 +77,9 @@ class Software
     #[ORM\Column(name: '`is_helpdesk_visible`', type: 'boolean', nullable: false, options: ['default' => true])]
     public bool $is_helpdesk_visible = true;
 
-    #[ORM\Column(name: '`softwarecategories_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $softwarecategories_id = 0;
+    #[ORM\ManyToOne(targetEntity: SoftwareCategory::class)]
+    #[ORM\JoinColumn(name: 'softwarecategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?SoftwareCategory $softwarecategories = null;
 
     #[ORM\Column(name: '`is_valid`', type: 'boolean', nullable: false, options: ['default' => true])]
     public bool $is_valid = true;

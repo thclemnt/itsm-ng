@@ -339,6 +339,11 @@ final class OptionalReferences
         'glpi_knowbaseitems' => ['knowbaseitemcategories_id' => 'glpi_knowbaseitemcategories'],
     ];
 
+    public const SOFTWARE_METADATA = [
+        'glpi_softwares' => ['softwares_id' => 'glpi_softwares', 'softwarecategories_id' => 'glpi_softwarecategories'],
+        'glpi_softwarelicenses' => ['softwarelicenses_id' => 'glpi_softwarelicenses', 'softwareversions_id_buy' => 'glpi_softwareversions', 'softwareversions_id_use' => 'glpi_softwareversions'],
+    ];
+
     public const RELATIONS = [
         ...self::CONTENT_METADATA,
         'glpi_knowbaseitems' => [...self::CONTENT_METADATA['glpi_knowbaseitems'], ...self::ARTICLE_CATEGORIES['glpi_knowbaseitems']],
@@ -417,8 +422,8 @@ final class OptionalReferences
         'glpi_projects' => [...self::PROJECT_HIERARCHY['glpi_projects'], ...self::GROUPS['glpi_projects'], ...self::PLANNING_METADATA['glpi_projects']],
         'glpi_queuedchats' => [...self::LOCATIONS['glpi_queuedchats'], ...self::GROUPS['glpi_queuedchats'], ...self::ITIL_CLASSIFICATION['glpi_queuedchats']],
         'glpi_racks' => [...self::MODELS['glpi_racks'], ...self::INFRASTRUCTURE['glpi_racks'], ...self::MANUFACTURERS['glpi_racks'], ...self::STATES['glpi_racks'], ...self::LOCATIONS['glpi_racks'], ...self::GROUPS['glpi_racks'], ...self::ASSET_USERS['glpi_racks']],
-        'glpi_softwarelicenses' => [...self::FINANCIAL['glpi_softwarelicenses'], ...self::MANUFACTURERS['glpi_softwarelicenses'], ...self::STATES['glpi_softwarelicenses'], ...self::LOCATIONS['glpi_softwarelicenses'], ...self::GROUPS['glpi_softwarelicenses'], ...self::ASSET_USERS['glpi_softwarelicenses']],
-        'glpi_softwares' => [...self::MANUFACTURERS['glpi_softwares'], ...self::LOCATIONS['glpi_softwares'], ...self::GROUPS['glpi_softwares'], ...self::ASSET_USERS['glpi_softwares']],
+        'glpi_softwarelicenses' => [...self::FINANCIAL['glpi_softwarelicenses'], ...self::MANUFACTURERS['glpi_softwarelicenses'], ...self::STATES['glpi_softwarelicenses'], ...self::LOCATIONS['glpi_softwarelicenses'], ...self::GROUPS['glpi_softwarelicenses'], ...self::ASSET_USERS['glpi_softwarelicenses'], ...self::SOFTWARE_METADATA['glpi_softwarelicenses']],
+        'glpi_softwares' => [...self::MANUFACTURERS['glpi_softwares'], ...self::LOCATIONS['glpi_softwares'], ...self::GROUPS['glpi_softwares'], ...self::ASSET_USERS['glpi_softwares'], ...self::SOFTWARE_METADATA['glpi_softwares']],
         'glpi_softwareversions' => [...self::STATES['glpi_softwareversions'], ...self::INVENTORY_METADATA['glpi_softwareversions']],
         'glpi_users' => [...self::LOCATIONS['glpi_users'], ...self::GROUPS['glpi_users'], ...self::ITIL_CLASSIFICATION['glpi_users']],
         'glpi_projecttasks' => [...self::PROJECT_HIERARCHY['glpi_projecttasks'], ...self::PLANNING_METADATA['glpi_projecttasks']],

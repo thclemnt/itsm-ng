@@ -1251,3 +1251,44 @@ all grant types, overlapping grants, public FAQ scope, anonymous ownership,
 ancestor retention, category replacement/purge, NULL lookup and migration
 orphan refusal/idempotence. PHP syntax, formatting and diff checks pass. Browser
 interaction and notification delivery were not exercised.
+
+### Software metadata and license queries
+
+Five more relationships now have nullable Doctrine associations and RESTRICT
+foreign keys: software category, the software being updated, license parent,
+purchased version and used version. Replacement reassigns dependents; purging an
+optional target preserves dependents with NULL references. License deletion keeps
+its tree reparenting hooks. Trees without stored ancestry caches now skip writes
+to those absent cache columns.
+
+Existing installations should inspect `db:software_metadata`, apply it during
+maintenance, then run `db:foreign_keys --apply`. The migration audits nonzero
+orphans and license-parent cycles before changing any table. Legacy zero values
+become NULL, rerunning is safe, and fresh schemas include all five relationships.
+Software update links are associations, not category-tree parents.
+
+`SoftwareRepository` supplies paginated license lists through mapped version,
+type, state and entity associations. Sorting uses a column whitelist, explicit
+NULL ordering and an ID tie-breaker. Expiry selection binds a calendar-day cutoff
+instead of using MySQL date arithmetic; software entity, template/deletion and
+existing-alert exclusions remain query predicates. The license child list also
+uses ORM, and software merging now changes the mapped version associations
+inside its existing transaction. The license model has no direct query/request
+calls left; its notification dispatch and lifecycle hooks remain intact.
+
+Coverage is 623 enforced relationships, 139 pending candidates, 62 polymorphic
+references, one ambiguous reference and 1,362 legacy SQL call sites. Complete
+relationship and query conversion remains outstanding.
+
+Validation: PostgreSQL/MariaDB pass 1,098/700 database-contract assertions,
+mapping and parent-purge checks, CRUD across all 355 tables, and shared tree,
+software installation, reporting, application and search suites. Software merge
+checks pass on both engines, including transaction rollback. Fresh installs pass
+the new contract on PostgreSQL and PHP 8.3/MariaDB. Four affected PHP 8.3
+functional classes pass 46 methods and 6,276 assertions. Tests cover all five
+relationship lifecycles, license child rendering and promotion, cycle rejection,
+association labels, scope, pagination, NULL ordering, expiry boundaries and alert
+suppression, migration orphan/cycle refusal and idempotence. Ten changed PHP
+files pass syntax checks; formatting and diff checks pass. Views were exercised
+through PHP rendering; browser interaction and notification delivery were not
+exercised.

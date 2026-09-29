@@ -19,8 +19,9 @@ class SoftwareLicense
     #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
 
-    #[ORM\Column(name: '`softwarelicenses_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $softwarelicenses_id = 0;
+    #[ORM\ManyToOne(targetEntity: SoftwareLicense::class)]
+    #[ORM\JoinColumn(name: 'softwarelicenses_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?SoftwareLicense $parent = null;
 
     #[ORM\Column(name: '`completename`', type: 'text', nullable: true)]
     public ?string $completename = null;
@@ -51,11 +52,13 @@ class SoftwareLicense
     #[ORM\Column(name: '`otherserial`', type: 'string', length: 255, nullable: true)]
     public ?string $otherserial = null;
 
-    #[ORM\Column(name: '`softwareversions_id_buy`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $softwareversions_id_buy = 0;
+    #[ORM\ManyToOne(targetEntity: SoftwareVersion::class)]
+    #[ORM\JoinColumn(name: 'softwareversions_id_buy', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?SoftwareVersion $buyVersion = null;
 
-    #[ORM\Column(name: '`softwareversions_id_use`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $softwareversions_id_use = 0;
+    #[ORM\ManyToOne(targetEntity: SoftwareVersion::class)]
+    #[ORM\JoinColumn(name: 'softwareversions_id_use', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?SoftwareVersion $useVersion = null;
 
     #[ORM\Column(name: '`expire`', type: 'date', nullable: true)]
     public ?\DateTimeInterface $expire = null;

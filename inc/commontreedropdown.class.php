@@ -301,6 +301,15 @@ abstract class CommonTreeDropdown extends CommonDropdown
     {
         global $DB;
 
+        // Some trees, including licenses, have no persistent ancestry caches.
+        foreach (['sons_cache', 'ancestors_cache'] as $cacheField) {
+            if (!$this->isField($cacheField)) {
+                unset($values[$cacheField]);
+            }
+        }
+        if (!$values) {
+            return;
+        }
         if (\itsmng\Database\MappedStorage::supports($this->getTable())) {
             (new \itsmng\Database\Repository\TreeRepository(\itsmng\Database\Orm::create($DB)))
                 ->updateDerived($this->getTable(), $ids, array_map(\itsmng\Database\LegacyValues::decode(...), $values));
