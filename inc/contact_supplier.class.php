@@ -46,6 +46,28 @@ class Contact_Supplier extends CommonDBRelation
 
 
 
+    private static function relatedItems(CommonDBTM $item): array
+    {
+        global $DB;
+        return (new \itsmng\Database\Repository\ContactRepository(\itsmng\Database\Orm::create($DB)))
+            ->related((int)$item->getID(), $item instanceof Contact, self::relatedScope($item));
+    }
+
+    private static function relatedScope(CommonDBTM $item): ?array
+    {
+        if (!$item instanceof Contact && !$item instanceof Supplier) {
+            throw new \InvalidArgumentException('Contact relations require a contact or supplier.');
+        }
+        return Session::isCron() ? null : getEntitiesRestrictCriteria($item instanceof Contact ? Supplier::getTable() : Contact::getTable(), '', '', 'auto');
+    }
+
+    public static function countForItem(CommonDBTM $item)
+    {
+        global $DB;
+        return (new \itsmng\Database\Repository\ContactRepository(\itsmng\Database\Orm::create($DB)))
+            ->countRelated((int)$item->getID(), $item instanceof Contact, self::relatedScope($item));
+    }
+
     public static function getTypeName($nb = 0)
     {
         return _n('Link Contact/Supplier', 'Links Contact/Supplier', $nb);
@@ -115,12 +137,12 @@ class Contact_Supplier extends CommonDBRelation
 
         $canedit = $contact->can($instID, UPDATE);
 
-        $iterator = self::getListForItem($contact);
+        $iterator = self::relatedItems($contact);
         $number = count($iterator);
 
         $suppliers = [];
         $used = [];
-        while ($data = $iterator->next()) {
+        foreach ($iterator as $data) {
             $suppliers[$data['linkid']] = $data;
             $used[$data['id']] = $data['id'];
         }
@@ -255,13 +277,12 @@ class Contact_Supplier extends CommonDBRelation
         $canedit = $supplier->can($instID, UPDATE);
         $rand = mt_rand();
 
-        $iterator = self::getListForItem($supplier);
+        $iterator = self::relatedItems($supplier);
         $number = count($iterator);
 
         $contacts = [];
-        $options = getItemByEntity(Contact::class, $supplier->fields['entities_id']);
-        while ($data = $iterator->next()) {
-            unset($options[$data['id']]);
+        $options = getItemByEntity(Contact::class, $supplier->fields['entities_id'], [], array_column($iterator, 'id'));
+        foreach ($iterator as $data) {
             $contacts[$data['linkid']] = $data;
         };
 

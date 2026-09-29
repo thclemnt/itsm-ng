@@ -344,7 +344,14 @@ final class OptionalReferences
         'glpi_softwarelicenses' => ['softwarelicenses_id' => 'glpi_softwarelicenses', 'softwareversions_id_buy' => 'glpi_softwareversions', 'softwareversions_id_use' => 'glpi_softwareversions'],
     ];
 
+    public const CONTACT_LINE_METADATA = [
+        'glpi_contacts' => ['contacttypes_id' => 'glpi_contacttypes', 'usertitles_id' => 'glpi_usertitles'],
+        'glpi_lines' => ['lineoperators_id' => 'glpi_lineoperators', 'linetypes_id' => 'glpi_linetypes'],
+        'glpi_items_devicesimcards' => ['lines_id' => 'glpi_lines'],
+    ];
+
     public const RELATIONS = [
+        ...self::CONTACT_LINE_METADATA,
         ...self::CONTENT_METADATA,
         'glpi_knowbaseitems' => [...self::CONTENT_METADATA['glpi_knowbaseitems'], ...self::ARTICLE_CATEGORIES['glpi_knowbaseitems']],
         ...self::RESERVATION_USERS,
@@ -409,9 +416,9 @@ final class OptionalReferences
         'glpi_items_devicepowersupplies' => [...self::STATES['glpi_items_devicepowersupplies'], ...self::LOCATIONS['glpi_items_devicepowersupplies']],
         'glpi_items_deviceprocessors' => [...self::STATES['glpi_items_deviceprocessors'], ...self::LOCATIONS['glpi_items_deviceprocessors']],
         'glpi_items_devicesensors' => [...self::STATES['glpi_items_devicesensors'], ...self::LOCATIONS['glpi_items_devicesensors']],
-        'glpi_items_devicesimcards' => [...self::STATES['glpi_items_devicesimcards'], ...self::LOCATIONS['glpi_items_devicesimcards'], ...self::GROUPS['glpi_items_devicesimcards'], ...self::ASSET_USERS['glpi_items_devicesimcards']],
+        'glpi_items_devicesimcards' => [...self::STATES['glpi_items_devicesimcards'], ...self::LOCATIONS['glpi_items_devicesimcards'], ...self::GROUPS['glpi_items_devicesimcards'], ...self::ASSET_USERS['glpi_items_devicesimcards'], ...self::CONTACT_LINE_METADATA['glpi_items_devicesimcards']],
         'glpi_items_devicesoundcards' => [...self::STATES['glpi_items_devicesoundcards'], ...self::LOCATIONS['glpi_items_devicesoundcards']],
-        'glpi_lines' => [...self::STATES['glpi_lines'], ...self::LOCATIONS['glpi_lines'], ...self::GROUPS['glpi_lines'], ...self::ASSET_USERS['glpi_lines']],
+        'glpi_lines' => [...self::STATES['glpi_lines'], ...self::LOCATIONS['glpi_lines'], ...self::GROUPS['glpi_lines'], ...self::ASSET_USERS['glpi_lines'], ...self::CONTACT_LINE_METADATA['glpi_lines']],
         'glpi_monitors' => [...self::ASSET_CLASSIFICATION['glpi_monitors'], ...self::MANUFACTURERS['glpi_monitors'], ...self::STATES['glpi_monitors'], ...self::LOCATIONS['glpi_monitors'], ...self::GROUPS['glpi_monitors'], ...self::ASSET_USERS['glpi_monitors']],
         'glpi_networkequipments' => [...self::ASSET_CLASSIFICATION['glpi_networkequipments'], ...self::MANUFACTURERS['glpi_networkequipments'], ...self::STATES['glpi_networkequipments'], ...self::LOCATIONS['glpi_networkequipments'], ...self::GROUPS['glpi_networkequipments'], ...self::INVENTORY_METADATA['glpi_networkequipments'], ...self::ASSET_USERS['glpi_networkequipments']],
         'glpi_passivedcequipments' => [...self::MODELS['glpi_passivedcequipments'], ...self::MANUFACTURERS['glpi_passivedcequipments'], ...self::STATES['glpi_passivedcequipments'], ...self::LOCATIONS['glpi_passivedcequipments'], ...self::GROUPS['glpi_passivedcequipments'], ...self::INVENTORY_METADATA['glpi_passivedcequipments'], ...self::ASSET_USERS['glpi_passivedcequipments']],

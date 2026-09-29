@@ -2841,21 +2841,6 @@ class Dropdown
 
             $criteria = [];
             switch ($post['itemtype']) {
-                case "Contact":
-                    $criteria = [
-                       'SELECT' => [
-                          "$table.entities_id",
-                          new \QueryExpression(
-                              "CONCAT(IFNULL(" . $DB->quoteName('name') . ",''),' ',IFNULL(" .
-                              $DB->quoteName('firstname') . ",'')) AS " . $DB->quoteName($field)
-                          ),
-                          "$table.comment",
-                          "$table.id"
-                       ],
-                       'FROM'   => $table
-                    ];
-                    break;
-
                 case "SoftwareLicense":
                     $criteria = [
                        'SELECT' => [
@@ -3054,7 +3039,12 @@ class Dropdown
                 $criteria['ORDERBY'] = ["$table.$field"];
             }
 
-            $iterator = $DB->request($criteria);
+            if ($item instanceof Contact) {
+                $iterator = (new \itsmng\Database\Repository\ContactRepository(\itsmng\Database\Orm::create($DB)))
+                    ->dropdown($where, $multi, $limit, $start);
+            } else {
+                $iterator = $DB->request($criteria);
+            }
 
             // Display first if no search
             if ($post['page'] == 1 && empty($post['searchText'])) {
@@ -3081,7 +3071,7 @@ class Dropdown
             if (count($iterator)) {
                 $prev = -1;
 
-                while ($data = $iterator->next()) {
+                foreach ($iterator as $data) {
                     if (
                         $multi
                         && ($data["entities_id"] != $prev)

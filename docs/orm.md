@@ -1292,3 +1292,47 @@ suppression, migration orphan/cycle refusal and idempotence. Ten changed PHP
 files pass syntax checks; formatting and diff checks pass. Views were exercised
 through PHP rendering; browser interaction and notification delivery were not
 exercised.
+
+### Contacts, phone lines and SIM assignments
+
+Five optional relationships now use nullable Doctrine associations and RESTRICT
+foreign keys: contact type/title, line operator/type and a SIM assignment's line.
+Replacement updates dependent records; purge preserves them without the optional
+reference. Existing installations should inspect `db:contact_lines`, apply it
+during maintenance, then run `db:foreign_keys --apply`. Nonzero orphans stop
+preflight before DDL; legacy zero values become NULL. Fresh installs include the
+new mappings.
+
+`ContactRepository` handles supplier address/website selection, both directions
+of the contact–supplier list, scoped counts and the contact picker. Address and
+website resolve the same supplier deterministically when several companies are
+linked. Relationship views scope the opposite endpoint, including recursive
+ancestor grants, and retain the association ID. Cron callers can explicitly omit
+interactive entity scope. The inherited legacy relation query API remains for
+other consumers pending its wider migration.
+
+The contact picker no longer constructs MySQL-only `IFNULL` expressions. Its ORM
+query applies entity restrictions, exclusions, search and pagination; formatting
+combines last/first names after hydration. Numeric `LIKE` criteria now explicitly
+convert numbers to text while preserving NULL on both providers, including ID
+search and optional associations.
+
+Coverage is 628 enforced relationships, 134 pending candidates, 62 polymorphic
+references, one ambiguous reference and 1,360 legacy SQL call sites. Complete
+relationship and query conversion remains outstanding.
+
+The supplier view passes already-linked contact IDs to the picker query, so
+exclusion also works inside entity groups rather than only for flat options.
+
+Validation: both engines pass the 1,103/705-assertion database contract, mapping
+and parent-purge checks, CRUD across all 355 tables, and application, reporting
+and search suites. Fresh installations pass the new contact/line contract and
+shared ORM criteria checks, including PHP 8.3/MariaDB. Six affected PHP 8.3
+functional classes pass 13 methods and 187 assertions; the additional dropdown
+and contact–supplier run passes 15 methods and 528 assertions. Tests cover all
+five reference lifecycles, both scoped relation directions, recursive ancestors,
+company-detail consistency, rendered views, picker pagination/exclusions/ID
+search, grouped option exclusions, NULL matching and orphan refusal/idempotence.
+Fourteen changed PHP files pass syntax checks; formatting and diff checks pass.
+Rendering tests exercise PHP output; browser interaction and notification
+delivery were not tested.

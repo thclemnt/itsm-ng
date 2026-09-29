@@ -71,6 +71,11 @@ final class RecordCriteria
                 $parts[] = ($operator === '&' ? 'BIT_AND' : 'BIT_OR') . '(' . $expression . ', ' . $this->value($value, Types::INTEGER) . ') <> 0';
             } elseif ($operator === 'LIKE' || $operator === 'NOT LIKE') {
                 $parameter = $this->value($value, Types::STRING);
+                if (in_array($type, [Types::INTEGER, Types::SMALLINT, Types::BIGINT, Types::FLOAT, Types::DECIMAL], true)) {
+                    // PostgreSQL does not implicitly turn IDs/numbers into text for LIKE.
+                    // Preserve NULL rather than CONCAT's provider-dependent NULL handling.
+                    $expression = 'LOWER(CASE WHEN ' . $expression . " IS NULL THEN NULL ELSE CONCAT('', " . $expression . ') END)';
+                }
                 if ($this->query->getEntityManager()->getConnection()->getDatabasePlatform() instanceof PostgreSQLPlatform) {
                     $parts[] = 'LOWER(' . $expression . ') ' . $operator . ' LOWER(' . $parameter . ')';
                 } else {

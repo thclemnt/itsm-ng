@@ -43,8 +43,9 @@ class Contact
     #[ORM\Column(name: '`email`', type: 'string', length: 255, nullable: true)]
     public ?string $email = null;
 
-    #[ORM\Column(name: '`contacttypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $contacttypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: ContactType::class)]
+    #[ORM\JoinColumn(name: 'contacttypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?ContactType $contacttypes = null;
 
     #[ORM\Column(name: '`comment`', type: 'text', nullable: true)]
     public ?string $comment = null;
@@ -52,8 +53,9 @@ class Contact
     #[ORM\Column(name: '`is_deleted`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_deleted = false;
 
-    #[ORM\Column(name: '`usertitles_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $usertitles_id = 0;
+    #[ORM\ManyToOne(targetEntity: UserTitle::class)]
+    #[ORM\JoinColumn(name: 'usertitles_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?UserTitle $usertitles = null;
 
     #[ORM\Column(name: '`address`', type: 'text', nullable: true)]
     public ?string $address = null;

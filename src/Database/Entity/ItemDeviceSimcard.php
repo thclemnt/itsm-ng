@@ -52,8 +52,9 @@ class ItemDeviceSimcard
     #[ORM\JoinColumn(name: 'locations_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     public ?Location $locations = null;
 
-    #[ORM\Column(name: '`lines_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $lines_id = 0;
+    #[ORM\ManyToOne(targetEntity: Line::class)]
+    #[ORM\JoinColumn(name: 'lines_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Line $lines = null;
 
     #[ORM\ManyToOne(targetEntity: User::class)]
     #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]

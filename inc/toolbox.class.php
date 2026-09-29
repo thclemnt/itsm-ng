@@ -2768,6 +2768,7 @@ class Toolbox
             (new \itsmng\Database\Migration\ContentMetadataReferences())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\Migration\ArticleCategoryReferences())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\Migration\SoftwareMetadataReferences())->apply($DB->getDoctrineConnection());
+            (new \itsmng\Database\Migration\ContactLineReferences())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\ForeignKeys())->apply($DB->getDoctrineConnection());
 
             // update default language

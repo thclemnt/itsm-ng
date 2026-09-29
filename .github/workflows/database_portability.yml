@@ -128,6 +128,8 @@ jobs:
         run: php tests/database-portability/software-installations.php tests/config
       - name: Software associations, merge and license quantities
         run: php tests/database-portability/software.php tests/config
+      - name: Contact and line metadata with company relations
+        run: php tests/database-portability/contact-lines.php tests/config
       - name: Software metadata and license views
         run: php tests/database-portability/software-metadata.php tests/config
       - name: Article categories and knowledge-base visibility

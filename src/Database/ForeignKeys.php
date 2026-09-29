@@ -50,6 +50,7 @@ final class ForeignKeys
         'glpi_computervirtualmachines' => [...OptionalReferences::RELATIONS['glpi_computervirtualmachines'], ...EntityOwnership::RELATIONS['glpi_computervirtualmachines']],
         'glpi_consumableitems' => [...OptionalReferences::RELATIONS['glpi_consumableitems'], ...EntityOwnership::RELATIONS['glpi_consumableitems']],
         'glpi_consumables' => [...EntityOwnership::RELATIONS['glpi_consumables'], 'consumableitems_id' => 'glpi_consumableitems'],
+        'glpi_contacts' => [...OptionalReferences::RELATIONS['glpi_contacts'], ...EntityOwnership::RELATIONS['glpi_contacts']],
         'glpi_contacts_suppliers' => ['contacts_id' => 'glpi_contacts', 'suppliers_id' => 'glpi_suppliers'],
         'glpi_contractcosts' => [...OptionalReferences::RELATIONS['glpi_contractcosts'], ...EntityOwnership::RELATIONS['glpi_contractcosts'], 'contracts_id' => 'glpi_contracts'],
         'glpi_contracts' => [...OptionalReferences::RELATIONS['glpi_contracts'], ...EntityOwnership::RELATIONS['glpi_contracts']],

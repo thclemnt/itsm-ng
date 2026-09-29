@@ -93,30 +93,12 @@ class Contact extends CommonDBTM
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT' => [
-              'glpi_suppliers.name',
-              'glpi_suppliers.address',
-              'glpi_suppliers.postcode',
-              'glpi_suppliers.town',
-              'glpi_suppliers.state',
-              'glpi_suppliers.country'
-           ],
-           'FROM'         => 'glpi_suppliers',
-           'INNER JOIN'   => [
-              'glpi_contacts_suppliers'  => [
-                 'ON' => [
-                    'glpi_contacts_suppliers'  => 'suppliers_id',
-                    'glpi_suppliers'           => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'        => ['contacts_id' => $this->fields['id']]
-        ]);
-
-        if ($data = $iterator->next()) {
-            return $data;
+        $details = (new \itsmng\Database\Repository\ContactRepository(\itsmng\Database\Orm::create($DB)))
+            ->companyDetails((int)$this->getID());
+        if ($details !== null) {
+            unset($details['website']);
         }
+        return $details;
     }
 
 
@@ -129,26 +111,9 @@ class Contact extends CommonDBTM
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT' => [
-              'glpi_suppliers.website AS website'
-           ],
-           'FROM'         => 'glpi_suppliers',
-           'INNER JOIN'   => [
-              'glpi_contacts_suppliers'  => [
-                 'ON' => [
-                    'glpi_contacts_suppliers'  => 'suppliers_id',
-                    'glpi_suppliers'           => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'        => ['contacts_id' => $this->fields['id']]
-        ]);
-
-        if ($data = $iterator->next()) {
-            return $data['website'];
-        }
-        return '';
+        $details = (new \itsmng\Database\Repository\ContactRepository(\itsmng\Database\Orm::create($DB)))
+            ->companyDetails((int)$this->getID());
+        return $details === null ? '' : $details['website'];
     }
 
 

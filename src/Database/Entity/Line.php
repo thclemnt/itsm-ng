@@ -42,8 +42,9 @@ class Line
     #[ORM\JoinColumn(name: 'groups_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     public ?Group $groups = null;
 
-    #[ORM\Column(name: '`lineoperators_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $lineoperators_id = 0;
+    #[ORM\ManyToOne(targetEntity: LineOperator::class)]
+    #[ORM\JoinColumn(name: 'lineoperators_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?LineOperator $lineoperators = null;
 
     #[ORM\ManyToOne(targetEntity: Location::class)]
     #[ORM\JoinColumn(name: 'locations_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
@@ -53,8 +54,9 @@ class Line
     #[ORM\JoinColumn(name: 'states_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     public ?State $states = null;
 
-    #[ORM\Column(name: '`linetypes_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $linetypes_id = 0;
+    #[ORM\ManyToOne(targetEntity: LineType::class)]
+    #[ORM\JoinColumn(name: 'linetypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?LineType $linetypes = null;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_creation = null;
