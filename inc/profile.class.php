@@ -425,8 +425,9 @@ class Profile extends CommonDBTM
 
         // check if right if the last write profile on Profile object
         if (
-            ($this->fields['profile'] & UPDATE)
-            && isset($input['profile']) && !($input['profile'] & UPDATE)
+            isset($input['profile'])
+            && ($this->fields['profile'] & UPDATE)
+            && !($input['profile'] & UPDATE)
             && (countElementsInTable(
                 "glpi_profilerights",
                 ['name' => 'profile', 'rights' => ['&',  UPDATE]]

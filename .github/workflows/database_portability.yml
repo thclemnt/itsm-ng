@@ -136,6 +136,8 @@ jobs:
         run: php tests/database-portability/network-ports.php tests/config
       - name: Network names, aliases and domain pagination
         run: php tests/database-portability/network-names.php tests/config
+      - name: ITIL defaults and recurring ticket selection
+        run: php tests/database-portability/itil-defaults.php tests/config
       - name: User metadata, profile preferences and identity queries
         run: php tests/database-portability/user-metadata.php tests/config
       - name: ORM scheduler windows, plugins, locks and alert decisions

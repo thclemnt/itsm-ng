@@ -350,6 +350,13 @@ final class OptionalReferences
         'glpi_items_devicesimcards' => ['lines_id' => 'glpi_lines'],
     ];
 
+    public const ITIL_DEFAULTS = [
+        'glpi_profiles' => ['tickettemplates_id' => 'glpi_tickettemplates', 'changetemplates_id' => 'glpi_changetemplates', 'problemtemplates_id' => 'glpi_problemtemplates'],
+        'glpi_ticketrecurrents' => ['tickettemplates_id' => 'glpi_tickettemplates', 'calendars_id' => 'glpi_calendars'],
+        'glpi_itilcategories' => ['users_id' => 'glpi_users'],
+        'glpi_tasktemplates' => ['users_id_tech' => 'glpi_users'],
+    ];
+
     public const NETWORK_NAMES = [
         'glpi_networknames' => ['fqdns_id' => 'glpi_fqdns'],
         'glpi_networkaliases' => ['fqdns_id' => 'glpi_fqdns'],
@@ -389,6 +396,8 @@ final class OptionalReferences
     public const CRON_LOG_PARENTS = ['glpi_crontasklogs' => ['crontasklogs_id' => 'glpi_crontasklogs']];
 
     public const RELATIONS = [
+        'glpi_profiles' => self::ITIL_DEFAULTS['glpi_profiles'],
+        'glpi_ticketrecurrents' => self::ITIL_DEFAULTS['glpi_ticketrecurrents'],
         ...self::NETWORK_NAMES,
         ...self::NETWORK_PORT_METADATA,
         ...self::ITIL_ACTORS,
@@ -481,8 +490,8 @@ final class OptionalReferences
         'glpi_changetasks' => [...self::GROUPS['glpi_changetasks'], ...self::ITIL_CLASSIFICATION['glpi_changetasks'], ...self::ITIL_USERS['glpi_changetasks']],
         'glpi_problemtasks' => [...self::GROUPS['glpi_problemtasks'], ...self::ITIL_CLASSIFICATION['glpi_problemtasks'], ...self::ITIL_USERS['glpi_problemtasks']],
         'glpi_tickettasks' => [...self::GROUPS['glpi_tickettasks'], ...self::ITIL_CLASSIFICATION['glpi_tickettasks'], ...self::ITIL_USERS['glpi_tickettasks']],
-        'glpi_itilcategories' => [...self::GROUPS['glpi_itilcategories'], ...self::ITIL_CLASSIFICATION['glpi_itilcategories'], ...self::TREE_PARENTS['glpi_itilcategories']],
-        'glpi_tasktemplates' => [...self::GROUPS['glpi_tasktemplates'], ...self::ITIL_CLASSIFICATION['glpi_tasktemplates']],
+        'glpi_itilcategories' => [...self::ITIL_DEFAULTS['glpi_itilcategories'], ...self::GROUPS['glpi_itilcategories'], ...self::ITIL_CLASSIFICATION['glpi_itilcategories'], ...self::TREE_PARENTS['glpi_itilcategories']],
+        'glpi_tasktemplates' => [...self::ITIL_DEFAULTS['glpi_tasktemplates'], ...self::GROUPS['glpi_tasktemplates'], ...self::ITIL_CLASSIFICATION['glpi_tasktemplates']],
         'glpi_taskcategories' => ['knowbaseitemcategories_id' => 'glpi_knowbaseitemcategories', ...self::TREE_PARENTS['glpi_taskcategories']],
         'glpi_problems' => [...self::ITIL_CLASSIFICATION['glpi_problems'], ...self::ITIL_USERS['glpi_problems']],
         'glpi_changes' => [...self::ITIL_CLASSIFICATION['glpi_changes'], ...self::ITIL_USERS['glpi_changes']],

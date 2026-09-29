@@ -526,19 +526,8 @@ class TicketRecurrent extends CommonDropdown
 
         $tot = 0;
 
-        $iterator = $DB->request([
-           'FROM'   => 'glpi_ticketrecurrents',
-           'WHERE'  => [
-              'next_creation_date' => ['<', new \QueryExpression('NOW()')],
-              'is_active'          => 1,
-              'OR'                 => [
-                 ['end_date' => null],
-                 ['end_date' => ['>', new \QueryExpression('NOW()')]]
-              ]
-           ]
-        ]);
-
-        while ($data = $iterator->next()) {
+        $rows = (new \itsmng\Database\Repository\TicketRecurrentRepository(\itsmng\Database\Orm::create($DB)))->due();
+        foreach ($rows as $data) {
             if (self::createTicket($data)) {
                 $tot++;
             } else {

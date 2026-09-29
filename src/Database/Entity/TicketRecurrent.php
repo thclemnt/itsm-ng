@@ -31,8 +31,9 @@ class TicketRecurrent
     #[ORM\Column(name: '`is_active`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_active = false;
 
-    #[ORM\Column(name: '`tickettemplates_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $tickettemplates_id = 0;
+    #[ORM\ManyToOne(targetEntity: TicketTemplate::class)]
+    #[ORM\JoinColumn(name: 'tickettemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?TicketTemplate $tickettemplates_id = null;
 
     #[ORM\Column(name: '`begin_date`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $begin_date = null;
@@ -46,8 +47,9 @@ class TicketRecurrent
     #[ORM\Column(name: '`next_creation_date`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $next_creation_date = null;
 
-    #[ORM\Column(name: '`calendars_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $calendars_id = 0;
+    #[ORM\ManyToOne(targetEntity: Calendar::class)]
+    #[ORM\JoinColumn(name: 'calendars_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Calendar $calendars_id = null;
 
     #[ORM\Column(name: '`end_date`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $end_date = null;

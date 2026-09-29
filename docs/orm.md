@@ -1618,3 +1618,44 @@ search suites. The affected PHP 8.3 functional class passes seven methods and
 141 assertions. All 14 changed PHP files pass syntax checks; formatting and diff
 checks pass. View verification used PHP rendering, not an interactive browser;
 remote CI was not run.
+
+### ITIL defaults and recurring tickets
+
+Seven more default references use nullable Doctrine associations and RESTRICT
+foreign keys: profile ticket/change/problem templates, recurring-ticket templates
+and calendars, category default users and task-template technicians. Replacement
+and purge preserve the owning record, reassign a requested replacement or clear
+the reference. Change/problem template profile links are now registered in the
+lifecycle relation inventory; previously those profile defaults could dangle.
+Entity template inheritance sentinels are separate, pending explicit modeling.
+
+Existing installations should inspect `db:itil_defaults`, apply it with writers
+stopped, then run `db:foreign_keys --apply`. The migration audits nonzero orphans
+before DDL, converts zero defaults to NULL and supports idempotent retries. MySQL
+DDL commits separately. Fresh installations include all seven associations.
+
+`TicketRecurrentRepository::due()` replaces the scheduler's direct query with
+bound, typed DQL. A single clock value governs both date predicates. Selection
+retains strict due/end boundaries, active flags and existing handling of schedules
+without a template; results are ordered by due date and ID. Its legacy row
+projection retains formatted dates and numeric flags. The caller retains ticket
+creation, history and rescheduling hooks; selection itself has no side effects.
+
+Coverage is 689 enforced relationships, 73 pending candidates, 62 polymorphic
+references, one ambiguous reference and 1,325 legacy SQL call sites. Full
+relationship and query conversion remains unfinished.
+
+Validation: fresh installation and the defaults contract pass on both engines,
+including PHP 8.3/MariaDB. Tests cover all seven replacement/purge paths, unrelated
+defaults, zero/NULL compatibility, strict due/end boundaries, inactive schedules,
+missing dates, deterministic ordering, row types and migration refusal/idempotence.
+Sparse-profile template cleanup passes with PHP warnings promoted to failures;
+the profile rights guard now reads existing rights only when rights are updated.
+PostgreSQL/MariaDB pass 1,164/766 database-contract assertions, full mapping and
+parent-purge checks, ORM CRUD across all 355 tables, criteria, reporting,
+application and search suites. Three affected PHP 8.3 functional classes pass
+eight methods and 330 assertions; the four profile methods pass again after the
+guard repair. All 14 changed PHP files pass syntax checks; formatting and diff
+checks pass. Scheduler selection and pure date calculation were tested without
+executing cron tasks or delivering notifications. Browser interaction and remote
+CI were not exercised.

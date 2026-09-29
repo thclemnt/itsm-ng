@@ -45,14 +45,17 @@ class Profile
     #[ORM\Column(name: '`create_ticket_on_login`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $create_ticket_on_login = false;
 
-    #[ORM\Column(name: '`tickettemplates_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $tickettemplates_id = 0;
+    #[ORM\ManyToOne(targetEntity: TicketTemplate::class)]
+    #[ORM\JoinColumn(name: 'tickettemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?TicketTemplate $tickettemplates_id = null;
 
-    #[ORM\Column(name: '`changetemplates_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $changetemplates_id = 0;
+    #[ORM\ManyToOne(targetEntity: ChangeTemplate::class)]
+    #[ORM\JoinColumn(name: 'changetemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?ChangeTemplate $changetemplates_id = null;
 
-    #[ORM\Column(name: '`problemtemplates_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $problemtemplates_id = 0;
+    #[ORM\ManyToOne(targetEntity: ProblemTemplate::class)]
+    #[ORM\JoinColumn(name: 'problemtemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?ProblemTemplate $problemtemplates_id = null;
 
     #[ORM\Column(name: '`change_status`', type: 'text', nullable: true)]
     public ?string $change_status = null;
