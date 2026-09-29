@@ -2262,3 +2262,52 @@ The static inventory records 729 enforced references, 31 pending ordinary
 references, 62 polymorphic references, one ambiguous reference and 1221 legacy
 SQL call sites. All 355 core tables remain mapped. This inventory is not proof
 that every relationship or runtime SQL path has been converted.
+
+
+### ITIL origins, task lists and planning
+
+Followup merge sources, promoted tickets, task merge sources and solution followups
+now have nullable Doctrine associations with restrictive foreign keys. These are
+historical references, separate from each child's actual parent. Replacing a
+source ticket reassigns the origin; purging it clears the origin without deleting
+the copied followup or task. Purging a referenced followup retains the solution.
+The ticket lifecycle declarations now cover the previously missing origin fields.
+`ITILOriginRepository` maintains those historical associations without replaying
+content-update hooks or modifying task/followup timestamps.
+
+Existing installations run `db:itil_origin_references --apply`, followed by
+`db:foreign_keys --apply`, during maintenance. The normal upgrade path runs the
+migration; fresh schemas include all four constraints. Nonzero orphans block the
+migration before DDL. Zero becomes NULL, valid identifiers are preserved, and
+retries are idempotent.
+
+`ITILTaskRepository` supplies Ticket, Problem and Change task lists, calendar
+selection and planning. Queries use mapped parent/technician/group associations,
+entity and central-profile scope, typed dates and booleans, and Doctrine's portable
+date subtraction for unplanned task intervals. Stable sorting makes equal-date
+pagination deterministic. Existing per-item read checks still control generated
+planning events and VCalendars. Group arrays produce scalar planning event keys.
+`getTaskList()` now returns rows as an array; its homepage consumer uses those rows
+without a database-specific iterator. Plugin callers using `next()` must switch
+to array iteration. Solution counts, ticket status lookup and
+followup promotion lookup also use mapped queries.
+
+`tests/database-portability/itil-tasks.php` covers all three task types, actor and
+entity selection, pagination, empty groups, deleted parents, planned/unplanned
+intervals, open states, central-profile membership, solution counts, historical
+origin replacement/purge and all four migration columns. The existing ticket
+merge fixture now creates its supplier instead of assuming ID 2 exists.
+
+Fresh and upgraded PostgreSQL and MariaDB installations passed the focused contract, including
+actual planning-event generation. PHP 8.3 passed the focused MariaDB contract,
+syntax checks and seven existing functional methods (225 assertions), covering
+homepage tasks, planning conflicts, solutions and ticket merge. PostgreSQL tests
+ran on host PHP 8.5; the PHP 8.3 container has no PostgreSQL driver. These tests
+exercise local model/rendering behavior, not browser interaction or external
+calendar services. Both engines passed complete mapping/parent-purge, all-table
+ORM CRUD, criteria, reporting, application, search, ITIL-user, ITIL-classification
+and document suites. Base portability assertions: 1213 PostgreSQL and 810 MariaDB.
+
+The static inventory records 733 enforced references, 27 pending ordinary
+references, 62 polymorphic references, one ambiguous reference and 1216 legacy SQL
+call sites. Full relationship and runtime query conversion remains unfinished.

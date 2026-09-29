@@ -1,0 +1,118 @@
+<?php
+
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+namespace itsmng\Database\Repository;
+
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\QueryBuilder;
+use itsmng\Database\Entity;
+use itsmng\Database\RecordCriteria;
+
+/** Task projections share the mapped parent relation across Ticket, Change and Problem. */
+final class ITILTaskRepository
+{
+    private const TYPES = [
+        'TicketTask' => [Entity\TicketTask::class, Entity\Ticket::class, 'tickets'],
+        'ProblemTask' => [Entity\ProblemTask::class, Entity\Problem::class, 'problems'],
+        'ChangeTask' => [Entity\ChangeTask::class, Entity\Change::class, 'changes'],
+    ];
+
+    public function __construct(private EntityManager $em)
+    {
+    }
+
+    private function type(string $type): array
+    {
+        return self::TYPES[$type] ?? throw new \InvalidArgumentException('Unsupported ITIL task type');
+    }
+
+    public function taskList(string $type, array $statuses, bool $todo, int $user, ?array $groups, array $scope, ?int $start, ?int $limit): array
+    {
+        [$task, $parent, $relation] = $this->type($type);
+        if ($groups === [] || ($groups === null && $user <= 0)) {
+            return [];
+        }
+        $query = $this->em->createQueryBuilder()->select('t.id')->from($parent, 'r')
+            ->join($task, 't', 'WITH', 'IDENTITY(t.' . $relation . ') = r.id');
+        $query->where((new RecordCriteria($query, $this->em->getClassMetadata($parent)))->where($scope))
+            ->andWhere('r.status IN (:statuses)')->setParameter('statuses', $statuses ?: [-1]);
+        if ($todo) {
+            $query->andWhere('t.state = :todo')->setParameter('todo', \Planning::TODO, Types::INTEGER);
+        }
+        if ($groups !== null) {
+            $query->andWhere('IDENTITY(t.groups_tech) IN (:groups)')->setParameter('groups', $groups);
+        } else {
+            $query->andWhere('IDENTITY(t.technician) = :user')->setParameter('user', $user, Types::INTEGER);
+        }
+        return $query->addSelect('CASE WHEN t.date_mod IS NULL THEN 0 ELSE 1 END AS HIDDEN dated')
+            ->orderBy('dated', 'DESC')->addOrderBy('t.date_mod', 'DESC')->addOrderBy('t.id', 'DESC')
+            ->setFirstResult(max(0, $start ?? 0))->setMaxResults($limit === null ? null : max(0, $limit))
+            ->getQuery()->getScalarResult();
+    }
+
+    public function calendarTasks(string $type, array $criteria): array
+    {
+        [$task, , $relation] = $this->type($type);
+        $query = $this->em->createQueryBuilder()->select('r')->from($task, 'r')->join('r.' . $relation, 'parent');
+        $query->where((new RecordCriteria($query, $this->em->getClassMetadata($task)))->where($criteria))
+            ->andWhere('parent.is_deleted = :deleted')->setParameter('deleted', false, Types::BOOLEAN)->orderBy('r.id');
+        return $this->rows($query);
+    }
+
+    public function planningTasks(string $type, \DateTimeImmutable $begin, \DateTimeImmutable $end, bool $unplanned, int $user, array $groups, array $profileScope, bool $displayDone, array $closedStatuses): array
+    {
+        [$task, , $relation] = $this->type($type);
+        $query = $this->em->createQueryBuilder()->select('t')->from($task, 't')->join('t.' . $relation, 'parent')
+            ->where('parent.is_deleted = :deleted')->setParameter('deleted', false, Types::BOOLEAN)
+            ->setParameter('begin', $begin, Types::DATETIMETZ_IMMUTABLE)->setParameter('end', $end, Types::DATETIMETZ_IMMUTABLE);
+        if ($unplanned) {
+            $date = "DATE_SUB(t.date, t.actiontime, 'second')";
+            $query->addSelect($date . ' AS notp_date', 't.date AS notp_edate')
+                ->andWhere('t.begin IS NULL AND t.end IS NULL AND t.actiontime > 0 AND t.date >= :begin AND ' . $date . ' <= :end');
+        } else {
+            $query->andWhere('t.end >= :begin AND t.begin <= :end');
+        }
+        $actors = [];
+        if ($user > 0) {
+            $actors[] = 'IDENTITY(t.technician) = :user';
+            $query->setParameter('user', $user, Types::INTEGER);
+        }
+        if ($groups) {
+            $actors[] = 'IDENTITY(t.groups_tech) IN (:groups)';
+            $query->setParameter('groups', $groups);
+        }
+        if (!$actors) {
+            $scope = (new RecordCriteria($query, $this->em->getClassMetadata(Entity\ProfileUser::class)))->where($profileScope);
+            $actors[] = 'EXISTS (SELECT r.id FROM ' . Entity\ProfileUser::class . ' r JOIN r.profiles p WHERE IDENTITY(r.users) = IDENTITY(t.technician) AND p.interface = :interface AND (' . $scope . '))';
+            $query->setParameter('interface', 'central');
+        }
+        $query->andWhere('(' . implode(' OR ', $actors) . ')');
+        if (!$displayDone) {
+            $query->andWhere('(t.state = :todo OR (t.state = :info AND t.end > :now)) AND parent.status NOT IN (:closed)')
+                ->setParameter('todo', \Planning::TODO, Types::INTEGER)->setParameter('info', \Planning::INFO, Types::INTEGER)
+                ->setParameter('now', new \DateTimeImmutable(), Types::DATETIMETZ_IMMUTABLE)->setParameter('closed', $closedStatuses ?: [-1]);
+        }
+        return $this->rows($query->orderBy('t.begin')->addOrderBy('t.id'));
+    }
+
+    private function rows(QueryBuilder $query): array
+    {
+        $records = new RecordRepository($this->em);
+        $rows = [];
+        foreach ($query->getQuery()->toIterable() as $result) {
+            $record = is_array($result) ? $result[0] : $result;
+            $row = $records->toRow($record);
+            if (is_array($result)) {
+                foreach (['notp_date', 'notp_edate'] as $field) {
+                    $date = $result[$field];
+                    $row[$field] = $date === null ? null : ($date instanceof \DateTimeInterface ? $date : new \DateTimeImmutable($date))->format('Y-m-d H:i:s');
+                }
+            }
+            $rows[] = $row;
+            $this->em->detach($record);
+        }
+        return $rows;
+    }
+}

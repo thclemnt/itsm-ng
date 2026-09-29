@@ -287,15 +287,11 @@ class ITILSolution extends CommonDBChild
      */
     public static function countFor($itemtype, $items_id)
     {
-        return countElementsInTable(
-            self::getTable(),
-            [
-              'WHERE' => [
-                 'itemtype'  => $itemtype,
-                 'items_id'  => $items_id
-              ]
-            ]
-        );
+        global $DB;
+        return \itsmng\Database\MappedReads::countMatching($DB, self::getTable(), [
+            'itemtype' => $itemtype,
+            'items_id' => $items_id,
+        ]);
     }
 
     public function prepareInputForAdd($input)

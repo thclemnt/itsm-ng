@@ -1227,6 +1227,8 @@ $RELATION = [
    ],
 
    'glpi_tickets' => [
+      'glpi_itilfollowups'         => ['sourceitems_id', 'sourceof_items_id'],
+      'glpi_tickettasks'           => 'sourceitems_id',
       '_glpi_changes_tickets'      => 'tickets_id',
       'glpi_documents'             => 'tickets_id',
       '_glpi_groups_tickets'       => 'tickets_id',

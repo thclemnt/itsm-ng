@@ -8946,14 +8946,8 @@ abstract class CommonITILObject extends CommonDBTM
         echo "<div class='b_right'>";
 
         if ($objType == 'Ticket') {
-            $result = $DB->request([
-               'SELECT' => ['id', 'itemtype', 'items_id'],
-               'FROM'   => ITILFollowup::getTable(),
-               'WHERE'  => [
-                  'sourceof_items_id'  => $this->fields['id'],
-                  'itemtype'           => static::getType()
-               ]
-            ])->next();
+            $result = (new \itsmng\Database\Repository\ITILOriginRepository(\itsmng\Database\Orm::create($DB)))
+                ->promotionSource((int)$this->getID());
             if ($result) {
                 echo Html::link(
                     '',

@@ -77,6 +77,7 @@ class TicketTask
     #[ORM\Column(name: '`timeline_position`', type: 'smallint', nullable: false, options: ['default' => '0'])]
     public int $timeline_position = 0;
 
-    #[ORM\Column(name: '`sourceitems_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $sourceitems_id = 0;
+    #[ORM\ManyToOne(targetEntity: Ticket::class)]
+    #[ORM\JoinColumn(name: 'sourceitems_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Ticket $sourceTicket = null;
 }

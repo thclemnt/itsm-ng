@@ -2773,6 +2773,7 @@ class Toolbox
             (new \itsmng\Database\Migration\OidcReferences())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\Migration\QueueTemplateReferences())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\Migration\DocumentTicketReferences())->apply($DB->getDoctrineConnection());
+            (new \itsmng\Database\Migration\ITILOriginReferences())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\Migration\LegacyComponentModels())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\Migration\RejectedEmailReferences())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\Migration\PersonalContentOwners())->apply($DB->getDoctrineConnection());

@@ -71,12 +71,13 @@ try {
     $fixtures->create('glpi_documenttypes', ['name' => 'ORM forbidden upload', 'ext' => 'ormdisabled', 'is_uploadable' => false]);
     $fixtures->create('glpi_documenttypes', ['name' => 'ORM regex upload', 'ext' => '/^orm[0-9]+$/', 'is_uploadable' => true]);
     $repo = static fn () => new \itsmng\Database\Repository\DocumentRepository(Orm::create($DB));
+    // Build entity-scope inputs before measuring repository execution.
+    $scope = ['is_deleted' => false] + getEntitiesRestrictCriteria('glpi_documents', '', $entity, true);
     $_SESSION['glpi_use_mode'] = Session::DEBUG_MODE;
     $SQL_TOTAL_REQUEST = 0;
     verify(Document::isValidDoc('file.OrMdOc') === 'ORMDOC' && Document::isValidDoc('file.ormdisabled') === '', 'Extension matching is case-insensitive and respects upload permission');
     verify(Document::isValidDoc('file.orm42') === 'ORM42' && Document::isValidDoc('file.ormbad') === '', 'Configured regular expressions remain supported');
     verify($repo()->icon('ORMDOC') === 'defaut-dist.png', 'Icon lookup is case-insensitive');
-    $scope = ['is_deleted' => false] + getEntitiesRestrictCriteria('glpi_documents', '', $entity, true);
     verify(isset($repo()->categories($scope)[$category]) && !isset($repo()->categories($scope)[$hiddenCategory]), 'Headings obey document entity scope');
     verify(!isset($repo()->categories($scope + ['NOT' => ['id' => [$document, $content]]])[$category]), 'Used document exclusion removes an otherwise empty heading');
     verify($SQL_TOTAL_REQUEST === 0, 'Content/type/heading queries bypass adapter SQL');

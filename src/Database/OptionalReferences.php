@@ -329,6 +329,12 @@ final class OptionalReferences
         'glpi_reservations' => ['users_id' => 'glpi_users'],
     ];
 
+    public const ITIL_ORIGINS = [
+        'glpi_itilfollowups' => ['sourceitems_id' => 'glpi_tickets', 'sourceof_items_id' => 'glpi_tickets'],
+        'glpi_tickettasks' => ['sourceitems_id' => 'glpi_tickets'],
+        'glpi_itilsolutions' => ['itilfollowups_id' => 'glpi_itilfollowups'],
+    ];
+
     public const DOCUMENT_TICKETS = [
         'glpi_documents' => ['tickets_id' => 'glpi_tickets'],
     ];
@@ -533,7 +539,7 @@ final class OptionalReferences
         'glpi_tickets' => [...self::SERVICE_LEVELS['glpi_tickets'], ...self::LOCATIONS['glpi_tickets'], ...self::ITIL_CLASSIFICATION['glpi_tickets'], ...self::ITIL_USERS['glpi_tickets']],
         'glpi_changetasks' => [...self::GROUPS['glpi_changetasks'], ...self::ITIL_CLASSIFICATION['glpi_changetasks'], ...self::ITIL_USERS['glpi_changetasks']],
         'glpi_problemtasks' => [...self::GROUPS['glpi_problemtasks'], ...self::ITIL_CLASSIFICATION['glpi_problemtasks'], ...self::ITIL_USERS['glpi_problemtasks']],
-        'glpi_tickettasks' => [...self::GROUPS['glpi_tickettasks'], ...self::ITIL_CLASSIFICATION['glpi_tickettasks'], ...self::ITIL_USERS['glpi_tickettasks']],
+        'glpi_tickettasks' => [...self::GROUPS['glpi_tickettasks'], ...self::ITIL_CLASSIFICATION['glpi_tickettasks'], ...self::ITIL_USERS['glpi_tickettasks'], ...self::ITIL_ORIGINS['glpi_tickettasks']],
         'glpi_itilcategories' => [...self::ITIL_DEFAULTS['glpi_itilcategories'], ...self::GROUPS['glpi_itilcategories'], ...self::ITIL_CLASSIFICATION['glpi_itilcategories'], ...self::TREE_PARENTS['glpi_itilcategories']],
         'glpi_tasktemplates' => [...self::ITIL_DEFAULTS['glpi_tasktemplates'], ...self::GROUPS['glpi_tasktemplates'], ...self::ITIL_CLASSIFICATION['glpi_tasktemplates']],
         'glpi_taskcategories' => ['knowbaseitemcategories_id' => 'glpi_knowbaseitemcategories', ...self::TREE_PARENTS['glpi_taskcategories']],
@@ -541,8 +547,8 @@ final class OptionalReferences
         'glpi_changes' => [...self::ITIL_CLASSIFICATION['glpi_changes'], ...self::ITIL_USERS['glpi_changes']],
         'glpi_ticketvalidations' => [...self::ITIL_USERS['glpi_ticketvalidations']],
         'glpi_changevalidations' => [...self::ITIL_USERS['glpi_changevalidations']],
-        'glpi_itilfollowups' => [...self::ITIL_CLASSIFICATION['glpi_itilfollowups'], ...self::ITIL_USERS['glpi_itilfollowups']],
-        'glpi_itilsolutions' => [...self::ITIL_CLASSIFICATION['glpi_itilsolutions'], ...self::ITIL_USERS['glpi_itilsolutions']],
+        'glpi_itilfollowups' => [...self::ITIL_CLASSIFICATION['glpi_itilfollowups'], ...self::ITIL_USERS['glpi_itilfollowups'], ...self::ITIL_ORIGINS['glpi_itilfollowups']],
+        'glpi_itilsolutions' => [...self::ITIL_CLASSIFICATION['glpi_itilsolutions'], ...self::ITIL_USERS['glpi_itilsolutions'], ...self::ITIL_ORIGINS['glpi_itilsolutions']],
     ];
 
     public static function isEmptySelection(mixed $value): bool

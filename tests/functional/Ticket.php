@@ -3166,16 +3166,18 @@ class Ticket extends DbTestCase
            'type'               => \Group_Ticket::ASSIGN
         ]);
 
+        $supplierId = (new \Supplier())->add(['name' => 'Ticket merge supplier', 'entities_id' => 0]);
+        $this->integer((int)$supplierId)->isGreaterThan(0);
         $ticket_supplier = new \Supplier_Ticket();
         $ticket_supplier->add([
            'tickets_id'         => $ticket1,
            'type'               => \Supplier_Ticket::REQUESTER,
-           'suppliers_id'       => 2
+           'suppliers_id'       => $supplierId
         ]);
         $ticket_supplier->add([ // Duplicate with #1
            'tickets_id'         => $ticket3,
            'type'               => \Supplier_Ticket::REQUESTER,
-           'suppliers_id'       => 2
+           'suppliers_id'       => $supplierId
         ]);
         $ticket_supplier->add([
            'tickets_id'         => $ticket1,
@@ -3191,13 +3193,13 @@ class Ticket extends DbTestCase
         ]);
         $ticket_supplier->add([ // Duplicate with #1
            'tickets_id'         => $ticket2,
-           'suppliers_id'       => 2,
+           'suppliers_id'       => $supplierId,
            'type'               => \Supplier_Ticket::REQUESTER,
            'alternative_email'  => 'test@glpi.com'
         ]);
         $ticket_supplier->add([
            'tickets_id'         => $ticket3,
-           'suppliers_id'       => 2,
+           'suppliers_id'       => $supplierId,
            'type'               => \Supplier_Ticket::ASSIGN,
            'alternative_email'  => 'test@glpi.com'
         ]);

@@ -61,6 +61,7 @@ class ITILSolution
     #[ORM\Column(name: '`status`', type: 'integer', nullable: false, options: ['default' => '1'])]
     public int $status = 1;
 
-    #[ORM\Column(name: '`itilfollowups_id`', type: 'integer', nullable: true)]
-    public ?int $itilfollowups_id = null;
+    #[ORM\ManyToOne(targetEntity: ITILFollowup::class)]
+    #[ORM\JoinColumn(name: 'itilfollowups_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?ITILFollowup $followup = null;
 }

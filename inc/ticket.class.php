@@ -939,6 +939,10 @@ class Ticket extends CommonITILObject
 
     public function cleanDBonPurge()
     {
+        global $DB;
+
+        (new \itsmng\Database\Repository\ITILOriginRepository(\itsmng\Database\Orm::create($DB)))
+            ->reassignTicket((int)$this->getID(), empty($this->input['_replace_by']) ? null : (int)$this->input['_replace_by']);
 
         // OlaLevel_Ticket does not extends CommonDBConnexity
         $olaLevel_ticket = new OlaLevel_Ticket();
@@ -3660,10 +3664,7 @@ class Ticket extends CommonITILObject
         global $DB;
         $done = 0;
 
-        $criteria = "SELECT * FROM glpi_specialstatuses";
-        $iterators = $DB->request($criteria);
-
-        while ($data = $iterators->next()) {
+        foreach (\itsmng\Database\MappedReads::matching($DB, 'glpi_specialstatuses', [], ['id']) as $data) {
             $do_sort[] = $data['weight'];
             $status_db[] = $data;
         }

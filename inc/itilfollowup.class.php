@@ -64,6 +64,14 @@ class ITILFollowup extends CommonDBChild
     public static $items_id = 'items_id';
 
 
+    public function cleanDBonPurge()
+    {
+        global $DB;
+        (new \itsmng\Database\Repository\ITILOriginRepository(\itsmng\Database\Orm::create($DB)))
+            ->reassignFollowup((int)$this->getID(), empty($this->input['_replace_by']) ? null : (int)$this->input['_replace_by']);
+        parent::cleanDBonPurge();
+    }
+
     public function getItilObjectItemType()
     {
         return str_replace('Followup', '', $this->getType());
