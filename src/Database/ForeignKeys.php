@@ -63,7 +63,7 @@ final class ForeignKeys
         'glpi_computerantiviruses' => [...OptionalReferences::RELATIONS['glpi_computerantiviruses'], 'computers_id' => 'glpi_computers'],
         'glpi_computers' => [...OptionalReferences::RELATIONS['glpi_computers'], ...EntityOwnership::RELATIONS['glpi_computers']],
         'glpi_computers_items' => ['computers_id' => 'glpi_computers'],
-        'glpi_computervirtualmachines' => [...OptionalReferences::RELATIONS['glpi_computervirtualmachines'], ...EntityOwnership::RELATIONS['glpi_computervirtualmachines']],
+        'glpi_computervirtualmachines' => [...OptionalReferences::RELATIONS['glpi_computervirtualmachines'], ...EntityOwnership::RELATIONS['glpi_computervirtualmachines'], 'computers_id' => 'glpi_computers'],
         'glpi_consumableitems' => [...OptionalReferences::RELATIONS['glpi_consumableitems'], ...EntityOwnership::RELATIONS['glpi_consumableitems']],
         'glpi_consumables' => [...EntityOwnership::RELATIONS['glpi_consumables'], 'consumableitems_id' => 'glpi_consumableitems'],
         'glpi_contacts' => [...OptionalReferences::RELATIONS['glpi_contacts'], ...EntityOwnership::RELATIONS['glpi_contacts']],

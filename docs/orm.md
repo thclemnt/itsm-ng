@@ -2163,3 +2163,35 @@ FK inventory remains 726 enforced, 34 pending ordinary, 62 polymorphic and one
 ambiguous reference. The static legacy-call inventory remains 1231 because it
 also counts the retained unmapped-plugin branches; core execution of these two
 reports now uses ORM queries.
+
+### Virtual-machine host ownership and inventory views
+
+Virtual-machine inventory entries now map their computer as a required Doctrine
+association with a restrictive FK. Existing installations apply the audited
+`db:foreign_keys --apply` operation; missing or zero host references must be
+repaired first. Fresh installs include the constraint. Computer purge retains the
+existing VM child lifecycle and removes both active and deleted child records;
+reassigned and unrelated VM entries remain intact.
+
+`InventoryRepository` now supplies the active VM list/count and UUID host lookup.
+Host selection joins the mapped computer, applies the current entity scope,
+excludes deleted VM records and deleted/template hosts, and returns each host once.
+The existing UUID normalization rules remain in use. Both directions of the
+inventory view enforce computer read permission before rendering a matched
+computer's name, so a UUID match cannot reveal an inaccessible host or guest.
+
+`tests/database-portability/virtual-machines.php` covers case-insensitive matching,
+duplicate UUID records, entity/flag exclusions, both rendered views, required-host
+creation, reassignment, soft delete/restore and parent purge. The focused contract
+passed on fresh and upgraded PostgreSQL and MariaDB installations. PHP 8.3 passed
+the focused contract and the existing VM functional method (19 assertions).
+Both engines also passed complete mapping/parent-purge, all-table ORM CRUD,
+criteria, reporting, application, search, inventory-metadata migration and asset
+year/contract report suites. Base portability assertions: 1207 PostgreSQL and
+804 MariaDB. Rendering checks execute PHP; no browser interaction or external
+hypervisor is involved.
+
+The inventory records 727 enforced references, 33 pending ordinary references,
+62 polymorphic references, one ambiguous reference and 1231 direct legacy SQL call
+sites. The static SQL count does not include the legacy table-helper calls removed
+from these VM views. Full relationship and query conversion remains unfinished.

@@ -19,8 +19,9 @@ class ComputerVirtualMachine
     #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
     public ?Entity $entities = null;
 
-    #[ORM\Column(name: '`computers_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $computers_id = 0;
+    #[ORM\ManyToOne(targetEntity: Computer::class)]
+    #[ORM\JoinColumn(name: 'computers_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public Computer $computers;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: false, options: ['default' => ''])]
     public string $name = '';

@@ -58,6 +58,40 @@ final class InventoryRepository
         return $rows;
     }
 
+    public function virtualMachinesForComputer(int $computer): array
+    {
+        return (new RecordRepository($this->em))->matching(
+            'glpi_computervirtualmachines',
+            ['computers_id' => $computer, 'is_deleted' => false],
+            ['name', 'id'],
+            legacyValues: false
+        );
+    }
+
+    public function countVirtualMachines(int $computer): int
+    {
+        return (new RecordRepository($this->em))->countMatching(
+            'glpi_computervirtualmachines',
+            ['computers_id' => $computer, 'is_deleted' => false],
+            legacyValues: false
+        );
+    }
+
+    /** A host is listed once even when inventory contains duplicate UUID records. */
+    public function virtualMachineHosts(array $uuids, array $scope): array
+    {
+        if (!$uuids) {
+            return [];
+        }
+        $query = $this->em->createQueryBuilder()->select('DISTINCT r.id AS computers_id')->from(Entity\ComputerVirtualMachine::class, 'vm')
+            ->join('vm.computers', 'r')->where('LOWER(vm.uuid) IN (:uuids)')
+            ->andWhere('vm.is_deleted = :false AND r.is_deleted = :false AND r.is_template = :false')
+            ->setParameter('uuids', array_values(array_unique($uuids)), ArrayParameterType::STRING)
+            ->setParameter('false', false, Types::BOOLEAN)->orderBy('r.id');
+        $query->andWhere((new \itsmng\Database\RecordCriteria($query, $this->em->getClassMetadata(Entity\Computer::class)))->where($scope));
+        return $query->getQuery()->getScalarResult();
+    }
+
     /** Two matches suffice to reject ambiguous UUIDs without loading all duplicates. */
     public function computerIdsByUuids(array $uuids): array
     {
