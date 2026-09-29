@@ -34,12 +34,44 @@ final class Criteria
         return $dates ? ['OR' => $dates] : [];
     }
 
-    /** Range predicates preserve date indexes and work on both database engines. */
-    public static function year(string $column, mixed $year): array
+    /** Only configured types may reach a report; malformed selections match nothing. */
+    public static function itemtypes(mixed $selection, array $allowed): array
+    {
+        if ($selection === null || (is_array($selection) && in_array($selection[0] ?? null, [0, '0'], true))) {
+            return $allowed;
+        }
+        if (!is_array($selection)) {
+            return [];
+        }
+        return array_values(array_unique(array_filter($selection, static fn ($type) => is_string($type) && in_array($type, $allowed, true))));
+    }
+
+    public static function years(mixed $selection): array
+    {
+        if (!is_array($selection)) {
+            throw new \InvalidArgumentException('Invalid report years');
+        }
+        if (in_array($selection[0] ?? null, [0, '0'], true)) {
+            return [];
+        }
+        foreach ($selection as $year) {
+            self::yearBounds($year);
+        }
+        return array_values(array_unique($selection));
+    }
+
+    public static function yearBounds(mixed $year): array
     {
         if (!is_scalar($year) || !preg_match('/^[1-9][0-9]{3}$/D', (string)$year) || (int)$year >= 9999) {
             throw new \InvalidArgumentException('Invalid report year');
         }
-        return ['AND' => [[$column => ['>=', $year . '-01-01']], [$column => ['<', ((int)$year + 1) . '-01-01']]]];
+        return [$year . '-01-01', ((int)$year + 1) . '-01-01'];
+    }
+
+    /** Range predicates preserve date indexes and work on both database engines. */
+    public static function year(string $column, mixed $year): array
+    {
+        [$start, $end] = self::yearBounds($year);
+        return ['AND' => [[$column => ['>=', $start]], [$column => ['<', $end]]]];
     }
 }

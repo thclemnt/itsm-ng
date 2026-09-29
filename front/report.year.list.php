@@ -31,6 +31,10 @@
  * ---------------------------------------------------------------------
  */
 
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\AssetContractReportRepository;
+use itsmng\Reporting\Criteria;
+
 include("../inc/includes.php");
 
 Session::checkRight("reports", READ);
@@ -44,17 +48,16 @@ $items = $CFG_GLPI["report_types"];
 // Titre
 echo "<div class='center b spaced'><big>" . __('Device list') . "</big></div>";
 
-// Request All
-if (
-    (isset($_POST["item_type"][0]) && ($_POST["item_type"][0] == 0))
-    || !isset($_POST["item_type"])
-) {
-    $_POST["item_type"] = $items;
-}
+$selectedTypes = Criteria::itemtypes($_POST['item_type'] ?? null, $items);
+$years = Criteria::years($_POST['year'] ?? []);
+$all_criteria = [];
 
-if (isset($_POST["item_type"]) && is_array($_POST["item_type"])) {
-    $all_criteria = [];
-    foreach ($_POST["item_type"] as $key => $val) {
+if ($selectedTypes) {
+    foreach ($selectedTypes as $val) {
+        if (AssetContractReportRepository::supports($val)) {
+            continue;
+        }
+        // Unmapped plugin types retain their compatibility query until mapped.
         if (in_array($val, $items)) {
             $itemtable = getTableForItemType($val);
 
@@ -152,11 +155,11 @@ if (isset($_POST["item_type"]) && is_array($_POST["item_type"])) {
             ];
             $criteria['WHERE'] = $criteria['WHERE'] + getEntitiesRestrictCriteria($itemtable);
 
-            if (isset($_POST["year"][0]) && ($_POST["year"][0] != 0)) {
+            if ($years) {
                 $ors = [];
-                foreach ($_POST["year"] as $val2) {
-                    $ors[] = \itsmng\Reporting\Criteria::year('glpi_infocoms.buy_date', $val2);
-                    $ors[] = \itsmng\Reporting\Criteria::year('glpi_contracts.begin_date', $val2);
+                foreach ($years as $val2) {
+                    $ors[] = Criteria::year('glpi_infocoms.buy_date', $val2);
+                    $ors[] = Criteria::year('glpi_contracts.begin_date', $val2);
                 }
                 if (count($ors)) {
                     $criteria['WHERE'][] = [
@@ -170,9 +173,11 @@ if (isset($_POST["item_type"]) && is_array($_POST["item_type"])) {
 }
 $display_entity = Session::isMultiEntitiesMode();
 
-if (count($all_criteria)) {
-    foreach ($all_criteria as $key => $val) {
-        $iterator = $DB->request($val);
+if ($selectedTypes) {
+    foreach ($selectedTypes as $key) {
+        $iterator = AssetContractReportRepository::supports($key)
+            ? (new AssetContractReportRepository(Orm::create($DB)))->rows($key, $years, Criteria::entities(), false)
+            : iterator_to_array($DB->request($all_criteria[$key]));
         if (count($iterator)) {
             $item = new $key();
             echo "<div class='center b'>" . $item->getTypeName(1) . "</div>";
@@ -189,7 +194,7 @@ if (count($all_criteria)) {
             echo "<th>" . __('Start date') . "</th>";
             echo "<th>" . __('End date') . "</th></tr>";
 
-            while ($data = $iterator->next()) {
+            foreach ($iterator as $data) {
                 echo "<tr class='tab_bg_1'>";
                 if ($data['itemname']) {
                     echo "<td> " . $data['itemname'] . "</td>";

@@ -2123,3 +2123,43 @@ were not opened; rendering was checked in PHP.
 The inventory now records 726 enforced references, 34 pending ordinary references,
 62 polymorphic references, one ambiguous reference and 1231 legacy SQL call sites.
 Full relationship and query conversion remains unfinished.
+
+### Year and contract asset reports
+
+Core year and contract reports now execute mapped queries through
+`AssetContractReportRepository`. The shared repository joins each concrete asset
+mapping to contract bindings, contract type, entity, location and optional
+financial data. It uses typed date ranges and booleans, deterministic ordering,
+and scalar report rows instead of hydrating complete asset graphs. Empty entity
+scope grants no rows; unrestricted scope must be supplied explicitly.
+
+The existing report distinctions remain: year reports retain uncontracted assets,
+contract reports require a binding, and multiple contracts produce multiple rows.
+Projects and software licenses keep their historical financial, template and
+deleted-flag policies. Report input validation rejects unknown/non-string item
+types and invalid years, deduplicates selections, and retains the all-types and
+all-years controls. Unknown selections no longer reuse the previous item's query.
+Unmapped plugin types still use their existing compatibility queries in these
+entry points; their conversion remains outstanding.
+
+`tests/database-portability/asset-contract-reports.php` covers every configured
+core contract type, every core year-report type, multi-contract rows, date
+boundaries, mixed years, entity scope, NULL projections and special project/license
+behavior. It passed on PostgreSQL and MariaDB, as did the broader reporting
+contract. The focused test also passed under PHP 8.3.
+
+For HTTP validation, seed a fresh disposable `itsm_port_*` installation once with
+`php tests/database-portability/seed-report-web.php /path/to/test-config`, run its
+local test server, then use `python3 tests/database-portability/web-reports.py URL
+--log-dir /path/to/test-files/_log --asset-fixtures`. The seed intentionally
+persists in that disposable database and refuses a duplicate seed. Both engines
+passed the full report HTTP smoke test and the added fixture checks: visible and
+deleted rows present, templates and other entities excluded, uncontracted rows
+present only in the year report. This checks HTTP output, not browser layout. Login still emits the existing
+`glpiextauth` session-key warning in `User`; no report SQL errors or fatal errors
+were recorded.
+
+FK inventory remains 726 enforced, 34 pending ordinary, 62 polymorphic and one
+ambiguous reference. The static legacy-call inventory remains 1231 because it
+also counts the retained unmapped-plugin branches; core execution of these two
+reports now uses ORM queries.

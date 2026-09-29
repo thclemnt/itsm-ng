@@ -21,6 +21,7 @@ class Inputs(HTMLParser):
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('url', help='Isolated application URL')
 parser.add_argument('--log-dir', default=str(Path(__file__).resolve().parents[2] / 'files/_log'))
+parser.add_argument('--asset-fixtures', action='store_true', help='Verify ORM report visible/deleted/template/hidden/uncontracted fixtures in the isolated database')
 args = parser.parse_args()
 base = args.url.rstrip('/')
 client = build_opener(HTTPCookieProcessor(http.cookiejar.CookieJar()))
@@ -71,3 +72,14 @@ for page, data in [
     assert url.endswith('/front/' + page), f'{page}: unexpected redirect to {url}'
     assert '</html>' in html.lower(), f'{page}: incomplete response'
 print('HTTP: default, state, reservation, year, contract, financial and network reports passed.')
+
+if args.asset_fixtures:
+    request('/front/central.php?active_entity=0&is_recursive=0')
+    for page in ('report.year.list.php', 'report.contract.list.php'):
+        _, form = request('/front/report.php')
+        token = re.search(r'property="glpi:csrf_token" content="([^"]+)"', form).group(1)
+        _, html = request('/front/' + page, {'year[0]': '2025', 'item_type[0]': 'Computer', '_glpi_csrf_token': token})
+        assert 'ORM report visible' in html and 'ORM report deleted' in html, page
+        assert not re.search(r'<td[^>]*>\s*ORM report (?:template|hidden)\s*</td>', html), page
+        assert ('ORM report uncontracted' in html) == (page == 'report.year.list.php'), page
+    print('HTTP: ORM asset report rows, scope, template exclusion and contract requirement passed.')
