@@ -682,12 +682,10 @@ class ObjectLock extends CommonDBTM
         $actionCode = 0; // by default
         $task->setVolume(0); // start with zero
 
-        $lockedItems = getAllDataFromTable(
-            getTableForItemType(__CLASS__),
-            [
-              'date_mod' => ['<', date("Y-m-d H:i:s", time() - ($task->fields['param'] * HOUR_TIMESTAMP))]
-            ]
-        );
+        global $DB;
+        $before = (new \DateTimeImmutable())->setTimestamp(time() - ($task->fields['param'] * HOUR_TIMESTAMP));
+        $lockedItems = (new \itsmng\Database\Repository\ObjectLockRepository(\itsmng\Database\Orm::create($DB)))
+            ->expired($before);
 
         foreach ($lockedItems as $row) {
             $ol = new self();

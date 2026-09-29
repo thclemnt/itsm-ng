@@ -1904,3 +1904,35 @@ name matching does not cause duplicate pending inserts.
 The inventory now reports 716 enforced references, 44 pending ordinary references,
 62 polymorphic references, one ambiguous reference and 1273 legacy SQL call sites.
 Full relationship and query conversion remains unfinished.
+
+### Email lifecycle and object-lock ownership
+
+All `UserEmail` address queries and default-address maintenance now use
+`UserEmailRepository`. Lookups filter through the mapped user association;
+preferred addresses sort by default status and then ID. When deleting a default,
+selection preserves an existing default or promotes the oldest surviving address.
+Default changes validate the selected address's owner, serialize against the user
+row and set both the selected and other addresses explicitly in one transaction.
+The public model still performs email validation, history and permission checks.
+
+`ObjectLock.users` is now a required association with a user FK. Existing user
+purge removes owned locks through the model before deleting their owner. Existing
+installations use `db:foreign_keys --apply`; orphan locks stop its audit and are
+not silently reassigned or removed. Fresh installs include the constraint.
+`ObjectLockRepository::expired()` selects stale locks with a typed timestamp and
+stable ordering. Unlocking and its history remain in the model's cron action.
+
+`tests/database-portability/user-emails-locks.php` covers empty and missing-default
+lookups, first-address defaults, quoted email values, owner isolation, model
+updates and deletion, legacy default ties, transaction rollback, strict lock-expiry
+boundaries, lock-status hydration and user-purge cleanup. It does not execute the
+unlock cron or send notifications.
+
+Fresh installs and focused contracts passed on PostgreSQL and MariaDB. Full
+mapping/parent-purge, ORM CRUD for all 355 tables, criteria, reporting, application,
+search and OIDC contracts also passed. Base portability assertions: 1197 PostgreSQL
+and 794 MariaDB. PHP 8.3 passed the focused contract and five selected user lifecycle
+functional methods (279 assertions), with notifications disabled. No browser or
+cron execution was tested. The inventory is now 717 enforced references, 43 pending
+ordinary references, 62 polymorphic references, one ambiguous reference and 1267
+legacy SQL call sites. Full conversion remains unfinished.

@@ -22,8 +22,9 @@ class ObjectLock
     #[ORM\Column(name: '`items_id`', type: 'integer', nullable: false)]
     public int $items_id = 0;
 
-    #[ORM\Column(name: '`users_id`', type: 'integer', nullable: false)]
-    public int $users_id = 0;
+    #[ORM\ManyToOne(targetEntity: User::class)]
+    #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    public ?User $users = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: false, options: ['default' => 'CURRENT_TIMESTAMP'])]
     public ?\DateTimeInterface $date_mod = null;
