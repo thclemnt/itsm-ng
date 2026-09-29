@@ -32,6 +32,22 @@ final class ProjectRepository
             $query->andWhere('r.is_deleted = :deleted')->setParameter('deleted', false, Types::BOOLEAN)
                 ->andWhere('(state.is_finished IS NULL OR state.is_finished = :finished)')->setParameter('finished', false, Types::BOOLEAN);
         }
+        $this->restrictVisibility($query, $readAll, $user, $groups);
+        $rows = [];
+        $records = new RecordRepository($this->em);
+        foreach ($query->orderBy('r.id')->getQuery()->toIterable() as $result) {
+            $project = $result[0];
+            $row = $records->toRow($project);
+            $row['is_finished'] = $result['is_finished'] === null ? null : (int)$result['is_finished'];
+            $rows[$row['id']] = $row;
+            $this->em->detach($project);
+        }
+        return $rows;
+    }
+
+    /** Query must use r as its Project root alias. */
+    public function restrictVisibility(QueryBuilder $query, bool $readAll, int $user, array $groups): void
+    {
         if (!$readAll) {
             $ownership = [];
             $membership = [];
@@ -46,21 +62,12 @@ final class ProjectRepository
                 $query->setParameter('groups', array_values(array_map('intval', $groups)))->setParameter('group_type', 'Group');
             }
             if (!$membership) {
-                return [];
+                $query->andWhere('1 = 0');
+                return;
             }
             $ownership[] = 'EXISTS (SELECT team.id FROM ' . ProjectTeam::class . ' team WHERE IDENTITY(team.projects) = r.id AND (' . implode(' OR ', $membership) . '))';
             $query->andWhere('(' . implode(' OR ', $ownership) . ')');
         }
-        $rows = [];
-        $records = new RecordRepository($this->em);
-        foreach ($query->orderBy('r.id')->getQuery()->toIterable() as $result) {
-            $project = $result[0];
-            $row = $records->toRow($project);
-            $row['is_finished'] = $result['is_finished'] === null ? null : (int)$result['is_finished'];
-            $rows[$row['id']] = $row;
-            $this->em->detach($project);
-        }
-        return $rows;
     }
 
     public function teamMembers(string $table, array $ids, array $fields): array

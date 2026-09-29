@@ -70,16 +70,7 @@ class ImpactRelation extends CommonDBRelation
         }
 
         // Check for duplicate
-        $it = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'itemtype_source'   => $input['itemtype_source'],
-              'items_id_source'   => $input['items_id_source'],
-              'itemtype_impacted' => $input['itemtype_impacted'],
-              'items_id_impacted' => $input['items_id_impacted']
-           ]
-        ]);
-        if (count($it)) {
+        if (self::getIDFromInput($input) !== false) {
             return false;
         }
 
@@ -112,21 +103,11 @@ class ImpactRelation extends CommonDBRelation
     {
         global $DB;
 
-        // Check that the link exist
-        $it = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'itemtype_source'   => $input['itemtype_source'],
-              'items_id_source'   => $input['items_id_source'],
-              'itemtype_impacted' => $input['itemtype_impacted'],
-              'items_id_impacted' => $input['items_id_impacted']
-           ]
-        ]);
-
-        if (count($it)) {
-            return $it->next()['id'];
-        }
-
-        return false;
+        return (new \itsmng\Database\Repository\ImpactRepository(\itsmng\Database\Orm::create($DB)))->relationId([
+            'itemtype_source' => $input['itemtype_source'],
+            'items_id_source' => $input['items_id_source'],
+            'itemtype_impacted' => $input['itemtype_impacted'],
+            'items_id_impacted' => $input['items_id_impacted'],
+        ]) ?? false;
     }
 }

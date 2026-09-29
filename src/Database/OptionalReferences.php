@@ -329,6 +329,8 @@ final class OptionalReferences
         'glpi_reservations' => ['users_id' => 'glpi_users'],
     ];
 
+    public const IMPACT_GRAPH = ['glpi_impactitems' => ['parent_id' => 'glpi_impactcompounds', 'impactcontexts_id' => 'glpi_impactcontexts']];
+
     public const ITIL_ORIGINS = [
         'glpi_itilfollowups' => ['sourceitems_id' => 'glpi_tickets', 'sourceof_items_id' => 'glpi_tickets'],
         'glpi_tickettasks' => ['sourceitems_id' => 'glpi_tickets'],
@@ -449,6 +451,7 @@ final class OptionalReferences
         ...self::NETWORK_NAMES,
         ...self::NETWORK_PORT_METADATA,
         ...self::ITIL_ACTORS,
+        ...self::IMPACT_GRAPH,
         ...self::CRON_LOG_PARENTS,
         ...self::CONTACT_LINE_METADATA,
         ...self::CONTENT_METADATA,

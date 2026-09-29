@@ -101,24 +101,8 @@ class Impact extends CommonGLPI
             $total = 0;
         } elseif ($is_enabled_asset) {
             // If on an asset, get the number of its direct dependencies
-            $total = count($DB->request([
-               'FROM'  => ImpactRelation::getTable(),
-               'WHERE' => [
-                  'OR' => [
-                     [
-                        // Source item is our item
-                        'itemtype_source' => get_class($item),
-                        'items_id_source' => $item->fields['id'],
-                     ],
-                     [
-                        // Impacted item is our item AND source item is enabled
-                        'itemtype_impacted' => get_class($item),
-                        'items_id_impacted' => $item->fields['id'],
-                        'itemtype_source'   => self::getEnabledItemtypes()
-                     ]
-                  ]
-               ]
-            ]));
+            $total = (new \itsmng\Database\Repository\ImpactRepository(\itsmng\Database\Orm::create($DB)))
+                ->relationCount(get_class($item), (int)$item->getID(), self::getEnabledItemtypes());
         }
 
         return self::createTabEntry(__("Impact analysis"), $total);
@@ -908,72 +892,30 @@ class Impact extends CommonGLPI
             ];
         }
 
-        // This array can't be empty since we will use it in the NOT IN part of the reqeust
-        if (!count($used)) {
-            $used[] = -1;
-        }
-
-        // Search for items
-        $table = $itemtype::getTable();
-        $base_request = [
-           'FROM'   => $table,
-           'WHERE'  => [
-              'NOT' => [
-                 "$table.id" => $used
-              ],
-           ],
-        ];
-
-        // Add friendly name search criteria
-        $base_request['WHERE'] = array_merge(
-            $base_request['WHERE'],
-            $itemtype::getFriendlyNameSearchCriteria($filter)
-        );
-
-        if (is_subclass_of($itemtype, "ExtraVisibilityCriteria", true)) {
-            $base_request = array_merge_recursive(
-                $base_request,
-                $itemtype::getVisibilityCriteria()
-            );
-        }
-
+        $criteria = [];
         $item = new $itemtype();
         if ($item->isEntityAssign()) {
-            $base_request['WHERE'] = array_merge_recursive(
-                $base_request['WHERE'],
-                getEntitiesRestrictCriteria($itemtype::getTable())
-            );
+            $criteria = getEntitiesRestrictCriteria($itemtype::getTable());
         }
-
-        if ($item->mayBeDeleted()) {
-            $base_request['WHERE']["$table.is_deleted"] = 0;
+        if ($item->maybeDeleted()) {
+            $criteria['is_deleted'] = false;
         }
-
-        if ($item->mayBeTemplate()) {
-            $base_request['WHERE']["$table.is_template"] = 0;
+        if ($item->maybeTemplate()) {
+            $criteria['is_template'] = false;
         }
-
-        $select = [
-           'SELECT' => ["$table.id", $itemtype::getFriendlyNameFields()],
-        ];
-        $limit = [
-           'START' => $page * 20,
-           'LIMIT' => "20",
-        ];
-        $count = [
-           'COUNT' => "total",
-        ];
-
-        // Get items
-        $rows = $DB->request($base_request + $select + $limit);
-
-        // Get total
-        $total = $DB->request($base_request + $count);
-
-        return [
-           "items" => iterator_to_array($rows, false),
-           "total" => iterator_to_array($total, false)[0]['total'],
-        ];
+        $config = Config::getConfigurationValues('core');
+        return (new \itsmng\Database\Repository\ImpactRepository(\itsmng\Database\Orm::create($DB)))->searchAssets(
+            $itemtype::getTable(),
+            $itemtype::getNameField(),
+            $criteria,
+            $used,
+            $filter,
+            $page,
+            ($config['names_format'] ?? User::FIRSTNAME_BEFORE) == User::FIRSTNAME_BEFORE,
+            Session::haveRight('project', Project::READALL),
+            (int)Session::getLoginUserID(),
+            $_SESSION['glpigroups'] ?? [],
+        );
     }
 
     /**
@@ -1210,13 +1152,8 @@ class Impact extends CommonGLPI
         }
 
         // Get relations of the current node
-        $relations = $DB->request([
-           'FROM'   => ImpactRelation::getTable(),
-           'WHERE'  => [
-              'itemtype_' . $target => get_class($node),
-              'items_id_' . $target => $node->fields['id']
-           ]
-        ]);
+        $relations = (new \itsmng\Database\Repository\ImpactRepository(\itsmng\Database\Orm::create($DB)))
+            ->relations(get_class($node), (int)$node->getID(), $target);
 
         // Add current code to the graph if we found at least one impact relation
         if (count($relations)) {
@@ -1346,7 +1283,7 @@ class Impact extends CommonGLPI
 
         // Load node position and parent
         $new_node['impactitem_id'] = $impact_item->fields['id'];
-        $new_node['parent']        = $impact_item->fields['parent_id'];
+        $new_node['parent']        = (int)($impact_item->fields['parent_id'] ?? 0);
 
         // If the node has a parent, add it to the node list aswell
         if (!empty($new_node['parent'])) {
@@ -1457,6 +1394,9 @@ class Impact extends CommonGLPI
            'impactcontexts_id' => 1,
            'is_slave'          => 1,
         ]);
+
+        $params['parent_id'] = (int)($params['parent_id'] ?? 0);
+        $params['impactcontexts_id'] = (int)($params['impactcontexts_id'] ?? 0);
 
         // Load context if exist
         if ($params['impactcontexts_id']) {
@@ -1685,72 +1625,8 @@ class Impact extends CommonGLPI
             return;
         }
 
-        // Remove each relations
-        $DB->delete(\ImpactRelation::getTable(), [
-           'OR' => [
-              [
-                 'itemtype_source' => get_class($item),
-                 'items_id_source' => $item->fields['id']
-              ],
-              [
-                 'itemtype_impacted' => get_class($item),
-                 'items_id_impacted' => $item->fields['id']
-              ],
-           ]
-        ]);
-
-        // Remove associated ImpactItem
-        $impact_item = ImpactItem::findForItem($item, false);
-        if (!$impact_item) {
-            // Stop here if no impactitem, nothing more to delete
-            return;
-        }
-
-        $impact_item->delete($impact_item->fields);
-
-        // Remove impact context if defined and not a slave, update others
-        // contexts if they are slave to us
-        if (
-            $impact_item->fields['impactcontexts_id'] != 0
-            && $impact_item->fields['is_slave'] != 0
-        ) {
-            $DB->update(
-                ImpactItem::getTable(),
-                [
-                  'impactcontexts_id' => 0,
-                ],
-                [
-                  'impactcontexts_id' => $impact_item->fields['impactcontexts_id'],
-                ]
-            );
-
-            $DB->delete(ImpactContext::getTable(), [
-               'id' => $impact_item->fields['impactcontexts_id']
-            ]);
-        }
-
-        // Delete group if less than two children remaining
-        if ($impact_item->fields['parent_id'] != 0) {
-            $count = countElementsInTable(ImpactItem::getTable(), [
-               'parent_id' => $impact_item->fields['parent_id']
-            ]);
-
-            if ($count < 2) {
-                $DB->update(
-                    ImpactItem::getTable(),
-                    [
-                      'parent_id' => 0,
-                    ],
-                    [
-                      'parent_id' => $impact_item->fields['parent_id']
-                    ]
-                );
-
-                $DB->delete(ImpactCompound::getTable(), [
-                   'id' => $impact_item->fields['parent_id']
-                ]);
-            }
-        }
+        (new \itsmng\Database\Repository\ImpactRepository(\itsmng\Database\Orm::create($DB)))
+            ->clean(get_class($item), (int)$item->getID());
     }
 
     /**

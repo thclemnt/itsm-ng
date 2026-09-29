@@ -664,6 +664,9 @@ $RELATION = [
       '_glpi_ipaddresses_ipnetworks' => 'ipaddresses_id',
    ],
 
+   'glpi_impactcontexts' => ['glpi_impactitems' => 'impactcontexts_id'],
+   'glpi_impactcompounds' => ['glpi_impactitems' => 'parent_id'],
+
    'glpi_ipnetworks' => [
       '_glpi_ipaddresses_ipnetworks' => 'ipnetworks_id',
       'glpi_ipnetworks'              => 'ipnetworks_id',

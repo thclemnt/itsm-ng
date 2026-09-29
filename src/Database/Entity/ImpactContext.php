@@ -36,11 +36,11 @@ class ImpactContext
     #[ORM\Column(name: '`impact_and_depends_color`', type: 'string', length: 255, nullable: false, options: ['default' => ''])]
     public string $impact_and_depends_color = '';
 
-    #[ORM\Column(name: '`show_depends`', type: 'smallint', nullable: false, options: ['default' => '1'])]
-    public int $show_depends = 1;
+    #[ORM\Column(name: '`show_depends`', type: 'boolean', nullable: false, options: ['default' => true])]
+    public bool $show_depends = true;
 
-    #[ORM\Column(name: '`show_impact`', type: 'smallint', nullable: false, options: ['default' => '1'])]
-    public int $show_impact = 1;
+    #[ORM\Column(name: '`show_impact`', type: 'boolean', nullable: false, options: ['default' => true])]
+    public bool $show_impact = true;
 
     #[ORM\Column(name: '`max_depth`', type: 'integer', nullable: false, options: ['default' => '5'])]
     public int $max_depth = 5;

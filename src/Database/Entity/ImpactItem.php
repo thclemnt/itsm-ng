@@ -22,12 +22,14 @@ class ImpactItem
     #[ORM\Column(name: '`items_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $items_id = 0;
 
-    #[ORM\Column(name: '`parent_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $parent_id = 0;
+    #[ORM\ManyToOne(targetEntity: ImpactCompound::class)]
+    #[ORM\JoinColumn(name: 'parent_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?ImpactCompound $compound = null;
 
-    #[ORM\Column(name: '`impactcontexts_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $impactcontexts_id = 0;
+    #[ORM\ManyToOne(targetEntity: ImpactContext::class)]
+    #[ORM\JoinColumn(name: 'impactcontexts_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?ImpactContext $context = null;
 
-    #[ORM\Column(name: '`is_slave`', type: 'smallint', nullable: false, options: ['default' => '1'])]
-    public int $is_slave = 1;
+    #[ORM\Column(name: '`is_slave`', type: 'boolean', nullable: false, options: ['default' => true])]
+    public bool $is_slave = true;
 }

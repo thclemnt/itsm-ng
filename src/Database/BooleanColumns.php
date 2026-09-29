@@ -105,6 +105,8 @@ final class BooleanColumns
         'glpi_items_racks' => ['is_reserved'],
         'glpi_items_softwarelicenses' => ['is_deleted', 'is_dynamic'],
         'glpi_items_softwareversions' => ['is_deleted_item', 'is_template_item', 'is_deleted', 'is_dynamic'],
+        'glpi_impactitems' => ['is_slave'],
+        'glpi_impactcontexts' => ['show_depends', 'show_impact'],
         'glpi_itilcategories' => ['is_recursive', 'is_helpdeskvisible', 'is_change'],
         'glpi_itilfollowups' => ['is_private'],
         'glpi_knowbaseitemcategories' => ['is_recursive'],

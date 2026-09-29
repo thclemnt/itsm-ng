@@ -21,6 +21,7 @@ final class Orm
             \Doctrine\DBAL\Types\Type::addType(Type\ClockTimeType::NAME, Type\ClockTimeType::class);
         }
         $config = new Configuration();
+        $config->addCustomStringFunction('REPLACE', Query\Replace::class);
         $config->addCustomNumericFunction('BIT_COUNT', Query\BitCount::class);
         $config->addCustomNumericFunction('EPOCH_SECONDS', Query\EpochSeconds::class);
         $config->setMetadataDriverImpl(new AttributeDriver([__DIR__ . '/Entity']));

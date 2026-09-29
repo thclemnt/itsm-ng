@@ -2311,3 +2311,51 @@ and document suites. Base portability assertions: 1213 PostgreSQL and 810 MariaD
 The static inventory records 733 enforced references, 27 pending ordinary
 references, 62 polymorphic references, one ambiguous reference and 1216 legacy SQL
 call sites. Full relationship and runtime query conversion remains unfinished.
+
+
+### Impact graph associations, queries and native flags
+
+Impact items now map their compound group (`parent_id`) and saved context
+(`impactcontexts_id`) as nullable associations with restrictive foreign keys.
+Direct context/compound replacement or purge maintains their children. Existing
+installations run `db:impact_graph_references --apply`, then
+`db:foreign_keys --apply`, during maintenance; the normal upgrade path includes
+the migration and fresh schemas include the constraints.
+
+The same migration audits `is_slave`, `show_depends` and `show_impact` and converts
+them to native PostgreSQL booleans. MySQL retains its binary tinyint representation.
+Both providers reject non-binary values and nonzero orphan references before DDL;
+zero references become NULL, valid values survive, and retries are idempotent.
+PostgreSQL applies reference and flag changes transactionally. Legacy model rows
+still expose flags as 0/1; graph JSON represents absent parent/context IDs as 0.
+
+`ImpactRepository` supplies node/edge lookup, relation counts, graph traversal
+queries, asset search and transactional cleanup. Search uses bounded pages with
+stable ordering, entity/flag exclusions, configured user-name ordering and a
+shared project audience predicate. Multiple project-team memberships do not
+multiply results. The AJAX filter now uses input without SQL pre-escaping before
+binding; quotes, literal backslashes and Unicode round-trip. Core impact queries
+no longer call the legacy SQL adapter.
+
+Cleanup fixes an inverted owner/slave condition: deleting a slave preserves the
+owner's shared context; deleting the owner clears other nodes' references before
+removing the context. Undersized compound groups are dissolved while surviving
+nodes remain. The polymorphic asset identities on nodes and edges still require
+separate relationship work.
+
+`tests/database-portability/impact-graph.php` covers every configured core asset
+mapping, permissions, pagination, name matching, project audiences, duplicate
+edges, owner/slave cleanup, group dissolution, direct compound purge, context replacement/purge,
+native flag values and upgrade refusal/preservation/retry. Fresh and upgraded
+PostgreSQL and MariaDB passed the focused contract. The existing impact functional
+classes passed under PHP 8.3: 20 methods, 247 assertions. PHP 8.3 also passed
+the focused MariaDB contract and syntax checks; PostgreSQL tests ran on host
+PHP 8.5 because the PHP 8.3 container has no PostgreSQL driver. Both providers
+passed complete mapping/parent-purge, all-table ORM CRUD, criteria, reporting,
+application, search and project-planning contracts. Base portability assertions:
+1218 PostgreSQL and 812 MariaDB. Tests execute local models and graph data, not
+browser visualization or external services.
+
+The inventory records 735 enforced references, 25 pending ordinary references,
+62 polymorphic references, one ambiguous reference and 1204 legacy SQL call sites.
+Full relationship and runtime query conversion remains unfinished.

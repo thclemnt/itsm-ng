@@ -62,7 +62,7 @@ switch ($_SERVER['REQUEST_METHOD']) {
         switch ($action) {
             case "search":
                 $used     = $_GET["used"]     ?? "[]";
-                $filter   = $_GET["filter"]   ?? "";
+                $filter   = Toolbox::clean_cross_side_scripting_deep($_UGET["filter"] ?? "");
                 $page     = $_GET["page"]     ?? 0;
 
                 // Execute search
