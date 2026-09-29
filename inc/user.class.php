@@ -384,6 +384,7 @@ class User extends CommonDBTM
               Change_User::class,
               Group_User::class,
               KnowbaseItem_User::class,
+              Item_Kanban::class,
               Problem_User::class,
               Profile_User::class,
               ProjectTaskTeam::class,

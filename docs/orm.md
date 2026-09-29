@@ -2359,3 +2359,49 @@ browser visualization or external services.
 The inventory records 735 enforced references, 25 pending ordinary references,
 62 polymorphic references, one ambiguous reference and 1204 legacy SQL call sites.
 Full relationship and runtime query conversion remains unfinished.
+
+
+### Kanban state ownership and mapped persistence
+
+Kanban state now maps its optional user owner as a Doctrine association with a
+restrictive foreign key. NULL identifies shared state; the generated `owner_key`
+normalizes it to zero only inside the unique board/owner index. This preserves
+one shared row per board on both providers without a synthetic user record.
+Deleting or replacing a user removes their private Kanban state instead of
+promoting it to shared state or overwriting the replacement user's preferences.
+Project purge still removes its board state.
+
+Existing installations run `db:kanban_ownership --apply`, followed by
+`db:foreign_keys --apply`, during maintenance. The standard upgrade path includes
+the migration; fresh installs include the generated column and constraint.
+Migration audits reject nonzero orphan owners and duplicate normalized identities
+before DDL. Zero owners become NULL and retries are idempotent. PostgreSQL applies
+DDL and normalization transactionally; MySQL DDL requires stopped writers and
+runs outside application transactions.
+
+`KanbanRepository` loads and saves mapped entities, retaining state preparation
+hooks, shared/private selection, creation dates and timestamp-based polling.
+Concurrent initial saves recover from a uniqueness conflict using a mapped update
+on the winning row, including when both requests contain identical state. The
+AJAX boundary retains HTML sanitization but no longer SQL-escapes values before
+ORM binding. Non-array states are rejected. Moving the first column now works;
+the old truthiness check treated its zero-based position as absent.
+
+The polymorphic board identity remains a separate relationship conversion.
+
+Validation: `tests/database-portability/kanban.php` passes on fresh and upgraded
+PostgreSQL and MariaDB, covering state operations, owner lifecycle, uniqueness,
+concurrent first saves with two physical connections, and migration
+refusal/preservation/retry. `web-kanban.py` passes authenticated save/load,
+column and card actions on both providers, including literal quotes, backslashes,
+Unicode and HTML sanitization. This is HTTP proof, not browser interaction.
+PHP 8.3 passes the MariaDB contract, syntax checks and the existing Project
+functional class (three methods, 146 assertions). PostgreSQL tests use host PHP
+8.5; the PHP 8.3 container has no PostgreSQL driver. Both providers also pass
+mapping/parent-purge, CRUD for all 355 tables, criteria, reporting, application,
+search and project-planning contracts (1219 PostgreSQL / 813 MariaDB base
+portability assertions).
+
+The static inventory now records 736 enforced references, 24 pending ordinary
+references, 62 polymorphic references, one ambiguous reference and 1201 legacy
+SQL call sites. Full relationship and runtime query conversion remains unfinished.

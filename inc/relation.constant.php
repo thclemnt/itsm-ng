@@ -1329,7 +1329,7 @@ $RELATION = [
       'glpi_documents_items'          => 'users_id',
       'glpi_enclosures'               => 'users_id_tech',
       '_glpi_groups_users'            => 'users_id',
-      'glpi_items_kanbans'            => 'users_id',
+      '_glpi_items_kanbans'           => 'users_id',
       'glpi_itilcategories'           => 'users_id',
       'glpi_itilfollowups'            => [
          'users_id',

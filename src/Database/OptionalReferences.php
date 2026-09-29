@@ -329,6 +329,8 @@ final class OptionalReferences
         'glpi_reservations' => ['users_id' => 'glpi_users'],
     ];
 
+    public const KANBAN_OWNERS = ['glpi_items_kanbans' => ['users_id' => 'glpi_users']];
+
     public const IMPACT_GRAPH = ['glpi_impactitems' => ['parent_id' => 'glpi_impactcompounds', 'impactcontexts_id' => 'glpi_impactcontexts']];
 
     public const ITIL_ORIGINS = [
@@ -452,6 +454,7 @@ final class OptionalReferences
         ...self::NETWORK_PORT_METADATA,
         ...self::ITIL_ACTORS,
         ...self::IMPACT_GRAPH,
+        ...self::KANBAN_OWNERS,
         ...self::CRON_LOG_PARENTS,
         ...self::CONTACT_LINE_METADATA,
         ...self::CONTENT_METADATA,
