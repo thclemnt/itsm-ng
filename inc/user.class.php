@@ -350,6 +350,8 @@ class User extends CommonDBTM
 
         (new \itsmng\Database\Repository\UserItemRepository(\itsmng\Database\Orm::create($DB)))
             ->reassignPlanningOwners((int)$this->getID(), empty($this->input['_replace_by']) ? null : (int)$this->input['_replace_by']);
+        (new Dashboard())->deleteByCriteria(['userId' => $this->getID()]);
+
         // Personal recalls and their delivery markers belong to the deleted recipient.
         (new PlanningRecall())->deleteByCriteria(['users_id' => $this->getID()]);
 

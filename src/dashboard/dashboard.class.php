@@ -59,7 +59,7 @@ class Dashboard extends \CommonDBTM
     /**
      * Show the form to create or edit a dashboard
      *
-     * @param $ID: [profileId, userId]
+     * @param int $ID Dashboard ID
      *
      * @return void
      */
@@ -127,21 +127,9 @@ class Dashboard extends \CommonDBTM
     {
         global $DB;
 
-        $userId = Session::getLoginUserID();
-
-        $dashboardId = iterator_to_array(
-            $DB->query("SELECT id FROM `" . self::getTable() . "` WHERE userId = $userId")
-        );
-        if (!$dashboardId) {
-            $dashboardId = iterator_to_array(
-                $DB->query("SELECT id FROM `" . self::getTable() . "` WHERE userId = 0")
-            );
-        }
-        if (!$dashboardId) {
-            return false;
-        }
-        $this->getFromDB($dashboardId[0]['id']);
-        return true;
+        $id = (new \itsmng\Database\Repository\DashboardRepository(\itsmng\Database\Orm::create($DB)))
+            ->forUser((int)Session::getLoginUserID(), (int)($_SESSION['glpiactiveprofile']['id'] ?? 0));
+        return $id !== null && $this->getFromDB($id);
     }
 
     public function show($ID = null, $edit = false)

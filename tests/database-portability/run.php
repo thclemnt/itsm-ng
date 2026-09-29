@@ -166,7 +166,7 @@ try {
                 $childId = (new FixtureRecords($DB))->create($child, $references);
                 // Only failure of this exact mutation proves this constraint works.
                 try {
-                    $connection->update($child, [$column => 2147483647], ['id' => $childId]);
+                    $connection->update($platform->quoteIdentifier($child), [$platform->quoteIdentifier($column) => 2147483647], ['id' => $childId]);
                     throw new LogicException('Missing foreign-key enforcement: ' . $child . '.' . $column);
                 } catch (ForeignKeyConstraintViolationException $e) {
                     check(true, 'Orphan rejected for ' . $child . '.' . $column);

@@ -2470,3 +2470,53 @@ application, search and project-planning contracts. Base portability assertions:
 The inventory records 737 enforced references, 23 pending ordinary references,
 62 polymorphic references, one ambiguous reference and 1188 legacy SQL call sites.
 Full relationship coverage and conversion of all runtime queries remain unfinished.
+
+### Dashboard ownership and ORM selection
+
+Dashboards now use their generated numeric ID as the ORM and database primary
+key. Nullable user and profile associations replace zero owner sentinels and have
+restrictive foreign keys. Two generated keys preserve uniqueness for every
+combination of personal/shared and profile/global scope. Deleting a user or
+profile removes its dashboards, including during replacement, without promoting
+personal content to shared content or overwriting a replacement owner's layout.
+
+`DashboardRepository` selects the active user's dashboard through mapped DQL.
+Selection prefers a personal dashboard for the active profile, an unscoped
+personal dashboard, the active profile's shared dashboard, then the global
+default. Other profiles' dashboards no longer become arbitrary fallbacks.
+Anonymous lookup returns no dashboard. The application still uses numeric IDs
+and scalar owner fields at its legacy model boundary.
+
+Existing installations run `db:dashboard_ownership --apply`, then
+`db:foreign_keys --apply`, with application writers stopped. The migration is
+also part of the normal upgrade path; fresh installs include the new schema.
+Orphan and normalized-duplicate audits precede schema changes. The migration
+preserves IDs and content, normalizes zero owners to NULL, and restores MySQL
+AUTO_INCREMENT after replacing the composite primary key. PostgreSQL applies
+the migration transactionally; MySQL DDL runs outside application transactions.
+Retries support both a completed migration and a missing owner uniqueness index.
+
+The mapping driver's `ReferenceKey` attribute generates expressions using the
+active provider's identifier quoting. This supports the legacy mixed-case owner
+columns in ORM-generated DDL. Foreign-key generation and nullable-reference
+normalization also quote these identifiers consistently.
+
+`tests/database-portability/dashboards.php` covers scope precedence, mapped
+selection and writes, all four uniqueness combinations, orphan rejection,
+user/profile purge with replacement, executable ORM schema DDL, generated IDs,
+and migration audit/preservation/retry. It passes on fresh and upgraded
+PostgreSQL and MariaDB. PHP 8.3 passes the fresh MariaDB contract and changed-file
+syntax checks; the existing Profile functional suite passes four methods and
+94 assertions. PostgreSQL uses host PHP 8.5 because the PHP 8.3 container lacks
+its driver. These checks exercise database and model behavior, not browser flows.
+
+Both providers also pass mapping and parent-purge checks, ORM CRUD across all
+355 tables, criteria, reporting, application, search, project-planning, display
+preference and Kanban contracts. The base portability suite passes 1222 assertions
+on PostgreSQL and 816 on MariaDB, including orphan rejection for every registered
+foreign key.
+
+The static inventory records 739 enforced references, 21 pending ordinary
+references, 62 polymorphic references, one ambiguous reference and 1186 legacy
+SQL call sites. Full relationship coverage and runtime query conversion remain
+unfinished.

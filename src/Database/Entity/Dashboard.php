@@ -5,12 +5,16 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ReferenceKey;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_dashboards')]
+#[ORM\UniqueConstraint(name: 'dashboard_owners', columns: ['profile_key', 'user_key'])]
 class Dashboard
 {
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false, insertable: false, updatable: false, generated: 'INSERT')]
+    #[ORM\Id]
+    #[ORM\GeneratedValue(strategy: 'IDENTITY')]
+    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
     public ?int $id = null;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 100, nullable: false)]
@@ -19,11 +23,19 @@ class Dashboard
     #[ORM\Column(name: '`content`', type: 'text', length: 4294967295, nullable: false)]
     public string $content = '';
 
-    #[ORM\Id]
-    #[ORM\Column(name: '`profileId`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $profileId = 0;
+    #[ORM\ManyToOne(targetEntity: Profile::class)]
+    #[ORM\JoinColumn(name: '`profileId`', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Profile $profile = null;
 
-    #[ORM\Id]
-    #[ORM\Column(name: '`userId`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $userId = 0;
+    #[ORM\ManyToOne(targetEntity: User::class)]
+    #[ORM\JoinColumn(name: '`userId`', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?User $owner = null;
+
+    #[ReferenceKey('profileId')]
+    #[ORM\Column(type: 'bigint', nullable: true, insertable: false, updatable: false, generated: 'ALWAYS')]
+    public ?string $profile_key = null;
+
+    #[ReferenceKey('userId')]
+    #[ORM\Column(type: 'bigint', nullable: true, insertable: false, updatable: false, generated: 'ALWAYS')]
+    public ?string $user_key = null;
 }

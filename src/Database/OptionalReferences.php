@@ -329,6 +329,8 @@ final class OptionalReferences
         'glpi_reservations' => ['users_id' => 'glpi_users'],
     ];
 
+    public const DASHBOARD_OWNERS = ['glpi_dashboards' => ['profileId' => 'glpi_profiles', 'userId' => 'glpi_users']];
+
     public const DISPLAY_PREFERENCE_OWNERS = ['glpi_displaypreferences' => ['users_id' => 'glpi_users']];
 
     public const KANBAN_OWNERS = ['glpi_items_kanbans' => ['users_id' => 'glpi_users']];
@@ -458,6 +460,7 @@ final class OptionalReferences
         ...self::IMPACT_GRAPH,
         ...self::KANBAN_OWNERS,
         ...self::DISPLAY_PREFERENCE_OWNERS,
+        ...self::DASHBOARD_OWNERS,
         ...self::CRON_LOG_PARENTS,
         ...self::CONTACT_LINE_METADATA,
         ...self::CONTENT_METADATA,

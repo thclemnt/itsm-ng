@@ -282,6 +282,7 @@ class Profile extends CommonDBTM
 
     public function cleanDBonPurge()
     {
+        (new Dashboard())->deleteByCriteria(['profileId' => $this->getID()]);
         global $DB;
 
         $repository = new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB));

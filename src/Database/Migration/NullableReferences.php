@@ -60,7 +60,8 @@ final class NullableReferences
                 $counts = [];
                 foreach ($plan['counts'] as $reference => $count) {
                     [$table, $column] = explode('.', $reference, 2);
-                    $counts[$reference] = $connection->update($table, [$column => null], [$column => 0]);
+                    $quote = $connection->getDatabasePlatform()->quoteIdentifier(...);
+                    $counts[$reference] = $connection->update($quote($table), [$quote($column) => null], [$quote($column) => 0]);
                 }
                 return $counts;
             });

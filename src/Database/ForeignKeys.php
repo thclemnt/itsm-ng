@@ -250,7 +250,7 @@ final class ForeignKeys
         foreach (self::RELATIONS as $table => $relations) {
             foreach ($relations as $column => $parent) {
                 $child = $schema->getTable($table);
-                $child->addForeignKeyConstraint($parent, [$column], ['id'], ['onDelete' => 'RESTRICT', 'onUpdate' => 'RESTRICT'], self::name($table, $column));
+                $child->addForeignKeyConstraint($parent, ['`' . $column . '`'], ['id'], ['onDelete' => 'RESTRICT', 'onUpdate' => 'RESTRICT'], '`' . self::name($table, $column) . '`');
             }
         }
     }
@@ -282,13 +282,13 @@ final class ForeignKeys
                 $name = self::name($table, $column);
                 foreach ($existing as $constraint) {
                     if ($constraint->getName() === $name) {
-                        if ($constraint->getLocalColumns() !== [$column] || $constraint->getForeignTableName() !== $parent || $constraint->getForeignColumns() !== ['id'] || !in_array($constraint->onDelete(), [null, 'RESTRICT', 'NO ACTION'], true) || !in_array($constraint->onUpdate(), [null, 'RESTRICT', 'NO ACTION'], true)) {
+                        if (array_map(static fn ($name) => trim($name, '`"'), $constraint->getLocalColumns()) !== [$column] || $constraint->getForeignTableName() !== $parent || $constraint->getForeignColumns() !== ['id'] || !in_array($constraint->onDelete(), [null, 'RESTRICT', 'NO ACTION'], true) || !in_array($constraint->onUpdate(), [null, 'RESTRICT', 'NO ACTION'], true)) {
                             throw new \RuntimeException('Existing foreign key has a different definition: ' . $name);
                         }
                         continue 2;
                     }
                 }
-                $foreignKey = new ForeignKeyConstraint([$column], $parent, ['id'], $name, ['onDelete' => 'RESTRICT', 'onUpdate' => 'RESTRICT']);
+                $foreignKey = new ForeignKeyConstraint(['`' . $column . '`'], $parent, ['id'], '`' . $name . '`', ['onDelete' => 'RESTRICT', 'onUpdate' => 'RESTRICT']);
                 $sql[] = $platform->getCreateForeignKeySQL($foreignKey, $table);
             }
         }

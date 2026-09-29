@@ -6,8 +6,8 @@ namespace itsmng\Database;
 
 use Doctrine\ORM\Configuration;
 use Doctrine\ORM\EntityManager;
-use Doctrine\ORM\Mapping\Driver\AttributeDriver;
 use Doctrine\ORM\Proxy\ProxyFactory;
+use itsmng\Database\Mapping\AttributeDriver;
 
 final class Orm
 {
@@ -24,7 +24,7 @@ final class Orm
         $config->addCustomStringFunction('REPLACE', Query\Replace::class);
         $config->addCustomNumericFunction('BIT_COUNT', Query\BitCount::class);
         $config->addCustomNumericFunction('EPOCH_SECONDS', Query\EpochSeconds::class);
-        $config->setMetadataDriverImpl(new AttributeDriver([__DIR__ . '/Entity']));
+        $config->setMetadataDriverImpl(new AttributeDriver([__DIR__ . '/Entity'], $db->getDoctrineConnection()->getDatabasePlatform()));
         $config->setProxyDir(GLPI_CACHE_DIR . '/orm');
         $config->setProxyNamespace('itsmng\\Database\\Proxy');
         $config->setAutoGenerateProxyClasses(ProxyFactory::AUTOGENERATE_EVAL);

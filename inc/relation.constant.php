@@ -1004,6 +1004,7 @@ $RELATION = [
    ],
 
    'glpi_profiles' => [
+      '_glpi_dashboards'             => 'profileId',
       '_glpi_knowbaseitems_profiles' => 'profiles_id',
       '_glpi_profilerights'          => 'profiles_id',
       '_glpi_profiles_reminders'     => 'profiles_id',
@@ -1294,6 +1295,7 @@ $RELATION = [
    ],
 
    'glpi_users' => [
+      '_glpi_dashboards' => 'userId',
       'glpi_users' => 'users_id_supervisor',
       'glpi_appliances' => ['users_id', 'users_id_tech'],
       'glpi_items_devicesimcards' => 'users_id',
