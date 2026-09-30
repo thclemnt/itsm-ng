@@ -182,6 +182,8 @@ jobs:
         run: php tests/database-portability/reporting.php tests/config
       - name: Test mapped statistics values and relationship fan-out
         run: php tests/database-portability/statistics.php tests/config
+      - name: Test hardware statistics aggregates and pagination
+        run: php tests/database-portability/hardware-statistics.php tests/config
       - name: Test search semantics and pagination
         run: php tests/database-portability/search.php tests/config
       - name: Plan all core search columns

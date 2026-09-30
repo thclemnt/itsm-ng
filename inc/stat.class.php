@@ -948,9 +948,7 @@ class Stat extends CommonGLPI
 
         $view_entities = Session::isMultiEntitiesMode();
 
-        if ($view_entities) {
-            $entities = getAllDataFromTable('glpi_entities');
-        }
+        $entities = [];
 
         $output_type = Search::HTML_OUTPUT;
         if (isset($_GET["display_type"])) {
@@ -959,42 +957,16 @@ class Stat extends CommonGLPI
         if (empty($date2)) {
             $date2 = date("Y-m-d");
         }
-        $date2 .= " 23:59:59";
 
-        // 1 an par defaut
+        // One year by default, with date-only bounds including the complete end day.
         if (empty($date1)) {
             $date1 = date("Y-m-d", mktime(0, 0, 0, date("m"), date("d"), date("Y") - 1));
         }
-        $date1 .= " 00:00:00";
-
-        $iterator = $DB->request([
-           'SELECT' => [
-              'glpi_items_tickets.itemtype',
-              'glpi_items_tickets.items_id',
-              'COUNT'  => '* AS NB'
-           ],
-           'FROM'   => 'glpi_tickets',
-           'LEFT JOIN' => [
-              'glpi_items_tickets' => [
-                 'ON' => [
-                    'glpi_items_tickets' => 'tickets_id',
-                    'glpi_tickets'       => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'  => [
-              'date'                        => ['<=', $date2],
-              'glpi_tickets.date'           => ['>=', $date1],
-              'glpi_items_tickets.itemtype' => ['<>', ''],
-              'glpi_items_tickets.items_id' => ['>', 0]
-           ] + getEntitiesRestrictCriteria('glpi_tickets'),
-           'GROUP'  => [
-              'glpi_items_tickets.itemtype',
-              'glpi_items_tickets.items_id'
-           ],
-           'ORDER'  => 'NB DESC'
-        ]);
-        $numrows = count($iterator);
+        $start = isset($_GET['export_all']) ? 0 : max(0, (int)$start);
+        $limit = isset($_GET['export_all']) ? null : max(0, (int)$_SESSION['glpilist_limit']);
+        $page = (new \itsmng\Database\Repository\TicketAssetStatisticsRepository(\itsmng\Database\Orm::create($DB)))
+            ->page($date1, $date2, \itsmng\Reporting\Criteria::entities(), $start, $limit);
+        $numrows = $page['total'];
 
         if ($numrows > 0) {
             if ($output_type == Search::HTML_OUTPUT) {
@@ -1009,11 +981,7 @@ class Stat extends CommonGLPI
                 echo "<div class='center'>";
             }
 
-            $end_display = $start + $_SESSION['glpilist_limit'];
-            if (isset($_GET['export_all'])) {
-                $end_display = $numrows;
-            }
-            echo Search::showHeader($output_type, $end_display - $start + 1, 2, 1);
+            echo Search::showHeader($output_type, count($page['rows']) + 1, $view_entities ? 3 : 2, 1);
             $header_num = 1;
             echo Search::showNewLine($output_type);
             echo Search::showHeaderItem($output_type, _n('Associated element', 'Associated elements', Session::getPluralNumber()), $header_num);
@@ -1023,15 +991,9 @@ class Stat extends CommonGLPI
             echo Search::showHeaderItem($output_type, __('Number of tickets'), $header_num);
             echo Search::showEndLine($output_type);
 
-            $i = $start;
-            if (isset($_GET['export_all'])) {
-                $start = 0;
-            }
-
-            for ($i = $start; ($i < $numrows) && ($i < $end_display); $i++) {
+            foreach ($page['rows'] as $index => $data) {
+                $i = $start + $index;
                 $item_num = 1;
-                // Get data and increment loop variables
-                $data = $iterator->next();
                 if (!($item = getItemForItemtype($data["itemtype"]))) {
                     continue;
                 }
@@ -1051,7 +1013,12 @@ class Stat extends CommonGLPI
                     );
                     if ($view_entities) {
                         $ent = $item->getEntityID();
-                        $ent = $entities[$ent]['completename'];
+                        if (!array_key_exists($ent, $entities)) {
+                            $entity = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+                                ->find('glpi_entities', 'id', (int)$ent);
+                            $entities[$ent] = $entity['completename'] ?? '';
+                        }
+                        $ent = $entities[$ent];
                         echo Search::showItem(
                             $output_type,
                             $ent,

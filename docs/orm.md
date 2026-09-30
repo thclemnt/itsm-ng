@@ -2700,3 +2700,36 @@ for the broader conversion, despite the resulting valid installed schema.
 The inventory records 746 enforced references, 14 pending ordinary references,
 62 polymorphic references, one ambiguous reference and 1151 legacy SQL call
 sites. This batch adds the network-parent FK and removes nine adapter call sites.
+
+### Hardware statistics pagination
+
+`Stat::showItems()` uses `TicketAssetStatisticsRepository` to aggregate mapped
+ticket/item associations. Both the group count and requested page run through
+Doctrine ORM. Its grouped-count output walker preserves the provider's grouping
+and collation semantics. Rows sort by ticket count, item type and item ID for
+stable ties; SQL applies the requested offset and limit. This fixes the old
+iterator path, which repeated the first page for every offset. Export-all resets
+the offset and removes the limit. Entity labels are fetched through ORM only
+for entities represented in the returned page, instead of loading every entity.
+
+The report retains its ticket-entity scope and inclusion of deleted tickets.
+Root entity zero is real, an empty scope matches nothing and NULL explicitly
+means unrestricted scope. Item type and ID jointly identify each group, so a
+computer and printer with the same ID remain distinct. Dates are validated and
+bound; date-only ends include the entire day, while timestamp bounds are exact.
+Invalid dates fail explicitly and reversed intervals return no rows. Unresolved
+polymorphic item references still contribute to the total and cannot render an
+item row; replacing those references remains part of the broader schema work.
+
+The hardware contract verifies numeric counts, scopes, boundaries, stable ties,
+offsets, grouped-count collation behavior, rendered page two, entity labels and
+page/all-row CSV exports. It passes on fresh and upgraded PostgreSQL and MariaDB
+schemas, including PHP 8.3 with MariaDB; reporting and monthly-statistics
+regressions pass on both engines. It verifies zero legacy adapter execution
+after catalogue discovery for report rendering. CI includes the contract. Local
+database/HTML checks do
+not establish live browser or remote CI proof.
+
+This removes one direct adapter call site, leaving 1150 in the inventory. FK
+coverage remains at 746 enforced references and 14 pending ordinary references,
+plus 62 polymorphic references and one ambiguous reference.
