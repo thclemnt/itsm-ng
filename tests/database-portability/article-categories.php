@@ -55,12 +55,12 @@ try {
     $groupGlobal = $article();
     $groupRecursive = $article();
     $groupHidden = $article();
-    foreach ([[$own, -1, false], [$groupGlobal, -1, false], [$groupRecursive, 0, true], [$groupHidden, $foreign, false]] as [$id, $entity, $recursive]) {
+    foreach ([[$own, null, false], [$groupGlobal, null, false], [$groupRecursive, 0, true], [$groupHidden, $foreign, false]] as [$id, $entity, $recursive]) {
         $fixtures->create('glpi_groups_knowbaseitems', ['knowbaseitems_id' => $id, 'groups_id' => $group, 'entities_id' => $entity, 'is_recursive' => $recursive]);
     }
     $profileGlobal = $article();
     $profileHidden = $article();
-    foreach ([[$profileGlobal, -1], [$profileHidden, $foreign]] as [$id, $entity]) {
+    foreach ([[$profileGlobal, null], [$profileHidden, $foreign]] as [$id, $entity]) {
         $fixtures->create('glpi_knowbaseitems_profiles', ['knowbaseitems_id' => $id, 'profiles_id' => $profile, 'entities_id' => $entity]);
     }
     $entityRecursive = $article();

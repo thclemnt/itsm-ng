@@ -138,7 +138,7 @@ try {
         try {
             $migration->apply($connection);
         } catch (RuntimeException $error) {
-            $rejected = str_contains($error->getMessage(), 'Zero is a real infrastructure identifier');
+            $rejected = str_contains($error->getMessage(), 'Empty selection is a real infrastructure identifier');
         }
         verify($rejected, 'Real zero parent requires explicit repair');
     } finally {

@@ -59,6 +59,9 @@ try {
         verify(array_column($link->getTableGroupRows($device, ''), 'id') === [$stock], 'Stock has no asset entity restriction');
         $_SESSION['glpiactiveentities'] = [];
         verify($link->getTableGroupRows($device, 'Computer') === [], 'Empty entity scope cannot expose assignments');
+        verify(array_column($link->getTableGroupRows($device, ''), 'id') === [$stock], 'Empty asset scope still allows the stock view');
+        unset($_SESSION['glpiactiveentities']);
+        verify(array_column($link->getTableGroupRows($device, 'Computer'), 'id') === [$assigned], 'CLI with no entity selection defaults to root');
         $_SESSION['glpiactiveentities'] = [0];
         $_SESSION['glpishowallentities'] = true;
         verify(count($link->getTableGroupRows($device, 'Computer')) === 2, 'All-entity scope');

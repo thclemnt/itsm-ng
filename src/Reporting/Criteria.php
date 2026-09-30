@@ -9,10 +9,7 @@ final class Criteria
     /** Same non-recursive entity scope used by the report entry points. */
     public static function entities(): ?array
     {
-        if (!empty($_SESSION['glpishowallentities'])) {
-            return null;
-        }
-        return array_map('intval', (array)($_SESSION['glpiactiveentities'] ?? (isCommandLine() || \Session::isCron() ? [0] : [])));
+        return \Session::getActiveEntityScope();
     }
 
     /** Either date must itself fall inside the entire requested interval. */

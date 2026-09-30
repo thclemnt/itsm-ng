@@ -2,7 +2,7 @@
 
 Doctrine ORM 3 is an explicit dependency alongside DBAL 4.4+ (PHP 8.2+). The attributes in
 `src/Database/Entity` now map every column of all 355 baseline tables,
-including the dashboard's composite primary key and explicitly assigned IDs.
+including the dashboard's generated numeric primary key and explicitly assigned IDs elsewhere.
 `EntityRegistry` lists each table and mapped class. These are persistence records;
 application permissions, validation, hooks, history and notifications remain in
 `CommonDBTM` and its subclasses.
@@ -60,6 +60,53 @@ does not yet replace that schema or introduce a second installation path. Never 
 tables, legacy indexes and provider-specific definitions are not represented by
 these entity mappings. Moving schema ownership requires reviewed, versioned
 migrations, including handling of optional zero references.
+
+`php bin/console db:check` now compares the required core DBAL model against the
+connected database on either provider. It reports drift and exits nonzero without
+executing repair SQL. Extra tables and indexes are allowed for plugins and local
+tuning; equivalent index names are accepted. Native MySQL `TIMESTAMP` is checked
+separately because DBAL introspects it as the same type as `DATETIME`. Custom
+expressions, triggers and CHECK constraints are outside this command's comparison.
+
+## Next architecture work
+
+The port should remove duplicate declarations, rather than keep adding to them:
+
+- Derive table/class lookup, boolean types and ordinary association targets from
+  Doctrine metadata. All 398 audited booleans already have entity attributes. A
+  cached lookup service is useful; a second hand-maintained catalogue is not.
+- Keep reference semantics beside the relationship using explicit attributes or
+  domain methods. Nullable alone does not tell whether legacy zero means empty,
+  zero is the real root entity, minus one means global, or minus two means inherit.
+  Preserve these distinctions when replacing `OptionalReferences`, ownership and
+  scope registries. Deletion/reassignment behavior likewise needs explicit domain
+  policy; an SQL foreign key cannot replace all legacy lifecycle hooks.
+- Replace repository `TYPES` maps with typed domain capabilities and local role
+  mappings. Organize entities and repositories by domain as they are converted.
+  Keep database transport, schema operations and mapping infrastructure separate.
+- Share cached immutable mapping configuration while keeping entity managers
+  short-lived: legacy writers still bypass the ORM identity map.
+
+Replace `BaselineSchema`'s runtime SQL reader and `Toolbox::createSchema()`'s list
+of migration helpers with one versioned migration runner and execution ledger.
+Define a frozen baseline using DBAL `Schema`/`Table` APIs, then run the complete
+migration history for every new CLI or web installation. Freeze migration data
+and relationship definitions within history; historical migrations must not import
+current entities or mutable registries. Required seed rows should use frozen DBAL
+data operations, independent of the current ORM model.
+
+Preserve indexes, native timestamp behavior, generated columns, constraints,
+full-text/prefix indexes and triggers explicitly. Current entity metadata omits
+many baseline secondary indexes, so generating a baseline from ORM metadata alone
+would lose them. Existing installations need a validated adoption/upgrade path;
+they must not replay CREATE statements over their data. Verify empty-to-latest and
+supported-old-to-latest paths converge in schema and data, then test no-op reruns,
+interrupted migration retries and invalid-data rejection on every supported engine.
+
+The portability workflow discovers all CLI contracts with
+`python3 tests/database-portability/suite.py tests/config`. It runs contracts
+sequentially because some temporarily change the schema. Keep web fixtures,
+benchmarks and the independently invoked SQL inventory test outside that runner.
 
 ## Reporting behavior
 

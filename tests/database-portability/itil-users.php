@@ -41,6 +41,18 @@ try {
     $owner = $fixtures->create('glpi_users', ['name' => 'ITIL original author']);
     $replacement = $fixtures->create('glpi_users', ['name' => 'ITIL replacement author']);
     $other = $fixtures->create('glpi_users', ['name' => 'ITIL unrelated author']);
+    foreach ([Ticket::class, Problem::class, Change::class] as $type) {
+        $source = new $type();
+        foreach ([null, $other] as $updater) {
+            $id = $source->add(['name' => 'Clone updater', 'content' => 'Valid ITIL clone source', 'entities_id' => 0]);
+            verify((int)$id > 0, 'Create ITIL clone source');
+            $DB->update($source->getTable(), ['users_id_lastupdater' => $updater], ['id' => $id]);
+            verify($source->getFromDB($id), 'Load ITIL clone source');
+            $clone = $source->clone();
+            verify((int)$clone > 0, 'Clone ' . $type);
+            verify($read($source->getTable(), (int)$clone)['users_id_lastupdater'] === $updater, 'Clone preserves nullable and explicit updater for ' . $type);
+        }
+    }
     $ticket = $fixtures->create('glpi_tickets', ['name' => 'ITIL history host']);
     $snapshots = $records = $others = [];
     foreach (OptionalReferences::ITIL_USERS as $table => $columns) {

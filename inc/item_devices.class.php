@@ -874,8 +874,7 @@ class Item_Devices extends CommonDBRelation
                 'itemtype' => $item->getType(), 'items_id' => $item->getID(), 'is_deleted' => 0,
             ], $this->getDeviceForeignKey()));
         }
-        $restriction = $peerTable ? (new DbUtils())->getEntitiesRestrictCriteria($peerTable) : [];
-        $entities = $restriction ? array_map('intval', (array)reset($restriction)) : null;
+        $entities = $peerTable ? Session::getActiveEntityScope() : null;
         $em = \itsmng\Database\Orm::create($DB);
         try {
             return (new \itsmng\Database\Repository\ComponentRepository($em))->forDevice(

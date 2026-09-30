@@ -1709,6 +1709,15 @@ class Session
         return $_SESSION['glpiactive_entity'] ?? 0;
     }
 
+    /** Non-recursive scope: null allows all entities, [] allows none. */
+    public static function getActiveEntityScope(): ?array
+    {
+        if (!empty($_SESSION['glpishowallentities'])) {
+            return null;
+        }
+        return array_map('intval', (array)($_SESSION['glpiactiveentities'] ?? (isCommandLine() || self::isCron() ? [0] : [])));
+    }
+
     /**
      * Get recursive state of active entity selection.
      *

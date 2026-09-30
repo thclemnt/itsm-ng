@@ -2419,7 +2419,7 @@ abstract class CommonITILObject extends CommonDBTM
     {
         global $DB;
         $update = [];
-        if (isset($source->fields['users_id_lastupdater'])) {
+        if (array_key_exists('users_id_lastupdater', $source->fields)) {
             $update['users_id_lastupdater'] = $source->fields['users_id_lastupdater'];
         }
         if (isset($source->fields['status'])) {

@@ -7,7 +7,7 @@ This branch is a development port, **not a complete or production-ready PostgreS
 - `DBAdapter` contains the existing shared CRUD, metadata-cache and quoting API. `DBmysql` retains its public compatibility name but delegates connection ownership, SQL execution, escaping and prepared statements to DBAL. It no longer calls the native MySQL driver. `DBpgsql` still provides the native PostgreSQL transport pending its migration. Existing generated `class DB extends DBmysql` configurations keep working.
 - Doctrine DBAL 4.4+ is an explicit dependency and this branch requires PHP 8.2+. The installed development version is DBAL 4.5. `getDoctrineConnection()` uses the **same connection** as the legacy API. Session state, transactions and savepoints are shared. New application repositories should use ORM mappings and DQL; DBAL provides platform/schema operations. A query builder does not make arbitrary vendor SQL portable; use platform expressions for differences.
 - `BaselineSchema` reads the checked-in baseline into Doctrine's `Schema`/`Table` objects, so PostgreSQL does not maintain an independent SQL dump. It handles 355 distinct tables, native PostgreSQL boolean flags, generated identifiers, explicit scalar defaults, prefix/full-text indexes, comments and timestamp update triggers. The legacy baseline contains two definitions of `glpi_queuednotifications`; the final definition wins, matching the original installer.
-- MySQL installation still executes the existing baseline to preserve its exact native column behavior. Both engines install the foreign-key registry after seeding. PostgreSQL installs and seeds in one transaction and then synchronizes sequences, including tables whose seeds use explicit IDs.
+- Both installers execute the DBAL schema produced by `BaselineSchema`. MySQL timestamp declarations explicitly retain native `TIMESTAMP` semantics: DBAL's default `datetimetz` declaration would produce `DATETIME` and break session-timezone conversion. Both engines install foreign keys after seeding. PostgreSQL installs and seeds in one transaction and then synchronizes sequences, including tables whose seeds use explicit IDs. Replacing the runtime SQL reader with a frozen DBAL migration baseline remains required work.
 - `LegacySql` is a lexical bridge for the application's pre-escaped strings and backtick identifiers. It is not an SQL dialect translator. Prefer raw bound values with DBAL in new code. PostgreSQL rejects NUL text rather than silently truncating it.
 - `Expressions` delegates date arithmetic to Doctrine platforms. Search has separate input, options, provider, projection, criteria, joins, sorting and output classes behind the existing `Search` facade. The SQL-rewriting `SearchProjection` bridge is removed. See [search architecture](search.md) for the two-phase planner and its compatibility boundaries.
 
@@ -15,7 +15,7 @@ Doctrine ORM now maps all columns of all 355 core tables. Core record-by-ID and 
 
 ## Fresh PostgreSQL installation
 
-Install PHP's `pgsql` extension and Composer dependencies. PostgreSQL 14+ is the target; locally tested with PostgreSQL 18.6. The configured CI matrix targets 14, plus MySQL 8.4 and MariaDB 11.8; remote runs are still pending.
+Install PHP's `pgsql` extension and Composer dependencies. PostgreSQL 14+ is the target. The configured CI matrix targets PostgreSQL 14 and 18, MySQL 8.4 and MariaDB 11.8 on PHP 8.2 and 8.3. Local checks are separate evidence from remote matrix results.
 
 Provision an empty database owned by the application role. The application does not require cluster-level `CREATEDB` privileges. Then run:
 
@@ -33,7 +33,7 @@ The web installer also offers PostgreSQL (experimental). Enter an existing empty
 
 ## PostgreSQL booleans
 
-`BooleanColumns` explicitly maps 390 flags across 170 tables to native PostgreSQL `boolean` columns. NULL defaults stay NULL. Tinyint display width is not treated as type information: `do_count`, weekdays, timeline positions, orientation, counters and several preferences needing further classification remain integers. MySQL keeps its original column types.
+`BooleanColumns` explicitly maps 398 flags to native PostgreSQL `boolean` columns. These duplicate boolean declarations already present on the entities; replacing the registry with derived Doctrine metadata is a cleanup priority. NULL defaults stay NULL. Tinyint display width is not treated as type information: `do_count`, weekdays, timeline positions, orientation, counters and several preferences needing further classification remain integers. MySQL keeps its original column types.
 
 The legacy adapter returns `0`/`1`/`null` for boolean results so existing forms, strict comparisons and packed search cells retain their contract. Search converts a boolean to an integer only where numeric comparison or display encoding requires it. No SQL text replacement converts arbitrary integer predicates into booleans. New code using Doctrine can bind `Types::BOOLEAN` directly.
 
@@ -41,7 +41,7 @@ This schema change applies to **fresh PostgreSQL installations**. Earlier experi
 
 ## Foreign keys
 
-The current registry enforces 689 relationships on both providers. Another 73
+The current registry enforces 754 relationships on both providers. Another six
 candidates, 62 polymorphic references and one ambiguous reference remain to be
 resolved. Run `php tools/database/audit-coverage.php` for the current inventory;
 [mapped persistence and reporting](orm.md) documents each migration stage.
@@ -87,7 +87,7 @@ The initial set of 68 relationships included:
 | `glpi_notificationtargets` | `notifications_id` |
 | `glpi_notificationtemplatetranslations` | `notificationtemplates_id` |
 
-These are mandatory, non-polymorphic associations. Update/delete actions are `RESTRICT`: the application must run its cleanup/history hooks before deleting the parent. Direct SQL that would orphan children fails. Root entity `0` remains a real row. Anonymous ticket actors can still use `users_id=0` or `suppliers_id=0` with an alternative email address, so those columns deliberately have no FK.
+Update/delete actions are `RESTRICT`: the application must run its cleanup/history hooks before deleting the parent. Direct SQL that would orphan children fails. Root entity `0` remains a real row. Subsequent migrations also enforce nullable associations, including anonymous ticket actors: legacy zero inputs normalize to NULL while their alternative email address remains available.
 
 For an existing installation, audit and review the DDL first:
 
@@ -98,22 +98,28 @@ php bin/console db:foreign_keys --apply
 
 Any orphan count stops the upgrade before DDL. The command never deletes or repairs user data. Applying is idempotent, and PostgreSQL applies transactionally. MySQL DDL commits implicitly; if execution fails partway, correct the reported problem and rerun. An installation must be quiescent while adding constraints; concurrent writes may make an ALTER fail, but cannot bypass the final constraint validation. Do not disable foreign-key checking to import invalid data.
 
-Coverage is deliberately incomplete. Most optional references still use `0` or `-1`, and `items_id` often refers to multiple tables. Extending coverage requires classifying each relationship, migrating optional references to nullable columns, updating queries and purge behavior, and checking existing data. Inferring hundreds of constraints just from `_id` names would corrupt these semantics. The registry is the explicit place to add audited relationships.
+Coverage is deliberately incomplete. Most audited optional references now use NULL, but unresolved and polymorphic identifiers still require domain-specific handling. Extending coverage requires classifying each relationship, updating queries and purge behavior, and checking existing data. Inferring constraints just from `_id` names would corrupt these semantics. New work should move declarations beside their entity relationships and derive shared lookups; see [the next architecture work](orm.md#next-architecture-work).
 
 ## Validation
+
+The 2026-09-30 regression review passed all 86 CLI portability contracts after
+fresh installs on PostgreSQL 16 with PHP 8.5.10 and MariaDB 11.8 with PHP 8.3.33.
+The selected nine legacy suites passed all 153 methods (9,343 assertions) on a
+separate fresh MariaDB installation. This includes the empty component scope,
+nullable ITIL clone updater and timestamp timezone regressions. The new schema
+check tests verify drift detection and non-mutating command behavior on both
+engines. Remote matrix results, browser JavaScript and API coverage are not
+implied by these local results. Earlier revision results below are historical.
 
 Use fresh, disposable databases named `itsm_port_*` and separate configuration directories. The test scripts refuse other database names.
 
 ```sh
-php tests/database-portability/run.php /path/to/test-config
-php tests/database-portability/application.php /path/to/test-config
-php tests/database-portability/orm.php /path/to/test-config
-php tests/database-portability/orm-writes.php /path/to/test-config
-php tests/database-portability/orm-records.php /path/to/test-config
-php tests/database-portability/reporting.php /path/to/test-config
-php tests/database-portability/search.php /path/to/test-config
-php tests/database-portability/search-columns.php /path/to/test-config
+python3 tests/database-portability/suite.py /path/to/test-config
 ```
+
+The runner discovers every CLI contract, including the contracts formerly missing
+from CI. Individual scripts still accept the configuration directory as their first
+argument. Run migration contracts sequentially against each database.
 
 For the PostgreSQL HTTP smoke test, start a separate web server with an empty
 `GLPI_CONFIG_DIR` and pre-create a separate empty `itsm_port_*` database. Then run

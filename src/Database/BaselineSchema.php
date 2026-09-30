@@ -133,14 +133,17 @@ final class BaselineSchema
             if (preg_match("/\\bCOMMENT\\s+'((?:[^'\\\\]|\\\\.)*)'/i", $rest, $comment)) {
                 $options['comment'] = stripcslashes($comment[1]);
             }
+            if ($type === 'timestamp' && !$postgres) {
+                // DBAL's MySQL datetimetz declaration is DATETIME, which loses
+                // the session-timezone conversion required by existing models.
+                $options['columnDefinition'] = 'TIMESTAMP' . $rest;
+            }
             if (stripos($rest, 'ON UPDATE CURRENT_TIMESTAMP') !== false) {
                 if ($postgres) {
                     $function = $platform->quoteSingleIdentifier($this->indexName($table->getName(), $name . '_touch'));
                     $column = $platform->quoteSingleIdentifier($name);
                     $this->extraSql[$table->getName()][] = "CREATE OR REPLACE FUNCTION $function() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW IS DISTINCT FROM OLD AND NEW.$column IS NOT DISTINCT FROM OLD.$column THEN NEW.$column = CURRENT_TIMESTAMP; END IF; RETURN NEW; END $$";
                     $this->extraSql[$table->getName()][] = "CREATE TRIGGER $function BEFORE UPDATE ON " . $table->getQuotedName($platform) . " FOR EACH ROW EXECUTE FUNCTION $function()";
-                } else {
-                    $options['columnDefinition'] = 'TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP';
                 }
             }
             // The legacy MySQL connection disables strict mode. Make its

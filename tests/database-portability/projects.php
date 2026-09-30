@@ -151,7 +151,7 @@ try {
         try {
             $migration->apply($connection);
         } catch (RuntimeException $error) {
-            $rejected = str_contains($error->getMessage(), 'Zero is a real hierarchy identifier');
+            $rejected = str_contains($error->getMessage(), 'Empty selection is a real hierarchy identifier');
         }
         verify($rejected, 'Real zero project identifiers require explicit repair');
     } finally {
