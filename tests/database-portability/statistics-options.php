@@ -124,6 +124,35 @@ try {
         } catch (InvalidArgumentException) {
         }
     }
+    // Tree selectors must combine parent selection with entity visibility.
+    // The former associative-array union could discard recursive entity criteria.
+    $hiddenGroup = $create('glpi_groups', ['entities_id' => 0, 'name' => 'Hidden root group', 'is_recursive' => false]);
+    $sharedGroup = $create('glpi_groups', ['entities_id' => 0, 'name' => 'Recursive root group', 'is_recursive' => true]);
+    $childGroup = $create('glpi_groups', ['entities_id' => $entity, 'groups_id' => $requestGroup, 'name' => 'Group child', 'completename' => 'Requester group > child', 'is_requester' => false]);
+    $rows = Stat::getItems('Ticket', '', '', 'group_tree');
+    verify(!in_array($hiddenGroup, array_column($rows, 'id'), true) && in_array($sharedGroup, array_column($rows, 'id'), true), 'Root group tree retains recursive entity visibility');
+    verify(!in_array($childGroup, array_column(Stat::getItems('Ticket', '', '', 'group_tree', $requestGroup), 'id'), true), 'Requester group tree applies role flag');
+    verify(in_array($childGroup, array_column(Stat::getItems('Ticket', '', '', 'groups_tree_assign', $requestGroup), 'id'), true), 'Assigned group tree includes eligible child');
+    foreach (['itilcategories', 'locations'] as $classification) {
+        $parent = $create('glpi_' . $classification, ['entities_id' => $entity, 'name' => 'Options parent', 'completename' => 'Options parent']);
+        $child = $create('glpi_' . $classification, ['entities_id' => $entity, $classification . '_id' => $parent, 'name' => 'Options child', 'completename' => 'Options parent > child']);
+        $grandchild = $create('glpi_' . $classification, ['entities_id' => $entity, $classification . '_id' => $child, 'name' => 'Options grandchild', 'completename' => 'Options parent > child > grandchild']);
+        $hidden = $create('glpi_' . $classification, ['entities_id' => 0, 'name' => 'Options hidden', 'is_recursive' => false]);
+        $rows = Stat::getItems('Ticket', '', '', $classification . '_tree', $parent);
+        verify($rows === [['id' => $parent, 'link' => 'Options parent'], ['id' => $child, 'link' => 'Options child']], 'Tree classification includes parent and immediate children in path order: ' . $classification);
+        $rows = Stat::getItems('Ticket', '', '', $classification . '_id');
+        verify(in_array(['id' => $grandchild, 'link' => 'Options parent > child > grandchild'], $rows, true) && !in_array($hidden, array_column($rows, 'id'), true), 'Flat classification retains complete names and entity scope: ' . $classification);
+        verify(!in_array($hidden, array_column(Stat::getItems('Ticket', '', '', $classification . '_tree'), 'id'), true), 'Root classification does not discard entity predicate: ' . $classification);
+    }
+    $model = $create('glpi_computermodels', ['name' => 'Options computer model']);
+    verify(in_array(['id' => $model, 'link' => 'Options computer model'], Stat::getItems('Ticket', '', '', 'ComputerModel'), true), 'Unscoped asset classification labels');
+    $device = $create('glpi_deviceprocessors', ['designation' => 'Options processor', 'entities_id' => 0]);
+    verify(in_array(['id' => $device, 'link' => 'Options processor'], Stat::getItems('Ticket', '', '', 'DeviceProcessor'), true), 'Component selectors retain their historic unscoped catalogue');
+    verify(in_array(['id' => $grandchild, 'link' => 'Options parent > child > grandchild'], Stat::getItems('Ticket', '', '', 'Location'), true), 'Default tree dropdown selector retains complete labels');
+    $_SESSION['glpiactiveentities'] = [];
+    verify(Stat::getItems('Ticket', '', '', 'group_tree') === [] && Stat::getItems('Ticket', '', '', 'locations_id') === [], 'Empty scope cannot enumerate entity classifications');
+    verify(in_array($device, array_column(Stat::getItems('Ticket', '', '', 'DeviceProcessor'), 'id'), true), 'Unscoped component catalogue is independent of entity list');
+    $_SESSION['glpiactiveentities'] = [$entity];
     $_SESSION['glpi_use_mode'] = Session::DEBUG_MODE;
     $CFG_GLPI['debug_sql'] = true;
     $DEBUG_SQL = [];
@@ -134,6 +163,9 @@ try {
         }
     }
     Stat::getItems('Ticket', '2025-01-01', '2025-01-31', 'requesttypes_id');
+    foreach (['group_tree', 'groups_tree_assign', 'itilcategories_tree', 'itilcategories_id', 'locations_tree', 'locations_id', 'ComputerModel', 'DeviceProcessor', 'Location'] as $dimension) {
+        Stat::getItems('Ticket', '', '', $dimension);
+    }
     verify($SQL_TOTAL_REQUEST === 0, 'Application selectors execute no legacy SQL: ' . json_encode($DEBUG_SQL['queries'] ?? []));
 } finally {
     $DB->rollBack();

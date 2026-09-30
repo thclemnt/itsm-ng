@@ -2886,3 +2886,27 @@ ORM mapping and parent-purge validation pass on both fresh installations;
 upgraded installations also pass every-table ORM writes, saved searches,
 application workflows, search and reporting contracts. MariaDB runs these checks
 under PHP 8.3. CI includes the new scope contract; remote CI is unverified.
+
+### Mapped reporting classification and tree selectors
+
+`Stat::getItems()` now uses scalar ORM projections for group trees, categories,
+locations, component catalogues and other mapped asset classifications. There
+are no adapter request calls left in `Stat` or in the thirteen ITIL selectors.
+Label/path selection, requester/assigned group flags and component catalogue
+scope are retained; stable ID ordering breaks label ties. Unknown item types
+return no choices and plugin classifications require explicit mappings.
+
+Tree selection and recursive entity visibility are combined with AND. The old
+associative-array union or assignment could replace the entity OR predicate
+with a tree OR predicate, exposing choices from other entities. The contract
+now covers hidden root-scoped rows, recursive root visibility, role flags,
+parent/direct-child selection, full path labels, unscoped catalogues and empty
+entity scopes. All selector execution paths pass with zero legacy SQL requests
+after catalogue warm-up on PostgreSQL and PHP 8.3 MariaDB. Reporting, monthly
+statistics, hardware pagination and search regressions pass again on both.
+
+The refreshed token audit finds 3160 legacy call sites: 3130 known adapter calls
+and 30 direct-driver calls, 21 fewer than the previous checkpoint. Historical
+upgrade scripts still account for 2442 sites, leaving 718 elsewhere. Candidate
+method/dynamic calls and polymorphic/serialized relationships still require
+semantic review; this audit is not proof that SQL conversion is complete.

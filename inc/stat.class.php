@@ -69,8 +69,6 @@ class Stat extends CommonGLPI
     **/
     public static function getItems($itemtype, $date1, $date2, $type, $parent = 0)
     {
-        global $DB;
-
         if (!$item = getItemForItemtype($itemtype)) {
             return;
         }
@@ -99,94 +97,27 @@ class Stat extends CommonGLPI
 
             case 'group_tree':
             case 'groups_tree_assign':
-                // Get all groups
-                $is_field = ($type == 'group_tree') ? 'is_requester' : 'is_assign';
-                $iterator = $DB->request([
-                   'SELECT' => ['id', 'name'],
-                   'FROM'   => 'glpi_groups',
-                   'WHERE'  => [
-                      'OR'  => [
-                         'id'        => $parent,
-                         'groups_id' => $parent
-                      ],
-                      $is_field   => 1
-                   ] + getEntitiesRestrictCriteria("glpi_groups", '', '', true),
-                   'ORDER'  => 'completename'
-                ]);
-
-                $val    = [];
-                while ($line = $iterator->next()) {
-                    $val[] = [
-                       'id'     => $line['id'],
-                       'link'   => $line['name']
-                    ];
-                }
+                $table = 'glpi_groups';
+                $role = $type === 'group_tree' ? 'is_requester' : 'is_assign';
+                $val = self::classificationOptions($table, 'name', [
+                    ['OR' => ['id' => $parent, 'groups_id' => $parent]],
+                    [$role => true],
+                    getEntitiesRestrictCriteria($table, '', '', true),
+                ], 'completename', true);
                 break;
 
-            case "itilcategories_tree":
-            case "itilcategories_id":
-                $is_tree = $type == 'itilcategories_tree';
-                // Get all ticket categories for tree merge management
-                $criteria = [
-                   'SELECT'    => [
-                      'glpi_itilcategories.id',
-                      'glpi_itilcategories.' . ($is_tree ? 'name' : 'completename') . ' AS category'
-                   ],
-                   'DISTINCT'  => true,
-                   'FROM'      => 'glpi_itilcategories',
-                   'WHERE'     => getEntitiesRestrictCriteria('glpi_itilcategories', '', '', true),
-                   'ORDERBY'   => 'completename'
-                ];
-
-                if ($is_tree) {
-                    $criteria['WHERE']['OR'] = [
-                       'id'                 => $parent,
-                       'itilcategories_id'  => $parent
-                    ];
-                }
-
-                $iterator = $DB->request($criteria);
-
-                $val    = [];
-                while ($line = $iterator->next()) {
-                    $val[] = [
-                       'id'     => $line['id'],
-                       'link'   => $line['category']
-                    ];
-                }
-                break;
-
+            case 'itilcategories_tree':
+            case 'itilcategories_id':
             case 'locations_tree':
             case 'locations_id':
-                $is_tree = $type == 'locations_tree';
-                // Get all locations for tree merge management
-                $criteria = [
-                   'SELECT'    => [
-                      'glpi_locations.id',
-                      'glpi_locations.' . ($is_tree ? 'name' : 'completename') . ' AS location'
-                   ],
-                   'DISTINCT'  => true,
-                   'FROM'      => 'glpi_locations',
-                   'WHERE'     => getEntitiesRestrictCriteria('glpi_locations', '', '', true),
-                   'ORDERBY'   => 'completename'
-                ];
-
-                if ($is_tree) {
-                    $criteria['WHERE']['OR'] = [
-                       'id'           => $parent,
-                       'locations_id' => $parent
-                    ];
+                $category = str_starts_with($type, 'itilcategories');
+                $table = $category ? 'glpi_itilcategories' : 'glpi_locations';
+                $isTree = str_ends_with($type, '_tree');
+                $criteria = [getEntitiesRestrictCriteria($table, '', '', true)];
+                if ($isTree) {
+                    $criteria[] = ['OR' => ['id' => $parent, ($category ? 'itilcategories_id' : 'locations_id') => $parent]];
                 }
-
-                $iterator = $DB->request($criteria);
-
-                $val    = [];
-                while ($line = $iterator->next()) {
-                    $val[] = [
-                       'id'     => $line['id'],
-                       'link'   => $line['location']
-                    ];
-                }
+                $val = self::classificationOptions($table, $isTree ? 'name' : 'completename', $criteria, 'completename', true);
                 break;
 
             case "type":
@@ -235,63 +166,33 @@ class Stat extends CommonGLPI
                 $val = $item->getUsedUserTitleOrTypeBetween($date1, $date2, false);
                 break;
 
-                // DEVICE CASE
             default:
-                if (
-                    ($item = getItemForItemtype($type))
-                    && ($item instanceof CommonDevice)
-                ) {
-                    $device_table = $item->getTable();
-
-                    //select devices IDs (table row)
-                    $iterator = $DB->request([
-                       'SELECT' => [
-                          'id',
-                          'designation'
-                       ],
-                       'FROM'   => $device_table,
-                       'ORDER'  => 'designation'
-                    ]);
-
-                    while ($line = $iterator->next()) {
-                        $val[] = [
-                           'id'     => $line['id'],
-                           'link'   => $line['designation']
-                        ];
-                    }
+                $classification = getItemForItemtype($type);
+                if (!$classification) {
+                    return [];
+                }
+                if ($classification instanceof CommonDevice) {
+                    $val = self::classificationOptions($classification->getTable(), 'designation', [], 'designation', false);
                 } else {
-                    // Dropdown case for computers
-                    $field = "name";
-                    $table = getTableForItemType($type);
-                    if (
-                        ($item = getItemForItemtype($type))
-                        && ($item instanceof CommonTreeDropdown)
-                    ) {
-                        $field = "completename";
-                    }
-
-                    $criteria = [
-                       'FROM'   => $table,
-                       'ORDER'  => $field
-                    ];
-
-                    if ($item->isEntityAssign()) {
-                        $criteria['ORDER'] = ['entities_id', $field];
-                        $criteria['WHERE'] = getEntitiesRestrictCriteria($table);
-                    }
-
-                    $iterator = $DB->request($criteria);
-
-                    $val    = [];
-                    while ($line = $iterator->next()) {
-                        $val[] = [
-                           'id'     => $line['id'],
-                           'link'   => $line[$field]
-                        ];
-                    }
+                    $field = $classification instanceof CommonTreeDropdown ? 'completename' : 'name';
+                    $table = $classification->getTable();
+                    $scoped = $classification->isEntityAssign();
+                    $val = self::classificationOptions($table, $field, $scoped ? getEntitiesRestrictCriteria($table) : [], $scoped ? ['entities_id', $field] : $field, $scoped);
                 }
         }
         return $val;
+    }
+
+
+    private static function classificationOptions(string $table, string $label, array $criteria, array|string $order, bool $scoped): array
+    {
+        global $DB;
+
+        if ($scoped && \itsmng\Reporting\Criteria::entities() === []) {
+            return [];
+        }
+        return (new \itsmng\Database\Repository\StatisticsClassificationRepository(\itsmng\Database\Orm::create($DB)))
+            ->options($table, $label, $criteria, $order);
     }
 
 
