@@ -2788,3 +2788,32 @@ Its current regex excludes namespaced mysqli constructors, prepared-statement
 wrappers, adapter-internal calls and `updateOrDie`; those removed installation
 paths were not counted. The inventory needs broader call discovery before it
 can support any claim that all direct SQL has been eliminated.
+
+### Token-based SQL-call discovery
+
+The coverage audit now tokenizes PHP source rather than matching individual
+lines. It ignores comments and literal strings, locates multiline calls and
+retains separate byte offsets for several calls on the same line. It discovers
+prepared statements, SQL builders, `queryOrDie`/write wrappers, nullable calls,
+dynamic adapter methods, static adapter calls and namespaced driver APIs.
+The JSON includes each call's source location, method, receiver and category;
+it never emits SQL arguments or credentials.
+
+At this checkpoint it finds 3151 calls on known legacy adapters and 30 direct
+driver calls, for 3181 detected legacy call sites. Of these, 2442 are in
+historical upgrade scripts and 739 are elsewhere in the scanned core. These
+counts replace the narrower 1150 regex-matched lines; the increase is newly
+discovered existing work. FK coverage is unchanged at 746 enforced references.
+Adapter construction (eight sites) and internal adapter calls (34) have separate
+categories. There are also 750 method candidates and 28 dynamic candidates.
+Those include alternate connection variables, Doctrine and ordinary model CRUD;
+they require type/runtime review before any conversion or removal.
+
+This remains a static discovery tool, not completion proof. It does not resolve
+import aliases, callbacks or generated code, and it scans the core inc/src/front/
+ajax/install roots rather than independent plugin repositories. Relationship
+discriminators and serialized references also still need semantic review.
+The contract passes on host PHP 8.5 and PHP 8.3, covering lexical false positives,
+source locations, wrappers, candidate categories and evidence from the current
+web installer and historical upgrades. CI runs it before installation; remote
+CI has not been verified for this batch.

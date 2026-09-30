@@ -52,20 +52,12 @@ foreach ($schema->getTables() as $table) {
     }
 }
 ksort($relationships);
-$legacyCalls = [];
-foreach (['inc', 'src', 'front', 'ajax', 'install'] as $directory) {
-    $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(GLPI_ROOT . '/' . $directory));
-    foreach ($files as $file) {
-        if (!$file->isFile() || $file->getExtension() !== 'php') {
-            continue;
-        }
-        foreach (file($file->getPathname()) as $index => $line) {
-            if (preg_match('/\$DB->(?:request|query|insert|update|delete)\s*\(|\b(?:new\s+mysqli|mysqli_\w+\s*\(|pg_\w+\s*\()/', $line)) {
-                $legacyCalls[] = substr($file->getPathname(), strlen(GLPI_ROOT) + 1) . ':' . ($index + 1);
-            }
-        }
-    }
-}
+require __DIR__ . '/SqlCallInventory.php';
+$sqlCalls = SqlCallInventory::discover(GLPI_ROOT);
+$callCategories = array_count_values(array_column($sqlCalls, 'category'));
+ksort($callCategories);
+$legacyCalls = array_values(array_filter($sqlCalls, static fn (array $call): bool =>
+    in_array($call['category'], ['legacy_adapter', 'legacy_dynamic', 'direct_driver'], true)));
 $tables = array_map(fn ($table) => $table->getName(), $schema->getTables());
 $output = [
     'summary' => [
@@ -75,13 +67,15 @@ $output = [
         'relationship_candidates' => count($relationships),
         'relationship_statuses' => array_count_values(array_column($relationships, 'status')),
         'legacy_call_sites' => count($legacyCalls),
+        'sql_call_categories' => $callCategories,
     ],
     'unmapped_tables' => array_values(array_diff($tables, array_keys(\itsmng\Database\EntityRegistry::TABLES))),
     'pending_lifecycle_write_tables' => array_values(array_diff($tables, array_keys(\itsmng\Database\MappedStorage::TABLES))),
     'relationships' => $relationships,
     'polymorphic' => $polymorphic,
     'invalid_legacy_declarations' => $invalid,
-    'legacy_call_sites' => $legacyCalls,
-    'limits' => 'Static candidate inventory, not proof of complete relationship discovery. Serialized references, custom discriminators, alternate connection variables and dynamically constructed SQL require semantic review.',
+    'legacy_call_sites' => array_map(static fn (array $call): string => $call['path'] . ':' . $call['line'], $legacyCalls),
+    'sql_calls' => $sqlCalls,
+    'limits' => 'Static inventory, not completion proof. Method candidates include alternate DB receivers, Doctrine and model CRUD; inspect them semantically. Aliased class/function imports, callbacks, generated code, dynamic receivers and plugin code outside the scanned roots require further discovery. Serialized references and custom relationship discriminators require semantic review. Call counts now use PHP tokens, not historical regex-matched lines.',
 ];
 echo json_encode($output, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";

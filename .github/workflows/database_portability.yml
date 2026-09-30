@@ -59,6 +59,8 @@ jobs:
           node-version: '20'
       - name: Install dependencies
         run: php bin/console dependencies install
+      - name: Test SQL inventory discovery
+        run: php tests/database-portability/sql-inventory.php
       - name: Prepare MySQL timezone fixtures
         if: matrix.database.provider == 'mysql'
         run: |
