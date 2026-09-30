@@ -2817,3 +2817,32 @@ The contract passes on host PHP 8.5 and PHP 8.3, covering lexical false positive
 source locations, wrappers, candidate categories and evidence from the current
 web installer and historical upgrades. CI runs it before installation; remote
 CI has not been verified for this batch.
+
+### Mapped ITIL reporting selectors
+
+All thirteen `CommonITILObject::getUsed*Between()` selectors now use
+`ITILStatisticsOptionsRepository` scalar DQL projections. Ticket, Problem and
+Change share the type/relationship definitions with monthly statistics. The
+application model still formats user links, supplier links and severity names;
+translated classification labels are selected in the same ORM query rather
+than fetched once per option. Explicit NULL ordering makes unassigned options
+consistent across providers. Request types explicitly require Ticket.
+
+Parent entity scope, deleted-record exclusion, distinct actor/group choices,
+all-role user title/category selectors and the historic ticket-OWN profile rule
+for task authors are retained. Task eligibility uses EXISTS so duplicate profile
+memberships do not multiply choices. Opening or closing must itself fall inside
+the interval; spanning the whole interval alone does not qualify. The former
+end-date-plus-one-day predicate included an extra day for timestamp bounds and
+the following midnight for date-only bounds. These now follow monthly reports:
+date-only bounds include their whole day, timestamps are exact and inclusive,
+invalid calendar dates are rejected and reversed intervals match nothing.
+
+The selectors contract passes on PostgreSQL and PHP 8.3 MariaDB, including the
+`Stat::getItems()` path with zero legacy adapter executions, entity root/global/
+empty scopes, relationship fan-out, NULL choices, translations, profile rights,
+cross-type solution ID collisions and date boundaries. Monthly statistics pass
+again on both engines and PostgreSQL reporting regressions pass. CI includes the
+new contract; remote CI has not been rerun. The remaining tree/classification
+selectors in `Stat::getItems()` still use the adapter and need a separate mapped
+projection.

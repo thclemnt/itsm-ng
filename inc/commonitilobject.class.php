@@ -6474,6 +6474,22 @@ abstract class CommonITILObject extends CommonDBTM
     }
 
 
+    /** Reporting projections use mappings; display policy stays in the model. */
+    private function getStatisticsOptions(string $dimension, string $begin, string $end): array
+    {
+        global $DB;
+
+        $labelType = [
+            'user_title' => 'UserTitle', 'user_category' => 'UserCategory',
+            'request_type' => 'RequestType', 'solution_type' => 'SolutionType',
+        ][$dimension] ?? null;
+        $language = $labelType !== null && Session::haveTranslations($labelType, 'name')
+            ? ($_SESSION['glpilanguage'] ?? null) : null;
+        return (new \itsmng\Database\Repository\ITILStatisticsOptionsRepository(\itsmng\Database\Orm::create($DB)))
+            ->options($this->getType(), $dimension, $begin, $end, \itsmng\Reporting\Criteria::entities(), $language);
+    }
+
+
     /** Get users_ids of itil object between 2 dates
      *
      * @param string $date1 begin date
@@ -6483,75 +6499,10 @@ abstract class CommonITILObject extends CommonDBTM
     **/
     public function getUsedAuthorBetween($date1 = '', $date2 = '')
     {
-        global $DB;
-
-        $linkclass = new $this->userlinkclass();
-        $linktable = $linkclass->getTable();
-
-        $ctable = $this->getTable();
-        $criteria = [
-           'SELECT'          => [
-              'glpi_users.id AS users_id',
-              'glpi_users.name AS name',
-              'glpi_users.realname AS realname',
-              'glpi_users.firstname AS firstname'
-           ],
-           'DISTINCT' => true,
-           'FROM'            => $ctable,
-           'LEFT JOIN'       => [
-              $linktable  => [
-                 'ON' => [
-                    $linktable  => $this->getForeignKeyField(),
-                    $ctable     => 'id', [
-                       'AND' => [
-                          "$linktable.type"    => CommonITILActor::REQUESTER
-                       ]
-                    ]
-                 ]
-              ]
-           ],
-           'INNER JOIN'      => [
-              'glpi_users'   => [
-                 'ON' => [
-                    $linktable     => 'users_id',
-                    'glpi_users'   => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'           => [
-              "$ctable.is_deleted" => 0
-           ] + getEntitiesRestrictCriteria($ctable),
-           'ORDERBY'         => [
-              'realname',
-              'firstname',
-              'name'
-           ]
-        ];
-
-        if (!empty($date1) || !empty($date2)) {
-            $criteria['WHERE'][] = [
-               'OR' => [
-                  getDateCriteria("$ctable.date", $date1, $date2),
-                  getDateCriteria("$ctable.closedate", $date1, $date2),
-               ]
-            ];
-        }
-
-        $iterator = $DB->request($criteria);
-        $tab    = [];
-        while ($line = $iterator->next()) {
-            $tab[] = [
-               'id'   => $line['users_id'],
-               'link' => formatUserName(
-                   $line['users_id'],
-                   $line['name'],
-                   $line['realname'],
-                   $line['firstname'],
-                   1
-               )
-            ];
-        }
-        return $tab;
+        return array_map(static fn (array $row): array => [
+            'id' => $row['id'],
+            'link' => formatUserName($row['id'], $row['name'] ?? '', $row['realname'] ?? '', $row['firstname'] ?? '', 1),
+        ], $this->getStatisticsOptions('requester', $date1, $date2));
     }
 
 
@@ -6564,61 +6515,10 @@ abstract class CommonITILObject extends CommonDBTM
     **/
     public function getUsedRecipientBetween($date1 = '', $date2 = '')
     {
-        global $DB;
-
-        $ctable = $this->getTable();
-        $criteria = [
-           'SELECT'          => [
-              'glpi_users.id AS user_id',
-              'glpi_users.name AS name',
-              'glpi_users.realname AS realname',
-              'glpi_users.firstname AS firstname'
-           ],
-           'DISTINCT'        => true,
-           'FROM'            => $ctable,
-           'LEFT JOIN'       => [
-              'glpi_users'   => [
-                 'ON' => [
-                    $ctable        => 'users_id_recipient',
-                    'glpi_users'   => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'           => [
-              "$ctable.is_deleted" => 0
-           ] + getEntitiesRestrictCriteria($ctable),
-           'ORDERBY'         => [
-              'realname',
-              'firstname',
-              'name'
-           ]
-        ];
-
-        if (!empty($date1) || !empty($date2)) {
-            $criteria['WHERE'][] = [
-               'OR' => [
-                  getDateCriteria("$ctable.date", $date1, $date2),
-                  getDateCriteria("$ctable.closedate", $date1, $date2),
-               ]
-            ];
-        }
-
-        $iterator = $DB->request($criteria);
-        $tab    = [];
-
-        while ($line = $iterator->next()) {
-            $tab[] = [
-               'id'   => $line['user_id'],
-               'link' => formatUserName(
-                   $line['user_id'],
-                   $line['name'],
-                   $line['realname'],
-                   $line['firstname'],
-                   1
-               )
-            ];
-        }
-        return $tab;
+        return array_map(static fn (array $row): array => [
+            'id' => $row['id'],
+            'link' => formatUserName($row['id'], $row['name'] ?? '', $row['realname'] ?? '', $row['firstname'] ?? '', 1),
+        ], $this->getStatisticsOptions('recipient', $date1, $date2));
     }
 
 
@@ -6631,66 +6531,10 @@ abstract class CommonITILObject extends CommonDBTM
     **/
     public function getUsedGroupBetween($date1 = '', $date2 = '')
     {
-        global $DB;
-
-        $linkclass = new $this->grouplinkclass();
-        $linktable = $linkclass->getTable();
-
-        $ctable = $this->getTable();
-        $criteria = [
-           'SELECT' => [
-              'glpi_groups.id',
-              'glpi_groups.completename'
-           ],
-           'DISTINCT'        => true,
-           'FROM'            => $ctable,
-           'LEFT JOIN'       => [
-              $linktable  => [
-                 'ON' => [
-                    $linktable  => $this->getForeignKeyField(),
-                    $ctable     => 'id', [
-                       'AND' => [
-                          "$linktable.type"    => CommonITILActor::REQUESTER
-                       ]
-                    ]
-                 ]
-              ]
-           ],
-           'INNER JOIN'      => [
-              'glpi_groups'   => [
-                 'ON' => [
-                    $linktable     => 'groups_id',
-                    'glpi_groups'   => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'           => [
-              "$ctable.is_deleted" => 0
-           ] + getEntitiesRestrictCriteria($ctable),
-           'ORDERBY'         => [
-              'glpi_groups.completename'
-           ]
-        ];
-
-        if (!empty($date1) || !empty($date2)) {
-            $criteria['WHERE'][] = [
-               'OR' => [
-                  getDateCriteria("$ctable.date", $date1, $date2),
-                  getDateCriteria("$ctable.closedate", $date1, $date2),
-               ]
-            ];
-        }
-
-        $iterator = $DB->request($criteria);
-        $tab    = [];
-
-        while ($line = $iterator->next()) {
-            $tab[] = [
-               'id'   => $line['id'],
-               'link' => $line['completename'],
-            ];
-        }
-        return $tab;
+        return array_map(static fn (array $row): array => [
+            'id' => $row['id'],
+            'link' => ($row['name'] ?? ''),
+        ], $this->getStatisticsOptions('requester_group', $date1, $date2));
     }
 
 
@@ -6704,72 +6548,10 @@ abstract class CommonITILObject extends CommonDBTM
     **/
     public function getUsedUserTitleOrTypeBetween($date1 = '', $date2 = '', $title = true)
     {
-        global $DB;
-
-        $linkclass = new $this->userlinkclass();
-        $linktable = $linkclass->getTable();
-
-        if ($title) {
-            $table = "glpi_usertitles";
-            $field = "usertitles_id";
-        } else {
-            $table = "glpi_usercategories";
-            $field = "usercategories_id";
-        }
-
-        $ctable = $this->getTable();
-        $criteria = [
-           'SELECT'          => "glpi_users.$field",
-           'DISTINCT'        => true,
-           'FROM'            => $ctable,
-           'INNER JOIN'      => [
-              $linktable  => [
-                 'ON' => [
-                    $linktable  => $this->getForeignKeyField(),
-                    $ctable     => 'id'
-                 ]
-              ],
-              'glpi_users'   => [
-                 'ON' => [
-                    $linktable     => 'users_id',
-                    'glpi_users'   => 'id'
-                 ]
-              ]
-           ],
-           'LEFT JOIN'       => [
-              $table         => [
-                 'ON' => [
-                    'glpi_users'   => $field,
-                    $table         => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'           => [
-              "$ctable.is_deleted" => 0
-           ] + getEntitiesRestrictCriteria($ctable),
-           'ORDERBY'         => [
-              "glpi_users.$field"
-           ]
-        ];
-
-        if (!empty($date1) || !empty($date2)) {
-            $criteria['WHERE'][] = [
-               'OR' => [
-                  getDateCriteria("$ctable.date", $date1, $date2),
-                  getDateCriteria("$ctable.closedate", $date1, $date2),
-               ]
-            ];
-        }
-
-        $iterator = $DB->request($criteria);
-        $tab    = [];
-        while ($line = $iterator->next()) {
-            $tab[] = [
-               'id'   => $line[$field],
-               'link' => Dropdown::getDropdownName($table, $line[$field]),
-            ];
-        }
-        return $tab;
+        return array_map(static fn (array $row): array => [
+            'id' => $row['id'],
+            'link' => ($row['name'] ?? ''),
+        ], $this->getStatisticsOptions($title ? 'user_title' : 'user_category', $date1, $date2));
     }
 
 
@@ -6783,37 +6565,10 @@ abstract class CommonITILObject extends CommonDBTM
     **/
     public function getUsedPriorityBetween($date1 = '', $date2 = '')
     {
-        global $DB;
-
-        $ctable = $this->getTable();
-        $criteria = [
-           'SELECT'          => 'priority',
-           'DISTINCT'        => true,
-           'FROM'            => $ctable,
-           'WHERE'           => [
-              "$ctable.is_deleted" => 0
-           ] + getEntitiesRestrictCriteria($ctable),
-           'ORDERBY'         => 'priority'
-        ];
-
-        if (!empty($date1) || !empty($date2)) {
-            $criteria['WHERE'][] = [
-               'OR' => [
-                  getDateCriteria("$ctable.date", $date1, $date2),
-                  getDateCriteria("$ctable.closedate", $date1, $date2),
-               ]
-            ];
-        }
-
-        $iterator = $DB->request($criteria);
-        $tab    = [];
-        while ($line = $iterator->next()) {
-            $tab[] = [
-               'id'   => $line['priority'],
-               'link' => static::getPriorityName($line['priority']),
-            ];
-        }
-        return $tab;
+        return array_map(static fn (array $row): array => [
+            'id' => $row['id'],
+            'link' => static::getPriorityName($row['id']),
+        ], $this->getStatisticsOptions('priority', $date1, $date2));
     }
 
 
@@ -6827,38 +6582,10 @@ abstract class CommonITILObject extends CommonDBTM
     **/
     public function getUsedUrgencyBetween($date1 = '', $date2 = '')
     {
-        global $DB;
-
-        $ctable = $this->getTable();
-        $criteria = [
-           'SELECT'          => 'urgency',
-           'DISTINCT'        => true,
-           'FROM'            => $ctable,
-           'WHERE'           => [
-              "$ctable.is_deleted" => 0
-           ] + getEntitiesRestrictCriteria($ctable),
-           'ORDERBY'         => 'urgency'
-        ];
-
-        if (!empty($date1) || !empty($date2)) {
-            $criteria['WHERE'][] = [
-               'OR' => [
-                  getDateCriteria("$ctable.date", $date1, $date2),
-                  getDateCriteria("$ctable.closedate", $date1, $date2),
-               ]
-            ];
-        }
-
-        $iterator = $DB->request($criteria);
-        $tab    = [];
-
-        while ($line = $iterator->next()) {
-            $tab[] = [
-               'id'   => $line['urgency'],
-               'link' => static::getUrgencyName($line['urgency']),
-            ];
-        }
-        return $tab;
+        return array_map(static fn (array $row): array => [
+            'id' => $row['id'],
+            'link' => static::getUrgencyName($row['id']),
+        ], $this->getStatisticsOptions('urgency', $date1, $date2));
     }
 
 
@@ -6872,38 +6599,10 @@ abstract class CommonITILObject extends CommonDBTM
     **/
     public function getUsedImpactBetween($date1 = '', $date2 = '')
     {
-        global $DB;
-
-        $ctable = $this->getTable();
-        $criteria = [
-           'SELECT'          => 'impact',
-           'DISTINCT'        => true,
-           'FROM'            => $ctable,
-           'WHERE'           => [
-              "$ctable.is_deleted" => 0
-           ] + getEntitiesRestrictCriteria($ctable),
-           'ORDERBY'         => 'impact'
-        ];
-
-        if (!empty($date1) || !empty($date2)) {
-            $criteria['WHERE'][] = [
-               'OR' => [
-                  getDateCriteria("$ctable.date", $date1, $date2),
-                  getDateCriteria("$ctable.closedate", $date1, $date2),
-               ]
-            ];
-        }
-
-        $iterator = $DB->request($criteria);
-        $tab    = [];
-
-        while ($line = $iterator->next()) {
-            $tab[] = [
-               'id'   => $line['impact'],
-               'link' => static::getImpactName($line['impact']),
-            ];
-        }
-        return $tab;
+        return array_map(static fn (array $row): array => [
+            'id' => $row['id'],
+            'link' => static::getImpactName($row['id']),
+        ], $this->getStatisticsOptions('impact', $date1, $date2));
     }
 
 
@@ -6917,37 +6616,10 @@ abstract class CommonITILObject extends CommonDBTM
     **/
     public function getUsedRequestTypeBetween($date1 = '', $date2 = '')
     {
-        global $DB;
-
-        $ctable = $this->getTable();
-        $criteria = [
-           'SELECT'          => 'requesttypes_id',
-           'DISTINCT'        => true,
-           'FROM'            => $ctable,
-           'WHERE'           => [
-              "$ctable.is_deleted" => 0
-           ] + getEntitiesRestrictCriteria($ctable),
-           'ORDERBY'         => 'requesttypes_id'
-        ];
-
-        if (!empty($date1) || !empty($date2)) {
-            $criteria['WHERE'][] = [
-               'OR' => [
-                  getDateCriteria("$ctable.date", $date1, $date2),
-                  getDateCriteria("$ctable.closedate", $date1, $date2),
-               ]
-            ];
-        }
-
-        $iterator = $DB->request($criteria);
-        $tab    = [];
-        while ($line = $iterator->next()) {
-            $tab[] = [
-               'id'   => $line['requesttypes_id'],
-               'link' => Dropdown::getDropdownName('glpi_requesttypes', $line['requesttypes_id']),
-            ];
-        }
-        return $tab;
+        return array_map(static fn (array $row): array => [
+            'id' => $row['id'],
+            'link' => ($row['name'] ?? ''),
+        ], $this->getStatisticsOptions('request_type', $date1, $date2));
     }
 
 
@@ -6961,46 +6633,10 @@ abstract class CommonITILObject extends CommonDBTM
     **/
     public function getUsedSolutionTypeBetween($date1 = '', $date2 = '')
     {
-        global $DB;
-
-        $ctable = $this->getTable();
-        $criteria = [
-           'SELECT'          => 'solutiontypes_id',
-           'DISTINCT'        => true,
-           'FROM'            => ITILSolution::getTable(),
-           'INNER JOIN'      => [
-              $ctable   => [
-                 'ON' => [
-                    ITILSolution::getTable()   => 'items_id',
-                    $ctable                    => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'           => [
-              ITILSolution::getTable() . ".itemtype" => $this->getType(),
-              "$ctable.is_deleted"                   => 0
-           ] + getEntitiesRestrictCriteria($ctable),
-           'ORDERBY'         => 'solutiontypes_id'
-        ];
-
-        if (!empty($date1) || !empty($date2)) {
-            $criteria['WHERE'][] = [
-               'OR' => [
-                  getDateCriteria("$ctable.date", $date1, $date2),
-                  getDateCriteria("$ctable.closedate", $date1, $date2),
-               ]
-            ];
-        }
-
-        $iterator = $DB->request($criteria);
-        $tab    = [];
-        while ($line = $iterator->next()) {
-            $tab[] = [
-               'id'   => $line['solutiontypes_id'],
-               'link' => Dropdown::getDropdownName('glpi_solutiontypes', $line['solutiontypes_id']),
-            ];
-        }
-        return $tab;
+        return array_map(static fn (array $row): array => [
+            'id' => $row['id'],
+            'link' => ($row['name'] ?? ''),
+        ], $this->getStatisticsOptions('solution_type', $date1, $date2));
     }
 
 
@@ -7013,69 +6649,10 @@ abstract class CommonITILObject extends CommonDBTM
     **/
     public function getUsedTechBetween($date1 = '', $date2 = '')
     {
-        global $DB;
-
-        $linkclass = new $this->userlinkclass();
-        $linktable = $linkclass->getTable();
-        $showlink = User::canView();
-
-        $ctable = $this->getTable();
-        $criteria = [
-           'SELECT'          => [
-              'glpi_users.id AS users_id',
-              'glpi_users.name AS name',
-              'glpi_users.realname AS realname',
-              'glpi_users.firstname AS firstname'
-           ],
-           'DISTINCT'        => true,
-           'FROM'            => $ctable,
-           'LEFT JOIN'       => [
-              $linktable  => [
-                 'ON' => [
-                    $linktable  => $this->getForeignKeyField(),
-                    $ctable     => 'id', [
-                       'AND' => [
-                          "$linktable.type"    => CommonITILActor::ASSIGN
-                       ]
-                    ]
-                 ]
-              ],
-              'glpi_users'   => [
-                 'ON' => [
-                    $linktable     => 'users_id',
-                    'glpi_users'   => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'           => [
-              "$ctable.is_deleted" => 0
-           ] + getEntitiesRestrictCriteria($ctable),
-           'ORDERBY'         => [
-              'realname',
-              'firstname',
-              'name'
-           ]
-        ];
-
-        if (!empty($date1) || !empty($date2)) {
-            $criteria['WHERE'][] = [
-               'OR' => [
-                  getDateCriteria("$ctable.date", $date1, $date2),
-                  getDateCriteria("$ctable.closedate", $date1, $date2),
-               ]
-            ];
-        }
-
-        $iterator = $DB->request($criteria);
-        $tab    = [];
-
-        while ($line = $iterator->next()) {
-            $tab[] = [
-               'id'   => $line['users_id'],
-               'link' => formatUserName($line['users_id'], $line['name'], $line['realname'], $line['firstname'], $showlink),
-            ];
-        }
-        return $tab;
+        return array_map(static fn (array $row): array => [
+            'id' => $row['id'],
+            'link' => formatUserName($row['id'], $row['name'] ?? '', $row['realname'] ?? '', $row['firstname'] ?? '', User::canView()),
+        ], $this->getStatisticsOptions('technician', $date1, $date2));
     }
 
 
@@ -7088,86 +6665,10 @@ abstract class CommonITILObject extends CommonDBTM
     **/
     public function getUsedTechTaskBetween($date1 = '', $date2 = '')
     {
-        global $DB;
-
-        $linktable = getTableForItemType($this->getType() . 'Task');
-        $showlink = User::canView();
-
-        $ctable = $this->getTable();
-        $criteria = [
-           'SELECT'          => [
-              'glpi_users.id AS users_id',
-              'glpi_users.name AS name',
-              'glpi_users.realname AS realname',
-              'glpi_users.firstname AS firstname'
-           ],
-           'DISTINCT' => true,
-           'FROM'            => $ctable,
-           'LEFT JOIN'       => [
-              $linktable  => [
-                 'ON' => [
-                    $linktable  => $this->getForeignKeyField(),
-                    $ctable     => 'id'
-                 ]
-              ],
-              'glpi_users'   => [
-                 'ON' => [
-                    $linktable     => 'users_id',
-                    'glpi_users'   => 'id'
-                 ]
-              ],
-              'glpi_profiles_users'   => [
-                 'ON' => [
-                    'glpi_users'            => 'id',
-                    'glpi_profiles_users'   => 'users_id'
-                 ]
-              ],
-              'glpi_profiles'         => [
-                 'ON' => [
-                    'glpi_profiles'         => 'id',
-                    'glpi_profiles_users'   => 'profiles_id'
-                 ]
-              ],
-              'glpi_profilerights'    => [
-                 'ON' => [
-                    'glpi_profiles'      => 'id',
-                    'glpi_profilerights' => 'profiles_id'
-                 ]
-              ]
-           ],
-           'WHERE'           => [
-              "$ctable.is_deleted"          => 0,
-              'glpi_profilerights.name'     => 'ticket',
-              'glpi_profilerights.rights'   => ['&', Ticket::OWN],
-              "$linktable.users_id"         => ['<>', 0],
-              ['NOT'                        => ["$linktable.users_id" => null]]
-           ] + getEntitiesRestrictCriteria($ctable),
-           'ORDERBY'         => [
-              'realname',
-              'firstname',
-              'name'
-           ]
-        ];
-
-        if (!empty($date1) || !empty($date2)) {
-            $criteria['WHERE'][] = [
-               'OR' => [
-                  getDateCriteria("$ctable.date", $date1, $date2),
-                  getDateCriteria("$ctable.closedate", $date1, $date2),
-               ]
-            ];
-        }
-
-        $iterator = $DB->request($criteria);
-        $tab    = [];
-
-        while ($line = $iterator->next()) {
-            $tab[] = [
-               'id'   => $line['users_id'],
-               'link' => formatUserName($line['users_id'], $line['name'], $line['realname'], $line['firstname'], $showlink),
-            ];
-        }
-        return $tab;
+        return array_map(static fn (array $row): array => [
+            'id' => $row['id'],
+            'link' => formatUserName($row['id'], $row['name'] ?? '', $row['realname'] ?? '', $row['firstname'] ?? '', User::canView()),
+        ], $this->getStatisticsOptions('task_author', $date1, $date2));
     }
 
 
@@ -7180,63 +6681,10 @@ abstract class CommonITILObject extends CommonDBTM
     **/
     public function getUsedSupplierBetween($date1 = '', $date2 = '')
     {
-        global $DB;
-
-        $linkclass = new $this->supplierlinkclass();
-        $linktable = $linkclass->getTable();
-
-        $ctable = $this->getTable();
-        $criteria = [
-           'SELECT'          => [
-              'glpi_suppliers.id AS suppliers_id_assign',
-              'glpi_suppliers.name AS name'
-           ],
-           'DISTINCT'        => true,
-           'FROM'            => $ctable,
-           'LEFT JOIN'       => [
-              $linktable        => [
-                 'ON' => [
-                    $linktable  => $this->getForeignKeyField(),
-                    $ctable     => 'id', [
-                       'AND' => [
-                          "$linktable.type"    => CommonITILActor::ASSIGN
-                       ]
-                    ]
-                 ]
-              ],
-              'glpi_suppliers'  => [
-                 'ON' => [
-                    $linktable        => 'suppliers_id',
-                    'glpi_suppliers'  => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'           => [
-              "$ctable.is_deleted" => 0
-           ] + getEntitiesRestrictCriteria($ctable),
-           'ORDERBY'         => [
-              'name'
-           ]
-        ];
-
-        if (!empty($date1) || !empty($date2)) {
-            $criteria['WHERE'][] = [
-               'OR' => [
-                  getDateCriteria("$ctable.date", $date1, $date2),
-                  getDateCriteria("$ctable.closedate", $date1, $date2),
-               ]
-            ];
-        }
-
-        $iterator = $DB->request($criteria);
-        $tab    = [];
-        while ($line = $iterator->next()) {
-            $tab[] = [
-               'id'   => $line['suppliers_id_assign'],
-               'link' => '<a href="' . Supplier::getFormURLWithID($line['suppliers_id_assign']) . '">' . $line['name'] . '</a>',
-            ];
-        }
-        return $tab;
+        return array_map(static fn (array $row): array => [
+            'id' => $row['id'],
+            'link' => '<a href="' . Supplier::getFormURLWithID($row['id']) . '">' . ($row['name'] ?? '') . '</a>',
+        ], $this->getStatisticsOptions('supplier', $date1, $date2));
     }
 
 
@@ -7249,63 +6697,10 @@ abstract class CommonITILObject extends CommonDBTM
     **/
     public function getUsedAssignGroupBetween($date1 = '', $date2 = '')
     {
-        global $DB;
-
-        $linkclass = new $this->grouplinkclass();
-        $linktable = $linkclass->getTable();
-
-        $ctable = $this->getTable();
-        $criteria = [
-           'SELECT' => [
-              'glpi_groups.id',
-              'glpi_groups.completename'
-           ],
-           'DISTINCT'        => true,
-           'FROM'            => $ctable,
-           'LEFT JOIN'       => [
-              $linktable  => [
-                 'ON' => [
-                    $linktable  => $this->getForeignKeyField(),
-                    $ctable     => 'id', [
-                       'AND' => [
-                          "$linktable.type"    => CommonITILActor::ASSIGN
-                       ]
-                    ]
-                 ]
-              ],
-              'glpi_groups'   => [
-                 'ON' => [
-                    $linktable     => 'groups_id',
-                    'glpi_groups'   => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'           => [
-              "$ctable.is_deleted" => 0
-           ] + getEntitiesRestrictCriteria($ctable),
-           'ORDERBY'         => [
-              'glpi_groups.completename'
-           ]
-        ];
-
-        if (!empty($date1) || !empty($date2)) {
-            $criteria['WHERE'][] = [
-               'OR' => [
-                  getDateCriteria("$ctable.date", $date1, $date2),
-                  getDateCriteria("$ctable.closedate", $date1, $date2),
-               ]
-            ];
-        }
-
-        $iterator = $DB->request($criteria);
-        $tab    = [];
-        while ($line = $iterator->next()) {
-            $tab[] = [
-               'id'   => $line['id'],
-               'link' => $line['completename'],
-            ];
-        }
-        return $tab;
+        return array_map(static fn (array $row): array => [
+            'id' => $row['id'],
+            'link' => ($row['name'] ?? ''),
+        ], $this->getStatisticsOptions('assigned_group', $date1, $date2));
     }
 
 

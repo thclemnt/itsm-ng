@@ -16,12 +16,6 @@ use itsmng\Reporting\MonthSeries;
 /** Aggregate parents once; audience/asset/task filters must not multiply averages. */
 final class ITILStatisticsRepository
 {
-    private const TYPES = [
-        'Ticket' => [Entity\Ticket::class, 'tickets', Entity\TicketUser::class, Entity\GroupTicket::class, Entity\SupplierTicket::class, Entity\TicketTask::class, Entity\ItemTicket::class],
-        'Problem' => [Entity\Problem::class, 'problems', Entity\ProblemUser::class, Entity\GroupProblem::class, Entity\ProblemSupplier::class, Entity\ProblemTask::class, Entity\ItemProblem::class],
-        'Change' => [Entity\Change::class, 'changes', Entity\ChangeUser::class, Entity\ChangeGroup::class, Entity\ChangeSupplier::class, Entity\ChangeTask::class, Entity\ChangeItem::class],
-    ];
-
     private const METRICS = [
         'inter_total' => ['date', null, 'COUNT(r.id)'],
         'inter_solved' => ['solvedate', 'solved', 'COUNT(r.id)'],
@@ -43,7 +37,7 @@ final class ITILStatisticsRepository
 
     public function monthly(string $type, string $metric, string $begin, string $end, string $dimension, mixed $value, mixed $secondary, ?array $entities, array $solved, array $closed, array $extra = []): array
     {
-        [$class, $parent] = $definition = self::TYPES[$type] ?? throw new \InvalidArgumentException('Unmapped statistics item type');
+        [$class, $parent] = $definition = ITILStatisticsType::definition($type);
         if (!isset(self::METRICS[$metric])) {
             return [];
         }
