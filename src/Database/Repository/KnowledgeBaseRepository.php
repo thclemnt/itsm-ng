@@ -173,12 +173,12 @@ final class KnowledgeBaseRepository
         if ($access->groups) {
             $query->setParameter('groups', $access->groups);
             $predicates[] = 'EXISTS (SELECT g.id FROM ' . GroupKnowbaseItem::class
-                . ' g WHERE IDENTITY(g.knowbaseitems) = k.id AND IDENTITY(g.groups) IN (:groups) AND (g.entities_id < 0 OR ' . $entityScope('g.entities_id', 'g') . '))';
+                . ' g WHERE IDENTITY(g.knowbaseitems) = k.id AND IDENTITY(g.groups) IN (:groups) AND (IDENTITY(g.entities) IS NULL OR ' . $entityScope('IDENTITY(g.entities)', 'g') . '))';
         }
         if ($access->profile > 0) {
             $query->setParameter('profile', $access->profile, Types::INTEGER);
             $predicates[] = 'EXISTS (SELECT p.id FROM ' . KnowbaseItemProfile::class
-                . ' p WHERE IDENTITY(p.knowbaseitems) = k.id AND IDENTITY(p.profiles) = :profile AND (p.entities_id < 0 OR ' . $entityScope('p.entities_id', 'p') . '))';
+                . ' p WHERE IDENTITY(p.knowbaseitems) = k.id AND IDENTITY(p.profiles) = :profile AND (IDENTITY(p.entities) IS NULL OR ' . $entityScope('IDENTITY(p.entities)', 'p') . '))';
         }
         $predicates[] = 'EXISTS (SELECT e.id FROM ' . EntityKnowbaseItem::class
             . ' e WHERE IDENTITY(e.knowbaseitems) = k.id AND ' . $entityScope('IDENTITY(e.entities)', 'e') . ')';

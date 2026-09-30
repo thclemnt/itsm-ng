@@ -62,14 +62,9 @@ class Group_KnowbaseItem extends CommonDBRelation
 
         $groups = [];
 
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'knowbaseitems_id' => $knowbaseitems_id
-           ]
-        ]);
-
-        while ($data = $iterator->next()) {
+        $rows = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+            ->matching(self::getTable(), ['knowbaseitems_id' => $knowbaseitems_id], 'id');
+        foreach ($rows as $data) {
             $groups[$data['groups_id']][] = $data;
         }
         return $groups;

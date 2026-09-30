@@ -87,11 +87,11 @@ final class SharedContentRepository
             'EXISTS (SELECT u.id FROM ' . $user . ' u WHERE IDENTITY(u.' . $parent . ') = r.id AND IDENTITY(u.users) = :viewer)'];
         if ($access->groups) {
             $query->setParameter('groups', $access->groups);
-            $conditions[] = 'EXISTS (SELECT g.id FROM ' . $group . ' g WHERE IDENTITY(g.' . $parent . ') = r.id AND IDENTITY(g.groups) IN (:groups) AND (g.entities_id < 0 OR ' . $scope('g.entities_id', 'g') . '))';
+            $conditions[] = 'EXISTS (SELECT g.id FROM ' . $group . ' g WHERE IDENTITY(g.' . $parent . ') = r.id AND IDENTITY(g.groups) IN (:groups) AND (IDENTITY(g.entities) IS NULL OR ' . $scope('IDENTITY(g.entities)', 'g') . '))';
         }
         if ($access->profile > 0) {
             $query->setParameter('profile', $access->profile, Types::INTEGER);
-            $conditions[] = 'EXISTS (SELECT p.id FROM ' . $profile . ' p WHERE IDENTITY(p.' . $parent . ') = r.id AND IDENTITY(p.profiles) = :profile AND (p.entities_id < 0 OR ' . $scope('p.entities_id', 'p') . '))';
+            $conditions[] = 'EXISTS (SELECT p.id FROM ' . $profile . ' p WHERE IDENTITY(p.' . $parent . ') = r.id AND IDENTITY(p.profiles) = :profile AND (IDENTITY(p.entities) IS NULL OR ' . $scope('IDENTITY(p.entities)', 'p') . '))';
         }
         $conditions[] = 'EXISTS (SELECT e.id FROM ' . $entity . ' e WHERE IDENTITY(e.' . $parent . ') = r.id AND ' . $scope('IDENTITY(e.entities)', 'e') . ')';
         $query->where('(' . implode(' OR ', $conditions) . ')');

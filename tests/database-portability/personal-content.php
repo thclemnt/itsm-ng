@@ -63,7 +63,7 @@ try {
             $ids[$name] = $fixtures->create('glpi_' . $plural, $values);
         }
         $fixtures->create('glpi_' . $plural . '_users', [$plural . '_id' => $ids['direct'], 'users_id' => $viewer]);
-        $fixtures->create('glpi_groups_' . $plural, [$plural . '_id' => $ids['group'], 'groups_id' => $group, 'entities_id' => -1]);
+        $fixtures->create('glpi_groups_' . $plural, [$plural . '_id' => $ids['group'], 'groups_id' => $group, 'entities_id' => null]);
         $fixtures->create('glpi_groups_' . $plural, [$plural . '_id' => $ids['direct'], 'groups_id' => $group, 'entities_id' => $entity]);
         $fixtures->create('glpi_profiles_' . $plural, [$plural . '_id' => $ids['profile'], 'profiles_id' => $profile, 'entities_id' => $entity]);
         $fixtures->create('glpi_profiles_' . $plural, [$plural . '_id' => $ids['denied'], 'profiles_id' => $profile, 'entities_id' => $outside]);
@@ -93,7 +93,7 @@ try {
     $model->getFromDB($own);
     verify(ReminderTranslation::getAlreadyTranslatedForItem($model) === ['en_GB' => 'en_GB', 'fr_FR' => 'fr_FR'], 'Translated language list is distinct and scoped');
     verify(ReminderTranslation::getNumberOfTranslationsForItem($model) === 3, 'Translation count uses mapped parent');
-    $fixtures->create('glpi_groups_reminders', ['reminders_id' => $own, 'groups_id' => $group, 'entities_id' => -1]);
+    $fixtures->create('glpi_groups_reminders', ['reminders_id' => $own, 'groups_id' => $group, 'entities_id' => null]);
     $fixtures->create('glpi_groups_reminders', ['reminders_id' => $own, 'groups_id' => $group, 'entities_id' => $entity]);
     verify(count(array_filter($repo()->calendarReminders(group: $group), static fn ($row) => $row['id'] === $own)) === 1, 'Calendar group export deduplicates sharing rows');
     verify(array_column($repo()->calendarReminders(user: $viewer), 'id') === [$own] && $repo()->calendarReminders(user: 0) === [], 'Calendar owner selection rejects zero');
@@ -167,7 +167,7 @@ try {
     $calendars = Reminder::getUserItemsAsVCalendars(Session::getLoginUserID());
     verify(count(array_filter($calendars, static fn ($calendar) => str_contains($calendar->serialize(), 'personal-content-render-uuid'))) === 1, 'Mapped calendar selection produces a VCalendar');
     $groupCalendar = $fixtures->create('glpi_reminders', ['users_id' => $other, 'uuid' => 'personal-content-group-calendar', 'name' => 'Group calendar', 'text' => 'Shared calendar content', 'is_planned' => true, 'begin' => '2031-01-01 10:00:00', 'end' => '2031-01-01 11:00:00', 'state' => Planning::TODO]);
-    $fixtures->create('glpi_groups_reminders', ['reminders_id' => $groupCalendar, 'groups_id' => $group, 'entities_id' => -1]);
+    $fixtures->create('glpi_groups_reminders', ['reminders_id' => $groupCalendar, 'groups_id' => $group, 'entities_id' => null]);
     $calendarSession = $_SESSION;
     try {
         $_SESSION['glpigroups'] = [$group];

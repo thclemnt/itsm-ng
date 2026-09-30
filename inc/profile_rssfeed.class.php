@@ -61,12 +61,9 @@ class Profile_RSSFeed extends CommonDBRelation
         global $DB;
 
         $prof  = [];
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['rssfeeds_id' => $rssfeeds_id]
-        ]);
-
-        while ($data = $iterator->next()) {
+        $rows = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+            ->matching(self::getTable(), ['rssfeeds_id' => $rssfeeds_id], 'id');
+        foreach ($rows as $data) {
             $prof[$data['profiles_id']][] = $data;
         }
         return $prof;

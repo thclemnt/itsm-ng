@@ -2564,3 +2564,39 @@ Foreign-key coverage is unchanged: 739 enforced references, 21 pending ordinary
 references, 62 polymorphic references and one ambiguous reference. History's
 polymorphic subject still needs a design that accounts for historical records;
 this query conversion does not claim to enforce that relationship.
+
+### Content audience entity scopes
+
+The six group/profile audience tables for knowledge-base articles, reminders and
+RSS feeds now map their entity scopes as nullable Entity associations with
+RESTRICT foreign keys. NULL represents an unrestricted audience. Entity ID zero
+remains the real root entity, including its existing recursive scope semantics.
+Legacy model inputs and record criteria accept negative unrestricted values and
+normalize them at the compatibility boundary; raw ORM writers use NULL.
+
+Audience lookups use mapped repositories. Both mapped content listings and legacy
+search visibility predicates recognize NULL scopes. Entity purge keeps a specific
+scope by moving it to the replacement entity or root, rather than broadening its
+audience to unrestricted access.
+
+Fresh schemas include these associations. Existing installations use
+`db:content_audience_scopes --apply`, followed by `db:foreign_keys --apply`, with
+application writers stopped. The normal application upgrade invokes the same
+migration. It audits every table before changing any schema, preserves root zero,
+normalizes all negative scopes and supports idempotent retries. MySQL DDL commits
+separately. A nonnegative orphan blocks migration and requires explicit repair.
+
+The dedicated contract passes on fresh and upgraded PostgreSQL and MariaDB
+schemas, including ORM lookups, model and repository visibility, root recursion,
+entity replacement/purge, database rejection of dangling scopes, late-table
+orphan detection and migration retries. MariaDB also passes the contract under
+PHP 8.3. Knowledge-base purge and Reminder functional tests pass 75 assertions.
+Both providers pass the existing reporting, search, application, ORM CRUD,
+criteria, project planning, personal-content and knowledge-base contracts.
+Display-preference and Kanban migration regressions also pass on both providers.
+These checks provide database and application-model proof, without browser proof.
+
+The inventory now records 745 enforced references, 15 pending ordinary references,
+62 polymorphic references, one ambiguous reference and 1161 remaining legacy SQL
+call sites. This batch adds six entity foreign keys and removes six legacy query
+calls; it does not complete the database-wide conversion.

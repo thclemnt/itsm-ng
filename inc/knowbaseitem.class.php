@@ -621,7 +621,7 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
                                                              ? $_SESSION["glpigroups"]
                                                              : [-1],
                    'OR' => [
-                      'glpi_groups_knowbaseitems.entities_id' => ['<', '0'],
+                      'glpi_groups_knowbaseitems.entities_id' => null,
                    ] + $restrict
                 ];
             }
@@ -633,7 +633,7 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
                 $where['OR'][] = [
                    'glpi_knowbaseitems_profiles.profiles_id' => $_SESSION["glpiactiveprofile"]['id'],
                    'OR' => [
-                      'glpi_knowbaseitems_profiles.entities_id' => ['<', '0'],
+                      'glpi_knowbaseitems_profiles.entities_id' => null,
                       getEntitiesRestrictCriteria('glpi_knowbaseitems_profiles', '', '', true, true)
                    ]
                 ];
