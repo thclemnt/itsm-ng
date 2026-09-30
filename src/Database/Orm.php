@@ -22,6 +22,7 @@ final class Orm
         }
         $config = new Configuration();
         $config->addCustomStringFunction('REPLACE', Query\Replace::class);
+        $config->addCustomStringFunction('YEAR_MONTH', Query\YearMonth::class);
         $config->addCustomNumericFunction('BIT_COUNT', Query\BitCount::class);
         $config->addCustomNumericFunction('EPOCH_SECONDS', Query\EpochSeconds::class);
         $config->setMetadataDriverImpl(new AttributeDriver([__DIR__ . '/Entity'], $db->getDoctrineConnection()->getDatabasePlatform()));

@@ -2600,3 +2600,48 @@ The inventory now records 745 enforced references, 15 pending ordinary reference
 62 polymorphic references, one ambiguous reference and 1161 remaining legacy SQL
 call sites. This batch adds six entity foreign keys and removes six legacy query
 calls; it does not complete the database-wide conversion.
+
+### Mapped monthly ITIL statistics
+
+`Stat::constructEntryValues()` delegates to `ITILStatisticsRepository` for Ticket,
+Problem and Change. Twelve metrics use mapped parent, actor, task, solution,
+satisfaction, computer, operating-system and component records. `YEAR_MONTH` is a
+small platform-aware DQL function; aggregate queries remain in the database.
+The previous 600-line SQL assembly no longer runs through the legacy adapter.
+
+Relationship filters use EXISTS, so several matching actors, groups, solutions or
+assets cannot multiply a parent's contribution to an average. Non-task metrics
+count each parent once, including filters on task authors. The technician-task
+action-time metric deliberately averages individual matching tasks with positive
+durations. Existing closed/solved status rules and deletion/entity filters remain
+in effect. NULL selections retain legacy zero inputs for optional associations;
+root entity zero remains a real reference. Solution and asset filters include
+their item-type discriminator, and computer classifications exclude templates.
+Component statistics now use the actual mapped item/component association.
+
+Date bounds are validated and bound as datetimes. A date-only end includes its
+whole day and excludes the following midnight; a timestamp end is exact and
+inclusive. This corrects the former extra-day inclusion. Fully bounded series
+fill missing calendar months with zero; open bounds return populated months.
+An empty entity scope matches nothing, and NULL explicitly requests an
+unrestricted entity scope. Invalid dates throw rather than silently removing a
+filter. Reversed dates and unknown metrics return an empty series.
+
+The optional extension argument accepts mapped `WHERE` criteria. Arbitrary
+SELECT/JOIN/SQL extensions require a dedicated mapped repository query and now
+fail explicitly. No core caller supplies those extensions.
+
+The numeric statistics contract passes on fresh and upgraded PostgreSQL and
+MariaDB schemas and on PHP 8.3 with MariaDB. It covers all metrics, supported
+dimensions for all three parent types, relationship fan-out, NULL selections,
+root scope, tree selection, satisfaction, templates, date boundaries, empty
+months and export data. Existing reporting, ORM mappings, criteria and search
+regressions pass on both providers. These checks do not provide browser proof.
+CI runs the new statistics and content-audience migration contracts on both
+database providers; remote CI has not been run for these local commits.
+
+The inventory remains at 745 enforced relationships, 15 pending ordinary
+relationships, 62 polymorphic relationships and one ambiguous relationship.
+It records 1160 remaining legacy SQL call sites. Monthly reporting removes one
+adapter execution site and its large query construction path; statistics option
+lists and several other report paths still need conversion.

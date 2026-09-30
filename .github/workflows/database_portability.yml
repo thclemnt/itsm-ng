@@ -152,6 +152,8 @@ jobs:
         run: php tests/database-portability/article-categories.php tests/config
       - name: Content authors, categories and scoped document links
         run: php tests/database-portability/content-metadata.php tests/config
+      - name: Content audience entity scopes and migration
+        run: php tests/database-portability/content-audience-scopes.php tests/config
       - name: Reservation ownership, availability and alert selection
         run: php tests/database-portability/reservations.php tests/config
       - name: Asset user assignments and scoped inventory
@@ -176,6 +178,8 @@ jobs:
         run: php tests/database-portability/orm-records.php tests/config
       - name: Test scoped reporting and monthly statistics
         run: php tests/database-portability/reporting.php tests/config
+      - name: Test mapped statistics values and relationship fan-out
+        run: php tests/database-portability/statistics.php tests/config
       - name: Test search semantics and pagination
         run: php tests/database-portability/search.php tests/config
       - name: Plan all core search columns
