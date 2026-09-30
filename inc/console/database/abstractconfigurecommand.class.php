@@ -237,34 +237,27 @@ abstract class AbstractConfigureCommand extends AbstractCommand implements Force
             }
             $connection->close();
         } else {
-            $mysqli = new \mysqli();
-            if (intval($db_port) > 0) {
-                // Network port
-                @$mysqli->connect($db_host, $db_user, $db_pass, null, $db_port);
-            } else {
-                // Unix Domain Socket
-                @$mysqli->connect($db_host, $db_user, $db_pass, null, 0, $db_port);
-            }
-
-            if (0 !== $mysqli->connect_errno) {
+            $server = \itsmng\Database\InstallationConnection::mysqlServer($db_hostport, $db_user, $db_pass);
+            try {
+                $version = $server->getServerVersion();
+            } catch (\Doctrine\DBAL\Exception $error) {
                 $message = sprintf(
                     __('Database connection failed with message "(%s) %s".'),
-                    $mysqli->connect_errno,
-                    $mysqli->connect_error
+                    $error->getCode(),
+                    $error->getMessage()
                 );
                 $output->writeln('<error>' . $message . '</error>', OutputInterface::VERBOSITY_QUIET);
                 return self::ERROR_DB_CONNECTION_FAILED;
+            } finally {
+                $server->close();
             }
-
             ob_start();
-            $db_version_data = $mysqli->query('SELECT version()')->fetch_array();
-            $checkdb = Config::displayCheckDbEngine(false, $db_version_data[0]);
+            $checkdb = Config::displayCheckDbEngine(false, $version);
             $message = ob_get_clean();
             if ($checkdb > 0) {
                 $output->writeln('<error>' . $message . '</error>', OutputInterface::VERBOSITY_QUIET);
                 return self::ERROR_DB_ENGINE_UNSUPPORTED;
             }
-            $mysqli->close();
         }
 
         $output->writeln(

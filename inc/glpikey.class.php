@@ -148,16 +148,17 @@ class GLPIKey
     /**
      * Generate GLPI security key used for decryptable passwords
      * and update values in DB if necessary.
+     * @param bool $migrate Existing data requires migration; fresh installers pass false.
      * @return boolean
      */
-    public function generate()
+    public function generate(bool $migrate = true)
     {
         global $DB;
 
         // Fetch old key before generating the new one (but only if DB exists and there is something to migrate)
         $sodium_key = null;
         $old_key = false;
-        if ($DB instanceof DBAdapter) {
+        if ($migrate && $DB instanceof DBAdapter) {
             try {
                 $sodium_key = $this->get();
             } catch (\RuntimeException $e) {
@@ -172,7 +173,7 @@ class GLPIKey
             return false;
         }
 
-        if ($DB instanceof DBAdapter) {
+        if ($migrate && $DB instanceof DBAdapter) {
             return $this->migrateFieldsInDb($sodium_key, $old_key)
                && $this->migrateConfigsInDb($sodium_key, $old_key);
         }

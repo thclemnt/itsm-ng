@@ -2693,9 +2693,9 @@ getter/setter functional tests pass two methods and 20 assertions. CI includes
 the new contract; remote CI and browser interaction have not been verified.
 
 Fresh installation also completes with the final code on both providers. The
-installer still emits legacy encryption-key migration queries against tables
-before schema creation; those pre-existing warnings and query paths remain work
-for the broader conversion, despite the resulting valid installed schema.
+installer emitted legacy encryption-key migration queries against tables
+before schema creation at this checkpoint. The subsequent installation batch
+below removes that CLI path; existing-key rotation still needs conversion.
 
 The inventory records 746 enforced references, 14 pending ordinary references,
 62 polymorphic references, one ambiguous reference and 1151 legacy SQL call
@@ -2733,3 +2733,58 @@ not establish live browser or remote CI proof.
 This removes one direct adapter call site, leaving 1150 in the inventory. FK
 coverage remains at 746 enforced references and 14 pending ordinary references,
 plus 62 polymorphic references and one ambiguous reference.
+
+### Shared installation schema and ORM initial data
+
+The CLI database configurator and MySQL/MariaDB installer now use DBAL server
+connections and schema catalogue APIs instead of raw mysqli connections and
+queries. Database creation quotes the database name, and an existing database
+does not require global CREATE privileges. Catalogue checks use a literal
+`glpi_` prefix instead of SQL wildcard interpolation. TCP and Unix socket server
+endpoints remain supported. PostgreSQL databases remain provisioned separately;
+their installation still requires an empty schema, including with `--force`.
+
+Both providers now create the shared DBAL baseline schema. MariaDB/MySQL no
+longer execute the old dump directly, which created obsolete non-null columns
+incompatible with current ORM associations. Its forced reset still replaces
+core tables, preserves unrelated tables and restores the original
+FOREIGN_KEY_CHECKS session value. MySQL DDL commits independently, so a failed
+installation can leave schema changes requiring a controlled retry.
+
+`InitialData` loads translated installation values through typed ORM entities
+in one transaction. It preserves literal NULL strings, nulls, backslashes,
+explicit IDs and temporary legacy reference sentinels. Each row clears the
+identity map so references to parents seeded later cannot collide with their
+eventual entity instance. Relationship migrations and FK enforcement run after
+seeding, and sequences are synchronized as before. The web installer retains
+its progress callback. System-cron defaults use a mapped bitwise update that
+only changes eligible tasks and excludes watcher; it does not execute tasks.
+
+CLI installation calls `GLPIKey::generate(false)` only after its database
+guards. Creating the initial key does not query nonexistent tables or migrate
+values from a previously loaded database connection. Default `generate()` still
+migrates stored values for existing-key rotation, whose legacy query and failure
+recovery behavior remains pending. MySQL web installer raw connections and key
+creation paths also remain pending conversion.
+
+Fresh PostgreSQL and MariaDB installations complete without the earlier
+missing-table key-migration errors. The ORM initial-data contract covers raw
+values, cross-table rollback, unmapped-table rejection, progress, cron mode
+selection and administrative endpoint/catalogue guards. Both engines pass the
+FK portability, complete mapping/parent purge, every-table ORM write,
+application workflow and hardware report contracts; MariaDB also passes with
+PHP 8.3. A full PHP 8.3 installation passed with a role limited to a
+pre-provisioned MariaDB database. CLI checks confirm rejected reinstall and
+connection failure preserve/omit key and configuration files as appropriate.
+Quoted database names and Unix socket catalogue access pass locally. CI now
+includes the initial-data contract. Forced reinstall with the limited role
+preserves an unrelated table and passes initial-data/FK contracts again. DDL
+permission failures restore both initially enabled and disabled FK session
+settings without creating tables. Remote CI and web installation have not
+been rerun for this batch.
+
+The static inventory remains at 1150 legacy call sites and 746 enforced FKs.
+Its current regex excludes namespaced mysqli constructors, prepared-statement
+wrappers, adapter-internal calls and `updateOrDie`; those removed installation
+paths were not counted. The inventory needs broader call discovery before it
+can support any claim that all direct SQL has been eliminated.

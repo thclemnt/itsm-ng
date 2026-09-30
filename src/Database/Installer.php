@@ -4,7 +4,9 @@
 
 namespace itsmng\Database;
 
-/** Shared safeguards for the CLI and web PostgreSQL installers. */
+use Doctrine\DBAL\Connection;
+
+/** Shared schema installation and provider safeguards. */
 final class Installer
 {
     public static function checkPostgres(\DBAdapter $database): void
@@ -26,5 +28,29 @@ final class Installer
         $database->getDoctrineConnection()->transactional(static function () use ($database, $language): void {
             \Toolbox::createSchema($language, $database);
         });
+    }
+
+    /** MySQL DDL commits separately; build the full plan before replacing core tables. */
+    public static function installMysqlSchema(Connection $connection): void
+    {
+        $platform = $connection->getDatabasePlatform();
+        $baseline = new BaselineSchema();
+        $schema = $baseline->build($platform, false);
+        $sql = $baseline->toSql($platform, false);
+        $existing = array_flip($connection->createSchemaManager()->listTableNames());
+        $enabled = (int)$connection->fetchOne('SELECT @@FOREIGN_KEY_CHECKS');
+        $connection->executeStatement('SET FOREIGN_KEY_CHECKS = 0');
+        try {
+            foreach ($schema->getTables() as $table) {
+                if (isset($existing[$table->getName()])) {
+                    $connection->executeStatement($platform->getDropTableSQL($table->getQuotedName($platform)));
+                }
+            }
+            foreach ($sql as $statement) {
+                $connection->executeStatement($statement);
+            }
+        } finally {
+            $connection->executeStatement('SET FOREIGN_KEY_CHECKS = ' . $enabled);
+        }
     }
 }

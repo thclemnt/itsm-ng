@@ -77,15 +77,10 @@ class DBmysql extends DBAdapter
 
     public function installSchema(): bool
     {
-        // A forced reinstall may drop parent tables before their constrained
-        // children. Restore the session setting even if schema loading fails.
-        $result = $this->query('SELECT @@FOREIGN_KEY_CHECKS AS enabled');
-        $enabled = (int)$this->fetchAssoc($result)['enabled'];
-        $this->query('SET FOREIGN_KEY_CHECKS = 0');
         try {
-            return $this->runFile(GLPI_ROOT . '/install/mysql/glpi-empty.sql');
+            \itsmng\Database\Installer::installMysqlSchema($this->getDoctrineConnection());
+            return true;
         } finally {
-            $this->query('SET FOREIGN_KEY_CHECKS = ' . $enabled);
             $this->clearSchemaCache();
         }
     }

@@ -37,10 +37,8 @@ if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
 }
 
-use DB;
 use GLPIKey;
 use Toolbox;
-use Symfony\Component\Console\Exception\RuntimeException;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -179,16 +177,6 @@ class InstallCommand extends AbstractConfigureCommand
             // $DB->dbhost can be array when using round robin feature
             $db_hostport = is_array($DB->dbhost) ? $DB->dbhost[0] : $DB->dbhost;
 
-            $hostport = explode(':', (string) $db_hostport);
-            $db_host = $hostport[0];
-            if (count($hostport) < 2) {
-                // Host only case
-                $db_port = null;
-            } else {
-                // Host:port case or :Socket case
-                $db_port = $hostport[1];
-            }
-
             $db_name = $DB->dbdefault;
             $db_user = $DB->dbuser;
             $db_pass = rawurldecode((string) $DB->dbpassword); //rawurldecode as in DBmysql::connect()
@@ -222,7 +210,7 @@ class InstallCommand extends AbstractConfigureCommand
                 return self::ERROR_DB_ALREADY_CONTAINS_TABLES;
             }
             $glpikey = new GLPIKey();
-            if (!$glpikey->keyExists() && !$glpikey->generate()) {
+            if (!$glpikey->keyExists() && !$glpikey->generate(false)) {
                 return self::ERROR_CANNOT_CREATE_ENCRYPTION_KEY_FILE;
             }
             \itsmng\Database\Installer::installPostgres($database, $default_language);
@@ -230,71 +218,48 @@ class InstallCommand extends AbstractConfigureCommand
             return 0;
         }
 
-        // Create security key
-        $glpikey = new GLPIKey();
-        if (!$glpikey->keyExists() && !$glpikey->generate()) {
-            $message = __('Security key cannot be generated!');
-            $output->writeln('<error>' . $message . '</error>', OutputInterface::VERBOSITY_QUIET);
-            return self::ERROR_CANNOT_CREATE_ENCRYPTION_KEY_FILE;
-        }
-
-        $mysqli = new \mysqli();
-        if (intval($db_port) > 0) {
-            // Network port
-            @$mysqli->connect($db_host, $db_user, $db_pass, null, $db_port);
-        } else {
-            // Unix Domain Socket
-            @$mysqli->connect($db_host, $db_user, $db_pass, null, 0, $db_port);
-        }
-
-        if (0 !== $mysqli->connect_errno) {
-            $message = sprintf(
-                __('Database connection failed with message "(%s) %s".'),
-                $mysqli->connect_errno,
-                $mysqli->connect_error
-            );
-            $output->writeln('<error>' . $message . '</error>', OutputInterface::VERBOSITY_QUIET);
+        $server = \itsmng\Database\InstallationConnection::mysqlServer($db_hostport, $db_user, $db_pass);
+        try {
+            $server->getServerVersion();
+        } catch (\Doctrine\DBAL\Exception $error) {
+            $output->writeln('<error>' . $error->getMessage() . '</error>', OutputInterface::VERBOSITY_QUIET);
+            $server->close();
             return self::ERROR_DB_CONNECTION_FAILED;
         }
 
-        // Create database or select existing one
         $output->writeln(
             '<comment>' . __('Creating the database...') . '</comment>',
             OutputInterface::VERBOSITY_VERBOSE
         );
-        if (
-            !$mysqli->query('CREATE DATABASE IF NOT EXISTS `' . $db_name . '`')
-            || !$mysqli->select_db($db_name)
-        ) {
-            $message = sprintf(
-                __('Database creation failed with message "(%s) %s".'),
-                $mysqli->errno,
-                $mysqli->error
-            );
-            $output->writeln('<error>' . $message . '</error>', OutputInterface::VERBOSITY_QUIET);
+        try {
+            \itsmng\Database\InstallationConnection::ensureMysqlDatabase($server, $db_name);
+        } catch (\Doctrine\DBAL\Exception $error) {
+            $output->writeln('<error>' . $error->getMessage() . '</error>', OutputInterface::VERBOSITY_QUIET);
             return self::ERROR_DB_CREATION_FAILED;
+        } finally {
+            $server->close();
         }
 
-        // Prevent overriding of existing DB
-        $tables_result = $mysqli->query(
-            "SELECT COUNT(table_name)
-          FROM information_schema.tables
-          WHERE table_schema = '{$db_name}'
-             AND table_type = 'BASE TABLE'
-             AND table_name LIKE 'glpi\_%'"
-        );
-        if (!$tables_result) {
-            throw new RuntimeException('Unable to check GLPI tables existence.');
+        // A provider change cannot reuse the previously loaded DB subclass.
+        $db_instance = \DBConnection::createConnection('mysql', $db_hostport, $db_user, $db_pass, $db_name);
+        if (!$db_instance->connected) {
+            $output->writeln('<error>' . $db_instance->error() . '</error>', OutputInterface::VERBOSITY_QUIET);
+            return self::ERROR_DB_CONNECTION_FAILED;
         }
-        if ($tables_result->fetch_array()[0] > 0 && !$force) {
+        if (\itsmng\Database\InstallationConnection::hasApplicationTables($db_instance->getDoctrineConnection()) && !$force) {
             $output->writeln(
                 '<error>' . __('Database already contains "glpi_*" tables. Use --force option to override existing database.') . '</error>'
             );
             return self::ERROR_DB_ALREADY_CONTAINS_TABLES;
         }
 
-        // A provider change cannot reuse the previously loaded DB subclass.
-        $db_instance = \DBConnection::createConnection('mysql', $db_hostport, $db_user, $db_pass, $db_name);
+        // Schema creation supplies all values; there are no stored passwords to migrate.
+        $glpikey = new GLPIKey();
+        if (!$glpikey->keyExists() && !$glpikey->generate(false)) {
+            $message = __('Security key cannot be generated!');
+            $output->writeln('<error>' . $message . '</error>', OutputInterface::VERBOSITY_QUIET);
+            return self::ERROR_CANNOT_CREATE_ENCRYPTION_KEY_FILE;
+        }
 
         $output->writeln(
             '<comment>' . __('Loading default schema...') . '</comment>',

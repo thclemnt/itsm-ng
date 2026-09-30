@@ -72,6 +72,8 @@ jobs:
           --db-name=itsm_port_ci --db-user=test --db-password=test --no-interaction
       - name: Test database contract and foreign keys
         run: php tests/database-portability/run.php tests/config
+      - name: Test ORM installation data and catalogue guards
+        run: php tests/database-portability/initial-data.php tests/config
       - name: Test application workflow
         run: php tests/database-portability/application.php tests/config
       - name: Test ORM mappings, persistence and FK purge lifecycles
