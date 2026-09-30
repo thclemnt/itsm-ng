@@ -163,7 +163,7 @@ final class BaselineSchema
         foreach (['glpi_slms', 'glpi_slas', 'glpi_olas'] as $tableName) {
             Migration\ServiceLevelCalendars::configureTable($schema->getTable($tableName));
         }
-        foreach (ContentAudienceScopes::RELATIONS as $name => $relations) {
+        foreach ([...ContentAudienceScopes::RELATIONS, ...GlobalEntityScopes::RELATIONS] as $name => $relations) {
             $schema->getTable($name)->getColumn('entities_id')->setNotnull(false)->setDefault(null);
         }
         Migration\DashboardOwnership::configureTable($schema->getTable('glpi_dashboards'), $platform);

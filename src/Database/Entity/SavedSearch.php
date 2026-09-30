@@ -31,8 +31,9 @@ class SavedSearch
     #[ORM\Column(name: '`is_private`', type: 'boolean', nullable: false, options: ['default' => true])]
     public bool $is_private = true;
 
-    #[ORM\Column(name: '`entities_id`', type: 'integer', nullable: false, options: ['default' => '-1'])]
-    public int $entities_id = -1;
+    #[ORM\ManyToOne(targetEntity: Entity::class)]
+    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Entity $entities = null;
 
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_recursive = false;

@@ -108,7 +108,7 @@ class FieldUnicity extends CommonDropdown
            [
               'type' => 'hidden',
               'name' => 'entities_id',
-              'value' => Session::getActiveEntity()
+              'value' => $this->fields['entities_id'] ?? -1
            ],
            __('Active') => [
               'name'  => 'is_active',
@@ -288,34 +288,8 @@ class FieldUnicity extends CommonDropdown
     {
         global $DB;
 
-        //Get the first active configuration for this itemtype
-        $request = [
-           'FROM'   => 'glpi_fieldunicities',
-           'WHERE'  => [
-              'itemtype'  => $itemtype
-           ] + getEntitiesRestrictCriteria('glpi_fieldunicities', '', $entities_id, true),
-           'ORDER'  => ['entities_id DESC']
-        ];
-
-        if ($check_active) {
-            $request['WHERE']['is_active'] = 1;
-        }
-        $iterator = $DB->request($request);
-
-        $current_entity = false;
-        $return         = [];
-        while ($data = $iterator->next()) {
-            //First row processed
-            if (!$current_entity) {
-                $current_entity = $data['entities_id'];
-            }
-            //Process only for one entity, not more
-            if ($current_entity != $data['entities_id']) {
-                break;
-            }
-            $return[] = $data;
-        }
-        return $return;
+        return (new \itsmng\Database\Repository\FieldUnicityRepository(\itsmng\Database\Orm::create($DB)))
+            ->configuration($itemtype, (int)$entities_id, getAncestorsOf('glpi_entities', $entities_id), (bool)$check_active);
     }
 
 
@@ -335,7 +309,7 @@ class FieldUnicity extends CommonDropdown
             return;
         }
 
-        if (!isset($unicity->fields['entities_id'])) {
+        if (!array_key_exists('entities_id', $unicity->fields)) {
             $unicity->fields['entities_id'] = $_SESSION['glpiactive_entity'];
         }
 
@@ -604,9 +578,11 @@ class FieldUnicity extends CommonDropdown
 
     public function prepareInputForUpdate($input)
     {
-
-        $input['fields'] = implode(',', $input['_fields']);
-        unset($input['_fields']);
+        // Entity replacement and other lifecycle updates do not submit the form.
+        if (array_key_exists('_fields', $input)) {
+            $input['fields'] = implode(',', $input['_fields']);
+            unset($input['_fields']);
+        }
 
         return $input;
     }
@@ -623,12 +599,8 @@ class FieldUnicity extends CommonDropdown
     {
         global $DB;
 
-        $DB->delete(
-            self::getTable(),
-            [
-              'itemtype'  => ['LIKE', "%Plugin$itemtype%"]
-            ]
-        );
+        (new \itsmng\Database\Repository\FieldUnicityRepository(\itsmng\Database\Orm::create($DB)))
+            ->deletePluginRules($itemtype);
     }
 
 
@@ -642,13 +614,11 @@ class FieldUnicity extends CommonDropdown
         global $DB;
 
         $fields       = [];
-        $where_fields = [];
         if (!$item = getItemForItemtype($unicity->fields['itemtype'])) {
             return;
         }
         foreach (explode(',', (string) $unicity->fields['fields']) as $field) {
             $fields[]       = $field;
-            $where_fields[] = $field;
         }
 
         if (!empty($fields)) {
@@ -656,46 +626,13 @@ class FieldUnicity extends CommonDropdown
             echo "<table class='tab_cadre_fixe' aria-label='Duplicates'>";
             echo "<tr class='tab_bg_2'><th colspan='" . $colspan . "'>" . __('Duplicates') . "</th></tr>";
 
-            $entities = [$unicity->fields['entities_id']];
-            if ($unicity->fields['is_recursive']) {
+            $global = $unicity->fields['entities_id'] === null || \itsmng\Database\ContentAudienceScopes::isUnrestricted($unicity->fields['entities_id']);
+            $entities = $global ? \itsmng\Reporting\Criteria::entities() : [$unicity->fields['entities_id']];
+            if (!$global && $unicity->fields['is_recursive']) {
                 $entities = getSonsOf('glpi_entities', $unicity->fields['entities_id']);
             }
-
-            $where = [];
-            if ($item->maybeTemplate()) {
-                $where[$item->getTable() . '.is_template'] = 0;
-            }
-
-            foreach ($where_fields as $where_field) {
-                if (getTableNameForForeignKeyField($where_field)) {
-                    $where = $where + [
-                       'NOT'          => [$where_field => null],
-                       $where_field   => ['<>', 0]
-                    ];
-                } else {
-                    $where = $where + [
-                       'NOT'          => [$where_field => null],
-                       $where_field   => ['<>', '']
-                    ];
-                }
-            }
-
-            $iterator = $DB->request([
-               'SELECT'    => $fields,
-               'COUNT'     => 'cpt',
-               'FROM'      => $item->getTable(),
-               'WHERE'     => [
-                  $item->getTable() . '.entities_id'  => $entities
-               ] + $where,
-               'GROUPBY'   => $fields,
-               'ORDERBY'   => 'cpt DESC'
-            ]);
-            $results = [];
-            while ($data = $iterator->next()) {
-                if ($data['cpt'] > 1) {
-                    $results[] = $data;
-                }
-            }
+            $results = (new \itsmng\Database\Repository\FieldUnicityRepository(\itsmng\Database\Orm::create($DB)))
+                ->duplicates($item->getTable(), $fields, $entities === null ? null : array_values($entities), $item->maybeTemplate());
 
             if (empty($results)) {
                 echo "<tr class='tab_bg_2'>";

@@ -3353,7 +3353,11 @@ class CommonDBTM extends CommonGLPI
     **/
     public function checkEntity($recursive = false)
     {
-
+        if (isset(\itsmng\Database\GlobalEntityScopes::RELATIONS[$this->getTable()])
+            && array_key_exists('entities_id', $this->fields) && $this->fields['entities_id'] === null) {
+            // Global entity scope still requires the model's ordinary global rights.
+            return true;
+        }
         // Is an item assign to an entity
         if ($this->isEntityAssign()) {
             // Can be recursive check

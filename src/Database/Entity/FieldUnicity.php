@@ -24,8 +24,9 @@ class FieldUnicity
     #[ORM\Column(name: '`itemtype`', type: 'string', length: 255, nullable: false, options: ['default' => ''])]
     public string $itemtype = '';
 
-    #[ORM\Column(name: '`entities_id`', type: 'integer', nullable: false, options: ['default' => '-1'])]
-    public int $entities_id = -1;
+    #[ORM\ManyToOne(targetEntity: Entity::class)]
+    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Entity $entities = null;
 
     #[ORM\Column(name: '`fields`', type: 'text', nullable: true)]
     public ?string $fields = null;

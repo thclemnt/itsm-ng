@@ -122,7 +122,8 @@ final class RecordCriteria
         }
         foreach ($this->metadata->associationMappings as $field => $mapping) {
             if ($mapping->joinColumns[0]->name === $column) {
-                $scope = isset(ContentAudienceScopes::RELATIONS[$this->metadata->getTableName()][$column]);
+                $scope = isset(ContentAudienceScopes::RELATIONS[$this->metadata->getTableName()][$column])
+                    || isset(GlobalEntityScopes::RELATIONS[$this->metadata->getTableName()][$column]);
                 return ['IDENTITY(r.' . $field . ')', Types::INTEGER, $scope || isset(OptionalReferences::RELATIONS[$this->metadata->getTableName()][$column]), $scope];
             }
         }

@@ -103,9 +103,9 @@ final class SavedSearchRepository
     public function setEntity(array $ids, int $entity, bool $recursive): void
     {
         if ($ids) {
-            $this->em->createQueryBuilder()->update(SavedSearch::class, 'r')->set('r.entities_id', ':entity')->set('r.is_recursive', ':recursive')
+            $this->em->createQueryBuilder()->update(SavedSearch::class, 'r')->set('r.entities', ':entity')->set('r.is_recursive', ':recursive')
                 ->where('r.id IN (:ids)')->setParameter('ids', array_map('intval', $ids), ArrayParameterType::INTEGER)
-                ->setParameter('entity', $entity, Types::INTEGER)->setParameter('recursive', $recursive, Types::BOOLEAN)->getQuery()->execute();
+                ->setParameter('entity', $entity < 0 ? null : $entity, Types::INTEGER)->setParameter('recursive', $recursive, Types::BOOLEAN)->getQuery()->execute();
         }
     }
 }

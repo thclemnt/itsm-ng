@@ -2846,3 +2846,43 @@ again on both engines and PostgreSQL reporting regressions pass. CI includes the
 new contract; remote CI has not been rerun. The remaining tree/classification
 selectors in `Stat::getItems()` still use the adapter and need a separate mapped
 projection.
+
+### Global configuration entity associations
+
+Field-unicity rules and saved searches now map their entity scope as nullable
+ManyToOne associations with RESTRICT foreign keys. SQL NULL denotes a global
+scope; zero still references the real root entity. Legacy negative scope inputs
+normalize at the model boundary, and mapped criteria distinguish global NULL
+from root zero. `db:global_entity_scopes` audits both tables before any DDL,
+normalizes negative sentinels and retains root references. Fresh schemas and the
+installer include this migration; `db:foreign_keys --apply` enforces upgraded
+constraints after migration. MySQL DDL commits separately as before.
+
+Entity visibility helpers and model permission checks recognize these audited
+global scopes without bypassing ordinary global rights or saved-search private
+ownership. Saved-search bulk entity changes use the mapped association, and the
+form exposes an explicit All entities choice. Empty entity selections produce
+valid false predicates for specific scopes while retaining permitted global
+rows. Search and mapped personal listings exercise both cases.
+
+`FieldUnicityRepository` selects the nearest eligible configuration: direct
+entity, closest recursive ancestor, then global fallback. All rules in the
+chosen scope are returned. This fixes ordering by entity ID and root-zero being
+mistaken for an uninitialized selection. Its duplicate report groups mapped
+fields using DQL, excludes empty text/NULL references and templates, and keeps
+root entity zero as a real grouping value. Global duplicate reports obey the
+current visible entity scope. Plugin rule deletion also uses DQL; unmapped
+plugin duplicate targets require an explicit mapping. Entity replacement now
+retains uniqueness fields on partial updates rather than requiring `_fields`
+form data. Purge with no replacement reassigns specific scopes to root rather
+than broadening them to global.
+
+FK coverage increases from 746 to 748 enforced references; 12 ordinary pending,
+62 polymorphic and one ambiguous relationship candidates remain. Fresh installs
+on PostgreSQL and MariaDB pass 1231 and 825 portability assertions respectively.
+Both fresh and upgraded databases pass the scope, privacy, search, precedence,
+duplicate grouping, entity purge, orphan preflight and retry contracts. Complete
+ORM mapping and parent-purge validation pass on both fresh installations;
+upgraded installations also pass every-table ORM writes, saved searches,
+application workflows, search and reporting contracts. MariaDB runs these checks
+under PHP 8.3. CI includes the new scope contract; remote CI is unverified.

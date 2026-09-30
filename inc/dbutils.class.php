@@ -577,6 +577,7 @@ final class DbUtils
                 $field = "entities_id";
             }
         }
+        $globalScope = isset(\itsmng\Database\GlobalEntityScopes::RELATIONS[$table][$field]);
         if (empty($table)) {
             $field = $DB->quoteName($field);
         } else {
@@ -586,20 +587,20 @@ final class DbUtils
         $query .= "$field";
 
         if (is_array($value)) {
-            $query .= " IN ('" . implode("','", $value) . "') ";
+            $query .= $value ? " IN ('" . implode("','", $value) . "') " : ' IN (NULL) ';
         } else {
             if (strlen((string) $value) == 0 && !isset($_SESSION['glpiactiveentities_string'])) {
                 //set root entity if not set
                 $value = 0;
             }
             if (strlen((string) $value) == 0) {
-                $query .= " IN (" . $_SESSION['glpiactiveentities_string'] . ") ";
+                $query .= " IN (" . ($_SESSION['glpiactiveentities_string'] !== '' ? $_SESSION['glpiactiveentities_string'] : 'NULL') . ") ";
             } else {
                 $query .= " = '$value' ";
             }
         }
 
-        if ($is_recursive) {
+        if ($is_recursive && (!is_array($value) || $value)) {
             $ancestors = [];
             if (
                 isset($_SESSION['glpiactiveentities'])
@@ -626,6 +627,9 @@ final class DbUtils
                     $query .= " OR ($recur='1' AND $field IN (" . implode(', ', $ancestors) . '))';
                 }
             }
+        }
+        if ($globalScope) {
+            $query .= " OR $field IS NULL";
         }
         $query .= " ) ";
 
@@ -676,6 +680,7 @@ final class DbUtils
                 $field = "entities_id";
             }
         }
+        $globalScope = isset(\itsmng\Database\GlobalEntityScopes::RELATIONS[$table][$field]);
         if (!empty($table)) {
             $field = "$table.$field";
         }
@@ -688,7 +693,9 @@ final class DbUtils
             }
         }
 
-        $crit = [$field => $value];
+        $crit = is_array($value) && !$value
+            ? ['AND' => [[$field => null], ['NOT' => [$field => null]]]]
+            : [$field => $value];
 
         if ($is_recursive === 'auto' && !empty($table) && $table != 'glpi_entities') {
             $item = $this->getItemForItemtype($this->getItemTypeForTable($table));
@@ -697,7 +704,7 @@ final class DbUtils
             }
         }
 
-        if ($is_recursive) {
+        if ($is_recursive && (!is_array($value) || $value)) {
             $ancestors = [];
             if (is_array($value)) {
                 $ancestors = $this->getAncestorsOf("glpi_entities", $value);
@@ -725,7 +732,7 @@ final class DbUtils
                 }
             }
         }
-        return $crit;
+        return $globalScope ? ['OR' => [$crit, [$field => null]]] : $crit;
     }
 
     /**
@@ -1470,7 +1477,7 @@ final class DbUtils
         if (strlen($realname ?? '') > 0) {
             $formatted = $realname;
 
-            if (strlen($firstname) > 0) {
+            if (strlen($firstname ?? '') > 0) {
                 if ($order == User::FIRSTNAME_BEFORE) {
                     $formatted = $firstname . " " . $formatted;
                 } else {
@@ -1485,7 +1492,7 @@ final class DbUtils
                 $formatted = Toolbox::substr($formatted, 0, $cut) . " ...";
             }
         } else {
-            $formatted = $login;
+            $formatted = $login ?? '';
         }
 
         if (

@@ -515,8 +515,8 @@ class SavedSearch extends CommonDBTM implements ExtraVisibilityCriteria
                     Entity::getTypeName(1) => $this->canCreate() ? [
                        'type' => 'select',
                        'name' => 'entities_id',
-                       'values' => getOptionForItems(Entity::class),
-                       'value' => $this->fields['entities_id'] ?? 0,
+                       'values' => [-1 => __('All entities')] + getOptionForItems(Entity::class),
+                       'value' => $this->fields['entities_id'] ?? -1,
                        'actions' => getItemActionButtons(['info', 'add'], Entity::class),
                        ] : [],
                     __('Child entities') => [
