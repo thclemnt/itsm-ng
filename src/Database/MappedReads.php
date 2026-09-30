@@ -16,7 +16,8 @@ final class MappedReads
         }
         $em = Orm::create($database);
         try {
-            return (new RecordRepository($em))->matching($table, $criteria, $order, $limit, $offset);
+            $rows = (new RecordRepository($em))->matching($table, $criteria, $order, $limit, $offset);
+            return $table === 'glpi_entities' ? array_map(EntityConfigurationReferences::legacyRow(...), $rows) : $rows;
         } finally {
             $em->clear();
         }

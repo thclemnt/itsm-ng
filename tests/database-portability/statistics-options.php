@@ -70,13 +70,15 @@ try {
             $base['requesttypes_id'] = $requestType;
         }
         $first = $create('glpi_' . $parent, ['id' => $sameId, 'date' => '2025-01-01 00:00:00', 'users_id_recipient' => $requester, 'priority' => 1] + $base);
-        $closed = $create('glpi_' . $parent, ['date' => '2024-12-01 00:00:00', 'closedate' => '2025-01-15 12:00:00', 'priority' => 2] + $base);
-        $create('glpi_' . $parent, ['date' => '2025-01-31 23:59:59', 'priority' => 3] + $base);
-        $create('glpi_' . $parent, ['date' => '2025-02-01 00:00:00', 'priority' => 8] + $base);
-        $create('glpi_' . $parent, ['date' => '2024-12-01 00:00:00', 'closedate' => '2025-02-01 00:00:00', 'priority' => 7] + $base);
-        $create('glpi_' . $parent, ['date' => '2025-01-10 00:00:00', 'priority' => 9, 'is_deleted' => true] + $base);
-        $create('glpi_' . $parent, ['date' => '2025-01-10 00:00:00', 'priority' => 6, 'entities_id' => 0] + $base);
-        $create('glpi_' . $parent, ['date' => null, 'closedate' => null, 'priority' => 5] + $base);
+        // Explicit collision fixtures must not collide with PostgreSQL sequences
+        // advanced by earlier rolled-back contracts on the same installation.
+        $closed = $create('glpi_' . $parent, ['id' => $sameId + 1, 'date' => '2024-12-01 00:00:00', 'closedate' => '2025-01-15 12:00:00', 'priority' => 2] + $base);
+        $create('glpi_' . $parent, ['id' => $sameId + 2, 'date' => '2025-01-31 23:59:59', 'priority' => 3] + $base);
+        $create('glpi_' . $parent, ['id' => $sameId + 3, 'date' => '2025-02-01 00:00:00', 'priority' => 8] + $base);
+        $create('glpi_' . $parent, ['id' => $sameId + 4, 'date' => '2024-12-01 00:00:00', 'closedate' => '2025-02-01 00:00:00', 'priority' => 7] + $base);
+        $create('glpi_' . $parent, ['id' => $sameId + 5, 'date' => '2025-01-10 00:00:00', 'priority' => 9, 'is_deleted' => true] + $base);
+        $create('glpi_' . $parent, ['id' => $sameId + 6, 'date' => '2025-01-10 00:00:00', 'priority' => 6, 'entities_id' => 0] + $base);
+        $create('glpi_' . $parent, ['id' => $sameId + 7, 'date' => null, 'closedate' => null, 'priority' => 5] + $base);
         foreach ([$first, $closed] as $id) {
             $create('glpi_' . $users, [$parent . '_id' => $id, 'users_id' => $requester, 'type' => CommonITILActor::REQUESTER]);
         }

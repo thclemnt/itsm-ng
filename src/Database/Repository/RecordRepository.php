@@ -72,6 +72,9 @@ final class RecordRepository
         $row = [];
         foreach ($metadata->fieldMappings as $property => $mapping) {
             $value = $record->$property;
+            if ($value instanceof \BackedEnum) {
+                $value = $value->value;
+            }
             if ($value !== null) {
                 $value = match ($mapping->type) {
                     'boolean' => (int)$value,

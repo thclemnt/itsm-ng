@@ -168,6 +168,10 @@ final class BaselineSchema
         }
         Migration\DashboardOwnership::configureTable($schema->getTable('glpi_dashboards'), $platform);
         Migration\OidcReferences::configureTable($schema->getTable('glpi_oidc_users'));
+        Migration\EntityConfigurationReferences::configureTable($schema->getTable('glpi_entities'));
+        foreach (array_keys(EntityConfigurationReferences::FIELDS) as $column) {
+            $this->extraSql['glpi_entities'][] = Migration\EntityConfigurationReferences::checkSql($column);
+        }
         $this->extraSql['glpi_slms'][] = Migration\ServiceLevelCalendars::checkSql();
         foreach (OptionalReferences::RELATIONS as $tableName => $relations) {
             foreach ($relations as $column => $target) {

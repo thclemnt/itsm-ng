@@ -25,7 +25,7 @@ final class InitialData
                 foreach ($tables as $table => $rows) {
                     foreach ($rows as $row) {
                         // Raw values preserve literal NULL/backslashes and temporary legacy sentinels.
-                        $writer->insert($table, $row);
+                        $writer->insert($table, EntityConfigurationReferences::normalizeLegacy($table, $row));
                         // Seed order can reference parents loaded later; discard placeholder proxies.
                         $em->clear();
                         if ($progress !== null) {

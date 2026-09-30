@@ -84,8 +84,12 @@ class Entity
     #[ORM\Column(name: '`tag`', type: 'string', length: 255, nullable: true)]
     public ?string $tag = null;
 
-    #[ORM\Column(name: '`authldaps_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $authldaps_id = 0;
+    #[ORM\ManyToOne(targetEntity: AuthLDAP::class)]
+    #[ORM\JoinColumn(name: 'authldaps_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?AuthLDAP $authldap = null;
+
+    #[ORM\Column(type: 'string', length: 16, enumType: \itsmng\Database\ReferenceMode::class, options: ['default' => 'explicit'])]
+    public \itsmng\Database\ReferenceMode $ldap_mode = \itsmng\Database\ReferenceMode::Explicit;
 
     #[ORM\Column(name: '`mail_domain`', type: 'string', length: 255, nullable: true)]
     public ?string $mail_domain = null;
@@ -147,8 +151,12 @@ class Entity
     #[ORM\Column(name: '`notclosed_delay`', type: 'integer', nullable: false, options: ['default' => '-2'])]
     public int $notclosed_delay = -2;
 
-    #[ORM\Column(name: '`calendars_id`', type: 'integer', nullable: false, options: ['default' => '-2'])]
-    public int $calendars_id = -2;
+    #[ORM\ManyToOne(targetEntity: Calendar::class)]
+    #[ORM\JoinColumn(name: 'calendars_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Calendar $calendar = null;
+
+    #[ORM\Column(type: 'string', length: 16, enumType: \itsmng\Database\ReferenceMode::class, options: ['default' => 'inherit'])]
+    public \itsmng\Database\ReferenceMode $calendar_mode = \itsmng\Database\ReferenceMode::Inherit;
 
     #[ORM\Column(name: '`auto_assign_mode`', type: 'integer', nullable: false, options: ['default' => '-2'])]
     public int $auto_assign_mode = -2;
@@ -186,17 +194,33 @@ class Entity
     #[ORM\Column(name: '`autofill_order_date`', type: 'string', length: 255, nullable: false, options: ['default' => '-2'])]
     public string $autofill_order_date = '-2';
 
-    #[ORM\Column(name: '`tickettemplates_id`', type: 'integer', nullable: false, options: ['default' => '-2'])]
-    public int $tickettemplates_id = -2;
+    #[ORM\ManyToOne(targetEntity: TicketTemplate::class)]
+    #[ORM\JoinColumn(name: 'tickettemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?TicketTemplate $tickettemplate = null;
 
-    #[ORM\Column(name: '`changetemplates_id`', type: 'integer', nullable: false, options: ['default' => '-2'])]
-    public int $changetemplates_id = -2;
+    #[ORM\Column(type: 'string', length: 16, enumType: \itsmng\Database\ReferenceMode::class, options: ['default' => 'inherit'])]
+    public \itsmng\Database\ReferenceMode $tickettemplate_mode = \itsmng\Database\ReferenceMode::Inherit;
 
-    #[ORM\Column(name: '`problemtemplates_id`', type: 'integer', nullable: false, options: ['default' => '-2'])]
-    public int $problemtemplates_id = -2;
+    #[ORM\ManyToOne(targetEntity: ChangeTemplate::class)]
+    #[ORM\JoinColumn(name: 'changetemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?ChangeTemplate $changetemplate = null;
 
-    #[ORM\Column(name: '`entities_id_software`', type: 'integer', nullable: false, options: ['default' => '-2'])]
-    public int $entities_id_software = -2;
+    #[ORM\Column(type: 'string', length: 16, enumType: \itsmng\Database\ReferenceMode::class, options: ['default' => 'inherit'])]
+    public \itsmng\Database\ReferenceMode $changetemplate_mode = \itsmng\Database\ReferenceMode::Inherit;
+
+    #[ORM\ManyToOne(targetEntity: ProblemTemplate::class)]
+    #[ORM\JoinColumn(name: 'problemtemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?ProblemTemplate $problemtemplate = null;
+
+    #[ORM\Column(type: 'string', length: 16, enumType: \itsmng\Database\ReferenceMode::class, options: ['default' => 'inherit'])]
+    public \itsmng\Database\ReferenceMode $problemtemplate_mode = \itsmng\Database\ReferenceMode::Inherit;
+
+    #[ORM\ManyToOne(targetEntity: Entity::class)]
+    #[ORM\JoinColumn(name: 'entities_id_software', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?Entity $software_entity = null;
+
+    #[ORM\Column(type: 'string', length: 16, enumType: \itsmng\Database\ReferenceMode::class, options: ['default' => 'inherit'])]
+    public \itsmng\Database\ReferenceMode $software_entity_mode = \itsmng\Database\ReferenceMode::Inherit;
 
     #[ORM\Column(name: '`default_contract_alert`', type: 'integer', nullable: false, options: ['default' => '-2'])]
     public int $default_contract_alert = -2;

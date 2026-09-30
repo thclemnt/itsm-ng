@@ -99,11 +99,19 @@ final class RecordWriter
                 if ($value === null && !$metadata->getAssociationMapping($field)->joinColumns[0]->nullable) {
                     throw new \InvalidArgumentException('Required relationship cannot be NULL: ' . $metadata->getTableName() . '.' . $column);
                 }
-                $record->$field = $value === null ? null : $this->em->getReference($metadata->getAssociationTargetClass($field), (int)$value);
+                $selfId = $values['id'] ?? ($record->id ?? null);
+                $self = $metadata->identifier === ['id'] && $metadata->getAssociationTargetClass($field) === $metadata->name
+                    && $selfId !== null && $value !== null && (int)$value === (int)$selfId;
+                $record->$field = $value === null ? null : ($self ? $record : $this->em->getReference($metadata->getAssociationTargetClass($field), (int)$value));
                 continue;
             }
             $field = $metadata->getFieldName($column);
             $mapping = $metadata->getFieldMapping($field);
+            if ($mapping->enumType !== null) {
+                $enum = $mapping->enumType;
+                $record->$field = $value === null ? null : ($value instanceof $enum ? $value : $enum::from($value));
+                continue;
+            }
             if ($value !== null) {
                 $value = match ($mapping->type) {
                     'boolean' => (bool)(int)$value,

@@ -192,6 +192,8 @@ jobs:
         run: php tests/database-portability/statistics-options.php tests/config
       - name: Test global configuration scopes and field uniqueness
         run: php tests/database-portability/global-entity-scopes.php tests/config
+      - name: Test typed entity settings, inheritance and migration
+        run: php tests/database-portability/entity-configuration.php tests/config
       - name: Test search semantics and pagination
         run: php tests/database-portability/search.php tests/config
       - name: Plan all core search columns

@@ -2910,3 +2910,59 @@ and 30 direct-driver calls, 21 fewer than the previous checkpoint. Historical
 upgrade scripts still account for 2442 sites, leaving 718 elsewhere. Candidate
 method/dynamic calls and polymorphic/serialized relationships still require
 semantic review; this audit is not proof that SQL conversion is complete.
+
+### Typed entity configuration associations
+
+Entity LDAP, calendar, ticket/change/problem template and software-owner settings
+now use six nullable ManyToOne associations with RESTRICT foreign keys. Typed
+`ReferenceMode` enums separate explicit selection, parent inheritance and the
+software-only leave-unchanged policy. Database CHECK constraints reject a mode
+that contradicts its selected ID. Explicit NULL means no LDAP/template or a 24/7
+calendar; software entity zero remains a real association with the root entity.
+Inherited and unchanged selections have NULL associations instead of negative
+IDs. Assigned-ID software self-references use the new ORM record directly.
+
+The public model and form APIs retain their sentinel dropdown values at the
+boundary. Mapped criteria compile those logical values as DQL policy expressions;
+canonical repository reads expose nullable IDs and enum values separately. Mode
+changes report the corresponding logical field to lifecycle/history hooks, and
+mode fields require the same permissions as their original setting. Blank forms
+use the policy defaults. Template, calendar, LDAP and software-owner purges retain
+explicit replacement/none/root behavior; missing change/problem-template entity
+relations have been added to the lifecycle registry.
+
+`EntityConfigurationRepository` replaces adapter SQL for entity identifiers,
+notification configuration and inherited setting lookup. Inheritance detects
+cycles, retains numeric/string selection rules and NULL alternate values, and
+preserves the fallback for legacy callers requesting a missing setting. Its
+application read paths execute zero legacy adapter queries after catalogue
+warm-up. Entity ID allocation still uses the existing MAX-plus-one behavior;
+this batch does not provide a concurrent identifier allocator.
+
+`db:entity_configuration_references` audits all six references before DDL,
+splits legacy sentinel values into modes and nullable associations, and installs
+the policy checks. It preserves explicit software root and leave-unchanged
+selections, refuses orphans/unknown negative values, and supports retries after
+MySQL commits the mode-column DDL before data normalization. Run with writers
+stopped, then use `db:foreign_keys --apply`. The shared fresh-install schema,
+ORM seed importer and installer include these changes.
+
+Coverage is now 754 enforced references, with six ordinary pending, 62 polymorphic
+and one ambiguous candidate. Fresh PostgreSQL/MariaDB installs pass 1237/831
+portability assertions. Fresh and upgraded installations pass typed settings,
+permissions, inheritance, root/self selection, replacement/purge and migration
+preflight/retry contracts. Complete mapping and parent-purge checks pass on both
+fresh databases. Upgraded databases pass ORM writes across all 355 tables,
+native-row parity, ownership, global scopes, calendars, reporting, statistics,
+search and application workflows. MariaDB validation uses PHP 8.3; CI includes
+the new contract, but remote CI has not been rerun. Statistics collision fixtures
+now assign all parent IDs explicitly so a PostgreSQL sequence advanced by earlier
+rolled-back tests cannot collide with the fixture's manually assigned ID.
+
+The token audit finds 3157 legacy call sites: 3127 known adapter calls and 30
+direct-driver calls. Historical update scripts account for 2442 sites, leaving
+715 elsewhere. The six remaining ordinary candidates include the entity parent,
+historical event and notification discriminators, serialized network-port/guest
+lists and the obsolete project-template reference. These and the polymorphic
+relationships still need explicit domain designs; the overall conversion is
+ongoing.

@@ -1271,6 +1271,7 @@ $RELATION = [
    ],
 
    'glpi_changetemplates' => [
+      'glpi_entities' => 'changetemplates_id',
       'glpi_profiles' => 'changetemplates_id',
       'glpi_itilcategories'                  => [
          'changetemplates_id',
@@ -1281,6 +1282,7 @@ $RELATION = [
    ],
 
    'glpi_problemtemplates' => [
+      'glpi_entities' => 'problemtemplates_id',
       'glpi_profiles' => 'problemtemplates_id',
       'glpi_itilcategories'                  => [
          'problemtemplates_id',

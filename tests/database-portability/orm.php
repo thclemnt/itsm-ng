@@ -159,7 +159,7 @@ try {
             if (in_array($table, ['glpi_infocoms', 'glpi_documents_items'], true)) {
                 $values += ['itemtype' => 'Computer', 'items_id' => (new FixtureRecords($DB))->create('glpi_computers')];
             }
-            $DB->insertOrDie($table, $values);
+            (new FixtureRecords($DB))->create($table, $values);
         }
         $item = getItemForItemtype(getItemTypeForTable($target));
         verify($item->delete(['id' => $parentId], true), 'Parent lifecycle purge: ' . $target);

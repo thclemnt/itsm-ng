@@ -21,6 +21,7 @@ final class ForeignKeys
         ...OptionalReferences::RELATIONS,
         ...EntityOwnership::RELATIONS,
         ...GlobalEntityScopes::RELATIONS,
+        ...EntityConfigurationReferences::RELATIONS,
         'glpi_savedsearches' => [...OptionalReferences::RELATIONS['glpi_savedsearches'], ...GlobalEntityScopes::RELATIONS['glpi_savedsearches']],
         'glpi_links_itemtypes' => ['links_id' => 'glpi_links'],
         'glpi_authldapreplicates' => ['authldaps_id' => 'glpi_authldaps'],

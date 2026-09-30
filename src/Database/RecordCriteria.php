@@ -122,6 +122,9 @@ final class RecordCriteria
         }
         foreach ($this->metadata->associationMappings as $field => $mapping) {
             if ($mapping->joinColumns[0]->name === $column) {
+                if ($this->legacyValues && $this->metadata->getTableName() === 'glpi_entities' && isset(EntityConfigurationReferences::FIELDS[$column])) {
+                    return [EntityConfigurationReferences::selection($column), Types::INTEGER, false, false];
+                }
                 $scope = isset(ContentAudienceScopes::RELATIONS[$this->metadata->getTableName()][$column])
                     || isset(GlobalEntityScopes::RELATIONS[$this->metadata->getTableName()][$column]);
                 return ['IDENTITY(r.' . $field . ')', Types::INTEGER, $scope || isset(OptionalReferences::RELATIONS[$this->metadata->getTableName()][$column]), $scope];
@@ -136,6 +139,9 @@ final class RecordCriteria
 
     private function value(mixed $value, string $type): string
     {
+        if ($value instanceof \BackedEnum) {
+            $value = $value->value;
+        }
         if ($value instanceof \DateTimeInterface && in_array($type, [Types::DATE_MUTABLE, Types::DATETIME_MUTABLE, Types::DATETIMETZ_MUTABLE], true)) {
             $parameter = 'p' . ++$this->parameter;
             $this->query->setParameter($parameter, \DateTime::createFromInterface($value), $type);
