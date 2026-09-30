@@ -110,6 +110,7 @@ final class ForeignKeys
         'glpi_groups_users' => ['users_id' => 'glpi_users', 'groups_id' => 'glpi_groups'],
         'glpi_infocoms' => [...OptionalReferences::RELATIONS['glpi_infocoms'], ...EntityOwnership::RELATIONS['glpi_infocoms']],
         'glpi_ipaddresses_ipnetworks' => ['ipaddresses_id' => 'glpi_ipaddresses', 'ipnetworks_id' => 'glpi_ipnetworks'],
+        'glpi_ipnetworks' => [...OptionalReferences::IMPLICIT_TREE_PARENTS['glpi_ipnetworks'], ...EntityOwnership::RELATIONS['glpi_ipnetworks']],
         'glpi_ipnetworks_vlans' => ['ipnetworks_id' => 'glpi_ipnetworks', 'vlans_id' => 'glpi_vlans'],
         'glpi_items_clusters' => ['clusters_id' => 'glpi_clusters'],
         'glpi_items_devicebatteries' => [...OptionalReferences::RELATIONS['glpi_items_devicebatteries'], ...EntityOwnership::RELATIONS['glpi_items_devicebatteries'], 'devicebatteries_id' => 'glpi_devicebatteries'],

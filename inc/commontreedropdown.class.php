@@ -348,18 +348,8 @@ abstract class CommonTreeDropdown extends CommonDropdown
         if ($cache && Toolbox::useCache()) {
             foreach ($ancestors as $ancestor) {
                 $ckey = 'sons_cache_' . $this->getTable() . '_' . $ancestor;
-                if ($GLPI_CACHE->has($ckey)) {
-                    $sons = $GLPI_CACHE->get($ckey);
-                    if (isset($sons[$this->getID()])) {
-                        unset($sons[$this->getID()]);
-                        $GLPI_CACHE->set($ckey, $sons);
-                    }
-                } else {
-                    // If cache key does not exists in current context (UI using APCu), it may exists
-                    // in another context (CLI using filesystem). So we force deletion of cache in all contexts
-                    // to be sure to not use a stale value.
-                    $GLPI_CACHE->delete($ckey);
-                }
+                // A subtree move changes every descendant's membership, not just this ID.
+                $GLPI_CACHE->delete($ckey);
             }
         }
     }

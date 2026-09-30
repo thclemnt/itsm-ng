@@ -207,6 +207,20 @@ class IPNetwork extends CommonImplicitTreeDropdown
     }
 
 
+    /** Cloned child updates promote ancestry without validating unchanged CIDR input. */
+    private bool $promotingChildren = false;
+    private bool $structuralParentUpdate = false;
+
+    public function pre_deleteItem()
+    {
+        $this->promotingChildren = true;
+        try {
+            return parent::pre_deleteItem();
+        } finally {
+            $this->promotingChildren = false;
+        }
+    }
+
     public function getNewAncestor()
     {
 
@@ -363,6 +377,8 @@ class IPNetwork extends CommonImplicitTreeDropdown
             $input = $gateway->setArrayFromAddress($input, "", "gateway", "gateway");
         }
 
+        // The CIDR form field is derived; persist its parsed address and mask only.
+        unset($input['network']);
         $returnValue['input'] = $input;
 
         return $returnValue;
@@ -389,6 +405,11 @@ class IPNetwork extends CommonImplicitTreeDropdown
 
     public function prepareInputForUpdate($input)
     {
+        if ($this->promotingChildren && array_key_exists('ipnetworks_id', $input) && !array_key_exists('network', $input)) {
+            $this->structuralParentUpdate = true;
+            $this->networkUpdate = false;
+            return CommonTreeDropdown::prepareInputForUpdate($input);
+        }
 
         $preparedInput = $this->prepareInput($input);
 
@@ -414,18 +435,26 @@ class IPNetwork extends CommonImplicitTreeDropdown
 
         unset($this->networkUpdate);
         parent::post_addItem();
+        $this->post_getFromDB();
     }
 
 
     public function post_updateItem($history = 1)
     {
-
-        if ($this->networkUpdate) {
-            IPAddress_IPNetwork::linkIPAddressFromIPNetwork($this);
+        try {
+            if ($this->networkUpdate) {
+                IPAddress_IPNetwork::linkIPAddressFromIPNetwork($this);
+            }
+            unset($this->networkUpdate);
+            if ($this->structuralParentUpdate) {
+                CommonTreeDropdown::post_updateItem($history);
+            } else {
+                parent::post_updateItem($history);
+            }
+            $this->post_getFromDB();
+        } finally {
+            $this->structuralParentUpdate = false;
         }
-
-        unset($this->networkUpdate);
-        parent::post_updateItem($history);
     }
 
 
@@ -871,33 +900,29 @@ class IPNetwork extends CommonImplicitTreeDropdown
     **/
     public static function recreateTree()
     {
-        global $DB;
+        global $DB, $GLPI_CACHE;
 
-        // Reset the tree
-        $DB->update(
-            'glpi_ipnetworks',
-            [
-              'ipnetworks_id'   => 0,
-              'level'           => 1,
-              'completename'    => new \QueryExpression($DB->quoteName('name'))
-            ],
-            [true]
-        );
-
-        // Foreach IPNetwork ...
-        $iterator = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => self::getTable()
-        ]);
-
-        $network = new self();
-
-        while ($network_entry = $iterator->next()) {
-            if ($network->getFromDB($network_entry['id'])) {
-                $input = $network->fields;
-                // ... update it by its own entries
-                $network->update($input);
+        $ids = [];
+        $invalidate = static function () use (&$ids, $GLPI_CACHE): void {
+            foreach ([0, ...$ids] as $id) {
+                $GLPI_CACHE->delete('ancestors_cache_glpi_ipnetworks_' . $id);
+                $GLPI_CACHE->delete('sons_cache_glpi_ipnetworks_' . $id);
             }
+        };
+        try {
+            $DB->getDoctrineConnection()->transactional(static function () use ($DB, &$ids, $invalidate): void {
+                $ids = (new \itsmng\Database\Repository\IPNetworkRepository(\itsmng\Database\Orm::create($DB)))->resetTree();
+                $invalidate();
+                foreach ($ids as $id) {
+                    $network = new self();
+                    if (!$network->getFromDB($id) || !$network->update($network->fields)) {
+                        throw new RuntimeException('Unable to rebuild IP network tree at ' . $id);
+                    }
+                }
+            });
+        } finally {
+            // Also discard derived cache values from any rolled-back rebuild.
+            $invalidate();
         }
     }
 

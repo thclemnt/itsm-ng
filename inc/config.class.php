@@ -3069,24 +3069,8 @@ class Config extends CommonDBTM
     public static function getConfigurationValues($context, array $names = [])
     {
         global $DB;
-
-        $query = [
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'context'   => $context
-           ]
-        ];
-
-        if (count($names) > 0) {
-            $query['WHERE']['name'] = $names;
-        }
-
-        $iterator = $DB->request($query);
-        $result = [];
-        while ($line = $iterator->next()) {
-            $result[$line['name']] = $line['value'];
-        }
-        return $result;
+        return (new \itsmng\Database\Repository\ConfigurationRepository(\itsmng\Database\Orm::create($DB)))
+            ->values((string)$context, $names);
     }
 
     /**

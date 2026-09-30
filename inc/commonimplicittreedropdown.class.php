@@ -127,7 +127,14 @@ class CommonImplicitTreeDropdown extends CommonTreeDropdown
     // Key function to manage the children of the node
     private function alterElementInsideTree($step)
     {
-        global $DB;
+        global $DB, $GLPI_CACHE;
+
+        $repository = new \itsmng\Database\Repository\TreeRepository(\itsmng\Database\Orm::create($DB));
+        $table = $this->getTable();
+        $column = $this->getForeignKeyField();
+        $repository->updateDerived($table, [(int)$this->getID()], ['sons_cache' => null]);
+        $GLPI_CACHE->delete('sons_cache_' . $table . '_' . $this->getID());
+        $GLPI_CACHE->delete('sons_cache_' . $table . '_0');
 
         switch ($step) {
             case 'add':
@@ -136,7 +143,7 @@ class CommonImplicitTreeDropdown extends CommonTreeDropdown
                 break;
 
             case 'update':
-                $oldParent     = $this->fields[$this->getForeignKeyField()];
+                $oldParent     = array_key_exists($column, $this->oldvalues) ? $this->oldvalues[$column] : $this->fields[$column];
                 $newParent     = $this->input[$this->getForeignKeyField()];
                 $potentialSons = $this->getPotentialSons();
                 break;
@@ -155,30 +162,15 @@ class CommonImplicitTreeDropdown extends CommonTreeDropdown
          *                update them. (See getPotentialSons())
         **/
 
-        if ($step != "add" && count($potentialSons)) { // Because there is no old sons of new node
-            // First, get all my current direct sons (old ones) that are not new potential sons
-            $iterator = $DB->request([
-               'SELECT' => ['id'],
-               'FROM'   => $this->getTable(),
-               'WHERE'  => [
-                  $this->getForeignKeyField()   => $this->getID(),
-                  'NOT'                         => ['id' => $potentialSons]
-               ]
-            ]);
-            $oldSons = [];
-            while ($oldSon = $iterator->next()) {
-                $oldSons[] = $oldSon["id"];
+        if ($step === 'update') {
+            // Detach former children even if the new network contains no children.
+            $criteria = [$column => $this->getID()];
+            if ($potentialSons) {
+                $criteria['NOT'] = ['id' => $potentialSons];
             }
-            if (count($oldSons) > 0) { // Then make them pointing to old parent
-                $DB->update(
-                    $this->getTable(),
-                    [
-                      $this->getForeignKeyField() => $oldParent
-                    ],
-                    [
-                      'id' => $oldSons
-                    ]
-                );
+            $oldSons = array_column($repository->rows($table, ['id'], $criteria), 'id');
+            if ($oldSons) {
+                $repository->reparent($table, $column, $oldSons, $oldParent === null ? null : (int)$oldParent);
                 // Then, regenerate the old sons to reflect there new ancestors
                 $this->regenerateTreeUnderID($oldParent, true, true);
                 $this->cleanParentsSons($oldParent);
@@ -188,28 +180,9 @@ class CommonImplicitTreeDropdown extends CommonTreeDropdown
         if ($step != "delete" && count($potentialSons)) { // Because ther is no new sons for deleted nodes
             // And, get all direct sons of my new Father that must be attached to me (ie : that are
             // potential sons
-            $iterator = $DB->request([
-               'SELECT' => ['id'],
-               'FROM'   => $this->getTable(),
-               'WHERE'  => [
-                  $this->getForeignKeyField()   => $newParent,
-                  'id'                          => $potentialSons
-               ]
-            ]);
-            $newSons = [];
-            while ($newSon = $iterator->next()) {
-                $newSons[] = $newSon["id"];
-            }
-            if (count($newSons) > 0) { // Then make them pointing to me
-                $DB->update(
-                    $this->getTable(),
-                    [
-                      $this->getForeignKeyField() => $this->getID()
-                    ],
-                    [
-                      'id' => $newSons
-                    ]
-                );
+            $newSons = array_column($repository->rows($table, ['id'], [$column => $newParent, 'id' => $potentialSons]), 'id');
+            if ($newSons) {
+                $repository->reparent($table, $column, $newSons, (int)$this->getID());
                 // Then, regenerate the new sons to reflect there new ancestors
                 $this->regenerateTreeUnderID($this->getID(), true, true);
                 $this->cleanParentsSons();

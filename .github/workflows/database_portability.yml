@@ -160,6 +160,8 @@ jobs:
         run: php tests/database-portability/asset-users.php tests/config
       - name: Tree parents, caches and root uniqueness
         run: php tests/database-portability/tree-parents.php tests/config
+      - name: Implicit network hierarchy, rebuild and migration
+        run: php tests/database-portability/network-tree.php tests/config
       - name: ITIL classification lifecycle and template scope
         run: php tests/database-portability/itil-classification.php tests/config
       - name: Planning metadata lifecycle and calendar projections

@@ -15,23 +15,7 @@ final class TreeParentReferences
     public function plan(Connection $connection): array
     {
         $plan = (new NullableReferences(OptionalReferences::TREE_PARENTS, 'tree parent'))->plan($connection);
-        foreach (OptionalReferences::TREE_PARENTS as $table => $relations) {
-            $parent = array_key_first($relations);
-            $quote = $connection->getDatabasePlatform()->quoteIdentifier(...);
-            $parents = $connection->fetchAllKeyValue('SELECT id, ' . $quote($parent) . ' FROM ' . $quote($table));
-            $finished = [];
-            foreach ($parents as $id => $_) {
-                $path = [];
-                while ($id && !isset($finished[$id])) {
-                    if (isset($path[$id])) {
-                        throw new \RuntimeException('Cyclic tree parents: ' . $table . ' at ' . $id);
-                    }
-                    $path[$id] = true;
-                    $id = (int)($parents[$id] ?? 0);
-                }
-                $finished += $path;
-            }
-        }
+        TreeParentAudit::assertAcyclic($connection, OptionalReferences::TREE_PARENTS);
         array_push($plan['sql'], ...(new TreeUniqueness())->plan($connection));
         return $plan;
     }

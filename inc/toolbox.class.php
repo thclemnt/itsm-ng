@@ -2764,6 +2764,7 @@ class Toolbox
             (new \itsmng\Database\Migration\PlanningMetadataReferences())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\Migration\ITILClassificationReferences())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\Migration\TreeParentReferences())->apply($DB->getDoctrineConnection());
+            (new \itsmng\Database\Migration\IPNetworkParentReferences())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\Migration\AssetUserReferences())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\Migration\ReservationUserReferences())->apply($DB->getDoctrineConnection());
             (new \itsmng\Database\Migration\ContentMetadataReferences())->apply($DB->getDoctrineConnection());

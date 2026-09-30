@@ -22,8 +22,9 @@ class IPNetwork
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_recursive = false;
 
-    #[ORM\Column(name: '`ipnetworks_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $ipnetworks_id = 0;
+    #[ORM\ManyToOne(targetEntity: IPNetwork::class)]
+    #[ORM\JoinColumn(name: 'ipnetworks_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    public ?IPNetwork $parent = null;
 
     #[ORM\Column(name: '`completename`', type: 'text', nullable: true)]
     public ?string $completename = null;

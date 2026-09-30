@@ -2645,3 +2645,58 @@ relationships, 62 polymorphic relationships and one ambiguous relationship.
 It records 1160 remaining legacy SQL call sites. Monthly reporting removes one
 adapter execution site and its large query construction path; statistics option
 lists and several other report paths still need conversion.
+
+### Implicit IP-network hierarchy and membership
+
+IPNetwork now maps its parent as a nullable self association with a RESTRICT
+foreign key. A root has SQL NULL; legacy zero model inputs and record criteria
+retain their empty-parent meaning. Fresh schemas include the relationship.
+Existing installations use `db:ipnetwork_parents --apply`, then
+`db:foreign_keys --apply`, with application writers stopped. Normal upgrades run
+the same migration. Orphans, parent cycles and self cycles block the migration
+before DDL; valid parents survive, roots normalize to NULL and retries are empty.
+The existing explicit-tree migration shares the same cycle audit.
+
+Implicit tree adoption and reparenting use mapped repository queries. Subnet
+changes detach former children even when the new range contains no child, using
+the original parent from the change set. Purging a network promotes children to
+the surviving parent through structural model updates that keep tree/history
+hooks and do not revalidate unchanged CIDR input. This also lets malformed legacy
+rows shed their deleted parent reference. Children become roots if no ancestor
+survives. Descendant caches are invalidated for whole affected
+ancestor paths; removing only the moved node left stale descendant memberships.
+The CIDR form field is parsed into mapped address/mask fields and no longer
+reaches physical persistence as an unmapped column.
+
+`IPNetwork::recreateTree()` resets and rebuilds the hierarchy in one transaction.
+An invalid node aborts and rolls back every parent and derived-field update;
+both successful and failed rebuilds discard affected external caches. Run this
+maintenance operation with network writers stopped. IPv4/IPv6 address membership
+uses mapped bitwise predicates, retains its existing independence from visibility
+scope and preserves relation model hooks when links are rebuilt.
+
+Shared configuration lookups encountered during this lifecycle now use
+`ConfigurationRepository`. Contexts, names and values are literal strings,
+including the string NULL, while nullable values remain NULL. Results retain the
+existing associative-array boundary and are ordered by record ID.
+
+The network contract passes on fresh and upgraded PostgreSQL and MariaDB schemas,
+including PHP 8.3 with MariaDB. It covers adoption, nearest parent, both address
+families, entity boundaries, memberships, subnet moves, internal/root purge,
+warm caches, malformed legacy subtree promotion, FK rejection, rebuild
+repair/rollback and migration audits/retries.
+Runtime domain operations bypass the adapter after catalogue discovery. Both
+providers pass explicit-tree lifecycle/migration, network-search, entity purge,
+all-table ORM write, complete mapping/parent-purge, application and reporting
+regressions. The existing configuration
+getter/setter functional tests pass two methods and 20 assertions. CI includes
+the new contract; remote CI and browser interaction have not been verified.
+
+Fresh installation also completes with the final code on both providers. The
+installer still emits legacy encryption-key migration queries against tables
+before schema creation; those pre-existing warnings and query paths remain work
+for the broader conversion, despite the resulting valid installed schema.
+
+The inventory records 746 enforced references, 14 pending ordinary references,
+62 polymorphic references, one ambiguous reference and 1151 legacy SQL call
+sites. This batch adds the network-parent FK and removes nine adapter call sites.

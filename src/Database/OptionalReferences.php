@@ -301,6 +301,8 @@ final class OptionalReferences
         'glpi_taskcategories' => ['taskcategories_id' => 'glpi_taskcategories'],
     ];
 
+    public const IMPLICIT_TREE_PARENTS = ['glpi_ipnetworks' => ['ipnetworks_id' => 'glpi_ipnetworks']];
+
     public const ASSET_USERS = [
         'glpi_appliances' => ['users_id' => 'glpi_users', 'users_id_tech' => 'glpi_users'],
         'glpi_cartridgeitems' => ['users_id_tech' => 'glpi_users'],
@@ -469,6 +471,7 @@ final class OptionalReferences
         ...self::RESERVATION_USERS,
         ...self::ASSET_USERS,
         ...self::TREE_PARENTS,
+        ...self::IMPLICIT_TREE_PARENTS,
         ...self::ITIL_CLASSIFICATION,
         ...self::PLANNING_METADATA,
         'glpi_projecttasktemplates' => [...self::PLANNING_METADATA['glpi_projecttasktemplates'], ...self::PLANNING_OWNERS['glpi_projecttasktemplates']],

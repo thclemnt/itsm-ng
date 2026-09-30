@@ -8,12 +8,36 @@ use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Entity\IPNetwork;
+use itsmng\Database\Entity\IPAddress;
 use itsmng\Database\RecordCriteria;
 
 final class IPNetworkRepository
 {
     public function __construct(private EntityManager $em)
     {
+    }
+
+    /** Maintenance operation: callers rebuild all nodes in the same transaction. */
+    public function resetTree(): array
+    {
+        $this->em->createQueryBuilder()->update(IPNetwork::class, 'r')->set('r.parent', 'NULL')
+            ->set('r.level', '1')->set('r.completename', 'r.name')
+            ->set('r.ancestors_cache', 'NULL')->set('r.sons_cache', 'NULL')->getQuery()->execute();
+        return array_map('intval', array_column($this->em->createQueryBuilder()->select('r.id')->from(IPNetwork::class, 'r')
+            ->orderBy('r.id')->getQuery()->getScalarResult(), 'id'));
+    }
+
+    /** Membership is determined by address words, without a visibility filter. */
+    public function containedAddresses(int $network): array
+    {
+        $query = $this->em->createQueryBuilder()->select('a.id')->from(IPAddress::class, 'a')
+            ->join(IPNetwork::class, 'n', 'WITH', 'n.id = :network AND n.version = a.version')
+            ->setParameter('network', $network, Types::INTEGER)->where('n.version IN (4, 6)');
+        for ($word = 0; $word < 4; ++$word) {
+            $match = 'BIT_AND(a.binary_' . $word . ', n.netmask_' . $word . ') = n.address_' . $word;
+            $query->andWhere($word === 3 ? $match : '(n.version = 4 OR ' . $match . ')');
+        }
+        return array_map('intval', array_column($query->orderBy('a.id')->getQuery()->getScalarResult(), 'id'));
     }
 
     /** Match every address word, retaining nearest-network ordering on both engines. */

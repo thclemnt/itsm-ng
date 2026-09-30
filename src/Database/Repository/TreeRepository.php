@@ -5,8 +5,10 @@
 namespace itsmng\Database\Repository;
 
 use Doctrine\DBAL\ArrayParameterType;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\EntityRegistry;
+use itsmng\Database\OptionalReferences;
 use itsmng\Database\RecordCriteria;
 
 /** Tree projections and derived caches; model hooks remain responsible for reparenting. */
@@ -50,5 +52,27 @@ final class TreeRepository
         }
         $query->where('r.id IN (:ids)')->setParameter('ids', array_map('intval', array_values($ids)), ArrayParameterType::INTEGER)
             ->getQuery()->execute();
+    }
+
+    /** Persist an implicit tree's chosen parent without recursively selecting it again. */
+    public function reparent(string $table, string $column, array $ids, ?int $parent): void
+    {
+        if (!$ids) {
+            return;
+        }
+        $metadata = $this->em->getClassMetadata(EntityRegistry::TABLES[$table]);
+        foreach ($metadata->associationMappings as $field => $mapping) {
+            if ($mapping->joinColumns[0]->name !== $column || $mapping->targetEntity !== $metadata->name) {
+                continue;
+            }
+            if ($parent === 0 && isset(OptionalReferences::RELATIONS[$table][$column])) {
+                $parent = null;
+            }
+            $this->em->createQueryBuilder()->update($metadata->name, 'r')->set('r.' . $field, ':parent')
+                ->where('r.id IN (:ids)')->setParameter('parent', $parent, Types::INTEGER)
+                ->setParameter('ids', array_map('intval', array_values($ids)), ArrayParameterType::INTEGER)->getQuery()->execute();
+            return;
+        }
+        throw new \InvalidArgumentException('Implicit parent must be a mapped self association');
     }
 }
