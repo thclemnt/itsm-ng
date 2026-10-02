@@ -4,9 +4,11 @@ This branch is a development port, **not a complete or production-ready PostgreS
 
 ## Architecture
 
-See [the latest integrated checkpoint](modernization-upgrade-dropdown-validation.md)
+See [the latest full integrated checkpoint](modernization-upgrade-dropdown-validation.md)
 for exact source, provider versions, test evidence and remaining work. Dated earlier
-validation figures are historical checkpoints. Fresh installs replay all twelve
+validation figures are historical checkpoints. Newer integrated batches and their
+pending combined validation are recorded in [the handoff](modernization-handoff.md).
+Fresh installs replay all twelve
 current canonical versions, including subsequent frozen ownership/flag migrations;
 supported upgrades use the same History coordinator and readiness checks.
 
@@ -41,7 +43,7 @@ The web installer also offers PostgreSQL (experimental). Enter an existing empty
 
 ## PostgreSQL booleans
 
-The 398 entity-local Doctrine boolean declarations drive native PostgreSQL
+The 402 entity-local Doctrine boolean declarations drive native PostgreSQL
 `boolean` columns and search result conversion. The duplicate `BooleanColumns`
 catalogue has been removed. NULL defaults stay NULL. Tinyint display width is not
 treated as type information: `do_count`, weekdays, timeline positions, orientation,
@@ -54,9 +56,11 @@ The frozen `20261002_postgres_boolean_flags` migration also adopts early Postgre
 
 ## Foreign keys
 
-Doctrine owning associations currently supply 1,003 enforced relationships on both
-providers. One ordinary candidate and 41 polymorphic references remain to be
-resolved; 23 logical discriminator selections have canonical FK-backed branches.
+At source `b3ed706ad69996aca8c3e07f83ede98329696b25`, Doctrine owning associations
+declare 1,057 enforced relationships. One ordinary candidate and 37 polymorphic
+references remain to be resolved; 27 logical discriminator selections have
+canonical FK-backed branches. These are static mapping counts; the latest full
+installed-schema checkpoint precedes the newer batches.
 Run `php tools/database/audit-coverage.php` for the current inventory;
 [mapped persistence and reporting](orm.md) documents each migration stage.
 

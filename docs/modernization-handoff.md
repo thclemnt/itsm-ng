@@ -1,12 +1,28 @@
 # PostgreSQL and Doctrine modernization goal
 
-Latest integrated source and evidence:
+Latest full integrated validation:
 [canonical upgrades and owning dropdown choices](modernization-upgrade-dropdown-validation.md).
 Both discovered portability suites pass 147/147 contracts at application source
 `448699cfbb7d4847a73edc36eabf0f3da1042fb3`; sequential browser suites pass 12/12
 tests each with zero skips. Earlier concurrent browser timeouts remain recorded.
-The overall goal remains open. The next isolated work covers atomic mapped purges,
-operating-system subject ownership and Domains plugin adoption/application roles.
+
+Newer integrated application source is
+`b3ed706ad69996aca8c3e07f83ede98329696b25`: atomic mapped deletion, six operating-system
+subject owners, Domain plugin adoption and document ownership, identifier sequence
+repair, authoritative empty session scope, Contract persistence and notification
+queue admission. Their focused evidence appears below and in the linked batch
+notes. A full combined rerun has not yet run. Offline discovery at this source
+finds 161 contracts; this count is not a passing result.
+
+Parallel review identified shared relation endpoint authorization/context defects
+and a Transfer path that ignores a refused parent update after child mutations.
+The current batch repairs those boundaries and Domain commercial supplier coherence
+before freezing source for fresh installs, populated/retry history, complete
+portability and broader application/browser validation. PostgreSQL 18.6 and MySQL
+8.4.11 are provisioned; their application matrix remains pending. Software
+assignment ownership is prepared separately and remains unvalidated. Normal
+authenticated Git fetch works; remote advances are checked before integration.
+The overall goal remains open.
 
 Continue the PHP application on `th/exp/postgres`; the verified starting commit is
 `897c5c9bd636f65e5a2a596d350ef087635303f9`.
@@ -43,7 +59,7 @@ notifications, history, cloning, purge behavior and read/write routing.
    before milestone claims. Record exact evidence, environment limits, remaining
    gaps and the next concrete step in each Conventional Commit batch.
 
-## Cloud setup checkpoint (2026-10-02)
+## Initial cloud setup checkpoint (2026-10-02)
 
 - Remote branch verified through normal Git; it has not advanced beyond the
   supplied commit. Checkout is clean before application edits.

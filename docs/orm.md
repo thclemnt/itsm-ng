@@ -1,7 +1,9 @@
 # Mapped persistence and reporting
 
-The latest integrated implementation and validation record is
+The latest full integrated validation record is
 [canonical upgrades and owning dropdown choices](modernization-upgrade-dropdown-validation.md).
+Newer integrated batches and their pending combined validation are tracked in
+[the modernization handoff](modernization-handoff.md).
 Earlier dated counts below describe their own checkpoints, not current completion.
 
 Doctrine ORM 3 is an explicit dependency alongside DBAL 4.4+ (PHP 8.2+). The attributes in
@@ -281,14 +283,13 @@ managers. The remaining architecture work is:
 - Organize entities and repositories by domain as they are converted.
   Keep database transport, schema operations and mapping infrastructure separate.
 
-The master migration and completion ledger replace `Toolbox::createSchema()`'s
-list of independently invoked helpers. A future baseline change should replace
-`BaselineSchema`'s runtime SQL reader.
-Define a frozen baseline using DBAL `Schema`/`Table` APIs, then run the complete
-migration history for every new CLI or web installation. Freeze migration data
-and relationship definitions within history; historical migrations must not import
-current entities or mutable registries. Required seed rows should use frozen DBAL
-data operations, independent of the current ORM model.
+The History coordinator and existing completion ledger now own installation and
+supported upgrades. The runtime SQL-dump reader is removed; `Baseline20261001`
+defines immutable DBAL `Schema`/`Table` declarations and seeds are frozen raw data.
+Every fresh CLI/web installation replays canonical history. `BaselineSchema`
+projects the current read-only inspection schema and does not install tables.
+Keep subsequent historical DDL, seed operations and relationship snapshots
+independent of current entities; append migrations when the runtime model changes.
 
 Preserve indexes, native timestamp behavior, generated columns, constraints,
 full-text/prefix indexes and triggers explicitly. Current entity metadata omits
@@ -343,11 +344,11 @@ relationship candidates, polymorphic references and legacy SQL/driver call sites
 This is an intentionally incomplete static inventory: it cannot prove discovery of
 serialized references, dynamic SQL or alternate connection variables. Each
 candidate needs semantic review before installing its FK. The current inventory
-contains 1,068 candidate reference columns: 1,003 enforced, 23 discriminated
-identities with FK-backed branches, 41 polymorphic and one pending
+at source `b3ed706ad69996aca8c3e07f83ede98329696b25` contains 1,122 candidate
+reference columns: 1,057 enforced, 27 discriminated
+identities with FK-backed branches, 37 polymorphic and one pending
 (`events.items_id`). All 357 core tables have mapped lifecycle persistence.
-Token discovery finds 2,896 legacy adapter calls, including 2,491 in installation
-and historical upgrade scripts, and 23 native driver calls in `DBpgsql`.
+Token discovery finds 2,852 legacy adapter calls and 24 native driver calls.
 These counts describe static coverage, not end-to-end conversion completeness.
 
 The former dump-to-entity scaffold has been removed: rebuilding entities from
