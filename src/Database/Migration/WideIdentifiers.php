@@ -28,9 +28,12 @@ final class WideIdentifiers
         $namespace = $connection->fetchOne($postgres ? 'SELECT current_schema()' : 'SELECT DATABASE()');
         $scope = $this->identifiers ?? IdentifierColumns::history()['identifiers'];
         $tables = $foreignKeys = [];
-        foreach ($manager->listTableNames() as $name) {
-            $tables[$name] = $manager->introspectTable($name);
-            foreach ($tables[$name]->getForeignKeys() as $foreign) {
+        // One catalogue snapshot retains core and custom FK edges without
+        // repeating columns/indexes/FKs/options introspection for every table.
+        foreach ($manager->introspectSchema()->getTables() as $table) {
+            $name = $table->getName();
+            $tables[$name] = $table;
+            foreach ($table->getForeignKeys() as $foreign) {
                 $foreignKeys[] = [$name, $foreign];
             }
         }
