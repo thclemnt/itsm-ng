@@ -48,8 +48,11 @@ foreach ((new BaselineSchema())->build($DB->getDoctrineConnection()->getDatabase
     verify($mappedColumns === $schemaColumns, 'Core object fields include owning and generated columns from metadata: ' . $table->getName());
 }
 verify(EntityRegistry::columnNames('glpi_not_a_core_table') === [], 'Unmapped columns are not inferred');
-verify(array_sum(array_map(count(...), EntityRegistry::booleanColumns())) === 398, 'All audited boolean declarations are retained');
+verify(array_sum(array_map(count(...), EntityRegistry::booleanColumns())) === 401, 'All audited boolean declarations are retained');
 verify(EntityRegistry::isBoolean('glpi_users', 'is_active') && EntityRegistry::isBoolean('glpi_oidc_users', 'update'), 'Ordinary and reserved-name boolean columns come from mappings');
+foreach (['is_incident', 'is_request', 'is_problem'] as $column) {
+    verify(EntityRegistry::isBoolean('glpi_itilcategories', $column), 'Category boolean declaration belongs to its entity property: ' . $column);
+}
 foreach (['glpi_savedsearches' => 'do_count', 'glpi_calendarsegments' => 'day', 'glpi_itilfollowups' => 'timeline_position', 'glpi_profilerights' => 'rights'] as $table => $column) {
     verify(!EntityRegistry::isBoolean($table, $column), 'Enums and bitmasks are not inferred as booleans: ' . $table . '.' . $column);
 }
