@@ -3474,15 +3474,14 @@ class Toolbox
      */
     public static function deletePicture($path)
     {
-
-        $fullpath = GLPI_PICTURE_DIR . '/' . $path;
-
-        if (!file_exists($fullpath)) {
+        if (!is_string($path) || $path === '') {
             return false;
         }
 
-        $fullpath = realpath($fullpath);
-        if (!Toolbox::startsWith($fullpath, realpath(GLPI_PICTURE_DIR))) {
+        $fullpath = realpath(GLPI_PICTURE_DIR . '/' . $path);
+        $directory = realpath(GLPI_PICTURE_DIR);
+        if ($fullpath === false || $directory === false || is_dir($fullpath)
+            || !Toolbox::startsWith($fullpath, $directory . DIRECTORY_SEPARATOR)) {
             // Prevent deletion of a file ouside pictures directory
             return false;
         }
