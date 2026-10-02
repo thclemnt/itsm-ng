@@ -52,7 +52,41 @@ $connection = $DB->getDoctrineConnection();
 $manager = $connection->createSchemaManager();
 $sourceTables = [];
 $transaction = false;
+$ledgerBackup = null;
+$savedStorageEngine = null;
 try {
+    if ($connection->getDatabasePlatform() instanceof \Doctrine\DBAL\Platforms\AbstractMySQLPlatform) {
+        // Exercise the server setting that previously made import receipts
+        // survive rollback. Preserve the disposable database's original ledger.
+        $backupName = 'itsm_port_appliance_saved_ledger';
+        verify(!$manager->tablesExist([$backupName]), 'Fixture exclusively owns ledger backup');
+        $savedStorageEngine = $connection->fetchOne('SELECT @@SESSION.default_storage_engine');
+        $ledgerStates = $connection->fetchAllAssociative('SELECT version, state FROM itsmng_migrations');
+        $manager->renameTable('itsmng_migrations', $backupName);
+        $ledgerBackup = $backupName;
+        $connection->executeStatement('SET SESSION default_storage_engine = ?', ['MyISAM']);
+        $connection->beginTransaction();
+        try {
+            rejected(fn () => Ledger::save($connection, 'missing-ledger-in-transaction', ['complete' => true]), 'outside an application transaction');
+            verify($connection->isTransactionActive() && !$manager->tablesExist(['itsmng_migrations']), 'Missing ledger refuses implicit-commit DDL inside application work');
+        } finally {
+            $connection->rollBack();
+        }
+        foreach ($ledgerStates as $state) {
+            Ledger::save($connection, $state['version'], json_decode($state['state'], true, flags: JSON_THROW_ON_ERROR));
+        }
+        verify($connection->fetchOne('SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', ['itsmng_migrations']) === 'InnoDB', 'Ledger creation is transactional even when the server defaults to MyISAM');
+        $connection->executeStatement('ALTER TABLE itsmng_migrations ENGINE = MyISAM');
+        rejected(fn () => Ledger::state($connection, \itsmng\Database\Migration\Baseline20261001::VERSION), 'must use InnoDB');
+        rejected(fn () => Ledger::save($connection, 'invalid-engine-write', ['complete' => true]), 'must use InnoDB');
+        rejected(fn () => (new \itsmng\Database\Migration\History())->upgrade($connection), 'must use InnoDB');
+        rejected(fn () => (new \itsmng\Database\Migration\LegacyToOrm())->apply($connection), 'must use InnoDB');
+        rejected(fn () => (new AppliancePluginImport($DB))->import(), 'must use InnoDB');
+        verify($connection->fetchAllAssociative('SELECT version, state FROM itsmng_migrations ORDER BY version') === $connection->fetchAllAssociative('SELECT version, state FROM ' . $ledgerBackup . ' ORDER BY version'), 'Existing nontransactional receipts are never trusted, written or silently repaired');
+        // This disposable ledger was copied from the preserved, validated fixture.
+        // Production repair cannot infer that its historical receipts are valid.
+        $connection->executeStatement('ALTER TABLE itsmng_migrations ENGINE = InnoDB');
+    }
     // Historical plugin input is a separate schema, never substituted for core entities.
     $type = new Table('glpi_plugin_appliances_appliancetypes');
     $type->addColumn('id', 'bigint');
@@ -338,9 +372,18 @@ try {
     foreach (array_reverse($sourceTables) as $table) {
         $manager->dropTable($table);
     }
+    if ($ledgerBackup !== null && $manager->tablesExist([$ledgerBackup])) {
+        if ($manager->tablesExist(['itsmng_migrations'])) {
+            $manager->dropTable('itsmng_migrations');
+        }
+        $manager->renameTable($ledgerBackup, 'itsmng_migrations');
+    }
+    if ($savedStorageEngine !== null) {
+        $connection->executeStatement('SET SESSION default_storage_engine = ?', [$savedStorageEngine]);
+    }
     $_SESSION = $savedSession;
     $CFG_GLPI = $savedConfig;
     $PLUGIN_HOOKS = $savedHooks;
     $pluginProperty->setValue(null, $savedPlugins);
 }
-echo $DB->getProvider() . ": canonical appliance plugin plan, non-destructive import, owned graph, lifecycle hooks, encoded profiles, audit identity adoption, atomic rollback, receipt idempotency and sequences passed.\n";
+echo $DB->getProvider() . ": canonical appliance plugin plan, non-destructive import, owned graph, lifecycle hooks, encoded profiles, audit identity adoption, transactional ledger, atomic rollback, receipt idempotency and sequences passed.\n";
