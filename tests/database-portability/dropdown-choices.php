@@ -204,6 +204,12 @@ try {
     $fixtures->create('glpi_profiles_users', ['profiles_id' => $userProfile, 'users_id' => $foreignUser, 'entities_id' => $otherEntity]);
     $users = $select('User', ['right' => 'project', 'entity_restrict' => [0, $otherEntity], 'searchText' => $prefix . '-choice-user']);
     verify(choiceIds($users) === [$allowedUser], 'User list scopes intersect current entities through owned grant selection');
+    $_SESSION['glpishowallentities'] = true;
+    $users = $select('User', ['right' => 'project', 'entity_restrict' => [0, $otherEntity], 'restrict_session_scope' => true, 'searchText' => $prefix . '-choice-user']);
+    verify(choiceIds($users) === [$allowedUser], 'Explicit component grant scope remains restrictive in all-entities mode');
+    $users = $select('User', ['right' => 'project', 'entity_restrict' => [0, $otherEntity], 'searchText' => $prefix . '-choice-user']);
+    verify($users['count'] === 2 && array_diff(choiceIds($users), [$allowedUser, $foreignUser]) === [], 'All-entities mode retains ordinary authorized broader User choices');
+    $_SESSION['glpishowallentities'] = false;
     $_SESSION['glpicondition']['dropdown-choice-user-condition'] = ['id' => $foreignUser];
     verify($select('User', ['right' => 'project', 'condition' => 'dropdown-choice-user-condition', 'searchText' => $prefix . '-choice-user'])['count'] === 0, 'Stored User conditions narrow the authoritative grant query');
     verify($select('User', ['right' => 'id', 'entity_restrict' => []])['count'] === 0, 'Empty User request scope cannot bypass restrictions through special role selection');
