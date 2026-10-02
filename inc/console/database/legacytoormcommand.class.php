@@ -6,7 +6,6 @@ namespace Glpi\Console\Database;
 
 use Glpi\Console\AbstractCommand;
 use Glpi\Console\Command\ForceNoPluginsOptionCommandInterface;
-use itsmng\Database\Migration\LegacyToOrm;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -33,14 +32,13 @@ final class LegacyToOrmCommand extends AbstractCommand implements ForceNoPlugins
     {
         $history = new \itsmng\Database\Migration\History();
         $connection = $this->db->getDoctrineConnection();
-        $output->writeln(LegacyToOrm::VERSION);
+        $output->writeln('Canonical database history');
         if ($input->getOption('apply')) {
             $history->upgrade($connection, static fn (string $message) => $output->writeln($message));
             $this->db->clearSchemaCache();
             $output->writeln('<info>Canonical database history complete.</info>');
         } else {
             $historyPlan = $history->plan($connection);
-            $plan = $historyPlan['legacy'];
             if ($historyPlan['complete']) {
                 $output->writeln('Already complete.');
             } else {
@@ -48,21 +46,21 @@ final class LegacyToOrmCommand extends AbstractCommand implements ForceNoPlugins
                     $output->writeln('Pending history: ' . $version);
                 }
                 $output->writeln('Existing baseline and seed data will be validated and preserved; default seed rows are never reinserted during adoption.');
-                foreach ($plan['identifiers'] as $operation) {
-                    $output->writeln($operation['sql'] . ';', OutputInterface::OUTPUT_RAW);
-                }
-                foreach ($historyPlan['booleans'] as $sql) {
-                    $output->writeln($sql . ';', OutputInterface::OUTPUT_RAW);
-                }
-                foreach ($plan['stages'] as $name => $stage) {
-                    $output->writeln(is_string($name) ? $name : $stage);
-                    $print = static function ($value, $key = '') use ($output): void {
-                        if (is_string($value) && preg_match('/^(?:ALTER|CREATE|DROP|UPDATE)\b/i', $value)) {
-                            $output->writeln($value . ';', OutputInterface::OUTPUT_RAW);
+                foreach ($historyPlan as $section => $plan) {
+                    if (!is_array($plan)) {
+                        continue;
+                    }
+                    $statements = [];
+                    array_walk_recursive($plan, static function ($value) use (&$statements): void {
+                        if (is_string($value) && preg_match('/^(?:ALTER|CREATE|DROP|UPDATE|INSERT|DELETE|COMMENT)\b/i', $value)) {
+                            $statements[] = $value;
                         }
-                    };
-                    if (is_array($stage)) {
-                        array_walk_recursive($stage, $print);
+                    });
+                    if ($statements) {
+                        $output->writeln('Migration plan: ' . $section);
+                        foreach ($statements as $sql) {
+                            $output->writeln($sql . ';', OutputInterface::OUTPUT_RAW);
+                        }
                     }
                 }
                 $output->writeln('Foreign keys are audited and installed after reference normalization.');

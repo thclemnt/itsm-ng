@@ -509,7 +509,8 @@ class NotificationTargetProject extends NotificationTarget
                        = count($this->data['documents']);
 
         // Items infos
-        $items = $records->matching('glpi_items_projects', ['projects_id' => $item->getField('id')], ['id ASC']);
+        $items = (new \itsmng\Database\Repository\ProjectAssetRepository(\itsmng\Database\Orm::create($DB)))
+            ->bindings((int)$item->getField('id'));
 
         $this->data['items'] = [];
         if (count($items)) {

@@ -53,7 +53,7 @@ verify(EntityRegistry::isBoolean('glpi_users', 'is_active') && EntityRegistry::i
 foreach (['glpi_savedsearches' => 'do_count', 'glpi_calendarsegments' => 'day', 'glpi_itilfollowups' => 'timeline_position', 'glpi_profilerights' => 'rights'] as $table => $column) {
     verify(!EntityRegistry::isBoolean($table, $column), 'Enums and bitmasks are not inferred as booleans: ' . $table . '.' . $column);
 }
-verify(array_sum(array_map(count(...), ForeignKeys::relations())) === 1003, 'Audited associations include normalized memberships, typed ITIL subjects, reservable assets, consumable recipients, physical placements, planning recalls, calendar objects, alerts, object lock subjects and ticket/change/problem assets');
+verify(array_sum(array_map(count(...), ForeignKeys::relations())) === 1038, 'Audited associations include normalized memberships, typed ITIL subjects, reservable assets, consumable recipients, physical placements, planning recalls, calendar objects, alerts, object lock subjects, ticket/change/problem assets and thirty-five project subjects');
 $subjectChecks = (new BaselineSchema())->toSql($DB->getDoctrineConnection()->getDatabasePlatform());
 foreach (['glpi_itilfollowups', 'glpi_itilsolutions', 'glpi_itils_projects'] as $table) {
     verify(count(array_filter($subjectChecks, static fn ($sql) => str_contains($sql, $table . '_subject_kind'))) === 1

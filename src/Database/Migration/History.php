@@ -12,14 +12,14 @@ use itsmng\Database\SequenceSynchronizer;
 /** Empty-database replay and validated adoption share one canonical history and ledger. */
 final class History
 {
-    public const VERSIONS = [Baseline20261001::VERSION, Seeds20261001::VERSION, LegacyToOrm::VERSION, Booleans20261002::VERSION];
+    public const VERSIONS = [Baseline20261001::VERSION, Seeds20261001::VERSION, LegacyToOrm::VERSION, Booleans20261002::VERSION, ProjectAssets20261003::VERSION];
 
     /** Read-only adoption preview; baseline and seed phases are inherited, not replayed. */
     public function plan(Connection $connection): array
     {
         $pending = array_values(array_filter(self::VERSIONS, static fn (string $version) => (Ledger::state($connection, $version)['complete'] ?? false) !== true));
         $booleans = (new Booleans20261002())->plan($connection);
-        return ['complete' => !$pending, 'pending' => $pending, 'legacy' => (new LegacyToOrm())->plan($connection), 'booleans' => $booleans];
+        return ['complete' => !$pending, 'pending' => $pending, 'legacy' => (new LegacyToOrm())->plan($connection), 'booleans' => $booleans, 'project_assets' => (new ProjectAssets20261003())->plan($connection)];
     }
 
     public static function isInstalling(Connection $connection): bool
@@ -28,7 +28,12 @@ final class History
         if (($baseline['origin'] ?? null) !== 'installed') {
             return false;
         }
-        foreach (self::VERSIONS as $version) {
+        if (array_key_exists('installation_complete', $baseline)) {
+            return $baseline['installation_complete'] !== true;
+        }
+        // Former installers completed these four versions. Appending a new
+        // upgrade must not turn their existing schema into an unfinished install.
+        foreach ([Baseline20261001::VERSION, Seeds20261001::VERSION, LegacyToOrm::VERSION, Booleans20261002::VERSION] as $version) {
             if ((Ledger::state($connection, $version)['complete'] ?? false) !== true) {
                 return true;
             }
@@ -78,7 +83,7 @@ final class History
             foreach ($baseline->extraSql($platform) as $sql) {
                 $connection->executeStatement($sql);
             }
-            Ledger::save($connection, Baseline20261001::VERSION, ['complete' => true, 'origin' => 'installed']);
+            Ledger::save($connection, Baseline20261001::VERSION, ['complete' => true, 'origin' => 'installed', 'installation_complete' => false]);
         };
         if ($connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
             $connection->transactional($apply);
@@ -118,8 +123,12 @@ final class History
             }
             // Validate every integer flag before MySQL adoption or any PostgreSQL DDL.
             (new Booleans20261002())->plan($connection);
+            // Unsupported plugin kinds and invalid subjects refuse before
+            // identifier widening or any other nontransactional adoption DDL.
+            (new ProjectAssets20261003())->plan($connection);
             (new LegacyToOrm())->apply($connection, $progress);
             (new Booleans20261002())->apply($connection);
+            (new ProjectAssets20261003())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('ProjectAssets20261003: ' . $phase));
             $differences = (new SchemaCheck())->differences($connection);
             if ($differences) {
                 throw new \RuntimeException("Migration history did not converge:\n" . implode("\n", $differences));
@@ -129,6 +138,11 @@ final class History
                 if (Ledger::state($connection, $version) === null) {
                     Ledger::save($connection, $version, ['complete' => true, 'origin' => 'adopted', 'data' => 'preserved']);
                 }
+            }
+            $baseline = Ledger::state($connection, Baseline20261001::VERSION);
+            if (($baseline['origin'] ?? null) === 'installed' && ($baseline['installation_complete'] ?? false) !== true) {
+                $baseline['installation_complete'] = true;
+                Ledger::save($connection, Baseline20261001::VERSION, $baseline);
             }
         });
     }

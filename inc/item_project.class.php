@@ -66,16 +66,161 @@ class Item_Project extends CommonDBRelation
 
     public function prepareInputForAdd($input)
     {
+        global $DB;
+        try {
+            $normalized = (new \itsmng\Database\Entity\ItemProject())->normalizeInput($input);
+        } catch (\InvalidArgumentException) {
+            return false;
+        }
+        $kind = $normalized['itemtype'];
+        $column = \itsmng\Database\EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'][$kind]['column'];
+        $input = $normalized + ['items_id' => $normalized[$column]];
 
         // Avoid duplicate entry
         if (
-            countElementsInTable($this->getTable(), ['projects_id' => $input['projects_id'],
-                                                     'itemtype'    => $input['itemtype'],
-                                                     'items_id'    => $input['items_id']]) > 0
+            (new \itsmng\Database\Repository\ProjectAssetRepository(\itsmng\Database\Orm::create($DB)))
+                ->hasBinding((int)($input['projects_id'] ?? 0), $kind, (int)$input['items_id'])
         ) {
             return false;
         }
         return parent::prepareInputForAdd($input);
+    }
+
+    public function prepareInputForUpdate($input)
+    {
+        $selections = \itsmng\Database\EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'];
+        if (array_intersect(array_keys($input), ['itemtype', 'items_id', ...array_column($selections, 'column')])) {
+            $input += ['itemtype' => $this->fields['itemtype']];
+            $column = $selections[$input['itemtype']]['column'] ?? null;
+            if ($column === null) {
+                return false;
+            }
+            if (!array_key_exists($column, $input) && !array_key_exists('items_id', $input)) {
+                $input['items_id'] = $this->fields['items_id'];
+            }
+            try {
+                $normalized = (new \itsmng\Database\Entity\ItemProject())->normalizeInput($input);
+            } catch (\InvalidArgumentException) {
+                return false;
+            }
+            $input = $normalized + ['items_id' => $normalized[$column]];
+        }
+        return parent::prepareInputForUpdate($input);
+    }
+
+    /** Explicit clone retargeting replaces the source's owning association as well as its legacy identity. */
+    public function clone(array $override_input = [], bool $history = true)
+    {
+        $columns = array_column(\itsmng\Database\EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'], 'column');
+        if (array_intersect(array_keys($override_input), ['itemtype', 'items_id', ...$columns])) {
+            $kind = $override_input['itemtype'] ?? $this->fields['itemtype'];
+            $selection = \itsmng\Database\EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'][$kind] ?? null;
+            $subject = $selection !== null && array_key_exists($selection['column'], $override_input)
+                ? $override_input[$selection['column']]
+                : (array_key_exists('items_id', $override_input) ? $override_input['items_id'] : $this->fields['items_id']);
+            $reference = ['itemtype' => $kind, 'items_id' => $subject] + array_intersect_key($override_input, array_flip($columns));
+            $override_input = (new \itsmng\Database\Entity\ItemProject())->normalizeInput($reference) + ['items_id' => $subject] + $override_input;
+        }
+        return parent::clone($override_input, $history);
+    }
+
+    /** Both Project roles are explicit; unrelated subject IDs never select another kind. */
+    public static function getSQLCriteriaToSearchForItem($itemtype, $items_id)
+    {
+        $selection = \itsmng\Database\EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'][$itemtype] ?? null;
+        $conditions = [];
+        if ($itemtype === Project::class) {
+            $conditions[] = ['projects_id' => $items_id];
+        }
+        if ($selection !== null) {
+            $conditions[] = [$selection['column'] => $items_id];
+        }
+        return $conditions ? ['SELECT' => 'id', 'FROM' => static::getTable(), 'WHERE' => ['OR' => $conditions]] : null;
+    }
+
+    public static function getDistinctTypes($items_id, $extra_where = [])
+    {
+        global $DB;
+        return new \itsmng\Database\RowIterator(
+            (new \itsmng\Database\Repository\ProjectAssetRepository(\itsmng\Database\Orm::create($DB)))->kinds((int)$items_id, $extra_where)
+        );
+    }
+
+    public static function getItemsAssociationRequest($itemtype, $items_id)
+    {
+        global $DB;
+        return new \itsmng\Database\RowIterator(
+            (new \itsmng\Database\Repository\ProjectAssetRepository(\itsmng\Database\Orm::create($DB)))
+                ->relationshipsForItem($itemtype, (int)$items_id)
+        );
+    }
+
+    public static function getOppositeByTypeAndID($itemtype, $items_id, &$relations_id = null)
+    {
+        $rows = static::getItemsAssociationRequest($itemtype, $items_id);
+        if (count($rows) !== 1) {
+            return false;
+        }
+        $row = $rows->next();
+        if ($row['is_1'] === $row['is_2']) {
+            return false;
+        }
+        $role = $row['is_1'] ? 2 : 1;
+        $opposite = getItemForItemtype($row['itemtype_' . $role]);
+        if (!$opposite || !$opposite->getFromDB($row['items_id_' . $role])) {
+            return false;
+        }
+        if ($relations_id !== null) {
+            $relations_id = $row['id'];
+        }
+        return $opposite;
+    }
+
+    private static function subjectCriteria(CommonDBTM $item): array
+    {
+        $criteria = $item->maybeTemplate() ? ['is_template' => false] : [];
+        if ($item->isEntityAssign()) {
+            $criteria += getEntitiesRestrictCriteria($item->getTable(), '', '', 'auto');
+        }
+        return $criteria;
+    }
+
+    public static function getTypeItems($items_id, $itemtype)
+    {
+        global $DB;
+        $item = getItemForItemtype($itemtype);
+        $rows = [];
+        if ($item && $item->canView()) {
+            $component = $item instanceof Item_Devices;
+            $rows = (new \itsmng\Database\Repository\ProjectAssetRepository(\itsmng\Database\Orm::create($DB)))
+                ->subjects((int)$items_id, $itemtype, self::subjectCriteria($item), $component ? 'itemtype' : $item::getNameField(), $component ? $itemtype::$items_id_2 : null);
+        }
+        return new \itsmng\Database\RowIterator($rows);
+    }
+
+    public static function countForMainItem(CommonDBTM $item, $extra_types_where = [])
+    {
+        global $DB;
+        if (!$item->can($item->getID(), READ)) {
+            return 0;
+        }
+        $repository = new \itsmng\Database\Repository\ProjectAssetRepository(\itsmng\Database\Orm::create($DB));
+        $count = 0;
+        foreach ($repository->kinds((int)$item->getID(), $extra_types_where) as $row) {
+            $subject = getItemForItemtype($row['itemtype']);
+            if ($subject && $subject->canView()) {
+                $count += $repository->subjectCount((int)$item->getID(), $row['itemtype'], self::subjectCriteria($subject));
+            }
+        }
+        return $count;
+    }
+
+    public static function countForItem(CommonDBTM $item)
+    {
+        global $DB;
+        $criteria = Session::isCron() ? [] : getEntitiesRestrictCriteria(Project::getTable(), '', '', 'auto');
+        return (new \itsmng\Database\Repository\ProjectAssetRepository(\itsmng\Database\Orm::create($DB)))
+            ->ownerCount($item->getType(), (int)$item->getID(), $criteria);
     }
 
 
