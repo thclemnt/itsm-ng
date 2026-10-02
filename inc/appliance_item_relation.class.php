@@ -98,6 +98,71 @@ class Appliance_Item_Relation extends CommonDBRelation
         return $this->prepareInput($input);
     }
 
+    /** Replacing a cloned subject also replaces the copied owning association. */
+    public function clone(array $override_input = [], bool $history = true)
+    {
+        $selections = \itsmng\Database\EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'];
+        $columns = array_column($selections, 'column');
+        if (array_intersect(array_keys($override_input), ['itemtype', 'items_id', ...$columns])) {
+            $kind = array_key_exists('itemtype', $override_input) ? $override_input['itemtype'] : $this->fields['itemtype'];
+            $column = $selections[$kind]['column'] ?? null;
+            $subject = $column !== null && array_key_exists($column, $override_input)
+                ? $override_input[$column]
+                : (array_key_exists('items_id', $override_input) ? $override_input['items_id'] : $this->fields['items_id']);
+            $reference = ['itemtype' => $kind, 'items_id' => $subject] + array_intersect_key($override_input, array_flip($columns));
+            $override_input = (new \itsmng\Database\Entity\ApplianceItemRelation())->normalizeInput($reference) + ['items_id' => $subject] + $override_input;
+        }
+        return parent::clone($override_input, $history);
+    }
+
+    public static function getSQLCriteriaToSearchForItem($itemtype, $items_id)
+    {
+        $selection = \itsmng\Database\EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'][$itemtype] ?? null;
+        $conditions = [];
+        if ($itemtype === static::$itemtype_1) {
+            $conditions[] = [static::$items_id_1 => $items_id];
+        }
+        if ($selection !== null) {
+            $conditions[] = [$selection['column'] => $items_id];
+        }
+        return $conditions ? ['SELECT' => 'id', 'FROM' => static::getTable(), 'WHERE' => ['OR' => $conditions]] : null;
+    }
+
+    public static function getItemsAssociationRequest($itemtype, $items_id)
+    {
+        global $DB;
+        return new \itsmng\Database\RowIterator(
+            (new \itsmng\Database\Repository\ApplianceAssetRepository(\itsmng\Database\Orm::create($DB)))->relationRelationships($itemtype, (int)$items_id)
+        );
+    }
+
+    public static function getOppositeByTypeAndID($itemtype, $items_id, &$relations_id = null)
+    {
+        $rows = static::getItemsAssociationRequest($itemtype, $items_id);
+        if (count($rows) !== 1) {
+            return false;
+        }
+        $row = $rows->next();
+        $role = $row['is_1'] ? 2 : 1;
+        $opposite = getItemForItemtype($row['itemtype_' . $role]);
+        if (!$opposite || !$opposite->getFromDB($row['items_id_' . $role])) {
+            return false;
+        }
+        if ($relations_id !== null) {
+            $relations_id = $row['id'];
+        }
+        return $opposite;
+    }
+
+    private static function subjectCriteria(CommonDBTM $item): array
+    {
+        $criteria = $item->maybeTemplate() ? ['is_template' => false] : [];
+        if ($item->isEntityAssign()) {
+            $criteria += getEntitiesRestrictCriteria($item->getTable(), '', '', 'auto');
+        }
+        return $criteria;
+    }
+
     /**
      * Prepares input (for update and add)
      *
@@ -107,6 +172,25 @@ class Appliance_Item_Relation extends CommonDBRelation
      */
     private function prepareInput($input)
     {
+        $selections = \itsmng\Database\EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'];
+        $columns = array_column($selections, 'column');
+        if ($this->isNewItem() || array_intersect(array_keys($input), ['itemtype', 'items_id', ...$columns])) {
+            if (!$this->isNewItem()) {
+                $input += ['itemtype' => $this->fields['itemtype']];
+                $selected = $selections[$input['itemtype']]['column'] ?? null;
+                if ($selected !== null && !array_key_exists($selected, $input) && !array_key_exists('items_id', $input)) {
+                    $input['items_id'] = $this->fields['items_id'];
+                }
+            }
+            try {
+                $input = (new \itsmng\Database\Entity\ApplianceItemRelation())->normalizeInput($input);
+                $column = $selections[$input['itemtype']]['column'];
+                $input['items_id'] = $input[$column];
+            } catch (\InvalidArgumentException) {
+                Session::addMessageAfterRedirect(__('An item is required'), true, ERROR);
+                return false;
+            }
+        }
         $error_detected = [];
 
         //check for requirements
@@ -124,7 +208,7 @@ class Appliance_Item_Relation extends CommonDBRelation
         }
         if (
             ($this->isNewItem() && (!isset($input[self::$items_id_1]) || empty($input[self::$items_id_1])))
-            || (isset($input[self::$items_id_1]) && empty($input[self::$items_id_1]))
+            || (array_key_exists(self::$items_id_1, $input) && empty($input[self::$items_id_1]))
         ) {
             $error_detected[] = __('An appliance item is required');
         }
@@ -145,6 +229,7 @@ class Appliance_Item_Relation extends CommonDBRelation
 
     /**
      * count number of appliance's items relations for a give item
+     * Access to the containing appliance belongs to the actual view caller.
      *
      * @param CommonDBTM $item the give item
      * @param array $extra_types_where additional criteria to pass to the count function
@@ -153,18 +238,38 @@ class Appliance_Item_Relation extends CommonDBRelation
      */
     public static function countForMainItem(CommonDBTM $item, $extra_types_where = [])
     {
+        global $DB;
+        $repository = new \itsmng\Database\Repository\ApplianceAssetRepository(\itsmng\Database\Orm::create($DB));
         $types = self::getTypes();
-        $clause = [];
-        if (count($types)) {
-            $clause = ['itemtype' => $types];
-        } else {
-            $clause = [new \QueryExpression('true = false')];
+        $count = 0;
+        foreach ($repository->relationKinds((int)$item->getID(), $extra_types_where) as $row) {
+            if (!in_array($row['itemtype'], $types, true)) {
+                continue;
+            }
+            $subject = getItemForItemtype($row['itemtype']);
+            $count += $repository->relationCount((int)$item->getID(), $row['itemtype'], self::subjectCriteria($subject));
         }
-        $extra_types_where = array_merge(
-            $extra_types_where,
-            $clause
+        return $count;
+    }
+
+    public static function getTypeItems($items_id, $itemtype)
+    {
+        global $DB;
+        $subject = getItemForItemtype($itemtype);
+        $rows = [];
+        if ($subject && $subject->canView()) {
+            $rows = (new \itsmng\Database\Repository\ApplianceAssetRepository(\itsmng\Database\Orm::create($DB)))
+                ->relations((int)$items_id, $itemtype, self::subjectCriteria($subject), $subject::getNameField());
+        }
+        return new \itsmng\Database\RowIterator($rows);
+    }
+
+    public static function getDistinctTypes($items_id, $extra_where = [])
+    {
+        global $DB;
+        return new \itsmng\Database\RowIterator(
+            (new \itsmng\Database\Repository\ApplianceAssetRepository(\itsmng\Database\Orm::create($DB)))->relationKinds((int)$items_id, $extra_where)
         );
-        return parent::countForMainItem($item, $extra_types_where);
     }
 
 
@@ -179,7 +284,13 @@ class Appliance_Item_Relation extends CommonDBRelation
     {
         global $DB;
 
-        $rows = \itsmng\Database\MappedReads::matching($DB, self::getTable(), ['appliances_items_id' => $appliances_items_id]);
+        $rows = [];
+        foreach (self::getTypes() as $kind) {
+            foreach (self::getTypeItems($appliances_items_id, $kind) as $row) {
+                $rows[$row['linkid']] = ['id' => $row['linkid'], 'itemtype' => $kind, 'items_id' => $row['id']];
+            }
+        }
+        ksort($rows);
 
         $relations = [];
         foreach ($rows as $row) {
@@ -218,12 +329,14 @@ class Appliance_Item_Relation extends CommonDBRelation
             $relations_str .= "<li>$link $del</li>";
         }
 
-        return "<ul>$relations_str</ul>
-         <span class='pointer add_relation' data-appliances-items-id='{$appliances_items_id}'>
+        $add = '';
+        if ($canedit) {
+            $add = "<span class='pointer add_relation' data-appliances-items-id='{$appliances_items_id}'>
             <i class='fa fa-plus' title='" . __('New relation') . "'></i>
             <span class='sr-only'>" . __('New relation') . "</span>
-         </span>
-      </td>";
+         </span>";
+        }
+        return "<ul>$relations_str</ul>$add";
     }
 
 

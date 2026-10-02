@@ -1055,6 +1055,13 @@ class CommonDBTM extends CommonGLPI
             (new Item_Project())->cleanDBonItemDelete($this->getType(), $this->getID());
         }
 
+        if (isset(\itsmng\Database\EntityRegistry::discriminatedReferences(Appliance_Item::getTable())['items_id']['selections'][$this->getType()])) {
+            (new Appliance_Item())->cleanDBonItemDelete($this->getType(), $this->getID());
+        }
+        if (isset(\itsmng\Database\EntityRegistry::discriminatedReferences(Appliance_Item_Relation::getTable())['items_id']['selections'][$this->getType()])) {
+            (new Appliance_Item_Relation())->cleanDBonItemDelete($this->getType(), $this->getID());
+        }
+
         // If this type have DOCUMENT, clean one associated to purged item
         if (Document::canApplyOn($this)) {
             $di = new Document_Item();

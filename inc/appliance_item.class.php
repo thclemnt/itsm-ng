@@ -127,7 +127,13 @@ class Appliance_Item extends CommonDBRelation
         }
         $entity_restrict_js = json_encode(array_values($entity_restrict));
 
-        $items = \itsmng\Database\MappedReads::matching($DB, self::getTable(), ['appliances_id' => $ID]);
+        $items = [];
+        foreach (Appliance::getTypes() as $kind) {
+            foreach (self::getTypeItems($ID, $kind) as $row) {
+                $items[$row['linkid']] = ['id' => $row['linkid'], 'itemtype' => $kind, 'items_id' => $row['id']];
+            }
+        }
+        ksort($items);
 
         Session::initNavigateListItems(
             self::getType(),
@@ -251,6 +257,7 @@ class Appliance_Item extends CommonDBRelation
                 $item->getLink(),
                 ($item->fields['serial'] ?? ""),
                 ($item->fields['otherserial'] ?? ""),
+                Appliance_Item_Relation::showListForApplianceItem($row['id'], $canedit),
             ];
             $massive_action[] = sprintf('item[%s][%s]', self::class, $row['id']);
         }
@@ -260,6 +267,7 @@ class Appliance_Item extends CommonDBRelation
             'values' => $values,
             'massive_action' => $massive_action,
         ]);
+        echo Appliance_Item_Relation::getListJSForApplianceItem($appliance, $canedit);
     }
 
     /**
@@ -381,17 +389,89 @@ class Appliance_Item extends CommonDBRelation
             'values' => $values,
             'massive_action' => $massive_action,
         ]);
+        echo Appliance_Item_Relation::getListJSForApplianceItem($item, $canedit);
     }
 
 
     public function prepareInputForAdd($input)
     {
-        return $this->prepareInput($input);
+        global $DB;
+        $input = $this->prepareInput($input);
+        if ($input !== false && (new \itsmng\Database\Repository\ApplianceAssetRepository(\itsmng\Database\Orm::create($DB)))
+            ->hasAsset((int)$input['appliances_id'], $input['itemtype'], (int)$input['items_id'])) {
+            return false;
+        }
+        return $input;
     }
 
     public function prepareInputForUpdate($input)
     {
         return $this->prepareInput($input);
+    }
+
+    /** Replacing a cloned subject also replaces the copied owning association. */
+    public function clone(array $override_input = [], bool $history = true)
+    {
+        $selections = \itsmng\Database\EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'];
+        $columns = array_column($selections, 'column');
+        if (array_intersect(array_keys($override_input), ['itemtype', 'items_id', ...$columns])) {
+            $kind = array_key_exists('itemtype', $override_input) ? $override_input['itemtype'] : $this->fields['itemtype'];
+            $column = $selections[$kind]['column'] ?? null;
+            $subject = $column !== null && array_key_exists($column, $override_input)
+                ? $override_input[$column]
+                : (array_key_exists('items_id', $override_input) ? $override_input['items_id'] : $this->fields['items_id']);
+            $reference = ['itemtype' => $kind, 'items_id' => $subject] + array_intersect_key($override_input, array_flip($columns));
+            $override_input = (new \itsmng\Database\Entity\ApplianceItem())->normalizeInput($reference) + ['items_id' => $subject] + $override_input;
+        }
+        return parent::clone($override_input, $history);
+    }
+
+    public static function getSQLCriteriaToSearchForItem($itemtype, $items_id)
+    {
+        $selection = \itsmng\Database\EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'][$itemtype] ?? null;
+        $conditions = [];
+        if ($itemtype === static::$itemtype_1) {
+            $conditions[] = [static::$items_id_1 => $items_id];
+        }
+        if ($selection !== null) {
+            $conditions[] = [$selection['column'] => $items_id];
+        }
+        return $conditions ? ['SELECT' => 'id', 'FROM' => static::getTable(), 'WHERE' => ['OR' => $conditions]] : null;
+    }
+
+    public static function getItemsAssociationRequest($itemtype, $items_id)
+    {
+        global $DB;
+        return new \itsmng\Database\RowIterator(
+            (new \itsmng\Database\Repository\ApplianceAssetRepository(\itsmng\Database\Orm::create($DB)))->assetRelationships($itemtype, (int)$items_id)
+        );
+    }
+
+    public static function getOppositeByTypeAndID($itemtype, $items_id, &$relations_id = null)
+    {
+        $rows = static::getItemsAssociationRequest($itemtype, $items_id);
+        if (count($rows) !== 1) {
+            return false;
+        }
+        $row = $rows->next();
+        $role = $row['is_1'] ? 2 : 1;
+        $opposite = getItemForItemtype($row['itemtype_' . $role]);
+        if (!$opposite || !$opposite->getFromDB($row['items_id_' . $role])) {
+            return false;
+        }
+        if ($relations_id !== null) {
+            $relations_id = $row['id'];
+        }
+        return $opposite;
+    }
+
+    private static function subjectCriteria(CommonDBTM $item): array
+    {
+        $criteria = $item->maybeTemplate() ? ['is_template' => false] : [];
+        if ($item->isEntityAssign()) {
+            $criteria += getEntitiesRestrictCriteria($item->getTable(), '', '', 'auto');
+        }
+        return $criteria;
     }
 
     /**
@@ -403,6 +483,25 @@ class Appliance_Item extends CommonDBRelation
      */
     private function prepareInput($input)
     {
+        $selections = \itsmng\Database\EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'];
+        $columns = array_column($selections, 'column');
+        if ($this->isNewItem() || array_intersect(array_keys($input), ['itemtype', 'items_id', ...$columns])) {
+            if (!$this->isNewItem()) {
+                $input += ['itemtype' => $this->fields['itemtype']];
+                $selected = $selections[$input['itemtype']]['column'] ?? null;
+                if ($selected !== null && !array_key_exists($selected, $input) && !array_key_exists('items_id', $input)) {
+                    $input['items_id'] = $this->fields['items_id'];
+                }
+            }
+            try {
+                $input = (new \itsmng\Database\Entity\ApplianceItem())->normalizeInput($input);
+                $column = $selections[$input['itemtype']]['column'];
+                $input['items_id'] = $input[$column];
+            } catch (\InvalidArgumentException) {
+                Session::addMessageAfterRedirect(__('An item is required'), true, ERROR);
+                return false;
+            }
+        }
         $error_detected = [];
 
         //check for requirements
@@ -420,7 +519,7 @@ class Appliance_Item extends CommonDBRelation
         }
         if (
             ($this->isNewItem() && (!isset($input[self::$items_id_1]) || empty($input[self::$items_id_1])))
-            || (isset($input[self::$items_id_1]) && empty($input[self::$items_id_1]))
+            || (array_key_exists(self::$items_id_1, $input) && empty($input[self::$items_id_1]))
         ) {
             $error_detected[] = __('An appliance is required');
         }
@@ -439,20 +538,61 @@ class Appliance_Item extends CommonDBRelation
         return $input;
     }
 
+    /** Count session-visible subjects; the actual tab/view caller guards appliance access. */
     public static function countForMainItem(CommonDBTM $item, $extra_types_where = [])
     {
+        global $DB;
+        $repository = new \itsmng\Database\Repository\ApplianceAssetRepository(\itsmng\Database\Orm::create($DB));
         $types = Appliance::getTypes();
-        $clause = [];
-        if (count($types)) {
-            $clause = ['itemtype' => $types];
-        } else {
-            $clause = [new \QueryExpression('true = false')];
+        $count = 0;
+        foreach ($repository->assetKinds((int)$item->getID(), $extra_types_where) as $row) {
+            if (!in_array($row['itemtype'], $types, true)) {
+                continue;
+            }
+            $subject = getItemForItemtype($row['itemtype']);
+            $count += $repository->assetCount((int)$item->getID(), $row['itemtype'], self::subjectCriteria($subject));
         }
-        $extra_types_where = array_merge(
-            $extra_types_where,
-            $clause
+        return $count;
+    }
+
+    public static function getTypeItems($items_id, $itemtype)
+    {
+        global $DB;
+        $subject = getItemForItemtype($itemtype);
+        $rows = [];
+        if ($subject && $subject->canView()) {
+            $rows = (new \itsmng\Database\Repository\ApplianceAssetRepository(\itsmng\Database\Orm::create($DB)))
+                ->assets((int)$items_id, $itemtype, self::subjectCriteria($subject), $subject::getNameField());
+        }
+        return new \itsmng\Database\RowIterator($rows);
+    }
+
+    public static function getDistinctTypes($items_id, $extra_where = [])
+    {
+        global $DB;
+        return new \itsmng\Database\RowIterator(
+            (new \itsmng\Database\Repository\ApplianceAssetRepository(\itsmng\Database\Orm::create($DB)))->assetKinds((int)$items_id, $extra_where)
         );
-        return parent::countForMainItem($item, $extra_types_where);
+    }
+
+
+
+    public static function getListForItem(CommonDBTM $item)
+    {
+        global $DB;
+        $criteria = Session::isCron() ? [] : getEntitiesRestrictCriteria(Appliance::getTable(), '', '', 'auto');
+        return new \itsmng\Database\RowIterator(
+            (new \itsmng\Database\Repository\ApplianceAssetRepository(\itsmng\Database\Orm::create($DB)))
+                ->owners($item->getType(), (int)$item->getID(), $criteria)
+        );
+    }
+
+    public static function countForItem(CommonDBTM $item)
+    {
+        global $DB;
+        $criteria = Session::isCron() ? [] : getEntitiesRestrictCriteria(Appliance::getTable(), '', '', 'auto');
+        return (new \itsmng\Database\Repository\ApplianceAssetRepository(\itsmng\Database\Orm::create($DB)))
+            ->ownerCount($item->getType(), (int)$item->getID(), $criteria);
     }
 
     public function getForbiddenStandardMassiveAction()

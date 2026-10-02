@@ -111,8 +111,9 @@ final class RelationshipLifecycleRepository
         }
         // A link without its own entity is scoped by each other owning end.
         foreach ($metadata->associationMappings as $peer => $mapping) {
-            if (!$mapping->isToOneOwningSide() || $mapping->targetEntity === $target
-                || (new \ReflectionProperty($metadata->name, $peer))->getAttributes(ApplicationManaged::class)) {
+            // ApplicationManaged controls replacement/purge ownership. A
+            // read-only recursion check must still inspect that real peer.
+            if (!$mapping->isToOneOwningSide() || $mapping->targetEntity === $target) {
                 continue;
             }
             $peerOwner = $this->owner($this->em->getClassMetadata($mapping->targetEntity));
