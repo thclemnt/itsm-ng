@@ -92,7 +92,14 @@ try {
     $table->addColumn('id', 'integer', ['autoincrement' => true]);
     $table->addColumn('parent_id', 'integer', ['notnull' => false]);
     $table->addColumn('parent_key', 'bigint', ['notnull' => false, 'columnDefinition' => 'BIGINT GENERATED ALWAYS AS (COALESCE(parent_id, 0)) STORED']);
-    $table->addColumn('legacy_id', 'integer', ['notnull' => false, 'columnDefinition' => 'INTEGER GENERATED ALWAYS AS (COALESCE(parent_id, 0)) STORED']);
+    $comment = "Legacy projection O'Reilly 日本語";
+    $declaration = 'INTEGER GENERATED ALWAYS AS (COALESCE(parent_id, 0)) STORED';
+    if ($platform instanceof PostgreSQLPlatform) {
+        $declaration .= ' NOT NULL';
+    } else {
+        $declaration .= ' ' . $platform->getInlineColumnCommentSQL($comment);
+    }
+    $table->addColumn('legacy_id', 'integer', ['notnull' => $platform instanceof PostgreSQLPlatform, 'columnDefinition' => $declaration, 'comment' => $comment]);
     $table->setPrimaryKey(['id']);
     $table->addUniqueIndex(['parent_key'], 'port_master_unique');
     $table->addIndex(['legacy_id'], 'port_master_legacy');
@@ -128,13 +135,26 @@ try {
     verify(Type::lookupName($manager->introspectTable($parent)->getColumn('id')->getType()) === 'integer', 'Planning leaves schema untouched');
     // Simulate process death after a DDL commit but before saving its checkpoint.
     WideIdentifiers::execute($connection, $plan[0]);
-    $connection->update(LegacyToOrm::LEDGER, ['state' => json_encode(['complete' => false, 'identifiers' => $plan, 'next' => 0], JSON_THROW_ON_ERROR)], ['version' => LegacyToOrm::VERSION]);
+    WideIdentifiers::execute($connection, $plan[0]);
+    $interrupted = 0;
+    foreach ($plan as $offset => $operation) {
+        WideIdentifiers::execute($connection, $operation);
+        if ($operation['kind'] === 'add_column' && $operation['name'] === 'legacy_id') {
+            $interrupted = $offset;
+            break; // A PostgreSQL COMMENT has not run and CREATE has not been checkpointed.
+        }
+    }
+    verify($interrupted > 0, 'Fixture interrupts after generated identity recreation');
+    $connection->update(LegacyToOrm::LEDGER, ['state' => json_encode(['complete' => false, 'identifiers' => $plan, 'next' => $interrupted], JSON_THROW_ON_ERROR)], ['version' => LegacyToOrm::VERSION]);
     $migration->apply($connection);
     verify($migration->plan($connection)['complete'], 'Master resumes interrupted journal and records completion');
     verify($manager->introspectTable($partial)->hasForeignKey('port_master_support_fk') && $manager->introspectTable($partial)->hasIndex('port_master_support'), 'FK supporting index preserved when only the child ID is widened');
     verify($wide->plan($connection) === [], 'Widening converges and reruns without DDL');
     verify($connection->fetchOne('SELECT name FROM ' . $parent . ' WHERE id = 41') === 'keep populated identity', 'Parent data preserved');
     verify((int)$connection->fetchOne('SELECT legacy_id FROM ' . $child . ' WHERE id = 51') === 41, 'Generated identity and indexes preserved');
+    $restored = $manager->introspectTable($child)->getColumn('legacy_id');
+    verify($restored->getComment() === $comment, 'Generated identity comment survives interrupted widening and replay');
+    verify($restored->getNotnull() === ($platform instanceof PostgreSQLPlatform), 'Generated identity nullability survives interrupted widening');
     verify($manager->introspectTable($child)->getForeignKey('port_master_parent_fk')->onDelete() === 'CASCADE', 'Custom FK action preserved');
     if ($platform instanceof \Doctrine\DBAL\Platforms\MariaDBPlatform) {
         verify($connection->fetchOne('SELECT level FROM information_schema.check_constraints WHERE constraint_schema = DATABASE() AND table_name = ? AND constraint_name = ?', [$child, 'payload']) === 'Column', 'Inline JSON validity CHECK survives generated-column widening');

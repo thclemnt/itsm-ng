@@ -66,13 +66,21 @@ try {
     }
     $values = ["O'Reilly", "two  spaces", "C:\\new\\test", "x'); DROP TABLE glpi_users; --", 'é € 日本語', "a\nb", 'GROUP_CONCAT(`name`) ? # --'];
     foreach ($values as $value) {
-        check((bool)$DB->insert($name, ['name' => $DB->escape($value)]), 'Legacy insert.');
+        check($DB->insert($name, ['name' => $DB->escape($value)]) === true, 'Legacy insert returns command success.');
         $id = $DB->insertId();
         check(is_int($id) && $id > 0, 'Generated IDs must be native positive integers.');
         $row = $DB->request(['FROM' => $name, 'WHERE' => ['id' => $id]])->next();
         check($row['name'] === $value, 'Escaped values must round-trip byte-for-byte.');
         check($row['optional'] === null, 'NULL round-trip.');
     }
+    check($DB->update($name, ['flag' => 1], ['id' => $id]) === true && $DB->affectedRows() === 1, 'Legacy update returns command success and retains affected rows.');
+    check($DB->delete($name, ['id' => -1]) === true && $DB->affectedRows() === 0, 'A successful empty delete returns true with zero affected rows.');
+    if ($DB->getProvider() === 'pgsql') {
+        $result = $DB->query('UPDATE ' . $platform->quoteIdentifier($name) . ' SET flag = 2 WHERE id = ' . $id . ' RETURNING flag');
+        check($DB->fetchAssoc($result) === ['flag' => 2], 'Commands with RETURNING retain their row set.');
+        $DB->freeResult($result);
+    }
+    check($DB->update($name, ['flag' => 0], ['id' => $id]) === true, 'Restore flag fixture before predicate selection.');
     $result = $DB->query('SELECT 1 AS first_column, 2 AS second_column WHERE 1 = 0');
     check($DB->numrows($result) === 0 && $DB->numFields($result) === 2, 'Empty result retains column count.');
     check($DB->fieldName($result, 0) === 'first_column' && $DB->fieldName($result, 1) === 'second_column', 'Empty result retains column names.');

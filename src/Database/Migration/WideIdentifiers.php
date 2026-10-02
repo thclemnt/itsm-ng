@@ -142,7 +142,16 @@ final class WideIdentifiers
                 $type = in_array($column->getName(), $scope[$name] ?? [], true) ? 'BIGINT' : $column->getType()->getSQLDeclaration($data, $platform);
                 // Generated identity columns are signed, including COALESCE keys for unsigned legacy IDs.
                 $data['columnDefinition'] = trim($type) . ' GENERATED ALWAYS AS (' . $row['generation_expression'] . ') STORED';
+                if ($column->getNotnull()) {
+                    $data['columnDefinition'] .= ' NOT NULL';
+                }
+                if ($platform->supportsInlineColumnComments() && $column->getComment() !== '') {
+                    $data['columnDefinition'] .= ' ' . $platform->getInlineColumnCommentSQL($column->getComment());
+                }
                 $restoreGenerated[] = $operation('ALTER TABLE ' . $quote($name) . ' ADD ' . $platform->getColumnDeclarationSQL($quote($column->getName()), $data), 'add_column', $name, $column->getName());
+                if (!$platform->supportsInlineColumnComments() && $column->getComment() !== '') {
+                    $restoreGenerated[] = $operation($platform->getCommentOnColumnSQL($quote($name), $quote($column->getName()), $column->getComment()));
+                }
                 foreach ($before->getIndexes() as $index) {
                     if (in_array($column->getName(), $index->getColumns(), true)) {
                         $before->dropIndex($index->getName());

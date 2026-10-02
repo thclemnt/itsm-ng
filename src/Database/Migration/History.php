@@ -7,6 +7,7 @@ namespace itsmng\Database\Migration;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use itsmng\Database\SchemaCheck;
+use itsmng\Database\SequenceSynchronizer;
 
 /** Empty-database replay and validated adoption share one canonical history and ledger. */
 final class History
@@ -123,6 +124,7 @@ final class History
             if ($differences) {
                 throw new \RuntimeException("Migration history did not converge:\n" . implode("\n", $differences));
             }
+            SequenceSynchronizer::synchronize($connection);
             foreach ([Baseline20261001::VERSION, Seeds20261001::VERSION] as $version) {
                 if (Ledger::state($connection, $version) === null) {
                     Ledger::save($connection, $version, ['complete' => true, 'origin' => 'adopted', 'data' => 'preserved']);

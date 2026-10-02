@@ -680,6 +680,10 @@ function loadDataset()
         }
         Search::$search = [];
         echo "\nDone\n\n";
+        // The IMAP fixture imports ticket IDs 100/101 explicitly. PostgreSQL
+        // sequences do not advance on assigned-ID inserts; synchronize once
+        // after loading the dataset, before marking the import complete.
+        $DB->synchronizeSequences();
         Config::setConfigurationValues('phpunit', ['dataset' => $data['_version']]);
     }
     if (class_exists('SpecialStatus')) {

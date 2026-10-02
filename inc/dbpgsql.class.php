@@ -110,7 +110,14 @@ class DBpgsql extends DBAdapter
 
     public function query($query)
     {
-        return $this->queryParams(LegacySql::postgres($query), []);
+        $result = $this->queryParams(LegacySql::postgres($query), []);
+        // The public adapter contract returns true for commands and a result
+        // only for row sets, including INSERT/UPDATE ... RETURNING.
+        if ($result !== false && pg_result_status($result) === PGSQL_COMMAND_OK) {
+            $this->freeResult($result);
+            return true;
+        }
+        return $result;
     }
 
     /** Execute native PostgreSQL SQL with separate values, without legacy escaping. */
@@ -280,8 +287,9 @@ class DBpgsql extends DBAdapter
         $result = $this->query($sql . ($hasId ? ' RETURNING "id"' : ''));
         if ($result && $hasId) {
             $this->lastId = $this->fetchRow($result)[0];
+            $this->freeResult($result);
         }
-        return $result;
+        return $result !== false;
     }
 
     public function insertOrDie($table, $params, $message = '')
@@ -381,20 +389,7 @@ SQL, [$this->dbschema, $table]);
 
     public function synchronizeSequences(): void
     {
-        foreach ($this->listTables() as $row) {
-            $table = $row['TABLE_NAME'];
-            foreach ($this->listFields($table, false) as $field) {
-                if ($field['Extra'] !== 'auto_increment') {
-                    continue;
-                }
-                $qualified = static::quoteName($this->dbschema) . '.' . static::quoteName($table);
-                $column = static::quoteName($field['Field']);
-                $result = $this->queryParams("SELECT setval(pg_get_serial_sequence($1, $2), GREATEST(COALESCE(MAX($column), 0), 1), COALESCE(MAX($column), 0) >= 1) FROM $qualified", [$qualified, $field['Field']]);
-                if (!$result) {
-                    throw new RuntimeException($this->error());
-                }
-            }
-        }
+        \itsmng\Database\SequenceSynchronizer::synchronize($this->getDoctrineConnection());
     }
 
     public function getVersion()
