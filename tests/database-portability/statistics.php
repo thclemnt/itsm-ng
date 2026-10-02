@@ -51,7 +51,7 @@ try {
     $solution = $create('glpi_solutiontypes', ['name' => 'Statistics solution']);
     $request = $create('glpi_requesttypes', ['name' => 'Statistics request']);
     $computerType = $create('glpi_computertypes', ['name' => 'Statistics computer type']);
-    $os = $create('glpi_operatingsystems', ['name' => 'Statistics OS']);
+    $os = $create('glpi_operatingsystems', ['id' => 4294972301, 'name' => 'Statistics OS']);
     $device = $create('glpi_deviceprocessors', ['designation' => 'Statistics processor']);
     $computers = [];
     foreach ([false, false, true] as $template) {

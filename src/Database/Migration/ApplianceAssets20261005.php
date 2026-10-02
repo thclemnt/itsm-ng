@@ -19,6 +19,11 @@ final class ApplianceAssets20261005 extends StagedTypedItemMigration
         return 'glpi_appliances_items';
     }
 
+    protected function unsupportedKindGuidance(): string
+    {
+        return 'Resolve these links before adoption. Legacy appliance plugin import requires a compatible historical application and legacy MySQL schema before switching to modernized source and db:migrate. A canonical ORM importer requires completed migration history and cannot be used to bypass this legacy-data preflight.';
+    }
+
     protected static function targets(): array
     {
         return [

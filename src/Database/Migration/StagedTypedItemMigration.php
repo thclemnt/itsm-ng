@@ -15,6 +15,11 @@ abstract class StagedTypedItemMigration extends TypedItemMigration
 
     abstract protected function table(): string;
 
+    protected function unsupportedKindGuidance(): string
+    {
+        return 'Resolve unsupported subject links in the source installation before adoption. A canonical importer requires completed migration history and cannot bypass this legacy-data preflight.';
+    }
+
     final protected function tables(): array
     {
         return [$this->table()];
@@ -31,7 +36,7 @@ abstract class StagedTypedItemMigration extends TypedItemMigration
             . ' FROM ' . $this->table() . ' WHERE itemtype IS NOT NULL AND itemtype NOT IN (?) LIMIT 5', [array_keys(static::targets())], [\Doctrine\DBAL\ArrayParameterType::STRING]);
         if ($unsupported) {
             throw new \RuntimeException('Unsupported typed relationship kinds in ' . $this->table() . '; samples: ' . json_encode($unsupported, JSON_THROW_ON_ERROR)
-                . '. Resolve these links before adoption. Legacy appliance plugin import requires a compatible historical application and legacy MySQL schema before switching to modernized source and db:migrate. A canonical ORM importer requires completed migration history and cannot be used to bypass this legacy-data preflight.');
+                . '. ' . $this->unsupportedKindGuidance());
         }
         $entry = parent::plan($connection)[$this->table()];
         // A matching name does not prove the constraint's expression or MySQL

@@ -41,6 +41,8 @@ class Item_OperatingSystem extends CommonDBRelation
     public static $itemtype_2 = 'itemtype';
     public static $items_id_2 = 'items_id';
     public static $checkItem_1_Rights = self::DONT_CHECK_ITEM_RIGHTS;
+    // Ignoring dropdown rights must not turn READ on the owning asset into UPDATE.
+    public static $checkAlwaysBothItems = true;
 
 
     public static function getTypeName($nb = 0)
@@ -81,8 +83,8 @@ class Item_OperatingSystem extends CommonDBRelation
     {
         global $DB;
 
-        return (new \itsmng\Database\Repository\InventoryRepository(\itsmng\Database\Orm::create($DB)))
-            ->operatingSystems($item->getType(), (int)$item->getID(), (string)($sort ?? 'glpi_items_operatingsystems.id'), (string)($order ?? 'ASC'));
+        return (new \itsmng\Database\Repository\OperatingSystemAssignmentRepository(\itsmng\Database\Orm::create($DB)))
+            ->forSubject($item->getType(), (int)$item->getID(), (string)($sort ?? 'glpi_items_operatingsystems.id'), (string)($order ?? 'ASC'));
     }
 
     /**
@@ -381,10 +383,7 @@ class Item_OperatingSystem extends CommonDBRelation
         $rows = (new self())->find(['itemtype' => $itemtype, 'items_id' => $oldid]);
         foreach ($rows as $row) {
             $input             = Toolbox::addslashes_deep($row);
-            $input['items_id'] = $newid;
-            if (!empty($newitemtype)) {
-                $input['itemtype'] = $newitemtype;
-            }
+            $input = \itsmng\Database\Entity\ItemOperatingSystem::withReference($input, $newitemtype ?: $itemtype, (int)$newid);
             unset($input["id"]);
             unset($input["date_mod"]);
             unset($input["date_creation"]);
@@ -727,12 +726,85 @@ class Item_OperatingSystem extends CommonDBRelation
         parent::processMassiveActionsForOneItemtype($ma, $item, $ids);
     }
 
+    /** Derive the selected subject and entity cache from its actual persisted owner. */
+    private function prepareSubjectInput($input, bool $updating = false)
+    {
+        global $DB;
+
+        if (!is_array($input)) {
+            return false;
+        }
+        $selections = \itsmng\Database\EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'];
+        $kind = array_key_exists('itemtype', $input) ? $input['itemtype'] : ($updating ? ($this->fields['itemtype'] ?? null) : null);
+        if (!is_string($kind) || !isset($selections[$kind])) {
+            return false;
+        }
+        $column = $selections[$kind]['column'];
+        $input['itemtype'] = $kind;
+        if (!array_key_exists($column, $input) && !array_key_exists('items_id', $input)) {
+            $input['items_id'] = $updating ? ($this->fields['items_id'] ?? null) : null;
+        }
+        try {
+            $input = (new \itsmng\Database\Entity\ItemOperatingSystem())->normalizeInput($input);
+        } catch (\InvalidArgumentException) {
+            return false;
+        }
+        $input['items_id'] = $input[$column];
+        $item = getItemForItemtype($kind);
+        if (!$item || !$item->getFromDB($input['items_id'])) {
+            return false;
+        }
+        // This cache supports CommonDBRelation authorization. It cannot be
+        // replaced independently of the asset that owns the assignment.
+        $input['entities_id'] = $item->getEntityID();
+        $input['is_recursive'] = (int)$item->isRecursive();
+        $components = [];
+        foreach (['operatingsystems_id', 'operatingsystemarchitectures_id'] as $component) {
+            $components[$component] = array_key_exists($component, $input) ? $input[$component] : ($updating ? ($this->fields[$component] ?? null) : null);
+        }
+        $components = \itsmng\Database\ReferenceValues::normalizeLegacy(static::getTable(), $components);
+        $repository = new \itsmng\Database\Repository\OperatingSystemAssignmentRepository(\itsmng\Database\Orm::create($DB));
+        if ($repository->hasAssignment(
+            $kind,
+            (int)$input['items_id'],
+            $components['operatingsystems_id'] === null ? null : (int)$components['operatingsystems_id'],
+            $components['operatingsystemarchitectures_id'] === null ? null : (int)$components['operatingsystemarchitectures_id'],
+            $updating ? (int)$this->getID() : null
+        )) {
+            Session::addMessageAfterRedirect(__('An operating system with this architecture is already assigned to this item.'), false, ERROR);
+            return false;
+        }
+        return $input;
+    }
+
     public function prepareInputForAdd($input)
     {
-        $item = getItemForItemtype($input['itemtype']);
-        $item->getFromDB($input['items_id']);
-        $input['entities_id'] = $item->fields['entities_id'];
-        $input['is_recursive'] = $item->fields['is_recursive'];
-        return $input;
+        $input = $this->prepareSubjectInput($input);
+        return $input === false ? false : parent::prepareInputForAdd($input);
+    }
+
+    public function prepareInputForUpdate($input)
+    {
+        $input = $this->prepareSubjectInput($input, true);
+        // Canonical subject changes must also reach existing parent-right and
+        // history checks through their derived legacy identity.
+        return $input === false ? false : parent::prepareInputForUpdate($input);
+    }
+
+    /** Copying a relation to another owner replaces all copied subject associations. */
+    public function clone(array $override_input = [], bool $history = true)
+    {
+        $selections = \itsmng\Database\EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'];
+        $columns = array_column($selections, 'column');
+        if (array_intersect(array_keys($override_input), ['itemtype', 'items_id', ...$columns])) {
+            $kind = array_key_exists('itemtype', $override_input) ? $override_input['itemtype'] : $this->fields['itemtype'];
+            $column = $selections[$kind]['column'] ?? null;
+            $subject = $column !== null && array_key_exists($column, $override_input)
+                ? $override_input[$column]
+                : (array_key_exists('items_id', $override_input) ? $override_input['items_id'] : $this->fields['items_id']);
+            $reference = ['itemtype' => $kind, 'items_id' => $subject] + array_intersect_key($override_input, array_flip($columns));
+            $override_input = (new \itsmng\Database\Entity\ItemOperatingSystem())->normalizeInput($reference) + ['items_id' => $subject] + $override_input;
+        }
+        return parent::clone($override_input, $history);
     }
 }

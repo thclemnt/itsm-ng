@@ -9,37 +9,11 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Entity;
 
-/** Inventory projections keep polymorphic item identity separate from dropdown associations. */
+/** Remaining disk and virtual-machine inventory projections. */
 final class InventoryRepository
 {
     public function __construct(private EntityManager $em)
     {
-    }
-
-    public function operatingSystems(string $itemtype, int $id, string $sort = 'glpi_items_operatingsystems.id', string $order = 'ASC'): array
-    {
-        $columns = [
-            'glpi_items_operatingsystems.id' => 'r.id', 'id' => 'r.id',
-            '0' => 'os.name', 'name' => 'os.name', 'glpi_operatingsystems.name' => 'os.name',
-            '1' => 'v.name', 'version' => 'v.name', 'glpi_operatingsystemversions.name' => 'v.name',
-            '2' => 'a.name', 'architecture' => 'a.name', 'glpi_operatingsystemarchitectures.name' => 'a.name',
-            '3' => 'sp.name', 'servicepack' => 'sp.name', 'glpi_operatingsystemservicepacks.name' => 'sp.name',
-        ];
-        $field = $columns[$sort] ?? throw new \InvalidArgumentException('Unsupported OS sort field');
-        $direction = strtoupper($order);
-        if (!in_array($direction, ['ASC', 'DESC'], true)) {
-            throw new \InvalidArgumentException('Unsupported OS sort direction');
-        }
-        return $this->em->createQueryBuilder()
-            ->select('r.id AS assocID, os.name AS name, v.name AS version, a.name AS architecture, sp.name AS servicepack')
-            ->addSelect('CASE WHEN ' . $field . ' IS NULL THEN 0 ELSE 1 END AS HIDDEN missing')
-            ->from(Entity\ItemOperatingSystem::class, 'r')
-            ->leftJoin('r.operatingsystems', 'os')->leftJoin('r.operatingsystemversions', 'v')
-            ->leftJoin('r.operatingsystemarchitectures', 'a')->leftJoin('r.operatingsystemservicepacks', 'sp')
-            ->where('r.itemtype = :type AND r.items_id = :id')
-            ->setParameter('type', $itemtype, Types::STRING)->setParameter('id', $id, Types::INTEGER)
-            ->orderBy('missing', $direction)->addOrderBy($field, $direction)->addOrderBy('r.id', $direction)
-            ->getQuery()->getScalarResult();
     }
 
     public function disks(string $itemtype, int $id): array

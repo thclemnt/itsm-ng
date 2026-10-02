@@ -181,8 +181,8 @@ final class ITILStatisticsRepository
             $class = EntityRegistry::tables()[$table] ?? throw new \InvalidArgumentException('Unmapped statistics component');
             $association = $this->association($class, $column);
             $subquery->join($class, 'd', 'WITH', "d.items_id = c.id AND d.itemtype = 'Computer'")->andWhere('IDENTITY(d.' . $association . ') = :classification');
-        } elseif (str_starts_with($column, 'operatingsystem')) {
-            $subquery->join(Entity\ItemOperatingSystem::class, 'o', 'WITH', "o.items_id = c.id AND o.itemtype = 'Computer'");
+        } elseif (EntityRegistry::hasPolicy('glpi_items_operatingsystems', $column, ReferenceKind::EmptySelection)) {
+            $subquery->resetDQLPart('from')->from(Entity\ItemOperatingSystem::class, 'o')->join('o.computer', 'c');
             $association = $this->association(Entity\ItemOperatingSystem::class, $column);
             $empty = $value === 0 && EntityRegistry::hasPolicy('glpi_items_operatingsystems', $column, ReferenceKind::EmptySelection);
             $subquery->andWhere('IDENTITY(o.' . $association . ')' . ($empty ? ' IS NULL' : ' = :classification'));
@@ -194,7 +194,7 @@ final class ITILStatisticsRepository
         $query->andWhere('EXISTS (SELECT i.id FROM ' . $definition[6] . ' i WHERE IDENTITY(i.' . $definition[1] . ") = r.id AND i.itemtype = 'Computer' AND i.items_id IN (" . $subquery->getDQL() . '))')
             ->setParameter('template', false, Types::BOOLEAN);
         if (!$empty) {
-            $query->setParameter('classification', $value, Types::INTEGER);
+            $query->setParameter('classification', $value, Types::BIGINT);
         }
     }
 

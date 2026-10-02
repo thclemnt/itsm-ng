@@ -70,9 +70,8 @@ final class AssetRepository
     {
         $query = $this->em->createQueryBuilder()->select('COUNT(os.id) AS count', 't.name AS name')
             ->from(Entity\ItemOperatingSystem::class, 'os')
-            ->innerJoin(Entity\Computer::class, 'a', 'WITH', 'a.id = os.items_id AND os.itemtype = :computer')
+            ->innerJoin('os.computer', 'a')
             ->leftJoin('os.operatingsystems', 't')
-            ->setParameter('computer', 'Computer', Types::STRING)
             ->where('os.is_deleted = :false')->groupBy('t.name')->orderBy('t.name');
         $this->visible($query, Entity\Computer::class, $entities);
         return $query->getQuery()->getScalarResult();

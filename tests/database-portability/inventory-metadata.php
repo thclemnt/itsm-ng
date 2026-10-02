@@ -73,7 +73,7 @@ try {
     $version = $fixtures->create('glpi_operatingsystemversions', ['name' => 'Version B']);
     $first = $fixtures->create('glpi_items_operatingsystems', ['items_id' => $computerId, 'itemtype' => 'Computer', 'operatingsystems_id' => $os, 'operatingsystemversions_id' => $version]);
     $second = $fixtures->create('glpi_items_operatingsystems', ['items_id' => $computerId, 'itemtype' => 'Computer', 'is_deleted' => true]);
-    $fixtures->create('glpi_items_operatingsystems', ['items_id' => $computerId, 'itemtype' => 'Printer', 'operatingsystems_id' => $os]);
+    $fixtures->create('glpi_items_operatingsystems', ['items_id' => $fixtures->create('glpi_printers'), 'itemtype' => 'Printer', 'operatingsystems_id' => $os]);
     $connection->beginTransaction();
     try {
         $rejected = false;
@@ -168,9 +168,10 @@ try {
     }
     $index = \itsmng\Database\Migration\InventoryUniqueness::indexName($platform);
     $connection->executeStatement($platform->getDropIndexSQL($index, 'glpi_items_operatingsystems'));
+    $connection->insert('glpi_computers', ['id' => 2147483500, 'name' => 'Valid inventory duplicate owner']);
     try {
         for ($i = 0; $i < 2; ++$i) {
-            $connection->insert('glpi_items_operatingsystems', ['items_id' => 2147483500, 'itemtype' => 'Computer']);
+            $connection->insert('glpi_items_operatingsystems', ['computers_id' => 2147483500, 'itemtype' => 'Computer']);
         }
         $rejected = false;
         try {
@@ -181,6 +182,7 @@ try {
         verify($rejected && $connection->createSchemaManager()->listTableColumns('glpi_clusters')['autoupdatesystems_id']->getNotnull(), 'Duplicate audit precedes nullable DDL');
     } finally {
         $connection->delete('glpi_items_operatingsystems', ['items_id' => 2147483500, 'itemtype' => 'Computer']);
+        $connection->delete('glpi_computers', ['id' => 2147483500]);
     }
     $legacyId = (int)$connection->fetchOne('SELECT COALESCE(MAX(id), 0) + 100 FROM glpi_computers');
     $connection->insert('glpi_computers', ['id' => $legacyId, 'name' => 'Legacy inventory metadata']);

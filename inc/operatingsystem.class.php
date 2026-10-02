@@ -45,4 +45,20 @@ class OperatingSystem extends CommonDropdown
     {
         return _n('Operating system', 'Operating systems', $nb);
     }
+
+    public function pre_deleteItem()
+    {
+        global $DB;
+
+        if (!parent::pre_deleteItem()) {
+            return false;
+        }
+        $replacement = \itsmng\Database\ReferenceValues::normalizeLegacy('glpi_items_operatingsystems', ['operatingsystems_id' => $this->input['_replace_by'] ?? 0])['operatingsystems_id'];
+        $assignments = new \itsmng\Database\Repository\OperatingSystemAssignmentRepository(\itsmng\Database\Orm::create($DB));
+        if ($assignments->wouldMergeOperatingSystems((int)$this->getID(), $replacement === null ? null : (int)$replacement)) {
+            Session::addMessageAfterRedirect(__('Cannot remove this operating system: it would merge distinct inventory assignments. Choose a different replacement.'), false, ERROR);
+            return false;
+        }
+        return true;
+    }
 }

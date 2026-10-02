@@ -40,12 +40,19 @@ final class InventoryUniqueness
     }
 
 
-    public function plan(Connection $connection): array
+    public function assertUniqueAssignments(Connection $connection, string $identity = 'items_id'): void
     {
-        $duplicates = $connection->fetchAllAssociative('SELECT items_id, itemtype, COALESCE(operatingsystems_id, 0) AS os, COALESCE(operatingsystemarchitectures_id, 0) AS architecture, COUNT(*) AS duplicates FROM glpi_items_operatingsystems WHERE itemtype IS NOT NULL GROUP BY items_id, itemtype, COALESCE(operatingsystems_id, 0), COALESCE(operatingsystemarchitectures_id, 0) HAVING COUNT(*) > 1');
+        // The frozen owner expression also audits recoverable schemas whose
+        // compatibility column is absent. It never follows runtime metadata.
+        $duplicates = $connection->fetchAllAssociative('SELECT ' . $identity . ' AS items_id, itemtype, COALESCE(operatingsystems_id, 0) AS os, COALESCE(operatingsystemarchitectures_id, 0) AS architecture, COUNT(*) AS duplicates FROM glpi_items_operatingsystems WHERE itemtype IS NOT NULL GROUP BY ' . $identity . ', itemtype, COALESCE(operatingsystems_id, 0), COALESCE(operatingsystemarchitectures_id, 0) HAVING COUNT(*) > 1');
         if ($duplicates) {
             throw new \RuntimeException('Duplicate OS/architecture assignments: ' . json_encode($duplicates));
         }
+    }
+
+    public function plan(Connection $connection): array
+    {
+        $this->assertUniqueAssignments($connection);
         $manager = $connection->createSchemaManager();
         $before = $manager->introspectTable('glpi_items_operatingsystems');
         $after = clone $before;

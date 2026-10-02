@@ -4957,3 +4957,58 @@ contracts. Unmodified Update/GLPIKey checks pass 5/5 methods and 52 assertions o
 each provider, without void/skipped methods. Full-suite integration and browser,
 remote CI and live replica evidence remain separate; see the durable handoff for
 commands, logs and remaining work.
+
+## Operating-system assignment ownership (2026-10-02)
+
+`ItemOperatingSystem` owns one persisted Computer, Monitor, NetworkEquipment,
+Peripheral, Phone or Printer through six property-local typed associations.
+`items_id` is a generated read-only compatibility projection; discriminator
+constraints reject missing, zero, unknown, wrong and multiple subjects. Six optional
+OS component roles and entity scope retain independent associations. The existing
+COALESCE OS/architecture uniqueness keys include deleted/dynamic inventory history;
+assignment identity and license data are never consolidated implicitly.
+
+The appended frozen `20261006_operating_system_subjects` stage uses the canonical
+history and ledger, audits invalid subjects and duplicates before adoption DDL,
+preserves native comments and indexes, and resumes committed MySQL DDL phases.
+Current entity edits do not rewrite the baseline or earlier historical snapshots.
+Public assignment writes normalize subjects only after their actual parent exists,
+derive entity/recursion caches from that parent, and preserve explicit NULL versus
+absent component updates. Cloning replaces copied subject columns and keeps each
+assignment/license/history. OS relation permissions require UPDATE on the owning
+asset; ignoring dropdown rights no longer grants editing with asset READ alone.
+
+`OperatingSystemAssignmentRepository` supplies actual item inventory labels,
+duplicate checks and component-removal decisions using owning associations.
+OperatingSystem/Architecture deletion hooks refuse changes that would merge distinct
+licensed assignments, including deleted history, and direct users to another
+replacement. Native uniqueness remains authoritative for concurrent writes. The
+shared atomic lifecycle protects races and plugin side effects: the real purge
+contract verifies rollback after an earlier child update, both a later hook veto
+and a separately committed competing assignment, with licenses and audit intact. Actual default reports and ITIL OS classifications join the owning
+Computer association and retain parent scope/template/deletion semantics.
+
+Focused isolated PostgreSQL 15.19 and MariaDB 10.11.18 validation passes the new
+ownership, table-reconstruction and atomic purge contracts plus inventory-metadata, reporting,
+statistics, statistics-options and schema-check. Native/public writes cover six
+subjects, overlapping IDs above unsigned 32-bit, core OS dropdown import, dynamic
+assignment creation, NULL/zero uniqueness, invalid subjects, retargets, scope/rights,
+licensed replacement refusal, cloning and purges. The reconstruction contract uses
+populated wide identities and real failures after four DDL phases (also the separate
+PostgreSQL DROP-projection statement), read-only actual CLI preview, invalid-data
+preflight and idempotent retry. Item_OperatingSystem and unchanged Computer
+application classes pass 11/11 methods and 565 assertions on each provider, with
+zero skipped/void methods. The OS duplicate test now checks the intentional domain
+refusal/message and unchanged licenses; native database duplicate rejection remains
+covered separately. Root entity tests use its real ID rather than a translated name.
+
+Strengthened full raw-history replay passes sequentially under the unchanged
+300-second limit: PostgreSQL 125.1s and MariaDB 253.4s. It exercises populated
+frozen adoption through actual db:update, complete fresh installation and latest
+OS-stage interruption/retry without changing earlier frozen definitions. The final
+eight focused contracts and 11 application methods were rerun after integrating
+the reviewed atomic-delete dependency. Full integrated suites/browser, remote CI
+and live replica validation remain separate checkpoints. External plugin/agent inventory ingestion was
+not exercised: the core paths verified here import OS labels and write assignments
+only after the parent is persisted. Remaining inventory reconciliation/massive-action
+and legacy SQL/domain conversions continue under the durable modernization goal.

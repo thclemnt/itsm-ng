@@ -44,7 +44,7 @@ abstract class TypedItemMigration
         return $table . '_typed_item_kind';
     }
 
-    private static function identity(string $alias = ''): string
+    protected static function identity(string $alias = ''): string
     {
         $cases = [];
         foreach (static::targets() as $kind => $target) {
@@ -149,7 +149,8 @@ abstract class TypedItemMigration
             }
             $count = (int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $table . ' r' . implode('', $joins) . ' WHERE ' . $invalidSql);
             if ($count) {
-                throw new \RuntimeException('Invalid or unsupported legacy typed item references: ' . $table . ' (' . $count . ')');
+                $samples = $connection->fetchAllAssociative('SELECT r.id, r.itemtype, ' . $identity . ' AS items_id FROM ' . $table . ' r' . implode('', $joins) . ' WHERE ' . $invalidSql . ' LIMIT 5');
+                throw new \RuntimeException('Invalid or unsupported legacy typed item references: ' . $table . ' (' . $count . '); samples: ' . json_encode($samples, JSON_THROW_ON_ERROR));
             }
             foreach (static::targets() as $kind => $target) {
                 $column = static::column($target);

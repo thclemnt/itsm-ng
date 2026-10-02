@@ -96,14 +96,12 @@ class Item_OperatingSystem extends DbTestCase
             (int)\Item_OperatingSystem::countForItem($computer)
         )->isIdenticalTo(1);
 
-        $this->exception(
-            function () use ($ios, $input) {
-                $ios->add($input);
-            }
-        )
-           ->isInstanceOf(\Doctrine\DBAL\Exception\UniqueConstraintViolationException::class)
-           ->message
-              ->matches("#Duplicate entry '.+' for key '(".$ios->getTable()."\.)?unicity'#");
+        $assignmentId = $ios->getID();
+        $this->boolean($ios->add($input))->isFalse();
+        $this->hasSessionMessages(ERROR, ['An operating system with this architecture is already assigned to this item.']);
+        $this->boolean($ios->getFromDB($assignmentId))->isTrue();
+        $this->string($ios->fields['licenseid'])->isIdenticalTo($input['licenseid']);
+        $this->string($ios->fields['license_number'])->isIdenticalTo($input['license_number']);
 
         $this->integer(
             (int)\Item_OperatingSystem::countForItem($computer)
@@ -240,7 +238,7 @@ class Item_OperatingSystem extends DbTestCase
         $this->boolean($ios->can($ios->getID(), READ))->isTrue();
 
         //not recursive
-        $this->setEntity('Root Entity', true);
+        $this->setEntity(0, true);
         $this->boolean($ios->can($ios->getID(), READ))->isTrue();
         $this->setEntity('_test_child_1', true);
         $this->boolean($ios->can($ios->getID(), READ))->isFalse();
@@ -263,7 +261,7 @@ class Item_OperatingSystem extends DbTestCase
            ->integer['is_recursive']->isIdenticalTo(1);
 
         //not recursive
-        $this->setEntity('Root Entity', true);
+        $this->setEntity(0, true);
         $this->boolean($ios->can($ios->getID(), READ))->isTrue();
         $this->setEntity('_test_child_1', true);
         $this->boolean($ios->can($ios->getID(), READ))->isTrue();

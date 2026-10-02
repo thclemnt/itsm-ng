@@ -255,3 +255,13 @@ See [the entrypoint and bootstrap contract](orm.md#canonical-upgrade-entrypoints
 for the frozen adoption boundary and failure statuses. Older unsupported schemas
 must reach that boundary using their matching historical application first;
 current entities cannot redefine old migration history.
+
+Operating-system assignments now have six owning asset associations and a generated
+legacy identity. The frozen `20261006_operating_system_subjects` migration is appended
+to the same canonical history; preview/apply uses the commands above. Invalid or
+missing subjects and duplicate OS/architecture assignments must be resolved in the
+source installation before adoption. Component purge/replacement refuses merges of
+distinct licensed inventory rows, including deleted history. See
+[OS ownership and validation](orm.md#operating-system-assignment-ownership-2026-10-02)
+for the actual scope and checkpoints; standalone focused success does not establish
+full integrated PostgreSQL support.

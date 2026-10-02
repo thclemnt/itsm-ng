@@ -70,7 +70,7 @@ try {
         fixture('glpi_items_operatingsystems', ['items_id' => $excluded, 'itemtype' => 'Computer', 'operatingsystems_id' => $os]);
     }
     fixture('glpi_items_operatingsystems', ['items_id' => $computer, 'itemtype' => 'Computer', 'operatingsystems_id' => $os, 'is_deleted' => 1]);
-    fixture('glpi_items_operatingsystems', ['items_id' => $computer, 'itemtype' => 'Printer', 'operatingsystems_id' => $os]);
+    fixture('glpi_items_operatingsystems', ['items_id' => fixture('glpi_printers', []), 'itemtype' => 'Printer', 'operatingsystems_id' => $os]);
     $groups = array_column($assets->countsByType('Computer', [$entity]), 'count', 'name');
     verify((int)$groups['Duplicate report type'] === 2 && (int)$groups[''] === 1, 'Type totals merge identical names and retain unclassified assets');
     verify($assets->countsByType('Computer', []) === [] && $assets->operatingSystems([]) === [], 'Empty report scope returns no groups');

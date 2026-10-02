@@ -13,6 +13,7 @@ use itsmng\Database\Migration\History;
 use itsmng\Database\Migration\Ledger;
 use itsmng\Database\Migration\LegacyToOrm;
 use itsmng\Database\Migration\ProjectAssets20261003;
+use itsmng\Database\Migration\OperatingSystemSubjects20261006;
 use itsmng\Database\Migration\Seeds20261001;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
@@ -135,6 +136,9 @@ $connection->insert('glpi_locations', ['id' => 601, 'name' => 'Historical applia
 foreach ([501, 502] as $id) {
     $connection->insert('glpi_appliances_items_relations', ['id' => $id, 'appliances_items_id' => 402, 'itemtype' => 'Location', 'items_id' => 601]);
 }
+$connection->insert('glpi_operatingsystems', ['id' => 801, 'name' => 'Historical inventory OS']);
+$connection->insert('glpi_items_operatingsystems', ['id' => 802, 'itemtype' => 'Computer', 'items_id' => $legacyId, 'operatingsystems_id' => 801, 'licenseid' => 'Legacy product', 'license_number' => 'Legacy license', 'is_dynamic' => true]);
+$connection->insert('glpi_items_operatingsystems', ['id' => 803, 'itemtype' => 'Computer', 'items_id' => $legacyId, 'is_deleted' => true]);
 $connection->insert('glpi_logs', ['id' => $auditId, 'itemtype' => 'Computer', 'items_id' => $legacyId, 'user_name' => 'Legacy administrator', 'old_value' => $audit]);
 $password = 'customer-password-hash-must-survive';
 $connection->update('glpi_users', ['password' => $password], ['id' => 2]);
@@ -186,6 +190,19 @@ foreach ([['glpi_appliances_items', 'appliances_id', 401, 'Computer', $legacyId,
         );
         $connection->delete($table, ['id' => 701]);
     }
+}
+foreach ([['itemtype' => 'PluginInventoryAsset', 'items_id' => $legacyId], ['itemtype' => 'Computer', 'items_id' => 0], ['itemtype' => 'Computer', 'items_id' => 1999999999]] as $invalid) {
+    $connection->insert('glpi_items_operatingsystems', ['id' => 804] + $invalid);
+    try {
+        $history->upgrade($connection);
+        throw new LogicException('Invalid inventory subject accepted before adoption');
+    } catch (RuntimeException $error) {
+        verify(str_contains($error->getMessage(), 'glpi_items_operatingsystems') && (str_contains($error->getMessage(), 'Unsupported typed relationship kinds') || str_contains($error->getMessage(), 'Invalid or unsupported')), 'OS source diagnostic identifies invalid owning subject before adoption');
+    }
+    verify(Ledger::state($connection, LegacyToOrm::VERSION) === null && Ledger::state($connection, OperatingSystemSubjects20261006::VERSION) === null
+        && Type::lookupName($manager->listTableColumns('glpi_computers')['id']->getType()) === 'integer'
+        && !$manager->introspectTable('glpi_items_operatingsystems')->hasColumn('computers_id'), 'OS preflight occurs before any adoption DDL or stage journal');
+    $connection->delete('glpi_items_operatingsystems', ['id' => 804]);
 }
 $connection->insert('glpi_useremails', ['users_id' => 1999999999, 'email' => 'history-orphan@example.invalid']);
 try {
@@ -273,6 +290,12 @@ foreach (History::VERSIONS as $version) {
     verify(Ledger::state($connection, $version)['complete'], 'Every canonical migration is complete: ' . $version);
 }
 $writer = new RecordWriter(Orm::create($database));
+$osLinks = $connection->fetchAllAssociative('SELECT id, computers_id, items_id, operatingsystems_id, operatingsystem_key, architecture_key, licenseid, license_number, is_dynamic, is_deleted FROM glpi_items_operatingsystems ORDER BY id');
+verify(count($osLinks) === 2 && (int)$osLinks[0]['computers_id'] === $legacyId && (int)$osLinks[0]['items_id'] === $legacyId && (int)$osLinks[0]['operatingsystems_id'] === 801
+    && $osLinks[0]['licenseid'] === 'Legacy product' && $osLinks[0]['license_number'] === 'Legacy license'
+    && Type::getType('boolean')->convertToPHPValue($osLinks[0]['is_dynamic'], $platform), 'Populated full history retains dynamic OS assignment ownership, component and license payload');
+verify($osLinks[1]['operatingsystems_id'] === null && (int)$osLinks[1]['operatingsystem_key'] === 0 && (int)$osLinks[1]['architecture_key'] === 0
+    && Type::getType('boolean')->convertToPHPValue($osLinks[1]['is_deleted'], $platform), 'Populated full history retains nullable uniqueness keys and deleted inventory history');
 $created = $writer->insert('glpi_computers', ['name' => 'Sequence after populated adoption']);
 verify($created > $legacyId, 'Generated sequence/auto-increment continues above imported IDs');
 if ($postgres) {
@@ -316,7 +339,7 @@ if ($postgres) {
 $large = 4294967301;
 $writer->insert('glpi_logs', ['id' => $large, 'items_id' => $large, 'itemtype' => 'Computer', 'old_value' => 'Post-adoption wide audit']);
 verify((new RecordRepository(Orm::create($database)))->find('glpi_logs', 'id', $large)['items_id'] === $large, 'Post-adoption ORM preserves identifiers above unsigned 32-bit range');
-// Interrupt the actual fresh installation in the final nested appliance stage
+// Interrupt the actual fresh installation in the final OS subject stage
 // after earlier history completion, then prove installation remains retryable.
 if ($postgres) {
     foreach ($manager->listTableNames() as $name) {
@@ -327,21 +350,22 @@ if ($postgres) {
 }
 try {
     $history->install($database, 'en_GB', static function (string $step): void {
-        if ($step === 'ApplianceRecipients20261005: columns') {
-            throw new RuntimeException('Injected fresh appliance recipient migration interruption');
+        if ($step === 'OperatingSystemSubjects20261006: columns') {
+            throw new RuntimeException('Injected fresh OS subject migration interruption');
         }
     });
     throw new LogicException('Fresh installation interruption did not execute');
 } catch (RuntimeException $error) {
-    verify($error->getMessage() === 'Injected fresh appliance recipient migration interruption', 'Actual installer surfaces the appended migration interruption');
+    verify($error->getMessage() === 'Injected fresh OS subject migration interruption', 'Actual installer surfaces the appended migration interruption');
 }
 if ($postgres) {
     verify($manager->listTableNames() === [] && !History::isInstalling($connection), 'PostgreSQL actual fresh installation rolls back all phases');
 } else {
     verify(
         History::isInstalling($connection) && !Ledger::state($connection, Baseline20261001::VERSION)['installation_complete']
-        && Ledger::state($connection, LegacyToOrm::VERSION)['complete'] && Ledger::state($connection, ApplianceAssets20261005::VERSION)['complete'],
-        'MySQL actual fresh installation stays retryable after completed earlier appliance history'
+        && Ledger::state($connection, LegacyToOrm::VERSION)['complete'] && Ledger::state($connection, ApplianceAssets20261005::VERSION)['complete'] && Ledger::state($connection, ApplianceRecipients20261005::VERSION)['complete']
+        && !Ledger::state($connection, OperatingSystemSubjects20261006::VERSION)['complete'],
+        'MySQL actual fresh installation stays retryable after completed earlier appliance history and incomplete OS subject stage'
     );
 }
 $history->install($database, 'en_GB');
@@ -350,4 +374,4 @@ verify((new SchemaCheck())->differences($connection) === [], 'Retried actual fre
 foreach (History::VERSIONS as $version) {
     verify(Ledger::state($connection, $version)['complete'], 'Retried actual install completes every appended history version: ' . $version);
 }
-echo $database->getProvider() . ": frozen baseline/seed replay, conflicting and interrupted DDL, seed rollback, populated adoption, invalid booleans/references/project/appliance subjects before DDL, separate owners, nested duplicate preservation and project roles, projections, preserved account/audit data, sequence synchronization, appended fresh-install retry and idempotency passed.\n";
+echo $database->getProvider() . ": frozen baseline/seed replay, conflicting and interrupted DDL, seed rollback, populated adoption, invalid booleans/references/project/appliance/OS subjects before DDL, separate owners, nested duplicate preservation and project roles, dynamic licensed OS assignments, projections, preserved account/audit data, sequence synchronization, appended fresh-install retry and idempotency passed.\n";

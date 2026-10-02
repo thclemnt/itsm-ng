@@ -12,7 +12,7 @@ use itsmng\Database\SequenceSynchronizer;
 /** Empty-database replay and validated adoption share one canonical history and ledger. */
 final class History
 {
-    public const VERSIONS = [Baseline20261001::VERSION, Seeds20261001::VERSION, LegacyToOrm::VERSION, Booleans20261002::VERSION, ProjectAssets20261003::VERSION, CategoryFlags20261004::VERSION, ApplianceAssets20261005::VERSION, ApplianceRecipients20261005::VERSION];
+    public const VERSIONS = [Baseline20261001::VERSION, Seeds20261001::VERSION, LegacyToOrm::VERSION, Booleans20261002::VERSION, ProjectAssets20261003::VERSION, CategoryFlags20261004::VERSION, ApplianceAssets20261005::VERSION, ApplianceRecipients20261005::VERSION, OperatingSystemSubjects20261006::VERSION];
 
     /** Application readiness uses the ledger, without planning or executing DDL. */
     public static function pendingVersions(Connection $connection): array
@@ -26,7 +26,7 @@ final class History
     {
         $pending = self::pendingVersions($connection);
         $booleans = (new Booleans20261002())->plan($connection);
-        return ['complete' => !$pending, 'pending' => $pending, 'legacy' => (new LegacyToOrm())->plan($connection), 'booleans' => $booleans, 'project_assets' => (new ProjectAssets20261003())->plan($connection), 'category_flags' => (new CategoryFlags20261004())->plan($connection), 'appliance_assets' => (new ApplianceAssets20261005())->plan($connection), 'appliance_recipients' => (new ApplianceRecipients20261005())->plan($connection)];
+        return ['complete' => !$pending, 'pending' => $pending, 'legacy' => (new LegacyToOrm())->plan($connection), 'booleans' => $booleans, 'project_assets' => (new ProjectAssets20261003())->plan($connection), 'category_flags' => (new CategoryFlags20261004())->plan($connection), 'appliance_assets' => (new ApplianceAssets20261005())->plan($connection), 'appliance_recipients' => (new ApplianceRecipients20261005())->plan($connection), 'operating_system_subjects' => (new OperatingSystemSubjects20261006())->plan($connection)];
     }
 
     public static function isInstalling(Connection $connection): bool
@@ -128,10 +128,11 @@ final class History
             if (($baseline['origin'] ?? null) === 'installed' && (($baseline['complete'] ?? false) !== true || (Ledger::state($connection, Seeds20261001::VERSION)['complete'] ?? false) !== true)) {
                 throw new \RuntimeException('Resume the unfinished installation before applying upgrades.');
             }
-            // Reject the newly constrained appliance links before broader
+            // Reject newly constrained subject links before broader
             // historical audits; every preflight still completes before any DDL.
             (new ApplianceAssets20261005())->plan($connection);
             (new ApplianceRecipients20261005())->plan($connection);
+            (new OperatingSystemSubjects20261006())->plan($connection);
             // Validate every integer flag before MySQL adoption or any PostgreSQL DDL.
             (new Booleans20261002())->plan($connection);
             // Unsupported plugin kinds and invalid subjects refuse before
@@ -144,6 +145,7 @@ final class History
             (new CategoryFlags20261004())->apply($connection);
             (new ApplianceAssets20261005())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('ApplianceAssets20261005: ' . $phase));
             (new ApplianceRecipients20261005())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('ApplianceRecipients20261005: ' . $phase));
+            (new OperatingSystemSubjects20261006())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('OperatingSystemSubjects20261006: ' . $phase));
             $differences = (new SchemaCheck())->differences($connection);
             if ($differences) {
                 throw new \RuntimeException("Migration history did not converge:\n" . implode("\n", $differences));

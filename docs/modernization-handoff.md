@@ -520,3 +520,76 @@ bootstrap installs its database record. The initial post-dataset runs passed but
 reported that fixture's missing source path; this is an environment fixture
 configuration issue, not suppressed application diagnostics. Exact focused logs
 are `upgrade-entrypoints-{project-assets-schema,appliance-assets-schema,schema-check}-{pg,mysql}.log`.
+
+## Isolated OS ownership batch (2026-10-02)
+
+Worktree `th/exp/postgres-os-ownership` starts at integrated upgrade checkpoint
+`6bd9f9133151a474a6b695d5d98bfbaf650f448b`; vendor/assets and the ignored tester
+fixture are copied, not shared. Own disposable databases are
+`itsm_port_os_ownership` on both providers, with own config/key/variable directories
+under `/workspace/itsm-env`. The complete existing eight-stage installations were
+copied from the previous owned upgrade fixtures and actual `db:migrate --apply`
+replayed the ninth OS stage, including final schema validation. These focused
+adoptions do not replace a fresh-install/full-history checkpoint.
+
+Eight focused contracts pass per engine: `operating-system-subjects`,
+`operating-system-subjects-schema`, `operating-system-purge`, `inventory-metadata`,
+`reporting`, `statistics`, `statistics-options`, `schema-check`. PostgreSQL's schema reconstruction also
+interrupts the real DROP-items_id statement; MySQL replaces that projection in one
+ALTER and has no separate missing-column statement boundary. Schema comparison
+remains intact: the custom historical-comment fixture supplies that expected comment,
+and cleanup then verifies the unmodified complete canonical schema. Invalid parent
+fixtures in existing reports/metadata tests now create actual matching parents;
+all original behavioral assertions remain.
+
+Actual Item_OperatingSystem and Computer application checks pass **2 classes,
+11/11 methods, 565 assertions, 0 void/0 skipped** on each provider; bootstrap
+reports dataset 4.7 already loaded. The intentional new public duplicate behavior
+returns false with a domain message and preserves existing license values. Native
+constraints are independently tested. Existing literal translated root-entity lookup
+was replaced by ID zero; scope assertions remain. Permission tests exposed and
+fixed a local ownership defect: ignoring OS metadata rights previously let READ
+on an asset authorize assignment writes. Owning asset UPDATE is now required.
+
+The three new contracts cover all six property-declared subjects, wide overlapping
+IDs, direct/native/public insert/update/delete, generated projections, invalid and
+duplicate rejection, nullable component updates, core dropdown label import before
+dynamic assignment creation, parent scope/recursion, authorized/denied retargets,
+explicit and parent cloning, six subject purge paths, licensed component replacement
+and preflight refusal without assignment/history loss. The independently reviewed
+atomic-delete commit `fc70eeca520203c4395df0287dbe40bda1a2dfb9` was integrated only
+after the frozen history runs. The final purge contract verifies a real plugin veto
+after the first child update and a separately committed competing assignment.
+PostgreSQL detects that race through the domain guard; MariaDB REPEATABLE READ
+reaches the native uniqueness constraint. Both roll back prior child cleanup and
+preserve the source, assignments, licenses and exact audit snapshot while retaining
+the competing committed row. Removing the conflict permits the authorized retry.
+This batch uses the shared atomic lifecycle rather than duplicating it.
+
+Local exact evidence is `/workspace/itsm-env/evidence/os-ownership-*.log`, with the
+static inventory in `os-ownership-coverage.json`. Current isolated source inventory:
+357 mapped tables, 1,055 enforced references, 27 discriminated identities, 37
+polymorphic candidates and one pending candidate; token categories report 2,863
+legacy-adapter call sites and 24 native-driver sites (2,887 combined). These are
+static checkpoints, not proof of completed ORM/domain conversion or live FK coverage.
+PHP lint for 23 changed files, sequential repository formatting and whitespace
+checks pass. No historical baseline/target snapshots changed.
+
+The strengthened full `migration-history.php` source adds actual legacy OS/license
+payload and invalid/zero/orphan preflight before any identifier DDL; its final
+fresh-install interruption moves to the newly appended OS stage and retains/extends
+previous completion assertions. Sequential real runs pass under the unchanged
+300-second budget: PostgreSQL **125.1 seconds**, MariaDB **253.4 seconds**. They cover
+populated frozen-history adoption through actual `db:update`, complete fresh replay,
+seed and latest-stage interruption/retry, identifiers, sentinels, nullability,
+booleans, projections, licenses, audit/account data and sequence synchronization.
+History/schema source remained frozen during both runs; the shared atomic-delete
+dependency was integrated afterward and the final eight focused contracts and
+11 application methods were rerun on that resulting source. Timing evidence is
+`os-ownership-history-{pg,mysql}-timing.txt` alongside the history logs.
+
+Next concrete step: integrate the OS feature with the current shared dependencies,
+discover and run the complete suites on both providers, and inspect final schemas
+before publishing a combined checkpoint. Browser, remote CI, live replicas and
+external inventory agents are not passing claims for this batch. The broader
+modernization objective remains open.
