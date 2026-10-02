@@ -24,27 +24,35 @@ final class LegacyToOrmCommand extends AbstractCommand implements ForceNoPlugins
     {
         parent::configure();
         $this->setName('itsmng:database:legacy_to_orm');
-        $this->setAliases(['db:legacy_to_orm']);
-        $this->setDescription('Migrate the legacy database to ORM relationships and 64-bit identifiers');
+        $this->setAliases(['db:legacy_to_orm', 'db:migrate']);
+        $this->setDescription('Apply canonical database history, adopting legacy relationships, identifiers and PostgreSQL flags');
         $this->addOption('apply', null, InputOption::VALUE_NONE, 'Apply the master migration during maintenance with application writers stopped');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output)
     {
-        $migration = new LegacyToOrm();
+        $history = new \itsmng\Database\Migration\History();
         $connection = $this->db->getDoctrineConnection();
         $output->writeln(LegacyToOrm::VERSION);
         if ($input->getOption('apply')) {
-            $migration->apply($connection, static fn (string $message) => $output->writeln($message));
+            $history->upgrade($connection, static fn (string $message) => $output->writeln($message));
             $this->db->clearSchemaCache();
-            $output->writeln('<info>Legacy-to-ORM migration complete.</info>');
+            $output->writeln('<info>Canonical database history complete.</info>');
         } else {
-            $plan = $migration->plan($connection);
-            if ($plan['complete']) {
+            $historyPlan = $history->plan($connection);
+            $plan = $historyPlan['legacy'];
+            if ($historyPlan['complete']) {
                 $output->writeln('Already complete.');
             } else {
+                foreach ($historyPlan['pending'] as $version) {
+                    $output->writeln('Pending history: ' . $version);
+                }
+                $output->writeln('Existing baseline and seed data will be validated and preserved; default seed rows are never reinserted during adoption.');
                 foreach ($plan['identifiers'] as $operation) {
                     $output->writeln($operation['sql'] . ';', OutputInterface::OUTPUT_RAW);
+                }
+                foreach ($historyPlan['booleans'] as $sql) {
+                    $output->writeln($sql . ';', OutputInterface::OUTPUT_RAW);
                 }
                 foreach ($plan['stages'] as $name => $stage) {
                     $output->writeln(is_string($name) ? $name : $stage);

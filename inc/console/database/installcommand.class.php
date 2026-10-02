@@ -205,7 +205,7 @@ class InstallCommand extends AbstractConfigureCommand
                 $output->writeln('<error>' . $database->error() . '</error>');
                 return self::ERROR_DB_CONNECTION_FAILED;
             }
-            if (count($database->listTables()) > 0) {
+            if (count($database->listTables()) > 0 && !\itsmng\Database\Migration\History::isInstalling($database->getDoctrineConnection())) {
                 $output->writeln('<error>PostgreSQL installation requires an empty schema. Use a new database.</error>');
                 return self::ERROR_DB_ALREADY_CONTAINS_TABLES;
             }
@@ -246,7 +246,7 @@ class InstallCommand extends AbstractConfigureCommand
             $output->writeln('<error>' . $db_instance->error() . '</error>', OutputInterface::VERBOSITY_QUIET);
             return self::ERROR_DB_CONNECTION_FAILED;
         }
-        if (\itsmng\Database\InstallationConnection::hasApplicationTables($db_instance->getDoctrineConnection()) && !$force) {
+        if (\itsmng\Database\InstallationConnection::hasApplicationTables($db_instance->getDoctrineConnection()) && !$force && !\itsmng\Database\Migration\History::isInstalling($db_instance->getDoctrineConnection())) {
             $output->writeln(
                 '<error>' . __('Database already contains "glpi_*" tables. Use --force option to override existing database.') . '</error>'
             );
@@ -267,7 +267,7 @@ class InstallCommand extends AbstractConfigureCommand
         );
         // TODO Get rid of output buffering
         ob_start();
-        Toolbox::createSchema($default_language, $db_instance);
+        Toolbox::createSchema($default_language, $db_instance, $force);
         $message = ob_get_clean();
         if (!empty($message)) {
             $output->writeln('<error>' . $message . '</error>', OutputInterface::VERBOSITY_QUIET);

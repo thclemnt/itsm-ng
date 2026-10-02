@@ -94,14 +94,41 @@ The callers supply the active entity scope: `null` means all authorized entities
 whereas an empty list returns nothing. Report entry points still perform their
 existing rights checks. Plugin asset counts retain the query-iterator path.
 
-## Legacy-to-ORM master migration
+## Canonical installation and adoption history
 
-Existing legacy 2.2 installations and partially converted ORM databases now use
-one migration, `20261001_legacy_to_orm_bigint`, through one command:
+Fresh installations replay four frozen phases in order through the existing
+`itsmng_migrations` ledger:
+
+1. `20261001_baseline_legacy_2_2`: explicit DBAL declarations for the 355-table
+   historical schema, independent of current entity metadata.
+2. `20261001_baseline_seed`: frozen raw seed rows, before reference normalization.
+   Root names may be localized and each installation gets a random dashboard
+   token; all other seed definitions are frozen. Seed DML and completion are atomic.
+3. `20261001_legacy_to_orm_bigint`: the existing adoption migration, including
+   identifier widening, all ordered domain conversions and foreign keys.
+4. `20261002_postgres_boolean_flags`: validated adoption of early PostgreSQL
+   integer flags; a recorded no-op for MySQL/MariaDB native flag storage.
+
+The dashboard baseline retains the SQL dump's inline unique ID key, which the
+former reader discarded. That key makes the old MySQL AUTO_INCREMENT declaration
+valid before dashboard ownership is upgraded. Duplicate queued-notification
+definitions are already resolved in the frozen snapshot. Provider-specific
+expressions, indexes and triggers are explicit historical definitions too.
+
+CLI and web installation run this complete history from an empty database, rather
+than creating today's entity schema and marking upgrades complete. MySQL journals
+each table creation and verifies an already-created table after a process dies
+between DDL and its checkpoint. Conflicting definitions refuse retry. PostgreSQL
+rolls back installation schema, data and ledger together. Sequences synchronize
+before and after adoption. New schema changes need a new historical migration.
+
+Existing legacy 2.2 installations and partially converted ORM databases use
+`db:migrate` (the `db:legacy_to_orm` alias remains) to preview or adopt the same
+history without reinserting default accounts or seed data:
 
 ```sh
-php bin/console db:legacy_to_orm --config-dir=/path/to/config
-php bin/console db:legacy_to_orm --config-dir=/path/to/config --apply
+php bin/console db:migrate --config-dir=/path/to/config
+php bin/console db:migrate --config-dir=/path/to/config --apply
 ```
 
 The first invocation audits and previews without writing. Apply during maintenance
@@ -109,7 +136,7 @@ with application writers stopped. All previous conversion steps, uniqueness rule
 CHECK constraints and audited foreign keys run in their existing dependency order.
 The former individual conversion and foreign-key commands have been removed;
 their domain helpers remain internal implementation details of the master.
-CLI and web fresh installation call the same master after loading seed data.
+CLI and web fresh installation replay the frozen raw seeds before calling the same master. Validated existing installations record baseline/seed phases as adopted with preserved data; they do not claim those default rows were inserted. Canonical completion also checks the resulting required schema.
 
 Primary IDs, owning association columns, scalar and polymorphic reference IDs use
 `BIGINT` in both the installer and ORM metadata. Counters, enum codes, rights masks,
@@ -131,7 +158,8 @@ The master uses frozen ID and FK definitions in
 `src/Database/Migration/history/20261001-legacy-to-orm.json` and the frozen internal
 step order in `20261001-stages.json`.
 
-`itsmng_migrations` stores one completion record. PostgreSQL runs the whole upgrade
+`itsmng_migrations` stores each canonical phase and retains the existing master
+completion/journal record in its original format. There is no second ledger. PostgreSQL runs the whole upgrade
 transactionally. MySQL stores the widening operations before removing constraints,
 checkpoints each successful DDL operation, and resumes that journal after an
 interruption. Existing idempotent conversion steps can then be replayed. Completion
@@ -159,9 +187,11 @@ tables such as logs. This migration has no narrowing downgrade.
 
 The mappings can generate a scoped schema model with Doctrine `SchemaTool`, and
 tests check mapping validity and exact column coverage against the baseline.
-The existing installer still owns the complete 357-table schema, including
-legacy indexes, provider-specific indexes/triggers and seeding. The entity metadata
-does not yet replace that schema or introduce a second installation path. Never apply
+Canonical frozen history owns the complete 357-table schema, including
+historical indexes, provider-specific indexes/triggers and seeding.
+`BaselineSchema` is a current read-only inspection projection, not the installation
+entry point. Current entity metadata supplies application types and ownership;
+immutable historical declarations remain legitimate snapshots. Never apply
 `SchemaTool::updateSchema()` or `schema:update --force` to an installation: plugin
 tables, legacy indexes and provider-specific definitions are not represented by
 these entity mappings. Moving schema ownership requires reviewed, versioned

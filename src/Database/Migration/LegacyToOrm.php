@@ -6,7 +6,6 @@ namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
-use Doctrine\DBAL\Schema\Table;
 use itsmng\Database\ForeignKeys;
 
 /** One adoption migration for the legacy 2.2 schema and partially upgraded ORM installations. */
@@ -22,11 +21,7 @@ final class LegacyToOrm
 
     private function state(Connection $connection): ?array
     {
-        if (!$connection->createSchemaManager()->tablesExist([self::LEDGER])) {
-            return null;
-        }
-        $value = $connection->fetchOne('SELECT state FROM ' . self::LEDGER . ' WHERE version = ?', [self::VERSION]);
-        return $value === false ? null : json_decode($value, true, flags: JSON_THROW_ON_ERROR);
+        return Ledger::state($connection, self::VERSION);
     }
 
     private function auditRequiredReferences(Connection $connection): void
@@ -97,17 +92,10 @@ final class LegacyToOrm
             if ($state === null) {
                 $plan = $this->plan($connection);
                 $state = ['complete' => false, 'identifiers' => $plan['identifiers'], 'next' => 0];
-                if (!$connection->createSchemaManager()->tablesExist([self::LEDGER])) {
-                    $table = new Table(self::LEDGER);
-                    $table->addColumn('version', 'string', ['length' => 100]);
-                    $table->addColumn('state', 'text', ['length' => 4294967295]);
-                    $table->setPrimaryKey(['version']);
-                    $connection->createSchemaManager()->createTable($table);
-                }
-                $connection->insert(self::LEDGER, ['version' => self::VERSION, 'state' => json_encode($state, JSON_THROW_ON_ERROR)]);
+                Ledger::save($connection, self::VERSION, $state);
             }
             $save = static function () use ($connection, &$state): void {
-                $connection->update(self::LEDGER, ['state' => json_encode($state, JSON_THROW_ON_ERROR)], ['version' => self::VERSION]);
+                Ledger::save($connection, self::VERSION, $state);
             };
             $progress && $progress('Widening identifiers and preserving existing constraints');
             while ($state['next'] < count($state['identifiers'])) {

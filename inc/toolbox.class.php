@@ -2686,7 +2686,7 @@ class Toolbox
      * @since 9.1
      * @since 9.4.7 Added $db parameter
     **/
-    public static function createSchema($lang = 'en_GB', ?DBAdapter $database = null)
+    public static function createSchema($lang = 'en_GB', ?DBAdapter $database = null, bool $replace = false)
     {
         global $DB;
 
@@ -2699,47 +2699,42 @@ class Toolbox
         // Set global $DB as it is used in "Config::setConfigurationValues()" just after schema creation
         $DB = $database;
 
-        if (!$DB->installSchema()) {
-            echo "Errors occurred inserting default database";
-        } else {
-            //dataset
-            Session::loadLanguage($lang, false); // Load default language locales to translate empty data
-            $tables = require_once(__DIR__ . '/../install/empty_data.php');
-            Session::loadLanguage('', false); // Load back session language
-
-            \itsmng\Database\InitialData::load($DB, $tables, isCommandLine() ? null : static function (): void {
+        if ($replace && $DB->getProvider() === 'mysql' && !\itsmng\Database\Migration\History::isInstalling($DB->getDoctrineConnection())) {
+            \itsmng\Database\Installer::resetMysqlCore($DB->getDoctrineConnection());
+        }
+        (new \itsmng\Database\Migration\History())->install(
+            $DB,
+            $lang,
+            isCommandLine() ? null : static function (string $step): void {
                 // Keep long-running web installation requests active through proxies.
                 echo ' ';
                 Html::glpi_flush();
-            });
-
-            $DB->synchronizeSequences();
-            (new \itsmng\Database\Migration\LegacyToOrm())->apply($DB->getDoctrineConnection());
-
-            // update default language
-            Config::setConfigurationValues(
-                'core',
-                [
-                  'language'      => $lang,
-                  'version'       => ITSM_VERSION,
-                  'dbversion'     => ITSM_SCHEMA_VERSION,
-                  'use_timezones' => $DB->areTimezonesAvailable()
-                ]
-            );
-
-            // set ITSM-NG version
-            Config::setConfigurationValues(
-                'core',
-                [
-                  'itsmversion'       => ITSM_VERSION,
-                  'itsmdbversion'     => ITSM_SCHEMA_VERSION
-                ]
-            );
-
-            if (defined('GLPI_SYSTEM_CRON')) {
-                // Downstream packages may provide a good system cron
-                \itsmng\Database\InitialData::enableSystemCron($DB);
             }
+        );
+
+        // update default language
+        Config::setConfigurationValues(
+            'core',
+            [
+              'language'      => $lang,
+              'version'       => ITSM_VERSION,
+              'dbversion'     => ITSM_SCHEMA_VERSION,
+              'use_timezones' => $DB->areTimezonesAvailable()
+            ]
+        );
+
+        // set ITSM-NG version
+        Config::setConfigurationValues(
+            'core',
+            [
+              'itsmversion'       => ITSM_VERSION,
+              'itsmdbversion'     => ITSM_SCHEMA_VERSION
+            ]
+        );
+
+        if (defined('GLPI_SYSTEM_CRON')) {
+            // Downstream packages may provide a good system cron
+            \itsmng\Database\InitialData::enableSystemCron($DB);
         }
     }
 

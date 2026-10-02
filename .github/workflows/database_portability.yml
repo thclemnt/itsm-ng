@@ -67,12 +67,29 @@ jobs:
         run: |
           docker exec "${{ job.services.database.id }}" sh -c '${{ matrix.database.tzinfo }} /usr/share/zoneinfo | ${{ matrix.database.client }} -uroot -ptest mysql'
           docker exec "${{ job.services.database.id }}" ${{ matrix.database.client }} -uroot -ptest -e "GRANT SELECT ON mysql.time_zone_name TO 'test'@'%';"
+      - name: Prepare PostgreSQL migration lock budget
+        if: matrix.database.provider == 'pgsql'
+        run: |
+          docker exec "${{ job.services.database.id }}" psql -U test -d itsm_port_ci -c 'ALTER SYSTEM SET max_locks_per_transaction = 512'
+          docker restart "${{ job.services.database.id }}"
+          for attempt in $(seq 1 30); do
+            if docker exec "${{ job.services.database.id }}" pg_isready -U test -d itsm_port_ci; then exit 0; fi
+            sleep 1
+          done
+          exit 1
       - name: Install database
         run: >-
           php bin/console db:install --config-dir=tests/config
           --db-type=${{ matrix.database.provider }}
           --db-host=127.0.0.1 --db-port=${{ matrix.database.port }}
           --db-name=itsm_port_ci --db-user=test --db-password=test --no-interaction
+      - name: Prepare disposable migration history database
+        run: |
+          if [ '${{ matrix.database.provider }}' = 'mysql' ]; then
+            docker exec "${{ job.services.database.id }}" ${{ matrix.database.client }} -uroot -ptest -e "CREATE DATABASE itsm_port_history CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL ON itsm_port_history.* TO 'test'@'%';"
+          else
+            php -r 'require "vendor/autoload.php"; $db = \Doctrine\DBAL\DriverManager::getConnection(["driver" => "pgsql", "host" => "127.0.0.1", "user" => "test", "password" => "test", "dbname" => "itsm_port_ci"]); $db->executeStatement("CREATE DATABASE itsm_port_history"); $db->close();'
+          fi
       - name: Test all database portability contracts
         run: python3 tests/database-portability/suite.py tests/config
       - name: Test PostgreSQL web installation and login

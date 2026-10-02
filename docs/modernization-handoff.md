@@ -88,5 +88,43 @@ Recomputed inventory: 357 mapped tables, 1,003 enforced references, 23
 discriminated identities, 41 polymorphic candidates, one pending candidate,
 2,896 legacy adapter query sites and 23 native-driver sites.
 
-Next: install the frozen pre-adoption baseline and frozen seed history through
-the same ledger and run populated upgrades, interruption/retry and fresh replay.
+## Canonical installation and adoption batch
+
+Runtime installation no longer parses `install/mysql/glpi-empty.sql`. The explicit
+`Baseline20261001` DBAL snapshot defines 355 historical tables; its provider-specific
+DDL, comments, TIMESTAMP behavior and indexes remain independent of current ORM
+metadata. A frozen seed snapshot retains stable identifiers and values; only root
+localization and a new installation token vary. Fresh CLI and web installers replay
+baseline, transactional seeds, the existing adoption migration and the historical
+PostgreSQL integer-flag conversion in the same `itsmng_migrations` ledger.
+
+Existing installations adopt baseline/seed records after validated upgrades and
+schema convergence, preserving their data rather than importing installation seeds.
+`db:migrate` previews this history without writing. MySQL table creation checkpoints
+accept an interrupted CREATE only when the actual declaration matches history;
+conflicting tables fail explicitly. PostgreSQL replay remains transactional. Forced
+MySQL replacement refuses external foreign keys into core before dropping tables.
+
+Cloud CLI fresh installs and coherent full suites passed **128/128 on each provider**
+(PostgreSQL 15.19, MariaDB 10.11.18, PHP 8.2.33). The newly discovered migration-history
+contract uses a separate disposable database and verifies immutable definitions,
+CREATE and seed interruption/retry, conflicting retry schemas, populated near-32-bit
+identifiers, zero sentinels, invalid references before DDL, invalid boolean samples,
+nullable integer flags with NULL data/defaults, preservation of credentials/audit
+text, typed certificate projections, complete/adopted ledgers, read-only preview,
+idempotency, final schema comparison and post-import sequence allocation.
+
+CI now provisions the separate history fixture database and a PostgreSQL lock budget
+of 512 for the atomic identifier-widening migration. Cloud results do not establish
+remote CI on PostgreSQL 14/18, MariaDB 11.8 or MySQL 8.4; those matrix runs remain
+required before a supported-version release claim. After rebuilding assets, HTTP installation, login and core list checks also
+passed on both providers. The focused history contract passed again after source
+formatting. Legacy application and browser checks are recorded separately as
+they complete.
+
+The overall goal remains open: 2,896 adapter query sites and 23 native-driver sites
+remain at this checkpoint, along with sound polymorphic conversions beyond the
+already enforced relationships. Browser interaction and live replica routing have
+not been verified. Next: replace financial warranty expiration selection with an
+association-backed Infocom repository operation, exercise alert/entity/date and
+lifecycle behavior on both providers, and rerun coherent suites.

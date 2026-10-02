@@ -45,12 +45,7 @@ class DBpgsql extends DBAdapter
     public function installSchema(): bool
     {
         $connection = $this->getDoctrineConnection();
-        $schema = new \itsmng\Database\BaselineSchema();
-        $connection->transactional(function ($connection) use ($schema) {
-            foreach ($schema->toSql($connection->getDatabasePlatform(), false) as $sql) {
-                $connection->executeStatement($sql);
-            }
-        });
+        (new \itsmng\Database\Migration\History())->baseline($connection);
         $this->clearSchemaCache();
         return true;
     }

@@ -17,7 +17,7 @@ final class Installer
         if (version_compare($database->getVersion(), '14', '<')) {
             throw new \RuntimeException('PostgreSQL 14 or later is required.');
         }
-        if (count($database->listTables()) > 0) {
+        if (count($database->listTables()) > 0 && !Migration\History::isInstalling($database->getDoctrineConnection())) {
             throw new \RuntimeException('PostgreSQL installation requires an empty schema. Use a new database.');
         }
     }
@@ -30,14 +30,30 @@ final class Installer
         });
     }
 
-    /** MySQL DDL commits separately; build the full plan before replacing core tables. */
+    /** Retained schema-only compatibility API; complete installs use History::install(). */
     public static function installMysqlSchema(Connection $connection): void
     {
+        if (!Migration\History::isInstalling($connection)) {
+            self::resetMysqlCore($connection);
+        }
+        (new Migration\History())->baseline($connection);
+    }
+
+    /** Only explicit fresh replacement invokes this; unfinished journals resume instead. */
+    public static function resetMysqlCore(Connection $connection): void
+    {
         $platform = $connection->getDatabasePlatform();
-        $baseline = new BaselineSchema();
-        $schema = $baseline->build($platform, false);
-        $sql = $baseline->toSql($platform, false);
-        $existing = array_flip($connection->createSchemaManager()->listTableNames());
+        $schema = (new Migration\Baseline20261001())->build($platform);
+        $names = [...array_map(static fn ($table) => $table->getName(), $schema->getTables()), Migration\NetworkPortAggregateOrigins::TABLE, Migration\PlanningEventGuests::TABLE];
+        $manager = $connection->createSchemaManager();
+        $existing = array_flip($manager->listTableNames());
+        foreach (array_diff(array_keys($existing), $names, [Migration\LegacyToOrm::LEDGER]) as $name) {
+            foreach ($manager->listTableForeignKeys($name) as $key) {
+                if (in_array($key->getForeignTableName(), $names, true)) {
+                    throw new \RuntimeException('Cannot replace core schema referenced by custom table: ' . $name . '. Use the validated upgrade path.');
+                }
+            }
+        }
         $enabled = (int)$connection->fetchOne('SELECT @@FOREIGN_KEY_CHECKS');
         $connection->executeStatement('SET FOREIGN_KEY_CHECKS = 0');
         try {
@@ -46,13 +62,10 @@ final class Installer
             if (isset($existing[Migration\LegacyToOrm::LEDGER])) {
                 $connection->executeStatement($platform->getDropTableSQL(Migration\LegacyToOrm::LEDGER));
             }
-            foreach ($schema->getTables() as $table) {
-                if (isset($existing[$table->getName()])) {
-                    $connection->executeStatement($platform->getDropTableSQL($table->getQuotedName($platform)));
+            foreach ($names as $name) {
+                if (isset($existing[$name])) {
+                    $connection->executeStatement($platform->getDropTableSQL($platform->quoteIdentifier($name)));
                 }
-            }
-            foreach ($sql as $statement) {
-                $connection->executeStatement($statement);
             }
         } finally {
             $connection->executeStatement('SET FOREIGN_KEY_CHECKS = ' . $enabled);

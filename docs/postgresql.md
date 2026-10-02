@@ -6,12 +6,12 @@ This branch is a development port, **not a complete or production-ready PostgreS
 
 - `DBAdapter` contains the existing shared CRUD, metadata-cache and quoting API. `DBmysql` retains its public compatibility name but delegates connection ownership, SQL execution, escaping and prepared statements to DBAL. It no longer calls the native MySQL driver. `DBpgsql` still provides the native PostgreSQL transport pending its migration. Existing generated `class DB extends DBmysql` configurations keep working.
 - Doctrine DBAL 4.4+ is an explicit dependency and this branch requires PHP 8.2+. The installed development version is DBAL 4.5. `getDoctrineConnection()` uses the **same connection** as the legacy API. Session state, transactions and savepoints are shared. New application repositories should use ORM mappings and DQL; DBAL provides platform/schema operations. A query builder does not make arbitrary vendor SQL portable; use platform expressions for differences.
-- `BaselineSchema` reads the checked-in baseline into Doctrine's `Schema`/`Table` objects, so PostgreSQL does not maintain an independent SQL dump. It handles 357 current tables, including normalized aggregate-origin and planning-guest memberships, native PostgreSQL boolean flags, generated identifiers, explicit scalar defaults, prefix/full-text indexes, comments and timestamp update triggers. The legacy baseline contains two definitions of `glpi_queuednotifications`; the final definition wins, matching the original installer.
-- Both installers execute the DBAL schema produced by `BaselineSchema`. MySQL timestamp declarations explicitly retain native `TIMESTAMP` semantics: DBAL's default `datetimetz` declaration would produce `DATETIME` and break session-timezone conversion. Both engines install foreign keys after seeding. PostgreSQL installs and seeds in one transaction and then synchronizes sequences, including tables whose seeds use explicit IDs. Replacing the runtime SQL reader with a frozen DBAL migration baseline remains required work.
+- `Migration/Baseline20261001.php` declares the frozen 355-table pre-adoption baseline with explicit DBAL Schema/Table APIs. It preserves provider types, defaults, comments, indexes, PostgreSQL expression indexes and timestamp triggers. The former runtime MySQL dump parser is removed. `BaselineSchema` now projects the current required schema for read-only inspection and compatibility checks; it never creates installation tables.
+- CLI and web installers replay `Migration\History`: frozen baseline, frozen raw seed rows, the existing legacy-to-ORM adoption migration, and PostgreSQL integer-flag conversion. All phases use `itsmng_migrations`; current entities cannot rewrite historical DDL or seed rows. MySQL native `TIMESTAMP` semantics remain explicit. PostgreSQL installs transactionally; MySQL journals table creation and adopts through the existing resumable widening journal. Seeds and their completion record commit together on both engines. Sequences synchronize around adoption.
 - `LegacySql` is a lexical bridge for the application's pre-escaped strings and backtick identifiers. It is not an SQL dialect translator. Prefer raw bound values with DBAL in new code. PostgreSQL rejects NUL text rather than silently truncating it.
 - `Expressions` delegates date arithmetic to Doctrine platforms. Search has separate input, options, provider, projection, criteria, joins, sorting and output classes behind the existing `Search` facade. The SQL-rewriting `SearchProjection` bridge is removed. See [search architecture](search.md) for the two-phase planner and its compatibility boundaries.
 
-Doctrine ORM now maps all columns of all 357 core tables. Core record-by-ID and supported structured criteria reads use ORM, and all 357 tables use ORM persistence below the existing `CommonDBTM` lifecycle; asset counts, reservations, calendars and financial reports use DQL repositories. Entity managers are scoped to one operation and share the adapter connection and transaction. See [mapped persistence and reporting](orm.md) for the ownership boundaries. The legacy baseline still owns installation and indexes; do not run ORM schema synchronization against an installation.
+Doctrine ORM now maps all columns of all 357 core tables. Core record-by-ID and supported structured criteria reads use ORM, and all 357 tables use ORM persistence below the existing `CommonDBTM` lifecycle; asset counts, reservations, calendars and financial reports use DQL repositories. Entity managers are scoped to one operation and share the adapter connection and transaction. See [mapped persistence and reporting](orm.md) for the ownership boundaries. Canonical migration history owns installation and indexes; do not run ORM schema synchronization against an installation.
 
 ## Fresh PostgreSQL installation
 
@@ -24,6 +24,8 @@ php bin/console db:install --db-type=pgsql \
   --db-host=127.0.0.1 --db-port=5432 \
   --db-name=itsmng --db-user=itsmng --db-password
 ```
+
+An unfinished, journaled MySQL installation can be retried with the same configuration and `db:install` (omit connection options unless also using `--reconfigure`). Retry preserves committed baseline DDL and resumes seed/adoption work; it does not replace completed tables. `--force` replaces a completed MySQL core installation; custom tables with foreign keys into core cause a preflight refusal before any table is dropped.
 
 The password option without a value prompts securely. Existing MySQL installation commands retain `mysql` as the default. A PostgreSQL installation refuses a schema that already contains `glpi_*` tables, even with `--force`. Failed PostgreSQL installations roll back schema and data; configuration and the encryption key remain available for retry.
 
@@ -42,7 +44,7 @@ MySQL keeps its original column types.
 
 The legacy adapter returns `0`/`1`/`null` for boolean results so existing forms, strict comparisons and packed search cells retain their contract. Search converts a boolean to an integer only where numeric comparison or display encoding requires it. No SQL text replacement converts arbitrary integer predicates into booleans. New code using Doctrine can bind `Types::BOOLEAN` directly.
 
-This schema change applies to **fresh PostgreSQL installations**. Earlier experimental PostgreSQL databases with smallint flags are not automatically migrated. A future versioned migration must validate existing values, preserve NULL/defaults and change column types transactionally. Recreate disposable installations when testing this branch.
+The frozen `20261002_postgres_boolean_flags` migration also adopts early PostgreSQL smallint/integer flags. It validates all values and defaults before adoption DDL, reports offending fields and sample row IDs, and converts only 0/1/NULL. Nullability, NULL defaults and NULL values remain intact. Run `db:migrate` to preview and `db:migrate --apply` during maintenance. MySQL/MariaDB retain their native flag storage. This does not transfer a MySQL database to PostgreSQL.
 
 ## Foreign keys
 
@@ -119,6 +121,8 @@ implied by these local results. Earlier revision results below are historical.
 
 Use fresh, disposable databases named `itsm_port_*` and separate configuration directories. The test scripts refuse other database names.
 
+Provision a second empty database named `itsm_port_history` with the same test role for the discovered `migration-history.php` contract. It resets only that dedicated fixture and exercises baseline/seed interruptions, conflicting DDL, populated legacy adoption, invalid data, PostgreSQL nullable flags, generated projections, sequences and idempotency. `PORT_HISTORY_DB` may select another separate `itsm_port_*_history` fixture. CI provisions this database for every provider. It is never the application or primary portability database.
+
 ```sh
 python3 tests/database-portability/suite.py /path/to/test-config
 ```
@@ -146,7 +150,7 @@ The PHP 8.3 legacy query suites passed on the search revision (46 methods, 4,057
 - Complete search portability outside the tested planner: legacy union/map/all/view fallbacks, plugin projections and arbitrary custom computation SQL, uncommon item types and full-text functions. Validate every supported filter and display combination on populated data. Ordered DISTINCT aggregates and mixed aggregate/meta criteria are covered by the new planner, not by SQL rewriting.
 - Complete portability of scheduled jobs, migrations, maintenance/schema-check commands and remaining raw MySQL expressions. Core report routes and twelve monthly statistics measures are now covered; uncommon report/plugin combinations still need broader validation. Historic `Update::doUpdates()` explicitly rejects PostgreSQL to avoid partially applying MySQL DDL.
 - Add a verified migration of existing MySQL data, including zero dates, booleans, unsigned ranges, collations, sequences, orphans and rollback/reconciliation. This branch does not migrate an existing MySQL database to PostgreSQL.
-- Replace the legacy baseline reader with a versioned provider-neutral schema/migration history. The reader is a bridge, not an arbitrary SQL parser; PostgreSQL-specific full-text/prefix indexes and triggers are separate platform additions.
+- Extend canonical history for subsequent schema changes; keep frozen baseline, seeds and old upgrade inputs immutable. Adoption currently targets legacy 2.2 and partially converted ORM installations; arbitrary older releases must first use their supported historical upgrade path. Cross-engine MySQL-to-PostgreSQL data transfer remains separate work.
 - Preserve case/accent-sensitive behavior deliberately. PostgreSQL text equality and uniqueness are not equivalent to `utf8_unicode_ci`; iterator LIKE uses ILIKE, but that does not solve collation parity.
 - Expand foreign-key coverage after optional sentinel references and polymorphic relations have an explicit design.
 - Run full browser/API/E2E coverage, including JavaScript-driven dashboard widgets and AJAX paths. HTTP page smoke tests do not exercise those paths.

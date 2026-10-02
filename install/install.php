@@ -283,7 +283,7 @@ switch ($step) {
                 break;
             }
         } else {
-            Toolbox::createSchema($_SESSION['language'], $DB);
+            Toolbox::createSchema($_SESSION['language'], $DB, true);
         }
         // no break
     case "8":
