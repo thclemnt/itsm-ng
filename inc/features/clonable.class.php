@@ -71,13 +71,28 @@ trait Clonable
                 continue;
             }
 
-            $override_input[$classname::getItemField($this->getType())] = $this->getID();
+            $item_field = $classname::getItemField($this->getType());
+            $override_input[$item_field] = $this->getID();
 
             // Force entity / recursivity based on cloned parent, with fallback on session values
             $override_input['entities_id'] = $this->isEntityAssign() ? $this->getEntityID() : Session::getActiveEntity();
             $override_input['is_recursive'] = $this->maybeRecursive() ? $this->isRecursive() : Session::getIsActiveEntityRecursive();
 
             $relation_items = $classname::getItemsAssociatedTo($this->getType(), $source->getID());
+            if (!$relation_items) {
+                continue;
+            }
+
+            $entity = \itsmng\Database\EntityRegistry::tables()[$classname::getTable()] ?? null;
+            if ($item_field === 'items_id' && $entity !== null && is_a($entity, \itsmng\Database\Mapping\LegacyInput::class, true) && method_exists($entity, 'withReference')) {
+                // clone() copies the source's physical fields. Replace every
+                // subject association together with its legacy identity, while
+                // retaining unrelated NULL fields and ordinary container ends.
+                $override_input = array_replace($override_input, (new $entity())->normalizeInput(
+                    $entity::withReference($override_input, $this->getType(), (int)$this->getID())
+                ));
+            }
+
             foreach ($relation_items as $relation_item) {
                 $relation_item->clone($override_input, $history);
             }

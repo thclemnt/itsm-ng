@@ -133,19 +133,10 @@ class Contract extends CommonDBTM
         global $DB;
 
         Toolbox::deprecated('Use clone');
-        $result = $DB->request(
-            [
-              'FROM'   => Contract_Item::getTable(),
-              'WHERE'  => [
-                 'items_id' => $oldid,
-                 'itemtype' => $itemtype,
-              ],
-            ]
-        );
-        foreach ($result as $data) {
+        $repository = \itsmng\Database\Repository\TransferBindingRepository::contracts(\itsmng\Database\Orm::create($DB));
+        foreach ($repository->links($itemtype, (int)$oldid) as $link) {
             $cd = new Contract_Item();
-            unset($data['id']);
-            $data['items_id'] = $newid;
+            $data = \itsmng\Database\Entity\ContractItem::withReference(['contracts_id' => $link['parent_id']], $itemtype, (int)$newid);
             $data = self::checkTemplateEntity($data, $data['items_id'], $data['itemtype']);
             $data             = Toolbox::addslashes_deep($data);
 
