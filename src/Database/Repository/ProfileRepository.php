@@ -16,6 +16,13 @@ final class ProfileRepository
     {
     }
 
+    /** Read the stored representation, after model input escaping and persistence. */
+    public function helpdeskItemTypes(int $id): array
+    {
+        $profile = $this->em->getRepository(Profile::class)->find($id);
+        return \importArrayFromDB($profile?->helpdesk_item_type);
+    }
+
     /** Match the full registered right set, including explicit zero-valued rights. */
     public function canManage(array $ids, array $rights, string $interface, bool $unrestricted): bool
     {

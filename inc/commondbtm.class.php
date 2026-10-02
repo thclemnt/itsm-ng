@@ -44,6 +44,9 @@ if (!defined('GLPI_ROOT')) {
 #[AllowDynamicProperties]
 class CommonDBTM extends CommonGLPI
 {
+    /** Explicit imports share the add lifecycle without interpreting an ID as a clone. */
+    private ?int $assignedIdentifier = null;
+
     /**
      * Data fields of the Item.
      *
@@ -1239,6 +1242,27 @@ class CommonDBTM extends CommonGLPI
      *
      * @return integer the new ID of the added item (or false if fail)
     **/
+    public function addWithAssignedIdentifier(int $identifier, array $input, $options = [], $history = true)
+    {
+        if ($identifier <= 0 || (array_key_exists('id', $input) && filter_var($input['id'], FILTER_VALIDATE_INT) !== $identifier)
+            || array_key_exists('_oldID', $input) || array_key_exists('clone', $input)) {
+            throw new \InvalidArgumentException('Assigned-ID creation requires a positive matching ID and no clone parameters.');
+        }
+        if ($this->assignedIdentifier !== null) {
+            throw new \LogicException('Assigned-ID creation is already active on this model.');
+        }
+        if ($this->getFromDB($identifier)) {
+            throw new \RuntimeException('Assigned-ID collision: ' . $this->getTable() . '.' . $identifier);
+        }
+        $this->assignedIdentifier = $identifier;
+        try {
+            $input['id'] = $identifier;
+            return $this->add($input, $options, $history);
+        } finally {
+            $this->assignedIdentifier = null;
+        }
+    }
+
     public function add(array $input, $options = [], $history = true)
     {
         global $DB, $CFG_GLPI;
@@ -1248,7 +1272,7 @@ class CommonDBTM extends CommonGLPI
         }
 
         // This means we are not adding a cloned object
-        if (!isset($input['clone'])) {
+        if ($this->assignedIdentifier === null && !isset($input['clone'])) {
             // This means we are asked to clone the object (old way). This will clone the clone method
             // that will set the clone parameter to true
             if (isset($input['_oldID'])) {
@@ -1323,15 +1347,19 @@ class CommonDBTM extends CommonGLPI
             }
 
             // Auto set date_creation if exsist
-            if (isset($table_fields['date_creation']) && !isset($this->input['date_creation'])) {
+            if (isset($table_fields['date_creation']) && !array_key_exists('date_creation', $this->input)) {
                 $this->fields['date_creation'] = $_SESSION["glpi_currenttime"];
             }
 
             // Auto set date_mod if exsist
-            if (isset($table_fields['date_mod']) && !isset($this->input['date_mod'])) {
+            if (isset($table_fields['date_mod']) && !array_key_exists('date_mod', $this->input)) {
                 $this->fields['date_mod'] = $_SESSION["glpi_currenttime"];
             }
 
+            if ($this->assignedIdentifier !== null && (filter_var($this->fields['id'] ?? null, FILTER_VALIDATE_INT) !== $this->assignedIdentifier
+                || array_key_exists('_oldID', $this->input) || array_key_exists('clone', $this->input))) {
+                throw new \RuntimeException('An add hook or business rule changed the assigned identity.');
+            }
             if ($this->checkUnicity(true, $options)) {
                 if ($this->addToDB() !== false) {
                     $this->post_addItem();

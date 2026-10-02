@@ -219,7 +219,8 @@ class Profile extends CommonDBTM
             && $_SESSION['glpiactiveprofile']['id'] == $this->input['id']
         ) {
             if (in_array('helpdesk_item_type', $this->updates)) {
-                $_SESSION['glpiactiveprofile']['helpdesk_item_type'] = importArrayFromDB($this->input['helpdesk_item_type']);
+                $_SESSION['glpiactiveprofile']['helpdesk_item_type'] = (new \itsmng\Database\Repository\ProfileRepository(\itsmng\Database\Orm::create($DB)))
+                    ->helpdeskItemTypes((int)$this->input['id']);
             }
 
             if (in_array('managed_domainrecordtypes', $this->updates)) {
@@ -461,6 +462,29 @@ class Profile extends CommonDBTM
         return true;
     }
 
+
+    /** Replace an exact registered item type while retaining array keys and other values. */
+    public function replaceHelpdeskItemType(string $previous, string $replacement): bool
+    {
+        if (!$this->getFromDB($this->getID())) {
+            throw new \RuntimeException('Profile no longer exists.');
+        }
+        $values = importArrayFromDB($this->fields['helpdesk_item_type']);
+        $changed = false;
+        foreach ($values as &$value) {
+            if ($value === $previous) {
+                $value = $replacement;
+                $changed = true;
+            }
+        }
+        unset($value);
+        if (!$changed) {
+            return true;
+        }
+        // This model boundary expects legacy pre-escaping; encode before escaping,
+        // so Unicode and literal backslashes survive decoding in MappedStorage.
+        return $this->update(['id' => $this->getID(), 'helpdesk_item_type' => Toolbox::addslashes_deep(exportArrayToDB($values))]);
+    }
 
     public function prepareInputForAdd($input)
     {
