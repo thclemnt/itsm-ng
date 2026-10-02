@@ -656,7 +656,7 @@ class CommonDBTM extends CommonGLPI
      * @param string[] $updates   fields to update
      * @param string[] $oldvalues array of old values of the updated fields
      *
-     * @return void
+     * @return boolean true on success
     **/
     public function updateInDB($updates, $oldvalues = [])
     {
@@ -685,7 +685,9 @@ class CommonDBTM extends CommonGLPI
                 if ($mapped) {
                     $changed = in_array($field, $changedColumns, true);
                 } else {
-                    $DB->update($this->getTable(), [$field => $this->fields[$field]], ['id' => $this->fields['id']]);
+                    if (!$DB->update($this->getTable(), [$field => $this->fields[$field]], ['id' => $this->fields['id']])) {
+                        return false;
+                    }
                     $changed = $DB->affectedRows() > 0;
                 }
                 if (!$changed) {
@@ -1934,6 +1936,14 @@ class CommonDBTM extends CommonGLPI
                                 //Check if we have to automatical fill dates
                                 Infocom::manageDateOnStatusChange($this, false);
                             }
+                        } else {
+                            // A refused writer is not a completed lifecycle update.
+                            // Keep attempted input for form diagnostics, but retain
+                            // the stored model rather than its unpersisted values.
+                            $this->fields = $storedFields;
+                            $this->updates = [];
+                            $this->oldvalues = [];
+                            return false;
                         }
                     }
                 }
