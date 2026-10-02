@@ -96,6 +96,10 @@ class Application extends BaseApplication
      */
     private $output;
 
+    /** Request-local readiness snapshot; derived from the canonical ledger. */
+    private ?array $pendingHistory = null;
+    private ?string $historyError = null;
+
     public function __construct()
     {
 
@@ -235,16 +239,26 @@ class Application extends BaseApplication
     {
 
         $begin_time = microtime(true);
+        // One Application can execute several commands in-process. Recheck the
+        // ledger after an updater or diagnostic command changed its state.
+        $this->pendingHistory = null;
+        $this->historyError = null;
 
         if (
             $command instanceof GlpiCommandInterface && $command->requiresUpToDateDb()
-            && (!array_key_exists('dbversion', $this->config) || (trim((string) $this->config['dbversion']) != ITSM_SCHEMA_VERSION))
+            && (!array_key_exists('dbversion', $this->config) || (trim((string) $this->config['dbversion']) != ITSM_SCHEMA_VERSION) || $this->pendingHistory())
         ) {
             $output->writeln(
                 '<error>'
                 . __('The version of the database is not compatible with the version of the installed files. An update is necessary.')
                 . '</error>'
             );
+            if ($this->pendingHistory()) {
+                $output->writeln('Canonical history is pending. Use db:migrate to preview, then db:migrate --apply or db:update during maintenance.');
+                if ($this->historyError !== null) {
+                    $output->writeln('<error>' . $this->historyError . '</error>');
+                }
+            }
             return self::ERROR_DB_OUTDATED;
         }
 
@@ -392,7 +406,10 @@ class Application extends BaseApplication
             return;
         }
 
-        Config::loadLegacyConfiguration(false);
+        Config::loadLegacyConfiguration(false, false);
+        if (!$this->pendingHistory()) {
+            Config::loadLockProfileConfiguration();
+        }
     }
 
     /**
@@ -456,7 +473,6 @@ class Application extends BaseApplication
         if (!($this->db instanceof DB) || !$this->db->connected) {
             return false;
         }
-
         $input = new ArgvInput();
 
         try {
@@ -469,7 +485,23 @@ class Application extends BaseApplication
             $command = null; // Say hello to CS checker
         }
 
-        return !$input->hasParameterOption('--no-plugins', true);
+        return !$this->pendingHistory() && !$input->hasParameterOption('--no-plugins', true);
+    }
+
+    private function pendingHistory(): array
+    {
+        if (!($this->db instanceof \DBAdapter) || !$this->db->connected) {
+            return [];
+        }
+        if ($this->pendingHistory === null) {
+            try {
+                $this->pendingHistory = \itsmng\Database\Migration\History::pendingVersions($this->db->getDoctrineConnection());
+            } catch (\Throwable $error) {
+                $this->historyError = 'Canonical migration ledger could not be validated: ' . $error->getMessage();
+                $this->pendingHistory = \itsmng\Database\Migration\History::VERSIONS;
+            }
+        }
+        return $this->pendingHistory;
     }
 
     /**

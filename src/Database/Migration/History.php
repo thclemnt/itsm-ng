@@ -14,10 +14,17 @@ final class History
 {
     public const VERSIONS = [Baseline20261001::VERSION, Seeds20261001::VERSION, LegacyToOrm::VERSION, Booleans20261002::VERSION, ProjectAssets20261003::VERSION, CategoryFlags20261004::VERSION, ApplianceAssets20261005::VERSION, ApplianceRecipients20261005::VERSION];
 
+    /** Application readiness uses the ledger, without planning or executing DDL. */
+    public static function pendingVersions(Connection $connection): array
+    {
+        $states = Ledger::states($connection);
+        return array_values(array_filter(self::VERSIONS, static fn (string $version): bool => ($states[$version]['complete'] ?? false) !== true));
+    }
+
     /** Read-only adoption preview; baseline and seed phases are inherited, not replayed. */
     public function plan(Connection $connection): array
     {
-        $pending = array_values(array_filter(self::VERSIONS, static fn (string $version) => (Ledger::state($connection, $version)['complete'] ?? false) !== true));
+        $pending = self::pendingVersions($connection);
         $booleans = (new Booleans20261002())->plan($connection);
         return ['complete' => !$pending, 'pending' => $pending, 'legacy' => (new LegacyToOrm())->plan($connection), 'booleans' => $booleans, 'project_assets' => (new ProjectAssets20261003())->plan($connection), 'category_flags' => (new CategoryFlags20261004())->plan($connection), 'appliance_assets' => (new ApplianceAssets20261005())->plan($connection), 'appliance_recipients' => (new ApplianceRecipients20261005())->plan($connection)];
     }
@@ -114,9 +121,9 @@ final class History
     }
 
     /** Adopt validated existing data; never replay installation seeds onto it. */
-    public function upgrade(Connection $connection, ?callable $progress = null): void
+    public function upgrade(Connection $connection, ?callable $progress = null, ?callable $onComplete = null): void
     {
-        $this->locked($connection, static function () use ($connection, $progress): void {
+        $this->locked($connection, static function () use ($connection, $progress, $onComplete): void {
             $baseline = Ledger::state($connection, Baseline20261001::VERSION);
             if (($baseline['origin'] ?? null) === 'installed' && (($baseline['complete'] ?? false) !== true || (Ledger::state($connection, Seeds20261001::VERSION)['complete'] ?? false) !== true)) {
                 throw new \RuntimeException('Resume the unfinished installation before applying upgrades.');
@@ -151,6 +158,9 @@ final class History
             if (($baseline['origin'] ?? null) === 'installed' && ($baseline['installation_complete'] ?? false) !== true) {
                 $baseline['installation_complete'] = true;
                 Ledger::save($connection, Baseline20261001::VERSION, $baseline);
+            }
+            if ($onComplete !== null) {
+                $onComplete();
             }
         });
     }

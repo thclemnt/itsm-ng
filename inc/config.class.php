@@ -3077,58 +3077,45 @@ class Config extends CommonDBTM
      * Load legacy configuration into $CFG_GLPI global variable.
      *
      * @param boolean $older_to_latest Search on old configuration objects first
+     * @param boolean $loadLockProfile Enrich lock-profile state after canonical history is ready
      *
      * @return boolean True for success, false if an error occured
      */
-    public static function loadLegacyConfiguration($older_to_latest = true)
+    public static function loadLegacyConfiguration($older_to_latest = true, bool $loadLockProfile = true)
     {
 
         global $CFG_GLPI, $DB;
 
-        $config_tables_iterator = $DB->listTables('glpi_config%');
-        $config_tables = [];
-        foreach ($config_tables_iterator as $config_table) {
-            $config_tables[] = $config_table['TABLE_NAME'];
-        }
+        // Bootstrap must inspect historic configuration before the current
+        // entity shape or any profile/domain state can be required.
+        $connection = $DB->getDoctrineConnection();
+        $config_tables = $connection->createSchemaManager()->listTableNames();
+        $platform = $connection->getDatabasePlatform();
 
-        $get_prior_to_078_config  = function () use ($DB, $config_tables) {
-            if (!in_array('glpi_config', $config_tables)) {
+        $get_prior_to_078_config = static function () use ($connection, $platform, $config_tables) {
+            if (!in_array('glpi_config', $config_tables, true)) {
                 return false;
             }
-
-            $config = new Config();
-            $config->forceTable('glpi_config');
-            if ($config->getFromDB(1)) {
-                return $config->fields;
-            }
-
-            return false;
+            return $connection->fetchAssociative('SELECT * FROM ' . $platform->quoteIdentifier('glpi_config') . ' WHERE ' . $platform->quoteIdentifier('id') . ' = ?', [1]);
         };
 
-        $get_078_to_latest_config    = function () use ($DB, $config_tables) {
-            if (!in_array('glpi_configs', $config_tables)) {
+        $get_078_to_latest_config = static function () use ($connection, $platform, $config_tables) {
+            if (!in_array('glpi_configs', $config_tables, true)) {
                 return false;
             }
-
-            Config::forceTable('glpi_configs');
-
-            $iterator = $DB->request(['FROM' => 'glpi_configs']);
-            if ($iterator->count() === 0) {
+            $rows = $connection->fetchAllAssociative('SELECT * FROM ' . $platform->quoteIdentifier('glpi_configs'));
+            if (!$rows) {
                 return false;
             }
-
-            if ($iterator->count() === 1) {
-                // 1 row = 0.78 to 0.84 config table schema
-                return $iterator->next();
+            if (count($rows) === 1) {
+                // 1 row = 0.78 to 0.84 config table schema.
+                return $rows[0];
             }
-
-            // multiple rows = 0.85+ config
             $config = [];
-            while ($row = $iterator->next()) {
-                if ('core' !== $row['context']) {
-                    continue;
+            foreach ($rows as $row) {
+                if (($row['context'] ?? null) === 'core' && isset($row['name'])) {
+                    $config[$row['name']] = $row['value'];
                 }
-                $config[$row['name']] = $row['value'];
             }
             return $config;
         };
@@ -3175,6 +3162,24 @@ class Config extends CommonDBTM
             $CFG_GLPI['lock_item_list'] = importArrayFromDB($CFG_GLPI['lock_item_list']);
         }
 
+        if ($loadLockProfile) {
+            self::loadLockProfileConfiguration();
+        }
+
+        // Path for icon of document type (web mode only)
+        if (isset($CFG_GLPI['root_doc'])) {
+            $CFG_GLPI['typedoc_icon_dir'] = $CFG_GLPI['root_doc'] . '/pics/icones';
+        }
+
+        return true;
+    }
+
+
+    /** Load domain-dependent configuration only after canonical history is ready. */
+    public static function loadLockProfileConfiguration(): void
+    {
+        global $CFG_GLPI;
+
         if (
             isset($CFG_GLPI['lock_lockprofile_id'])
             && $CFG_GLPI['lock_use_lock_item']
@@ -3187,12 +3192,6 @@ class Config extends CommonDBTM
             $CFG_GLPI['lock_lockprofile'] = $prof->fields;
         }
 
-        // Path for icon of document type (web mode only)
-        if (isset($CFG_GLPI['root_doc'])) {
-            $CFG_GLPI['typedoc_icon_dir'] = $CFG_GLPI['root_doc'] . '/pics/icones';
-        }
-
-        return true;
     }
 
 

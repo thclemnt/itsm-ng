@@ -148,9 +148,9 @@ The PHP 8.3 legacy query suites passed on the search revision (46 methods, 4,057
 ## Remaining release blockers
 
 - Complete search portability outside the tested planner: legacy union/map/all/view fallbacks, plugin projections and arbitrary custom computation SQL, uncommon item types and full-text functions. Validate every supported filter and display combination on populated data. Ordered DISTINCT aggregates and mixed aggregate/meta criteria are covered by the new planner, not by SQL rewriting.
-- Complete portability of scheduled jobs, migrations, maintenance/schema-check commands and remaining raw MySQL expressions. Core report routes and twelve monthly statistics measures are now covered; uncommon report/plugin combinations still need broader validation. Historic `Update::doUpdates()` explicitly rejects PostgreSQL to avoid partially applying MySQL DDL.
+- Complete portability of scheduled jobs, migrations, maintenance/schema-check commands and remaining raw MySQL expressions. Core report routes and twelve monthly statistics measures are now covered; uncommon report/plugin combinations still need broader validation. The supported `Update::doUpdates()` facade now uses canonical history on both providers; older application-specific MySQL scripts are never selected by current release strings.
 - Add a verified migration of existing MySQL data, including zero dates, booleans, unsigned ranges, collations, sequences, orphans and rollback/reconciliation. This branch does not migrate an existing MySQL database to PostgreSQL.
-- Extend canonical history for subsequent schema changes; keep frozen baseline, seeds and old upgrade inputs immutable. Adoption currently targets legacy 2.2 and partially converted ORM installations; arbitrary older releases must first use their supported historical upgrade path. Cross-engine MySQL-to-PostgreSQL data transfer remains separate work.
+- Extend canonical history for subsequent schema changes; keep frozen baseline, seeds and old upgrade inputs immutable. Adoption targets the frozen `Baseline20261001` schema and partially converted ORM installations. Older schemas must first use their matching historical application to reach the ITSM-NG 2.1.3 schema; the current application must not replay historical MySQL scripts. Cross-engine MySQL-to-PostgreSQL data transfer remains separate work.
 - Preserve case/accent-sensitive behavior deliberately. PostgreSQL text equality and uniqueness are not equivalent to `utf8_unicode_ci`; iterator LIKE uses ILIKE, but that does not solve collation parity.
 - Expand foreign-key coverage after optional sentinel references and polymorphic relations have an explicit design.
 - Run full browser/API/E2E coverage, including JavaScript-driven dashboard widgets and AJAX paths. HTTP page smoke tests do not exercise those paths.
@@ -236,3 +236,16 @@ the seed normalization automatically. Both providers pass fresh installation,
 optional-model lifecycle/search/migration tests, and the full database contracts
 (602 PostgreSQL / 204 MariaDB assertions). The current inventory has 632 pending
 relationship candidates, 62 polymorphic references and one ambiguous reference.
+
+## Supported upgrade commands
+
+Use `db:migrate` or `db:update --dry-run` to inspect canonical history, then
+`db:migrate --apply` or `db:update` with application writers stopped. Both providers
+share the same history, release publication and original-key policy. `--force`
+retries the canonical journal; it does not run historical MySQL scripts. Web upgrade
+requires a pre-existing authenticated administrator session with Config UPDATE
+rights and CSRF validation. Other pending-history requests show CLI recovery only.
+See [the entrypoint and bootstrap contract](orm.md#canonical-upgrade-entrypoints-and-readiness-2026-10-02)
+for the frozen adoption boundary and failure statuses. Older unsupported schemas
+must reach that boundary using their matching historical application first;
+current entities cannot redefine old migration history.

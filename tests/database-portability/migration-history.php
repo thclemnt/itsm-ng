@@ -196,7 +196,35 @@ try {
 }
 verify(Ledger::state($connection, LegacyToOrm::VERSION) === null, 'Invalid data creates no adoption journal');
 $connection->delete('glpi_useremails', ['email' => 'history-orphan@example.invalid']);
-$history->upgrade($connection);
+// Exercise the supported public updater against populated frozen tables, before
+// any current-only association columns exist. It must never replay legacy scripts.
+$upgradeConfig = sys_get_temp_dir() . '/itsm-history-upgrade-' . bin2hex(random_bytes(6));
+mkdir($upgradeConfig, 0700);
+$class = $postgres ? 'DBpgsql' : 'DBmysql';
+$properties = ['dbhost' => $DB->dbhost, 'dbuser' => $DB->dbuser, 'dbpassword' => $DB->dbpassword, 'dbdefault' => $name];
+$source = '<?php class DB extends ' . $class . ' {';
+foreach ($properties as $field => $value) {
+    $source .= ' public $' . $field . ' = ' . var_export($value, true) . ';';
+}
+file_put_contents($upgradeConfig . '/config_db.php', $source . '}');
+chmod($upgradeConfig . '/config_db.php', 0600);
+$key = (new \itsmng\Database\Upgrade($DB))->expectedSecurityKeyPath();
+verify($key !== null && is_file($key), 'The configured parent installation has its original encryption key');
+copy($key, $upgradeConfig . '/glpicrypt.key');
+chmod($upgradeConfig . '/glpicrypt.key', 0600);
+try {
+    $process = proc_open([PHP_BINARY, GLPI_ROOT . '/bin/console', '--config-dir=' . $upgradeConfig, '--no-interaction', 'db:update'], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['redirect', 1]], $pipes, GLPI_ROOT);
+    verify(is_resource($process), 'Populated historical CLI updater starts');
+    fclose($pipes[0]);
+    $output = stream_get_contents($pipes[1]);
+    fclose($pipes[1]);
+    $status = proc_close($process);
+    verify($status === 0 && str_contains($output, 'Canonical database history complete'), 'Actual db:update adopts populated frozen history without requiring later columns: ' . $output);
+} finally {
+    unlink($upgradeConfig . '/config_db.php');
+    unlink($upgradeConfig . '/glpicrypt.key');
+    rmdir($upgradeConfig);
+}
 $database->clearSchemaCache();
 verify((new SchemaCheck())->differences($connection) === [], 'Populated historical replay converges to the complete required schema');
 verify($connection->fetchOne('SELECT old_value FROM glpi_logs WHERE id = ?', [$auditId]) === $audit, 'Audit data and its original ID survive');

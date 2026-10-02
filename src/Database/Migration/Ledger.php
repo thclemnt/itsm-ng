@@ -28,6 +28,19 @@ final class Ledger
         return $connection->fetchOne('SELECT to_regclass(?)', [LegacyToOrm::LEDGER]) !== null;
     }
 
+    /** Read the canonical ledger once without creating it or journaling progress. */
+    public static function states(Connection $connection): array
+    {
+        if (!self::assertTransactional($connection)) {
+            return [];
+        }
+        $states = [];
+        foreach ($connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER) as $row) {
+            $states[$row['version']] = json_decode($row['state'], true, flags: JSON_THROW_ON_ERROR);
+        }
+        return $states;
+    }
+
     public static function state(Connection $connection, string $version): ?array
     {
         if (!self::assertTransactional($connection)) {

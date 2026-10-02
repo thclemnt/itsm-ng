@@ -122,7 +122,7 @@ between DDL and its checkpoint. Conflicting definitions refuse retry. PostgreSQL
 rolls back installation schema, data and ledger together. Sequences synchronize
 before and after adoption. New schema changes need a new historical migration.
 
-Existing legacy 2.2 installations and partially converted ORM databases use
+Existing installations matching the frozen baseline and partially converted ORM databases use
 `db:migrate` (the `db:legacy_to_orm` alias remains) to preview or adopt the same
 history without reinserting default accounts or seed data:
 
@@ -4899,3 +4899,57 @@ upgrade-entrypoint and ORM-dropdown batches. The overall goal remains open.
 Coherent fresh-install and full portability validation passes all 143 discovered
 contracts on PostgreSQL 15.19 and MariaDB 10.11.18, including populated adoption
 and phased DDL recovery. No contract assertions or time limits were relaxed.
+## Canonical upgrade entrypoints and readiness (2026-10-02)
+
+`db:update`, `db:migrate --apply`, `db:legacy_to_orm --apply`, the public
+`Update::doUpdates()` facade and authorized web-update POSTs now use one
+`Database\Upgrade` coordinator around the existing `History` and ledger.
+`db:update --dry-run` and migration commands without `--apply` only preview;
+`--force` retries canonical history idempotently. Current release strings never
+select historical MySQL scripts or skip appended migrations.
+
+Adoption supports the 355-table frozen `Baseline20261001` shape and its canonical
+successors. Its required columns are the intersection of that snapshot and current
+mappings; later association columns are introduced by history, not prerequisites.
+Unsupported earlier shapes receive concrete missing-table/column diagnostics and
+must use their matching historical application to reach the ITSM-NG 2.1.3 schema.
+The frozen migration identifier containing `legacy_2_2` is historical nomenclature,
+not a verified older-release support matrix. Interrupted installation journals
+resume through `db:install`, rather than upgrading unseeded tables.
+
+Configuration bootstrap reads through the supplied DBAL connection and defers
+lock-profile hydration until history is ready. Ordinary web requests refuse pending
+history with HTTP 503; ordinary CLI commands return 129. Read-only schema and
+migration diagnostics remain available. Anonymous/read-only requests cannot obtain
+web-upgrade capability; application Config UPDATE rights, an authenticated session
+and a valid one-use CSRF token are all required. Maintenance pages do not hydrate
+current User/Entity mappings while showing recovery diagnostics. Failed apply or
+unsupported shape returns HTTP 409; unauthorized update access returns 403.
+
+Supported adoption retains the original readable regular `glpicrypt.key`, even
+when an ITSM release alias is missing. Key loss blocks apply (CLI status 2), without
+regenerating or overwriting it. History owns schema convergence, identifiers and
+sequences; release publication retains Config lifecycle/audit hooks, verifies hook
+acceptance and runs under the same existing history lock. MySQL publication requires
+transactional InnoDB configuration and audit tables. Read-route previews retain
+the supplied connection; apply requires the configured write adapter. These route
+checks do not constitute live-replica validation.
+
+The isolated real CLI/HTTP contract covers both providers, customized followup/task
+rights, passwords, OIDC settings, active plugins, original audit IDs/text, every
+command alias, idempotent retry, web authorization/CSRF, lost-key/alias/directory
+cases, broken receipts, lock-profile and historic configuration bootstrap,
+unsupported shapes, future releases, unfinished installation, actual Config hook
+veto rollback and MySQL nontransactional publication refusal. The populated
+history contract additionally invokes actual `db:update` before later columns
+exist and retains its identifier, sentinel, relationship, data and retry assertions.
+Final integrated full-suite/browser/remote-CI validation is a separate checkpoint;
+this batch does not complete remaining application ORM and relationship work.
+
+Focused isolated validation passes on PostgreSQL 15.19 and MariaDB 10.11.18:
+actual CLI/HTTP upgrade contracts, populated frozen-history replay through db:update
+under its unchanged 300-second limit (MariaDB 242.2s), and final read-only schema
+contracts. Unmodified Update/GLPIKey checks pass 5/5 methods and 52 assertions on
+each provider, without void/skipped methods. Full-suite integration and browser,
+remote CI and live replica evidence remain separate; see the durable handoff for
+commands, logs and remaining work.

@@ -8,7 +8,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use itsmng\Database\ForeignKeys;
 
-/** One adoption migration for the legacy 2.2 schema and partially upgraded ORM installations. */
+/** One adoption migration for the frozen legacy baseline and partially upgraded ORM installations. */
 final class LegacyToOrm
 {
     public const VERSION = '20261001_legacy_to_orm_bigint';

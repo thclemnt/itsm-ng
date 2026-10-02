@@ -449,3 +449,66 @@ Racks has destructive retries and MyISAM sources; Domains has entity-crossing
 name matches. Source inspection of those plugins is not live upgrade validation.
 Release-engine CI, PostgreSQL 14/18, MariaDB 11.8, MySQL 8.4 and live replica
 validation remain unavailable or unexecuted. The modernization goal remains open.
+## Unified upgrade and readiness batch (2026-10-02)
+
+The existing canonical History/ledger now owns supported CLI, facade and web
+upgrades through `Database\Upgrade`. This replaces old release-selected MySQL
+script execution, plugin deactivation and permission/OIDC mutations. Supported
+adoption is structural: all 355 frozen baseline tables and historical/current
+column intersections, followed by full validated history; new migration columns
+are not prerequisites. Earlier releases require their matching historical
+application to reach the ITSM-NG 2.1.3 schema. Frozen migration definitions and
+seed contents remain unchanged; their `legacy_2_2` identifier is not a verified
+release-support matrix.
+
+Pending ledger history blocks ordinary writes even when release strings already
+match. CLI updater/check diagnostics remain available. Only an authenticated
+session with Config UPDATE rights can obtain the web-upgrade capability, and POSTs
+require CSRF. Anonymous/read-only requests receive CLI recovery, without apply
+forms. Configuration bootstrap uses the supplied DBAL connection before current
+Profile hydration; recovery headers avoid current User/Entity ORM queries.
+Release publication retains Config lifecycle/audit hooks, verifies acceptance and
+shares History's existing advisory lock. Missing or invalid key paths never cause
+regeneration; supported adoption requires the inherited original glpicrypt.key.
+Read-route preview remains read-only; apply requires the supplied write adapter.
+MySQL configuration/audit publication requires InnoDB, without implicit conversion.
+
+Isolated PostgreSQL 15.19 and MariaDB 10.11.18 evidence, PHP 8.2.33:
+
+- Fresh installations completed on own disposable `itsm_port_upgrade_entrypoints`
+  databases. These are separate from the previous checkpoint's databases.
+- New actual CLI/HTTP `upgrade-entrypoints.php` passes on both providers: every
+  alias, preview, current-release pending history, customized rights, passwords,
+  active plugins/OIDC/audit preservation, sequential idempotent retry, original-key
+  retention and lost-key/alias/directory cases, authenticated apply, anonymous and
+  read-only denial, forged CSRF, malformed receipt recovery, interrupted installation,
+  newer release refusal, unsupported Profile and historical configuration shapes,
+  real Config lifecycle veto rollback and MySQL nontransactional publication refusal.
+- Strengthened `migration-history.php` passes both providers under the unchanged
+  300-second budget, including actual db:update against populated frozen schema
+  before later columns exist. All prior invalid-data, nontransactional interruption,
+  seed rollback, legacy-ID, sentinel, nullability, boolean, relationship/projection,
+  audit/account, sequence and retry assertions remain. MariaDB finished in 242.2s;
+  an exact PostgreSQL duration was not recorded.
+- Unmodified Update and GLPIKey application classes pass on each provider:
+  **2 classes, 5/5 methods, 52 assertions, 0 void and 0 skipped**. Checked-in bootstrap
+  loaded dataset 4.7; success summaries were inspected, not merely process exits.
+- Read-only schema-check contracts pass both providers after upgrade fixtures.
+  PHP lint, scoped repository formatting and whitespace checks pass.
+
+Logs are `/workspace/itsm-env/evidence/upgrade-entrypoints-{contract,history,application}-{pg,mysql}.log`
+and `upgrade-entrypoints-install-{pg,mysql}.log`. These are local real CLI/HTTP
+and database results; browser, remote CI and live replica behavior were not validated
+by this batch. Parent integration must run the discovered full suites on both
+providers and inspect final schemas. The broader persistent objective remains open:
+continue remaining domain persistence/relationship conversions and validate supported
+historical release matrices and cross-engine data transfer separately.
+
+Existing `project-assets-schema.php` and `appliance-assets-schema.php` also pass on
+both engines after this coordinator change; each provider's final schema-check
+contract passes. Subsequent contract runs expose the checked-in `tester` plugin
+fixture through an external auto-prepend definition because the normal atoum
+bootstrap installs its database record. The initial post-dataset runs passed but
+reported that fixture's missing source path; this is an environment fixture
+configuration issue, not suppressed application diagnostics. Exact focused logs
+are `upgrade-entrypoints-{project-assets-schema,appliance-assets-schema,schema-check}-{pg,mysql}.log`.

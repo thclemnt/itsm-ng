@@ -46,6 +46,8 @@ class CheckCommand extends AbstractCommand
 {
     public const ERROR_SCHEMA_DIFFERENCES = 1;
 
+    protected $requires_db_up_to_date = false;
+
     protected function configure()
     {
         parent::configure();

@@ -100,10 +100,48 @@ if (!file_exists(GLPI_CONFIG_DIR . "/config_db.php")) {
         unset($_SESSION['TRY_OLD_CONFIG_FIRST']);
     }
 
-    if (!Config::loadLegacyConfiguration($older_to_latest)) {
-        echo "Error accessing config table";
-        exit();
+    $configurationLoaded = Config::loadLegacyConfiguration($older_to_latest, false);
+
+    // A release string does not describe appended canonical migrations. Refuse
+    // ordinary application queries before loading domain state or plugins.
+    // Restore's donotcheckversion option only bypasses the old release check.
+    $historyError = null;
+    try {
+        $pendingHistory = \itsmng\Database\Migration\History::pendingVersions($DB->getDoctrineConnection());
+    } catch (Throwable $error) {
+        $pendingHistory = [];
+        $historyError = 'Canonical migration ledger could not be validated: ' . $error->getMessage();
     }
+    if ($pendingHistory || $historyError !== null) {
+        Session::loadLanguage('en_GB', false);
+        $message = $historyError ?? 'Canonical database history is pending. Stop application writers and run db:migrate --apply or db:update.';
+        if (isCommandLine()) {
+            echo $message . "\n" . implode("\n", $pendingHistory) . "\n";
+        } else {
+            http_response_code(503);
+            Html::maintenanceHeader(__('Upgrade'));
+            echo '<p>' . htmlspecialchars($message, ENT_QUOTES, 'UTF-8') . '</p>';
+            if ($historyError === null && Session::getLoginUserID() > 0 && Config::canUpdate()) {
+                $_SESSION['can_process_update'] = true;
+                if (empty($_SESSION['csrf_token_time']) || time() >= $_SESSION['csrf_token_time']) {
+                    \itsmng\Csrf::generate();
+                }
+                echo '<form method="post" action="' . htmlspecialchars($CFG_GLPI['root_doc'] . '/install/update.php', ENT_QUOTES, 'UTF-8') . '">';
+                echo '<button type="submit" name="from_update" value="1">' . __('Upgrade') . '</button>';
+                Html::closeForm();
+            } else {
+                unset($_SESSION['can_process_update']);
+            }
+            Html::maintenanceFooter();
+        }
+        exit(1);
+    }
+
+    if (!$configurationLoaded) {
+        echo 'Error accessing config table';
+        exit(1);
+    }
+    Config::loadLockProfileConfiguration();
 
     if (
         isCommandLine()
@@ -266,7 +304,7 @@ if (!file_exists(GLPI_CONFIG_DIR . "/config_db.php")) {
                     }
                 }
 
-                if ($older === true) {
+                if ($older === true && Session::getLoginUserID() > 0 && Config::canUpdate()) {
                     echo "<form method='post' aria-label='old DB' action='" . $CFG_GLPI["root_doc"] . "/install/update.php'>";
                     if ($dev === true) {
                         echo Config::agreeDevMessage();
@@ -277,6 +315,9 @@ if (!file_exists(GLPI_CONFIG_DIR . "/config_db.php")) {
                     echo "<input type='submit' name='from_update' value=\"" . _sx('button', 'Upgrade') . "\"
                       class='btn btn-secondary mb-3'>";
                     Html::closeForm();
+                } elseif ($older === true) {
+                    unset($_SESSION['can_process_update']);
+                    echo '<p>Stop application writers and run db:migrate --apply or db:update using the configured write connection.</p>';
                 } elseif ($newer === true) {
                     echo "<p class='red'>" .
                           __('You are trying to use ITSM-NG with outdated files compared to the version of the database. Please install the correct ITSM-NG files corresponding to the version of your database.') . "</p>";

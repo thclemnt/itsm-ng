@@ -2200,6 +2200,24 @@ JAVASCRIPT
     }
 
 
+    /** Database-free maintenance page for installation and pending migrations. */
+    public static function maintenanceHeader(string $title): void
+    {
+        header('Content-Type: text/html; charset=UTF-8');
+        self::header_nocache();
+        echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">';
+        echo '<title>ITSM-NG - ' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</title>';
+        echo self::css('public/lib/base.css');
+        echo '</head><body><main class="container" role="main">';
+    }
+
+    public static function maintenanceFooter(): void
+    {
+        echo '</main></body></html>';
+        closeDBConnections();
+    }
+
+
     /**
      * Print a nice HTML head with no controls
      *
