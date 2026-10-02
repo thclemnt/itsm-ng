@@ -89,14 +89,14 @@ class ITILCategory
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?ProblemTemplate $problemtemplates = null;
 
-    #[ORM\Column(name: '`is_incident`', type: 'integer', nullable: false, options: ['default' => '1'])]
-    public int $is_incident = 1;
+    #[ORM\Column(name: '`is_incident`', type: 'boolean', nullable: false, options: ['default' => true])]
+    public bool $is_incident = true;
 
-    #[ORM\Column(name: '`is_request`', type: 'integer', nullable: false, options: ['default' => '1'])]
-    public int $is_request = 1;
+    #[ORM\Column(name: '`is_request`', type: 'boolean', nullable: false, options: ['default' => true])]
+    public bool $is_request = true;
 
-    #[ORM\Column(name: '`is_problem`', type: 'integer', nullable: false, options: ['default' => '1'])]
-    public int $is_problem = 1;
+    #[ORM\Column(name: '`is_problem`', type: 'boolean', nullable: false, options: ['default' => true])]
+    public bool $is_problem = true;
 
     #[ORM\Column(name: '`is_change`', type: 'boolean', nullable: false, options: ['default' => true])]
     public bool $is_change = true;

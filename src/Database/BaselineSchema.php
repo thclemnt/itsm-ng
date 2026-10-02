@@ -6,6 +6,8 @@ namespace itsmng\Database;
 
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Schema\Schema;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use itsmng\Database\Mapping\ReferenceKind;
 
@@ -106,6 +108,15 @@ final class BaselineSchema
         try {
             foreach ($em->getMetadataFactory()->getAllMetadata() as $metadata) {
                 foreach ($metadata->fieldMappings as $property => $field) {
+                    // Logical flags live on their entity properties. MySQL keeps
+                    // historical integer storage; PostgreSQL uses native booleans.
+                    if ($platform instanceof PostgreSQLPlatform && $field->type === Types::BOOLEAN) {
+                        $column = $schema->getTable($metadata->getTableName())->getColumn($field->columnName);
+                        $column->setType(Type::getType(Types::BOOLEAN));
+                        if ($column->getDefault() !== null) {
+                            $column->setDefault((bool)(int)$column->getDefault());
+                        }
+                    }
                     foreach ((new \ReflectionProperty($metadata->name, $property))->getAttributes(Mapping\DiscriminatorKey::class) as $attribute) {
                         $key = $attribute->newInstance();
                         if ($key->fallbackProperty !== null || $key->emptyValue !== null) {

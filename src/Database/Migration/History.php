@@ -12,14 +12,14 @@ use itsmng\Database\SequenceSynchronizer;
 /** Empty-database replay and validated adoption share one canonical history and ledger. */
 final class History
 {
-    public const VERSIONS = [Baseline20261001::VERSION, Seeds20261001::VERSION, LegacyToOrm::VERSION, Booleans20261002::VERSION, ProjectAssets20261003::VERSION];
+    public const VERSIONS = [Baseline20261001::VERSION, Seeds20261001::VERSION, LegacyToOrm::VERSION, Booleans20261002::VERSION, ProjectAssets20261003::VERSION, CategoryFlags20261004::VERSION];
 
     /** Read-only adoption preview; baseline and seed phases are inherited, not replayed. */
     public function plan(Connection $connection): array
     {
         $pending = array_values(array_filter(self::VERSIONS, static fn (string $version) => (Ledger::state($connection, $version)['complete'] ?? false) !== true));
         $booleans = (new Booleans20261002())->plan($connection);
-        return ['complete' => !$pending, 'pending' => $pending, 'legacy' => (new LegacyToOrm())->plan($connection), 'booleans' => $booleans, 'project_assets' => (new ProjectAssets20261003())->plan($connection)];
+        return ['complete' => !$pending, 'pending' => $pending, 'legacy' => (new LegacyToOrm())->plan($connection), 'booleans' => $booleans, 'project_assets' => (new ProjectAssets20261003())->plan($connection), 'category_flags' => (new CategoryFlags20261004())->plan($connection)];
     }
 
     public static function isInstalling(Connection $connection): bool
@@ -126,9 +126,11 @@ final class History
             // Unsupported plugin kinds and invalid subjects refuse before
             // identifier widening or any other nontransactional adoption DDL.
             (new ProjectAssets20261003())->plan($connection);
+            (new CategoryFlags20261004())->plan($connection);
             (new LegacyToOrm())->apply($connection, $progress);
             (new Booleans20261002())->apply($connection);
             (new ProjectAssets20261003())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('ProjectAssets20261003: ' . $phase));
+            (new CategoryFlags20261004())->apply($connection);
             $differences = (new SchemaCheck())->differences($connection);
             if ($differences) {
                 throw new \RuntimeException("Migration history did not converge:\n" . implode("\n", $differences));

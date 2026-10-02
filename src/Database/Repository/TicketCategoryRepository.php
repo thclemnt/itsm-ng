@@ -29,7 +29,7 @@ final class TicketCategoryRepository
             default => null,
         };
         if ($flag !== null) {
-            $criteria[$flag] = 1;
+            $criteria[$flag] = true;
         }
         if ($helpdesk) {
             $criteria['is_helpdeskvisible'] = true;
