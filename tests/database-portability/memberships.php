@@ -154,6 +154,7 @@ try {
     }
     $model = new Group();
     verify($model->getFromDB($group), 'Load mapped group for application views');
+    verify(Group_User::countForItem($model) === count(Group_User::getListForItem($model)), 'Ordered membership listing and unordered total preserve the same authorized relation scope');
     $_SESSION['glpiactive_entity'] = $child;
     $members = $ids = [];
     Group_User::getDataForGroup($model, $members, $ids, 'is_manager', true);

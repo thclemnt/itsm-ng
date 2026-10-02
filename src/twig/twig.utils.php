@@ -258,18 +258,12 @@ function getLinkedDocumentsForItem($itemType, $items_id)
 {
     global $DB;
 
-    $iterator = $DB->request([
-        "SELECT" => ["id", "documents_id"],
-        "FROM" => Document_Item::getTable(),
-        "WHERE" => [
-            "itemType" => $itemType,
-            "items_id" => $items_id,
-        ],
-    ]);
+    $bindings = (new \itsmng\Database\Repository\DocumentRepository(\itsmng\Database\Orm::create($DB)))
+        ->bindingsForItem($itemType, (int)$items_id);
 
     $options = [];
     $document = new Document();
-    while ($val = $iterator->next()) {
+    foreach ($bindings as $val) {
         $document->getFromDB($val["documents_id"]);
         $options[$val["id"]] =
             "<a href=" .

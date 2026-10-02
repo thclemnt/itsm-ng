@@ -3367,6 +3367,7 @@ class Ticket extends DbTestCase
      */
     public function testGetAssociatedDocumentsCriteria($rights, $ticket_id, $bypass_rights, $expected_where)
     {
+        global $DB;
         $this->login();
 
         $ticket = new \Ticket();
@@ -3381,7 +3382,9 @@ class Ticket extends DbTestCase
 
         $it = new \DBmysqlIterator(null);
         $it->execute('glpi_tickets', $crit);
-        $this->string($it->getSql())->isIdenticalTo('SELECT * FROM `glpi_tickets` WHERE (' . $expected_where . ')');
+        $expected = 'SELECT * FROM `glpi_tickets` WHERE (' . $expected_where . ')';
+        $expected = preg_replace_callback('/`([^`]+)`/', static fn ($match) => $DB->getDoctrineConnection()->getDatabasePlatform()->quoteIdentifier($match[1]), $expected);
+        $this->string($it->getSql())->isIdenticalTo($expected);
     }
 
     public function testKeepScreenshotsOnFormReload()

@@ -82,9 +82,7 @@ final class DocumentRepository
     /** One document row per binding, scoped to the complete legacy item identity. */
     public function documentsForItem(string $type, int $item): array
     {
-        $query = $this->em->createQueryBuilder()->select('binding', 'document')->from(Entity\DocumentItem::class, 'binding')
-            ->join('binding.documents', 'document')->where('binding.itemtype = :type AND binding.items_id = :item')
-            ->setParameter('type', $type)->setParameter('item', $item, Types::INTEGER)->orderBy('binding.id');
+        $query = $this->itemBindings($type, $item)->select('binding', 'document')->join('binding.documents', 'document');
         $records = new RecordRepository($this->em);
         $rows = [];
         foreach ($query->getQuery()->toIterable() as $binding) {
@@ -92,6 +90,26 @@ final class DocumentRepository
             $this->em->detach($binding);
         }
         return $rows;
+    }
+
+    /** Binding identities for callers that must load documents through their model hooks. */
+    public function bindingsForItem(string $type, int $item): array
+    {
+        return $this->itemBindings($type, $item)->select('binding.id', 'IDENTITY(binding.documents) AS documents_id')
+            ->getQuery()->getScalarResult();
+    }
+
+    private function itemBindings(string $type, int $item): \Doctrine\ORM\QueryBuilder
+    {
+        $query = $this->em->createQueryBuilder()->from(Entity\DocumentItem::class, 'binding')->orderBy('binding.id');
+        try {
+            $association = Entity\DocumentItem::referenceAssociation($type);
+        } catch (\InvalidArgumentException) {
+            // No mapped subject can own a binding for an unknown item kind.
+            return $query->where('1 = 0');
+        }
+        return $query->where('IDENTITY(binding.' . $association . ') = :item')
+            ->setParameter('item', $item, Types::BIGINT)->orderBy('binding.id');
     }
 
     private function itilBindings(string $type, int $item, ITILDocumentAccess $access): \Doctrine\ORM\QueryBuilder

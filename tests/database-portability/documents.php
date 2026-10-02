@@ -82,7 +82,27 @@ try {
     verify(!isset($repo()->categories($scope + ['NOT' => ['id' => [$document, $content]]])[$category]), 'Used document exclusion removes an otherwise empty heading');
     verify($SQL_TOTAL_REQUEST === 0, 'Content/type/heading queries bypass adapter SQL');
     $bind = static fn (int $docid, string $type, int $id): int => $fixtures->create('glpi_documents_items', ['documents_id' => $docid, 'itemtype' => $type, 'items_id' => $id, 'entities_id' => $entity]);
-    $bind($document, 'Ticket', $ticket);
+    $ticketBinding = $bind($document, 'Ticket', $ticket);
+    $timelineBinding = $fixtures->create('glpi_documents_items', ['documents_id' => $document, 'itemtype' => 'Ticket', 'items_id' => $ticket, 'entities_id' => $entity, 'timeline_position' => 1]);
+    $bindings = $repo()->bindingsForItem('Ticket', $ticket);
+    verify(array_column($bindings, 'id') === [$ticketBinding, $timelineBinding]
+        && array_column($bindings, 'documents_id') === [$document, $document], 'Document selection preserves individual binding identities and timeline roles');
+    verify(count($repo()->documentsForItem('Ticket', $ticket)) === 2, 'Shared document selection preserves one row per binding');
+    verify($repo()->bindingsForItem('Problem', $ticket) === [] && $repo()->bindingsForItem('Ticket', 0) === [], 'Binding selection distinguishes subject kinds and absent targets');
+    $attachmentFile = tempnam(GLPI_TMP_DIR, 'orm-linked-document-');
+    try {
+        file_put_contents($attachmentFile, 'Binding fixture');
+        $connection->update('glpi_documents', ['filename' => 'Binding fixture.txt', 'filepath' => '_tmp/' . basename($attachmentFile)], ['id' => $document]);
+        require_once GLPI_ROOT . '/src/twig/twig.utils.php';
+        $SQL_TOTAL_REQUEST = 0;
+        $options = getLinkedDocumentsForItem('Ticket', $ticket);
+        verify(array_keys($options) === [$ticketBinding, $timelineBinding]
+            && str_contains($options[$ticketBinding], 'Binding fixture.txt (15B)')
+            && str_contains($options[$ticketBinding], $doc->getFormURLWithID($document)), 'Actual form document helper retains binding keys, model URLs, file names and sizes');
+        verify($SQL_TOTAL_REQUEST === 0 && getLinkedDocumentsForItem('Problem', $ticket) === [], 'Form document selector bypasses adapter queries and keeps subject scope');
+    } finally {
+        unlink($attachmentFile);
+    }
     verify(!in_array($document, $repo()->orphanIds(), true) && in_array($orphan, $repo()->orphanIds(), true), 'Orphan selector excludes bound documents without executing cleanup');
     $none = new \itsmng\Database\ITILDocumentAccess($user, false, false, false, false, false);
     verify($repo()->linkedToITIL($document, 'Ticket', $ticket, $none), 'Direct ITIL association requires no child-object rights');
