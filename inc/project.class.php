@@ -1773,34 +1773,39 @@ class Project extends CommonDBTM implements ExtraVisibilityCriteria
                            'hooks' => [
                               'change' => <<<JS
                               const choiceTokens = $choiceTokensJson;
-                              if (!choiceTokens[this.value]) {
-                                 $('#dropdown_items_id').empty();
+                              const dropdown = $('#dropdown_items_id');
+                              const request = (dropdown.data('choiceRequest') || 0) + 1;
+                              dropdown.data('choiceRequest', request);
+                              const kind = this.value;
+                              if (!choiceTokens[kind]) {
+                                 dropdown.empty();
                                  return;
                               }
                               $.ajax({
-                                    method: "POST",
-                                    url: "$CFG_GLPI[root_doc]/ajax/getDropdownValue.php",
-                                    data: {
-                                       itemtype: this.value,
-                                       _idor_token: choiceTokens[this.value],
-                                       display_emptychoice: 1,
-                                    },
-                                    success: function(response) {
-                                       const data = response.results;
-                                       $('#dropdown_items_id').empty();
-                                       for (let i = 0; i < data.length; i++) {
-                                          if (data[i].children) {
-                                             const group = $('#dropdown_items_id')
-                                                .append("<optgroup label='" + data[i].text + "'></optgroup>");
-                                             for (let j = 0; j < data[i].children.length; j++) {
-                                                group.append("<option value='" + data[i].children[j].id + "'>" + data[i].children[j].text + "</option>");
-                                             }
-                                          } else {
-                                             $('#dropdown_items_id').append("<option value='" + data[i].id + "'>" + data[i].text + "</option>");
+                                 method: "POST",
+                                 url: "$CFG_GLPI[root_doc]/ajax/getDropdownValue.php",
+                                 data: {
+                                    itemtype: kind,
+                                    _idor_token: choiceTokens[kind],
+                                    display_emptychoice: 1,
+                                 },
+                                 success: function(response) {
+                                    if (dropdown.data('choiceRequest') !== request) {
+                                       return;
+                                    }
+                                    dropdown.empty();
+                                    for (const item of response.results) {
+                                       if (item.children) {
+                                          const group = $('<optgroup>').attr('label', item.text).appendTo(dropdown);
+                                          for (const child of item.children) {
+                                             group.append(new Option(child.text, child.id));
                                           }
+                                       } else {
+                                          dropdown.append(new Option(item.text, item.id));
                                        }
                                     }
-                                 });
+                                 }
+                              });
                            JS,
                            ]
                         ],

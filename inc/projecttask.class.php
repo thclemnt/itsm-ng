@@ -1309,6 +1309,13 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
 
             $choiceTokensJson = json_encode($choiceTokens, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
             $choiceScopeJson = json_encode($choiceScope);
+            $choiceLabelsJson = json_encode([
+                'type' => __('Select a type first...'),
+                'item' => __('Select an item...'),
+                'loading' => __('Loading...'),
+                'empty' => __('No items found'),
+                'error' => __('Error loading items'),
+            ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 
             Dropdown::showFromArray(
                 'itemtype',
@@ -1341,87 +1348,55 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
             echo Html::scriptBlock("
             function updateItemsDropdown$rand(itemtype) {
                 var dropdown = $('#dropdown_items_id_$rand');
-                
+                var request = (dropdown.data('choiceRequest') || 0) + 1;
+                dropdown.data('choiceRequest', request);
                 var choiceTokens = $choiceTokensJson;
+                var labels = $choiceLabelsJson;
                 if (!itemtype || !choiceTokens[itemtype]) {
-                    dropdown.html('<option value=\"0\">" . __('Select a type first...') . "</option>');
+                    dropdown.empty().append(new Option(labels.type, '0'));
                     return;
                 }
-                
-                dropdown.html('<option value=\"0\">" . __('Loading...') . "</option>');
-                
-                var ajaxParams = {
-                    itemtype: itemtype,
-                    _idor_token: choiceTokens[itemtype],
-                    display_emptychoice: 1,
-                    entity_restrict: $choiceScopeJson,
-                    myname: 'items_id',
-                    rand: '$rand'
-                };
-                
+                dropdown.empty().append(new Option(labels.loading, '0'));
                 $.ajax({
                     url: '" . $CFG_GLPI['root_doc'] . "/ajax/getDropdownValue.php',
                     method: 'POST',
-                    data: ajaxParams,
+                    data: {
+                        itemtype: itemtype,
+                        _idor_token: choiceTokens[itemtype],
+                        display_emptychoice: 1,
+                        entity_restrict: $choiceScopeJson,
+                        myname: 'items_id',
+                        rand: '$rand'
+                    },
                     success: function(data) {
-
-                        if (typeof data === 'string') {
-                            if (data && data.trim() !== '') {
-                                dropdown.html(data);
+                        if (dropdown.data('choiceRequest') !== request) {
+                            return;
+                        }
+                        dropdown.empty().append(new Option(labels.item, '0'));
+                        var count = 0;
+                        function appendChoice(item) {
+                            var id = item.id || item.value || item[0];
+                            var text = item.text || item.name || item.label || item[1] || id;
+                            if (id && text && String(id) !== '0') {
+                                dropdown.append(new Option(text, id));
+                                ++count;
+                            }
+                        }
+                        for (var item of data.results) {
+                            if (Array.isArray(item.children)) {
+                                item.children.forEach(appendChoice);
                             } else {
-                                dropdown.html('<option value=\"0\">" . __('No items found') . "</option>');
+                                appendChoice(item);
                             }
-                        } else if (typeof data === 'object' && data.results) {
-                            var options = '<option value=\"0\">" . __('Select an item...') . "</option>';
-                            
-                            if (data.results && data.results.length > 0) {
-                                data.results.forEach(function(item) {
-                                    if (item.children && Array.isArray(item.children)) {
-                                        item.children.forEach(function(child) {
-                                            var itemId = child.id;
-                                            var itemText = child.text || child.name || child.label;
-                                            
-                                            if (itemId && itemText && itemId !== '0') {
-                                                options += '<option value=\"' + itemId + '\">' + itemText + '</option>';
-                                            }
-                                        });
-                                    } else {
-                                        var itemId, itemText;
-                                        
-                                        if (item.id && item.text) {
-                                            itemId = item.id;
-                                            itemText = item.text;
-                                        } else if (item.id && item.name) {
-                                            itemId = item.id;
-                                            itemText = item.name;
-                                        } else if (typeof item === 'object') {
-                                            itemId = item.id || item.value || item[0];
-                                            itemText = item.text || item.name || item.label || item[1] || item.id;
-                                        } else {
-                                            itemId = item;
-                                            itemText = item;
-                                        }
-                                        
-                                        if (itemId && itemText && itemId !== '0') {
-                                            options += '<option value=\"' + itemId + '\">' + itemText + '</option>';
-                                        }
-                                    }
-                                });
-                            }
-                            
-                            if (options === '<option value=\"0\">" . __('Select an item...') . "</option>') {
-                                options = '<option value=\"0\">" . __('No items found') . "</option>';
-                            }
-                            
-                            dropdown.html(options);
-                        } else {
-                            console.warn('Unexpected data format:', data);
-                            dropdown.html('<option value=\"0\">" . __('No items found') . "</option>');
+                        }
+                        if (!count) {
+                            dropdown.empty().append(new Option(labels.empty, '0'));
                         }
                     },
-                    error: function(xhr, status, error) {
-                        console.error('AJAX error:', status, error, xhr.responseText);
-                        dropdown.html('<option value=\"0\">" . __('Error loading items') . "</option>');
+                    error: function() {
+                        if (dropdown.data('choiceRequest') === request) {
+                            dropdown.empty().append(new Option(labels.error, '0'));
+                        }
                     }
                 });
             }

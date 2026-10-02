@@ -121,8 +121,9 @@ try {
     $project = new Project();
     verify($project->getFromDB($projectId), 'Load project');
     $html = capture(static fn () => $project->showTeam($project));
+    $teamDomFixtures = ['project' => $html, 'tasks' => []];
     $tokens = renderedTokens($html);
-    verify(array_keys($tokens) === ProjectTeam::$available_types && str_contains($html, '_idor_token: choiceTokens[this.value]'), 'Project request selects the token belonging to its actual kind');
+    verify(array_keys($tokens) === ProjectTeam::$available_types && str_contains($html, '_idor_token: choiceTokens[kind]'), 'Project request selects the token belonging to its actual kind');
     foreach ($tokens as $kind => $token) {
         $request = ['itemtype' => $kind, '_idor_token' => $token, 'display_emptychoice' => 1];
         verify(validChoiceRequest($request) && !validChoiceRequest($request + ['entity_restrict' => $scope]), 'Project preserves session scope, bound independently per kind');
@@ -133,6 +134,7 @@ try {
         $task = new ProjectTask();
         verify($task->getFromDB($taskId), 'Load task');
         $html = capture(static fn () => $task->showTeam($task));
+        $teamDomFixtures['tasks'][] = $html;
         $tokens = renderedTokens($html);
         verify((bool)preg_match('/entity_restrict: ([^\n]+),/', $html, $match), 'Task sends its explicit owner scope');
         $requestScope = json_decode(trim($match[1]), true, 512, JSON_THROW_ON_ERROR);
@@ -158,6 +160,19 @@ try {
     verify(str_contains($html, 'type: params.type,'), 'Selected-value initialization uses the declared AJAX method, retaining POST context tokens');
     verify($ticketRequest['entity_restrict'] === Session::getActiveEntity() && $ticketRequest['recursive'] === Session::getIsActiveEntityRecursive(), 'Linked-ticket selector retains its current-entity policy');
     verify(!validChoiceRequest(array_replace($ticketRequest, ['entity_restrict' => $scope])), 'Linked-ticket context cannot broaden after rendering');
+    if (isset($argv[2])) {
+        $group = $fixtures->create('glpi_groups', ['id' => 4294967801, 'name' => 'Group <img src=x data-team-choice> label', 'entities_id' => $scope]);
+        $contact = $fixtures->create('glpi_contacts', ['id' => 4294967801, 'name' => 'Contact <img src=x data-team-choice> label', 'entities_id' => $scope]);
+        foreach (['Group' => $group, 'Contact' => $contact] as $kind => $id) {
+            $teamDomFixtures['responses'][$kind] = Dropdown::getDropdownValue([
+                'itemtype' => $kind,
+                'condition' => Dropdown::addNewCondition(['id' => $id]),
+                'entity_restrict' => [0, $scope],
+                'display_emptychoice' => true,
+            ], false);
+        }
+        file_put_contents($argv[2], json_encode($teamDomFixtures, JSON_THROW_ON_ERROR));
+    }
     echo "Dropdown caller contexts passed\n";
 } finally {
     $DB->rollBack();
