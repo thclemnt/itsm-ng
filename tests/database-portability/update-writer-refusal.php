@@ -112,6 +112,43 @@ try {
     $manager->clear();
     verify($read->find('glpi_computers', 'id', $id)['name'] === 'Accepted writer value', 'Accepted writer persists the new value');
     verify(count($read->matching('glpi_logs', ['itemtype' => 'Computer', 'items_id' => $id])) > count($logs), 'Accepted writer retains audit history');
+
+    // Intercept the compatibility adapter at its real writer boundary. This is
+    // bounded fallback evidence, not an assertion about plugin DDL atomicity.
+    $primary = $DB;
+    $DB = new class () extends DB {
+        public int $writes = 0;
+        public int $affectedReads = 0;
+
+        public function __construct($choice = null)
+        {
+        }
+
+        public function update($table, $params, $where, array $joins = [])
+        {
+            ++$this->writes;
+            return false;
+        }
+
+        public function affectedRows()
+        {
+            ++$this->affectedReads;
+            return 0;
+        }
+    };
+    try {
+        $fallback = new class () extends CommonDBTM {
+            public static function getTable($classname = null)
+            {
+                return 'glpi_plugin_writer_refusal_probe';
+            }
+        };
+        $fallback->fields = ['id' => 1, 'name' => 'Attempted plugin value'];
+        verify($fallback->updateInDB(['name'], ['name' => 'Stored plugin value']) === false, 'Real unmapped writer propagates intercepted adapter false');
+        verify($DB->writes === 1 && $DB->affectedReads === 0, 'Refused adapter does not fall through into affected-row/history success semantics');
+    } finally {
+        $DB = $primary;
+    }
 } finally {
     while ($connection->getTransactionNestingLevel() > $level) {
         $connection->rollBack();
