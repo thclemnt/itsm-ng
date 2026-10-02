@@ -5302,6 +5302,13 @@ class Ticket extends CommonITILObject
 
         $formUrl = $this->getFormURL();
         $reopenLabel = __('Reopen');
+        $ticketChoiceRequest = [
+            'itemtype' => 'Ticket',
+            'display_emptychoice' => true,
+            'entity_restrict' => Session::getActiveEntity(),
+            'recursive' => Session::getIsActiveEntityRecursive(),
+        ];
+        $ticketChoiceRequest['_idor_token'] = \itsmng\Database\DropdownChoiceContext::token('Ticket', $ticketChoiceRequest);
         $form = [
            'action' => $formUrl,
            'itemtype' => $display_save_btn ? self::class : null,
@@ -5598,6 +5605,7 @@ class Ticket extends CommonITILObject
                   ],
                   _n('Linked ticket', 'Linked tickets', Session::getPluralNumber()) => [
                      'type' => 'ticketSelect',
+                     'choice_request' => $ticketChoiceRequest,
                      'name' => '_link',
                      'relations' => [
                         Ticket_Ticket::LINK_TO => __('Linked to'),

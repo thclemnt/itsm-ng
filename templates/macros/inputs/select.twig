@@ -54,6 +54,7 @@
                 if (id !== '') {
                     $.ajax({
                         url: params.url,
+                        type: params.type,
                         dataType: 'json',
                         data: {
                             id: id,

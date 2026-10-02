@@ -1738,9 +1738,12 @@ class Project extends CommonDBTM implements ExtraVisibilityCriteria
         if ($canedit) {
             $itemtypes = ProjectTeam::$available_types;
             $options = [];
+            $choiceTokens = [];
             foreach ($itemtypes as $itemtype) {
                 $options[$itemtype] = $itemtype::getTypeName(1);
-            };
+                $choiceTokens[$itemtype] = \itsmng\Database\DropdownChoiceContext::token($itemtype, []);
+            }
+            $choiceTokensJson = json_encode($choiceTokens, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 
             $form = [
                'action' => Toolbox::getItemTypeFormURL(ProjectTeam::class),
@@ -1769,11 +1772,17 @@ class Project extends CommonDBTM implements ExtraVisibilityCriteria
                            'col_lg' => 6,
                            'hooks' => [
                               'change' => <<<JS
+                              const choiceTokens = $choiceTokensJson;
+                              if (!choiceTokens[this.value]) {
+                                 $('#dropdown_items_id').empty();
+                                 return;
+                              }
                               $.ajax({
                                     method: "POST",
                                     url: "$CFG_GLPI[root_doc]/ajax/getDropdownValue.php",
                                     data: {
                                        itemtype: this.value,
+                                       _idor_token: choiceTokens[this.value],
                                        display_emptychoice: 1,
                                     },
                                     success: function(response) {

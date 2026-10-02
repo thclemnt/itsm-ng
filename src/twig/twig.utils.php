@@ -43,7 +43,7 @@ function expandSelect(&$select, $fields = [])
         $ajaxData = [
             "itemtype" => $select["itemtype"],
             "display_emptychoice" => $select["display_emptychoice"] ?? 1,
-            "condition" => $select["condition"] ?? [],
+            "condition" => Dropdown::addNewCondition($select["condition"] ?? []),
             "permit_parent_select" => 0,
             "entity_restrict" => $restrict,
             "recursive" => $recursive,
@@ -54,6 +54,10 @@ function expandSelect(&$select, $fields = [])
         if (isset($select["right"])) {
             $ajaxData["right"] = $select["right"];
         }
+        $ajaxData["_idor_token"] = \itsmng\Database\DropdownChoiceContext::token(
+            $select["itemtype"],
+            $ajaxData,
+        );
         $select["ajax"] = [
             "url" => $CFG_GLPI["root_doc"] . "/ajax/getDropdownValue.php",
             "type" => "POST",
@@ -178,6 +182,7 @@ function getItemByEntity($itemtype, $entity, $conditions = [], $used = [])
         [
             "itemtype" => $itemtype,
             "condition" => $key,
+            "entity_restrict" => $entity,
             "used" => $used,
         ],
         false,

@@ -1291,13 +1291,24 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
             echo "<td width='40%'>";
             echo __('Type') . "<br>";
 
+            $choiceScope = $task->fields['is_recursive']
+                ? array_values(getSonsOf('glpi_entities', $task->fields['entities_id']))
+                : $task->fields['entities_id'];
+            $choiceTokens = [];
             $types_for_dropdown = [];
             foreach (ProjectTaskTeam::$available_types as $type) {
                 if (class_exists($type)) {
                     $item = new $type();
                     $types_for_dropdown[$type] = $item->getTypeName(1);
+                    $choiceTokens[$type] = \itsmng\Database\DropdownChoiceContext::token(
+                        $type,
+                        ['entity_restrict' => $choiceScope],
+                    );
                 }
             }
+
+            $choiceTokensJson = json_encode($choiceTokens, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+            $choiceScopeJson = json_encode($choiceScope);
 
             Dropdown::showFromArray(
                 'itemtype',
@@ -1331,7 +1342,8 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
             function updateItemsDropdown$rand(itemtype) {
                 var dropdown = $('#dropdown_items_id_$rand');
                 
-                if (!itemtype || itemtype == '0') {
+                var choiceTokens = $choiceTokensJson;
+                if (!itemtype || !choiceTokens[itemtype]) {
                     dropdown.html('<option value=\"0\">" . __('Select a type first...') . "</option>');
                     return;
                 }
@@ -1340,10 +1352,9 @@ class ProjectTask extends CommonDBChild implements CalDAVCompatibleItemInterface
                 
                 var ajaxParams = {
                     itemtype: itemtype,
+                    _idor_token: choiceTokens[itemtype],
                     display_emptychoice: 1,
-                    entity_restrict: " . ($task->fields['is_recursive']
-                        ? json_encode(getSonsOf('glpi_entities', $task->fields['entities_id']))
-                        : $task->fields['entities_id']) . ",
+                    entity_restrict: $choiceScopeJson,
                     myname: 'items_id',
                     rand: '$rand'
                 };
