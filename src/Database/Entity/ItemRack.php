@@ -9,22 +9,20 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_items_racks')]
 #[ORM\UniqueConstraint(name: 'items_racks_item', columns: ['itemtype', 'items_id', 'is_reserved'])]
-class ItemRack
+#[ORM\HasLifecycleCallbacks]
+class ItemRack implements \itsmng\Database\Mapping\LegacyInput
 {
+    use \itsmng\Database\Mapping\RackableItemReference;
+
     #[ORM\ManyToOne(targetEntity: Rack::class)]
     #[ORM\JoinColumn(name: 'racks_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?Rack $racks = null;
 
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
-
-    #[ORM\Column(name: '`itemtype`', type: 'string', length: 255, nullable: false)]
-    public string $itemtype = '';
-
-    #[ORM\Column(name: '`items_id`', type: 'integer', nullable: false)]
-    public int $items_id = 0;
 
     #[ORM\Column(name: '`position`', type: 'integer', nullable: false)]
     public int $position = 0;

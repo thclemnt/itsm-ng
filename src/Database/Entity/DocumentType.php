@@ -13,7 +13,7 @@ class DocumentType
 {
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]

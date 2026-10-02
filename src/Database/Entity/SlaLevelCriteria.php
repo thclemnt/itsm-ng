@@ -12,11 +12,12 @@ class SlaLevelCriteria
 {
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
     #[ORM\ManyToOne(targetEntity: SlaLevel::class)]
     #[ORM\JoinColumn(name: 'slalevels_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?SlaLevel $slalevels = null;
 
     #[ORM\Column(name: '`criteria`', type: 'string', length: 255, nullable: true)]

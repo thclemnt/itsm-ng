@@ -16,9 +16,12 @@ final class RecordRepository
 
     public function find(string $table, string $column, int $id): ?array
     {
-        $metadata = $this->em->getClassMetadata(EntityRegistry::TABLES[$table]);
+        $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$table]);
         $field = $metadata->getFieldName($column);
         foreach ($metadata->associationMappings as $associationField => $mapping) {
+            if (!$mapping->isToOneOwningSide()) {
+                continue;
+            }
             if ($mapping->joinColumns[0]->name === $column) {
                 $field = $associationField;
             }
@@ -30,7 +33,7 @@ final class RecordRepository
     /** Select complete mapped records with bound criteria and database-side limits. */
     public function matching(string $table, array $criteria = [], array|string $order = [], ?int $limit = null, int $offset = 0, bool $legacyValues = true): array
     {
-        $metadata = $this->em->getClassMetadata(EntityRegistry::TABLES[$table]);
+        $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$table]);
         $query = $this->em->createQueryBuilder()->select('r')->from($metadata->name, 'r');
         $compiler = new \itsmng\Database\RecordCriteria($query, $metadata, $legacyValues);
         $query->where($compiler->where($criteria));
@@ -49,16 +52,27 @@ final class RecordRepository
 
     public function countMatching(string $table, array $criteria, bool $legacyValues = true): int
     {
-        $metadata = $this->em->getClassMetadata(EntityRegistry::TABLES[$table]);
+        $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$table]);
         $query = $this->em->createQueryBuilder()->select('COUNT(r.id)')->from($metadata->name, 'r');
         $query->where((new \itsmng\Database\RecordCriteria($query, $metadata, $legacyValues))->where($criteria));
         return (int)$query->getQuery()->getSingleScalarResult();
     }
 
+    /** Scalar distinct values retain the requested column name at the model boundary. */
+    public function distinctValues(string $table, string $column, array $criteria, array|string $order = []): array
+    {
+        $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$table]);
+        $query = $this->em->createQueryBuilder()->from($metadata->name, 'r');
+        $compiler = new \itsmng\Database\RecordCriteria($query, $metadata);
+        $query->select('DISTINCT ' . $compiler->column($column) . ' AS value')->where($compiler->where($criteria));
+        $compiler->order($order);
+        return array_map(static fn (array $row): array => [$column => $row['value']], $query->getQuery()->getScalarResult());
+    }
+
     /** Snapshot identifiers before lifecycle hooks mutate the selected relationships. */
     public function identifiers(string $table, string $column, array $criteria, array|string $order = []): array
     {
-        $metadata = $this->em->getClassMetadata(EntityRegistry::TABLES[$table]);
+        $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$table]);
         $query = $this->em->createQueryBuilder()->from($metadata->name, 'r');
         $compiler = new \itsmng\Database\RecordCriteria($query, $metadata);
         $query->select($compiler->column($column) . ' AS record_id')->where($compiler->where($criteria));
@@ -89,6 +103,9 @@ final class RecordRepository
             $row[$mapping->columnName] = $value;
         }
         foreach ($metadata->associationMappings as $property => $mapping) {
+            if (!$mapping->isToOneOwningSide()) {
+                continue;
+            }
             $related = $record->$property;
             $row[$mapping->joinColumns[0]->name] = $related === null ? null : $this->em->getUnitOfWork()->getEntityIdentifier($related)['id'];
         }

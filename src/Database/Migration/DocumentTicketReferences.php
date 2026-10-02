@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\OptionalReferences;
 
 final class DocumentTicketReferences
 {
@@ -13,11 +12,11 @@ final class DocumentTicketReferences
 
     public function plan(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::DOCUMENT_TICKETS, 'document ticket'))->plan($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'DOCUMENT_TICKETS'), 'document ticket'))->plan($connection);
     }
 
     public function apply(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::DOCUMENT_TICKETS, 'document ticket'))->apply($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'DOCUMENT_TICKETS'), 'document ticket'))->apply($connection);
     }
 }

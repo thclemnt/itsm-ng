@@ -5,6 +5,8 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_taskcategories')]
@@ -12,11 +14,12 @@ class TaskCategory
 {
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
     #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
+    #[ReferencePolicy(ReferenceKind::RootEntity)]
     public ?Entity $entities = null;
 
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
@@ -24,6 +27,7 @@ class TaskCategory
 
     #[ORM\ManyToOne(targetEntity: TaskCategory::class)]
     #[ORM\JoinColumn(name: 'taskcategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?TaskCategory $taskcategories = null;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
@@ -58,5 +62,6 @@ class TaskCategory
 
     #[ORM\ManyToOne(targetEntity: KnowbaseItemCategory::class)]
     #[ORM\JoinColumn(name: 'knowbaseitemcategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?KnowbaseItemCategory $knowbaseitemcategories = null;
 }

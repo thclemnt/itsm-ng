@@ -5,6 +5,8 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_certificates')]
@@ -12,11 +14,13 @@ class Certificate
 {
     #[ORM\ManyToOne(targetEntity: CertificateType::class)]
     #[ORM\JoinColumn(name: 'certificatetypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
+    #[\itsmng\Database\Mapping\AssetClassification]
     public ?CertificateType $certificatetypes = null;
 
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
@@ -30,6 +34,7 @@ class Certificate
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
     #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
+    #[ReferencePolicy(ReferenceKind::RootEntity)]
     public ?Entity $entities = null;
 
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
@@ -55,18 +60,22 @@ class Certificate
 
     #[ORM\ManyToOne(targetEntity: User::class)]
     #[ORM\JoinColumn(name: 'users_id_tech', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?User $users_tech = null;
 
     #[ORM\ManyToOne(targetEntity: Group::class)]
     #[ORM\JoinColumn(name: 'groups_id_tech', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?Group $groups_tech = null;
 
     #[ORM\ManyToOne(targetEntity: Location::class)]
     #[ORM\JoinColumn(name: 'locations_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?Location $locations = null;
 
     #[ORM\ManyToOne(targetEntity: Manufacturer::class)]
     #[ORM\JoinColumn(name: 'manufacturers_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?Manufacturer $manufacturers = null;
 
     #[ORM\Column(name: '`contact`', type: 'string', length: 255, nullable: true)]
@@ -77,10 +86,12 @@ class Certificate
 
     #[ORM\ManyToOne(targetEntity: User::class)]
     #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?User $users = null;
 
     #[ORM\ManyToOne(targetEntity: Group::class)]
     #[ORM\JoinColumn(name: 'groups_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?Group $groups = null;
 
     #[ORM\Column(name: '`is_autosign`', type: 'boolean', nullable: false, options: ['default' => false])]
@@ -91,6 +102,7 @@ class Certificate
 
     #[ORM\ManyToOne(targetEntity: State::class)]
     #[ORM\JoinColumn(name: 'states_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?State $states = null;
 
     #[ORM\Column(name: '`command`', type: 'text', nullable: true)]

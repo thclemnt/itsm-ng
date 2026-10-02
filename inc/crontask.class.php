@@ -111,6 +111,8 @@ class CronTask extends CommonDBTM
 
     public function cleanDBonPurge()
     {
+        (new Alert())->cleanDBonItemDelete($this->getType(), $this->getID());
+
 
         // CronTaskLog does not extends CommonDBConnexity
         $ctl = new CronTaskLog();

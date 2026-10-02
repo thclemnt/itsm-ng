@@ -6,12 +6,12 @@ This branch is a development port, **not a complete or production-ready PostgreS
 
 - `DBAdapter` contains the existing shared CRUD, metadata-cache and quoting API. `DBmysql` retains its public compatibility name but delegates connection ownership, SQL execution, escaping and prepared statements to DBAL. It no longer calls the native MySQL driver. `DBpgsql` still provides the native PostgreSQL transport pending its migration. Existing generated `class DB extends DBmysql` configurations keep working.
 - Doctrine DBAL 4.4+ is an explicit dependency and this branch requires PHP 8.2+. The installed development version is DBAL 4.5. `getDoctrineConnection()` uses the **same connection** as the legacy API. Session state, transactions and savepoints are shared. New application repositories should use ORM mappings and DQL; DBAL provides platform/schema operations. A query builder does not make arbitrary vendor SQL portable; use platform expressions for differences.
-- `BaselineSchema` reads the checked-in baseline into Doctrine's `Schema`/`Table` objects, so PostgreSQL does not maintain an independent SQL dump. It handles 355 distinct tables, native PostgreSQL boolean flags, generated identifiers, explicit scalar defaults, prefix/full-text indexes, comments and timestamp update triggers. The legacy baseline contains two definitions of `glpi_queuednotifications`; the final definition wins, matching the original installer.
+- `BaselineSchema` reads the checked-in baseline into Doctrine's `Schema`/`Table` objects, so PostgreSQL does not maintain an independent SQL dump. It handles 357 current tables, including normalized aggregate-origin and planning-guest memberships, native PostgreSQL boolean flags, generated identifiers, explicit scalar defaults, prefix/full-text indexes, comments and timestamp update triggers. The legacy baseline contains two definitions of `glpi_queuednotifications`; the final definition wins, matching the original installer.
 - Both installers execute the DBAL schema produced by `BaselineSchema`. MySQL timestamp declarations explicitly retain native `TIMESTAMP` semantics: DBAL's default `datetimetz` declaration would produce `DATETIME` and break session-timezone conversion. Both engines install foreign keys after seeding. PostgreSQL installs and seeds in one transaction and then synchronizes sequences, including tables whose seeds use explicit IDs. Replacing the runtime SQL reader with a frozen DBAL migration baseline remains required work.
 - `LegacySql` is a lexical bridge for the application's pre-escaped strings and backtick identifiers. It is not an SQL dialect translator. Prefer raw bound values with DBAL in new code. PostgreSQL rejects NUL text rather than silently truncating it.
 - `Expressions` delegates date arithmetic to Doctrine platforms. Search has separate input, options, provider, projection, criteria, joins, sorting and output classes behind the existing `Search` facade. The SQL-rewriting `SearchProjection` bridge is removed. See [search architecture](search.md) for the two-phase planner and its compatibility boundaries.
 
-Doctrine ORM now maps all columns of all 355 core tables. Core record-by-ID and supported structured criteria reads use ORM, and all 355 tables use ORM persistence below the existing `CommonDBTM` lifecycle; asset counts, reservations, calendars and financial reports use DQL repositories. Entity managers are scoped to one operation and share the adapter connection and transaction. See [mapped persistence and reporting](orm.md) for the ownership boundaries. The legacy baseline still owns installation and indexes; do not run ORM schema synchronization against an installation.
+Doctrine ORM now maps all columns of all 357 core tables. Core record-by-ID and supported structured criteria reads use ORM, and all 357 tables use ORM persistence below the existing `CommonDBTM` lifecycle; asset counts, reservations, calendars and financial reports use DQL repositories. Entity managers are scoped to one operation and share the adapter connection and transaction. See [mapped persistence and reporting](orm.md) for the ownership boundaries. The legacy baseline still owns installation and indexes; do not run ORM schema synchronization against an installation.
 
 ## Fresh PostgreSQL installation
 
@@ -33,7 +33,12 @@ The web installer also offers PostgreSQL (experimental). Enter an existing empty
 
 ## PostgreSQL booleans
 
-`BooleanColumns` explicitly maps 398 flags to native PostgreSQL `boolean` columns. These duplicate boolean declarations already present on the entities; replacing the registry with derived Doctrine metadata is a cleanup priority. NULL defaults stay NULL. Tinyint display width is not treated as type information: `do_count`, weekdays, timeline positions, orientation, counters and several preferences needing further classification remain integers. MySQL keeps its original column types.
+The 398 entity-local Doctrine boolean declarations drive native PostgreSQL
+`boolean` columns and search result conversion. The duplicate `BooleanColumns`
+catalogue has been removed. NULL defaults stay NULL. Tinyint display width is not
+treated as type information: `do_count`, weekdays, timeline positions, orientation,
+counters and several preferences needing further classification remain integers.
+MySQL keeps its original column types.
 
 The legacy adapter returns `0`/`1`/`null` for boolean results so existing forms, strict comparisons and packed search cells retain their contract. Search converts a boolean to an integer only where numeric comparison or display encoding requires it. No SQL text replacement converts arbitrary integer predicates into booleans. New code using Doctrine can bind `Types::BOOLEAN` directly.
 
@@ -41,9 +46,10 @@ This schema change applies to **fresh PostgreSQL installations**. Earlier experi
 
 ## Foreign keys
 
-The current registry enforces 754 relationships on both providers. Another six
-candidates, 62 polymorphic references and one ambiguous reference remain to be
-resolved. Run `php tools/database/audit-coverage.php` for the current inventory;
+Doctrine owning associations currently supply 1,003 enforced relationships on both
+providers. One ordinary candidate and 41 polymorphic references remain to be
+resolved; 23 logical discriminator selections have canonical FK-backed branches.
+Run `php tools/database/audit-coverage.php` for the current inventory;
 [mapped persistence and reporting](orm.md) documents each migration stage.
 
 The initial set of 68 relationships included:
@@ -92,11 +98,11 @@ Update/delete actions are `RESTRICT`: the application must run its cleanup/histo
 For an existing installation, audit and review the DDL first:
 
 ```sh
-php bin/console db:foreign_keys
-php bin/console db:foreign_keys --apply
+php bin/console db:legacy_to_orm
+php bin/console db:legacy_to_orm --apply
 ```
 
-Any orphan count stops the upgrade before DDL. The command never deletes or repairs user data. Applying is idempotent, and PostgreSQL applies transactionally. MySQL DDL commits implicitly; if execution fails partway, correct the reported problem and rerun. An installation must be quiescent while adding constraints; concurrent writes may make an ALTER fail, but cannot bypass the final constraint validation. Do not disable foreign-key checking to import invalid data.
+The master audits the legacy conversions before applying them and preserves their established sentinel normalization. Nonzero orphans require correction before applying. Applying is idempotent, and PostgreSQL applies transactionally. MySQL DDL commits implicitly; if execution fails partway, correct the reported problem and rerun. An installation must be quiescent while adding constraints; concurrent writes may make an ALTER fail, but cannot bypass the final constraint validation. Do not disable foreign-key checking to import invalid data.
 
 Coverage is deliberately incomplete. Most audited optional references now use NULL, but unresolved and polymorphic identifiers still require domain-specific handling. Extending coverage requires classifying each relationship, updating queries and purge behavior, and checking existing data. Inferring constraints just from `_id` names would corrupt these semantics. New work should move declarations beside their entity relationships and derive shared lookups; see [the next architecture work](orm.md#next-architecture-work).
 
@@ -163,6 +169,14 @@ Existing generated DB configuration classes still work. This removes native MySQ
 calls from the adapter, but it does not convert remaining SQL query builders into
 ORM repositories, nor remove the native PostgreSQL adapter yet.
 
+The web installer and historical OCS upgrade helper now also use DBAL-owned
+MySQL connections. Web installation selects/creates literal database names and
+writes completion settings through the mapped configuration API. Fresh HTTP
+installation and login pass on PostgreSQL and MariaDB, including MySQL selection
+and creation failures and names containing backticks. The source token inventory
+now finds 23 direct-driver sites, all in the PostgreSQL adapter; legacy application
+queries and polymorphic FK work remain pending.
+
 DBAL 4 transport-stage validation: fresh installation passes on both databases;
 PostgreSQL passes 540 database-contract assertions and MariaDB 142. Every mapped
 table passes ORM write checks; populated reporting and search contracts pass on
@@ -208,13 +222,11 @@ Optional model references now bring FK coverage to 130. Existing installations
 must review the zero-to-NULL migration before adding these constraints:
 
 ```sh
-php bin/console db:optional_references --config-dir=/path/to/config
-php bin/console db:optional_references --config-dir=/path/to/config --apply
-php bin/console db:foreign_keys --config-dir=/path/to/config --apply
+php bin/console db:legacy_to_orm --config-dir=/path/to/config
+php bin/console db:legacy_to_orm --config-dir=/path/to/config --apply
 ```
 
-Run the apply commands during maintenance. The migration covers only the 19
-explicitly listed nullable model columns; it refuses nonzero orphans and real
+Run the apply command during maintenance. The optional-model conversion remains one internal step of the master; it refuses nonzero orphans and real
 model rows with ID zero rather than discarding references. New installations run
 the seed normalization automatically. Both providers pass fresh installation,
 optional-model lifecycle/search/migration tests, and the full database contracts

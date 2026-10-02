@@ -13,15 +13,18 @@ class GroupProblem
 {
     #[ORM\ManyToOne(targetEntity: Problem::class)]
     #[ORM\JoinColumn(name: 'problems_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\ITILStatisticsRelation(\itsmng\Database\Mapping\ITILStatisticsRole::Groups)]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?Problem $problems = null;
 
     #[ORM\ManyToOne(targetEntity: Group::class)]
     #[ORM\JoinColumn(name: 'groups_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?Group $groups = null;
 
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
     #[ORM\Column(name: '`type`', type: 'integer', nullable: false, options: ['default' => '1'])]

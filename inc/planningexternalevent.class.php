@@ -44,8 +44,132 @@ class PlanningExternalEvent extends CommonDBTM implements CalDAVCompatibleItemIn
 {
     use Glpi\Features\PlanningEvent {
         rawSearchOptions as protected trait_rawSearchOptions;
+        post_getEmpty as private planningPostGetEmpty;
+        post_addItem as private planningPostAddItem;
+        post_updateItem as private planningPostUpdateItem;
+        prepareInputForAdd as private planningPrepareAdd;
+        prepareInputForUpdate as private planningPrepareUpdate;
     }
     use VobjectConverterTrait;
+
+    private ?array $pendingGuests = null;
+    private array $guestChanges = [];
+
+    private function guestsRepository(): \itsmng\Database\Repository\PlanningGuestRepository
+    {
+        global $DB;
+        return new \itsmng\Database\Repository\PlanningGuestRepository(\itsmng\Database\Orm::create($DB));
+    }
+
+    private function atomicGuests(callable $operation)
+    {
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $connection->beginTransaction();
+        $this->pendingGuests = null;
+        $this->guestChanges = [];
+        try {
+            $result = $operation();
+            $result === false ? $connection->rollBack() : $connection->commit();
+            return $result;
+        } catch (Throwable $error) {
+            $connection->rollBack();
+            throw $error;
+        } finally {
+            $this->pendingGuests = null;
+            $this->guestChanges = [];
+        }
+    }
+
+    public function add(array $input, $options = [], $history = true)
+    {
+        return $this->atomicGuests(fn () => parent::add($input, $options, $history));
+    }
+
+    public function update(array $input, $history = 1, $options = [])
+    {
+        return $this->atomicGuests(fn () => parent::update($input, $history, $options));
+    }
+
+    public function delete(array $input, $force = 0, $history = 1)
+    {
+        return $this->atomicGuests(fn () => parent::delete($input, $force, $history));
+    }
+
+    public function post_getEmpty()
+    {
+        $this->planningPostGetEmpty();
+        $this->fields['users_id_guests'] = [];
+    }
+
+    private function prepareGuests(array $input): array
+    {
+        if (array_key_exists('users_id_guests', $input)) {
+            $values = $input['users_id_guests'];
+            if (is_string($values)) {
+                $values = json_decode(\itsmng\Database\LegacyValues::decodeString($values), true, flags: JSON_THROW_ON_ERROR);
+            }
+            if (!is_array($values)) {
+                throw new InvalidArgumentException('Planning guests require an array');
+            }
+            $this->pendingGuests = \itsmng\Database\Repository\PlanningGuestRepository::selections($values);
+            unset($input['users_id_guests']);
+        }
+        return $input;
+    }
+
+    public function prepareInputForAdd($input)
+    {
+        $input['users_id_guests'] ??= [];
+        return $this->planningPrepareAdd($this->prepareGuests($input));
+    }
+
+    public function prepareInputForUpdate($input)
+    {
+        return $this->planningPrepareUpdate($this->prepareGuests($input));
+    }
+
+    private function saveGuests(): void
+    {
+        if ($this->pendingGuests !== null) {
+            $old = $this->guestsRepository()->userIds((int)$this->getID());
+            $selected = $this->pendingGuests;
+            if ($old !== $selected) {
+                $this->guestsRepository()->replaceGuests((int)$this->getID(), $selected);
+                $this->guestChanges = [12, implode(', ', $old), implode(', ', $selected)];
+            }
+            $this->fields['users_id_guests'] = $selected;
+            $this->input['users_id_guests'] = $selected;
+            $this->pendingGuests = null;
+        }
+    }
+
+    public function updateInDB($updates, $oldvalues = [])
+    {
+        // Persist membership before history reload and the public item_update hook.
+        $this->saveGuests();
+        return parent::updateInDB($updates, $oldvalues);
+    }
+
+    public function post_addItem()
+    {
+        $this->saveGuests();
+        $this->planningPostAddItem();
+    }
+
+    public function post_updateItem($history = 1)
+    {
+        $this->saveGuests();
+        $this->planningPostUpdateItem($history);
+        if ($this->guestChanges) {
+            if ($this->dohistory && $history) {
+                Log::history((int)$this->getID(), $this->getType(), $this->guestChanges);
+            }
+            if (!$this->updates) {
+                Plugin::doHook('item_update', $this);
+            }
+        }
+    }
 
     public $dohistory = true;
     public static $rightname = 'externalevent';
@@ -135,7 +259,7 @@ class PlanningExternalEvent extends CommonDBTM implements CalDAVCompatibleItemIn
 
     public function post_getFromDB()
     {
-        $this->fields['users_id_guests'] = importArrayFromDB($this->fields['users_id_guests']);
+        $this->fields['users_id_guests'] = $this->guestsRepository()->userIds((int)$this->getID());
     }
 
 
@@ -339,9 +463,10 @@ class PlanningExternalEvent extends CommonDBTM implements CalDAVCompatibleItemIn
 
     public function cleanDBonPurge()
     {
-
+        $this->guestsRepository()->removeForEvent((int)$this->getID());
         $this->deleteChildrenAndRelationsFromDb(
             [
+              PlanningRecall::class,
               VObject::class,
             ]
         );
@@ -359,7 +484,7 @@ class PlanningExternalEvent extends CommonDBTM implements CalDAVCompatibleItemIn
         return self::getItemsAsVCalendars([
            'OR' => [
               self::getTableField('users_id')        => $users_id,
-              self::getTableField('users_id_guests') => ['LIKE', '%"' . $users_id . '"%'],
+              'glpi_planningexternaleventguests.users_id' => $users_id,
            ]
         ]);
     }

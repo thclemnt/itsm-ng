@@ -1574,39 +1574,16 @@ class Change extends CommonITILObject
      * @param string $itemtype     Item type
      * @param integer $items_id    ID of the Item
      *
-     * @return DBmysqlIterator
+     * @return \itsmng\Database\RowIterator
      */
     public function getActiveChangesForItem($itemtype, $items_id)
     {
         global $DB;
 
-        return $DB->request([
-           'SELECT'    => [
-              $this->getTable() . '.id',
-              $this->getTable() . '.name',
-              $this->getTable() . '.priority',
-           ],
-           'FROM'      => $this->getTable(),
-           'LEFT JOIN' => [
-              'glpi_changes_items' => [
-                 'ON' => [
-                    'glpi_changes_items' => 'changes_id',
-                    $this->getTable()    => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_changes_items.itemtype' => $itemtype,
-              'glpi_changes_items.items_id'    => $items_id,
-              $this->getTable() . '.is_deleted' => 0,
-              'NOT'                         => [
-                 $this->getTable() . '.status' => array_merge(
-                     $this->getSolvedStatusArray(),
-                     $this->getClosedStatusArray()
-                 )
-              ]
-           ]
-        ]);
+        return new \itsmng\Database\RowIterator(
+            (new \itsmng\Database\Repository\ITILAssetRepository(\itsmng\Database\Orm::create($DB)))
+                ->active('Change', (string)$itemtype, (int)$items_id, array_merge($this->getSolvedStatusArray(), $this->getClosedStatusArray()))
+        );
     }
 
 

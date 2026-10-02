@@ -5,6 +5,8 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_remindertranslations')]
@@ -12,11 +14,12 @@ class ReminderTranslation
 {
     #[ORM\ManyToOne(targetEntity: Reminder::class)]
     #[ORM\JoinColumn(name: 'reminders_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?Reminder $reminders = null;
 
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
     #[ORM\Column(name: '`language`', type: 'string', length: 5, nullable: true)]
@@ -30,6 +33,8 @@ class ReminderTranslation
 
     #[ORM\ManyToOne(targetEntity: User::class)]
     #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?User $users = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]

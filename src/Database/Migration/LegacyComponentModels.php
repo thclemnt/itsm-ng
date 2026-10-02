@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\OptionalReferences;
 
 final class LegacyComponentModels
 {
@@ -13,11 +12,11 @@ final class LegacyComponentModels
 
     public function plan(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::LEGACY_COMPONENT_MODELS, 'legacy component model'))->plan($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'LEGACY_COMPONENT_MODELS'), 'legacy component model'))->plan($connection);
     }
 
     public function apply(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::LEGACY_COMPONENT_MODELS, 'legacy component model'))->apply($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'LEGACY_COMPONENT_MODELS'), 'legacy component model'))->apply($connection);
     }
 }

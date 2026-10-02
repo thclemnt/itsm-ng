@@ -2,6 +2,7 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
 use itsmng\Database\ForeignKeys;
 
 $directory = $argv[1] ?? '';
@@ -55,8 +56,8 @@ try {
     $records = [];
     $others = [];
     $em = \itsmng\Database\Orm::create($DB);
-    foreach (\itsmng\Database\EntityOwnership::RELATIONS as $table => $relations) {
-        $metadata = $em->getClassMetadata(\itsmng\Database\EntityRegistry::TABLES[$table]);
+    foreach (ReferenceHistory::get('ownership', 'RELATIONS') as $table => $relations) {
+        $metadata = $em->getClassMetadata(\itsmng\Database\EntityRegistry::tables()[$table]);
         $values = ['entities_id' => $owner];
         $otherValues = ['entities_id' => $other];
         if ($metadata->hasField('name')) {
@@ -67,8 +68,11 @@ try {
             $values['sub_type'] = $otherValues['sub_type'] = 'RuleTicket';
         }
         if ($metadata->hasField('itemtype') && $metadata->hasField('items_id')) {
-            $values += ['itemtype' => 'Computer', 'items_id' => $fixtures->create('glpi_computers', ['entities_id' => $owner])];
-            $otherValues += ['itemtype' => 'Computer', 'items_id' => $fixtures->create('glpi_computers', ['entities_id' => $other])];
+            $selections = \itsmng\Database\EntityRegistry::discriminatedReferences($table)['items_id']['selections'] ?? [];
+            $kind = isset($selections['Computer']) ? 'Computer' : (array_key_first($selections) ?? 'Computer');
+            $target = $selections[$kind]['target'] ?? 'glpi_computers';
+            $values += ['itemtype' => $kind, 'items_id' => $fixtures->create($target, ['entities_id' => $owner])];
+            $otherValues += ['itemtype' => $kind, 'items_id' => $fixtures->create($target, ['entities_id' => $other])];
         }
         if ($table === 'glpi_ipnetworks') {
             $records[$table] = (new IPNetwork())->add($values + ['network' => '10.246.1.0/24']);

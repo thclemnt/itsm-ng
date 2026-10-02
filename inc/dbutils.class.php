@@ -558,6 +558,7 @@ final class DbUtils
         // !='0' needed because consider as empty
         if (
             !$complete_request
+            && !is_array($value)
             && ($value != '0')
             && empty($value)
             && isset($_SESSION['glpishowallentities'])
@@ -577,7 +578,7 @@ final class DbUtils
                 $field = "entities_id";
             }
         }
-        $globalScope = isset(\itsmng\Database\GlobalEntityScopes::RELATIONS[$table][$field]);
+        $globalScope = \itsmng\Database\EntityRegistry::hasPolicy($table, $field, \itsmng\Database\Mapping\ReferenceKind::GlobalScope);
         if (empty($table)) {
             $field = $DB->quoteName($field);
         } else {
@@ -665,6 +666,7 @@ final class DbUtils
         // !='0' needed because consider as empty
         if (
             !$complete_request
+            && !is_array($value)
             && ($value != '0')
             && empty($value)
             && isset($_SESSION['glpishowallentities'])
@@ -680,7 +682,7 @@ final class DbUtils
                 $field = "entities_id";
             }
         }
-        $globalScope = isset(\itsmng\Database\GlobalEntityScopes::RELATIONS[$table][$field]);
+        $globalScope = \itsmng\Database\EntityRegistry::hasPolicy($table, $field, \itsmng\Database\Mapping\ReferenceKind::GlobalScope);
         if (!empty($table)) {
             $field = "$table.$field";
         }
@@ -760,7 +762,7 @@ final class DbUtils
         }
 
         $parentIDfield = $this->getForeignKeyFieldForTable($table);
-        $use_cache     = $DB->fieldExists($table, "sons_cache");
+        $use_cache     = $this->hasTreeColumn($table, 'sons_cache');
 
         if (
             $use_cache
@@ -814,6 +816,15 @@ final class DbUtils
         return $sons;
     }
 
+    private function hasTreeColumn(string $table, string $column): bool
+    {
+        global $DB;
+
+        return \itsmng\Database\MappedStorage::supports($table)
+            ? in_array($column, \itsmng\Database\EntityRegistry::columnNames($table), true)
+            : $DB->fieldExists($table, $column);
+    }
+
     private function getTreeRows(string $table, array $fields, array $criteria): array
     {
         global $DB;
@@ -841,7 +852,7 @@ final class DbUtils
     {
         global $DB;
 
-        if (isset(\itsmng\Database\EntityRegistry::TABLES[$table])) {
+        if (isset(\itsmng\Database\EntityRegistry::tables()[$table])) {
             return \itsmng\Database\MappedReads::identifiers($DB, $table, 'id', [$parentColumn => $parents], $order);
         }
         return array_map('intval', array_column(iterator_to_array($DB->request([
@@ -882,7 +893,7 @@ final class DbUtils
 
         // IDs to be present in the final array
         $parentIDfield = $this->getForeignKeyFieldForTable($table);
-        $use_cache     = $DB->fieldExists($table, "ancestors_cache");
+        $use_cache     = $this->hasTreeColumn($table, 'ancestors_cache');
 
         if (!is_array($items_id)) {
             $items_id = (array)$items_id;
@@ -1091,71 +1102,88 @@ final class DbUtils
         $name    = "";
         $comment = "";
 
-        $SELECTNAME    = new \QueryExpression("'' AS " . $DB->quoteName('transname'));
-        $SELECTCOMMENT = new \QueryExpression("'' AS " . $DB->quoteName('transcomment'));
-        $JOIN          = [];
-        $JOINS         = [];
-        if ($translate) {
-            if (Session::haveTranslations($this->getItemTypeForTable($table), 'completename')) {
-                $SELECTNAME = 'namet.value AS transname';
-                $JOINS['glpi_dropdowntranslations AS namet'] = [
-                   'ON' => [
-                      'namet'  => 'items_id',
-                      $table   => 'id', [
-                         'AND' => [
-                            'namet.itemtype'  => $this->getItemTypeForTable($table),
-                            'namet.language'  => $_SESSION['glpilanguage'],
-                            'namet.field'     => 'completename'
-                         ]
-                      ]
-                   ]
-                ];
+        if (isset(\itsmng\Database\EntityRegistry::tables()[$table])) {
+            $type = $this->getItemTypeForTable($table);
+            $translations = [];
+            foreach (['completename', 'comment'] as $field) {
+                if ($translate && Session::haveTranslations($type, $field)) {
+                    $translations[] = $field;
+                }
             }
-            if (Session::haveTranslations($this->getItemTypeForTable($table), 'comment')) {
-                $SELECTCOMMENT = 'namec.value AS transcomment';
-                $JOINS['glpi_dropdowntranslations AS namec'] = [
-                   'ON' => [
-                      'namec'  => 'items_id',
-                      $table   => 'id', [
-                         'AND' => [
-                            'namec.itemtype'  => $this->getItemTypeForTable($table),
-                            'namec.language'  => $_SESSION['glpilanguage'],
-                            'namec.field'     => 'comment'
-                         ]
-                      ]
-                   ]
-                ];
+            $columns = ['completename', 'comment'];
+            if ($table === Location::getTable()) {
+                $columns = array_merge($columns, ['address', 'town', 'country']);
+            }
+            $result = (new \itsmng\Database\Repository\DropdownTranslationRepository(\itsmng\Database\Orm::create($DB)))
+                ->dropdownRow($table, (int)$ID, $type, $_SESSION['glpilanguage'] ?? '', $translations, $columns);
+            $iterator = new \itsmng\Database\RowIterator($result === null ? [] : [$result]);
+        } else {
+            $SELECTNAME    = new \QueryExpression("'' AS " . $DB->quoteName('transname'));
+            $SELECTCOMMENT = new \QueryExpression("'' AS " . $DB->quoteName('transcomment'));
+            $JOIN          = [];
+            $JOINS         = [];
+            if ($translate) {
+                if (Session::haveTranslations($this->getItemTypeForTable($table), 'completename')) {
+                    $SELECTNAME = 'namet.value AS transname';
+                    $JOINS['glpi_dropdowntranslations AS namet'] = [
+                       'ON' => [
+                          'namet'  => 'items_id',
+                          $table   => 'id', [
+                             'AND' => [
+                                'namet.itemtype'  => $this->getItemTypeForTable($table),
+                                'namet.language'  => $_SESSION['glpilanguage'],
+                                'namet.field'     => 'completename'
+                             ]
+                          ]
+                       ]
+                    ];
+                }
+                if (Session::haveTranslations($this->getItemTypeForTable($table), 'comment')) {
+                    $SELECTCOMMENT = 'namec.value AS transcomment';
+                    $JOINS['glpi_dropdowntranslations AS namec'] = [
+                       'ON' => [
+                          'namec'  => 'items_id',
+                          $table   => 'id', [
+                             'AND' => [
+                                'namec.itemtype'  => $this->getItemTypeForTable($table),
+                                'namec.language'  => $_SESSION['glpilanguage'],
+                                'namec.field'     => 'comment'
+                             ]
+                          ]
+                       ]
+                    ];
+                }
+
+                if (count($JOINS)) {
+                    $JOIN = ['LEFT JOIN' => $JOINS];
+                }
             }
 
-            if (count($JOINS)) {
-                $JOIN = ['LEFT JOIN' => $JOINS];
+            $criteria = [
+               'SELECT' => [
+                  "$table.completename",
+                  "$table.comment",
+                  $SELECTNAME,
+                  $SELECTCOMMENT
+               ],
+               'FROM'   => $table,
+               'WHERE'  => ["$table.id" => $ID]
+            ] + $JOIN;
+
+            if ($table == Location::getTable()) {
+                $criteria['SELECT'] = array_merge(
+                    $criteria['SELECT'],
+                    [
+                      "$table.address",
+                      "$table.town",
+                      "$table.country"
+                    ]
+                );
             }
+
+            $iterator = $DB->request($criteria);
+            $result = $iterator->next();
         }
-
-        $criteria = [
-           'SELECT' => [
-              "$table.completename",
-              "$table.comment",
-              $SELECTNAME,
-              $SELECTCOMMENT
-           ],
-           'FROM'   => $table,
-           'WHERE'  => ["$table.id" => $ID]
-        ] + $JOIN;
-
-        if ($table == Location::getTable()) {
-            $criteria['SELECT'] = array_merge(
-                $criteria['SELECT'],
-                [
-                  "$table.address",
-                  "$table.town",
-                  "$table.country"
-                ]
-            );
-        }
-
-        $iterator = $DB->request($criteria);
-        $result = $iterator->next();
 
         if (count($iterator) == 1) {
             $transname = $result['transname'];

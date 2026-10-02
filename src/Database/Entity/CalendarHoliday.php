@@ -13,6 +13,7 @@ class CalendarHoliday
 {
     #[ORM\ManyToOne(targetEntity: Calendar::class)]
     #[ORM\JoinColumn(name: 'calendars_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?Calendar $calendars = null;
 
     #[ORM\ManyToOne(targetEntity: Holiday::class)]
@@ -21,6 +22,6 @@ class CalendarHoliday
 
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 }

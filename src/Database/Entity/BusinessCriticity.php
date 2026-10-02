@@ -5,6 +5,8 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_businesscriticities')]
@@ -13,7 +15,7 @@ class BusinessCriticity
 {
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
@@ -21,6 +23,7 @@ class BusinessCriticity
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
     #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
+    #[ReferencePolicy(ReferenceKind::RootEntity)]
     public ?Entity $entities = null;
 
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
@@ -37,6 +40,8 @@ class BusinessCriticity
 
     #[ORM\ManyToOne(targetEntity: BusinessCriticity::class)]
     #[ORM\JoinColumn(name: 'businesscriticities_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?BusinessCriticity $businesscriticities = null;
 
     #[ORM\Column(name: '`completename`', type: 'text', nullable: true)]

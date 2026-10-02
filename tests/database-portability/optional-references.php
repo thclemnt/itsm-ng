@@ -2,6 +2,8 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
+
 $directory = $argv[1] ?? '';
 if (!is_file($directory . '/config_db.php')) {
     fwrite(STDERR, "Usage: php tests/database-portability/optional-references.php /path/to/test-config\n");
@@ -24,7 +26,6 @@ function verify(bool $ok, string $message): void
 verify(str_starts_with($DB->dbdefault, 'itsm_port_'), 'Dedicated test database required');
 $_SESSION['glpiextauth'] = 0;
 verify((new Auth())->login('itsm', 'itsm', true), 'Login');
-use itsmng\Database\OptionalReferences;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Migration\NormalizeOptionalReferences;
 
@@ -33,7 +34,7 @@ $DB->beginTransaction();
 try {
     $fixtures = new FixtureRecords($DB);
     $storage = new \itsmng\Database\MappedStorage($DB);
-    foreach (OptionalReferences::MODELS as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'MODELS') as $table => $relations) {
         $column = array_key_first($relations);
         $target = $relations[$column];
         $parent = $fixtures->create($target, ['name' => 'Optional model']);
@@ -93,7 +94,7 @@ try {
 $platform = $connection->getDatabasePlatform();
 $removed = [];
 try {
-    foreach (OptionalReferences::MODELS as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'MODELS') as $table => $relations) {
         foreach ($relations as $column => $target) {
             $connection->executeStatement($platform->getDropForeignKeySQL(ForeignKeys::name($table, $column), $table));
             $removed[] = [$table, $column];
@@ -103,7 +104,7 @@ try {
     try {
         $fixtures = new FixtureRecords($DB);
         $zeroRows = [];
-        foreach (OptionalReferences::MODELS as $table => $relations) {
+        foreach (ReferenceHistory::get('optional', 'MODELS') as $table => $relations) {
             $column = array_key_first($relations);
             $zeroRows[$table] = [$column, $fixtures->create($table, [$column => 0])];
         }

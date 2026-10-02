@@ -11,7 +11,7 @@ use Doctrine\ORM\Mapping as ORM;
 class OidcMapping
 {
     #[ORM\Id]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false, options: ['default' => '0'])]
     public int $id = 0;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true, options: ['default' => ''])]

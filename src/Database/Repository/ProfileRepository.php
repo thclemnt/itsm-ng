@@ -6,6 +6,7 @@ namespace itsmng\Database\Repository;
 
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\QueryBuilder;
 use itsmng\Database\Entity\Profile;
 use itsmng\Database\Entity\ProfileRight;
 
@@ -19,10 +20,35 @@ final class ProfileRepository
     public function canManage(array $ids, array $rights, string $interface, bool $unrestricted): bool
     {
         $ids = array_values(array_unique(array_map('intval', $ids)));
-        $query = $this->em->createQueryBuilder()->select('COUNT(p.id)')->from(Profile::class, 'p');
+        $query = $this->manageable($rights, $interface, $unrestricted)->select('COUNT(p.id)');
         if ($ids) {
-            $query->where('p.id IN (:ids)')->setParameter('ids', $ids);
+            $query->andWhere('p.id IN (:ids)')->setParameter('ids', $ids);
         }
+        $expected = $ids ? count($ids) : (new RecordRepository($this->em))->countMatching('glpi_profiles', []);
+        return (int)$query->getQuery()->getSingleScalarResult() === $expected;
+    }
+
+    public function manageableIds(array $rights, string $interface): array
+    {
+        return array_map('intval', array_column($this->manageable($rights, $interface, false)->select('p.id AS id')->getQuery()->getScalarResult(), 'id'));
+    }
+
+    public function clearOtherDefaults(int $selected): void
+    {
+        $this->em->createQueryBuilder()->update(Profile::class, 'p')->set('p.is_default', ':no')->where('p.id <> :selected')
+            ->setParameter('no', false, Types::BOOLEAN)->setParameter('selected', $selected, Types::INTEGER)->getQuery()->execute();
+    }
+
+    public function defaultId(): int
+    {
+        $rows = $this->em->createQueryBuilder()->select('p.id AS id')->from(Profile::class, 'p')->where('p.is_default = :yes')
+            ->setParameter('yes', true, Types::BOOLEAN)->setMaxResults(1)->getQuery()->getScalarResult();
+        return (int)($rows[0]['id'] ?? 0);
+    }
+
+    private function manageable(array $rights, string $interface, bool $unrestricted): QueryBuilder
+    {
+        $query = $this->em->createQueryBuilder()->from(Profile::class, 'p');
         if (!$unrestricted) {
             $conditions = [];
             foreach ($rights as $name => $value) {
@@ -40,7 +66,6 @@ final class ProfileRepository
             }
             $query->andWhere($condition);
         }
-        $expected = $ids ? count($ids) : (new RecordRepository($this->em))->countMatching('glpi_profiles', []);
-        return (int)$query->getQuery()->getSingleScalarResult() === $expected;
+        return $query;
     }
 }

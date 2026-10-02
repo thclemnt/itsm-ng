@@ -5,6 +5,8 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_contracts')]
@@ -12,11 +14,12 @@ class Contract
 {
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
     #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
+    #[ReferencePolicy(ReferenceKind::RootEntity)]
     public ?Entity $entities = null;
 
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
@@ -30,6 +33,7 @@ class Contract
 
     #[ORM\ManyToOne(targetEntity: ContractType::class)]
     #[ORM\JoinColumn(name: 'contracttypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?ContractType $contracttypes = null;
 
     #[ORM\Column(name: '`begin_date`', type: 'date', nullable: true)]
@@ -97,6 +101,7 @@ class Contract
 
     #[ORM\ManyToOne(targetEntity: State::class)]
     #[ORM\JoinColumn(name: 'states_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?State $states = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]

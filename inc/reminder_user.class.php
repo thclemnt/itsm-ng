@@ -62,14 +62,9 @@ class Reminder_User extends CommonDBRelation
 
         $users = [];
 
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'reminders_id' => $reminders_id
-           ]
-        ]);
-
-        while ($data = $iterator->next()) {
+        $rows = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+            ->matching(self::getTable(), ['reminders_id' => $reminders_id], 'id');
+        foreach ($rows as $data) {
             $users[$data['users_id']][] = $data;
         }
         return $users;

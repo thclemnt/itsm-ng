@@ -2,9 +2,9 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Migration\GroupReferences;
-use itsmng\Database\OptionalReferences;
 
 $directory = $argv[1] ?? '';
 if (!is_file($directory . '/config_db.php')) {
@@ -38,7 +38,7 @@ try {
     $unrelated = $fixtures->create('glpi_groups', ['name' => 'Unrelated item group']);
     $children = [];
     $others = [];
-    foreach (OptionalReferences::GROUPS as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'GROUPS') as $table => $relations) {
         $values = array_fill_keys(array_keys($relations), $groupId);
         $otherValues = array_fill_keys(array_keys($relations), $unrelated);
         if ($table === 'glpi_groups') {
@@ -67,14 +67,14 @@ try {
     foreach ($children as $table => $id) {
         $item = getItemForItemtype(getItemTypeForTable($table));
         verify($item->getFromDB($id), 'Reload child');
-        foreach (OptionalReferences::GROUPS[$table] as $column => $target) {
+        foreach (ReferenceHistory::get('optional', 'GROUPS')[$table] as $column => $target) {
             verify((int)$item->fields[$column] === $replacement, 'Group replacement retained: ' . $table . '.' . $column);
         }
     }
     verify($group->delete(['id' => $replacement], true), 'Purge referenced group');
     foreach ($children as $table => $id) {
         $item = getItemForItemtype(getItemTypeForTable($table));
-        foreach (OptionalReferences::GROUPS[$table] as $column => $target) {
+        foreach (ReferenceHistory::get('optional', 'GROUPS')[$table] as $column => $target) {
             verify($item->getFromDB($id) && $item->fields[$column] === null, 'Group purge preserves child: ' . $table . '.' . $column);
             verify(array_keys($item->find(['id' => $id, $column => 0])) === [$id], 'Legacy empty criteria');
             verify($item->update(['id' => $id, $column => 0]), 'Legacy empty update');
@@ -111,6 +111,9 @@ try {
     $stock = [];
     for ($i = 0; $i < 2; ++$i) {
         $stock[] = $fixtures->create('glpi_consumables', ['consumableitems_id' => $model, 'items_id' => $root, 'itemtype' => 'Group', 'date_out' => '2026-09-01']);
+    }
+    if (\itsmng\Database\MappedReads::countMatching($DB, 'glpi_users', ['id' => $root]) === 0) {
+        $fixtures->create('glpi_users', ['id' => $root, 'name' => 'Same ID consumable user']);
     }
     $otherStock = $fixtures->create('glpi_consumables', ['consumableitems_id' => $model, 'items_id' => $root, 'itemtype' => 'User', 'date_out' => '2026-09-01']);
     $foreignModel = $fixtures->create('glpi_consumableitems', ['name' => 'Hidden stock model', 'entities_id' => $foreignEntity]);
@@ -160,7 +163,7 @@ $quote = $platform->quoteIdentifier(...);
 $migration = new GroupReferences();
 $legacyId = null;
 try {
-    foreach (OptionalReferences::GROUPS as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'GROUPS') as $table => $relations) {
         foreach ($relations as $column => $target) {
             $connection->executeStatement($platform->getDropForeignKeySQL(ForeignKeys::name($table, $column), $table));
             $connection->executeStatement('UPDATE ' . $quote($table) . ' SET ' . $quote($column) . ' = 0 WHERE ' . $quote($column) . ' IS NULL');

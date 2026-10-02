@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\OptionalReferences;
 
 final class ITILClassificationReferences
 {
@@ -13,11 +12,11 @@ final class ITILClassificationReferences
 
     public function plan(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::ITIL_CLASSIFICATION, 'ITIL classification'))->plan($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'ITIL_CLASSIFICATION'), 'ITIL classification'))->plan($connection);
     }
 
     public function apply(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::ITIL_CLASSIFICATION, 'ITIL classification'))->apply($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'ITIL_CLASSIFICATION'), 'ITIL classification'))->apply($connection);
     }
 }

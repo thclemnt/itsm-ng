@@ -2,6 +2,7 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
 use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Migration\GlobalEntityScopes;
@@ -167,7 +168,7 @@ $manager = $connection->createSchemaManager();
 $quote = $platform->quoteIdentifier(...);
 $created = [];
 try {
-    foreach (array_keys(\itsmng\Database\GlobalEntityScopes::RELATIONS) as $table) {
+    foreach (array_keys(ReferenceHistory::get('global', 'RELATIONS')) as $table) {
         $before = $manager->introspectTable($table);
         foreach ($before->getForeignKeys() as $key) {
             if (in_array('entities_id', $key->getLocalColumns(), true)) {

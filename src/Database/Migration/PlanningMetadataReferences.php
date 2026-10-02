@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\OptionalReferences;
 
 final class PlanningMetadataReferences
 {
@@ -13,11 +12,11 @@ final class PlanningMetadataReferences
 
     public function plan(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::PLANNING_METADATA, 'planning metadata'))->plan($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'PLANNING_METADATA'), 'planning metadata'))->plan($connection);
     }
 
     public function apply(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::PLANNING_METADATA, 'planning metadata'))->apply($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'PLANNING_METADATA'), 'planning metadata'))->apply($connection);
     }
 }

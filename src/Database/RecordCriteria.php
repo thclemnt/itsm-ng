@@ -4,6 +4,7 @@
 
 namespace itsmng\Database;
 
+use itsmng\Database\Mapping\ReferenceKind;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping\ClassMetadata;
@@ -13,9 +14,22 @@ use Doctrine\ORM\QueryBuilder;
 final class RecordCriteria
 {
     private int $parameter = 0;
+    /** Query-local aliases for explicitly mapped joins, never schema declarations. */
+    private array $joinedMetadata = [];
 
     public function __construct(private QueryBuilder $query, private ClassMetadata $metadata, private bool $legacyValues = true)
     {
+    }
+
+    public function withJoinedMetadata(ClassMetadata $metadata, string $alias): self
+    {
+        if (!in_array($alias, $this->query->getAllAliases(), true)
+            || $metadata->getTableName() === $this->metadata->getTableName()
+            || isset($this->joinedMetadata[$metadata->getTableName()])) {
+            throw new UnsupportedCriteria('Joined criteria require a unique mapped query alias.');
+        }
+        $this->joinedMetadata[$metadata->getTableName()] = [$metadata, $alias];
+        return $this;
     }
 
     public function where(array $criteria, string $junction = 'AND'): string
@@ -31,7 +45,7 @@ final class RecordCriteria
                 continue;
             }
             [$expression, $type, $optional, $scope] = $this->field($column);
-            $isEmpty = $scope ? ContentAudienceScopes::isUnrestricted(...) : OptionalReferences::isEmptySelection(...);
+            $isEmpty = $scope ? ReferenceValues::isUnrestricted(...) : ReferenceValues::isEmptySelection(...);
             if ($type === Types::JSON && $value !== null) {
                 throw new UnsupportedCriteria('JSON comparisons require a mapped platform-aware query.');
             }
@@ -114,27 +128,49 @@ final class RecordCriteria
     private function field(string $column): array
     {
         $column = str_replace('`', '', $column);
+        $metadata = $this->metadata;
+        $alias = 'r';
         if (str_contains($column, '.')) {
             [$table, $column] = explode('.', $column, 2);
-            if ($table !== $this->metadata->getTableName()) {
-                throw new UnsupportedCriteria('Cross-table criteria require a mapped join.');
-            }
-        }
-        foreach ($this->metadata->associationMappings as $field => $mapping) {
-            if ($mapping->joinColumns[0]->name === $column) {
-                if ($this->legacyValues && $this->metadata->getTableName() === 'glpi_entities' && isset(EntityConfigurationReferences::FIELDS[$column])) {
-                    return [EntityConfigurationReferences::selection($column), Types::INTEGER, false, false];
+            if ($table !== $metadata->getTableName()) {
+                if (!isset($this->joinedMetadata[$table])) {
+                    throw new UnsupportedCriteria('Cross-table criteria require a mapped join.');
                 }
-                $scope = isset(ContentAudienceScopes::RELATIONS[$this->metadata->getTableName()][$column])
-                    || isset(GlobalEntityScopes::RELATIONS[$this->metadata->getTableName()][$column]);
-                return ['IDENTITY(r.' . $field . ')', Types::INTEGER, $scope || isset(OptionalReferences::RELATIONS[$this->metadata->getTableName()][$column]), $scope];
+                [$metadata, $alias] = $this->joinedMetadata[$table];
+            }
+        } elseif ($this->joinedMetadata && !in_array($column, EntityRegistry::columnNames($metadata->getTableName()), true)) {
+            // Legacy joined queries also accept unqualified columns belonging
+            // only to a joined table, such as a group's entity scope.
+            $matches = array_filter($this->joinedMetadata, static fn (array $join): bool =>
+                in_array($column, EntityRegistry::columnNames($join[0]->getTableName()), true));
+            if (count($matches) > 1) {
+                throw new UnsupportedCriteria('Ambiguous unqualified joined column: ' . $column);
+            }
+            if ($matches) {
+                [$metadata, $alias] = reset($matches);
             }
         }
-        $field = $this->metadata->getFieldName($column);
-        if (!$this->metadata->hasField($field)) {
+        foreach ($metadata->associationMappings as $field => $mapping) {
+            if (!$mapping->isToOneOwningSide()) {
+                continue;
+            }
+            if ($mapping->joinColumns[0]->name === $column) {
+                if ($this->legacyValues && EntityRegistry::hasPolicy($metadata->getTableName(), $column, ReferenceKind::RootParent)) {
+                    return ['COALESCE(IDENTITY(' . $alias . '.' . $field . '), -1)', Types::INTEGER, false, false];
+                }
+                if ($this->legacyValues && $metadata->getTableName() === 'glpi_entities' && isset(EntityConfigurationReferences::fields()[$column])) {
+                    return [EntityConfigurationReferences::selection($column, $alias), Types::INTEGER, false, false];
+                }
+                $scope = EntityRegistry::hasPolicy($metadata->getTableName(), $column, ReferenceKind::Audience)
+                    || EntityRegistry::hasPolicy($metadata->getTableName(), $column, ReferenceKind::GlobalScope);
+                return ['IDENTITY(' . $alias . '.' . $field . ')', Types::INTEGER, $scope || EntityRegistry::hasPolicy($metadata->getTableName(), $column, ReferenceKind::EmptySelection), $scope];
+            }
+        }
+        $field = $metadata->getFieldName($column);
+        if (!$metadata->hasField($field)) {
             throw new UnsupportedCriteria('Unmapped column in record criteria: ' . $column);
         }
-        return ['r.' . $field, $this->metadata->getTypeOfField($field), false, false];
+        return [$alias . '.' . $field, $metadata->getTypeOfField($field), false, false];
     }
 
     private function value(mixed $value, string $type): string

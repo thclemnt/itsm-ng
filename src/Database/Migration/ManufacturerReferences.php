@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\OptionalReferences;
 
 final class ManufacturerReferences
 {
@@ -13,11 +12,11 @@ final class ManufacturerReferences
 
     public function plan(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::MANUFACTURERS, 'manufacturer'))->plan($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'MANUFACTURERS'), 'manufacturer'))->plan($connection);
     }
 
     public function apply(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::MANUFACTURERS, 'manufacturer'))->apply($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'MANUFACTURERS'), 'manufacturer'))->apply($connection);
     }
 }

@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\OptionalReferences;
 
 final class RejectedEmailReferences
 {
@@ -13,11 +12,11 @@ final class RejectedEmailReferences
 
     public function plan(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::REJECTED_EMAIL_REFERENCES, 'rejected email'))->plan($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'REJECTED_EMAIL_REFERENCES'), 'rejected email'))->plan($connection);
     }
 
     public function apply(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::REJECTED_EMAIL_REFERENCES, 'rejected email'))->apply($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'REJECTED_EMAIL_REFERENCES'), 'rejected email'))->apply($connection);
     }
 }

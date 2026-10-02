@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\OptionalReferences;
 
 final class FinancialReferences
 {
@@ -13,11 +12,11 @@ final class FinancialReferences
 
     public function plan(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::FINANCIAL, 'financial'))->plan($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'FINANCIAL'), 'financial'))->plan($connection);
     }
 
     public function apply(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::FINANCIAL, 'financial'))->apply($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'FINANCIAL'), 'financial'))->apply($connection);
     }
 }

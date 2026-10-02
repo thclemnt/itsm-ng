@@ -41,9 +41,16 @@ foreach ($schema->getTables() as $table) {
         if ($discriminator !== $name && $table->hasColumn($discriminator)) {
             $polymorphic[$key]['discriminator'] = $discriminator;
         }
-        $enforced = \itsmng\Database\ForeignKeys::RELATIONS[$table->getName()][$name] ?? null;
+        $enforced = \itsmng\Database\ForeignKeys::relations()[$table->getName()][$name] ?? null;
+        $typed = \itsmng\Database\EntityRegistry::discriminatedReferences($table->getName())[$name] ?? null;
+        foreach ($typed['selections'] ?? [] as $selection) {
+            if ((\itsmng\Database\ForeignKeys::relations()[$table->getName()][$selection['column']] ?? null) !== $selection['target']) {
+                throw new LogicException('Discriminated recipient is missing its owning association');
+            }
+        }
         $relationships[$key] = [
-            'status' => $enforced ? 'enforced' : (isset($polymorphic[$key]) ? 'polymorphic' : (count($targets) > 1 ? 'ambiguous' : 'pending')),
+            'status' => $enforced ? 'enforced' : ($typed ? 'discriminated' : (isset($polymorphic[$key]) ? 'polymorphic' : (count($targets) > 1 ? 'ambiguous' : 'pending'))),
+            'discriminated_references' => $typed,
             'declared_targets' => $targets,
             'enforced_target' => $enforced,
             'nullable' => !$column->getNotnull(),
@@ -62,15 +69,15 @@ $tables = array_map(fn ($table) => $table->getName(), $schema->getTables());
 $output = [
     'summary' => [
         'tables' => count($tables),
-        'mapped_tables' => count(\itsmng\Database\EntityRegistry::TABLES),
-        'orm_lifecycle_write_tables' => count(\itsmng\Database\MappedStorage::TABLES),
+        'mapped_tables' => count(\itsmng\Database\EntityRegistry::tables()),
+        'orm_lifecycle_write_tables' => count(\itsmng\Database\EntityRegistry::tables()),
         'relationship_candidates' => count($relationships),
         'relationship_statuses' => array_count_values(array_column($relationships, 'status')),
         'legacy_call_sites' => count($legacyCalls),
         'sql_call_categories' => $callCategories,
     ],
-    'unmapped_tables' => array_values(array_diff($tables, array_keys(\itsmng\Database\EntityRegistry::TABLES))),
-    'pending_lifecycle_write_tables' => array_values(array_diff($tables, array_keys(\itsmng\Database\MappedStorage::TABLES))),
+    'unmapped_tables' => array_values(array_diff($tables, array_keys(\itsmng\Database\EntityRegistry::tables()))),
+    'pending_lifecycle_write_tables' => array_values(array_diff($tables, array_keys(\itsmng\Database\EntityRegistry::tables()))),
     'relationships' => $relationships,
     'polymorphic' => $polymorphic,
     'invalid_legacy_declarations' => $invalid,

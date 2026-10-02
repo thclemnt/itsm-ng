@@ -13,18 +13,18 @@ class ImpactRelation
 {
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
     #[ORM\Column(name: '`itemtype_source`', type: 'string', length: 255, nullable: false, options: ['default' => ''])]
     public string $itemtype_source = '';
 
-    #[ORM\Column(name: '`items_id_source`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    #[ORM\Column(name: '`items_id_source`', type: 'bigint', nullable: false, options: ['default' => '0'])]
     public int $items_id_source = 0;
 
     #[ORM\Column(name: '`itemtype_impacted`', type: 'string', length: 255, nullable: false, options: ['default' => ''])]
     public string $itemtype_impacted = '';
 
-    #[ORM\Column(name: '`items_id_impacted`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    #[ORM\Column(name: '`items_id_impacted`', type: 'bigint', nullable: false, options: ['default' => '0'])]
     public int $items_id_impacted = 0;
 }

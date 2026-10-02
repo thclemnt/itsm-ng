@@ -4,364 +4,206 @@
 
 namespace itsmng\Database;
 
-/** Explicit core table registry; plugins must register their own mapped records. */
+use Doctrine\DBAL\DriverManager;
+use Doctrine\DBAL\Platforms\MySQLPlatform;
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Mapping\MappedReference;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\Mapping\ReferencePolicy;
+
+/** Read-only lookup derived from entity attributes; contains no schema declarations. */
 final class EntityRegistry
 {
-    public const TABLES = [
-        'glpi_alerts' => Entity\Alert::class,
-        'glpi_apiclients' => Entity\APIClient::class,
-        'glpi_applianceenvironments' => Entity\ApplianceEnvironment::class,
-        'glpi_appliances' => Entity\Appliance::class,
-        'glpi_appliances_items' => Entity\ApplianceItem::class,
-        'glpi_appliances_items_relations' => Entity\ApplianceItemRelation::class,
-        'glpi_appliancetypes' => Entity\ApplianceType::class,
-        'glpi_authldapreplicates' => Entity\AuthLdapReplicate::class,
-        'glpi_authldaps' => Entity\AuthLDAP::class,
-        'glpi_authmails' => Entity\AuthMail::class,
-        'glpi_autoupdatesystems' => Entity\AutoUpdateSystem::class,
-        'glpi_blacklistedmailcontents' => Entity\BlacklistedMailContent::class,
-        'glpi_blacklists' => Entity\Blacklist::class,
-        'glpi_budgets' => Entity\Budget::class,
-        'glpi_budgettypes' => Entity\BudgetType::class,
-        'glpi_businesscriticities' => Entity\BusinessCriticity::class,
-        'glpi_calendars' => Entity\Calendar::class,
-        'glpi_calendars_holidays' => Entity\CalendarHoliday::class,
-        'glpi_calendarsegments' => Entity\CalendarSegment::class,
-        'glpi_cartridgeitems' => Entity\CartridgeItem::class,
-        'glpi_cartridgeitems_printermodels' => Entity\CartridgeItemPrinterModel::class,
-        'glpi_cartridgeitemtypes' => Entity\CartridgeItemType::class,
-        'glpi_cartridges' => Entity\Cartridge::class,
-        'glpi_certificates' => Entity\Certificate::class,
-        'glpi_certificates_items' => Entity\CertificateItem::class,
-        'glpi_certificatetypes' => Entity\CertificateType::class,
-        'glpi_changecosts' => Entity\ChangeCost::class,
-        'glpi_changes' => Entity\Change::class,
-        'glpi_changes_groups' => Entity\ChangeGroup::class,
-        'glpi_changes_items' => Entity\ChangeItem::class,
-        'glpi_changes_problems' => Entity\ChangeProblem::class,
-        'glpi_changes_suppliers' => Entity\ChangeSupplier::class,
-        'glpi_changes_tickets' => Entity\ChangeTicket::class,
-        'glpi_changes_users' => Entity\ChangeUser::class,
-        'glpi_changetasks' => Entity\ChangeTask::class,
-        'glpi_changetemplatehiddenfields' => Entity\ChangeTemplateHiddenField::class,
-        'glpi_changetemplatemandatoryfields' => Entity\ChangeTemplateMandatoryField::class,
-        'glpi_changetemplatepredefinedfields' => Entity\ChangeTemplatePredefinedField::class,
-        'glpi_changetemplates' => Entity\ChangeTemplate::class,
-        'glpi_changevalidations' => Entity\ChangeValidation::class,
-        'glpi_clusters' => Entity\Cluster::class,
-        'glpi_clustertypes' => Entity\ClusterType::class,
-        'glpi_computerantiviruses' => Entity\ComputerAntivirus::class,
-        'glpi_computermodels' => Entity\ComputerModel::class,
-        'glpi_computers' => Entity\Computer::class,
-        'glpi_computers_items' => Entity\ComputerItem::class,
-        'glpi_computertypes' => Entity\ComputerType::class,
-        'glpi_computervirtualmachines' => Entity\ComputerVirtualMachine::class,
-        'glpi_configs' => Entity\Config::class,
-        'glpi_consumableitems' => Entity\ConsumableItem::class,
-        'glpi_consumableitemtypes' => Entity\ConsumableItemType::class,
-        'glpi_consumables' => Entity\Consumable::class,
-        'glpi_contacts' => Entity\Contact::class,
-        'glpi_contacts_suppliers' => Entity\ContactSupplier::class,
-        'glpi_contacttypes' => Entity\ContactType::class,
-        'glpi_contractcosts' => Entity\ContractCost::class,
-        'glpi_contracts' => Entity\Contract::class,
-        'glpi_contracts_items' => Entity\ContractItem::class,
-        'glpi_contracts_suppliers' => Entity\ContractSupplier::class,
-        'glpi_contracttypes' => Entity\ContractType::class,
-        'glpi_crontasklogs' => Entity\CronTaskLog::class,
-        'glpi_crontasks' => Entity\CronTask::class,
-        'glpi_dashboards' => Entity\Dashboard::class,
-        'glpi_datacenters' => Entity\Datacenter::class,
-        'glpi_dcrooms' => Entity\DCRoom::class,
-        'glpi_devicebatteries' => Entity\DeviceBattery::class,
-        'glpi_devicebatterymodels' => Entity\DeviceBatteryModel::class,
-        'glpi_devicebatterytypes' => Entity\DeviceBatteryType::class,
-        'glpi_devicecasemodels' => Entity\DeviceCaseModel::class,
-        'glpi_devicecases' => Entity\DeviceCase::class,
-        'glpi_devicecasetypes' => Entity\DeviceCaseType::class,
-        'glpi_devicecontrolmodels' => Entity\DeviceControlModel::class,
-        'glpi_devicecontrols' => Entity\DeviceControl::class,
-        'glpi_devicedrivemodels' => Entity\DeviceDriveModel::class,
-        'glpi_devicedrives' => Entity\DeviceDrive::class,
-        'glpi_devicefirmwaremodels' => Entity\DeviceFirmwareModel::class,
-        'glpi_devicefirmwares' => Entity\DeviceFirmware::class,
-        'glpi_devicefirmwaretypes' => Entity\DeviceFirmwareType::class,
-        'glpi_devicegenericmodels' => Entity\DeviceGenericModel::class,
-        'glpi_devicegenerics' => Entity\DeviceGeneric::class,
-        'glpi_devicegenerictypes' => Entity\DeviceGenericType::class,
-        'glpi_devicegraphiccardmodels' => Entity\DeviceGraphicCardModel::class,
-        'glpi_devicegraphiccards' => Entity\DeviceGraphicCard::class,
-        'glpi_deviceharddrivemodels' => Entity\DeviceHardDriveModel::class,
-        'glpi_deviceharddrives' => Entity\DeviceHardDrive::class,
-        'glpi_devicememories' => Entity\DeviceMemory::class,
-        'glpi_devicememorymodels' => Entity\DeviceMemoryModel::class,
-        'glpi_devicememorytypes' => Entity\DeviceMemoryType::class,
-        'glpi_devicemotherboardmodels' => Entity\DeviceMotherBoardModel::class,
-        'glpi_devicemotherboards' => Entity\DeviceMotherboard::class,
-        'glpi_devicenetworkcardmodels' => Entity\DeviceNetworkCardModel::class,
-        'glpi_devicenetworkcards' => Entity\DeviceNetworkCard::class,
-        'glpi_devicepcimodels' => Entity\DevicePciModel::class,
-        'glpi_devicepcis' => Entity\DevicePci::class,
-        'glpi_devicepowersupplies' => Entity\DevicePowerSupply::class,
-        'glpi_devicepowersupplymodels' => Entity\DevicePowerSupplyModel::class,
-        'glpi_deviceprocessormodels' => Entity\DeviceProcessorModel::class,
-        'glpi_deviceprocessors' => Entity\DeviceProcessor::class,
-        'glpi_devicesensormodels' => Entity\DeviceSensorModel::class,
-        'glpi_devicesensors' => Entity\DeviceSensor::class,
-        'glpi_devicesensortypes' => Entity\DeviceSensorType::class,
-        'glpi_devicesimcards' => Entity\DeviceSimcard::class,
-        'glpi_devicesimcardtypes' => Entity\DeviceSimcardType::class,
-        'glpi_devicesoundcardmodels' => Entity\DeviceSoundCardModel::class,
-        'glpi_devicesoundcards' => Entity\DeviceSoundCard::class,
-        'glpi_displaypreferences' => Entity\DisplayPreference::class,
-        'glpi_documentcategories' => Entity\DocumentCategory::class,
-        'glpi_documents' => Entity\Document::class,
-        'glpi_documents_items' => Entity\DocumentItem::class,
-        'glpi_documenttypes' => Entity\DocumentType::class,
-        'glpi_domainrecords' => Entity\DomainRecord::class,
-        'glpi_domainrecordtypes' => Entity\DomainRecordType::class,
-        'glpi_domainrelations' => Entity\DomainRelation::class,
-        'glpi_domains' => Entity\Domain::class,
-        'glpi_domains_items' => Entity\DomainItem::class,
-        'glpi_domaintypes' => Entity\DomainType::class,
-        'glpi_dropdowntranslations' => Entity\DropdownTranslation::class,
-        'glpi_enclosuremodels' => Entity\EnclosureModel::class,
-        'glpi_enclosures' => Entity\Enclosure::class,
-        'glpi_entities' => Entity\Entity::class,
-        'glpi_entities_knowbaseitems' => Entity\EntityKnowbaseItem::class,
-        'glpi_entities_reminders' => Entity\EntityReminder::class,
-        'glpi_entities_rssfeeds' => Entity\EntityRSSFeed::class,
-        'glpi_events' => Entity\Event::class,
-        'glpi_fieldblacklists' => Entity\Fieldblacklist::class,
-        'glpi_fieldunicities' => Entity\FieldUnicity::class,
-        'glpi_filesystems' => Entity\Filesystem::class,
-        'glpi_fqdns' => Entity\FQDN::class,
-        'glpi_groups' => Entity\Group::class,
-        'glpi_groups_knowbaseitems' => Entity\GroupKnowbaseItem::class,
-        'glpi_groups_problems' => Entity\GroupProblem::class,
-        'glpi_groups_reminders' => Entity\GroupReminder::class,
-        'glpi_groups_rssfeeds' => Entity\GroupRSSFeed::class,
-        'glpi_groups_tickets' => Entity\GroupTicket::class,
-        'glpi_groups_users' => Entity\GroupMembership::class,
-        'glpi_holidays' => Entity\Holiday::class,
-        'glpi_impactcompounds' => Entity\ImpactCompound::class,
-        'glpi_impactcontexts' => Entity\ImpactContext::class,
-        'glpi_impactitems' => Entity\ImpactItem::class,
-        'glpi_impactrelations' => Entity\ImpactRelation::class,
-        'glpi_infocoms' => Entity\Infocom::class,
-        'glpi_interfacetypes' => Entity\InterfaceType::class,
-        'glpi_ipaddresses' => Entity\IPAddress::class,
-        'glpi_ipaddresses_ipnetworks' => Entity\IPAddressIPNetwork::class,
-        'glpi_ipnetworks' => Entity\IPNetwork::class,
-        'glpi_ipnetworks_vlans' => Entity\IPNetworkVlan::class,
-        'glpi_items_clusters' => Entity\ItemCluster::class,
-        'glpi_items_devicebatteries' => Entity\ItemDeviceBattery::class,
-        'glpi_items_devicecases' => Entity\ItemDeviceCase::class,
-        'glpi_items_devicecontrols' => Entity\ItemDeviceControl::class,
-        'glpi_items_devicedrives' => Entity\ItemDeviceDrive::class,
-        'glpi_items_devicefirmwares' => Entity\ItemDeviceFirmware::class,
-        'glpi_items_devicegenerics' => Entity\ItemDeviceGeneric::class,
-        'glpi_items_devicegraphiccards' => Entity\ItemDeviceGraphicCard::class,
-        'glpi_items_deviceharddrives' => Entity\ItemDeviceHardDrive::class,
-        'glpi_items_devicememories' => Entity\ItemDeviceMemory::class,
-        'glpi_items_devicemotherboards' => Entity\ItemDeviceMotherboard::class,
-        'glpi_items_devicenetworkcards' => Entity\ItemDeviceNetworkCard::class,
-        'glpi_items_devicepcis' => Entity\ItemDevicePci::class,
-        'glpi_items_devicepowersupplies' => Entity\ItemDevicePowerSupply::class,
-        'glpi_items_deviceprocessors' => Entity\ItemDeviceProcessor::class,
-        'glpi_items_devicesensors' => Entity\ItemDeviceSensor::class,
-        'glpi_items_devicesimcards' => Entity\ItemDeviceSimcard::class,
-        'glpi_items_devicesoundcards' => Entity\ItemDeviceSoundCard::class,
-        'glpi_items_disks' => Entity\ItemDisk::class,
-        'glpi_items_enclosures' => Entity\ItemEnclosure::class,
-        'glpi_items_kanbans' => Entity\ItemKanban::class,
-        'glpi_items_operatingsystems' => Entity\ItemOperatingSystem::class,
-        'glpi_items_problems' => Entity\ItemProblem::class,
-        'glpi_items_projects' => Entity\ItemProject::class,
-        'glpi_items_racks' => Entity\ItemRack::class,
-        'glpi_items_softwarelicenses' => Entity\ItemSoftwareLicense::class,
-        'glpi_items_softwareversions' => Entity\ItemSoftwareVersion::class,
-        'glpi_items_tickets' => Entity\ItemTicket::class,
-        'glpi_itilcategories' => Entity\ITILCategory::class,
-        'glpi_itilfollowups' => Entity\ITILFollowup::class,
-        'glpi_itilfollowuptemplates' => Entity\ITILFollowupTemplate::class,
-        'glpi_itils_projects' => Entity\ItilProject::class,
-        'glpi_itilsolutions' => Entity\ITILSolution::class,
-        'glpi_knowbaseitemcategories' => Entity\KnowbaseItemCategory::class,
-        'glpi_knowbaseitems' => Entity\KnowbaseItem::class,
-        'glpi_knowbaseitems_comments' => Entity\KnowbaseItemComment::class,
-        'glpi_knowbaseitems_items' => Entity\KnowbaseItemItem::class,
-        'glpi_knowbaseitems_profiles' => Entity\KnowbaseItemProfile::class,
-        'glpi_knowbaseitems_revisions' => Entity\KnowbaseItemRevision::class,
-        'glpi_knowbaseitems_users' => Entity\KnowbaseItemUser::class,
-        'glpi_knowbaseitemtranslations' => Entity\KnowbaseItemTranslation::class,
-        'glpi_lineoperators' => Entity\LineOperator::class,
-        'glpi_lines' => Entity\Line::class,
-        'glpi_linetypes' => Entity\LineType::class,
-        'glpi_links' => Entity\Link::class,
-        'glpi_links_itemtypes' => Entity\LinkItemtype::class,
-        'glpi_locations' => Entity\Location::class,
-        'glpi_logs' => Entity\Log::class,
-        'glpi_mailcollectors' => Entity\MailCollector::class,
-        'glpi_manufacturers' => Entity\Manufacturer::class,
-        'glpi_monitormodels' => Entity\MonitorModel::class,
-        'glpi_monitors' => Entity\Monitor::class,
-        'glpi_monitortypes' => Entity\MonitorType::class,
-        'glpi_netpoints' => Entity\Netpoint::class,
-        'glpi_networkaliases' => Entity\NetworkAlias::class,
-        'glpi_networkequipmentmodels' => Entity\NetworkEquipmentModel::class,
-        'glpi_networkequipments' => Entity\NetworkEquipment::class,
-        'glpi_networkequipmenttypes' => Entity\NetworkEquipmentType::class,
-        'glpi_networkinterfaces' => Entity\NetworkInterface::class,
-        'glpi_networknames' => Entity\NetworkName::class,
-        'glpi_networkportaggregates' => Entity\NetworkPortAggregate::class,
-        'glpi_networkportaliases' => Entity\NetworkPortAlias::class,
-        'glpi_networkportdialups' => Entity\NetworkPortDialup::class,
-        'glpi_networkportethernets' => Entity\NetworkPortEthernet::class,
-        'glpi_networkportfiberchannels' => Entity\NetworkPortFiberchannel::class,
-        'glpi_networkportlocals' => Entity\NetworkPortLocal::class,
-        'glpi_networkports' => Entity\NetworkPort::class,
-        'glpi_networkports_networkports' => Entity\NetworkPortNetworkPort::class,
-        'glpi_networkports_vlans' => Entity\NetworkPortVlan::class,
-        'glpi_networkportwifis' => Entity\NetworkPortWifi::class,
-        'glpi_networks' => Entity\Network::class,
-        'glpi_notepads' => Entity\Notepad::class,
-        'glpi_notificationchatconfigs' => Entity\NotificationChatConfig::class,
-        'glpi_notifications' => Entity\Notification::class,
-        'glpi_notifications_notificationtemplates' => Entity\NotificationNotificationTemplate::class,
-        'glpi_notificationtargets' => Entity\NotificationTarget::class,
-        'glpi_notificationtemplates' => Entity\NotificationTemplate::class,
-        'glpi_notificationtemplatetranslations' => Entity\NotificationTemplateTranslation::class,
-        'glpi_notimportedemails' => Entity\NotImportedEmail::class,
-        'glpi_objectlocks' => Entity\ObjectLock::class,
-        'glpi_oidc_config' => Entity\OidcConfig::class,
-        'glpi_oidc_mapping' => Entity\OidcMapping::class,
-        'glpi_oidc_users' => Entity\OidcUser::class,
-        'glpi_olalevelactions' => Entity\OlaLevelAction::class,
-        'glpi_olalevelcriterias' => Entity\OlaLevelCriteria::class,
-        'glpi_olalevels' => Entity\OlaLevel::class,
-        'glpi_olalevels_tickets' => Entity\OlaLevelTicket::class,
-        'glpi_olas' => Entity\OLA::class,
-        'glpi_operatingsystemarchitectures' => Entity\OperatingSystemArchitecture::class,
-        'glpi_operatingsystemeditions' => Entity\OperatingSystemEdition::class,
-        'glpi_operatingsystemkernels' => Entity\OperatingSystemKernel::class,
-        'glpi_operatingsystemkernelversions' => Entity\OperatingSystemKernelVersion::class,
-        'glpi_operatingsystems' => Entity\OperatingSystem::class,
-        'glpi_operatingsystemservicepacks' => Entity\OperatingSystemServicePack::class,
-        'glpi_operatingsystemversions' => Entity\OperatingSystemVersion::class,
-        'glpi_passivedcequipmentmodels' => Entity\PassiveDCEquipmentModel::class,
-        'glpi_passivedcequipments' => Entity\PassiveDCEquipment::class,
-        'glpi_passivedcequipmenttypes' => Entity\PassiveDCEquipmentType::class,
-        'glpi_pdumodels' => Entity\PDUModel::class,
-        'glpi_pdus' => Entity\PDU::class,
-        'glpi_pdus_plugs' => Entity\PduPlug::class,
-        'glpi_pdus_racks' => Entity\PDURack::class,
-        'glpi_pdutypes' => Entity\PDUType::class,
-        'glpi_peripheralmodels' => Entity\PeripheralModel::class,
-        'glpi_peripherals' => Entity\Peripheral::class,
-        'glpi_peripheraltypes' => Entity\PeripheralType::class,
-        'glpi_phonemodels' => Entity\PhoneModel::class,
-        'glpi_phonepowersupplies' => Entity\PhonePowerSupply::class,
-        'glpi_phones' => Entity\Phone::class,
-        'glpi_phonetypes' => Entity\PhoneType::class,
-        'glpi_planningeventcategories' => Entity\PlanningEventCategory::class,
-        'glpi_planningexternalevents' => Entity\PlanningExternalEvent::class,
-        'glpi_planningexternaleventtemplates' => Entity\PlanningExternalEventTemplate::class,
-        'glpi_planningrecalls' => Entity\PlanningRecall::class,
-        'glpi_plugins' => Entity\Plugin::class,
-        'glpi_plugs' => Entity\Plug::class,
-        'glpi_printermodels' => Entity\PrinterModel::class,
-        'glpi_printers' => Entity\Printer::class,
-        'glpi_printertypes' => Entity\PrinterType::class,
-        'glpi_problemcosts' => Entity\ProblemCost::class,
-        'glpi_problems' => Entity\Problem::class,
-        'glpi_problems_suppliers' => Entity\ProblemSupplier::class,
-        'glpi_problems_tickets' => Entity\ProblemTicket::class,
-        'glpi_problems_users' => Entity\ProblemUser::class,
-        'glpi_problemtasks' => Entity\ProblemTask::class,
-        'glpi_problemtemplatehiddenfields' => Entity\ProblemTemplateHiddenField::class,
-        'glpi_problemtemplatemandatoryfields' => Entity\ProblemTemplateMandatoryField::class,
-        'glpi_problemtemplatepredefinedfields' => Entity\ProblemTemplatePredefinedField::class,
-        'glpi_problemtemplates' => Entity\ProblemTemplate::class,
-        'glpi_profilerights' => Entity\ProfileRight::class,
-        'glpi_profiles' => Entity\Profile::class,
-        'glpi_profiles_reminders' => Entity\ProfileReminder::class,
-        'glpi_profiles_rssfeeds' => Entity\ProfileRSSFeed::class,
-        'glpi_profiles_users' => Entity\ProfileUser::class,
-        'glpi_projectcosts' => Entity\ProjectCost::class,
-        'glpi_projects' => Entity\Project::class,
-        'glpi_projectstates' => Entity\ProjectState::class,
-        'glpi_projecttasks' => Entity\ProjectTask::class,
-        'glpi_projecttasks_tickets' => Entity\ProjectTaskTicket::class,
-        'glpi_projecttaskteams' => Entity\ProjectTaskTeam::class,
-        'glpi_projecttasktemplates' => Entity\ProjectTaskTemplate::class,
-        'glpi_projecttasktypes' => Entity\ProjectTaskType::class,
-        'glpi_projectteams' => Entity\ProjectTeam::class,
-        'glpi_projecttypes' => Entity\ProjectType::class,
-        'glpi_queuedchats' => Entity\QueuedChat::class,
-        'glpi_queuednotifications' => Entity\QueuedNotification::class,
-        'glpi_rackmodels' => Entity\RackModel::class,
-        'glpi_racks' => Entity\Rack::class,
-        'glpi_racktypes' => Entity\RackType::class,
-        'glpi_registeredids' => Entity\RegisteredID::class,
-        'glpi_reminders' => Entity\Reminder::class,
-        'glpi_reminders_users' => Entity\ReminderUser::class,
-        'glpi_remindertranslations' => Entity\ReminderTranslation::class,
-        'glpi_requesttypes' => Entity\RequestType::class,
-        'glpi_reservationitems' => Entity\ReservationItem::class,
-        'glpi_reservations' => Entity\Reservation::class,
-        'glpi_rssfeeds' => Entity\RSSFeed::class,
-        'glpi_rssfeeds_users' => Entity\RSSFeedUser::class,
-        'glpi_ruleactions' => Entity\RuleAction::class,
-        'glpi_rulecriterias' => Entity\RuleCriteria::class,
-        'glpi_rulerightparameters' => Entity\RuleRightParameter::class,
-        'glpi_rules' => Entity\Rule::class,
-        'glpi_savedsearches' => Entity\SavedSearch::class,
-        'glpi_savedsearches_alerts' => Entity\SavedSearchAlert::class,
-        'glpi_savedsearches_users' => Entity\SavedSearchUser::class,
-        'glpi_slalevelactions' => Entity\SlaLevelAction::class,
-        'glpi_slalevelcriterias' => Entity\SlaLevelCriteria::class,
-        'glpi_slalevels' => Entity\SlaLevel::class,
-        'glpi_slalevels_tickets' => Entity\SlaLevelTicket::class,
-        'glpi_slas' => Entity\SLA::class,
-        'glpi_slms' => Entity\SLM::class,
-        'glpi_softwarecategories' => Entity\SoftwareCategory::class,
-        'glpi_softwarelicenses' => Entity\SoftwareLicense::class,
-        'glpi_softwarelicensetypes' => Entity\SoftwareLicenseType::class,
-        'glpi_softwares' => Entity\Software::class,
-        'glpi_softwareversions' => Entity\SoftwareVersion::class,
-        'glpi_solutiontemplates' => Entity\SolutionTemplate::class,
-        'glpi_solutiontypes' => Entity\SolutionType::class,
-        'glpi_specialstatuses' => Entity\SpecialStatus::class,
-        'glpi_ssovariables' => Entity\SsoVariable::class,
-        'glpi_states' => Entity\State::class,
-        'glpi_suppliers' => Entity\Supplier::class,
-        'glpi_suppliers_tickets' => Entity\SupplierTicket::class,
-        'glpi_suppliertypes' => Entity\SupplierType::class,
-        'glpi_taskcategories' => Entity\TaskCategory::class,
-        'glpi_tasktemplates' => Entity\TaskTemplate::class,
-        'glpi_ticketcosts' => Entity\TicketCost::class,
-        'glpi_ticketrecurrents' => Entity\TicketRecurrent::class,
-        'glpi_tickets' => Entity\Ticket::class,
-        'glpi_tickets_tickets' => Entity\TicketTicket::class,
-        'glpi_tickets_users' => Entity\TicketUser::class,
-        'glpi_ticketsatisfactions' => Entity\TicketSatisfaction::class,
-        'glpi_tickettasks' => Entity\TicketTask::class,
-        'glpi_tickettemplatehiddenfields' => Entity\TicketTemplateHiddenField::class,
-        'glpi_tickettemplatemandatoryfields' => Entity\TicketTemplateMandatoryField::class,
-        'glpi_tickettemplatepredefinedfields' => Entity\TicketTemplatePredefinedField::class,
-        'glpi_tickettemplates' => Entity\TicketTemplate::class,
-        'glpi_ticketvalidations' => Entity\TicketValidation::class,
-        'glpi_transfers' => Entity\Transfer::class,
-        'glpi_usercategories' => Entity\UserCategory::class,
-        'glpi_useremails' => Entity\UserEmail::class,
-        'glpi_users' => Entity\User::class,
-        'glpi_usertitles' => Entity\UserTitle::class,
-        'glpi_virtualmachinestates' => Entity\VirtualMachineState::class,
-        'glpi_virtualmachinesystems' => Entity\VirtualMachineSystem::class,
-        'glpi_virtualmachinetypes' => Entity\VirtualMachineType::class,
-        'glpi_vlans' => Entity\Vlan::class,
-        'glpi_vobjects' => Entity\VObject::class,
-        'glpi_wifinetworks' => Entity\WifiNetwork::class,
-    ];
+    private static ?array $model = null;
+
+    public static function tables(): array
+    {
+        return self::model()['tables'];
+    }
+
+    public static function booleanColumns(): array
+    {
+        return self::model()['booleans'];
+    }
+
+    public static function isBoolean(string $table, string $column): bool
+    {
+        return (self::model()['types'][$table][$column] ?? null) === 'boolean';
+    }
+
+    /** Scalar fields and owning join columns, including generated compatibility identities. */
+    public static function columnNames(string $table): array
+    {
+        return array_values(array_unique([
+            ...array_keys(self::model()['types'][$table] ?? []),
+            ...array_keys(self::model()['relations'][$table] ?? []),
+        ]));
+    }
+
+    /** Owning association join columns, not inferred names or nullable scalars. */
+    public static function relations(): array
+    {
+        return self::model()['relations'];
+    }
+
+    /** Compatibility view of owning associations and property-local lifecycle policies. */
+    public static function lifecycleRelations(): array
+    {
+        return self::model()['lifecycle'];
+    }
+
+    /** @return array<string, MappedReference> */
+    public static function references(string $table): array
+    {
+        return self::model()['references'][$table] ?? [];
+    }
+
+    /** Legacy discriminator branches derived from annotations on owning associations. */
+    public static function discriminatedReferences(string $table): array
+    {
+        return self::model()['discriminators'][$table] ?? [];
+    }
+
+    public static function hasPolicy(string $table, string $column, ReferenceKind $kind): bool
+    {
+        return (self::references($table)[$column]->policy->kind ?? null) === $kind;
+    }
+
+    /** Derived targets for schema operations; contains no separately declared relationships. */
+    public static function relationsByPolicy(ReferenceKind $kind): array
+    {
+        $relations = [];
+        foreach (self::model()['references'] as $table => $references) {
+            foreach ($references as $column => $reference) {
+                if ($reference->policy->kind === $kind) {
+                    $relations[$table][$column] = $reference->targetTable;
+                }
+            }
+        }
+        return $relations;
+    }
+
+    private static function model(): array
+    {
+        if (self::$model !== null) {
+            return self::$model;
+        }
+        // Mapping inspection must also work before installation. The explicit
+        // server version prevents platform discovery from opening a connection.
+        $connection = DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
+        $em = new EntityManager($connection, Orm::configuration(new MySQLPlatform()));
+        $metadata = $em->getMetadataFactory()->getAllMetadata();
+        $tables = $types = $booleans = $relations = $references = $discriminators = $lifecycle = [];
+        foreach ($metadata as $record) {
+            $table = $record->getTableName();
+            if (isset($tables[$table])) {
+                throw new \LogicException('Duplicate mapped core table: ' . $table);
+            }
+            $tables[$table] = $record->name;
+            foreach ($record->fieldMappings as $mapping) {
+                $types[$table][$mapping->columnName] = $mapping->type;
+                if ($mapping->type === 'boolean') {
+                    $booleans[$table][] = $mapping->columnName;
+                }
+            }
+            foreach ($record->associationMappings as $property => $association) {
+                if (!$association->isToOneOwningSide()) {
+                    continue;
+                }
+                foreach ($association->joinColumns as $join) {
+                    if ($join->referencedColumnName !== 'id') {
+                        throw new \LogicException('Foreign key requires explicit composite-target support: ' . $table . '.' . $join->name);
+                    }
+                    $target = $em->getClassMetadata($association->targetEntity)->getTableName();
+                    $relations[$table][$join->name] = $target;
+                    $propertyMetadata = new \ReflectionProperty($record->name, $property);
+                    $logicalColumn = $join->name;
+                    $logicalDiscriminator = null;
+                    foreach ($propertyMetadata->getAttributes(Mapping\DiscriminatedBy::class) as $attribute) {
+                        $binding = $attribute->newInstance();
+                        $logicalColumn = $binding->legacyColumn;
+                        if (!$record->hasField($binding->discriminator) || !$record->hasField($record->getFieldName($binding->legacyColumn))) {
+                            throw new \LogicException('Discriminated reference requires mapped legacy fields');
+                        }
+                        $discriminators[$table][$binding->legacyColumn]['discriminator'] = $record->getColumnName($binding->discriminator);
+                        if ($binding->discriminator === 'itemtype') {
+                            $logicalDiscriminator = $record->getColumnName($binding->discriminator);
+                        }
+                        foreach ($binding->values as $value) {
+                            if (isset($discriminators[$table][$binding->legacyColumn]['selections'][$value])) {
+                                throw new \LogicException('Duplicate discriminated reference kind');
+                            }
+                            $discriminators[$table][$binding->legacyColumn]['selections'][$value] = ['column' => $join->name, 'target' => $target, 'empty_value' => $binding->emptyValue];
+                        }
+                    }
+                    $child = ($propertyMetadata->getAttributes(Mapping\ApplicationManaged::class) ? '_' : '') . $table;
+                    $lifecycle[$target][$child][] = $logicalColumn;
+                    if ($logicalDiscriminator !== null) {
+                        $lifecycle[$target][$child][] = $logicalDiscriminator;
+                    }
+                    $attributes = (new \ReflectionProperty($record->name, $property))->getAttributes(ReferencePolicy::class);
+                    if ($attributes) {
+                        $policy = $attributes[0]->newInstance();
+                        if (in_array($policy->kind, [ReferenceKind::RootEntity, ReferenceKind::Audience, ReferenceKind::GlobalScope, ReferenceKind::RootParent], true) && $target !== 'glpi_entities') {
+                            throw new \LogicException('Entity scope policy requires an entity target: ' . $table . '.' . $join->name);
+                        }
+                        $defaultMode = ReferenceMode::Explicit;
+                        $modeColumn = $modeLength = null;
+                        if ($policy->kind === ReferenceKind::Inherited) {
+                            $mode = $record->getFieldMapping($policy->modeProperty);
+                            if ($mode->enumType !== ReferenceMode::class) {
+                                throw new \LogicException('Inherited reference mode must use ReferenceMode: ' . $table . '.' . $join->name);
+                            }
+                            $defaultMode = ReferenceMode::from($mode->options['default']);
+                            $modeColumn = $mode->columnName;
+                            $modeLength = $mode->length;
+                        }
+                        if ($policy->kind !== ReferenceKind::RootEntity && !$join->nullable) {
+                            throw new \LogicException('Sentinel reference must be nullable: ' . $table . '.' . $join->name);
+                        }
+                        $references[$table][$join->name] = new MappedReference($property, $join->name, $target, $policy, $defaultMode, $modeColumn, $modeLength);
+                    }
+                }
+            }
+            foreach ((new \ReflectionClass($record->name))->getProperties() as $property) {
+                foreach ($property->getAttributes(Mapping\PolymorphicReference::class) as $attribute) {
+                    $binding = $attribute->newInstance();
+                    if (!$record->hasField($property->name) || !$record->hasField($binding->discriminator)) {
+                        throw new \LogicException('Polymorphic lifecycle link requires mapped ID and discriminator fields');
+                    }
+                    $target = $em->getClassMetadata($binding->target)->getTableName();
+                    $child = ($binding->managed ? '_' : '') . $table;
+                    $lifecycle[$target][$child][] = $record->getColumnName($property->name);
+                    $lifecycle[$target][$child][] = $record->getColumnName($binding->discriminator);
+                }
+                foreach ($property->getAttributes(Mapping\VirtualAssetLink::class) as $attribute) {
+                    $binding = $attribute->newInstance();
+                    if (!$record->hasField($property->name) || !$record->hasField($binding->discriminator)) {
+                        throw new \LogicException('Virtual asset link requires mapped ID and discriminator fields');
+                    }
+                    $lifecycle['_virtual_device'][$table] = [$record->getColumnName($property->name), $record->getColumnName($binding->discriminator)];
+                }
+            }
+        }
+        foreach ([&$tables, &$types, &$booleans, &$relations] as &$mapping) {
+            ksort($mapping);
+        }
+        ksort($lifecycle);
+        foreach ($lifecycle as &$children) {
+            ksort($children);
+            foreach ($children as &$columns) {
+                $columns = array_values(array_unique($columns));
+                if (count($columns) === 1) {
+                    $columns = $columns[0];
+                }
+            }
+            unset($columns);
+        }
+        unset($children);
+        $connection->close();
+        // Only immutable lookup projections survive bootstrap, not the offline unit of work.
+        unset($em, $metadata, $record);
+        gc_collect_cycles();
+        return self::$model = ['tables' => $tables, 'types' => $types, 'booleans' => $booleans, 'relations' => $relations, 'references' => $references, 'discriminators' => $discriminators, 'lifecycle' => $lifecycle];
+    }
 }

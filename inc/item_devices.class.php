@@ -865,8 +865,8 @@ class Item_Devices extends CommonDBRelation
         $table = $this->getTable();
         $peerTable = $peer_type ? getTableForItemType($peer_type) : null;
         $customCriteria = (new ReflectionMethod($this, 'getTableGroupCriteria'))->getDeclaringClass()->getName() !== self::class;
-        if ($customCriteria || !isset(\itsmng\Database\EntityRegistry::TABLES[$table])
-            || ($peerTable && !isset(\itsmng\Database\EntityRegistry::TABLES[$peerTable]))) {
+        if ($customCriteria || !isset(\itsmng\Database\EntityRegistry::tables()[$table])
+            || ($peerTable && !isset(\itsmng\Database\EntityRegistry::tables()[$peerTable]))) {
             return iterator_to_array($DB->request($this->getTableGroupCriteria($item, $peer_type)));
         }
         if (!$item instanceof CommonDevice) {
@@ -1450,7 +1450,7 @@ class Item_Devices extends CommonDBRelation
             $link = getItemForItemtype($link_type);
             if ($link) {
                 if ($unaffect) {
-                    if (isset(\itsmng\Database\EntityRegistry::TABLES[$link->getTable()])) {
+                    if (isset(\itsmng\Database\EntityRegistry::tables()[$link->getTable()])) {
                         $em = \itsmng\Database\Orm::create($DB);
                         try {
                             (new \itsmng\Database\Repository\ComponentRepository($em))->detach($link->getTable(), $itemtype, (int)$items_id);

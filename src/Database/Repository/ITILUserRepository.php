@@ -8,7 +8,7 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\Entity\ProfileUser;
-use itsmng\Database\OptionalReferences;
+use itsmng\Database\Mapping\UserReferenceAction;
 
 final class ITILUserRepository
 {
@@ -19,13 +19,13 @@ final class ITILUserRepository
     /** Historical reference maintenance must not replay ITIL workflow update hooks. */
     public function reassignReferences(int $user, ?int $replacement): void
     {
-        foreach (OptionalReferences::ITIL_USERS as $table => $columns) {
-            $metadata = $this->em->getClassMetadata(EntityRegistry::TABLES[$table]);
-            foreach ($metadata->associationMappings as $field => $mapping) {
-                if (!isset($columns[$mapping->joinColumns[0]->name])) {
+        foreach (EntityRegistry::tables() as $table => $class) {
+            foreach (EntityRegistry::references($table) as $reference) {
+                if ($reference->policy->userPurge !== UserReferenceAction::ReassignHistory) {
                     continue;
                 }
-                $this->em->createQueryBuilder()->update($metadata->name, 'r')->set('r.' . $field, ':replacement')
+                $field = $reference->association;
+                $this->em->createQueryBuilder()->update($class, 'r')->set('r.' . $field, ':replacement')
                     ->where('IDENTITY(r.' . $field . ') = :user')->setParameter('user', $user, Types::INTEGER)
                     ->setParameter('replacement', $replacement, Types::INTEGER)->getQuery()->execute();
             }
@@ -34,7 +34,9 @@ final class ITILUserRepository
 
     public function followups(string $type, int $item, int $viewer, bool $private): array
     {
-        $where = ['itemtype' => $type, 'items_id' => $item];
+        $class = \itsmng\Database\Entity\ITILFollowup::class;
+        $subject = $this->em->getClassMetadata($class)->getAssociationMapping($class::subjectAssociation($type))->joinColumns[0]->name;
+        $where = [$subject => $item];
         if (!$private) {
             $where += $viewer > 0 ? ['OR' => ['is_private' => false, 'users_id' => $viewer]] : ['is_private' => false];
         }

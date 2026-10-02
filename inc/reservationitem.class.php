@@ -576,103 +576,19 @@ class ReservationItem extends CommonDBChild
             $itemtable = getTableForItemType($itemtype);
             $itemname  = $item->getNameField();
 
-            if (\itsmng\Database\Repository\ReservationItemRepository::supports($itemtype)) {
-                $selected = explode('#', (string)($_POST['reservation_types'] ?? ''));
-                if ($selected[0] !== '' && $selected[0] !== $itemtype) {
-                    continue;
-                }
-                $searchPeriod = isset($_POST['submit'], $_POST['reserve']['begin'], $_POST['reserve']['end']);
-                $iterator = $repository->available(
-                    $itemtype,
-                    $itemname,
-                    getEntitiesRestrictCriteria($itemtable, '', $_SESSION['glpiactiveentities'], $item->maybeRecursive()),
-                    $searchPeriod ? $_POST['reserve']['begin'] : null,
-                    $searchPeriod ? $_POST['reserve']['end'] : null,
-                    isset($selected[1]) ? (int)$selected[1] : null
-                );
-            } else {
-                $otherserial = new \QueryExpression($DB->quote('') . ' AS ' . $DB->quoteName('otherserial'));
-                if ($item->isField('otherserial')) {
-                    $otherserial = "$itemtable.otherserial AS otherserial";
-                }
-                $criteria = [
-                   'SELECT' => [
-                      'glpi_reservationitems.id',
-                      'glpi_reservationitems.comment',
-                      "$itemtable.$itemname AS name",
-                      "$itemtable.entities_id AS entities_id",
-                      $otherserial,
-                      'glpi_locations.id AS location',
-                      'glpi_locations.completename AS location_name',
-                      'glpi_reservationitems.items_id AS items_id'
-                   ],
-                   'FROM'   => self::getTable(),
-                   'INNER JOIN'   => [
-                      $itemtable  => [
-                         'ON'  => [
-                            'glpi_reservationitems' => 'items_id',
-                            $itemtable              => 'id', [
-                               'AND' => [
-                                  'glpi_reservationitems.itemtype' => $itemtype
-                               ]
-                            ]
-                         ]
-                      ]
-                   ],
-                   'LEFT JOIN'    =>  [
-                      'glpi_locations'  => [
-                         'ON'  => [
-                            $itemtable        => 'locations_id',
-                            'glpi_locations'  => 'id'
-                         ]
-                      ]
-                   ],
-                   'WHERE'        => [
-                      'glpi_reservationitems.is_active'   => 1,
-                      'glpi_reservationitems.is_deleted'  => 0,
-                      "$itemtable.is_deleted"             => 0,
-                   ] + getEntitiesRestrictCriteria($itemtable, '', $_SESSION['glpiactiveentities'], $item->maybeRecursive()),
-                   'ORDERBY'      => [
-                      "$itemtable.entities_id",
-                      "$itemtable.$itemname"
-                   ]
-                ];
-
-                $begin = $_POST['reserve']["begin"];
-                $end   = $_POST['reserve']["end"];
-                if (isset($_POST['submit']) && isset($begin) && isset($end)) {
-                    $criteria['LEFT JOIN']['glpi_reservations'] = [
-                       'ON'  => [
-                          'glpi_reservationitems' => 'id',
-                          'glpi_reservations'     => 'reservationitems_id', [
-                             'AND' => [
-                                'glpi_reservations.end'    => ['>', $begin],
-                                'glpi_reservations.begin'  => ['<', $end]
-                             ]
-                          ]
-                       ]
-                    ];
-                    $criteria['WHERE'][] = ['glpi_reservations.id' => null];
-                }
-                if (isset($_POST["reservation_types"]) && !empty($_POST["reservation_types"])) {
-                    $tmp = explode('#', (string) $_POST["reservation_types"]);
-                    $criteria['WHERE'][] = ['glpi_reservationitems.itemtype' => $tmp[0]];
-                    if (
-                        isset($tmp[1]) && ($tmp[0] == 'Peripheral')
-                        && ($itemtype == 'Peripheral')
-                    ) {
-                        $criteria['LEFT JOIN']['glpi_peripheraltypes'] = [
-                           'ON' => [
-                              'glpi_peripherals'      => 'peripheraltypes_id',
-                              'glpi_peripheraltypes'  => 'id'
-                           ]
-                        ];
-                        $criteria['WHERE'][] = ["$itemtable.peripheraltypes_id" => $tmp[1]];
-                    }
-                }
-
-                $iterator = $DB->request($criteria);
+            $selected = explode('#', (string)($_POST['reservation_types'] ?? ''));
+            if ($selected[0] !== '' && $selected[0] !== $itemtype) {
+                continue;
             }
+            $searchPeriod = isset($_POST['submit'], $_POST['reserve']['begin'], $_POST['reserve']['end']);
+            $iterator = $repository->available(
+                $itemtype,
+                $itemname,
+                getEntitiesRestrictCriteria($itemtable, '', $_SESSION['glpiactiveentities'], $item->maybeRecursive()),
+                $searchPeriod ? $_POST['reserve']['begin'] : null,
+                $searchPeriod ? $_POST['reserve']['end'] : null,
+                isset($selected[1]) ? (int)$selected[1] : null
+            );
             foreach ($iterator as $row) {
                 echo "<tr style='width: 100%;'>";
 

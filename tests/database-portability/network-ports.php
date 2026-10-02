@@ -2,9 +2,9 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Migration\NetworkPortReferences;
-use itsmng\Database\OptionalReferences;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 
@@ -37,7 +37,7 @@ $fixtures = new FixtureRecords($DB);
 $read = static fn (string $table, int $id): ?array => (new RecordRepository(Orm::create($DB)))->find($table, 'id', $id);
 $DB->beginTransaction();
 try {
-    foreach (OptionalReferences::NETWORK_PORT_METADATA as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'NETWORK_PORT_METADATA') as $table => $relations) {
         foreach ($relations as $column => $target) {
             $parent = $fixtures->create($target);
             $replacement = $fixtures->create($target);
@@ -79,7 +79,7 @@ $migration = new NetworkPortReferences();
 $legacy = null;
 $host = $fixtures->create('glpi_networkports');
 try {
-    foreach (OptionalReferences::NETWORK_PORT_METADATA as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'NETWORK_PORT_METADATA') as $table => $relations) {
         foreach ($relations as $column => $target) {
             $connection->executeStatement($platform->getDropForeignKeySQL(ForeignKeys::name($table, $column), $table));
             $connection->executeStatement('UPDATE ' . $quote($table) . ' SET ' . $quote($column) . ' = 0 WHERE ' . $quote($column) . ' IS NULL');

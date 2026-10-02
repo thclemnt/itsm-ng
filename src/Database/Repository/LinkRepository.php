@@ -63,8 +63,13 @@ final class LinkRepository
 
     public function domainName(string $type, int $item): ?string
     {
+        try {
+            $association = Entity\DomainItem::referenceAssociation($type);
+        } catch (\InvalidArgumentException) {
+            return null;
+        }
         $row = $this->em->createQueryBuilder()->select('d.name')->from(Entity\DomainItem::class, 'binding')->join('binding.domains', 'd')
-            ->where('binding.itemtype = :type AND binding.items_id = :item')->setParameter('type', $type)->setParameter('item', $item, Types::INTEGER)
+            ->where('IDENTITY(binding.' . $association . ') = :item')->setParameter('item', $item, Types::BIGINT)
             ->orderBy('d.id')->setMaxResults(1)->getQuery()->getOneOrNullResult();
         return $row === null ? null : (string)$row['name'];
     }

@@ -68,8 +68,11 @@ try {
             'expired' => '2026-09-20', 'today' => '2026-09-28', 'boundary' => '2026-10-01', 'missing' => null, default => '2026-09-30',
         };
         $certificates[$name] = $fixtures->create('glpi_certificates', ['name' => 'Expiration certificate ' . $name, 'entities_id' => $name === 'foreign' ? 0 : $entityId, 'is_deleted' => $name === 'deleted', 'is_template' => $name === 'template', 'date_expiration' => $date]);
+        if ($name === 'other_type') {
+            $fixtures->create('glpi_contracts', ['id' => $certificates[$name]]);
+        }
         if (in_array($name, ['alerted', 'other_type', 'other_event'], true)) {
-            $fixtures->create('glpi_alerts', ['itemtype' => $name === 'other_type' ? 'Domain' : 'Certificate', 'items_id' => $certificates[$name], 'type' => $name === 'other_event' ? Alert::NOTICE : Alert::END]);
+            $fixtures->create('glpi_alerts', ['itemtype' => $name === 'other_type' ? 'Contract' : 'Certificate', 'items_id' => $certificates[$name], 'type' => $name === 'other_event' ? Alert::NOTICE : Alert::END]);
         }
     }
     $em = Orm::create($DB);

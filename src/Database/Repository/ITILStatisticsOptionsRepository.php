@@ -19,7 +19,7 @@ final class ITILStatisticsOptionsRepository
 
     public function options(string $type, string $dimension, string $begin, string $end, ?array $entities, ?string $language = null): array
     {
-        [$class, $parent, $users, $groups, $suppliers, $tasks] = ITILStatisticsType::definition($type);
+        [$class, $parent, $users, $groups, $suppliers, $tasks] = ITILStatisticsType::definition($this->em, $type);
         $query = $this->em->createQueryBuilder()->from($class, 'r')->distinct();
         $this->scope($query, $begin, $end, $entities);
         if (in_array($dimension, ['requester', 'technician', 'recipient', 'task_author', 'user_title', 'user_category'], true)) {
@@ -70,8 +70,9 @@ final class ITILStatisticsOptionsRepository
             $query->leftJoin('r.requesttypes', 'label');
             return $this->labels($query, 'RequestType', $language);
         } elseif ($dimension === 'solution_type') {
-            $query->join(Entity\ITILSolution::class, 'solution', 'WITH', 'solution.items_id = r.id AND solution.itemtype = :subject')
-                ->setParameter('subject', $type)->leftJoin('solution.solutiontypes', 'label');
+            $subject = Entity\ITILSolution::subjectAssociation($type);
+            $query->join(Entity\ITILSolution::class, 'solution', 'WITH', 'IDENTITY(solution.' . $subject . ') = r.id')
+                ->leftJoin('solution.solutiontypes', 'label');
             return $this->labels($query, 'SolutionType', $language);
         } else {
             throw new \InvalidArgumentException('Unsupported statistics option dimension');

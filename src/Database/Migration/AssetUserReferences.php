@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\OptionalReferences;
 
 final class AssetUserReferences
 {
@@ -13,11 +12,11 @@ final class AssetUserReferences
 
     public function plan(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::ASSET_USERS, 'asset user'))->plan($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'ASSET_USERS'), 'asset user'))->plan($connection);
     }
 
     public function apply(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::ASSET_USERS, 'asset user'))->apply($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'ASSET_USERS'), 'asset user'))->apply($connection);
     }
 }

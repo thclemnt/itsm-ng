@@ -123,18 +123,12 @@ class NotificationTargetProjectTask extends NotificationTarget
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT' => 'items_id',
-           'FROM'   => 'glpi_projecttaskteams',
-           'WHERE'  => [
-              'itemtype'        => 'User',
-              'projecttasks_id' => $this->obj->fields['id']
-           ]
-        ]);
+        $members = (new \itsmng\Database\Repository\ProjectRepository(\itsmng\Database\Orm::create($DB)))
+            ->taskTeamMemberIds((int)$this->obj->fields['id'], 'User');
 
         $user = new User();
-        while ($data = $iterator->next()) {
-            if ($user->getFromDB($data['items_id'])) {
+        foreach ($members as $member) {
+            if ($user->getFromDB($member)) {
                 $this->addToRecipientsList(['language' => $user->getField('language'),
                                                 'users_id' => $user->getField('id')]);
             }
@@ -153,17 +147,11 @@ class NotificationTargetProjectTask extends NotificationTarget
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT' => 'items_id',
-           'FROM'   => 'glpi_projecttaskteams',
-           'WHERE'  => [
-              'itemtype'        => 'Group',
-              'projecttasks_id' => $this->obj->fields['id']
-           ]
-        ]);
+        $members = (new \itsmng\Database\Repository\ProjectRepository(\itsmng\Database\Orm::create($DB)))
+            ->taskTeamMemberIds((int)$this->obj->fields['id'], 'Group');
 
-        while ($data = $iterator->next()) {
-            $this->addForGroup($manager, $data['items_id']);
+        foreach ($members as $member) {
+            $this->addForGroup($manager, $member);
         }
     }
 
@@ -177,18 +165,12 @@ class NotificationTargetProjectTask extends NotificationTarget
     {
         global $DB, $CFG_GLPI;
 
-        $iterator = $DB->request([
-           'SELECT' => 'items_id',
-           'FROM'   => 'glpi_projecttaskteams',
-           'WHERE'  => [
-              'itemtype'        => 'Contact',
-              'projecttasks_id' => $this->obj->fields['id']
-           ]
-        ]);
+        $members = (new \itsmng\Database\Repository\ProjectRepository(\itsmng\Database\Orm::create($DB)))
+            ->taskTeamMemberIds((int)$this->obj->fields['id'], 'Contact');
 
         $contact = new Contact();
-        while ($data = $iterator->next()) {
-            if ($contact->getFromDB($data['items_id'])) {
+        foreach ($members as $member) {
+            if ($contact->getFromDB($member)) {
                 $this->addToRecipientsList(["email"    => $contact->fields["email"],
                                                 "name"     => $contact->getName(),
                                                 "language" => $CFG_GLPI["language"],
@@ -207,18 +189,12 @@ class NotificationTargetProjectTask extends NotificationTarget
     {
         global $DB, $CFG_GLPI;
 
-        $iterator = $DB->request([
-           'SELECT' => 'items_id',
-           'FROM'   => 'glpi_projecttaskteams',
-           'WHERE'  => [
-              'itemtype'        => 'Supplier',
-              'projecttasks_id' => $this->obj->fields['id']
-           ]
-        ]);
+        $members = (new \itsmng\Database\Repository\ProjectRepository(\itsmng\Database\Orm::create($DB)))
+            ->taskTeamMemberIds((int)$this->obj->fields['id'], 'Supplier');
 
         $supplier = new Supplier();
-        while ($data = $iterator->next()) {
-            if ($supplier->getFromDB($data['items_id'])) {
+        foreach ($members as $member) {
+            if ($supplier->getFromDB($member)) {
                 $this->addToRecipientsList(["email"    => $supplier->fields["email"],
                                                 "name"     => $supplier->getName(),
                                                 "language" => $CFG_GLPI["language"],
@@ -231,6 +207,8 @@ class NotificationTargetProjectTask extends NotificationTarget
     public function addDataForTemplate($event, $options = [])
     {
         global $CFG_GLPI, $DB;
+
+        $records = new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB));
 
         //----------- Reservation infos -------------- //
         $events     = $this->getAllEvents();
@@ -330,7 +308,7 @@ class NotificationTargetProjectTask extends NotificationTarget
         // Team infos
         $restrict = ['projecttasks_id' => $item->getField('id')];
         $order    = ['date DESC', 'id ASC'];
-        $items    = getAllDataFromTable('glpi_projecttaskteams', $restrict);
+        $items    = $records->matching('glpi_projecttaskteams', $restrict, ['id ASC']);
 
         $this->data['teammembers'] = [];
         if (count($items)) {
@@ -349,13 +327,7 @@ class NotificationTargetProjectTask extends NotificationTarget
         $this->data['##projecttask.numberofteammembers##'] = count($this->data['teammembers']);
 
         // Task infos
-        $tasks                = getAllDataFromTable(
-            'glpi_projecttasks',
-            [
-              'WHERE'  => $restrict,
-              'ORDER'  => $order
-            ]
-        );
+        $tasks = $records->matching('glpi_projecttasks', $restrict, $order);
         $this->data['tasks'] = [];
         foreach ($tasks as $task) {
             $tmp                            = [];
@@ -413,7 +385,7 @@ class NotificationTargetProjectTask extends NotificationTarget
         $this->data["##projecttask.numberoflogs##"] = count($this->data['log']);
 
         // Tickets infos
-        $tickets  = getAllDataFromTable('glpi_projecttasks_tickets', $restrict);
+        $tickets = $records->matching('glpi_projecttasks_tickets', $restrict, ['id ASC']);
 
         $this->data['tickets'] = [];
         if (count($tickets)) {
@@ -441,25 +413,11 @@ class NotificationTargetProjectTask extends NotificationTarget
         $this->data['##projecttask.numberoftickets##'] = count($this->data['tickets']);
 
         // Document
-        $iterator = $DB->request([
-           'SELECT'    => 'glpi_documents.*',
-           'FROM'      => 'glpi_documents',
-           'LEFT JOIN' => [
-              'glpi_documents_items'  => [
-                 'ON' => [
-                    'glpi_documents_items'  => 'documents_id',
-                    'glpi_documents'        => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_documents_items.itemtype'  => 'ProjectTask',
-              'glpi_documents_items.items_id'  => $item->fields['id']
-           ]
-        ]);
+        $documents = (new \itsmng\Database\Repository\DocumentRepository(\itsmng\Database\Orm::create($DB)))
+            ->documentsForItem('ProjectTask', (int)$item->fields['id']);
 
         $this->data["documents"] = [];
-        while ($data = $iterator->next()) {
+        foreach ($documents as $data) {
             $tmp                      = [];
             $tmp['##document.id##']   = $data['id'];
             $tmp['##document.name##'] = $data['name'];

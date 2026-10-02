@@ -1938,39 +1938,16 @@ class Problem extends CommonITILObject
      * @param string $itemtype     Item type
      * @param integer $items_id    ID of the Item
      *
-     * @return DBmysqlIterator
+     * @return \itsmng\Database\RowIterator
      */
     public function getActiveProblemsForItem($itemtype, $items_id)
     {
         global $DB;
 
-        return $DB->request([
-           'SELECT'    => [
-              $this->getTable() . '.id',
-              $this->getTable() . '.name',
-              $this->getTable() . '.priority',
-           ],
-           'FROM'      => $this->getTable(),
-           'LEFT JOIN' => [
-              'glpi_items_problems' => [
-                 'ON' => [
-                    'glpi_items_problems' => 'problems_id',
-                    $this->getTable()    => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_items_problems.itemtype'   => $itemtype,
-              'glpi_items_problems.items_id'   => $items_id,
-              $this->getTable() . '.is_deleted' => 0,
-              'NOT'                         => [
-                 $this->getTable() . '.status' => array_merge(
-                     $this->getSolvedStatusArray(),
-                     $this->getClosedStatusArray()
-                 )
-              ]
-           ]
-        ]);
+        return new \itsmng\Database\RowIterator(
+            (new \itsmng\Database\Repository\ITILAssetRepository(\itsmng\Database\Orm::create($DB)))
+                ->active('Problem', (string)$itemtype, (int)$items_id, array_merge($this->getSolvedStatusArray(), $this->getClosedStatusArray()))
+        );
     }
 
 

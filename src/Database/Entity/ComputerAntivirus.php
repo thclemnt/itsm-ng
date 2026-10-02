@@ -5,6 +5,8 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_computerantiviruses')]
@@ -12,11 +14,12 @@ class ComputerAntivirus
 {
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
     #[ORM\ManyToOne(targetEntity: Computer::class)]
     #[ORM\JoinColumn(name: 'computers_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?Computer $computers = null;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
@@ -24,6 +27,7 @@ class ComputerAntivirus
 
     #[ORM\ManyToOne(targetEntity: Manufacturer::class)]
     #[ORM\JoinColumn(name: 'manufacturers_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?Manufacturer $manufacturers = null;
 
     #[ORM\Column(name: '`antivirus_version`', type: 'string', length: 255, nullable: true)]

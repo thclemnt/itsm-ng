@@ -5,6 +5,8 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_suppliers_tickets')]
@@ -13,15 +15,19 @@ class SupplierTicket
 {
     #[ORM\ManyToOne(targetEntity: Ticket::class)]
     #[ORM\JoinColumn(name: 'tickets_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\ITILStatisticsRelation(\itsmng\Database\Mapping\ITILStatisticsRole::Suppliers)]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?Ticket $tickets = null;
 
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
     #[ORM\ManyToOne(targetEntity: Supplier::class)]
     #[ORM\JoinColumn(name: 'suppliers_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?Supplier $actor = null;
 
     #[ORM\Column(name: '`type`', type: 'integer', nullable: false, options: ['default' => '1'])]

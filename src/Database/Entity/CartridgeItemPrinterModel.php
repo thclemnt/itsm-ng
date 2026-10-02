@@ -13,14 +13,16 @@ class CartridgeItemPrinterModel
 {
     #[ORM\ManyToOne(targetEntity: CartridgeItem::class)]
     #[ORM\JoinColumn(name: 'cartridgeitems_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?CartridgeItem $cartridgeitems = null;
 
     #[ORM\ManyToOne(targetEntity: PrinterModel::class)]
     #[ORM\JoinColumn(name: 'printermodels_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?PrinterModel $printermodels = null;
 
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 }

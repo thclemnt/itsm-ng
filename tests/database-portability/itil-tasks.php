@@ -2,6 +2,7 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
@@ -146,7 +147,7 @@ try {
 $platform = $connection->getDatabasePlatform();
 $quote = $platform->quoteIdentifier(...);
 $migration = new \itsmng\Database\Migration\ITILOriginReferences();
-$relations = \itsmng\Database\OptionalReferences::ITIL_ORIGINS;
+$relations = ReferenceHistory::get('optional', 'ITIL_ORIGINS');
 $created = [];
 try {
     $ticket = $fixtures->create('glpi_tickets', ['name' => 'Valid migration origin']);
@@ -170,7 +171,7 @@ try {
         $first = (int)$connection->fetchOne('SELECT COALESCE(MAX(id), 0) + 100 FROM ' . $quote($table));
         foreach ([false, true] as $offset => $valid) {
             $values = ['id' => $first + $offset];
-            $values += $table === 'glpi_tickettasks' ? ['tickets_id' => $ticket] : ['itemtype' => 'Ticket', 'items_id' => $ticket];
+            $values += $table === 'glpi_tickettasks' ? ['tickets_id' => $ticket] : ['itemtype' => 'Ticket', 'tickets_id' => $ticket];
             foreach ($columns as $column => $target) {
                 $values[$column] = $valid ? ($target === 'glpi_tickets' ? $ticket : $followup) : 0;
             }

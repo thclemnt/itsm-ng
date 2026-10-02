@@ -47,8 +47,7 @@ function criterion(int $id, string $value, string $searchtype = 'equals', string
 function insertFixture(string $table, array $values): int
 {
     global $DB;
-    $DB->insertOrDie($table, $values);
-    return $DB->insertId();
+    return (new \itsmng\Database\Repository\RecordWriter(\itsmng\Database\Orm::create($DB)))->insert($table, $values);
 }
 $prefix = 'Search contract ' . bin2hex(random_bytes(5));
 $DB->beginTransaction();

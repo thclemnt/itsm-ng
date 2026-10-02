@@ -879,7 +879,8 @@ class RuleTicket extends DbTestCase
            'content'           => 'test category code',
            'itilcategories_id' => 0
         ]);
-        $this->checkInput($ticket, $tickets_id, $ticket_input);
+        // Empty dropdown selections are nullable foreign keys after the ORM migration.
+        $this->checkInput($ticket, $tickets_id, array_replace($ticket_input, ['itilcategories_id' => null]));
 
         // Check that the rule was NOT executed
         $this->boolean($ticket->getFromDB($tickets_id))->isTrue();

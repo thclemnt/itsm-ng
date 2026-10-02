@@ -9,6 +9,7 @@ if (!is_file($directory . '/config_db.php')) {
 define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
+require __DIR__ . '/FixtureRecords.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
     exit(1);
@@ -25,8 +26,7 @@ function verify(bool $ok, string $message): void
 function fixture(string $table, array $values): int
 {
     global $DB;
-    $DB->insertOrDie($table, $values);
-    return $DB->insertId();
+    return (new FixtureRecords($DB))->create($table, $values);
 }
 verify(str_starts_with($DB->dbdefault, 'itsm_port_'), 'Dedicated test database required');
 $_SESSION['glpiextauth'] = 0;
@@ -45,6 +45,14 @@ try {
         fixture('glpi_computers_items', ['computers_id' => $id, 'itemtype' => 'Printer', 'items_id' => $printer]);
     }
     $assets = new \itsmng\Database\Repository\AssetRepository(\itsmng\Database\Orm::create($DB));
+    verify($assets->supports('Appliance') && !$assets->supports('Entity') && !$assets->supports('PluginUnregisteredAsset'), 'Asset reporting capabilities are declared on mapped classifications');
+    $applianceType = fixture('glpi_appliancetypes', ['name' => 'Mapped appliance class']);
+    fixture('glpi_appliances', ['name' => 'Visible appliance', 'entities_id' => $entity, 'appliancetypes_id' => $applianceType]);
+    fixture('glpi_appliances', ['name' => 'Hidden appliance', 'entities_id' => 0, 'appliancetypes_id' => $applianceType]);
+    fixture('glpi_appliances', ['name' => 'Deleted appliance', 'entities_id' => $entity, 'appliancetypes_id' => $applianceType, 'is_deleted' => 1]);
+    verify($assets->count('Appliance', [$entity]) === 1, 'Mapped asset outside the former catalogue obeys visibility');
+    $applianceGroups = $assets->countsByType('Appliance', [$entity]);
+    verify(count($applianceGroups) === 1 && $applianceGroups[0]['name'] === 'Mapped appliance class' && (int)$applianceGroups[0]['count'] === 1, 'Classification joins use the owning association of an additional mapped asset');
     verify($assets->count('Computer', [$entity]) === 1, 'Scoped asset count excludes deleted/templates');
     verify($assets->count('Printer', [$entity]) === 1, 'A shared asset is counted once');
     verify($assets->count('Computer', []) === 0, 'Empty authorization scope matches nothing');
@@ -72,10 +80,18 @@ try {
     $CFG_GLPI['debug_sql'] = true;
     $DEBUG_SQL = [];
     $SQL_TOTAL_REQUEST = 0;
+    $originalAssetTypes = $CFG_GLPI['asset_types'];
+    $CFG_GLPI['asset_types'][] = 'Appliance';
     ob_start();
-    Report::showDefaultReport();
-    $html = ob_get_clean();
+    try {
+        Report::showDefaultReport();
+        $html = ob_get_contents();
+    } finally {
+        ob_end_clean();
+        $CFG_GLPI['asset_types'] = $originalAssetTypes;
+    }
     verify($SQL_TOTAL_REQUEST === 0, 'Core default report bypasses legacy SQL execution');
+    verify(str_contains($html, 'Mapped appliance class'), 'A configured additional core asset uses its mapped report classification');
     verify(str_contains($html, 'Visible report OS') && !str_contains($html, 'Hidden report OS'), 'OS report obeys computer entity scope');
 
     $switch = fixture('glpi_networkequipments', ['name' => 'Report switch', 'entities_id' => $entity]);

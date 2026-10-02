@@ -31,7 +31,7 @@ final class EntityConfigurationRepository
     {
         $query = $this->em->createQueryBuilder()->from(Entity::class, 'r');
         $compiler = new RecordCriteria($query, $this->em->getClassMetadata(Entity::class));
-        $query->select('r.id AS entity', 'r.entities_id AS parent', $compiler->column($field) . ' AS value', 'CASE WHEN r.id = 0 THEN 0 ELSE 1 END AS HIDDEN root_order')
+        $query->select('r.id AS entity', 'IDENTITY(r.parent) AS parent', $compiler->column($field) . ' AS value', 'CASE WHEN r.id = 0 THEN 0 ELSE 1 END AS HIDDEN root_order')
             ->orderBy('root_order')->addOrderBy('r.level')->addOrderBy('r.id');
         $values = [];
         foreach ($query->getQuery()->getScalarResult() as $row) {
@@ -64,7 +64,7 @@ final class EntityConfigurationRepository
             if ($entity === 0) {
                 return $default;
             }
-            $entity = (int)$record->entities_id;
+            $entity = $record->parent === null ? -1 : (int)$this->em->getUnitOfWork()->getEntityIdentifier($record->parent)['id'];
         }
         return $default;
     }

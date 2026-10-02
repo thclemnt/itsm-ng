@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\OptionalReferences;
 
 final class ITILOriginReferences
 {
@@ -13,11 +12,11 @@ final class ITILOriginReferences
 
     public function plan(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::ITIL_ORIGINS, 'ITIL origin'))->plan($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'ITIL_ORIGINS'), 'ITIL origin'))->plan($connection);
     }
 
     public function apply(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::ITIL_ORIGINS, 'ITIL origin'))->apply($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'ITIL_ORIGINS'), 'ITIL origin'))->apply($connection);
     }
 }

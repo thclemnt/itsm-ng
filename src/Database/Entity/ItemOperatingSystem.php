@@ -5,6 +5,8 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_items_operatingsystems')]
@@ -13,10 +15,10 @@ class ItemOperatingSystem
 {
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
-    #[ORM\Column(name: '`items_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    #[ORM\Column(name: '`items_id`', type: 'bigint', nullable: false, options: ['default' => '0'])]
     public int $items_id = 0;
 
     #[ORM\Column(name: '`itemtype`', type: 'string', length: 255, nullable: true)]
@@ -24,22 +26,27 @@ class ItemOperatingSystem
 
     #[ORM\ManyToOne(targetEntity: OperatingSystem::class)]
     #[ORM\JoinColumn(name: 'operatingsystems_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?OperatingSystem $operatingsystems = null;
 
     #[ORM\ManyToOne(targetEntity: OperatingSystemVersion::class)]
     #[ORM\JoinColumn(name: 'operatingsystemversions_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?OperatingSystemVersion $operatingsystemversions = null;
 
     #[ORM\ManyToOne(targetEntity: OperatingSystemServicePack::class)]
     #[ORM\JoinColumn(name: 'operatingsystemservicepacks_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?OperatingSystemServicePack $operatingsystemservicepacks = null;
 
     #[ORM\ManyToOne(targetEntity: OperatingSystemArchitecture::class)]
     #[ORM\JoinColumn(name: 'operatingsystemarchitectures_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?OperatingSystemArchitecture $operatingsystemarchitectures = null;
 
     #[ORM\ManyToOne(targetEntity: OperatingSystemKernelVersion::class)]
     #[ORM\JoinColumn(name: 'operatingsystemkernelversions_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?OperatingSystemKernelVersion $operatingsystemkernelversions = null;
 
     #[ORM\Column(name: '`license_number`', type: 'string', length: 255, nullable: true)]
@@ -50,6 +57,7 @@ class ItemOperatingSystem
 
     #[ORM\ManyToOne(targetEntity: OperatingSystemEdition::class)]
     #[ORM\JoinColumn(name: 'operatingsystemeditions_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?OperatingSystemEdition $operatingsystemeditions = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
@@ -66,6 +74,8 @@ class ItemOperatingSystem
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
     #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
+    #[ReferencePolicy(ReferenceKind::RootEntity)]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?Entity $entities = null;
 
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]

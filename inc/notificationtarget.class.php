@@ -796,42 +796,11 @@ class NotificationTarget extends CommonDBChild
     {
         global $DB;
 
-        // members/managers of the group allowed on object entity
-        // filter group with 'is_assign' (attribute can be unset after notification)
-        $criteria = $this->getDistinctUserCriteria() + $this->getProfileJoinCriteria();
-        $criteria['FROM'] = Group_User::getTable();
-        $criteria['INNER JOIN'] = array_merge(
-            [
-              User::getTable() => [
-                 'ON' => [
-                    Group_User::getTable()  => 'users_id',
-                    User::getTable()        => 'id'
-                 ]
-              ],
-              Group::getTable() => [
-                 'ON' => [
-                    Group_User::getTable()  => 'groups_id',
-                    Group::getTable()       => 'id'
-                 ]
-              ]
-            ],
-            $criteria['INNER JOIN']
-        );
-        $criteria['WHERE'] = array_merge(
-            $criteria['WHERE'],
-            [
-              Group_User::getTable() . '.groups_id'  => $group_id,
-              Group::getTable() . '.is_notify'       => 1,
-            ]
-        );
-
-        if ($manager == 1) {
-            $criteria['WHERE']['glpi_groups_users.is_manager'] = 1;
-        } elseif ($manager == 2) {
-            $criteria['WHERE']['glpi_groups_users.is_manager'] = 0;
-        }
-
-        $iterator = $DB->request($criteria);
+        $iterator = new \itsmng\Database\RowIterator($this->recipientRepository()->groupUsers(
+            (int)$group_id,
+            (int)$manager,
+            $this->getProfileJoinCriteria()
+        ));
         while ($data = $iterator->next()) {
             $this->addToRecipientsList($data);
         }
@@ -864,6 +833,12 @@ class NotificationTarget extends CommonDBChild
            ],
            'DISTINCT'        => true,
         ];
+    }
+
+    protected function recipientRepository(): \itsmng\Database\Repository\NotificationRecipientRepository
+    {
+        global $DB;
+        return new \itsmng\Database\Repository\NotificationRecipientRepository(\itsmng\Database\Orm::create($DB));
     }
 
 
@@ -915,7 +890,7 @@ class NotificationTarget extends CommonDBChild
     {
         global $DB;
 
-        foreach ($DB->request('glpi_profiles') as $data) {
+        foreach (\itsmng\Database\MappedReads::matching($DB, 'glpi_profiles') as $data) {
             $this->addTarget(
                 $data["id"],
                 sprintf(__('%1$s: %2$s'), Profile::getTypeName(1), $data["name"]),
@@ -933,15 +908,12 @@ class NotificationTarget extends CommonDBChild
         global $DB;
 
         // Filter groups which can be notified and have members (as notifications are sent to members)
-        $iterator = $DB->request([
-           'SELECT' => ['id', 'name'],
-           'FROM'   => Group::getTable(),
-           'WHERE'  => [
-              'is_usergroup' => 1,
-              'is_notify'    => 1
-           ] + getEntitiesRestrictCriteria('glpi_groups', 'entities_id', $entity, true),
-           'ORDER'  => 'name'
-        ]);
+        $iterator = new \itsmng\Database\RowIterator(\itsmng\Database\MappedReads::matching(
+            $DB,
+            Group::getTable(),
+            ['is_usergroup' => true, 'is_notify' => true] + getEntitiesRestrictCriteria('glpi_groups', 'entities_id', $entity, true),
+            'name'
+        ));
 
         while ($data = $iterator->next()) {
             //Add group
@@ -1060,11 +1032,7 @@ class NotificationTarget extends CommonDBChild
         }
 
         if (!empty($id)) {
-            //Look for the user by his id
-            $criteria = $this->getDistinctUserCriteria() + $this->getProfileJoinCriteria();
-            $criteria['FROM'] = User::getTable();
-            $criteria['WHERE'][User::getTable() . '.id'] = $id;
-            $iterator = $DB->request($criteria);
+            $iterator = new \itsmng\Database\RowIterator($this->recipientRepository()->users($id, $this->getProfileJoinCriteria()));
 
             while ($data = $iterator->next()) {
                 //Add the user email and language in the notified users list
@@ -1124,12 +1092,10 @@ class NotificationTarget extends CommonDBChild
     {
         global $DB;
 
-        $criteria = $this->getDistinctUserCriteria() + $this->getProfileJoinCriteria();
-        $criteria['FIELDS'][] = Profile_User::getTable() . '.entities_id AS entity';
-        $criteria['FROM'] = User::getTable();
-        $criteria['WHERE'][Profile_User::getTable() . '.profiles_id'] = $profiles_id;
-
-        $iterator = $DB->request($criteria);
+        $iterator = new \itsmng\Database\RowIterator($this->recipientRepository()->profileUsers(
+            (int)$profiles_id,
+            $this->getProfileJoinCriteria()
+        ));
         while ($data = $iterator->next()) {
             $this->addToRecipientsList($data);
         }
@@ -1489,26 +1455,10 @@ class NotificationTarget extends CommonDBChild
     {
         global $DB;
 
-        $count = $DB->request([
-           'COUNT'        => 'cpt',
-           'FROM'         => self::getTable(),
-           'INNER JOIN'   => [
-              Notification::getTable()   => [
-                 'ON'  => [
-                    Notification::getTable()   => 'id',
-                    self::getTable()           => 'notifications_id'
-                 ]
-              ]
-           ],
-           'WHERE'        => [
-              'type'      => [
-                 Notification::SUPERVISOR_GROUP_TYPE,
-                 Notification::GROUP_TYPE
-              ],
-              'items_id'  => $group->getID()
-           ] + getEntitiesRestrictCriteria(Notification::getTable(), '', '', true)
-        ])->next();
-        return $count['cpt'];
+        return (new \itsmng\Database\Repository\NotificationRecipientRepository(\itsmng\Database\Orm::create($DB)))->countForGroup(
+            (int)$group->getID(),
+            getEntitiesRestrictCriteria(Notification::getTable(), '', '', true)
+        );
     }
 
 
@@ -1529,25 +1479,10 @@ class NotificationTarget extends CommonDBChild
             return false;
         }
 
-        $iterator = $DB->request([
-           'SELECT'       => [Notification::getTable() . '.id'],
-           'FROM'         => self::getTable(),
-           'INNER JOIN'   => [
-              Notification::getTable() => [
-                 'ON' => [
-                    self::getTable()           => 'notifications_id',
-                    Notification::getTable()   => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'        => [
-              'type'      => [
-                 Notification::SUPERVISOR_GROUP_TYPE,
-                 Notification::GROUP_TYPE
-              ],
-              'items_id'  => $group->getID()
-           ] + getEntitiesRestrictCriteria(Notification::getTable(), '', '', true)
-        ]);
+        $iterator = new \itsmng\Database\RowIterator((new \itsmng\Database\Repository\NotificationRecipientRepository(\itsmng\Database\Orm::create($DB)))->notificationsForGroup(
+            (int)$group->getID(),
+            getEntitiesRestrictCriteria(Notification::getTable(), '', '', true)
+        ));
 
         echo "<table class='tab_cadre_fixe' aria-label='notification Method'>";
 

@@ -160,43 +160,20 @@ switch ($step) {
             $twig_vars = ['connect_error' => 'Select a supported database provider with its PHP extension installed.'];
             break;
         }
-        error_reporting(16);
-        mysqli_report(MYSQLI_REPORT_OFF);
-        $hostport = explode(":", $_SESSION['db_host']);
-        if (count($hostport) < 2) {
-            $link = new mysqli($hostport[0], $_SESSION['db_user'], $_SESSION['db_pass']);
-        } else {
-            $link = new mysqli($hostport[0], $_SESSION['db_user'], $_SESSION['db_pass'], '', $hostport[1]);
-        }
-        $connect_error = $link->connect_error;
-        if (!$connect_error) {
-            $DB_ver = $link->query("SELECT version()");
-            $row = $DB_ver->fetch_array();
-            $version = $row[0];
+        $server = null;
+        try {
+            $server = \itsmng\Database\InstallationConnection::mysqlServer($_SESSION['db_host'], $_SESSION['db_user'], $_SESSION['db_pass']);
+            $version = $server->getServerVersion();
             $result = Config::checkDbEngine($version);
             $version = key($result);
-            $db_ver = $result[$version];
-            if (!$db_ver) {
-                $ver_too_old = true;
-            } else {
-                $ver_too_old = false;
-                $databases_info = [];
-                $db_info = [];
-                if ($DB_list = $link->query(
-                    "SELECT S.schema_name AS 'name', COUNT(T.table_name) AS 'table_count', DATE(MIN(T.create_time)) AS 'table_create', DATE(MAX(T.update_time)) AS 'table_update'
-                    FROM information_schema.tables AS T
-                    RIGHT JOIN information_schema.schemata AS S
-                    ON S.schema_name = T.table_schema
-                    GROUP BY S.schema_name;"
-                )) {
-                    while ($row = $DB_list->fetch_array(MYSQLI_NUM)) {
-                        if (!in_array($row[0], ["information_schema","mysql","performance_schema","sys"])) {
-                            $databases_info[] = array_combine(["name", "table_count", "creation_date", "last_update"], $row);
-                        }
-                    }
-                }
+            $ver_too_old = !$result[$version];
+            if (!$ver_too_old) {
+                $databases_info = \itsmng\Database\InstallationConnection::mysqlDatabases($server);
             }
-            $link->close();
+        } catch (Throwable $exception) {
+            $connect_error = $exception->getMessage();
+        } finally {
+            $server?->close();
         }
         $twig_vars = [  'host' =>           $_SESSION['db_host'],   'user' =>       $_SESSION['db_user'],
                         'connect_error' =>  $connect_error,         'version' =>    $version,
@@ -217,7 +194,7 @@ switch ($step) {
                 \itsmng\Database\Installer::checkPostgres($database);
                 $database->close();
                 $glpikey = new GLPIKey();
-                $secured = $glpikey->keyExists() || $glpikey->generate();
+                $secured = $glpikey->keyExists() || $glpikey->generate(false);
                 if ($secured && !DBConnection::createMainConfig($_SESSION['db_host'], $_SESSION['db_user'], $_SESSION['db_pass'], $_SESSION['db_name'], 'pgsql')) {
                     $error = 'setup';
                 }
@@ -243,34 +220,29 @@ switch ($step) {
             $glpikey = new GLPIKey();
             $secured = $glpikey->keyExists();
             if (!$secured) {
-                $secured = $glpikey->generate();
+                $secured = $glpikey->generate(false);
             }
             if ($secured) {
-                mysqli_report(MYSQLI_REPORT_OFF);
-                $hostport = explode(":", $_SESSION['db_host']);
-                if (count($hostport) < 2) {
-                    $link = new mysqli($hostport[0], $_SESSION['db_user'], $_SESSION['db_pass']);
-                } else {
-                    $link = new mysqli($hostport[0], $_SESSION['db_user'], $_SESSION['db_pass'], '', $hostport[1]);
-                }
-                $databasename = $link->real_escape_string($_SESSION['databasename']);// use db already created
-                $DB_selected = $link->select_db($databasename);
-                if ($new_db && !$DB_selected) {
-                    if ($link->query("CREATE DATABASE IF NOT EXISTS `".$databasename."`")) {
-                        $DB_selected = $link->select_db($databasename);
-                        $db_created = true;
-                    } else {
-                        $error = "create_db";
+                $server = $database = null;
+                try {
+                    if ($new_db) {
+                        $error = 'create_db';
+                        $server = \itsmng\Database\InstallationConnection::mysqlServer($_SESSION['db_host'], $_SESSION['db_user'], $_SESSION['db_pass']);
+                        $db_created = \itsmng\Database\InstallationConnection::ensureMysqlDatabase($server, $_SESSION['databasename']);
                     }
-                }
-                if (!$DB_selected) {
-                    $sql_error = $link->error;
-                    $error = "use";
-                } else {
-                    if (DBConnection::createMainConfig($_SESSION['db_host'], $_SESSION['db_user'], $_SESSION['db_pass'], $_SESSION['databasename'])) {
+                    $error = 'use';
+                    $database = \itsmng\Database\InstallationConnection::mysqlDatabase($_SESSION['db_host'], $_SESSION['db_user'], $_SESSION['db_pass'], $_SESSION['databasename']);
+                    $database->getServerVersion();
+                    if (!DBConnection::createMainConfig($_SESSION['db_host'], $_SESSION['db_user'], $_SESSION['db_pass'], $_SESSION['databasename'])) {
+                        $error = 'setup';
                     } else {
-                        $error = "setup";
+                        $error = '';
                     }
+                } catch (Throwable $exception) {
+                    $sql_error = $exception->getMessage();
+                } finally {
+                    $database?->close();
+                    $server?->close();
                 }
             } else {
                 $error = "select";
@@ -321,24 +293,10 @@ switch ($step) {
 
         $referer = $_SERVER['HTTP_REFERER'] ?? '';
         $url_base = preg_replace('~/install/install\.php(?:\?.*)?$~', '', $referer);
-        $DB->update(
-            'glpi_configs',
-            ['value' => $DB->escape($url_base)],
-            [
-                'context'   => 'core',
-                'name'      => 'url_base'
-            ]
-        );
-
-        $url_base_api = "$url_base/apirest.php/";
-        $DB->update(
-            'glpi_configs',
-            ['value' => $DB->escape($url_base_api)],
-            [
-                'context'   => 'core',
-                'name'      => 'url_base_api'
-            ]
-        );
+        Config::setConfigurationValues('core', [
+            'url_base' => $url_base,
+            'url_base_api' => "$url_base/apirest.php/",
+        ]);
 }
 
 try {

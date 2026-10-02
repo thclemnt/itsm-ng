@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\OptionalReferences;
 
 final class GroupReferences
 {
@@ -13,11 +12,11 @@ final class GroupReferences
 
     public function plan(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::GROUPS, 'group'))->plan($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'GROUPS'), 'group'))->plan($connection);
     }
 
     public function apply(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::GROUPS, 'group'))->apply($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'GROUPS'), 'group'))->apply($connection);
     }
 }

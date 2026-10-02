@@ -4,16 +4,44 @@
 
 namespace itsmng\Database\Entity;
 
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_reminders')]
 #[ORM\UniqueConstraint(name: 'reminders_uuid', columns: ['uuid'])]
 class Reminder
 {
+    /** @var Collection<int, ReminderUser> */
+    #[ORM\OneToMany(targetEntity: ReminderUser::class, mappedBy: 'reminders')]
+    public Collection $audienceUsers;
+
+    /** @var Collection<int, GroupReminder> */
+    #[ORM\OneToMany(targetEntity: GroupReminder::class, mappedBy: 'reminders')]
+    public Collection $audienceGroups;
+
+    /** @var Collection<int, ProfileReminder> */
+    #[ORM\OneToMany(targetEntity: ProfileReminder::class, mappedBy: 'reminders')]
+    public Collection $audienceProfiles;
+
+    /** @var Collection<int, EntityReminder> */
+    #[ORM\OneToMany(targetEntity: EntityReminder::class, mappedBy: 'reminders')]
+    public Collection $audienceEntities;
+
+    public function __construct()
+    {
+        $this->audienceUsers = new ArrayCollection();
+        $this->audienceGroups = new ArrayCollection();
+        $this->audienceProfiles = new ArrayCollection();
+        $this->audienceEntities = new ArrayCollection();
+    }
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
     #[ORM\Column(name: '`uuid`', type: 'string', length: 255, nullable: true)]
@@ -24,6 +52,8 @@ class Reminder
 
     #[ORM\ManyToOne(targetEntity: User::class)]
     #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?User $users = null;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]

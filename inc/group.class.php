@@ -96,6 +96,11 @@ class Group extends CommonTreeDropdown
 
     public function cleanDBonPurge()
     {
+        global $DB;
+        (new \itsmng\Database\Repository\NotificationRecipientRepository(\itsmng\Database\Orm::create($DB)))->replaceGroup(
+            (int)$this->getID(),
+            (int)($this->input['_replace_by'] ?? 0)
+        );
 
         $this->deleteChildrenAndRelationsFromDb(
             [

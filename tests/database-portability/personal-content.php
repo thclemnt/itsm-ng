@@ -2,9 +2,9 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Migration\PersonalContentOwners;
-use itsmng\Database\OptionalReferences;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 
@@ -194,7 +194,7 @@ $quote = $platform->quoteIdentifier(...);
 $migration = new PersonalContentOwners();
 $legacy = null;
 try {
-    foreach (OptionalReferences::PERSONAL_CONTENT_OWNERS as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'PERSONAL_CONTENT_OWNERS') as $table => $relations) {
         foreach ($relations as $column => $target) {
             $connection->executeStatement($platform->getDropForeignKeySQL(ForeignKeys::name($table, $column), $table));
             $connection->executeStatement('UPDATE ' . $quote($table) . ' SET ' . $quote($column) . ' = 0 WHERE ' . $quote($column) . ' IS NULL');

@@ -489,7 +489,7 @@ class Ticket_Ticket extends CommonDBRelation
             unset($solution_data['date_mod']);
 
             foreach ($tickets as $data) {
-                $solution_data['items_id'] = $data['tickets_id'];
+                $solution_data = \itsmng\Database\Entity\ITILSolution::withSubject($solution_data, 'Ticket', (int)$data['tickets_id']);
                 $solution_data['_linked_ticket'] = true;
                 $new_solution = new ITILSolution();
                 $new_solution->add(Toolbox::addslashes_deep($solution_data));

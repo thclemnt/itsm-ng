@@ -50,6 +50,11 @@ class Reservation extends CommonDBChild
     public static $checkParentRights = self::HAVE_VIEW_RIGHT_ON_ITEM;
 
 
+    public function cleanDBonPurge()
+    {
+        (new Alert())->cleanDBonItemDelete($this->getType(), $this->getID());
+    }
+
     /**
      * @param $nb  integer  for singular or plural
     **/

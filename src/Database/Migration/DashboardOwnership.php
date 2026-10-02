@@ -9,7 +9,6 @@ use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Table;
 use itsmng\Database\Mapping\ReferenceKey;
-use itsmng\Database\OptionalReferences;
 
 final class DashboardOwnership
 {
@@ -42,7 +41,7 @@ final class DashboardOwnership
 
     public function plan(Connection $connection): array
     {
-        $references = (new NullableReferences(OptionalReferences::DASHBOARD_OWNERS, 'dashboard owner'))->plan($connection);
+        $references = (new NullableReferences(ReferenceHistory::get('optional', 'DASHBOARD_OWNERS'), 'dashboard owner'))->plan($connection);
         $platform = $connection->getDatabasePlatform();
         $quote = $platform->quoteIdentifier(...);
         $keys = implode(', ', array_map(static fn ($column) => 'COALESCE(' . $quote($column) . ', 0)', self::KEYS));
@@ -74,7 +73,7 @@ final class DashboardOwnership
             foreach ($plan['sql'] as $sql) {
                 $connection->executeStatement($sql);
             }
-            return (new NullableReferences(OptionalReferences::DASHBOARD_OWNERS, 'dashboard owner'))->apply($connection);
+            return (new NullableReferences(ReferenceHistory::get('optional', 'DASHBOARD_OWNERS'), 'dashboard owner'))->apply($connection);
         };
         return $connection->getDatabasePlatform() instanceof PostgreSQLPlatform ? $connection->transactional($apply) : $apply();
     }

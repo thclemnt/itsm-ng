@@ -12,11 +12,12 @@ class AuthLdapReplicate
 {
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
     #[ORM\ManyToOne(targetEntity: AuthLDAP::class)]
     #[ORM\JoinColumn(name: 'authldaps_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public AuthLDAP $authldaps;
 
     #[ORM\Column(name: '`host`', type: 'string', length: 255, nullable: true)]

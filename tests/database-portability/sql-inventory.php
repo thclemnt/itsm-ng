@@ -50,6 +50,16 @@ verify(SqlCallInventory::scan('<?php \DBmysql::query("SELECT 1");', 'fixture.php
 $root = dirname(__DIR__, 2);
 $all = SqlCallInventory::discover($root);
 verify($all === SqlCallInventory::discover($root), 'Repository inventory order is deterministic');
-verify((bool)array_filter($all, static fn (array $call): bool => $call['path'] === 'install/install.php' && $call['category'] === 'direct_driver'), 'Current web installer driver dependency is discovered');
+verify(!array_filter($all, static fn (array $call): bool => $call['path'] === 'install/install.php' && $call['category'] === 'direct_driver'), 'Web installer no longer opens native driver connections');
+verify(!array_filter($all, static fn (array $call): bool => $call['category'] === 'direct_driver' && !str_starts_with(strtolower($call['method']), 'pg_')), 'Native mysqli calls are confined to Doctrine vendor drivers');
+verify(!array_filter($all, static fn (array $call): bool => in_array($call['path'], ['inc/auth.class.php', 'inc/authmail.class.php'], true)
+    && in_array($call['category'], ['legacy_adapter', 'legacy_dynamic', 'direct_driver'], true)), 'Authentication services no longer issue adapter or native-driver SQL');
+verify(!array_filter($all, static fn (array $call): bool => $call['path'] === 'inc/lock.class.php'
+    && in_array($call['category'], ['legacy_adapter', 'legacy_dynamic', 'direct_driver'], true)), 'Inventory locks no longer issue adapter or native-driver SQL');
+verify(!array_filter($all, static fn (array $call): bool => $call['path'] === 'inc/reservationitem.class.php'
+    && in_array($call['category'], ['legacy_adapter', 'legacy_dynamic', 'direct_driver'], true)), 'Reservable items no longer issue adapter or native-driver SQL');
+verify(!array_filter($all, static fn (array $call): bool => in_array($call['path'], [
+    'inc/caldav/traits/caldavuriutiltrait.class.php', 'inc/reminder_user.class.php', 'inc/entity_reminder.class.php', 'inc/alert.class.php',
+], true) && in_array($call['category'], ['legacy_adapter', 'legacy_dynamic', 'direct_driver'], true)), 'Calendar UID, reminder audience and alert loaders no longer issue adapter or native-driver SQL');
 verify((bool)array_filter($all, static fn (array $call): bool => $call['path'] === 'install/update_0723_078.php' && $call['method'] === 'queryOrDie'), 'Previously omitted historical migration wrappers are discovered');
 echo "SQL inventory: token discovery, false-positive boundaries, source locations and remaining driver/migration evidence passed.\n";

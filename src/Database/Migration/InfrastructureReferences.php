@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\OptionalReferences;
 
 final class InfrastructureReferences
 {
@@ -13,11 +12,11 @@ final class InfrastructureReferences
 
     public function plan(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::INFRASTRUCTURE, 'infrastructure'))->plan($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'INFRASTRUCTURE'), 'infrastructure'))->plan($connection);
     }
 
     public function apply(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::INFRASTRUCTURE, 'infrastructure'))->apply($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'INFRASTRUCTURE'), 'infrastructure'))->apply($connection);
     }
 }

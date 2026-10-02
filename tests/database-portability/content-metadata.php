@@ -2,9 +2,9 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Migration\ContentMetadataReferences;
-use itsmng\Database\OptionalReferences;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ContentRepository;
 
@@ -40,7 +40,7 @@ try {
     $replacement = $fixtures->create('glpi_users', ['name' => 'Content replacement', 'picture' => 'replacement.png']);
     $other = $fixtures->create('glpi_users', ['name' => 'Other content author']);
     $records = $others = [];
-    foreach (OptionalReferences::CONTENT_METADATA as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'CONTENT_METADATA') as $table => $relations) {
         $columns = array_keys(array_filter($relations, static fn ($target) => $target === 'glpi_users'));
         $records[$table] = $fixtures->create($table, array_fill_keys($columns, $owner));
         $others[$table] = $fixtures->create($table, array_fill_keys($columns, $other));
@@ -48,7 +48,7 @@ try {
     $revisionCount = count((new KnowbaseItem_Revision())->find([]));
     $user = new User();
     verify($user->delete(['id' => $owner, '_replace_by' => $replacement], true), 'Replace content author');
-    foreach (OptionalReferences::CONTENT_METADATA as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'CONTENT_METADATA') as $table => $relations) {
         $model = getItemForItemtype(getItemTypeForTable($table));
         verify($model->getFromDB($records[$table]), 'Content retained after author replacement');
         foreach ($relations as $column => $target) {
@@ -58,7 +58,7 @@ try {
         }
     }
     verify($user->delete(['id' => $replacement], true), 'Purge content author');
-    foreach (OptionalReferences::CONTENT_METADATA as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'CONTENT_METADATA') as $table => $relations) {
         $model = getItemForItemtype(getItemTypeForTable($table));
         verify($model->getFromDB($records[$table]), 'Historical content survives author purge');
         foreach ($relations as $column => $target) {
@@ -155,7 +155,7 @@ $quote = $platform->quoteIdentifier(...);
 $migration = new ContentMetadataReferences();
 $legacy = null;
 try {
-    foreach (OptionalReferences::CONTENT_METADATA as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'CONTENT_METADATA') as $table => $relations) {
         foreach ($relations as $column => $target) {
             $connection->executeStatement($platform->getDropForeignKeySQL(ForeignKeys::name($table, $column), $table));
             $connection->executeStatement('UPDATE ' . $quote($table) . ' SET ' . $quote($column) . ' = 0 WHERE ' . $quote($column) . ' IS NULL');

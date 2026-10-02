@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\OptionalReferences;
 
 final class InventoryMetadataReferences
 {
@@ -13,7 +12,7 @@ final class InventoryMetadataReferences
 
     public function plan(Connection $connection): array
     {
-        $plan = (new NullableReferences(OptionalReferences::INVENTORY_METADATA, 'inventory metadata'))->plan($connection);
+        $plan = (new NullableReferences(ReferenceHistory::get('optional', 'INVENTORY_METADATA'), 'inventory metadata'))->plan($connection);
         array_push($plan['sql'], ...(new InventoryUniqueness())->plan($connection));
         return $plan;
     }
@@ -22,7 +21,7 @@ final class InventoryMetadataReferences
     {
         $this->plan($connection); // Audit references and uniqueness before either migration writes.
         $apply = static function () use ($connection): array {
-            $counts = (new NullableReferences(OptionalReferences::INVENTORY_METADATA, 'inventory metadata'))->apply($connection);
+            $counts = (new NullableReferences(ReferenceHistory::get('optional', 'INVENTORY_METADATA'), 'inventory metadata'))->apply($connection);
             foreach ((new InventoryUniqueness())->plan($connection) as $sql) {
                 $connection->executeStatement($sql);
             }

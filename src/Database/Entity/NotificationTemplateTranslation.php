@@ -12,11 +12,12 @@ class NotificationTemplateTranslation
 {
     #[ORM\ManyToOne(targetEntity: NotificationTemplate::class)]
     #[ORM\JoinColumn(name: 'notificationtemplates_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?NotificationTemplate $notificationtemplates = null;
 
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
     #[ORM\Column(name: '`language`', type: 'string', length: 10, nullable: false, options: ['default' => ''])]

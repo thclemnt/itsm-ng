@@ -18,7 +18,7 @@ final class GroupItemRepository
 
     public static function supports(string $type): bool
     {
-        return isset(EntityRegistry::TABLES[\getTableForItemType($type)]);
+        return isset(EntityRegistry::tables()[\getTableForItemType($type)]);
     }
 
     public function count(string $type, string $field, array $groups, bool $members, array $scope): int
@@ -33,7 +33,7 @@ final class GroupItemRepository
             return [];
         }
         $id = $type === 'Consumable' ? 'c.id' : 'r.id';
-        $class = $type === 'Consumable' ? Entity\ConsumableItem::class : EntityRegistry::TABLES[\getTableForItemType($type)];
+        $class = $type === 'Consumable' ? Entity\ConsumableItem::class : EntityRegistry::tables()[\getTableForItemType($type)];
         $query = $this->query($type, $field, $groups, $members, $scope)->select($id . ' AS id');
         if ($this->em->getClassMetadata($class)->hasField('name')) {
             $query->addSelect('CASE WHEN r.name IS NULL THEN 0 ELSE 1 END AS HIDDEN unnamed')->orderBy('unnamed')->addOrderBy('r.name');
@@ -47,13 +47,13 @@ final class GroupItemRepository
         if (!in_array($field, ['groups_id', 'groups_id_tech'], true)) {
             throw new \InvalidArgumentException('Unsupported group assignment field');
         }
-        $class = $type === 'Consumable' ? Entity\ConsumableItem::class : EntityRegistry::TABLES[\getTableForItemType($type)];
+        $class = $type === 'Consumable' ? Entity\ConsumableItem::class : EntityRegistry::tables()[\getTableForItemType($type)];
         $query = $this->em->createQueryBuilder()->from($class, 'r')->setParameter('groups', array_values($groups) ?: [-1]);
         $compiler = new RecordCriteria($query, $this->em->getClassMetadata($class));
         $query->where($compiler->where($scope));
         if ($type === 'Consumable') {
             return $query->innerJoin(Entity\Consumable::class, 'c', 'WITH', 'c.consumableitems = r.id')
-                ->andWhere('c.items_id IN (:groups) AND c.itemtype = :recipient_type')->setParameter('recipient_type', 'Group');
+                ->andWhere('IDENTITY(c.recipientGroup) IN (:groups)');
         }
         $group = $compiler->column($field);
         $predicate = $group . ' IN (:groups)';

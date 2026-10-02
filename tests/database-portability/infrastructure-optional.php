@@ -2,6 +2,8 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
+
 $directory = $argv[1] ?? '';
 if (!is_file($directory . '/config_db.php')) {
     fwrite(STDERR, "Usage: php tests/database-portability/infrastructure-optional.php /path/to/test-config\n");
@@ -27,7 +29,6 @@ verify(str_starts_with($DB->dbdefault, 'itsm_port_'), 'Dedicated test database r
 $_SESSION['glpiextauth'] = 0;
 verify((new Auth())->login('itsm', 'itsm', true), 'Login');
 $_SESSION['_glpi_csrf_token'] = Session::getNewCSRFToken();
-use itsmng\Database\OptionalReferences;
 use itsmng\Database\Migration\InfrastructureReferences;
 
 $connection = $DB->getDoctrineConnection();
@@ -36,7 +37,7 @@ try {
     $fixtures = new FixtureRecords($DB);
     $storage = new \itsmng\Database\MappedStorage($DB);
     $tested = 0;
-    foreach (OptionalReferences::INFRASTRUCTURE as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'INFRASTRUCTURE') as $table => $relations) {
         foreach ($relations as $column => $target) {
             $parent = $fixtures->create($target, ['name' => 'Optional infrastructure parent']);
             $replacement = $fixtures->create($target, ['name' => 'Replacement infrastructure parent']);
@@ -101,7 +102,7 @@ $quote = $platform->quoteIdentifier(...);
 $legacyId = $zeroParent = null;
 $migration = new InfrastructureReferences();
 try {
-    foreach (OptionalReferences::INFRASTRUCTURE as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'INFRASTRUCTURE') as $table => $relations) {
         foreach ($relations as $column => $target) {
             $connection->executeStatement($platform->getDropForeignKeySQL(ForeignKeys::name($table, $column), $table));
             $connection->executeStatement('UPDATE ' . $quote($table) . ' SET ' . $quote($column) . ' = 0 WHERE ' . $quote($column) . ' IS NULL');

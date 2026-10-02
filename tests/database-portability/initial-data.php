@@ -40,9 +40,46 @@ foreach ([
 if ($DB->getProvider() === 'mysql') {
     $server = InstallationConnection::mysqlServer($DB->dbhost, $DB->dbuser, rawurldecode($DB->dbpassword));
     try {
-        InstallationConnection::ensureMysqlDatabase($server, $DB->dbdefault);
+        verify(!InstallationConnection::ensureMysqlDatabase($server, $DB->dbdefault), 'Existing database is selected without creating it again');
+        $databases = array_column(InstallationConnection::mysqlDatabases($server), null, 'name');
+        verify(isset($databases[$DB->dbdefault]) && (int)$databases[$DB->dbdefault]['table_count'] === count($DB->listTables('%')), 'Installer catalogue includes the selected database and its tables');
+        verify(!array_intersect(['information_schema', 'mysql', 'performance_schema', 'sys'], array_keys($databases)), 'System databases are excluded from installation choices');
+        $selected = InstallationConnection::mysqlDatabase($DB->dbhost, $DB->dbuser, rawurldecode($DB->dbpassword), $DB->dbdefault);
+        try {
+            verify($selected->getDatabase() === $DB->dbdefault && $selected->getServerVersion() !== '', 'Named installation connection uses the selected database');
+        } finally {
+            $selected->close();
+        }
     } finally {
         $server->close();
+    }
+    // The last native mysqli constructor was in this historical upgrade helper.
+    require_once GLPI_ROOT . '/install/update_068_0681.php';
+    $legacyConnection = $DB->getDoctrineConnection();
+    $legacyConnection->executeStatement('CREATE TEMPORARY TABLE glpi_ocs_config (ocs_db_host VARCHAR(255), ocs_db_user VARCHAR(255), ocs_db_passwd VARCHAR(255), ocs_db_name VARCHAR(255))');
+    $savedDb = $GLOBALS['db'] ?? null;
+    $savedConfig = $GLOBALS['cfg_glpi'] ?? null;
+    $ocs = null;
+    try {
+        $GLOBALS['db'] = $DB;
+        $GLOBALS['cfg_glpi'] = ['ocs_mode' => false];
+        verify(!(new DBocs())->connected, 'Disabled historical OCS connection remains disconnected');
+        $GLOBALS['cfg_glpi']['ocs_mode'] = true;
+        verify((new DBocs())->error === 1, 'Missing OCS configuration fails without opening a connection');
+        $legacyConnection->insert('glpi_ocs_config', [
+            'ocs_db_host' => $DB->dbhost, 'ocs_db_user' => $DB->dbuser,
+            'ocs_db_passwd' => rawurldecode($DB->dbpassword), 'ocs_db_name' => $DB->dbdefault,
+        ]);
+        $ocs = new DBocs();
+        verify($ocs->connected && $ocs->getDoctrineConnection()->getDatabase() === $DB->dbdefault, 'Historical OCS helper owns a DBAL connection to the configured database');
+        $result = $ocs->query('SELECT 1 AS result');
+        verify($ocs->fetchAssoc($result) === ['result' => 1], 'Historical migration query compatibility uses the DBAL transport');
+        $ocs->freeResult($result);
+    } finally {
+        $ocs?->close();
+        $GLOBALS['db'] = $savedDb;
+        $GLOBALS['cfg_glpi'] = $savedConfig;
+        $legacyConnection->executeStatement('DROP TEMPORARY TABLE glpi_ocs_config');
     }
 }
 $repository = static fn () => new RecordRepository(Orm::create($DB));

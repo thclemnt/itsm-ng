@@ -13,14 +13,16 @@ class ContractSupplier
 {
     #[ORM\ManyToOne(targetEntity: Supplier::class)]
     #[ORM\JoinColumn(name: 'suppliers_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?Supplier $suppliers = null;
 
     #[ORM\ManyToOne(targetEntity: Contract::class)]
     #[ORM\JoinColumn(name: 'contracts_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?Contract $contracts = null;
 
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 }

@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 use itsmng\Database\ForeignKeys;
-use itsmng\Database\OptionalReferences;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 
@@ -77,6 +76,7 @@ try {
     $login = "o'connor\\ldap";
     $ldapUser = $fixtures->create('glpi_users', ['name' => $login, 'auths_id' => $first, 'authtype' => Auth::LDAP, 'sync_field' => 'mapped-sync']);
     $alternateUser = $fixtures->create('glpi_users', ['name' => 'alternate-directory-source', 'auths_id' => $first, 'authtype' => Auth::X509]);
+    $fixtures->create('glpi_authmails', ['id' => $first]);
     $mailUser = $fixtures->create('glpi_users', ['name' => 'mail-same-source-id', 'auths_id' => $first, 'authtype' => Auth::MAIL]);
     $localUser = $fixtures->create('glpi_users', ['name' => 'local-same-source-id', 'auths_id' => $first, 'authtype' => Auth::DB_GLPI]);
     $otherUser = $fixtures->create('glpi_users', ['name' => 'other-directory-user', 'auths_id' => $second, 'authtype' => Auth::LDAP]);

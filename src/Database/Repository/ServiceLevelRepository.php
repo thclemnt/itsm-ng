@@ -16,11 +16,12 @@ final class ServiceLevelRepository
 
     public function __construct(private EntityManager $em, private string $kind)
     {
-        [$this->levelClass, $this->queueClass] = match ($kind) {
-            'sla' => [Entity\SlaLevel::class, Entity\SlaLevelTicket::class],
-            'ola' => [Entity\OlaLevel::class, Entity\OlaLevelTicket::class],
+        $this->queueClass = match ($kind) {
+            'sla' => Entity\SlaLevelTicket::class,
+            'ola' => Entity\OlaLevelTicket::class,
             default => throw new \InvalidArgumentException('Unknown service-level kind'),
         };
+        $this->levelClass = $this->em->getClassMetadata($this->queueClass)->getAssociationTargetClass($kind . 'levels');
     }
 
     public function firstLevel(int $agreement): int

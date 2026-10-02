@@ -7,18 +7,19 @@ namespace itsmng\Database\Repository;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Entity;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Mapping\AssetClassification;
 
 final class AssetRepository
 {
-    public const TYPES = [
-        'Computer' => Entity\Computer::class, 'Monitor' => Entity\Monitor::class,
-        'NetworkEquipment' => Entity\NetworkEquipment::class, 'Peripheral' => Entity\Peripheral::class,
-        'Phone' => Entity\Phone::class, 'Printer' => Entity\Printer::class,
-        'SoftwareLicense' => Entity\SoftwareLicense::class, 'Certificate' => Entity\Certificate::class,
-    ];
-
     public function __construct(private EntityManager $em)
     {
+    }
+
+    public function supports(string $itemtype): bool
+    {
+        $class = EntityRegistry::tables()[getTableForItemType($itemtype)] ?? null;
+        return $class !== null && $this->classificationAssociation($class) !== null;
     }
 
     /** Connection identities, including locked/deleted links, as required by lifecycle callers. */
@@ -44,7 +45,7 @@ final class AssetRepository
     /** null = all authorized entities; an empty list deliberately matches none. */
     public function count(string $itemtype, ?array $entities): int
     {
-        $class = self::TYPES[$itemtype] ?? throw new \InvalidArgumentException('Unmapped asset type');
+        $class = $this->entityClass($itemtype);
         $query = $this->em->createQueryBuilder()->select('COUNT(a.id)')->from($class, 'a');
         $this->visible($query, $class, $entities);
         return (int)$query->getQuery()->getSingleScalarResult();
@@ -53,8 +54,11 @@ final class AssetRepository
     /** Group by the displayed name, retaining the unclassified NULL group. */
     public function countsByType(string $itemtype, ?array $entities): array
     {
-        $class = self::TYPES[$itemtype] ?? throw new \InvalidArgumentException('Unmapped asset type');
-        $association = strtolower($itemtype) . 'types';
+        $class = $this->entityClass($itemtype);
+        $association = $this->classificationAssociation($class);
+        if ($association === null) {
+            throw new \InvalidArgumentException('Asset classification requires a mapped association');
+        }
         $query = $this->em->createQueryBuilder()->select('COUNT(a.id) AS count', 't.name AS name')
             ->from($class, 'a')->leftJoin('a.' . $association, 't')->groupBy('t.name')->orderBy('t.name');
         $this->visible($query, $class, $entities);
@@ -84,5 +88,25 @@ final class AssetRepository
         if ($entities !== null) {
             $query->andWhere('IDENTITY(a.entities) IN (:entities)')->setParameter('entities', $entities ?: [-1]);
         }
+    }
+
+    private function entityClass(string $itemtype): string
+    {
+        return EntityRegistry::tables()[getTableForItemType($itemtype)] ?? throw new \InvalidArgumentException('Unmapped asset type');
+    }
+
+    private function classificationAssociation(string $class): ?string
+    {
+        $selected = null;
+        foreach ($this->em->getClassMetadata($class)->associationMappings as $name => $mapping) {
+            if (!(new \ReflectionProperty($class, $name))->getAttributes(AssetClassification::class)) {
+                continue;
+            }
+            if (!$mapping->isToOneOwningSide() || $selected !== null) {
+                throw new \LogicException('Asset reporting requires one owning classification association');
+            }
+            $selected = $name;
+        }
+        return $selected;
     }
 }

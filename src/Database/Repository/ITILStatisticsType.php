@@ -4,19 +4,39 @@
 
 namespace itsmng\Database\Repository;
 
-use itsmng\Database\Entity;
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Entity\ITILSolution;
+use itsmng\Database\Mapping\ITILStatisticsRelation;
+use itsmng\Database\Mapping\ITILStatisticsRole;
 
 /** Mapped parent and relationship types shared by statistics projections. */
 final class ITILStatisticsType
 {
-    private const TYPES = [
-        'Ticket' => [Entity\Ticket::class, 'tickets', Entity\TicketUser::class, Entity\GroupTicket::class, Entity\SupplierTicket::class, Entity\TicketTask::class, Entity\ItemTicket::class],
-        'Problem' => [Entity\Problem::class, 'problems', Entity\ProblemUser::class, Entity\GroupProblem::class, Entity\ProblemSupplier::class, Entity\ProblemTask::class, Entity\ItemProblem::class],
-        'Change' => [Entity\Change::class, 'changes', Entity\ChangeUser::class, Entity\ChangeGroup::class, Entity\ChangeSupplier::class, Entity\ChangeTask::class, Entity\ChangeItem::class],
-    ];
-
-    public static function definition(string $type): array
+    public static function definition(EntityManager $em, string $type): array
     {
-        return self::TYPES[$type] ?? throw new \InvalidArgumentException('Unmapped statistics item type');
+        $subject = ITILSolution::subjectAssociation($type);
+        $class = $em->getClassMetadata(ITILSolution::class)->getAssociationTargetClass($subject);
+        $relations = [];
+        $parent = null;
+        foreach ($em->getMetadataFactory()->getAllMetadata() as $metadata) {
+            foreach ($metadata->associationMappings as $property => $association) {
+                if (!$association->isToOneOwningSide() || $association->targetEntity !== $class) {
+                    continue;
+                }
+                foreach ((new \ReflectionProperty($metadata->name, $property))->getAttributes(ITILStatisticsRelation::class) as $attribute) {
+                    $role = $attribute->newInstance()->role->name;
+                    if (isset($relations[$role]) || ($parent !== null && $parent !== $property)) {
+                        throw new \LogicException('Ambiguous ITIL statistics association: ' . $type . '.' . $role);
+                    }
+                    $parent = $property;
+                    $relations[$role] = $metadata->name;
+                }
+            }
+        }
+        $definition = [$class, $parent];
+        foreach (ITILStatisticsRole::cases() as $role) {
+            $definition[] = $relations[$role->name] ?? throw new \LogicException('Missing ITIL statistics association: ' . $type . '.' . $role->name);
+        }
+        return $definition;
     }
 }

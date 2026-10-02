@@ -138,37 +138,12 @@ class Itil_Project extends CommonDBRelation
         foreach ([Change::class, Problem::class, Ticket::class] as $itemtype) {
             $rand    = mt_rand();
 
-            $selfTable = self::getTable();
-            $itemTable = $itemtype::getTable();
-
-            $iterator = $DB->request([
-               'SELECT'          => [
-                  "$selfTable.id AS linkid",
-                  "$itemTable.*"
-               ],
-               'DISTINCT'        => true,
-               'FROM'            => $selfTable,
-               'LEFT JOIN'       => [
-                  $itemTable => [
-                     'FKEY' => [
-                        $selfTable => 'items_id',
-                        $itemTable => 'id',
-                     ],
-                  ],
-               ],
-               'WHERE'           => [
-                  "{$selfTable}.itemtype"    => $itemtype,
-                  "{$selfTable}.projects_id" => $ID,
-                  'NOT'                      => ["{$itemTable}.id" => null],
-               ],
-               'ORDER'  => "{$itemTable}.name",
-            ]);
-
-            $numrows = $iterator->count();
+            $rows = (new \itsmng\Database\Repository\ItilProjectRepository(\itsmng\Database\Orm::create($DB)))->subjects($itemtype, (int)$ID);
+            $numrows = count($rows);
 
             $items = [];
             $used  = [];
-            while ($data = $iterator->next()) {
+            foreach ($rows as $data) {
                 $items[$data['id']] = $data;
                 $used[$data['id']]  = $data['id'];
             }
@@ -345,34 +320,26 @@ class Itil_Project extends CommonDBRelation
 
                 $planned_infos = '';
                 $tasktype      = $item->getType() . "Task";
-                $plan          = new $tasktype();
-                $items         = [];
+                $plannedItems  = [];
 
-                $result = $DB->request(
-                    [
-                      'FROM'  => $plan->getTable(),
-                      'WHERE' => [
-                         $item->getForeignKeyField() => $item->fields['id'],
-                      ],
-                    ]
-                );
+                $result = (new \itsmng\Database\Repository\ITILTaskRepository(\itsmng\Database\Orm::create($DB)))->parentTasks($tasktype, (int)$item->fields['id']);
                 foreach ($result as $plan) {
                     if (isset($plan['begin']) && $plan['begin']) {
-                        $items[$plan['id']] = $plan['id'];
+                        $plannedItems[$plan['id']] = $plan['id'];
                         $planned_infos .= sprintf(
                             __('From %s') .
-                                                   ($p['output_type'] == Search::HTML_OUTPUT ? '<br>' : ''),
+                                                   '<br>',
                             Html::convDateTime($plan['begin'])
                         );
                         $planned_infos .= sprintf(
                             __('To %s') .
-                                                   ($p['output_type'] == Search::HTML_OUTPUT ? '<br>' : ''),
+                                                   '<br>',
                             Html::convDateTime($plan['end'])
                         );
                         if ($plan['users_id_tech']) {
                             $planned_infos .= sprintf(
                                 __('By %s') .
-                                                       ($p['output_type'] == Search::HTML_OUTPUT ? '<br>' : ''),
+                                                       '<br>',
                                 getUserName($plan['users_id_tech'])
                             );
                         }
@@ -381,10 +348,10 @@ class Itil_Project extends CommonDBRelation
                 }
 
                 $newValue[] = $planned_infos;
-                $newValue[] = count($items);
+                $newValue[] = count($plannedItems);
 
                 $values[] = $newValue;
-                $massive_action[] = sprintf('item[%s][%s]', Itil_Project::class, $data['id']);
+                $massive_action[] = sprintf('item[%s][%s]', Itil_Project::class, $data['linkid']);
             }
             renderTwigTemplate('table.twig', [
                'id' => $massContainerId,
@@ -437,37 +404,12 @@ class Itil_Project extends CommonDBRelation
         $canedit = $itil->canEdit($ID);
         $rand    = mt_rand();
 
-        $selfTable = self::getTable();
-        $projectTable = Project::getTable();
-
-        $iterator = $DB->request([
-           'SELECT'          => [
-              "$selfTable.id AS linkid",
-              "$projectTable.*"
-           ],
-           'DISTINCT'        => true,
-           'FROM'            => $selfTable,
-           'LEFT JOIN'       => [
-              $projectTable => [
-                 'FKEY' => [
-                    $selfTable    => 'projects_id',
-                    $projectTable => 'id',
-                 ],
-              ],
-           ],
-           'WHERE'           => [
-              "{$selfTable}.itemtype" => $itil->getType(),
-              "{$selfTable}.items_id" => $ID,
-              'NOT'                   => ["{$projectTable}.id" => null],
-           ],
-           'ORDER'  => "{$projectTable}.name",
-        ]);
-
-        $numrows = $iterator->count();
+        $rows = (new \itsmng\Database\Repository\ItilProjectRepository(\itsmng\Database\Orm::create($DB)))->projects($itil->getType(), (int)$ID);
+        $numrows = count($rows);
 
         $projects = [];
         $used     = [];
-        while ($data = $iterator->next()) {
+        foreach ($rows as $data) {
             $projects[$data['id']] = $data;
             $used[$data['id']]     = $data['id'];
         }

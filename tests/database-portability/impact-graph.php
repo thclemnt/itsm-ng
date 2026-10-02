@@ -2,6 +2,7 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
@@ -143,7 +144,7 @@ try {
     $created[] = ['glpi_impactcontexts', $context];
     $compound = $fixtures->create('glpi_impactcompounds', ['name' => 'Migrated impact group']);
     $created[] = ['glpi_impactcompounds', $compound];
-    foreach (\itsmng\Database\OptionalReferences::IMPACT_GRAPH['glpi_impactitems'] as $column => $target) {
+    foreach (ReferenceHistory::get('optional', 'IMPACT_GRAPH')['glpi_impactitems'] as $column => $target) {
         $connection->executeStatement($platform->getDropForeignKeySQL(ForeignKeys::name('glpi_impactitems', $column), 'glpi_impactitems'));
         $connection->executeStatement('UPDATE glpi_impactitems SET ' . $quote($column) . ' = 0 WHERE ' . $quote($column) . ' IS NULL');
     }

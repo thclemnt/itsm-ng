@@ -2,9 +2,9 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Migration\StockReferences;
-use itsmng\Database\OptionalReferences;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\CartridgeRepository;
 
@@ -38,7 +38,7 @@ $DB->beginTransaction();
 try {
     $fixtures = new FixtureRecords($DB);
     foreach (['glpi_cartridgeitems', 'glpi_consumableitems'] as $table) {
-        foreach (OptionalReferences::STOCK[$table] as $column => $target) {
+        foreach (ReferenceHistory::get('optional', 'STOCK')[$table] as $column => $target) {
             $parent = $fixtures->create($target, ['name' => 'Stock type']);
             $replacement = $fixtures->create($target, ['name' => 'Replacement stock type']);
             $id = $fixtures->create($table, [$column => $parent]);
@@ -126,7 +126,7 @@ $quote = $platform->quoteIdentifier(...);
 $migration = new StockReferences();
 $legacyId = null;
 try {
-    foreach (OptionalReferences::STOCK as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'STOCK') as $table => $relations) {
         foreach ($relations as $column => $target) {
             $connection->executeStatement($platform->getDropForeignKeySQL(ForeignKeys::name($table, $column), $table));
             $connection->executeStatement('UPDATE ' . $quote($table) . ' SET ' . $quote($column) . ' = 0 WHERE ' . $quote($column) . ' IS NULL');

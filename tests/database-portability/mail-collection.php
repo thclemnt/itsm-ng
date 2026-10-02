@@ -2,9 +2,9 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Migration\RejectedEmailReferences;
-use itsmng\Database\OptionalReferences;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 
@@ -94,7 +94,7 @@ $quote = $platform->quoteIdentifier(...);
 $migration = new RejectedEmailReferences();
 $legacy = null;
 try {
-    foreach (OptionalReferences::REJECTED_EMAIL_REFERENCES as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'REJECTED_EMAIL_REFERENCES') as $table => $relations) {
         foreach ($relations as $column => $target) {
             $connection->executeStatement($platform->getDropForeignKeySQL(ForeignKeys::name($table, $column), $table));
             $connection->executeStatement('UPDATE ' . $quote($table) . ' SET ' . $quote($column) . ' = 0 WHERE ' . $quote($column) . ' IS NULL');

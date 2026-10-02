@@ -4,12 +4,13 @@
 
 namespace itsmng\Database\Repository;
 
+use itsmng\Database\Mapping\ReferenceKind;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
 use itsmng\Database\Entity;
 use itsmng\Database\EntityRegistry;
-use itsmng\Database\OptionalReferences;
+use itsmng\Database\ReferenceValues;
 use itsmng\Database\RecordCriteria;
 use itsmng\Reporting\MonthSeries;
 
@@ -37,7 +38,7 @@ final class ITILStatisticsRepository
 
     public function monthly(string $type, string $metric, string $begin, string $end, string $dimension, mixed $value, mixed $secondary, ?array $entities, array $solved, array $closed, array $extra = []): array
     {
-        [$class, $parent] = $definition = ITILStatisticsType::definition($type);
+        [$class, $parent] = $definition = ITILStatisticsType::definition($this->em, $type);
         if (!isset(self::METRICS[$metric])) {
             return [];
         }
@@ -89,7 +90,7 @@ final class ITILStatisticsRepository
         if ($metric === 'inter_avgactiontime') {
             if ($dimension === 'technicien_followup') {
                 $query->join($definition[5], 't', 'WITH', 'IDENTITY(t.' . $parent . ') = r.id AND ' . $this->selection('IDENTITY(t.author)', $value));
-                if (!OptionalReferences::isEmptySelection($value)) {
+                if (!ReferenceValues::isEmptySelection($value)) {
                     $query->setParameter('dimension', (int)$value, Types::INTEGER);
                 }
                 $query->andWhere('t.actiontime > 0');
@@ -135,8 +136,8 @@ final class ITILStatisticsRepository
             $query->andWhere('EXISTS (SELECT a.id FROM ' . $suppliers . ' a WHERE IDENTITY(a.' . $parent . ') = r.id AND a.type = :role AND ' . $this->selection('IDENTITY(a.actor)', $value) . ')')
                 ->setParameter('role', \CommonITILActor::ASSIGN, Types::INTEGER);
         } elseif ($dimension === 'solutiontypes_id') {
-            $query->andWhere('EXISTS (SELECT s.id FROM ' . Entity\ITILSolution::class . ' s WHERE s.items_id = r.id AND s.itemtype = :subject AND ' . $this->selection('IDENTITY(s.solutiontypes)', $value) . ')')
-                ->setParameter('subject', $type);
+            $subject = Entity\ITILSolution::subjectAssociation($type);
+            $query->andWhere('EXISTS (SELECT s.id FROM ' . Entity\ITILSolution::class . ' s WHERE IDENTITY(s.' . $subject . ') = r.id AND ' . $this->selection('IDENTITY(s.solutiontypes)', $value) . ')');
         } elseif ($dimension === 'itilcategories_tree' || $dimension === 'locations_tree') {
             $table = $dimension === 'itilcategories_tree' ? 'glpi_itilcategories' : 'glpi_locations';
             $field = $dimension === 'itilcategories_tree' ? 'itilcategories_id' : 'locations_id';
@@ -152,14 +153,14 @@ final class ITILStatisticsRepository
         } else {
             throw new \InvalidArgumentException('Unsupported statistics dimension');
         }
-        if (!OptionalReferences::isEmptySelection($value)) {
+        if (!ReferenceValues::isEmptySelection($value)) {
             $query->setParameter('dimension', (int)$value, Types::INTEGER);
         }
     }
 
     private function selection(string $identity, mixed $value): string
     {
-        return $identity . (OptionalReferences::isEmptySelection($value) ? ' IS NULL' : ' = :dimension');
+        return $identity . (ReferenceValues::isEmptySelection($value) ? ' IS NULL' : ' = :dimension');
     }
 
     private function computerDimension(QueryBuilder $query, array $definition, string $dimension, int $value, string $classification): void
@@ -177,17 +178,17 @@ final class ITILStatisticsRepository
                 throw new \InvalidArgumentException('Statistics device must be a component');
             }
             $table = 'glpi_items_' . substr($target->getTable(), strlen('glpi_'));
-            $class = EntityRegistry::TABLES[$table] ?? throw new \InvalidArgumentException('Unmapped statistics component');
+            $class = EntityRegistry::tables()[$table] ?? throw new \InvalidArgumentException('Unmapped statistics component');
             $association = $this->association($class, $column);
             $subquery->join($class, 'd', 'WITH', "d.items_id = c.id AND d.itemtype = 'Computer'")->andWhere('IDENTITY(d.' . $association . ') = :classification');
         } elseif (str_starts_with($column, 'operatingsystem')) {
             $subquery->join(Entity\ItemOperatingSystem::class, 'o', 'WITH', "o.items_id = c.id AND o.itemtype = 'Computer'");
             $association = $this->association(Entity\ItemOperatingSystem::class, $column);
-            $empty = $value === 0 && isset(OptionalReferences::RELATIONS['glpi_items_operatingsystems'][$column]);
+            $empty = $value === 0 && EntityRegistry::hasPolicy('glpi_items_operatingsystems', $column, ReferenceKind::EmptySelection);
             $subquery->andWhere('IDENTITY(o.' . $association . ')' . ($empty ? ' IS NULL' : ' = :classification'));
         } else {
             $association = $this->association(Entity\Computer::class, $column);
-            $empty = $value === 0 && isset(OptionalReferences::RELATIONS['glpi_computers'][$column]);
+            $empty = $value === 0 && EntityRegistry::hasPolicy('glpi_computers', $column, ReferenceKind::EmptySelection);
             $subquery->andWhere('IDENTITY(c.' . $association . ')' . ($empty ? ' IS NULL' : ' = :classification'));
         }
         $query->andWhere('EXISTS (SELECT i.id FROM ' . $definition[6] . ' i WHERE IDENTITY(i.' . $definition[1] . ") = r.id AND i.itemtype = 'Computer' AND i.items_id IN (" . $subquery->getDQL() . '))')

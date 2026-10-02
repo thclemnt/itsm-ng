@@ -49,7 +49,7 @@ final class ImpactRepository
     /** Same filtered query supplies total and a bounded, deterministic page. */
     public function searchAssets(string $table, string $nameField, array $criteria, array $used, string $filter, int $page, bool $firstNameFirst, bool $allProjects, int $user, array $groups): array
     {
-        $entity = EntityRegistry::TABLES[$table] ?? throw new \InvalidArgumentException('Impact asset type needs an ORM mapping');
+        $entity = EntityRegistry::tables()[$table] ?? throw new \InvalidArgumentException('Impact asset type needs an ORM mapping');
         $query = $this->em->createQueryBuilder()->from($entity, 'r');
         $compiler = new RecordCriteria($query, $this->em->getClassMetadata($entity));
         $query->where($compiler->where($criteria));

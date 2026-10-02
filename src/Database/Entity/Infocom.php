@@ -5,6 +5,8 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_infocoms')]
@@ -13,10 +15,11 @@ class Infocom
 {
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
-    #[ORM\Column(name: '`items_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    #[ORM\Column(name: '`items_id`', type: 'bigint', nullable: false, options: ['default' => '0'])]
+    #[\itsmng\Database\Mapping\VirtualAssetLink("itemtype")]
     public int $items_id = 0;
 
     #[ORM\Column(name: '`itemtype`', type: 'string', length: 100, nullable: false)]
@@ -24,6 +27,8 @@ class Infocom
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
     #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
+    #[ReferencePolicy(ReferenceKind::RootEntity)]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?Entity $entities = null;
 
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
@@ -43,6 +48,7 @@ class Infocom
 
     #[ORM\ManyToOne(targetEntity: Supplier::class)]
     #[ORM\JoinColumn(name: 'suppliers_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?Supplier $suppliers = null;
 
     #[ORM\Column(name: '`order_number`', type: 'string', length: 255, nullable: true)]
@@ -77,6 +83,7 @@ class Infocom
 
     #[ORM\ManyToOne(targetEntity: Budget::class)]
     #[ORM\JoinColumn(name: 'budgets_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?Budget $budgets = null;
 
     #[ORM\Column(name: '`alert`', type: 'integer', nullable: false, options: ['default' => '0'])]
@@ -105,5 +112,6 @@ class Infocom
 
     #[ORM\ManyToOne(targetEntity: BusinessCriticity::class)]
     #[ORM\JoinColumn(name: 'businesscriticities_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?BusinessCriticity $businesscriticities = null;
 }

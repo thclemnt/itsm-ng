@@ -12,11 +12,12 @@ class RuleCriteria
 {
     #[ORM\ManyToOne(targetEntity: Rule::class)]
     #[ORM\JoinColumn(name: 'rules_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?Rule $rules = null;
 
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
     #[ORM\Column(name: '`criteria`', type: 'string', length: 255, nullable: true)]

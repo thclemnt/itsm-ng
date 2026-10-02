@@ -70,6 +70,8 @@ class Certificate extends CommonDBTM
      */
     public function cleanDBonPurge()
     {
+        (new Alert())->cleanDBonItemDelete($this->getType(), $this->getID());
+
 
         $this->deleteChildrenAndRelationsFromDb(
             [

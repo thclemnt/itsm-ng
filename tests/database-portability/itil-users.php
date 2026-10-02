@@ -2,9 +2,9 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Migration\ITILUserReferences;
-use itsmng\Database\OptionalReferences;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\Repository\ITILUserRepository;
@@ -55,7 +55,7 @@ try {
     }
     $ticket = $fixtures->create('glpi_tickets', ['name' => 'ITIL history host']);
     $snapshots = $records = $others = [];
-    foreach (OptionalReferences::ITIL_USERS as $table => $columns) {
+    foreach (ReferenceHistory::get('optional', 'ITIL_USERS') as $table => $columns) {
         $extra = [];
         if (in_array($table, ['glpi_itilfollowups', 'glpi_itilsolutions'], true)) {
             $extra = ['itemtype' => 'Ticket', 'items_id' => $ticket, 'content' => 'Historical content'];
@@ -65,7 +65,7 @@ try {
         $snapshots[$table] = array_diff_key($read($table, $records[$table]), $columns);
     }
     verify((new User())->delete(['id' => $owner, '_replace_by' => $replacement], true), 'Replace historical ITIL user');
-    foreach (OptionalReferences::ITIL_USERS as $table => $columns) {
+    foreach (ReferenceHistory::get('optional', 'ITIL_USERS') as $table => $columns) {
         $row = $read($table, $records[$table]);
         foreach ($columns as $column => $target) {
             verify((int)$row[$column] === $replacement, 'Replacement updates ' . $table . '.' . $column);
@@ -73,7 +73,7 @@ try {
         verify(array_diff_key($row, $columns) === $snapshots[$table], 'Reference replacement does not replay workflow: ' . $table);
     }
     verify((new User())->delete(['id' => $replacement], true), 'Purge historical ITIL user');
-    foreach (OptionalReferences::ITIL_USERS as $table => $columns) {
+    foreach (ReferenceHistory::get('optional', 'ITIL_USERS') as $table => $columns) {
         $row = $read($table, $records[$table]);
         foreach ($columns as $column => $target) {
             verify($row[$column] === null, 'Historical reference becomes NULL ' . $table . '.' . $column);
@@ -86,7 +86,8 @@ try {
     $public = $fixtures->create('glpi_itilfollowups', ['itemtype' => 'Ticket', 'items_id' => $ticket, 'content' => 'Public followup', 'is_private' => false, 'users_id' => $other, 'date' => '2030-01-01 12:00:00']);
     $mine = $fixtures->create('glpi_itilfollowups', ['itemtype' => 'Ticket', 'items_id' => $ticket, 'content' => 'My private followup', 'is_private' => true, 'users_id' => $other, 'date' => '2030-01-01 12:00:00']);
     $hidden = $fixtures->create('glpi_itilfollowups', ['itemtype' => 'Ticket', 'items_id' => $ticket, 'content' => 'Missing author private', 'is_private' => true, 'date' => '2030-01-01 12:00:00']);
-    $foreign = $fixtures->create('glpi_itilfollowups', ['itemtype' => 'Problem', 'items_id' => $ticket, 'content' => 'Different itemtype']);
+    $problem = $fixtures->create('glpi_problems', ['id' => $ticket, 'name' => 'Overlapping followup subject']);
+    $foreign = $fixtures->create('glpi_itilfollowups', ['itemtype' => 'Problem', 'items_id' => $problem, 'content' => 'Different itemtype']);
     $rows = array_column($repo->followups('Ticket', $ticket, $other, false), 'id');
     verify(in_array($public, $rows, true) && in_array($mine, $rows, true) && !in_array($hidden, $rows, true) && !in_array($foreign, $rows, true), 'Followups scope by parent type, public visibility and positive owner');
     verify(array_search($mine, $rows, true) < array_search($public, $rows, true), 'Same-date followups use stable descending IDs');
@@ -130,7 +131,7 @@ $quote = $platform->quoteIdentifier(...);
 $migration = new ITILUserReferences();
 $legacy = null;
 try {
-    foreach (OptionalReferences::ITIL_USERS as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'ITIL_USERS') as $table => $relations) {
         foreach ($relations as $column => $target) {
             $connection->executeStatement($platform->getDropForeignKeySQL(ForeignKeys::name($table, $column), $table));
             $connection->executeStatement('UPDATE ' . $quote($table) . ' SET ' . $quote($column) . ' = 0 WHERE ' . $quote($column) . ' IS NULL');

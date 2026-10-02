@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\OptionalReferences;
 
 final class SavedSearchReferences
 {
@@ -13,11 +12,11 @@ final class SavedSearchReferences
 
     public function plan(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::SAVED_SEARCHES, 'saved-search owner'))->plan($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'SAVED_SEARCHES'), 'saved-search owner'))->plan($connection);
     }
 
     public function apply(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::SAVED_SEARCHES, 'saved-search owner'))->apply($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'SAVED_SEARCHES'), 'saved-search owner'))->apply($connection);
     }
 }

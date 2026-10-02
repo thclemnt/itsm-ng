@@ -13,15 +13,12 @@ class NetworkPortAggregate
 {
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
     #[ORM\ManyToOne(targetEntity: NetworkPort::class)]
     #[ORM\JoinColumn(name: 'networkports_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
     public ?NetworkPort $networkports_id = null;
-
-    #[ORM\Column(name: '`networkports_id_list`', type: 'text', nullable: true)]
-    public ?string $networkports_id_list = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_mod = null;

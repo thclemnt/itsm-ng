@@ -41,13 +41,13 @@ final class InfocomRepository
     public static function supports(string $itemtype): bool
     {
         [$linktype] = self::linkFor($itemtype);
-        return isset(EntityRegistry::TABLES[\getTableForItemType($itemtype)], EntityRegistry::TABLES[\getTableForItemType($linktype)]);
+        return isset(EntityRegistry::tables()[\getTableForItemType($itemtype)], EntityRegistry::tables()[\getTableForItemType($linktype)]);
     }
 
     /** Count first; the renderer replaces oversized groups with a search link. */
     public function forSupplier(string $itemtype, int $supplier, ?array $entities, int $limit): array
     {
-        $class = EntityRegistry::TABLES[\getTableForItemType($itemtype)] ?? throw new \InvalidArgumentException('Unmapped financial item type');
+        $class = EntityRegistry::tables()[\getTableForItemType($itemtype)] ?? throw new \InvalidArgumentException('Unmapped financial item type');
         [$linktype, $linkfield] = self::linkFor($itemtype);
         $query = $this->em->createQueryBuilder()->from(Entity\Infocom::class, 'i')
             ->innerJoin($class, 'a', 'WITH', 'a.id = i.items_id')
@@ -67,7 +67,7 @@ final class InfocomRepository
             if ($association !== null) {
                 $query->innerJoin('a.' . $association, $linkAlias);
             } else {
-                $linkClass = EntityRegistry::TABLES[\getTableForItemType($linktype)];
+                $linkClass = EntityRegistry::tables()[\getTableForItemType($linktype)];
                 $query->innerJoin($linkClass, $linkAlias, 'WITH', 'model.id = a.' . $metadata->getFieldName($linkfield));
             }
         }

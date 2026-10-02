@@ -23,7 +23,7 @@ $records = new \itsmng\Database\Repository\RecordRepository($em);
 $tables = 0;
 $rows = 0;
 $fields = 0;
-foreach (\itsmng\Database\EntityRegistry::TABLES as $table => $class) {
+foreach (\itsmng\Database\EntityRegistry::tables() as $table => $class) {
     $metadata = $em->getClassMetadata($class);
     $tables++;
     foreach ($DB->request(['FROM' => $table, 'ORDER' => 'id', 'LIMIT' => 25]) as $native) {

@@ -42,18 +42,17 @@ class DBocs extends DBmysql
         global $db,$cfg_glpi;
 
         if ($cfg_glpi["ocs_mode"]) {
-            $query            = "SELECT * FROM `glpi_ocs_config`";
-            $result           = $db->query($query);
-            $this->dbhost     = $db->result($result, 0, "ocs_db_host");
-            $this->dbuser     = $db->result($result, 0, "ocs_db_user");
-            $this->dbpassword = $db->result($result, 0, "ocs_db_passwd");
-            $this->dbdefault  = $db->result($result, 0, "ocs_db_name");
-            if (!($this->dbh = new mysqli($this->dbhost, $this->dbuser, $this->dbpassword))) {
+            // This obsolete upgrade table has no current ORM mapping.
+            $configuration = $db->getDoctrineConnection()->fetchAssociative('SELECT * FROM glpi_ocs_config LIMIT 1');
+            if ($configuration === false) {
                 $this->error = 1;
+                return;
             }
-            if (!$this->dbh->select_db($this->dbdefault)) {
-                $this->error = 1;
-            }
+            $this->dbhost     = $configuration['ocs_db_host'];
+            $this->dbuser     = $configuration['ocs_db_user'];
+            $this->dbpassword = rawurlencode($configuration['ocs_db_passwd']);
+            $this->dbdefault  = $configuration['ocs_db_name'];
+            $this->connect();
         }
     }
 

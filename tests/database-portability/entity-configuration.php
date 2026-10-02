@@ -2,6 +2,7 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
 use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
 use Doctrine\DBAL\Exception\DriverException;
 use itsmng\Database\EntityConfigurationReferences as References;
@@ -55,7 +56,7 @@ $reject = static function (callable $operation, string $exception, ?string $cons
 $DB->beginTransaction();
 try {
     $selected = [];
-    foreach (References::FIELDS as $column => $definition) {
+    foreach (ReferenceHistory::get('inherited', 'FIELDS') as $column => $definition) {
         $selected[$column] = $definition['target'] === 'glpi_entities' ? 0 : $create($definition['target']);
     }
     $grand = $create('glpi_entities', ['name' => 'Configuration grandparent', 'entities_id' => 0, 'level' => 2, 'tag' => 'config-unique-tag', 'delay_send_emails' => 7, 'admin_email' => 'parent@example.invalid'] + $selected);
@@ -63,7 +64,7 @@ try {
     $child = $create('glpi_entities', ['name' => 'Configuration child', 'entities_id' => $parent, 'level' => 4, 'delay_send_emails' => -2]);
     $model = new Entity();
     verify($model->getEmpty(), 'Create blank entity form');
-    foreach (References::FIELDS as $column => $definition) {
+    foreach (ReferenceHistory::get('inherited', 'FIELDS') as $column => $definition) {
         verify($model->fields[$column] === ($definition['default'] === 'inherit' ? -2 : 0), 'Blank form selection: ' . $column);
         // LDAP defaults to none, but can explicitly inherit like the other settings.
         verify((new Entity())->update(['id' => $parent, $column => -2]), 'Enable parent inheritance: ' . $column);
@@ -113,7 +114,7 @@ try {
     $savedRights = $_SESSION['glpiactiveprofile'];
     try {
         $_SESSION['glpiactiveprofile']['entity'] = READ;
-        foreach (References::FIELDS as $column => $definition) {
+        foreach (ReferenceHistory::get('inherited', 'FIELDS') as $column => $definition) {
             $before = $read($child);
             verify((new Entity())->update(['id' => $child, $definition['mode'] => 'inherit']), 'Filtered update returns successfully');
             verify($read($child) === $before, 'Policy fields require the same rights as the reference: ' . $column);
@@ -126,7 +127,7 @@ try {
     $self = $create('glpi_entities', ['id' => $selfId, 'entities_id' => 0, 'entities_id_software' => $selfId]);
     verify($read($self)['entities_id_software'] === $self, 'Insert assigned-ID self-reference through ORM');
     verify((new Entity())->delete(['id' => $self], true) && $read($self) === null, 'Purge a software self-reference through application lifecycle');
-    foreach (References::FIELDS as $column => $definition) {
+    foreach (ReferenceHistory::get('inherited', 'FIELDS') as $column => $definition) {
         if ($definition['target'] === 'glpi_entities') {
             continue;
         }
@@ -172,7 +173,7 @@ $entities = [];
 $targets = [];
 try {
     $chosen = [];
-    foreach (References::FIELDS as $column => $definition) {
+    foreach (ReferenceHistory::get('inherited', 'FIELDS') as $column => $definition) {
         $chosen[$column] = $definition['target'] === 'glpi_entities' ? 0 : $create($definition['target']);
         if ($definition['target'] !== 'glpi_entities') {
             $targets[$definition['target']][] = $chosen[$column];
@@ -186,17 +187,17 @@ try {
     $entities[] = $selected;
     $unchanged = $create('glpi_entities', ['entities_id' => 0, 'software_entity_mode' => ReferenceMode::Unchanged]);
     $entities[] = $unchanged;
-    foreach (References::FIELDS as $column => $definition) {
+    foreach (ReferenceHistory::get('inherited', 'FIELDS') as $column => $definition) {
         (new RecordWriter(Orm::create($DB)))->update('glpi_entities', $inherited, [$column => null, $definition['mode'] => ReferenceMode::Inherit]);
         (new RecordWriter(Orm::create($DB)))->update('glpi_entities', $none, [$column => $definition['empty_zero'] ? null : 0, $definition['mode'] => ReferenceMode::Explicit]);
     }
     $before = $connection->createSchemaManager()->introspectTable('glpi_entities');
     foreach ($before->getForeignKeys() as $key) {
-        if (array_intersect(array_keys(References::FIELDS), $key->getLocalColumns())) {
+        if (array_intersect(array_keys(ReferenceHistory::get('inherited', 'FIELDS')), $key->getLocalColumns())) {
             $connection->executeStatement($platform->getDropForeignKeySQL($key->getName(), 'glpi_entities'));
         }
     }
-    foreach (References::FIELDS as $column => $definition) {
+    foreach (ReferenceHistory::get('inherited', 'FIELDS') as $column => $definition) {
         $drop = $platform instanceof \Doctrine\DBAL\Platforms\MySQLPlatform && !$platform instanceof \Doctrine\DBAL\Platforms\MariaDBPlatform ? 'CHECK ' : 'CONSTRAINT ';
         $connection->executeStatement('ALTER TABLE glpi_entities DROP ' . $drop . $quote(Migration::checkName($column)));
         $field = $quote($column);
@@ -206,7 +207,7 @@ try {
     $manager = $connection->createSchemaManager();
     $before = $manager->introspectTable('glpi_entities');
     $after = clone $before;
-    foreach (References::FIELDS as $column => $definition) {
+    foreach (ReferenceHistory::get('inherited', 'FIELDS') as $column => $definition) {
         $after->dropColumn($definition['mode']);
         $after->getColumn($column)->setNotnull(true)->setDefault($definition['default'] === 'inherit' ? -2 : 0);
     }
@@ -217,7 +218,7 @@ try {
     $reject(fn () => $migration->apply($connection), RuntimeException::class);
     $connection->update('glpi_entities', ['authldaps_id' => $chosen['authldaps_id'], 'entities_id_software' => -7], ['id' => $selected]);
     $reject(fn () => $migration->apply($connection), RuntimeException::class);
-    foreach (References::FIELDS as $column => $definition) {
+    foreach (ReferenceHistory::get('inherited', 'FIELDS') as $column => $definition) {
         $schema = $connection->createSchemaManager()->introspectTable('glpi_entities');
         verify(!$schema->hasColumn($definition['mode']) && $schema->getColumn($column)->getNotnull(), 'All-reference preflight precedes every DDL: ' . $column);
     }
@@ -230,7 +231,7 @@ try {
         $connection->executeStatement($sql);
     }
     $migration->apply($connection);
-    foreach (References::FIELDS as $column => $definition) {
+    foreach (ReferenceHistory::get('inherited', 'FIELDS') as $column => $definition) {
         verify($read($inherited)[$column] === null && $read($inherited)[$definition['mode']] === 'inherit', 'Upgrade inherited association: ' . $column);
         verify($read($none)[$column] === ($definition['empty_zero'] ? null : 0) && $read($none)[$definition['mode']] === 'explicit', 'Upgrade explicit none/root: ' . $column);
         verify($read($selected)[$column] === $chosen[$column] && $read($selected)[$definition['mode']] === 'explicit', 'Partial-DDL retry preserves explicit IDs: ' . $column);

@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\OptionalReferences;
 
 final class IPNetworkParentReferences
 {
@@ -13,14 +12,14 @@ final class IPNetworkParentReferences
 
     public function plan(Connection $connection): array
     {
-        $plan = (new NullableReferences(OptionalReferences::IMPLICIT_TREE_PARENTS, 'IP network parent'))->plan($connection);
-        TreeParentAudit::assertAcyclic($connection, OptionalReferences::IMPLICIT_TREE_PARENTS);
+        $plan = (new NullableReferences(ReferenceHistory::get('optional', 'IMPLICIT_TREE_PARENTS'), 'IP network parent'))->plan($connection);
+        TreeParentAudit::assertAcyclic($connection, ReferenceHistory::get('optional', 'IMPLICIT_TREE_PARENTS'));
         return $plan;
     }
 
     public function apply(Connection $connection): array
     {
         $this->plan($connection);
-        return (new NullableReferences(OptionalReferences::IMPLICIT_TREE_PARENTS, 'IP network parent'))->apply($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'IMPLICIT_TREE_PARENTS'), 'IP network parent'))->apply($connection);
     }
 }

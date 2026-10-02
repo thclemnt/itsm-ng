@@ -34,7 +34,7 @@
 namespace tests\units;
 
 use DbTestCase;
-use SoftwareVersion;
+use Software;
 use TicketTask;
 
 /* Test for inc/commondbtm.class.php */
@@ -1100,7 +1100,7 @@ class CommonDBTM extends DbTestCase
               // Case 1: no entites field -> no change
               'data'            => ['test' => "test"],
               'parent_id'       => 999,
-              'parent_itemtype' => SoftwareVersion::class,
+              'parent_itemtype' => Software::class,
               'active_entities' => [],
               'expected'        => ['test' => "test"],
            ],
@@ -1108,7 +1108,7 @@ class CommonDBTM extends DbTestCase
               // Case 2: entity is allowed -> no change
               'data'            => $sv1->fields,
               'parent_id'       => $sv1->fields['softwares_id'],
-              'parent_itemtype' => SoftwareVersion::class,
+              'parent_itemtype' => Software::class,
               'active_entities' => [$sv1->fields['entities_id']],
               'expected'        => $sv1->fields,
            ],
@@ -1116,7 +1116,7 @@ class CommonDBTM extends DbTestCase
               // Case 3: entity is not allowed -> change to parent entity
               'data'            => $sv2->fields, // SV with modified entity
               'parent_id'       => $sv2->fields['softwares_id'],
-              'parent_itemtype' => SoftwareVersion::class,
+              'parent_itemtype' => Software::class,
               'active_entities' => [],
               'expected'        => $sv1->fields, // SV with correct entity
            ],
@@ -1124,7 +1124,7 @@ class CommonDBTM extends DbTestCase
               // Case 4: can't load parent -> no change
               'data'            => $sv3->fields,
               'parent_id'       => -1,
-              'parent_itemtype' => SoftwareVersion::class,
+              'parent_itemtype' => Software::class,
               'active_entities' => [],
               'expected'        => $sv3->fields,
            ],

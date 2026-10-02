@@ -108,10 +108,10 @@ final class ReservationRepository
     {
         $query = $this->em->createQueryBuilder()->select('i.id', 'i.itemtype', 'i.items_id', 'i.comment', 'IDENTITY(i.entities) AS entities_id', 'i.is_recursive', 'i.is_active', 'i.is_deleted', 'r.end AS end', 'r.id AS resaid')
             ->from(Reservation::class, 'r')->join('r.reservationitems', 'i')
-            ->leftJoin(Alert::class, 'a', 'WITH', 'a.items_id = r.id AND a.itemtype = :type AND a.type = :alert')
+            ->leftJoin(Alert::class, 'a', 'WITH', 'a.reservation = r AND a.type = :alert')
             ->where('IDENTITY(i.entities) = :entity AND r.begin < :now AND r.end < :threshold AND a.id IS NULL')
             ->setParameter('entity', $entity, Types::INTEGER)
-            ->setParameter('type', 'Reservation')->setParameter('alert', \Alert::END)
+            ->setParameter('alert', \Alert::END)
             ->setParameter('now', $now, Types::DATETIMETZ_IMMUTABLE)
             ->setParameter('threshold', $now->setTimestamp($now->getTimestamp() + $seconds), Types::DATETIMETZ_IMMUTABLE)
             ->orderBy('r.id');

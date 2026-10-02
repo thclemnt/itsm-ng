@@ -15,6 +15,12 @@ final class LegacyValues
         if (!is_string($value)) {
             return $value;
         }
+        return self::decodeString($value);
+    }
+
+    /** Names and other typed string inputs do not use the legacy NULL sentinel. */
+    public static function decodeString(string $value): string
+    {
         return preg_replace_callback('/\\\\(.)/s', static fn ($m) => match ($m[1]) {
             'n' => "\n", 'r' => "\r", 't' => "\t", 'b' => "\x08", '0' => "\0", 'Z' => "\x1a",
             '%', '_' => $m[0], default => $m[1],

@@ -234,7 +234,7 @@ class Entity extends CommonTreeDropdown
                         if (array_key_exists($field, $input)) {
                             $tmp[$field] = $input[$field];
                         }
-                        $mode = \itsmng\Database\EntityConfigurationReferences::FIELDS[$field]['mode'] ?? null;
+                        $mode = \itsmng\Database\EntityConfigurationReferences::fields()[$field]->policy->modeProperty ?? null;
                         if ($mode !== null && array_key_exists($mode, $input)) {
                             $tmp[$mode] = $input[$mode];
                         }
@@ -246,7 +246,7 @@ class Entity extends CommonTreeDropdown
                         if (array_key_exists($field, $input)) {
                             $tmp[$field] = $input[$field];
                         }
-                        $mode = \itsmng\Database\EntityConfigurationReferences::FIELDS[$field]['mode'] ?? null;
+                        $mode = \itsmng\Database\EntityConfigurationReferences::fields()[$field]->policy->modeProperty ?? null;
                         if ($mode !== null && array_key_exists($mode, $input)) {
                             $tmp[$mode] = $input[$mode];
                         }
@@ -501,15 +501,15 @@ class Entity extends CommonTreeDropdown
 
     public function post_getFromDB()
     {
-        $this->fields = \itsmng\Database\EntityConfigurationReferences::legacyRow($this->fields);
+        $this->fields = \itsmng\Database\ReferenceValues::legacyRow($this->getTable(), $this->fields);
         parent::post_getFromDB();
     }
 
     public function post_getEmpty()
     {
-        foreach (\itsmng\Database\EntityConfigurationReferences::FIELDS as $column => $definition) {
+        foreach (\itsmng\Database\EntityConfigurationReferences::fields() as $column => $definition) {
             $this->fields[$column] = null;
-            $this->fields[$definition['mode']] = $definition['default'];
+            $this->fields[$definition->policy->modeProperty] = $definition->defaultMode->value;
         }
         $this->fields = \itsmng\Database\EntityConfigurationReferences::legacyRow($this->fields);
         parent::post_getEmpty();

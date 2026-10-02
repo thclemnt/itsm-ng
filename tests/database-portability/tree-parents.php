@@ -2,9 +2,9 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Migration\TreeParentReferences;
-use itsmng\Database\OptionalReferences;
 
 $directory = $argv[1] ?? '';
 if (!is_file($directory . '/config_db.php')) {
@@ -30,10 +30,15 @@ $_SESSION['glpiextauth'] = 0;
 verify((new Auth())->login('itsm', 'itsm', true), 'Login');
 $_SESSION['_glpi_csrf_token'] = Session::getNewCSRFToken();
 $connection = $DB->getDoctrineConnection();
+// Database fixture rollbacks do not roll back filesystem caches. Earlier
+// contracts can reuse an ID with stale ancestors after resetting sequences.
+// Keep a real cache for warm-cache/invalidation checks, scoped to this fixture.
+$savedCache = $GLPI_CACHE;
+$GLPI_CACHE = new \Glpi\Cache\SimpleCache(new \Laminas\Cache\Storage\Adapter\Memory(), GLPI_CACHE_DIR, false);
 $DB->beginTransaction();
 try {
     $fixtures = new FixtureRecords($DB);
-    foreach (OptionalReferences::TREE_PARENTS as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'TREE_PARENTS') as $table => $relations) {
         $column = array_key_first($relations);
         $type = getItemTypeForTable($table);
         $model = getItemForItemtype($type);
@@ -47,10 +52,10 @@ try {
         verify((int)$model->findID($input) === $root, 'Root lookup retains legacy empty-parent criteria');
         verify($model->getFromDB($leaf) && (int)$model->fields['level'] === 3, 'Tree depth');
         verify(str_contains($model->fields['completename'], "Tree O'Reilly " . $type . ' > Tree branch'), 'Quoted complete name');
-        verify(array_values(array_map('intval', getAncestorsOf($table, $leaf))) === [$root, $child], 'Ancestor traversal');
+        verify(array_values(array_map('intval', getAncestorsOf($table, $leaf))) === [$root, $child], 'Ancestor traversal ' . $table . ' expected ' . json_encode([$root, $child]) . ' actual ' . json_encode(getAncestorsOf($table, $leaf)));
         $sons = getSonsOf($table, $root);
         verify(isset($sons[$root], $sons[$child], $sons[$leaf]) && count($sons) === 3, 'Descendant traversal');
-        verify(getSonsOf($table, $root) === $sons, 'Warm descendant cache');
+        verify($GLPI_CACHE->has('sons_cache_' . $table . '_' . $root) && getSonsOf($table, $root) === $sons, 'Warm descendant cache');
         verify($model->update(['id' => $root, 'name' => "Renamed O'Reilly " . $type]), 'Rename root');
         verify($model->getFromDB($leaf) && str_starts_with($model->fields['completename'], "Renamed O'Reilly " . $type . ' > '), 'Rename propagates complete names');
         verify($model->update(['id' => $child, $column => $other]), 'Move subtree');
@@ -94,6 +99,7 @@ try {
     verify((new ForeignKeys())->audit($connection) === [], 'Tree relationships remain valid');
 } finally {
     $DB->rollBack();
+    $GLPI_CACHE = $savedCache;
 }
 
 $platform = $connection->getDatabasePlatform();
@@ -101,7 +107,7 @@ $quote = $platform->quoteIdentifier(...);
 $migration = new TreeParentReferences();
 $legacyId = null;
 try {
-    foreach (OptionalReferences::TREE_PARENTS as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'TREE_PARENTS') as $table => $relations) {
         $column = array_key_first($relations);
         $connection->executeStatement($platform->getDropForeignKeySQL(ForeignKeys::name($table, $column), $table));
         $connection->executeStatement('UPDATE ' . $quote($table) . ' SET ' . $quote($column) . ' = 0 WHERE ' . $quote($column) . ' IS NULL');

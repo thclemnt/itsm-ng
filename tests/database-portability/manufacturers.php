@@ -2,9 +2,9 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Migration\ManufacturerReferences;
-use itsmng\Database\OptionalReferences;
 
 $directory = $argv[1] ?? '';
 if (!is_file($directory . '/config_db.php')) {
@@ -38,7 +38,7 @@ try {
     $unrelated = $fixtures->create('glpi_manufacturers', ['name' => 'Unrelated manufacturer']);
     $children = [];
     $others = [];
-    foreach (OptionalReferences::MANUFACTURERS as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'MANUFACTURERS') as $table => $relations) {
         $children[$table] = $fixtures->create($table, ['manufacturers_id' => $brand]);
         $others[$table] = $fixtures->create($table, ['manufacturers_id' => $unrelated]);
     }
@@ -98,7 +98,7 @@ $quote = $platform->quoteIdentifier(...);
 $migration = new ManufacturerReferences();
 $legacyId = null;
 try {
-    foreach (OptionalReferences::MANUFACTURERS as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'MANUFACTURERS') as $table => $relations) {
         foreach ($relations as $column => $target) {
             $connection->executeStatement($platform->getDropForeignKeySQL(ForeignKeys::name($table, $column), $table));
             $connection->executeStatement('UPDATE ' . $quote($table) . ' SET ' . $quote($column) . ' = 0 WHERE ' . $quote($column) . ' IS NULL');

@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
-use itsmng\Database\ContentAudienceScopes;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\KnowledgeBaseAccess;
 use itsmng\Database\Migration\ContentAudienceScopes as Migration;
@@ -114,6 +113,12 @@ try {
     };
     foreach ($definitions as $table => [$parent, $parentColumn, $class, $audienceColumn, $method]) {
         [$id, $parentId] = $rows[$table];
+        if ($parent !== 'KnowbaseItem') {
+            $em = Orm::create($DB);
+            $record = $em->find(\itsmng\Database\EntityRegistry::tables()[getTableForItemType($parent)], $parentId);
+            $audience = $audienceColumn === 'groups_id' ? $record->audienceGroups : $record->audienceProfiles;
+            verify($audience->count() === 1 && $audience->first()->id === $id, 'Native inverse collection hydrates the owning audience link: ' . $table);
+        }
         $object = new $parent();
         verify($object->getFromDB($parentId) && $object->haveVisibilityAccess(), 'Model accepts unrestricted audience: ' . $table);
         verify($listed($parent, $parentId), 'Mapped listing accepts unrestricted audience: ' . $table);

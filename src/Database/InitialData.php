@@ -14,7 +14,7 @@ final class InitialData
     public static function load(\DBAdapter $database, array $tables, ?callable $progress = null): void
     {
         foreach (array_keys($tables) as $table) {
-            if (!isset(EntityRegistry::TABLES[$table])) {
+            if (!isset(EntityRegistry::tables()[$table])) {
                 throw new \InvalidArgumentException('Unmapped installation table: ' . $table);
             }
         }
@@ -25,6 +25,12 @@ final class InitialData
                 foreach ($tables as $table => $rows) {
                     foreach ($rows as $row) {
                         // Raw values preserve literal NULL/backslashes and temporary legacy sentinels.
+                        if ($table === 'glpi_entities' && isset($row['id']) && (int)$row['id'] === 0 && array_key_exists('entities_id', $row)) {
+                            if ($row['entities_id'] !== null && !in_array($row['entities_id'], [-1, '-1', 0, '0'], true)) {
+                                throw new \InvalidArgumentException('The root entity cannot select a parent');
+                            }
+                            $row['entities_id'] = null;
+                        }
                         $writer->insert($table, EntityConfigurationReferences::normalizeLegacy($table, $row));
                         // Seed order can reference parents loaded later; discard placeholder proxies.
                         $em->clear();

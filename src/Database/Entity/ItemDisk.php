@@ -5,6 +5,8 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_items_disks')]
@@ -12,17 +14,19 @@ class ItemDisk
 {
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
     #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
+    #[ReferencePolicy(ReferenceKind::RootEntity)]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?Entity $entities = null;
 
     #[ORM\Column(name: '`itemtype`', type: 'string', length: 255, nullable: true)]
     public ?string $itemtype = null;
 
-    #[ORM\Column(name: '`items_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    #[ORM\Column(name: '`items_id`', type: 'bigint', nullable: false, options: ['default' => '0'])]
     public int $items_id = 0;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
@@ -36,6 +40,7 @@ class ItemDisk
 
     #[ORM\ManyToOne(targetEntity: Filesystem::class)]
     #[ORM\JoinColumn(name: 'filesystems_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?Filesystem $filesystems = null;
 
     #[ORM\Column(name: '`totalsize`', type: 'integer', nullable: false, options: ['default' => '0'])]

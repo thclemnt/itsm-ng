@@ -22,6 +22,9 @@ final class AttributeDriver extends \Doctrine\ORM\Mapping\Driver\AttributeDriver
             foreach ($property->getAttributes(ReferenceKey::class) as $attribute) {
                 $metadata->fieldMappings[$property->getName()]->columnDefinition = $attribute->newInstance()->declaration($this->platform);
             }
+            foreach ($property->getAttributes(DiscriminatorKey::class) as $attribute) {
+                $metadata->fieldMappings[$property->getName()]->columnDefinition = $attribute->newInstance()->declaration($this->platform, $metadata, $property->getName());
+            }
         }
     }
 }

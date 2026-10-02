@@ -11,6 +11,7 @@ use itsmng\Database\Entity\Project;
 use itsmng\Database\Entity\ProjectTask;
 use itsmng\Database\Entity\ProjectTaskTicket;
 use itsmng\Database\Entity\ProjectTeam;
+use itsmng\Database\Entity\ProjectTaskTeam;
 use itsmng\Database\RecordCriteria;
 use itsmng\Database\EntityRegistry;
 
@@ -53,13 +54,13 @@ final class ProjectRepository
             $membership = [];
             if ($user > 0) {
                 $ownership[] = 'IDENTITY(r.users) = :viewer';
-                $membership[] = '(team.itemtype = :user_type AND team.items_id = :viewer)';
-                $query->setParameter('viewer', $user, Types::INTEGER)->setParameter('user_type', 'User');
+                $membership[] = 'IDENTITY(team.user) = :viewer';
+                $query->setParameter('viewer', $user, Types::INTEGER);
             }
             if ($groups) {
                 $ownership[] = 'IDENTITY(r.groups) IN (:groups)';
-                $membership[] = '(team.itemtype = :group_type AND team.items_id IN (:groups))';
-                $query->setParameter('groups', array_values(array_map('intval', $groups)))->setParameter('group_type', 'Group');
+                $membership[] = 'IDENTITY(team.group) IN (:groups)';
+                $query->setParameter('groups', array_values(array_map('intval', $groups)));
             }
             if (!$membership) {
                 $query->andWhere('1 = 0');
@@ -75,11 +76,32 @@ final class ProjectRepository
         if (!$ids) {
             return [];
         }
-        $class = EntityRegistry::TABLES[$table];
+        $class = EntityRegistry::tables()[$table];
         $query = $this->em->createQueryBuilder()->from($class, 'r');
         $compiler = new RecordCriteria($query, $this->em->getClassMetadata($class));
         $query->select(...array_map($compiler->column(...), $fields));
         return $query->where($compiler->where(['id' => array_values(array_unique($ids))]))->getQuery()->getScalarResult();
+    }
+
+    public function projectTeamMemberIds(int $project, string $kind): array
+    {
+        $association = ProjectTeam::memberAssociation($kind);
+        $query = $this->em->createQueryBuilder()->select('IDENTITY(team.' . $association . ') AS member_id')->from(ProjectTeam::class, 'team')
+            ->where('IDENTITY(team.projects) = :parent')->setParameter('parent', $project, Types::INTEGER);
+        return $this->teamIds($query->andWhere('team.' . $association . ' IS NOT NULL'));
+    }
+
+    public function taskTeamMemberIds(int $task, string $kind): array
+    {
+        $association = ProjectTaskTeam::memberAssociation($kind);
+        $query = $this->em->createQueryBuilder()->select('IDENTITY(team.' . $association . ') AS member_id')->from(ProjectTaskTeam::class, 'team')
+            ->where('IDENTITY(team.projecttasks) = :parent')->setParameter('parent', $task, Types::INTEGER);
+        return $this->teamIds($query->andWhere('team.' . $association . ' IS NOT NULL'));
+    }
+
+    private function teamIds(QueryBuilder $query): array
+    {
+        return array_map('intval', array_column($query->orderBy('team.id')->getQuery()->getScalarResult(), 'member_id'));
     }
 
     /** Preserve a ticket entry per task association, including tickets shared by tasks. */

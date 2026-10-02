@@ -190,7 +190,7 @@ class Report extends CommonGLPI
 
         foreach ($items as $itemtype) {
             $table_item = getTableForItemType($itemtype);
-            if (isset(\itsmng\Database\Repository\AssetRepository::TYPES[$itemtype])) {
+            if ($assets->supports($itemtype)) {
                 $number = $assets->count($itemtype, \itsmng\Reporting\Criteria::entities());
             } else {
                 // Plugin assets retain their registered table and visibility rules.
@@ -235,7 +235,7 @@ class Report extends CommonGLPI
             $type_table = getTableForItemType($typeclass);
             $typefield  = getForeignKeyFieldForTable(getTableForItemType($typeclass));
 
-            if (isset(\itsmng\Database\Repository\AssetRepository::TYPES[$itemtype])) {
+            if ($assets->supports($itemtype)) {
                 $rows = $assets->countsByType($itemtype, \itsmng\Reporting\Criteria::entities());
             } else {
                 $criteria = [

@@ -2,9 +2,9 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Migration\SoftwareMetadataReferences;
-use itsmng\Database\OptionalReferences;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\Repository\SoftwareRepository;
@@ -38,7 +38,7 @@ $fixtures = new FixtureRecords($DB);
 $read = static fn (string $table, int $id): ?array => (new RecordRepository(Orm::create($DB)))->find($table, 'id', $id);
 $DB->beginTransaction();
 try {
-    foreach (OptionalReferences::SOFTWARE_METADATA as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'SOFTWARE_METADATA') as $table => $relations) {
         foreach ($relations as $column => $target) {
             $parent = $fixtures->create($target, ['name' => 'Software metadata parent']);
             $replacement = $fixtures->create($target, ['name' => 'Software metadata replacement']);
@@ -82,7 +82,8 @@ try {
     $past = $newLicense(['name' => 'Past', 'expire' => '2030-01-14']);
     $alerted = $newLicense(['name' => 'Alerted', 'expire' => '2030-01-14']);
     $fixtures->create('glpi_alerts', ['itemtype' => 'SoftwareLicense', 'items_id' => $alerted, 'type' => Alert::END, 'date' => '2030-01-14 12:00:00']);
-    $fixtures->create('glpi_alerts', ['itemtype' => 'Computer', 'items_id' => $past, 'type' => Alert::END, 'date' => '2030-01-14 12:00:00']);
+    $fixtures->create('glpi_contracts', ['id' => $past]);
+    $fixtures->create('glpi_alerts', ['itemtype' => 'Contract', 'items_id' => $past, 'type' => Alert::END, 'date' => '2030-01-14 12:00:00']);
     $foreignSoftware = $fixtures->create('glpi_softwares', ['name' => 'Foreign software', 'entities_id' => $entity]);
     $foreignLicense = $newLicense(['softwares_id' => $foreignSoftware, 'expire' => '2030-01-14']);
     $deletedSoftware = $fixtures->create('glpi_softwares', ['name' => 'Deleted software', 'is_deleted' => true]);
@@ -129,7 +130,7 @@ $quote = $platform->quoteIdentifier(...);
 $migration = new SoftwareMetadataReferences();
 $legacy = $legacyLicense = null;
 try {
-    foreach (OptionalReferences::SOFTWARE_METADATA as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'SOFTWARE_METADATA') as $table => $relations) {
         foreach ($relations as $column => $target) {
             $connection->executeStatement($platform->getDropForeignKeySQL(ForeignKeys::name($table, $column), $table));
             $connection->executeStatement('UPDATE ' . $quote($table) . ' SET ' . $quote($column) . ' = 0 WHERE ' . $quote($column) . ' IS NULL');

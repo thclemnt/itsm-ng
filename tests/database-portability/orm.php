@@ -2,6 +2,8 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
+
 $directory = $argv[1] ?? '';
 if (!is_file($directory . '/config_db.php')) {
     exit("Usage: php tests/database-portability/orm.php /path/to/test-config\n");
@@ -38,7 +40,7 @@ foreach ($metadata as $meta) {
         if (!$column->getNotnull() && $column->getDefault() !== null) {
             $default = match ($mapping->type) {
                 'boolean' => (bool)(int)$column->getDefault(),
-                'integer', 'smallint' => (int)$column->getDefault(),
+                'integer', 'smallint', 'bigint' => (int)$column->getDefault(),
                 'float' => (float)$column->getDefault(),
                 default => (string)$column->getDefault(),
             };
@@ -47,19 +49,25 @@ foreach ($metadata as $meta) {
     }
     $columns = array_map(fn ($field) => $field->columnName, $meta->fieldMappings);
     foreach ($meta->associationMappings as $association) {
+        if (!$association->isToOneOwningSide()) {
+            continue;
+        }
         foreach ($association->joinColumns as $join) {
             $columns[] = $join->name;
         }
     }
     $associations = [];
     foreach ($meta->associationMappings as $association) {
+        if (!$association->isToOneOwningSide()) {
+            continue;
+        }
         $associations[$association->joinColumns[0]->name] = $em->getClassMetadata($association->targetEntity)->getTableName();
     }
-    $expectedAssociations = \itsmng\Database\ForeignKeys::RELATIONS[$meta->getTableName()] ?? [];
+    $expectedAssociations = \itsmng\Database\ForeignKeys::relations()[$meta->getTableName()] ?? [];
     ksort($associations);
     ksort($expectedAssociations);
     verify($associations === $expectedAssociations, 'ORM associations match the FK registry: ' . $meta->getTableName());
-    foreach (\itsmng\Database\OptionalReferences::RELATIONS[$meta->getTableName()] ?? [] as $column => $target) {
+    foreach (ReferenceHistory::get('optional', 'RELATIONS')[$meta->getTableName()] ?? [] as $column => $target) {
         verify(($associations[$column] ?? null) === $target, 'Optional reference retained in merged relation groups: ' . $meta->getTableName() . '.' . $column);
     }
     sort($columns);
@@ -98,9 +106,10 @@ try {
         'glpi_calendars', 'glpi_calendarsegments', 'glpi_calendars_holidays', 'glpi_holidays',
         'glpi_rules', 'glpi_ruleactions', 'glpi_rulecriterias', 'glpi_networkports_networkports'] as $table) {
         $values = [];
-        foreach ((\itsmng\Database\ForeignKeys::RELATIONS[$table] ?? []) as $column => $target) {
+        foreach ((\itsmng\Database\ForeignKeys::relations()[$table] ?? []) as $column => $target) {
             $values[$column] = $parent($target);
         }
+        $values = FixtureRecords::selectReferenceKind($table, $values, null);
         $storage = new \itsmng\Database\MappedStorage($DB);
         $id = $storage->insert($table, $values);
         verify($id > 0, 'ORM generated id for ' . $table);
@@ -110,7 +119,7 @@ try {
             default => array_key_first($values) ?? 'name',
         };
         $value = match ($field) {
-            'is_manager' => 1, 'rights' => 42, 'email', 'name', 'comment' => "O'Reilly C:\\new\\file %_ 日本語", default => $parent(\itsmng\Database\ForeignKeys::RELATIONS[$table][$field])
+            'is_manager' => 1, 'rights' => 42, 'email', 'name', 'comment' => "O'Reilly C:\\new\\file %_ 日本語", default => $parent(\itsmng\Database\ForeignKeys::relations()[$table][$field])
         };
         $storage->update($table, $id, [$field => is_string($value) ? $DB->escape($value) : $value]);
         $row = $DB->request(['FROM' => $table, 'WHERE' => ['id' => $id]])->next();
@@ -148,23 +157,29 @@ try {
     // Every parent purge must clean every new required association, with real FKs enabled.
     foreach (['glpi_contracts', 'glpi_suppliers', 'glpi_contacts', 'glpi_reservationitems', 'glpi_changes', 'glpi_problems', 'glpi_tickets', 'glpi_groups', 'glpi_calendars', 'glpi_holidays', 'glpi_rules', 'glpi_networkports', 'glpi_vlans', 'glpi_ipnetworks', 'glpi_ipaddresses', 'glpi_cartridgeitems', 'glpi_printermodels', 'glpi_consumableitems', 'glpi_projecttasks', 'glpi_notifications', 'glpi_notificationtemplates', 'glpi_knowbaseitems', 'glpi_reminders', 'glpi_rssfeeds', 'glpi_savedsearches', 'glpi_users', 'glpi_profiles', 'glpi_entities', 'glpi_tickettemplates', 'glpi_changetemplates', 'glpi_problemtemplates', 'glpi_crontasklogs', 'glpi_crontasks'] as $target) {
         $parentId = $parent($target);
-        foreach (\itsmng\Database\ForeignKeys::RELATIONS as $table => $relations) {
+        foreach (\itsmng\Database\ForeignKeys::relations() as $table => $relations) {
             if (!in_array($target, $relations, true)) {
                 continue;
             }
             $values = [];
             foreach ($relations as $column => $reference) {
-                $values[$column] = $reference === 'glpi_entities' ? 0 : $parent($reference);
+                $values[$column] = FixtureRecords::referenceParent($table, $column, $reference, $parent);
             }
-            if (in_array($table, ['glpi_infocoms', 'glpi_documents_items'], true)) {
+            $selectedColumn = array_search($target, $relations, true);
+            $values = FixtureRecords::selectReferenceKind($table, $values, $selectedColumn);
+            if ($table === 'glpi_infocoms') {
                 $values += ['itemtype' => 'Computer', 'items_id' => (new FixtureRecords($DB))->create('glpi_computers')];
+            }
+            if ($table === 'glpi_documents_items') {
+                // Author purges retain the subject; use a distinct attachment parent for each graph.
+                $values['documents_id'] = (new FixtureRecords($DB))->create('glpi_documents');
             }
             (new FixtureRecords($DB))->create($table, $values);
         }
         $item = getItemForItemtype(getItemTypeForTable($target));
         verify($item->delete(['id' => $parentId], true), 'Parent lifecycle purge: ' . $target);
         unset($parents[$target]);
-        foreach (\itsmng\Database\ForeignKeys::RELATIONS as $table => $relations) {
+        foreach (\itsmng\Database\ForeignKeys::relations() as $table => $relations) {
             foreach ($relations as $column => $reference) {
                 if ($reference === $target) {
                     verify(!$DB->request(['FROM' => $table, 'WHERE' => [$column => $parentId]])->count(), 'Purge cleaned ' . $table . '.' . $column);

@@ -2,9 +2,9 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Migration\QueueTemplateReferences;
-use itsmng\Database\OptionalReferences;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 
@@ -135,7 +135,7 @@ $quote = $platform->quoteIdentifier(...);
 $migration = new QueueTemplateReferences();
 $legacy = [];
 try {
-    foreach (OptionalReferences::QUEUE_TEMPLATES as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'QUEUE_TEMPLATES') as $table => $relations) {
         foreach ($relations as $column => $target) {
             $connection->executeStatement($platform->getDropForeignKeySQL(ForeignKeys::name($table, $column), $table));
             $connection->executeStatement('UPDATE ' . $quote($table) . ' SET ' . $quote($column) . ' = 0 WHERE ' . $quote($column) . ' IS NULL');
@@ -150,7 +150,7 @@ try {
             $connection->executeStatement($sql);
         }
     }
-    foreach (array_keys(OptionalReferences::QUEUE_TEMPLATES) as $table) {
+    foreach (array_keys(ReferenceHistory::get('optional', 'QUEUE_TEMPLATES')) as $table) {
         $legacy[$table] = (int)$connection->fetchOne('SELECT COALESCE(MAX(id), 0) + 100 FROM ' . $quote($table));
         $connection->insert($table, ['id' => $legacy[$table], 'entities_id' => 0, 'mode' => 'mailing']);
     }

@@ -55,22 +55,11 @@ class ProfileRight extends CommonDBChild
      */
     public static function getAllPossibleRights()
     {
-        global $DB, $GLPI_CACHE;
-
-        $rights = [];
-
-        if (
-            !$GLPI_CACHE->has('all_possible_rights')
-            || count($GLPI_CACHE->get('all_possible_rights')) == 0
-        ) {
-            $iterator = $DB->request([
-               'SELECT'          => 'name',
-               'DISTINCT'        => true,
-               'FROM'            => self::getTable()
-            ]);
-            while ($right = $iterator->next()) {
-                // By default, all rights are NULL ...
-                $rights[$right['name']] = '';
+        global $GLPI_CACHE;
+        if (!$GLPI_CACHE->has('all_possible_rights') || count($GLPI_CACHE->get('all_possible_rights')) === 0) {
+            $rights = [];
+            foreach (self::repository()->names() as $name) {
+                $rights[$name] = '';
             }
             $GLPI_CACHE->set('all_possible_rights', $rights);
         } else {
@@ -92,26 +81,10 @@ class ProfileRight extends CommonDBChild
     **/
     public static function getProfileRights($profiles_id, array $rights = [])
     {
-        global $DB;
-
         if (!version_compare(Config::getCurrentDBVersion(), '0.84', '>=')) {
-            //table does not exists.
             return [];
         }
-
-        $query = [
-           'FROM'   => 'glpi_profilerights',
-           'WHERE'  => ['profiles_id' => $profiles_id]
-        ];
-        if (count($rights) > 0) {
-            $query['WHERE']['name'] = $rights;
-        }
-        $iterator = $DB->request($query);
-        $rights = [];
-        while ($right = $iterator->next()) {
-            $rights[$right['name']] = $right['rights'];
-        }
-        return $rights;
+        return self::repository()->forProfile((int)$profiles_id, $rights);
     }
 
 
@@ -122,32 +95,9 @@ class ProfileRight extends CommonDBChild
     **/
     public static function addProfileRights(array $rights)
     {
-        global $DB, $GLPI_CACHE;
-
-        $ok = true;
+        global $GLPI_CACHE;
         $GLPI_CACHE->set('all_possible_rights', []);
-
-        $iterator = $DB->request([
-            'SELECT'   => ['id'],
-            'FROM'     => Profile::getTable()
-        ]);
-
-        while ($profile = $iterator->next()) {
-            $profiles_id = $profile['id'];
-            foreach ($rights as $name) {
-                $res = $DB->insert(
-                    self::getTable(),
-                    [
-                      'profiles_id'  => $profiles_id,
-                      'name'         => $name
-                    ]
-                );
-                if (!$res) {
-                    $ok = false;
-                }
-            }
-        }
-        return $ok;
+        return self::repository()->addDefinitions($rights);
     }
 
 
@@ -158,57 +108,22 @@ class ProfileRight extends CommonDBChild
     **/
     public static function deleteProfileRights(array $rights)
     {
-        global $DB, $GLPI_CACHE;
-
+        global $GLPI_CACHE;
         $GLPI_CACHE->set('all_possible_rights', []);
-        $ok = true;
-        foreach ($rights as $name) {
-            $result = $DB->delete(
-                self::getTable(),
-                [
-                  'name' => $name
-                ]
-            );
-            if (!$result) {
-                $ok = false;
-            }
-        }
-        return $ok;
+        return self::repository()->deleteDefinitions($rights);
     }
 
 
     /**
      * @param $right
      * @param $value
-     * @param $condition
+     * @param array $condition Structured criteria selecting source rights.
      *
      * @return boolean
     **/
-    public static function updateProfileRightAsOtherRight($right, $value, $condition)
+    public static function updateProfileRightAsOtherRight($right, $value, array $condition)
     {
-        global $DB;
-
-        $profiles = [];
-        $ok       = true;
-        foreach ($DB->request('glpi_profilerights', $condition) as $data) {
-            $profiles[] = $data['profiles_id'];
-        }
-        if (count($profiles)) {
-            $result = $DB->update(
-                'glpi_profilerights',
-                [
-                  'rights' => new \QueryExpression($DB->quoteName('rights') . ' | ' . (int)$value)
-                ],
-                [
-                  'name'         => $right,
-                  'profiles_id'  => $profiles
-                ]
-            );
-            if (!$result) {
-                $ok = false;
-            }
-        }
-        return $ok;
+        return self::repository()->grantFrom($right, (int)$value, $condition);
     }
 
 
@@ -217,44 +132,13 @@ class ProfileRight extends CommonDBChild
      *
      * @param $newright      string   new right name
      * @param $initialright  string   right name to check
-     * @param $condition              (default '')
+     * @param array $condition       Structured criteria selecting source rights (default []).
      *
      * @return boolean
     **/
     public static function updateProfileRightsAsOtherRights($newright, $initialright, array $condition = [])
     {
-        global $DB;
-
-        $profiles = [];
-        $ok       = true;
-
-        $criteria = [
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['name' => $initialright] + $condition
-        ];
-        $iterator = $DB->request($criteria);
-
-        while ($data = $iterator->next()) {
-            $profiles[$data['profiles_id']] = $data['rights'];
-        }
-        if (count($profiles)) {
-            foreach ($profiles as $key => $val) {
-                $res = $DB->update(
-                    self::getTable(),
-                    [
-                      'rights' => $val
-                    ],
-                    [
-                      'profiles_id'  => $key,
-                      'name'         => $newright
-                    ]
-                );
-                if (!$res) {
-                    $ok = false;
-                }
-            }
-        }
-        return $ok;
+        return self::repository()->copyFrom($newright, $initialright, $condition);
     }
 
     /**
@@ -262,42 +146,13 @@ class ProfileRight extends CommonDBChild
     **/
     public static function fillProfileRights($profiles_id)
     {
+        self::repository()->fill((int)$profiles_id);
+    }
+
+    private static function repository(): \itsmng\Database\Repository\ProfileRightRepository
+    {
         global $DB;
-
-        $subq = new \QuerySubQuery([
-           'FROM'   => 'glpi_profilerights AS CURRENT',
-           'WHERE'  => [
-              'CURRENT.profiles_id'   => $profiles_id,
-              'CURRENT.name'          => new \QueryExpression($DB->quoteName('POSSIBLE.name'))
-           ]
-        ]);
-
-        $expr = 'NOT EXISTS ' . $subq->getQuery();
-        $iterator = $DB->request([
-           'SELECT'          => 'POSSIBLE.name AS NAME',
-           'DISTINCT'        => true,
-           'FROM'            => 'glpi_profilerights AS POSSIBLE',
-           'WHERE'           => [
-              new \QueryExpression($expr)
-           ]
-        ]);
-
-        if ($iterator->count() === 0) {
-            return;
-        }
-
-        $query = $DB->buildInsert(
-            self::getTable(),
-            [
-              'profiles_id' => new QueryParam(),
-              'name'        => new QueryParam(),
-            ]
-        );
-        $stmt = $DB->prepare($query);
-        while ($right = $iterator->next()) {
-            $stmt->bind_param('ss', $profiles_id, $right['NAME']);
-            $stmt->execute();
-        }
+        return new \itsmng\Database\Repository\ProfileRightRepository(\itsmng\Database\Orm::create($DB));
     }
 
 
@@ -313,16 +168,14 @@ class ProfileRight extends CommonDBChild
         $me = new self();
         foreach ($rights as $name => $right) {
             if (isset($right)) {
-                if (
-                    $me->getFromDBByCrit(['profiles_id'   => $profiles_id,
-                                          'name'          => $name])
-                ) {
-                    $input = ['id'          => $me->getID(),
+                $id = self::repository()->idFor((int)$profiles_id, $name);
+                if ($id !== null) {
+                    $input = ['id'          => $id,
                               'rights'      => $right];
                     $me->update($input);
                 } else {
                     $input = ['profiles_id' => $profiles_id,
-                              'name'        => $name,
+                              'name'        => addslashes($name),
                               'rights'      => $right];
                     $me->add($input);
                 }

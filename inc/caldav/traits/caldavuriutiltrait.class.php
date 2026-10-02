@@ -191,43 +191,28 @@ trait CalDAVUriUtilTrait
 
         global $CFG_GLPI, $DB;
 
-        $union = new \QueryUnion();
-        foreach ($CFG_GLPI['planning_types'] as $itemtype) {
-            if (!is_a($itemtype, CalDAVCompatibleItemInterface::class, true)) {
+        $kinds = array_values(array_unique(array_filter(
+            $CFG_GLPI['planning_types'],
+            static fn ($kind) => is_a($kind, CalDAVCompatibleItemInterface::class, true)
+        )));
+        $repository = new \itsmng\Database\Repository\CalendarObjectRepository(\itsmng\Database\Orm::create($DB));
+        $matches = $repository->subjectsForUid($uid, $kinds);
+        // Unmapped plugin calendars retain their public model lookup extension.
+        foreach ($kinds as $kind) {
+            if (count($matches) > 1) {
+                break;
+            }
+            if ($repository::supports($kind) || !($item = getItemForItemtype($kind))) {
                 continue;
             }
-
-            $union->addQuery(
-                [
-                  'SELECT' => [
-                     'id',
-                     new \QueryExpression(
-                         $DB->quoteValue($itemtype) . ' AS ' . $DB->quoteName('itemtype')
-                     ),
-                  ],
-                  'FROM'   => getTableForItemType($itemtype),
-                  'WHERE'  => [
-                     'uuid' => $uid,
-                  ]
-                ]
-            );
+            foreach ($item->find(['uuid' => $uid], ['id'], 2 - count($matches)) as $row) {
+                $matches[] = ['id' => (int)$row['id'], 'itemtype' => $kind];
+            }
         }
 
-        $items_iterator = $DB->request(
-            [
-              'SELECT'   => [
-                 'id',
-                 'itemtype'
-              ],
-              'DISTINCT' => true,
-              'FROM'     => $union,
-            ]
-        );
-
-        if ($items_iterator->count() !== 1) {
-            if ($items_iterator->count() > 1) {
+        if (count($matches) !== 1) {
+            if (count($matches) > 1) {
                 // Ambiguous response, unable to return matching element.
-                // Should never happens as UID has very very low probability to not be unique.
                 \Toolbox::logError(
                     sprintf(
                         'Multiple calendar items found with uuid %s. Unable to determine which item should be returned.',
@@ -238,7 +223,7 @@ trait CalDAVUriUtilTrait
             return null;
         }
 
-        $item_specs = $items_iterator->next();
+        $item_specs = $matches[0];
         if (!is_a($item_specs['itemtype'], CalDAVCompatibleItemInterface::class, true)) {
             return null;
         }

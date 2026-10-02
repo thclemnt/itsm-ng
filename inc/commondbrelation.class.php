@@ -1972,13 +1972,22 @@ abstract class CommonDBRelation extends CommonDBConnexity
      * @param integer $items_id    Object id to restrict on
      * @param array   $extra_where Extra where clause
      *
-     * @return DBmysqlIterator
+     * @return DBmysqlIterator|\itsmng\Database\RowIterator
      */
     public static function getDistinctTypes($items_id, $extra_where = [])
     {
         global $DB;
 
         $params = static::getDistinctTypesParams($items_id, $extra_where);
+        if (isset(\itsmng\Database\EntityRegistry::tables()[static::getTable()])
+            && !array_diff(array_keys($params), ['SELECT', 'DISTINCT', 'FROM', 'WHERE', 'ORDER'])
+            && $params['FROM'] === static::getTable() && $params['SELECT'] === 'itemtype'
+            && ($params['DISTINCT'] ?? false) === true && is_array($params['WHERE'])) {
+            return new \itsmng\Database\RowIterator(
+                (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+                    ->distinctValues(static::getTable(), 'itemtype', $params['WHERE'], $params['ORDER'] ?? [])
+            );
+        }
         $types_iterator = $DB->request($params);
         return $types_iterator;
     }

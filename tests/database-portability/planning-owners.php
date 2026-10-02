@@ -2,9 +2,9 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Migration\PlanningOwnerReferences;
-use itsmng\Database\OptionalReferences;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 
@@ -43,7 +43,7 @@ try {
     $owner = $fixtures->create('glpi_users', ['name' => 'planning-owner']);
     $other = $fixtures->create('glpi_users', ['name' => 'planning-other']);
     $owned = [];
-    foreach (OptionalReferences::PLANNING_OWNERS as $table => $columns) {
+    foreach (ReferenceHistory::get('optional', 'PLANNING_OWNERS') as $table => $columns) {
         $owned[$table] = $fixtures->create($table, ['users_id' => $owner, 'name' => 'Owned planning record']);
     }
     $unowned = $fixtures->create('glpi_projects', ['users_id' => null, 'name' => 'Unowned project']);
@@ -59,7 +59,8 @@ try {
     foreach (['early' => [$owner, 3600], 'start' => [$other, 0]] as $name => [$user, $offset]) {
         $when[$name] = $fixtures->create('glpi_planningrecalls', ['users_id' => $user, 'itemtype' => 'PlanningExternalEvent', 'items_id' => $event, 'before_time' => $offset]);
     }
-    $untouched = $fixtures->create('glpi_planningrecalls', ['users_id' => $owner, 'itemtype' => 'ProjectTask', 'items_id' => $event, 'before_time' => 3600]);
+    $overlappingTask = $read('glpi_projecttasks', $event) !== null ? $event : $fixtures->create('glpi_projecttasks', ['id' => $event, 'name' => 'Same ID as planning event']);
+    $untouched = $fixtures->create('glpi_planningrecalls', ['users_id' => $owner, 'itemtype' => 'ProjectTask', 'items_id' => $overlappingTask, 'before_time' => 3600]);
     $SQL_TOTAL_REQUEST = 0;
     $_SESSION['glpi_use_mode'] = Session::DEBUG_MODE;
     $_SESSION['glpiplanningreminder_isavailable'] = true;
@@ -70,15 +71,17 @@ try {
     verify($read('glpi_planningrecalls', $untouched)['when'] === null, 'Rescheduling respects polymorphic type');
     verify(PlanningRecall::managePlanningUpdates('PlanningExternalEvent', $event, $begin), 'Repeated reschedule succeeds');
     verify($read('glpi_planningrecalls', $when['early'])['when'] === '2030-01-01 11:00:00', 'Repeated scheduling does not compound offsets');
-    $late = $fixtures->create('glpi_planningrecalls', ['users_id' => $owner, 'itemtype' => 'PlanningExternalEvent', 'items_id' => $event + 100000, 'before_time' => -10]);
-    PlanningRecall::managePlanningUpdates('PlanningExternalEvent', $event + 100000, $begin);
+    $lateEvent = $fixtures->create('glpi_planningexternalevents', ['name' => 'Late recall event']);
+    $late = $fixtures->create('glpi_planningrecalls', ['users_id' => $owner, 'itemtype' => 'PlanningExternalEvent', 'items_id' => $lateEvent, 'before_time' => -10]);
+    PlanningRecall::managePlanningUpdates('PlanningExternalEvent', $lateEvent, $begin);
     verify($read('glpi_planningrecalls', $late)['when'] === '2030-01-01 12:00:10', 'Signed offsets remain supported');
     $repo = new \itsmng\Database\Repository\PlanningRepository(Orm::create($DB));
     $at = new DateTimeImmutable($begin);
     $ours = static fn (array $rows): array => array_values(array_intersect(array_column($rows, 'id'), array_values($when)));
     verify($ours($repo->dueRecalls($at)) === [$when['early']], 'Strict time boundary and NULL dates excluded');
     $fixtures->create('glpi_alerts', ['itemtype' => 'PlanningRecall', 'items_id' => $when['early'], 'type' => Alert::ACTION + 100, 'date' => $begin]);
-    $fixtures->create('glpi_alerts', ['itemtype' => 'ProjectTask', 'items_id' => $when['early'], 'type' => Alert::ACTION, 'date' => $begin]);
+    $fixtures->create('glpi_contracts', ['id' => $when['early']]);
+    $fixtures->create('glpi_alerts', ['itemtype' => 'Contract', 'items_id' => $when['early'], 'type' => Alert::ACTION, 'date' => $begin]);
     verify($ours($repo->dueRecalls($at)) === [$when['early']], 'Other alert types and item types do not suppress recall');
     $alert = $fixtures->create('glpi_alerts', ['itemtype' => 'PlanningRecall', 'items_id' => $when['early'], 'type' => Alert::ACTION, 'date' => $begin]);
     verify($ours($repo->dueRecalls($at)) === [], 'Delivered recall excluded');
@@ -113,7 +116,7 @@ $quote = $platform->quoteIdentifier(...);
 $migration = new PlanningOwnerReferences();
 $legacy = null;
 try {
-    foreach (OptionalReferences::PLANNING_OWNERS as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'PLANNING_OWNERS') as $table => $relations) {
         foreach ($relations as $column => $target) {
             $connection->executeStatement($platform->getDropForeignKeySQL(ForeignKeys::name($table, $column), $table));
             $connection->executeStatement('UPDATE ' . $quote($table) . ' SET ' . $quote($column) . ' = 0 WHERE ' . $quote($column) . ' IS NULL');

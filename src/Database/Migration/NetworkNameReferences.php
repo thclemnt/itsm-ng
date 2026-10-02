@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\OptionalReferences;
 
 final class NetworkNameReferences
 {
@@ -13,11 +12,11 @@ final class NetworkNameReferences
 
     public function plan(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::NETWORK_NAMES, 'network name'))->plan($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'NETWORK_NAMES'), 'network name'))->plan($connection);
     }
 
     public function apply(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::NETWORK_NAMES, 'network name'))->apply($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'NETWORK_NAMES'), 'network name'))->apply($connection);
     }
 }

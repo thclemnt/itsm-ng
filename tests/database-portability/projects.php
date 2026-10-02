@@ -2,9 +2,9 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Migration\ProjectHierarchy;
-use itsmng\Database\OptionalReferences;
 
 $directory = $argv[1] ?? '';
 if (!is_file($directory . '/config_db.php')) {
@@ -112,7 +112,7 @@ $platform = $connection->getDatabasePlatform();
 $quote = $platform->quoteIdentifier(...);
 $projectId = $taskId = null;
 try {
-    foreach (OptionalReferences::PROJECT_HIERARCHY as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'PROJECT_HIERARCHY') as $table => $relations) {
         foreach ($relations as $column => $target) {
             $connection->executeStatement($platform->getDropForeignKeySQL(ForeignKeys::name($table, $column), $table));
             $connection->executeStatement('UPDATE ' . $quote($table) . ' SET ' . $quote($column) . ' = 0 WHERE ' . $quote($column) . ' IS NULL');

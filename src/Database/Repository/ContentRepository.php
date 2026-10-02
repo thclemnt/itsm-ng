@@ -32,9 +32,15 @@ final class ContentRepository
 
     public function documentIds(string $type, int $id): array
     {
-        return (new RecordRepository($this->em))->identifiers('glpi_documents_items', 'documents_id', [
-            'itemtype' => $type, 'items_id' => $id,
-        ], ['id']);
+        try {
+            $association = Entity\DocumentItem::referenceAssociation($type);
+        } catch (\InvalidArgumentException) {
+            return [];
+        }
+        $rows = $this->em->createQueryBuilder()->select('IDENTITY(a.documents) AS id')->from(Entity\DocumentItem::class, 'a')
+            ->where('IDENTITY(a.' . $association . ') = :id')->setParameter('id', $id, Types::BIGINT)
+            ->orderBy('a.id')->getQuery()->getScalarResult();
+        return array_map('intval', array_column($rows, 'id'));
     }
 
     public function documentCount(array $scope): int
@@ -57,9 +63,15 @@ final class ContentRepository
         if (!isset($columns[$sort]) || !in_array($order, ['ASC', 'DESC'], true)) {
             throw new \InvalidArgumentException('Unsupported document ordering');
         }
-        $link = 'IDENTITY(a.documents) = r.id AND a.items_id = :id';
+        try {
+            $association = Entity\DocumentItem::referenceAssociation($type);
+        } catch (\InvalidArgumentException) {
+            return [];
+        }
+        $subject = 'IDENTITY(a.' . $association . ')';
+        $link = 'IDENTITY(a.documents) = r.id AND ' . $subject . ' = :id';
         if ($type === 'Document') {
-            $link = '(' . $link . ') OR (IDENTITY(a.documents) = :id AND a.items_id = r.id)';
+            $link = '(' . $link . ') OR (IDENTITY(a.documents) = :id AND ' . $subject . ' = r.id)';
         }
         $query = $this->em->createQueryBuilder()->select(
             'r.id',
@@ -78,7 +90,7 @@ final class ContentRepository
             ->join(Entity\DocumentItem::class, 'a', 'WITH', 'a.itemtype = :type AND (' . $link . ')')
             ->join('r.entities', 'e')->leftJoin('r.documentcategories', 'c');
         $query->where((new RecordCriteria($query, $this->em->getClassMetadata(Entity\Document::class)))->where($scope))
-            ->setParameter('type', $type)->setParameter('id', $id, Types::INTEGER)
+            ->setParameter('type', $type)->setParameter('id', $id, Types::BIGINT)
             ->addSelect('CASE WHEN ' . $columns[$sort] . ' IS NULL THEN 0 ELSE 1 END AS HIDDEN populated')
             ->orderBy('populated', $order)->addOrderBy($columns[$sort], $order)->addOrderBy('a.id');
         $rows = $query->getQuery()->getArrayResult();

@@ -626,7 +626,7 @@ class FieldUnicity extends CommonDropdown
             echo "<table class='tab_cadre_fixe' aria-label='Duplicates'>";
             echo "<tr class='tab_bg_2'><th colspan='" . $colspan . "'>" . __('Duplicates') . "</th></tr>";
 
-            $global = $unicity->fields['entities_id'] === null || \itsmng\Database\ContentAudienceScopes::isUnrestricted($unicity->fields['entities_id']);
+            $global = $unicity->fields['entities_id'] === null || \itsmng\Database\ReferenceValues::isUnrestricted($unicity->fields['entities_id']);
             $entities = $global ? \itsmng\Reporting\Criteria::entities() : [$unicity->fields['entities_id']];
             if (!$global && $unicity->fields['is_recursive']) {
                 $entities = getSonsOf('glpi_entities', $unicity->fields['entities_id']);

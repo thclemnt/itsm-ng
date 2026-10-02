@@ -303,19 +303,10 @@ class Contract_Item extends CommonDBRelation
             $newitemtype = $itemtype;
         }
 
-        $result = $DB->request(
-            [
-              'SELECT' => 'contracts_id',
-              'FROM'   => self::getTable(),
-              'WHERE'  => [
-                 'items_id' => $oldid,
-                 'itemtype' => $itemtype,
-              ],
-            ]
-        );
-        foreach ($result as $data) {
+        $repository = \itsmng\Database\Repository\TransferBindingRepository::contracts(\itsmng\Database\Orm::create($DB));
+        foreach ($repository->links($itemtype, (int)$oldid) as $data) {
             $contractitem = new self();
-            $contractitem->add(['contracts_id' => $data["contracts_id"],
+            $contractitem->add(['contracts_id' => $data["parent_id"],
                                      'itemtype'     => $newitemtype,
                                      'items_id'     => $newid]);
         }
@@ -512,68 +503,20 @@ class Contract_Item extends CommonDBRelation
                 continue;
             }
             if ($item->canView()) {
-                $itemtable = getTableForItemType($itemtype);
-                $itemtype_2 = null;
-                $itemtable_2 = null;
-
-                $params = [
-                   'SELECT' => [
-                      $itemtable . '.*',
-                      self::getTable() . '.id AS linkid',
-                      'glpi_entities.id AS entity'
-                   ],
-                   'FROM'   => 'glpi_contracts_items',
-                   'WHERE'  => [
-                      'glpi_contracts_items.itemtype'     => $itemtype,
-                      'glpi_contracts_items.contracts_id' => $instID
-                   ]
-                ];
-
-                if ($item instanceof Item_Devices) {
-                    $itemtype_2 = $itemtype::$itemtype_2;
-                    $itemtable_2 = $itemtype_2::getTable();
-                    $namefield = 'name_device';
-                    $params['SELECT'][] = $itemtable_2 . '.designation AS ' . $namefield;
-                } else {
-                    $namefield = $item->getNameField();
-                    $namefield = "$itemtable.$namefield";
-                }
-
-                $params['LEFT JOIN'][$itemtable] = [
-                   'FKEY' => [
-                      $itemtable        => 'id',
-                      self::getTable()  => 'items_id'
-                   ]
-                ];
-                if ($itemtype != 'Entity') {
-                    $params['LEFT JOIN']['glpi_entities'] = [
-                       'FKEY' => [
-                          $itemtable        => 'entities_id',
-                          'glpi_entities'   => 'id'
-                       ]
-                    ];
-                }
-
-                if ($item instanceof Item_Devices) {
-                    $id_2 = $itemtype_2::getIndexName();
-                    $fid_2 = $itemtype::$items_id_2;
-
-                    $params['LEFT JOIN'][$itemtable_2] = [
-                       'FKEY' => [
-                          $itemtable     => $fid_2,
-                          $itemtable_2   => $id_2
-                       ]
-                    ];
-                }
-
+                $criteria = getEntitiesRestrictCriteria($item->getTable(), '', '', $item->maybeRecursive());
                 if ($item->maybeTemplate()) {
-                    $params['WHERE'][] = [$itemtable . '.is_template' => 0];
+                    $criteria['is_template'] = false;
                 }
-                $params['WHERE'] += getEntitiesRestrictCriteria($itemtable, '', '', $item->maybeRecursive());
-                $params['ORDER'] = "glpi_entities.completename, $namefield";
-
-                $iterator = $DB->request($params);
-                $nb = count($iterator);
+                $bindings = (new \itsmng\Database\Repository\ContractAssetRepository(\itsmng\Database\Orm::create($DB)))
+                    ->assets(
+                        (int)$instID,
+                        $itemtype,
+                        $criteria,
+                        $item->getNameField(),
+                        (int)$_SESSION['glpilist_limit'],
+                        $item instanceof Item_Devices ? $itemtype::$items_id_2 : null
+                    );
+                $nb = $bindings['count'];
 
                 if ($nb > $_SESSION['glpilist_limit']) {
                     $opt = ['order'      => 'ASC',
@@ -599,7 +542,7 @@ class Contract_Item extends CommonDBRelation
                                              'link'     => $link];
                 } elseif ($nb > 0) {
                     $data[$itemtype] = [];
-                    while ($objdata = $iterator->next()) {
+                    foreach ($bindings['rows'] as $objdata) {
                         $data[$itemtype][$objdata['id']] = $objdata;
                         $used[$itemtype][$objdata['id']] = $objdata['id'];
                     }

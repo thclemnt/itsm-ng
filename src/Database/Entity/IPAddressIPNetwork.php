@@ -13,14 +13,16 @@ class IPAddressIPNetwork
 {
     #[ORM\ManyToOne(targetEntity: IPAddress::class)]
     #[ORM\JoinColumn(name: 'ipaddresses_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?IPAddress $ipaddresses = null;
 
     #[ORM\ManyToOne(targetEntity: IPNetwork::class)]
     #[ORM\JoinColumn(name: 'ipnetworks_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?IPNetwork $ipnetworks = null;
 
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 }

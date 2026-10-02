@@ -249,7 +249,7 @@ class Calendar extends AbstractBackend
             throw new \Sabre\DAV\Exception\NotFound(sprintf('Object "%s" not found', $objectPath));
         }
 
-        if (!$item->deleteFromDB()) {
+        if (!$item->delete(['id' => $item->getID()], true)) {
             throw new \Sabre\DAV\Exception('Error during object deletion');
         }
     }

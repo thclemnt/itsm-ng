@@ -251,14 +251,9 @@ class Change_Item extends CommonItilObject_Item
                 case 'Supplier':
                     if ($_SESSION['glpishow_count_on_tabs']) {
                         $from = 'glpi_changes_' . strtolower($item->getType() . 's');
-                        $result = $DB->request([
-                           'COUNT'  => 'cpt',
-                           'FROM'   => $from,
-                           'WHERE'  => [
-                              $item->getForeignKeyField()   => $item->fields['id']
-                           ]
-                        ])->next();
-                        $nb = $result['cpt'];
+                        $nb = \itsmng\Database\MappedReads::countMatching($DB, $from, [
+                            $item->getForeignKeyField() => $item->fields['id'],
+                        ]);
                     }
                     return self::createTabEntry(Change::getTypeName(Session::getPluralNumber()), $nb);
 

@@ -5,6 +5,8 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_planningexternalevents')]
@@ -13,7 +15,7 @@ class PlanningExternalEvent
 {
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
     #[ORM\Column(name: '`uuid`', type: 'string', length: 255, nullable: true)]
@@ -21,10 +23,12 @@ class PlanningExternalEvent
 
     #[ORM\ManyToOne(targetEntity: PlanningExternalEventTemplate::class)]
     #[ORM\JoinColumn(name: 'planningexternaleventtemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?PlanningExternalEventTemplate $planningexternaleventtemplates = null;
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
     #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
+    #[ReferencePolicy(ReferenceKind::RootEntity)]
     public ?Entity $entities = null;
 
     #[ORM\Column(name: '`is_recursive`', type: 'smallint', nullable: false, options: ['default' => '1'])]
@@ -35,13 +39,13 @@ class PlanningExternalEvent
 
     #[ORM\ManyToOne(targetEntity: User::class)]
     #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?User $users = null;
-
-    #[ORM\Column(name: '`users_id_guests`', type: 'text', nullable: true)]
-    public ?string $users_id_guests = null;
 
     #[ORM\ManyToOne(targetEntity: Group::class)]
     #[ORM\JoinColumn(name: 'groups_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?Group $groups = null;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
@@ -64,6 +68,7 @@ class PlanningExternalEvent
 
     #[ORM\ManyToOne(targetEntity: PlanningEventCategory::class)]
     #[ORM\JoinColumn(name: 'planningeventcategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?PlanningEventCategory $planningeventcategories = null;
 
     #[ORM\Column(name: '`background`', type: 'smallint', nullable: false, options: ['default' => '0'])]

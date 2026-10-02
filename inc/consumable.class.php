@@ -162,8 +162,9 @@ class Consumable extends CommonDBChild
         }
         $em = \itsmng\Database\Orm::create($DB);
         try {
-            (new \itsmng\Database\Repository\ConsumableRepository($em))->give((int)$ID, $itemtype, (int)$items_id);
-            return true;
+            return (new \itsmng\Database\Repository\ConsumableRepository($em))->give((int)$ID, $itemtype, (int)$items_id);
+        } catch (\InvalidArgumentException) {
+            return false;
         } finally {
             $em->clear();
         }

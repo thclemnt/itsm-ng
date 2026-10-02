@@ -13,21 +13,13 @@ use itsmng\Database\EntityRegistry;
 /** Budget spending projections; callers retain budget and item-type rights checks. */
 final class BudgetRepository
 {
-    private const COSTS = [
-        'Contract' => [Entity\ContractCost::class, 'contracts'],
-        'Ticket' => [Entity\TicketCost::class, 'tickets'],
-        'Problem' => [Entity\ProblemCost::class, 'problems'],
-        'Change' => [Entity\ChangeCost::class, 'changes'],
-        'Project' => [Entity\ProjectCost::class, 'projects'],
-    ];
-
     public function __construct(private EntityManager $em)
     {
     }
 
     public static function supports(string $itemtype): bool
     {
-        return isset(EntityRegistry::TABLES[\getTableForItemType($itemtype)]);
+        return isset(EntityRegistry::tables()[\getTableForItemType($itemtype)]);
     }
 
     /** Type discovery deliberately retains the existing infocom-entity scope for totals. */
@@ -44,7 +36,7 @@ final class BudgetRepository
 
     public function items(string $itemtype, int $budget, ?array $entities): array
     {
-        if (isset(self::COSTS[$itemtype])) {
+        if (CostRepository::supports($itemtype . 'Cost')) {
             $query = $this->costs($itemtype, $budget, $entities)
                 ->select('a.id AS id', 'IDENTITY(a.entities) AS entities_id', $this->costValue($itemtype) . ' AS value')
                 ->groupBy('a.id, entities_id, a.name')->orderBy('IDENTITY(a.entities)')->addOrderBy('a.name')->addOrderBy('a.id');
@@ -73,7 +65,7 @@ final class BudgetRepository
 
     public function totalsByEntity(string $itemtype, int $budget, ?array $entities): array
     {
-        if (isset(self::COSTS[$itemtype])) {
+        if (CostRepository::supports($itemtype . 'Cost')) {
             $query = $this->costs($itemtype, $budget, $entities);
             $value = $this->costValue($itemtype);
         } else {
@@ -86,7 +78,7 @@ final class BudgetRepository
 
     private function costs(string $itemtype, int $budget, ?array $entities): QueryBuilder
     {
-        [$class, $association] = self::COSTS[$itemtype];
+        [$class, $association] = CostRepository::definition($itemtype . 'Cost') ?? throw new \InvalidArgumentException('Unmapped budget cost type');
         $query = $this->em->createQueryBuilder()->from($class, 'c')->innerJoin('c.' . $association, 'a')
             ->where('c.budgets = :budget')->setParameter('budget', $budget, Types::INTEGER);
         $this->scope($query, 'a', $entities);
@@ -102,7 +94,7 @@ final class BudgetRepository
 
     private function infocoms(string $itemtype, int $budget, ?array $entities): QueryBuilder
     {
-        $class = EntityRegistry::TABLES[\getTableForItemType($itemtype)] ?? throw new \InvalidArgumentException('Unmapped budget item type');
+        $class = EntityRegistry::tables()[\getTableForItemType($itemtype)] ?? throw new \InvalidArgumentException('Unmapped budget item type');
         $query = $this->em->createQueryBuilder()->from(Entity\Infocom::class, 'i')
             ->innerJoin($class, 'a', 'WITH', 'a.id = i.items_id')
             ->where('i.itemtype = :type AND i.budgets = :budget')

@@ -11,6 +11,7 @@ use itsmng\Database\Entity\User;
 use itsmng\Database\Entity\PlanningRecall;
 use itsmng\Database\Entity\Alert;
 use itsmng\Database\Entity\PlanningExternalEvent;
+use itsmng\Database\Entity\PlanningExternalEventGuest;
 use itsmng\Database\RecordCriteria;
 
 /** Mapped calendar projections and transactional group planning subscriptions. */
@@ -23,9 +24,11 @@ final class PlanningRepository
     /** Select events once, including events with no category, with typed date and actor predicates. */
     public function externalEvents(array $criteria): array
     {
-        $query = $this->em->createQueryBuilder()->select('r', 'category.color AS cat_color')
-            ->from(PlanningExternalEvent::class, 'r')->leftJoin('r.planningeventcategories', 'category');
-        $compiler = new RecordCriteria($query, $this->em->getClassMetadata(PlanningExternalEvent::class));
+        $query = $this->em->createQueryBuilder()->select('DISTINCT r', 'category.color AS cat_color')
+            ->from(PlanningExternalEvent::class, 'r')->leftJoin('r.planningeventcategories', 'category')
+            ->leftJoin(PlanningExternalEventGuest::class, 'guest', 'WITH', 'guest.event = r');
+        $compiler = (new RecordCriteria($query, $this->em->getClassMetadata(PlanningExternalEvent::class)))
+            ->withJoinedMetadata($this->em->getClassMetadata(PlanningExternalEventGuest::class), 'guest');
         $query->where($compiler->where($criteria))->orderBy('r.begin')->addOrderBy('r.id');
         $records = new RecordRepository($this->em);
         $rows = [];
@@ -41,8 +44,8 @@ final class PlanningRepository
     {
         $this->em->getConnection()->transactional(function () use ($type, $item, $begin): void {
             $recalls = $this->em->createQueryBuilder()->select('r')->from(PlanningRecall::class, 'r')
-                ->where('r.itemtype = :type AND r.items_id = :item')
-                ->setParameter('type', $type)->setParameter('item', $item, Types::INTEGER)
+                ->where('IDENTITY(r.' . PlanningRecall::referenceAssociation($type) . ') = :item')
+                ->setParameter('item', $item, Types::BIGINT)
                 ->getQuery()->getResult();
             foreach ($recalls as $recall) {
                 $recall->when = \DateTime::createFromImmutable($begin)->setTimestamp($begin->getTimestamp() - $recall->before_time);
@@ -59,8 +62,8 @@ final class PlanningRepository
     {
         $query = $this->em->createQueryBuilder()->select('r')->from(PlanningRecall::class, 'r')
             ->where('r.when < :before')->setParameter('before', $before, Types::DATETIMETZ_IMMUTABLE)
-            ->andWhere('NOT EXISTS (SELECT a.id FROM ' . Alert::class . ' a WHERE a.items_id = r.id AND a.itemtype = :type AND a.type = :action)')
-            ->setParameter('type', 'PlanningRecall')->setParameter('action', \Alert::ACTION, Types::INTEGER)
+            ->andWhere('NOT EXISTS (SELECT a.id FROM ' . Alert::class . ' a WHERE a.planningRecall = r AND a.type = :action)')
+            ->setParameter('action', \Alert::ACTION, Types::INTEGER)
             ->orderBy('r.when')->addOrderBy('r.id');
         $records = new RecordRepository($this->em);
         $rows = [];

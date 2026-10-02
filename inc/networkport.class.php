@@ -453,6 +453,13 @@ class NetworkPort extends CommonDBChild
 
     public function cleanDBonPurge()
     {
+        global $DB;
+        $origins = new \itsmng\Database\Repository\NetworkPortAggregateRepository(\itsmng\Database\Orm::create($DB));
+        if (!empty($this->input['_replace_by'])) {
+            $origins->replacePort((int)$this->getID(), (int)$this->input['_replace_by']);
+        } else {
+            $origins->removeForPort((int)$this->getID());
+        }
 
         $instantiation = $this->getInstantiation();
         if ($instantiation !== false) {
@@ -765,7 +772,7 @@ class NetworkPort extends CommonDBChild
 
                     case 'NetworkPortAggregate':
                         $search_table   = 'glpi_networkportaggregates';
-                        $search_request = ['networkports_id_list' => ['LIKE', "%$items_id%"]];
+                        $search_request = [];
                         break;
                 }
                 $criteria = [
@@ -787,7 +794,9 @@ class NetworkPort extends CommonDBChild
                 ];
             }
 
-            $iterator = $DB->request($criteria);
+            $iterator = $itemtype === 'NetworkPort' && $portType === 'NetworkPortAggregate'
+                ? new \itsmng\Database\RowIterator((new \itsmng\Database\Repository\NetworkPortAggregateRepository(\itsmng\Database\Orm::create($DB)))->aggregatesForPort((int)$items_id))
+                : $DB->request($criteria);
             $number_port = count($iterator);
 
             if ($number_port != 0) {
@@ -1276,7 +1285,7 @@ class NetworkPort extends CommonDBChild
 
     public function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)
     {
-        global $CFG_GLPI;
+        global $CFG_GLPI, $DB;
 
         // Can exists on template
         $nb = 0;
@@ -1299,10 +1308,7 @@ class NetworkPort extends CommonDBChild
             } else {
                 $aliases = '';
             }
-            $nbAggregates = countElementsInTable(
-                'glpi_networkportaggregates',
-                ['networkports_id_list'   => ['LIKE', '%"' . $item->getField('id') . '"%']]
-            );
+            $nbAggregates = count((new \itsmng\Database\Repository\NetworkPortAggregateRepository(\itsmng\Database\Orm::create($DB)))->aggregatesForPort((int)$item->getField('id')));
             if ($nbAggregates > 0) {
                 $aggregates = self::createTabEntry(
                     NetworkPortAggregate::getTypeName(Session::getPluralNumber()),

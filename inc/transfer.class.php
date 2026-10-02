@@ -1471,23 +1471,15 @@ class Transfer extends CommonDBTM
                 $newsoftID = $ID;
 
             } else {
-                $manufacturer = [];
-                if (isset($soft->fields['manufacturers_id'])
-                    && ($soft->fields['manufacturers_id'] > 0)) {
-                    $manufacturer = ['manufacturers_id' => $soft->fields['manufacturers_id']];
-                }
+                $repository = new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB));
+                $destination = $repository->softwareForTransfer(
+                    (int)$this->to,
+                    (string)$soft->fields['name'],
+                    ($soft->fields['manufacturers_id'] ?? 0) > 0 ? (int)$soft->fields['manufacturers_id'] : null
+                );
 
-                $iterator = $DB->request([
-                   'SELECT' => 'id',
-                   'FROM'   => 'glpi_softwares',
-                   'WHERE'  => [
-                      'entities_id'  => $this->to,
-                      'name'         => addslashes((string) $soft->fields['name'])
-                   ] + $manufacturer
-                ]);
-
-                if ($data = $iterator->next()) {
-                    $newsoftID = $data["id"];
+                if ($destination !== null) {
+                    $newsoftID = $destination;
 
                 } else {
                     // create new item (don't check if move possible => clean needed)
@@ -1532,17 +1524,11 @@ class Transfer extends CommonDBTM
                 $newversID = $ID;
 
             } else {
-                $iterator = $DB->request([
-                   'SELECT' => 'id',
-                   'FROM'   => 'glpi_softwareversions',
-                   'WHERE'  => [
-                      'softwares_id' => $newsoftID,
-                      'name'         => addslashes((string) $vers->fields['name'])
-                   ]
-                ]);
+                $repository = new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB));
+                $destination = $repository->versionForTransfer((int)$newsoftID, (string)$vers->fields['name']);
 
-                if ($data = $iterator->next()) {
-                    $newversID = $data["id"];
+                if ($destination !== null) {
+                    $newversID = $destination;
 
                 } else {
                     // create new item (don't check if move possible => clean needed)
@@ -1598,65 +1584,29 @@ class Transfer extends CommonDBTM
     public function transferItemSoftwares($itemtype, $ID)
     {
         global $DB;
-
-        // Get Installed version
-        $criteria = [
-           'FROM'   => 'glpi_items_softwareversions',
-           'WHERE'  => [
-              'items_id'     => $ID,
-              'itemtype'     => $itemtype,
-           ]
-        ];
-
-        if (count($this->noneedtobe_transfer['SoftwareVersion'] ?? [])) {
-            $criteria['WHERE']['NOT'] = [
-               'softwareversions_id' => $this->noneedtobe_transfer['SoftwareVersion'],
-            ];
-        }
-
-        $iterator = $DB->request($criteria);
-
-        while ($data = $iterator->next()) {
+        $repository = new \itsmng\Database\Repository\SoftwareInstallationRepository(\itsmng\Database\Orm::create($DB));
+        foreach ($repository->installationsForTransfer($itemtype, (int)$ID, $this->noneedtobe_transfer['SoftwareVersion'] ?? []) as $data) {
             if ($this->options['keep_software']) {
                 $newversID = $this->copySingleVersion($data['softwareversions_id']);
 
                 if (($newversID > 0)
                       && ($newversID != $data['softwareversions_id'])) {
-                    $DB->update(
-                        'glpi_items_softwareversions',
-                        [
-                          'softwareversions_id' => $newversID
-                  ],
-                        [
-                          'id' => $data['id']
-                  ]
-                    );
+                    $repository->retargetInstallation((int)$data['id'], (int)$newversID);
                 }
 
             } else { // Do not keep
                 // Delete inst software for item
-                $DB->delete('glpi_items_softwareversions', ['id' => $data['id']]);
+                $repository->removeInstallation((int)$data['id']);
             }
         } // each installed version
 
         // Affected licenses
         if ($this->options['keep_software']) {
-            $iterator = $DB->request([
-               'SELECT' => 'id',
-               'FROM'   => 'glpi_items_softwarelicenses',
-               'WHERE'  => [
-                  'items_id'  => $ID,
-                  'itemtype'  => $itemtype
-               ]
-            ]);
-            while ($data = $iterator->next()) {
-                $this->transferAffectedLicense($data['id']);
+            foreach ($repository->licenseAssignmentsForTransfer($itemtype, (int)$ID) as $assignment) {
+                $this->transferAffectedLicense($assignment);
             }
         } else {
-            $DB->delete('glpi_items_softwarelicenses', [
-               'items_id'  => $ID,
-               'itemtype'  => $itemtype
-            ]);
+            $repository->removeLicenseAssignments($itemtype, (int)$ID);
         }
     }
 
@@ -1691,20 +1641,13 @@ class Transfer extends CommonDBTM
 
                 if ($newsoftID > 0) {
                     //// If license already exists : increment number by one
-                    $iterator = $DB->request([
-                       'SELECT' => ['id', 'number'],
-                       'FROM'   => 'glpi_softwarelicenses',
-                       'WHERE'  => [
-                          'softwares_id' => $newsoftID,
-                          'name'         => addslashes((string) $license->fields['name']),
-                          'serial'       => addslashes((string) $license->fields['serial'])
-                       ]
-                    ]);
+                    $repository = new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB));
+                    $destination = $repository->licenseForTransfer((int)$newsoftID, (string)$license->fields['name'], (string)$license->fields['serial']);
 
                     $newlicID = -1;
                     //// If exists : increment number by 1
-                    if (count($iterator)) {
-                        $data     = $iterator->next();
+                    if ($destination !== null) {
+                        $data     = $destination;
                         $newlicID = $data['id'];
                         $license->update(['id'     => $data['id'],
                                                 'number' => $data['number'] + 1]);
@@ -1750,46 +1693,28 @@ class Transfer extends CommonDBTM
     public function transferSoftwareLicensesAndVersions($ID)
     {
         global $DB;
-
-        $iterator = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => 'glpi_softwarelicenses',
-           'WHERE'  => ['softwares_id' => $ID]
-        ]);
-
-        while ($data = $iterator->next()) {
-            $this->transferItem('SoftwareLicense', $data['id'], $data['id']);
+        $repository = new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB));
+        foreach ($repository->licensesForTransfer((int)$ID) as $license) {
+            $this->transferItem('SoftwareLicense', $license, $license);
         }
-
-        $iterator = $DB->request([
-           'SELECT' => 'id',
-           'FROM'   => 'glpi_softwareversions',
-           'WHERE'  => ['softwares_id' => $ID]
-        ]);
-
-        while ($data = $iterator->next()) {
+        foreach ($repository->versionsForTransfer((int)$ID) as $version) {
             // Just Store the info.
-            $this->addToAlreadyTransfer('SoftwareVersion', $data['id'], $data['id']);
+            $this->addToAlreadyTransfer('SoftwareVersion', $version, $version);
         }
     }
 
 
     public function cleanSoftwareVersions()
     {
-
+        global $DB;
         if (!isset($this->already_transfer['SoftwareVersion'])) {
             return;
         }
 
         $vers = new SoftwareVersion();
+        $repository = new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB));
         foreach ($this->already_transfer['SoftwareVersion'] as $old => $new) {
-            if ((countElementsInTable("glpi_softwarelicenses", ['softwareversions_id_buy' => $old]) == 0)
-                && (countElementsInTable("glpi_softwarelicenses", ['softwareversions_id_use' => $old]) == 0)
-                && (countElementsInTable(
-                    "glpi_items_softwareversions",
-                    ['softwareversions_id' => $old]
-                ) == 0)) {
-
+            if (!$repository->isVersionReferenced((int)$old)) {
                 $vers->delete(['id' => $old]);
             }
         }
@@ -1798,16 +1723,15 @@ class Transfer extends CommonDBTM
 
     public function cleanSoftwares()
     {
-
+        global $DB;
         if (!isset($this->already_transfer['Software'])) {
             return;
         }
 
         $soft = new Software();
+        $repository = new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB));
         foreach ($this->already_transfer['Software'] as $old => $new) {
-            if ((countElementsInTable("glpi_softwarelicenses", ['softwares_id' => $old]) == 0)
-                && (countElementsInTable("glpi_softwareversions", ['softwares_id' => $old]) == 0)) {
-
+            if (!$repository->hasInventory((int)$old)) {
                 if ($this->options['clean_software'] == 1) { // delete
                     $soft->delete(['id' => $old], 0);
 
@@ -1831,170 +1755,62 @@ class Transfer extends CommonDBTM
     {
         global $DB;
 
-        $need_clean_process = false;
+        $repository = \itsmng\Database\Repository\TransferBindingRepository::contracts(\itsmng\Database\Orm::create($DB));
+        if (!$this->options['keep_contract'] || empty($this->noneedtobe_transfer['Contract'])) {
+            $repository->unlink($itemtype, (int)$ID);
+            return;
+        }
 
-        // if keep
-        if ($this->options['keep_contract'] && isset($this->noneedtobe_transfer['Contract'])
-           && count($this->noneedtobe_transfer['Contract'])) {
-            $contract = new Contract();
-            // Get contracts for the item
-            $iterator = $DB->request([
-               'FROM'   => 'glpi_contracts_items',
-               'WHERE'  => [
-                  'items_id'  => $ID,
-                  'itemtype'  => $itemtype,
-                  'NOT'       => ['contracts_id' => $this->noneedtobe_transfer['Contract']]
-               ]
-            ]);
-
-            // Foreach get item
-            while ($data = $iterator->next()) {
-                $need_clean_process = false;
-                $item_ID            = $data['contracts_id'];
-                $newcontractID      = -1;
-
-                // is already transfer ?
-                if (isset($this->already_transfer['Contract'][$item_ID])) {
-                    $newcontractID = $this->already_transfer['Contract'][$item_ID];
-                    if ($newcontractID != $item_ID) {
-                        $need_clean_process = true;
+        $contract = new Contract();
+        foreach ($repository->links($itemtype, (int)$ID, $this->noneedtobe_transfer['Contract']) as $data) {
+            $item_ID = (int)$data['parent_id'];
+            $need_clean_process = false;
+            if (isset($this->already_transfer['Contract'][$item_ID])) {
+                $newcontractID = $this->already_transfer['Contract'][$item_ID];
+                $need_clean_process = $newcontractID != $item_ID;
+            } else {
+                $canbetransfer = true;
+                $types = Contract_Item::getDistinctTypes($item_ID);
+                while (($data_type = $types->next()) && $canbetransfer) {
+                    $dtype = $data_type['itemtype'];
+                    if (empty($this->needtobe_transfer[$dtype])
+                        || $repository->hasOutsideItems($item_ID, $dtype, $this->needtobe_transfer[$dtype])) {
+                        $canbetransfer = false;
                     }
-
+                }
+                if ($canbetransfer) {
+                    $this->transferItem('Contract', $item_ID, $item_ID);
+                    $newcontractID = $item_ID;
                 } else {
-                    // No
-                    // Can be transfer without copy ? = all linked items need to be transfer (so not copy)
-                    $canbetransfer = true;
-                    $types_iterator = Contract_Item::getDistinctTypes($item_ID);
-
-                    while (($data_type = $types_iterator->next())
-                             && $canbetransfer) {
-                        $dtype = $data_type['itemtype'];
-
-                        if (isset($this->needtobe_transfer[$dtype]) && count($this->needtobe_transfer[$dtype])) {
-                            // No items to transfer -> exists links
-                            $result = $DB->request([
-                               'COUNT'  => 'cpt',
-                               'FROM'   => 'glpi_contracts_items',
-                               'WHERE'  => [
-                                  'contracts_id' => $item_ID,
-                                  'itemtype'     => $dtype,
-                                  'NOT'          => ['items_id' => $this->needtobe_transfer[$dtype]]
-                               ]
-                            ])->next();
-
-                            if ($result['cpt'] > 0) {
-                                $canbetransfer = false;
-                            }
-                        } else {
-                            $canbetransfer = false;
-                        }
-
-                    }
-
-                    // Yes : transfer
-                    if ($canbetransfer) {
-                        $this->transferItem('Contract', $item_ID, $item_ID);
-                        $newcontractID = $item_ID;
-
+                    $need_clean_process = true;
+                    $contract->getFromDB($item_ID);
+                    $newcontractID = $repository->destination((int)$this->to, (string)$contract->fields['name']);
+                    if ($newcontractID !== null) {
+                        $this->addToAlreadyTransfer('Contract', $item_ID, $newcontractID);
                     } else {
-                        $need_clean_process = true;
-                        $contract->getFromDB($item_ID);
-                        // No : search contract
-                        $contract_iterator = $DB->request([
-                           'SELECT' => 'id',
-                           'FROM'   => 'glpi_contracts',
-                           'WHERE'  => [
-                              'entities_id'  => $this->to,
-                              'name'         => addslashes((string) $contract->fields['name'])
-                           ]
-                        ]);
-
-                        if (count($contract_iterator)) {
-                            $result = $iterator->next();
-                            $newcontractID = $result['id'];
-                            $this->addToAlreadyTransfer('Contract', $item_ID, $newcontractID);
-                        }
-
-                        // found : use it
-                        // not found : copy contract
-                        if ($newcontractID < 0) {
-                            // 1 - create new item
-                            unset($contract->fields['id']);
-                            $input                = $contract->fields;
-                            $input['entities_id'] = $this->to;
-                            unset($contract->fields);
-                            $newcontractID        = $contract->add(Toolbox::addslashes_deep($input));
-                            // 2 - transfer as copy
-                            $this->transferItem('Contract', $item_ID, $newcontractID);
-                        }
-
-                    }
-                }
-
-                // Update links
-                if ($ID == $newID) {
-                    if ($item_ID != $newcontractID) {
-                        $DB->update(
-                            'glpi_contracts_items',
-                            [
-                              'contracts_id' => $newcontractID
-                     ],
-                            [
-                              'id' => $data['id']
-                     ]
-                        );
-                    }
-                } else { // Same Item -> update links
-                    // Copy Item -> copy links
-                    if ($item_ID != $newcontractID) {
-                        $DB->insert(
-                            'glpi_contracts_items',
-                            [
-                              'contracts_id' => $newcontractID,
-                              'items_id'     => $newID,
-                              'itemtype'     => $itemtype
-                     ]
-                        );
-                    } else { // same contract for new item update link
-                        $DB->update(
-                            'glpi_contracts_items',
-                            [
-                              'items_id' => $newID
-                     ],
-                            [
-                              'id' => $data['id']
-                     ]
-                        );
-                    }
-                }
-
-                // If clean and unused ->
-                if ($need_clean_process
-                      && $this->options['clean_contract']) {
-                    $remain = $DB->request([
-                       'COUNT'  => 'cpt',
-                       'FROM'   => 'glpi_contracts_items',
-                       'WHERE'  => ['contracts_id' => $item_ID]
-                    ])->next();
-
-                    if ($remain['cpt'] == 0) {
-                        if ($this->options['clean_contract'] == 1) {
-                            $contract->delete(['id' => $item_ID]);
-                        }
-                        if ($this->options['clean_contract'] == 2) { // purge
-                            $contract->delete(['id' => $item_ID], 1);
-                        }
+                        unset($contract->fields['id']);
+                        $input = $contract->fields;
+                        $input['entities_id'] = $this->to;
+                        unset($contract->fields);
+                        $newcontractID = $contract->add(Toolbox::addslashes_deep($input));
+                        $this->transferItem('Contract', $item_ID, $newcontractID);
                     }
                 }
             }
-        } else {// else unlink
-            $DB->delete(
-                'glpi_contracts_items',
-                [
-                  'items_id'  => $ID,
-                  'itemtype'  => $itemtype
-            ]
-            );
+
+            if ($ID == $newID) {
+                if ($item_ID != $newcontractID) {
+                    $repository->move((int)$data['id'], (int)$newcontractID);
+                }
+            } elseif ($item_ID != $newcontractID) {
+                $repository->copy((int)$newcontractID, $itemtype, (int)$newID);
+            } else {
+                $repository->move((int)$data['id'], item: (int)$newID);
+            }
+
+            if ($need_clean_process && $this->options['clean_contract'] && !$repository->isReferenced($item_ID)) {
+                $contract->delete(['id' => $item_ID], $this->options['clean_contract'] == 2);
+            }
         }
     }
 
@@ -2010,189 +1826,66 @@ class Transfer extends CommonDBTM
     {
         global $DB;
 
-        $need_clean_process = false;
-        // if keep
-        if ($this->options['keep_document']) {
-            $document = new Document();
-            // Get documents for the item
-            $documents_items_query = [
-               'FROM'   => 'glpi_documents_items',
-               'WHERE'  => [
-                  'items_id'  => $ID,
-                  'itemtype'  => $itemtype,
-               ]
-            ];
-            if (isset($this->noneedtobe_transfer['Document'])
-                && count($this->noneedtobe_transfer['Document']) > 0) {
-                $documents_items_query['WHERE'][] = [
-                   'NOT' => ['documents_id' => $this->noneedtobe_transfer['Document']]
-                ];
-            }
-            $iterator = $DB->request($documents_items_query);
+        $repository = \itsmng\Database\Repository\TransferBindingRepository::documents(\itsmng\Database\Orm::create($DB));
+        if (!$this->options['keep_document']) {
+            $repository->unlink($itemtype, (int)$ID);
+            return;
+        }
 
-            // Foreach get item
-            while ($data = $iterator->next()) {
-                $need_clean_process = false;
-                $item_ID            = $data['documents_id'];
-                $newdocID           = -1;
-
-                // is already transfer ?
-                if (isset($this->already_transfer['Document'][$item_ID])) {
-                    $newdocID = $this->already_transfer['Document'][$item_ID];
-                    if ($newdocID != $item_ID) {
-                        $need_clean_process = true;
+        $document = new Document();
+        foreach ($repository->links($itemtype, (int)$ID, $this->noneedtobe_transfer['Document'] ?? []) as $data) {
+            $item_ID = (int)$data['parent_id'];
+            $need_clean_process = false;
+            if (isset($this->already_transfer['Document'][$item_ID])) {
+                $newdocID = $this->already_transfer['Document'][$item_ID];
+                $need_clean_process = $newdocID != $item_ID;
+            } else {
+                $canbetransfer = true;
+                $types = Document_Item::getDistinctTypes($item_ID);
+                while (($data_type = $types->next()) && $canbetransfer) {
+                    $dtype = $data_type['itemtype'];
+                    if (isset($this->needtobe_transfer[$dtype])) {
+                        // Contacts, contracts and suppliers may stay in the destination.
+                        $included = array_merge($this->needtobe_transfer[$dtype], $this->noneedtobe_transfer[$dtype] ?? []);
+                        if ($repository->hasOutsideItems($item_ID, $dtype, $included)) {
+                            $canbetransfer = false;
+                        }
                     }
-
+                }
+                if ($canbetransfer) {
+                    $this->transferItem('Document', $item_ID, $item_ID);
+                    $newdocID = $item_ID;
                 } else {
-                    // No
-                    // Can be transfer without copy ? = all linked items need to be transfer (so not copy)
-                    $canbetransfer = true;
-                    $types_iterator = Document_Item::getDistinctTypes($item_ID);
-
-                    while (($data_type = $types_iterator->next())
-                             && $canbetransfer) {
-                        $dtype = $data_type['itemtype'];
-                        if (isset($this->needtobe_transfer[$dtype])) {
-                            // No items to transfer -> exists links
-                            $NOT = $this->needtobe_transfer[$dtype];
-
-                            // contacts, contracts, and enterprises are linked as device.
-                            if (isset($this->noneedtobe_transfer[$dtype])) {
-                                $NOT = array_merge($NOT, $this->noneedtobe_transfer[$dtype]);
-                            }
-
-                            $where = [
-                               'documents_id' => $item_ID,
-                               'itemtype'     => $dtype
-                            ];
-                            if (count($NOT)) {
-                                $where['NOT'] = ['items_id' => $NOT];
-                            }
-
-                            $result = $DB->request([
-                               'COUNT'  => 'cpt',
-                               'FROM'   => 'glpi_documents_items',
-                               'WHERE'  => $where
-                            ])->next();
-
-                            if ($result['cpt'] > 0) {
-                                $canbetransfer = false;
-                            }
-
-                        }
-                    }
-
-                    // Yes : transfer
-                    if ($canbetransfer) {
-                        $this->transferItem('Document', $item_ID, $item_ID);
-                        $newdocID = $item_ID;
-
+                    $need_clean_process = true;
+                    $document->getFromDB($item_ID);
+                    $newdocID = $repository->destination((int)$this->to, (string)$document->fields['name']);
+                    if ($newdocID !== null) {
+                        $this->addToAlreadyTransfer('Document', $item_ID, $newdocID);
                     } else {
-                        $need_clean_process = true;
-                        $document->getFromDB($item_ID);
-                        // No : search contract
-                        $doc_iterator = $DB->request([
-                           'SELECT' => 'id',
-                           'FROM'   => 'glpi_documents',
-                           'WHERE'  => [
-                              'entities_id'  => $this->to,
-                              'name'         => addslashes((string) $document->fields['name'])
-                           ]
-                        ]);
-
-                        if (count($doc_iterator)) {
-                            $result = $doc_iterator->next();
-                            $newdocID = $result['id'];
-                            $this->addToAlreadyTransfer('Document', $item_ID, $newdocID);
-                        }
-
-                        // found : use it
-                        // not found : copy doc
-                        if ($newdocID < 0) {
-                            // 1 - create new item
-                            unset($document->fields['id']);
-                            $input    = $document->fields;
-                            // Not set new entity Do by transferItem
-                            unset($document->fields);
-                            $newdocID = $document->add(Toolbox::addslashes_deep($input));
-                            // 2 - transfer as copy
-                            $this->transferItem('Document', $item_ID, $newdocID);
-                        }
+                        unset($document->fields['id']);
+                        $input = $document->fields;
+                        unset($document->fields);
+                        $newdocID = $document->add(Toolbox::addslashes_deep($input));
+                        $this->transferItem('Document', $item_ID, $newdocID);
                     }
-                }
-
-                // Update links
-                if ($ID == $newID) {
-                    if ($item_ID != $newdocID) {
-                        $DB->update(
-                            'glpi_documents_items',
-                            [
-                              'documents_id' => $newdocID
-                     ],
-                            [
-                              'id' => $data['id']
-                     ]
-                        );
-                    }
-
-                } else { // Same Item -> update links
-                    // Copy Item -> copy links
-                    if ($item_ID != $newdocID) {
-                        $DB->insert(
-                            'glpi_documents_items',
-                            [
-                              'documents_id' => $newdocID,
-                              'items_id'     => $newID,
-                              'itemtype'     => $itemtype
-                     ]
-                        );
-                    } else { // same doc for new item update link
-                        $DB->update(
-                            'glpi_documents_items',
-                            [
-                              'items_id' => $newID
-                     ],
-                            [
-                              'id' => $data['id']
-                     ]
-                        );
-                    }
-
-                }
-
-                // If clean and unused ->
-                if ($need_clean_process
-                      && $this->options['clean_document']) {
-                    $remain = $DB->request([
-                       'COUNT'  => 'cpt',
-                       'FROM'   => 'glpi_documents_items',
-                       'WHERE'  => [
-                          'documents_id' => $item_ID
-                       ]
-                    ])->next();
-
-                    if ($remain['cpt'] == 0) {
-                        if ($this->options['clean_document'] == 1) {
-                            $document->delete(['id' => $item_ID]);
-                        }
-                        if ($this->options['clean_document'] == 2) { // purge
-                            $document->delete(['id' => $item_ID], 1);
-                        }
-                    }
-
                 }
             }
-        } else {// else unlink
-            $DB->delete(
-                'glpi_documents_items',
-                [
-                  'items_id'  => $ID,
-                  'itemtype'  => $itemtype
-            ]
-            );
+
+            if ($ID == $newID) {
+                if ($item_ID != $newdocID) {
+                    $repository->move((int)$data['id'], (int)$newdocID);
+                }
+            } elseif ($item_ID != $newdocID) {
+                $repository->copy((int)$newdocID, $itemtype, (int)$newID);
+            } else {
+                $repository->move((int)$data['id'], item: (int)$newID);
+            }
+
+            if ($need_clean_process && $this->options['clean_document'] && !$repository->isReferenced($item_ID)) {
+                $document->delete(['id' => $item_ID], $this->options['clean_document'] == 2);
+            }
         }
     }
-
 
     /**
      * Delete direct connection for a linked item
@@ -2466,32 +2159,15 @@ class Transfer extends CommonDBTM
         $job   = new Ticket();
         $rel   = new Item_Ticket();
 
-        $iterator = $DB->request([
-           'SELECT'    => [
-              'glpi_tickets.*',
-              'glpi_items_tickets.id AS _relid'
-           ],
-           'FROM'      => 'glpi_tickets',
-           'LEFT JOIN' => [
-              'glpi_items_tickets' => [
-                 'ON' => [
-                    'glpi_items_tickets' => 'tickets_id',
-                    'glpi_tickets'       => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'items_id'  => $ID,
-              'itemtype'  => $itemtype
-           ]
-        ]);
+        $rows = (new \itsmng\Database\Repository\TicketAssetRepository(\itsmng\Database\Orm::create($DB)))
+            ->transferRows((string)$itemtype, (int)$ID);
 
-        if (count($iterator)) {
+        if ($rows) {
             switch ($this->options['keep_ticket']) {
                 // Transfer
                 case 2:
                     // Same Item / Copy Item -> update entity
-                    while ($data = $iterator->next()) {
+                    foreach ($rows as $data) {
                         $input                = $this->transferHelpdeskAdditionalInformations($data);
                         $input['id']          = $data['id'];
                         $input['entities_id'] = $this->to;
@@ -2513,8 +2189,8 @@ class Transfer extends CommonDBTM
                     // Clean ref : keep ticket but clean link
                 case 1:
                     // Same Item / Copy Item : keep and clean ref
-                    while ($data = $iterator->next()) {
-                        $rel->delete(['id'       => $data['relid']]);
+                    foreach ($rows as $data) {
+                        $rel->delete(['id'       => $data['_relid']]);
                         $this->addToAlreadyTransfer('Ticket', $data['id'], $data['id']);
                     }
                     break;
@@ -2523,7 +2199,7 @@ class Transfer extends CommonDBTM
                 case 0:
                     // Same item -> delete
                     if ($ID == $newID) {
-                        while ($data = $iterator->next()) {
+                        foreach ($rows as $data) {
                             $job->delete(['id' => $data['id']]);
                         }
                     }
@@ -3172,8 +2848,7 @@ class Transfer extends CommonDBTM
                         $input['itemtype']  = $itemtype;
                         $input['items_id']  = $newID;
                         $input['is_active'] = $ri->fields['is_active'];
-                        unset($ri->fields);
-                        $ri->add(Toolbox::addslashes_deep($input));
+                        (new ReservationItem())->add(Toolbox::addslashes_deep($input));
                     }
                     // Same item -> nothing to do
                     break;

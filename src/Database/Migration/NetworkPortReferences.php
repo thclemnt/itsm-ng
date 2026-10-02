@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\OptionalReferences;
 
 final class NetworkPortReferences
 {
@@ -13,11 +12,11 @@ final class NetworkPortReferences
 
     public function plan(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::NETWORK_PORT_METADATA, 'network port'))->plan($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'NETWORK_PORT_METADATA'), 'network port'))->plan($connection);
     }
 
     public function apply(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::NETWORK_PORT_METADATA, 'network port'))->apply($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'NETWORK_PORT_METADATA'), 'network port'))->apply($connection);
     }
 }

@@ -56,14 +56,13 @@ try {
     $link($second, 'Computer', '2025-01-10 12:00:00', 0);
     $link($second, 'Computer', '2025-02-01 00:00:00', $entity);
     $link($second, 'Computer', '2024-12-31 23:59:59', $entity);
-    $link($first, '', '2025-01-10 12:00:00', $entity);
-    $link(0, 'Computer', '2025-01-10 12:00:00', $entity);
+    $create('glpi_tickets', ['date' => '2025-01-10 12:00:00', 'entities_id' => $entity]);
     $expected = [
         ['itemtype' => 'Computer', 'items_id' => $first, 'NB' => 3],
         ['itemtype' => 'Computer', 'items_id' => $second, 'NB' => 2],
         ['itemtype' => 'Printer', 'items_id' => $printer, 'NB' => 2],
     ];
-    verify($repository->page('2025-01-01', '2025-01-31', [$entity]) === ['total' => 3, 'rows' => $expected], 'Grouped counts include end day, retain deleted-ticket semantics and distinguish item types sharing an ID');
+    verify($repository->page('2025-01-01', '2025-01-31', [$entity]) === ['total' => 3, 'rows' => $expected], 'Grouped counts include end day, retain deleted-ticket semantics, exclude unlinked tickets and distinguish item types sharing an ID');
     foreach ($expected as $offset => $row) {
         verify($repository->page('2025-01-01', '2025-01-31', [$entity], $offset, 1) === ['total' => 3, 'rows' => [$row]], 'SQL pagination has deterministic aggregate ties');
     }
@@ -105,9 +104,11 @@ try {
     verify(str_contains($csv, 'Hardware second page') && !str_contains($csv, 'Hardware first page') && !str_contains($csv, 'Hardware printer page'), 'CSV page export obeys offset and limit');
     unset($_GET['display_type']);
     verify($SQL_TOTAL_REQUEST === 0, 'Hardware report bypasses legacy adapter execution: ' . json_encode($DEBUG_SQL['queries'] ?? []));
-    $link($first, 'Computer ', '2025-01-10 12:00:00', $entity);
-    $groups = $repository->page('2025-01-01', '2025-01-31', [$entity]);
-    verify($groups['total'] === count($groups['rows']), 'Group totals follow each provider collation, including trailing whitespace');
+    try {
+        $link($first, 'Computer ', '2025-01-10 12:00:00', $entity);
+        throw new RuntimeException('Noncanonical asset type was accepted');
+    } catch (InvalidArgumentException) {
+    }
 } finally {
     unset($_GET['export_all'], $_GET['display_type']);
     $DB->rollBack();

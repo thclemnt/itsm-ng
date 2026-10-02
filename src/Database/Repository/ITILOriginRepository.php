@@ -36,7 +36,7 @@ final class ITILOriginRepository
 
     public function promotionSource(int $ticket): ?array
     {
-        return $this->em->createQueryBuilder()->select('f.id', 'f.itemtype', 'f.items_id')
+        return $this->em->createQueryBuilder()->select('f.id', 'f.itemtype', 'IDENTITY(f.ticket) AS items_id')
             ->from(Entity\ITILFollowup::class, 'f')
             ->where('f.itemtype = :type AND IDENTITY(f.promotedTicket) = :ticket')
             ->setParameter('type', 'Ticket')->setParameter('ticket', $ticket, Types::INTEGER)

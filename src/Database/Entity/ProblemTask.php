@@ -5,6 +5,9 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Mapping\UserReferenceAction;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_problemtasks')]
@@ -13,11 +16,13 @@ class ProblemTask
 {
     #[ORM\ManyToOne(targetEntity: Problem::class)]
     #[ORM\JoinColumn(name: 'problems_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\ITILStatisticsRelation(\itsmng\Database\Mapping\ITILStatisticsRole::Tasks)]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?Problem $problems = null;
 
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
     #[ORM\Column(name: '`uuid`', type: 'string', length: 255, nullable: true)]
@@ -25,6 +30,7 @@ class ProblemTask
 
     #[ORM\ManyToOne(targetEntity: TaskCategory::class)]
     #[ORM\JoinColumn(name: 'taskcategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?TaskCategory $taskcategories = null;
 
     #[ORM\Column(name: '`date`', type: 'datetimetz', nullable: true)]
@@ -38,18 +44,22 @@ class ProblemTask
 
     #[ORM\ManyToOne(targetEntity: User::class)]
     #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection, userPurge: UserReferenceAction::ReassignHistory)]
     public ?User $author = null;
 
     #[ORM\ManyToOne(targetEntity: User::class)]
     #[ORM\JoinColumn(name: 'users_id_editor', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection, userPurge: UserReferenceAction::ReassignHistory)]
     public ?User $editor = null;
 
     #[ORM\ManyToOne(targetEntity: User::class)]
     #[ORM\JoinColumn(name: 'users_id_tech', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection, userPurge: UserReferenceAction::ReassignHistory)]
     public ?User $technician = null;
 
     #[ORM\ManyToOne(targetEntity: Group::class)]
     #[ORM\JoinColumn(name: 'groups_id_tech', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?Group $groups_tech = null;
 
     #[ORM\Column(name: '`content`', type: 'text', length: 4294967295, nullable: true)]
@@ -69,6 +79,7 @@ class ProblemTask
 
     #[ORM\ManyToOne(targetEntity: TaskTemplate::class)]
     #[ORM\JoinColumn(name: 'tasktemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?TaskTemplate $tasktemplates = null;
 
     #[ORM\Column(name: '`timeline_position`', type: 'smallint', nullable: false, options: ['default' => '0'])]

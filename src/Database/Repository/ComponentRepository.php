@@ -19,7 +19,7 @@ final class ComponentRepository
     /** Null entity scope means all entities; an empty scope admits no attached assets. */
     public function forDevice(string $table, string $deviceColumn, int $device, ?string $assetType, ?string $assetTable, ?array $entities): array
     {
-        $class = EntityRegistry::TABLES[$table];
+        $class = EntityRegistry::tables()[$table];
         $query = $this->em->createQueryBuilder()->select('r')->from($class, 'r');
         $criteria = new RecordCriteria($query, $this->em->getClassMetadata($class), false);
         $query->where($criteria->where([$deviceColumn => $device, 'itemtype' => $assetType, 'is_deleted' => false]));
@@ -28,7 +28,7 @@ final class ComponentRepository
                 return [];
             }
             // The asset side is polymorphic: join the registered concrete entity.
-            $query->innerJoin(EntityRegistry::TABLES[$assetTable], 'a', 'WITH', 'a.id = r.items_id')
+            $query->innerJoin(EntityRegistry::tables()[$assetTable], 'a', 'WITH', 'a.id = r.items_id')
                 ->andWhere('IDENTITY(a.entities) IN (:entities)')->setParameter('entities', $entities);
         }
         $query->orderBy('r.itemtype')->addOrderBy('r.items_id')->addOrderBy('r.id');
@@ -44,7 +44,7 @@ final class ComponentRepository
     /** Returning components to stock deliberately does not run per-component update hooks. */
     public function detach(string $table, string $assetType, int $asset): int
     {
-        return $this->em->createQueryBuilder()->update(EntityRegistry::TABLES[$table], 'r')
+        return $this->em->createQueryBuilder()->update(EntityRegistry::tables()[$table], 'r')
             ->set('r.items_id', ':stock')->setParameter('stock', 0, Types::INTEGER)
             ->set('r.itemtype', ':empty')->setParameter('empty', '', Types::STRING)
             ->where('r.itemtype = :type')->setParameter('type', $assetType, Types::STRING)

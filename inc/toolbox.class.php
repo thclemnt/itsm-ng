@@ -2714,54 +2714,7 @@ class Toolbox
             });
 
             $DB->synchronizeSequences();
-            (new \itsmng\Database\Migration\ServiceLevelCalendars())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\NormalizeOptionalReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\ProjectHierarchy())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\InfrastructureReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\AssetClassification())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\StockReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\FinancialReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\FinancialMetadata())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\ManufacturerReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\StateReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\LocationReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\GroupReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\InventoryMetadataReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\PlanningMetadataReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\ITILClassificationReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\TreeParentReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\IPNetworkParentReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\AssetUserReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\ReservationUserReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\ContentMetadataReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\ArticleCategoryReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\SoftwareMetadataReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\ContactLineReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\OidcReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\QueueTemplateReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\DocumentTicketReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\ITILOriginReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\ContentAudienceScopes())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\GlobalEntityScopes())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\EntityConfigurationReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\DashboardOwnership())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\DisplayPreferenceOwnership())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\KanbanOwnership())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\ImpactGraphReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\LegacyComponentModels())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\RejectedEmailReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\PersonalContentOwners())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\PlanningOwnerReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\ServiceLevelReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\SavedSearchReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\ITILDefaultReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\NetworkNameReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\NetworkPortReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\ActorReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\ITILUserReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\UserMetadataReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\Migration\CronLogReferences())->apply($DB->getDoctrineConnection());
-            (new \itsmng\Database\ForeignKeys())->apply($DB->getDoctrineConnection());
+            (new \itsmng\Database\Migration\LegacyToOrm())->apply($DB->getDoctrineConnection());
 
             // update default language
             Config::setConfigurationValues(

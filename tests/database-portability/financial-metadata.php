@@ -2,9 +2,9 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Migration\FinancialMetadata;
-use itsmng\Database\OptionalReferences;
 
 $directory = $argv[1] ?? '';
 if (!is_file($directory . '/config_db.php')) {
@@ -33,7 +33,7 @@ $connection = $DB->getDoctrineConnection();
 $DB->beginTransaction();
 try {
     $fixtures = new FixtureRecords($DB);
-    foreach (OptionalReferences::FINANCIAL_METADATA as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'FINANCIAL_METADATA') as $table => $relations) {
         foreach ($relations as $column => $target) {
             $parent = $fixtures->create($target, ['name' => 'Financial parent']);
             $values = [$column => $parent];
@@ -66,7 +66,7 @@ $quote = $platform->quoteIdentifier(...);
 $migration = new FinancialMetadata();
 $legacyId = null;
 try {
-    foreach (OptionalReferences::FINANCIAL_METADATA as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'FINANCIAL_METADATA') as $table => $relations) {
         foreach ($relations as $column => $target) {
             $connection->executeStatement($platform->getDropForeignKeySQL(ForeignKeys::name($table, $column), $table));
             $connection->executeStatement('UPDATE ' . $quote($table) . ' SET ' . $quote($column) . ' = 0 WHERE ' . $quote($column) . ' IS NULL');

@@ -366,7 +366,7 @@ class Item_SoftwareVersion extends CommonDBRelation
         $count = 0;
         foreach ($target_types as $itemtype) {
             $itemtable = $itemtype::getTable();
-            if (isset(\itsmng\Database\EntityRegistry::TABLES[$itemtable])) {
+            if (isset(\itsmng\Database\EntityRegistry::tables()[$itemtable])) {
                 $count += $repository->count(false, (int)$softwareversions_id, false, $itemtype, $itemtable, getEntitiesRestrictCriteria($itemtable, '', $entity));
                 continue;
             }
@@ -421,7 +421,7 @@ class Item_SoftwareVersion extends CommonDBRelation
         $count = 0;
         foreach ($target_types as $itemtype) {
             $itemtable = $itemtype::getTable();
-            if (isset(\itsmng\Database\EntityRegistry::TABLES[$itemtable])) {
+            if (isset(\itsmng\Database\EntityRegistry::tables()[$itemtable])) {
                 $count += $repository->count(false, (int)$softwares_id, true, $itemtype, $itemtable, getEntitiesRestrictCriteria($itemtable, '', '', true));
                 continue;
             }

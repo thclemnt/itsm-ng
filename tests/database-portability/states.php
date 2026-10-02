@@ -2,9 +2,9 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Migration\StateReferences;
-use itsmng\Database\OptionalReferences;
 
 $directory = $argv[1] ?? '';
 if (!is_file($directory . '/config_db.php')) {
@@ -38,7 +38,7 @@ try {
     $unrelated = $fixtures->create('glpi_states', ['name' => 'Unrelated item state']);
     $children = [];
     $others = [];
-    foreach (OptionalReferences::STATES as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'STATES') as $table => $relations) {
         $values = ['states_id' => $stateId];
         $otherValues = ['states_id' => $unrelated];
         if (str_starts_with($table, 'glpi_items_device')) {
@@ -135,7 +135,7 @@ $quote = $platform->quoteIdentifier(...);
 $migration = new StateReferences();
 $legacyId = null;
 try {
-    foreach (OptionalReferences::STATES as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'STATES') as $table => $relations) {
         foreach ($relations as $column => $target) {
             $connection->executeStatement($platform->getDropForeignKeySQL(ForeignKeys::name($table, $column), $table));
             $connection->executeStatement('UPDATE ' . $quote($table) . ' SET ' . $quote($column) . ' = 0 WHERE ' . $quote($column) . ' IS NULL');

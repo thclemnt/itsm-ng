@@ -5,6 +5,9 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Mapping\UserReferenceAction;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_tickets')]
@@ -12,11 +15,12 @@ class Ticket
 {
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
     #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
+    #[ReferencePolicy(ReferenceKind::RootEntity)]
     public ?Entity $entities = null;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
@@ -36,6 +40,7 @@ class Ticket
 
     #[ORM\ManyToOne(targetEntity: User::class)]
     #[ORM\JoinColumn(name: 'users_id_lastupdater', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection, userPurge: UserReferenceAction::ReassignHistory)]
     public ?User $lastUpdater = null;
 
     #[ORM\Column(name: '`status`', type: 'integer', nullable: false, options: ['default' => '1'])]
@@ -43,10 +48,12 @@ class Ticket
 
     #[ORM\ManyToOne(targetEntity: User::class)]
     #[ORM\JoinColumn(name: 'users_id_recipient', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection, userPurge: UserReferenceAction::ReassignHistory)]
     public ?User $recipient = null;
 
     #[ORM\ManyToOne(targetEntity: RequestType::class)]
     #[ORM\JoinColumn(name: 'requesttypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?RequestType $requesttypes = null;
 
     #[ORM\Column(name: '`content`', type: 'text', length: 4294967295, nullable: true)]
@@ -63,6 +70,7 @@ class Ticket
 
     #[ORM\ManyToOne(targetEntity: ITILCategory::class)]
     #[ORM\JoinColumn(name: 'itilcategories_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?ITILCategory $itilcategories = null;
 
     #[ORM\Column(name: '`type`', type: 'integer', nullable: false, options: ['default' => '1'])]
@@ -73,14 +81,17 @@ class Ticket
 
     #[ORM\ManyToOne(targetEntity: SLA::class)]
     #[ORM\JoinColumn(name: 'slas_id_ttr', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?SLA $slas_ttr = null;
 
     #[ORM\ManyToOne(targetEntity: SLA::class)]
     #[ORM\JoinColumn(name: 'slas_id_tto', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?SLA $slas_tto = null;
 
     #[ORM\ManyToOne(targetEntity: SlaLevel::class)]
     #[ORM\JoinColumn(name: 'slalevels_id_ttr', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?SlaLevel $slalevels_ttr = null;
 
     #[ORM\Column(name: '`time_to_resolve`', type: 'datetimetz', nullable: true)]
@@ -100,14 +111,17 @@ class Ticket
 
     #[ORM\ManyToOne(targetEntity: OLA::class)]
     #[ORM\JoinColumn(name: 'olas_id_tto', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?OLA $olas_tto = null;
 
     #[ORM\ManyToOne(targetEntity: OLA::class)]
     #[ORM\JoinColumn(name: 'olas_id_ttr', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?OLA $olas_ttr = null;
 
     #[ORM\ManyToOne(targetEntity: OlaLevel::class)]
     #[ORM\JoinColumn(name: 'olalevels_id_ttr', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?OlaLevel $olalevels_ttr = null;
 
     #[ORM\Column(name: '`ola_ttr_begin_date`', type: 'datetimetz', nullable: true)]
@@ -139,6 +153,7 @@ class Ticket
 
     #[ORM\ManyToOne(targetEntity: Location::class)]
     #[ORM\JoinColumn(name: 'locations_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?Location $locations = null;
 
     #[ORM\Column(name: '`validation_percent`', type: 'integer', nullable: false, options: ['default' => '0'])]

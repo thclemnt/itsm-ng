@@ -5,6 +5,8 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_items_softwareversions')]
@@ -13,14 +15,16 @@ class ItemSoftwareVersion
 {
     #[ORM\ManyToOne(targetEntity: SoftwareVersion::class)]
     #[ORM\JoinColumn(name: 'softwareversions_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?SoftwareVersion $softwareversions = null;
 
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
-    #[ORM\Column(name: '`items_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    #[ORM\Column(name: '`items_id`', type: 'bigint', nullable: false, options: ['default' => '0'])]
+    #[\itsmng\Database\Mapping\PolymorphicReference(Computer::class, "itemtype")]
     public int $items_id = 0;
 
     #[ORM\Column(name: '`itemtype`', type: 'string', length: 100, nullable: false)]
@@ -34,6 +38,8 @@ class ItemSoftwareVersion
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
     #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
+    #[ReferencePolicy(ReferenceKind::RootEntity)]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?Entity $entities = null;
 
     #[ORM\Column(name: '`is_deleted`', type: 'boolean', nullable: false, options: ['default' => false])]

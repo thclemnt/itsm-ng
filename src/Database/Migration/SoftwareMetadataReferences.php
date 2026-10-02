@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\OptionalReferences;
 
 final class SoftwareMetadataReferences
 {
@@ -13,7 +12,7 @@ final class SoftwareMetadataReferences
 
     public function plan(Connection $connection): array
     {
-        $plan = (new NullableReferences(OptionalReferences::SOFTWARE_METADATA, 'software metadata'))->plan($connection);
+        $plan = (new NullableReferences(ReferenceHistory::get('optional', 'SOFTWARE_METADATA'), 'software metadata'))->plan($connection);
         $parents = $connection->fetchAllKeyValue('SELECT id, softwarelicenses_id FROM glpi_softwarelicenses');
         $finished = [];
         foreach ($parents as $id => $_) {
@@ -33,6 +32,6 @@ final class SoftwareMetadataReferences
     public function apply(Connection $connection): array
     {
         $this->plan($connection);
-        return (new NullableReferences(OptionalReferences::SOFTWARE_METADATA, 'software metadata'))->apply($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'SOFTWARE_METADATA'), 'software metadata'))->apply($connection);
     }
 }

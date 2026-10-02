@@ -12,15 +12,17 @@ class PduPlug
 {
     #[ORM\ManyToOne(targetEntity: PDU::class)]
     #[ORM\JoinColumn(name: 'pdus_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?PDU $pdus = null;
 
     #[ORM\ManyToOne(targetEntity: Plug::class)]
     #[ORM\JoinColumn(name: 'plugs_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?Plug $plugs = null;
 
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
     #[ORM\Column(name: '`number_plugs`', type: 'integer', nullable: true, options: ['default' => '0'])]

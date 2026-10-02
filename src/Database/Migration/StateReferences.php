@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\OptionalReferences;
 
 final class StateReferences
 {
@@ -13,11 +12,11 @@ final class StateReferences
 
     public function plan(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::STATES, 'state'))->plan($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'STATES'), 'state'))->plan($connection);
     }
 
     public function apply(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::STATES, 'state'))->apply($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'STATES'), 'state'))->apply($connection);
     }
 }

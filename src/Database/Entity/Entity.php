@@ -5,6 +5,8 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_entities')]
@@ -12,14 +14,17 @@ use Doctrine\ORM\Mapping as ORM;
 class Entity
 {
     #[ORM\Id]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false, options: ['default' => '0'])]
     public int $id = 0;
 
     #[ORM\Column(name: '`name`', type: 'string', length: 255, nullable: true)]
     public ?string $name = null;
 
-    #[ORM\Column(name: '`entities_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $entities_id = 0;
+    #[ORM\ManyToOne(targetEntity: self::class)]
+    #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT', options: ['default' => 0])]
+    #[ReferencePolicy(ReferenceKind::RootParent)]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
+    public ?self $parent = null;
 
     #[ORM\Column(name: '`completename`', type: 'text', nullable: true)]
     public ?string $completename = null;
@@ -86,6 +91,7 @@ class Entity
 
     #[ORM\ManyToOne(targetEntity: AuthLDAP::class)]
     #[ORM\JoinColumn(name: 'authldaps_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'ldap_mode', emptyZero: true)]
     public ?AuthLDAP $authldap = null;
 
     #[ORM\Column(type: 'string', length: 16, enumType: \itsmng\Database\ReferenceMode::class, options: ['default' => 'explicit'])]
@@ -153,6 +159,7 @@ class Entity
 
     #[ORM\ManyToOne(targetEntity: Calendar::class)]
     #[ORM\JoinColumn(name: 'calendars_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'calendar_mode', emptyZero: true)]
     public ?Calendar $calendar = null;
 
     #[ORM\Column(type: 'string', length: 16, enumType: \itsmng\Database\ReferenceMode::class, options: ['default' => 'inherit'])]
@@ -196,6 +203,7 @@ class Entity
 
     #[ORM\ManyToOne(targetEntity: TicketTemplate::class)]
     #[ORM\JoinColumn(name: 'tickettemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'tickettemplate_mode', emptyZero: true)]
     public ?TicketTemplate $tickettemplate = null;
 
     #[ORM\Column(type: 'string', length: 16, enumType: \itsmng\Database\ReferenceMode::class, options: ['default' => 'inherit'])]
@@ -203,6 +211,7 @@ class Entity
 
     #[ORM\ManyToOne(targetEntity: ChangeTemplate::class)]
     #[ORM\JoinColumn(name: 'changetemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'changetemplate_mode', emptyZero: true)]
     public ?ChangeTemplate $changetemplate = null;
 
     #[ORM\Column(type: 'string', length: 16, enumType: \itsmng\Database\ReferenceMode::class, options: ['default' => 'inherit'])]
@@ -210,6 +219,7 @@ class Entity
 
     #[ORM\ManyToOne(targetEntity: ProblemTemplate::class)]
     #[ORM\JoinColumn(name: 'problemtemplates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'problemtemplate_mode', emptyZero: true)]
     public ?ProblemTemplate $problemtemplate = null;
 
     #[ORM\Column(type: 'string', length: 16, enumType: \itsmng\Database\ReferenceMode::class, options: ['default' => 'inherit'])]
@@ -217,6 +227,7 @@ class Entity
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
     #[ORM\JoinColumn(name: 'entities_id_software', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::Inherited, modeProperty: 'software_entity_mode', emptyZero: false)]
     public ?Entity $software_entity = null;
 
     #[ORM\Column(type: 'string', length: 16, enumType: \itsmng\Database\ReferenceMode::class, options: ['default' => 'inherit'])]

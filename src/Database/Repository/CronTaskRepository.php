@@ -98,7 +98,7 @@ final class CronTaskRepository
     {
         $cutoff = ($now ?? new \DateTimeImmutable())->modify('-1 day');
         if ((new RecordRepository($this->em))->countMatching('glpi_alerts', [
-            'items_id' => $task, 'itemtype' => 'CronTask', 'date' => ['>', $cutoff],
+            'crontasks_id' => $task, 'date' => ['>', $cutoff],
         ])) {
             return false;
         }

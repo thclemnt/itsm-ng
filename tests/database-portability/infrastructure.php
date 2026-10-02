@@ -2,6 +2,8 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
+
 $directory = $argv[1] ?? '';
 if (!is_file($directory . '/config_db.php')) {
     fwrite(STDERR, "Usage: php tests/database-portability/infrastructure.php /path/to/test-config\n");
@@ -39,14 +41,22 @@ try {
     $tables = ['glpi_appliances_items', 'glpi_appliances_items_relations', 'glpi_certificates_items', 'glpi_domainrecords', 'glpi_domains_items', 'glpi_items_clusters', 'glpi_items_enclosures', 'glpi_items_racks', 'glpi_pdus_plugs', 'glpi_pdus_racks'];
     $tested = 0;
     foreach ($tables as $table) {
-        $metadata = Orm::create($DB)->getClassMetadata(EntityRegistry::TABLES[$table]);
+        $metadata = Orm::create($DB)->getClassMetadata(EntityRegistry::tables()[$table]);
         $values = $metadata->hasField('itemtype') ? ['itemtype' => 'Computer', 'items_id' => $asset] : [];
-        foreach (ForeignKeys::RELATIONS[$table] as $column => $parentTable) {
-            if (isset(\itsmng\Database\OptionalReferences::RELATIONS[$table][$column])) {
+        $containerRelations = ForeignKeys::relations()[$table];
+        foreach ($metadata->associationMappings as $property => $mapping) {
+            if ($mapping->isToOneOwningSide()
+                && (new ReflectionProperty($metadata->name, $property))->getAttributes(\itsmng\Database\Mapping\DiscriminatedBy::class)) {
+                // Typed asset branches have their own complete placement lifecycle contract.
+                unset($containerRelations[$mapping->joinColumns[0]->name]);
+            }
+        }
+        foreach ($containerRelations as $column => $parentTable) {
+            if (isset(ReferenceHistory::get('optional', 'RELATIONS')[$table][$column])) {
                 continue;
             }
             // Entity ownership reassigns children; its lifecycle has a separate contract.
-            if (isset(\itsmng\Database\EntityOwnership::RELATIONS[$table][$column])) {
+            if (isset(ReferenceHistory::get('ownership', 'RELATIONS')[$table][$column])) {
                 continue;
             }
             $parentValues = $parentTable === 'glpi_appliances_items' ? ['itemtype' => 'Computer', 'items_id' => $asset] : [];

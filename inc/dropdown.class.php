@@ -351,57 +351,70 @@ class Dropdown
         $comment = "";
 
         if ($id) {
-            $SELECTNAME    = new \QueryExpression("'' AS " . $DB->quoteName('transname'));
-            $SELECTCOMMENT = new \QueryExpression("'' AS " . $DB->quoteName('transcomment'));
-            $JOIN          = [];
-            $JOINS         = [];
-            if ($translate) {
-                if (Session::haveTranslations(getItemTypeForTable($table), 'name')) {
-                    $SELECTNAME = 'namet.value AS transname';
-                    $JOINS['glpi_dropdowntranslations AS namet'] = [
-                       'ON' => [
-                          'namet'  => 'items_id',
-                          $table   => 'id', [
-                             'AND' => [
-                                'namet.itemtype'  => getItemTypeForTable($table),
-                                'namet.language'  => $_SESSION['glpilanguage'],
-                                'namet.field'     => 'name'
-                             ]
-                          ]
-                       ]
-                    ];
+            if (isset(\itsmng\Database\EntityRegistry::tables()[$table])) {
+                $type = getItemTypeForTable($table);
+                $translations = [];
+                foreach (['name', 'comment'] as $field) {
+                    if ($translate && Session::haveTranslations($type, $field)) {
+                        $translations[] = $field;
+                    }
                 }
-                if (Session::haveTranslations(getItemTypeForTable($table), 'comment')) {
-                    $SELECTCOMMENT = 'namec.value AS transcomment';
-                    $JOINS['glpi_dropdowntranslations AS namec'] = [
-                       'ON' => [
-                          'namec'  => 'items_id',
-                          $table   => 'id', [
-                             'AND' => [
-                                'namec.itemtype'  => getItemTypeForTable($table),
-                                'namec.language'  => $_SESSION['glpilanguage'],
-                                'namec.field'     => 'comment'
-                             ]
-                          ]
-                       ]
-                    ];
+                $data = (new \itsmng\Database\Repository\DropdownTranslationRepository(\itsmng\Database\Orm::create($DB)))
+                    ->dropdownRow($table, (int)$id, $type, $_SESSION['glpilanguage'] ?? '', $translations);
+                $iterator = new \itsmng\Database\RowIterator($data === null ? [] : [$data]);
+            } else {
+                $SELECTNAME    = new \QueryExpression("'' AS " . $DB->quoteName('transname'));
+                $SELECTCOMMENT = new \QueryExpression("'' AS " . $DB->quoteName('transcomment'));
+                $JOIN          = [];
+                $JOINS         = [];
+                if ($translate) {
+                    if (Session::haveTranslations(getItemTypeForTable($table), 'name')) {
+                        $SELECTNAME = 'namet.value AS transname';
+                        $JOINS['glpi_dropdowntranslations AS namet'] = [
+                           'ON' => [
+                              'namet'  => 'items_id',
+                              $table   => 'id', [
+                                 'AND' => [
+                                    'namet.itemtype'  => getItemTypeForTable($table),
+                                    'namet.language'  => $_SESSION['glpilanguage'],
+                                    'namet.field'     => 'name'
+                                 ]
+                              ]
+                           ]
+                        ];
+                    }
+                    if (Session::haveTranslations(getItemTypeForTable($table), 'comment')) {
+                        $SELECTCOMMENT = 'namec.value AS transcomment';
+                        $JOINS['glpi_dropdowntranslations AS namec'] = [
+                           'ON' => [
+                              'namec'  => 'items_id',
+                              $table   => 'id', [
+                                 'AND' => [
+                                    'namec.itemtype'  => getItemTypeForTable($table),
+                                    'namec.language'  => $_SESSION['glpilanguage'],
+                                    'namec.field'     => 'comment'
+                                 ]
+                              ]
+                           ]
+                        ];
+                    }
+
+                    if (count($JOINS)) {
+                        $JOIN = ['LEFT JOIN' => $JOINS];
+                    }
                 }
 
-                if (count($JOINS)) {
-                    $JOIN = ['LEFT JOIN' => $JOINS];
-                }
+                $criteria = [
+                   'SELECT' => [
+                      "$table.*",
+                      $SELECTNAME,
+                      $SELECTCOMMENT
+                   ],
+                   'FROM'   => $table,
+                   'WHERE'  => ["$table.id" => $id]
+                ] + $JOIN;
+                $iterator = $DB->request($criteria);
             }
-
-            $criteria = [
-               'SELECT' => [
-                  "$table.*",
-                  $SELECTNAME,
-                  $SELECTCOMMENT
-               ],
-               'FROM'   => $table,
-               'WHERE'  => ["$table.id" => $id]
-            ] + $JOIN;
-            $iterator = $DB->request($criteria);
 
             /// TODO review comment management...
             /// TODO getDropdownName need to return only name

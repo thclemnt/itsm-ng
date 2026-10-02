@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\OptionalReferences;
 
 final class ContentMetadataReferences
 {
@@ -13,11 +12,11 @@ final class ContentMetadataReferences
 
     public function plan(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::CONTENT_METADATA, 'content metadata'))->plan($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'CONTENT_METADATA'), 'content metadata'))->plan($connection);
     }
 
     public function apply(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::CONTENT_METADATA, 'content metadata'))->apply($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'CONTENT_METADATA'), 'content metadata'))->apply($connection);
     }
 }

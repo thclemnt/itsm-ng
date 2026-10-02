@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\OptionalReferences;
 
 final class CronLogReferences
 {
@@ -16,7 +15,7 @@ final class CronLogReferences
         if ($connection->fetchOne('SELECT COUNT(*) FROM glpi_crontasklogs l LEFT JOIN glpi_crontasks t ON t.id = l.crontasks_id WHERE t.id IS NULL')) {
             throw new \RuntimeException('Orphaned cron task references; no log schema changes applied.');
         }
-        $plan = (new NullableReferences(OptionalReferences::CRON_LOG_PARENTS, 'cron log'))->plan($connection);
+        $plan = (new NullableReferences(ReferenceHistory::get('optional', 'CRON_LOG_PARENTS'), 'cron log'))->plan($connection);
         $parents = $connection->fetchAllKeyValue('SELECT id, crontasklogs_id FROM glpi_crontasklogs');
         $finished = [];
         foreach ($parents as $id => $_) {
@@ -36,6 +35,6 @@ final class CronLogReferences
     public function apply(Connection $connection): array
     {
         $this->plan($connection);
-        return (new NullableReferences(OptionalReferences::CRON_LOG_PARENTS, 'cron log'))->apply($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'CRON_LOG_PARENTS'), 'cron log'))->apply($connection);
     }
 }

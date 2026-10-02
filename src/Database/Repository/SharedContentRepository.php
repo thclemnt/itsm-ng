@@ -13,24 +13,17 @@ use itsmng\Database\SharedContentAccess;
 /** Personal content and sharing predicates without row-multiplying audience joins. */
 final class SharedContentRepository
 {
-    private const KINDS = [
-        'reminder' => [Entity\Reminder::class, 'reminders', Entity\ReminderUser::class, Entity\GroupReminder::class, Entity\ProfileReminder::class, Entity\EntityReminder::class],
-        'rssfeed' => [Entity\RSSFeed::class, 'rssfeeds', Entity\RSSFeedUser::class, Entity\GroupRSSFeed::class, Entity\ProfileRSSFeed::class, Entity\EntityRSSFeed::class],
-    ];
-
     public function __construct(private EntityManager $em)
     {
     }
 
     public function listing(string $kind, SharedContentAccess $access, bool $personal, bool $excludeOwned, \DateTimeImmutable $now, ?string $language = null): array
     {
-        if (!isset(self::KINDS[$kind])) {
-            throw new \InvalidArgumentException('Unsupported shared content kind');
-        }
+        $class = $this->contentClass($kind);
         if ($access->user <= 0) {
             return [];
         }
-        $query = $this->em->createQueryBuilder()->select('r')->from(self::KINDS[$kind][0], 'r')
+        $query = $this->em->createQueryBuilder()->select('r')->from($class, 'r')
             ->setParameter('viewer', $access->user, Types::INTEGER)->orderBy('r.name')->addOrderBy('r.id');
         if ($personal || !$access->readPublic) {
             $query->where('IDENTITY(r.users) = :viewer');
@@ -79,21 +72,24 @@ final class SharedContentRepository
 
     private function visibility(QueryBuilder $query, string $kind, SharedContentAccess $access): void
     {
-        [, $parent, $user, $group, $profile, $entity] = self::KINDS[$kind];
+        [$user, $userParent] = $this->audience($kind, 'audienceUsers');
+        [$group, $groupParent] = $this->audience($kind, 'audienceGroups');
+        [$profile, $profileParent] = $this->audience($kind, 'audienceProfiles');
+        [$entity, $entityParent] = $this->audience($kind, 'audienceEntities');
         $query->setParameter('yes', true, Types::BOOLEAN)->setParameter('entities', $access->entities ?: [-1])
             ->setParameter('ancestors', $access->ancestors ?: [-1]);
         $scope = static fn (string $field, string $alias): string => '(' . $field . ' IN (:entities) OR (' . $alias . '.is_recursive = :yes AND ' . $field . ' IN (:ancestors)))';
         $conditions = ['IDENTITY(r.users) = :viewer',
-            'EXISTS (SELECT u.id FROM ' . $user . ' u WHERE IDENTITY(u.' . $parent . ') = r.id AND IDENTITY(u.users) = :viewer)'];
+            'EXISTS (SELECT u.id FROM ' . $user . ' u WHERE IDENTITY(u.' . $userParent . ') = r.id AND IDENTITY(u.users) = :viewer)'];
         if ($access->groups) {
             $query->setParameter('groups', $access->groups);
-            $conditions[] = 'EXISTS (SELECT g.id FROM ' . $group . ' g WHERE IDENTITY(g.' . $parent . ') = r.id AND IDENTITY(g.groups) IN (:groups) AND (IDENTITY(g.entities) IS NULL OR ' . $scope('IDENTITY(g.entities)', 'g') . '))';
+            $conditions[] = 'EXISTS (SELECT g.id FROM ' . $group . ' g WHERE IDENTITY(g.' . $groupParent . ') = r.id AND IDENTITY(g.groups) IN (:groups) AND (IDENTITY(g.entities) IS NULL OR ' . $scope('IDENTITY(g.entities)', 'g') . '))';
         }
         if ($access->profile > 0) {
             $query->setParameter('profile', $access->profile, Types::INTEGER);
-            $conditions[] = 'EXISTS (SELECT p.id FROM ' . $profile . ' p WHERE IDENTITY(p.' . $parent . ') = r.id AND IDENTITY(p.profiles) = :profile AND (IDENTITY(p.entities) IS NULL OR ' . $scope('IDENTITY(p.entities)', 'p') . '))';
+            $conditions[] = 'EXISTS (SELECT p.id FROM ' . $profile . ' p WHERE IDENTITY(p.' . $profileParent . ') = r.id AND IDENTITY(p.profiles) = :profile AND (IDENTITY(p.entities) IS NULL OR ' . $scope('IDENTITY(p.entities)', 'p') . '))';
         }
-        $conditions[] = 'EXISTS (SELECT e.id FROM ' . $entity . ' e WHERE IDENTITY(e.' . $parent . ') = r.id AND ' . $scope('IDENTITY(e.entities)', 'e') . ')';
+        $conditions[] = 'EXISTS (SELECT e.id FROM ' . $entity . ' e WHERE IDENTITY(e.' . $entityParent . ') = r.id AND ' . $scope('IDENTITY(e.entities)', 'e') . ')';
         $query->where('(' . implode(' OR ', $conditions) . ')');
     }
 
@@ -144,5 +140,21 @@ final class SharedContentRepository
             $this->em->detach($record);
         }
         return $rows;
+    }
+
+    private function contentClass(string $kind): string
+    {
+        return match ($kind) {
+            'reminder' => Entity\Reminder::class,
+            'rssfeed' => Entity\RSSFeed::class,
+            default => throw new \InvalidArgumentException('Unsupported shared content kind'),
+        };
+    }
+
+    /** The entity's inverse association identifies its owning audience link. */
+    private function audience(string $kind, string $property): array
+    {
+        $mapping = $this->em->getClassMetadata($this->contentClass($kind))->getAssociationMapping($property);
+        return [$mapping->targetEntity, $mapping->mappedBy];
     }
 }

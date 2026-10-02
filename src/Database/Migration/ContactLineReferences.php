@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\OptionalReferences;
 
 final class ContactLineReferences
 {
@@ -13,11 +12,11 @@ final class ContactLineReferences
 
     public function plan(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::CONTACT_LINE_METADATA, 'contact and line'))->plan($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'CONTACT_LINE_METADATA'), 'contact and line'))->plan($connection);
     }
 
     public function apply(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::CONTACT_LINE_METADATA, 'contact and line'))->apply($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'CONTACT_LINE_METADATA'), 'contact and line'))->apply($connection);
     }
 }

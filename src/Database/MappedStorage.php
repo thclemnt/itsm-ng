@@ -9,22 +9,20 @@ use itsmng\Database\Repository\RecordWriter;
 /** Persistence adapter beneath CommonDBTM's validation, hooks and history. */
 final class MappedStorage
 {
-    public const TABLES = EntityRegistry::TABLES;
-
     public function __construct(private \DBAdapter $db)
     {
     }
 
     public static function supports(string $table): bool
     {
-        return isset(self::TABLES[$table]);
+        return isset(EntityRegistry::tables()[$table]);
     }
 
     public function insert(string $table, array $values): int
     {
         $em = Orm::create($this->db);
         try {
-            return (new RecordWriter($em))->insert($table, EntityConfigurationReferences::normalizeLegacy($table, GlobalEntityScopes::normalizeLegacy($table, ContentAudienceScopes::normalizeLegacy($table, OptionalReferences::normalizeLegacy($table, self::values($values))))));
+            return (new RecordWriter($em))->insert($table, ReferenceValues::normalizeLegacy($table, self::values($values)));
         } finally {
             $em->clear();
         }
@@ -35,7 +33,7 @@ final class MappedStorage
     {
         $em = Orm::create($this->db);
         try {
-            $changed = (new RecordWriter($em))->update($table, $id, EntityConfigurationReferences::normalizeLegacy($table, GlobalEntityScopes::normalizeLegacy($table, ContentAudienceScopes::normalizeLegacy($table, OptionalReferences::normalizeLegacy($table, self::values($values))))));
+            $changed = (new RecordWriter($em))->update($table, $id, ReferenceValues::normalizeLegacy($table, self::values($values)));
             return EntityConfigurationReferences::legacyChanges($table, $changed);
         } finally {
             $em->clear();

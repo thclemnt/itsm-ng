@@ -22,7 +22,7 @@ use Doctrine\DBAL\Schema\Table;
 use itsmng\Database\BaselineSchema;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\LegacySql;
-use itsmng\Database\BooleanColumns;
+use itsmng\Database\EntityRegistry;
 
 if (!str_starts_with($DB->dbdefault, 'itsm_port_')) {
     throw new RuntimeException('Refusing to use a database not named itsm_port_*.');
@@ -41,7 +41,7 @@ $connection = $DB->getDoctrineConnection();
 $connection->setNestTransactionsWithSavepoints(true);
 $platform = $connection->getDatabasePlatform();
 $schema = (new BaselineSchema())->build($platform);
-check(count($schema->getTables()) === 355, 'Baseline must include all 355 distinct tables.');
+check(count($schema->getTables()) === 357, 'Baseline includes legacy tables and normalized aggregate and guest memberships.');
 check(count($schema->getTable('glpi_profiles_users')->getForeignKeys()) === 3, 'Profile membership schema foreign keys.');
 check((new ForeignKeys())->audit($connection) === [], 'Seeded database must not contain orphaned associations.');
 check((new ForeignKeys())->plan($connection) === [], 'Installed foreign keys must be idempotent.');
@@ -151,18 +151,15 @@ try {
     check((bool)$DB->releaseLock('portability-contract'), 'Advisory lock released.');
 
     // Every audited relationship rejects an orphan, including raw SQL callers.
-    foreach (ForeignKeys::RELATIONS as $child => $relations) {
+    foreach (ForeignKeys::relations() as $child => $relations) {
         foreach ($relations as $column => $parent) {
             $connection->beginTransaction();
             try {
                 $references = [];
                 foreach ($relations as $reference => $target) {
-                    if ($target === 'glpi_entities') {
-                        $references[$reference] = 0;
-                        continue;
-                    }
-                    $references[$reference] = (new FixtureRecords($DB))->create($target);
+                    $references[$reference] = FixtureRecords::referenceParent($child, $reference, $target, (new FixtureRecords($DB))->create(...));
                 }
+                $references = FixtureRecords::selectReferenceKind($child, $references, $column);
                 $childId = (new FixtureRecords($DB))->create($child, $references);
                 // Only failure of this exact mutation proves this constraint works.
                 try {
@@ -210,7 +207,7 @@ try {
         check($connection->fetchOne('SHOW TIMEZONE') === 'Europe/Paris', 'Session timezone.');
         check(LegacySql::postgres("SELECT 'GROUP_CONCAT(`x`)  ?' AS `value`", true) === "SELECT 'GROUP_CONCAT(`x`)  ?' AS \"value\"", 'SQL values must not be rewritten.');
         $columnTypes = $connection->fetchAllKeyValue("SELECT table_name || '.' || column_name, data_type FROM information_schema.columns WHERE table_schema = current_schema()");
-        foreach (BooleanColumns::TABLES as $tableName => $columns) {
+        foreach (EntityRegistry::booleanColumns() as $tableName => $columns) {
             foreach ($columns as $column) {
                 check(($columnTypes[$tableName . '.' . $column] ?? '') === 'boolean', 'Native boolean column: ' . $tableName . '.' . $column);
             }

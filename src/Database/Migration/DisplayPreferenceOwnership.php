@@ -8,7 +8,6 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Table;
-use itsmng\Database\OptionalReferences;
 
 /** NULL means default display preferences; its identity must remain unique after migration. */
 final class DisplayPreferenceOwnership
@@ -32,7 +31,7 @@ final class DisplayPreferenceOwnership
 
     public function plan(Connection $connection): array
     {
-        $plan = (new NullableReferences(OptionalReferences::DISPLAY_PREFERENCE_OWNERS, 'display preference owner'))->plan($connection);
+        $plan = (new NullableReferences(ReferenceHistory::get('optional', 'DISPLAY_PREFERENCE_OWNERS'), 'display preference owner'))->plan($connection);
         array_push($plan['sql'], ...$this->uniquenessPlan($connection));
         return $plan;
     }
@@ -44,7 +43,7 @@ final class DisplayPreferenceOwnership
             throw new \RuntimeException('MySQL display preference DDL must run outside an application transaction.');
         }
         $apply = function () use ($connection): array {
-            $counts = (new NullableReferences(OptionalReferences::DISPLAY_PREFERENCE_OWNERS, 'display preference owner'))->apply($connection);
+            $counts = (new NullableReferences(ReferenceHistory::get('optional', 'DISPLAY_PREFERENCE_OWNERS'), 'display preference owner'))->apply($connection);
             foreach ($this->uniquenessPlan($connection) as $sql) {
                 $connection->executeStatement($sql);
             }

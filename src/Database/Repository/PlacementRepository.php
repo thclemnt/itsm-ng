@@ -33,13 +33,23 @@ final class PlacementRepository
 
     public function clusterSelection(): array
     {
-        return $this->group($this->assignments(Entity\ItemCluster::class));
+        $items = [];
+        foreach (\itsmng\Database\EntityRegistry::discriminatedReferences('glpi_items_clusters')['items_id']['selections'] as $kind => $selection) {
+            $association = Entity\ItemCluster::referenceAssociation($kind);
+            $rows = $this->em->createQueryBuilder()->select('IDENTITY(i.' . $association . ') AS id')
+                ->from(Entity\ItemCluster::class, 'i')->where('i.' . $association . ' IS NOT NULL')
+                ->orderBy('i.' . $association)->getQuery()->getScalarResult();
+            if ($rows) {
+                $items[$kind] = array_values(array_unique(array_map('intval', array_column($rows, 'id'))));
+            }
+        }
+        return $items;
     }
 
     public function pduSelection(): array
     {
-        $racked = $this->em->createQueryBuilder()->select('i.items_id AS id')->from(Entity\ItemRack::class, 'i')
-            ->where('i.itemtype = :type')->setParameter('type', 'PDU', Types::STRING)->orderBy('i.items_id')
+        $racked = $this->em->createQueryBuilder()->select('IDENTITY(i.assetPdu) AS id')->from(Entity\ItemRack::class, 'i')
+            ->where('i.assetPdu IS NOT NULL')->orderBy('i.assetPdu')
             ->getQuery()->getScalarResult();
         return array_values(array_unique([...$this->sidePdus(), ...array_map('intval', array_column($racked, 'id'))]));
     }

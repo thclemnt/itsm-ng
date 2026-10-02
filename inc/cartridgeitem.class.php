@@ -163,21 +163,8 @@ class CartridgeItem extends CommonDBTM
     {
         global $DB;
 
-        if (
-            ($cartridgeitems_id > 0)
-            && ($printermodels_id > 0)
-        ) {
-            $params = [
-               'cartridgeitems_id' => $cartridgeitems_id,
-               'printermodels_id'  => $printermodels_id
-            ];
-            $result = $DB->insert('glpi_cartridgeitems_printermodels', $params);
-
-            if ($result && ($DB->affectedRows() > 0)) {
-                return true;
-            }
-        }
-        return false;
+        return (new \itsmng\Database\Repository\PrinterCompatibilityRepository(\itsmng\Database\Orm::create($DB)))
+            ->add((int)$cartridgeitems_id, (int)$printermodels_id);
     }
 
 

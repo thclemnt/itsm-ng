@@ -2396,46 +2396,9 @@ class Ticket extends CommonITILObject
     {
         global $DB;
 
-        $result = [];
+        return (new \itsmng\Database\Repository\TicketAssetRepository(\itsmng\Database\Orm::create($DB)))
+            ->activeOrRecent((string)$itemtype, (int)$items_id, array_merge($this->getClosedStatusArray(), $this->getSolvedStatusArray()), (int)$days);
 
-        $iterator = $DB->request([
-           'FROM'      => $this->getTable(),
-           'LEFT JOIN' => [
-              'glpi_items_tickets' => [
-                 'ON' => [
-                    'glpi_items_tickets' => 'tickets_id',
-                    $this->getTable()    => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_items_tickets.items_id' => $items_id,
-              'glpi_items_tickets.itemtype' => $itemtype,
-              'OR'                          => [
-                 [
-                    'NOT' => [
-                       $this->getTable() . '.status' => array_merge(
-                           $this->getClosedStatusArray(),
-                           $this->getSolvedStatusArray()
-                       )
-                    ]
-                 ],
-                 [
-                  'NOT' => [$this->getTable() . '.solvedate' => null],
-                  new \QueryExpression(
-                      "ADDDATE(" . $DB->quoteName($this->getTable()) .
-                        "." . $DB->quoteName('solvedate') . ", INTERVAL $days DAY) > NOW()"
-                  )
-                 ]
-              ]
-           ]
-        ]);
-
-        while ($tick = $iterator->next()) {
-            $result[$tick['id']] = $tick['name'];
-        }
-
-        return $result;
     }
 
 
@@ -2453,29 +2416,9 @@ class Ticket extends CommonITILObject
     {
         global $DB;
 
-        $result = $DB->request([
-           'COUNT'     => 'cpt',
-           'FROM'      => $this->getTable(),
-           'LEFT JOIN' => [
-              'glpi_items_tickets' => [
-                 'ON' => [
-                    'glpi_items_tickets' => 'tickets_id',
-                    $this->getTable()    => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_items_tickets.itemtype' => $itemtype,
-              'glpi_items_tickets.items_id' => $items_id,
-              'NOT'                         => [
-                 $this->getTable() . '.status' => array_merge(
-                     $this->getSolvedStatusArray(),
-                     $this->getClosedStatusArray()
-                 )
-              ]
-           ]
-        ])->next();
-        return $result['cpt'];
+        return (new \itsmng\Database\Repository\TicketAssetRepository(\itsmng\Database\Orm::create($DB)))
+            ->activeCount((string)$itemtype, (int)$items_id, array_merge($this->getSolvedStatusArray(), $this->getClosedStatusArray()));
+
     }
 
     /**
@@ -2487,40 +2430,16 @@ class Ticket extends CommonITILObject
      * @param integer $items_id    ID of the Item
      * @param string $type         Type of the tickets (incident or request)
      *
-     * @return DBmysqlIterator
+     * @return \itsmng\Database\RowIterator
      */
     public function getActiveTicketsForItem($itemtype, $items_id, $type)
     {
         global $DB;
 
-        return $DB->request([
-           'SELECT'    => [
-              $this->getTable() . '.id',
-              $this->getTable() . '.name',
-              $this->getTable() . '.priority',
-           ],
-           'FROM'      => $this->getTable(),
-           'LEFT JOIN' => [
-              'glpi_items_tickets' => [
-                 'ON' => [
-                    'glpi_items_tickets' => 'tickets_id',
-                    $this->getTable()    => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_items_tickets.itemtype'    => $itemtype,
-              'glpi_items_tickets.items_id'    => $items_id,
-              $this->getTable() . '.is_deleted' => 0,
-              $this->getTable() . '.type'      => $type,
-              'NOT'                         => [
-                 $this->getTable() . '.status' => array_merge(
-                     $this->getSolvedStatusArray(),
-                     $this->getClosedStatusArray()
-                 )
-              ]
-           ]
-        ]);
+        $rows = (new \itsmng\Database\Repository\TicketAssetRepository(\itsmng\Database\Orm::create($DB)))
+            ->active((string)$itemtype, (int)$items_id, array_merge($this->getSolvedStatusArray(), $this->getClosedStatusArray()), (int)$type);
+        return new \itsmng\Database\RowIterator($rows);
+
     }
 
     /**
@@ -2538,33 +2457,9 @@ class Ticket extends CommonITILObject
     {
         global $DB;
 
-        $result = $DB->request([
-           'COUNT'     => 'cpt',
-           'FROM'      => $this->getTable(),
-           'LEFT JOIN' => [
-              'glpi_items_tickets' => [
-                 'ON' => [
-                    'glpi_items_tickets' => 'tickets_id',
-                    $this->getTable()    => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_items_tickets.itemtype' => $itemtype,
-              'glpi_items_tickets.items_id' => $items_id,
-              $this->getTable() . '.status' => array_merge(
-                  $this->getSolvedStatusArray(),
-                  $this->getClosedStatusArray()
-              ),
-              new \QueryExpression(
-                  "ADDDATE(" . $DB->quoteName($this->getTable() . ".solvedate") . ", INTERVAL $days DAY) > NOW()"
-              ),
-              'NOT'                         => [
-                 $this->getTable() . '.solvedate' => null
-              ]
-           ]
-        ])->next();
-        return $result['cpt'];
+        return (new \itsmng\Database\Repository\TicketAssetRepository(\itsmng\Database\Orm::create($DB)))
+            ->recentlyFinishedCount((string)$itemtype, (int)$items_id, array_merge($this->getSolvedStatusArray(), $this->getClosedStatusArray()), (int)$days);
+
     }
 
 
@@ -3762,38 +3657,13 @@ class Ticket extends CommonITILObject
         global $DB;
 
         $totalcost = 0;
-
-        $iterator = $DB->request([
-           'SELECT'    => 'glpi_ticketcosts.*',
-           'FROM'      => 'glpi_ticketcosts',
-           'LEFT JOIN' => [
-              'glpi_items_tickets' => [
-                 'ON' => [
-                    'glpi_items_tickets' => 'tickets_id',
-                    'glpi_ticketcosts'   => 'tickets_id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              'glpi_items_tickets.itemtype' => get_class($item),
-              'glpi_items_tickets.items_id' => $item->getField('id'),
-              'OR'                          => [
-                 'glpi_ticketcosts.cost_time'     => ['>', 0],
-                 'glpi_ticketcosts.cost_fixed'    => ['>', 0],
-                 'glpi_ticketcosts.cost_material' => ['>', 0]
-              ]
-           ]
-        ]);
-
-        while ($data = $iterator->next()) {
-            $totalcost += TicketCost::computeTotalCost(
-                $data["actiontime"],
-                $data["cost_time"],
-                $data["cost_fixed"],
-                $data["cost_material"]
-            );
+        $costs = (new \itsmng\Database\Repository\TicketAssetRepository(\itsmng\Database\Orm::create($DB)))
+            ->costs($item->getType(), (int)$item->getID());
+        foreach ($costs as $data) {
+            $totalcost += TicketCost::computeTotalCost($data['actiontime'], $data['cost_time'], $data['cost_fixed'], $data['cost_material']);
         }
         return $totalcost;
+
     }
 
 
@@ -7236,26 +7106,16 @@ class Ticket extends CommonITILObject
         // Recherche des entit??s
         $tot = 0;
 
-        $entities = $DB->request(
-            [
-              'SELECT' => 'id',
-              'FROM'   => Entity::getTable(),
-            ]
-        );
-        foreach ($entities as $entity) {
-            $delay  = Entity::getUsedConfig('autoclose_delay', $entity['id'], '', Entity::CONFIG_NEVER);
+        $candidates = new \itsmng\Database\Repository\TicketAutomaticActionRepository(\itsmng\Database\Orm::create($DB));
+        $entities = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+            ->identifiers(Entity::getTable(), 'id', [], ['id ASC']);
+        foreach ($entities as $entityId) {
+            $delay  = Entity::getUsedConfig('autoclose_delay', $entityId, '', Entity::CONFIG_NEVER);
             if ($delay >= 0) {
-                $criteria = [
-                   'FROM'   => self::getTable(),
-                   'WHERE'  => [
-                      'entities_id'  => $entity['id'],
-                      'status'       => $_SESSION['SOLVED'],
-                      'is_deleted'   => 0
-                   ]
-                ];
+                $cutoff = null;
 
                 if ($delay > 0) {
-                    $calendars_id = Entity::getUsedConfig('calendars_id', $entity['id']);
+                    $calendars_id = Entity::getUsedConfig('calendars_id', $entityId);
                     $calendar = new Calendar();
                     if ($calendars_id && $calendar->getFromDB($calendars_id) && $calendar->hasAWorkingDay()) {
                         $end_date = $calendar->computeEndDate(
@@ -7264,20 +7124,15 @@ class Ticket extends CommonITILObject
                             0,
                             true
                         );
-                        $criteria['WHERE']['solvedate'] = ['<=', $end_date];
-                    } else {
-                        // no calendar, remove all days
-                        $criteria['WHERE'][] = new \QueryExpression(
-                            "ADDDATE(" . $DB->quoteName('solvedate') . ", INTERVAL $delay DAY) < NOW()"
-                        );
+                        $cutoff = new DateTimeImmutable($end_date);
                     }
                 }
 
                 $nb = 0;
-                $iterator = $DB->request($criteria);
-                while ($tick = $iterator->next()) {
+                $ids = $candidates->closeCandidates($entityId, (int)$_SESSION['SOLVED'], (int)$delay, $cutoff);
+                foreach ($ids as $id) {
                     $ticket->update([
-                       'id'           => $tick['id'],
+                       'id'           => $id,
                        'status'       => $_SESSION['CLOSED'],
                        '_auto_update' => true
                     ]);
@@ -7287,7 +7142,7 @@ class Ticket extends CommonITILObject
                 if ($nb) {
                     $tot += $nb;
                     $task->addVolume($nb);
-                    $task->log(Dropdown::getDropdownName('glpi_entities', $entity['id']) . " : $nb");
+                    $task->log(Dropdown::getDropdownName('glpi_entities', $entityId) . " : $nb");
                 }
             }
         }
@@ -7312,26 +7167,11 @@ class Ticket extends CommonITILObject
         }
         // Recherche des entit??s
         $tot = 0;
+        $candidates = new \itsmng\Database\Repository\TicketAutomaticActionRepository(\itsmng\Database\Orm::create($DB));
         foreach (Entity::getEntitiesToNotify('notclosed_delay') as $entity => $value) {
-            $iterator = $DB->request([
-               'FROM'   => self::getTable(),
-               'WHERE'  => [
-                  'entities_id'  => $entity,
-                  'is_deleted'   => 0,
-                  'status'       => [
-                     $_SESSION['INCOMING'],
-                     $_SESSION['ASSIGNED'],
-                     $_SESSION['PLANNED'],
-                     $_SESSION['WAITING']
-                  ],
-                  'closedate'    => null,
-                  new QueryExpression("ADDDATE(" . $DB->quoteName('date') . ", INTERVAL $value DAY) < NOW()")
-               ]
-            ]);
-            $tickets = [];
-            while ($tick = $iterator->next()) {
-                $tickets[] = $tick;
-            }
+            $tickets = $candidates->overdue((int)$entity, [
+                $_SESSION['INCOMING'], $_SESSION['ASSIGNED'], $_SESSION['PLANNED'], $_SESSION['WAITING'],
+            ], (int)$value);
 
             if (!empty($tickets)) {
                 if (
@@ -7381,12 +7221,14 @@ class Ticket extends CommonITILObject
             $tabentities[0] = $rate;
         }
 
-        foreach ($DB->request('glpi_entities') as $entity) {
-            $rate   = Entity::getUsedConfig('inquest_config', $entity['id'], 'inquest_rate');
-            $parent = Entity::getUsedConfig('inquest_config', $entity['id'], 'entities_id');
+        $candidates = new \itsmng\Database\Repository\TicketAutomaticActionRepository(\itsmng\Database\Orm::create($DB));
+        $entities = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+            ->identifiers(Entity::getTable(), 'id', [], ['id ASC']);
+        foreach ($entities as $entityId) {
+            $rate   = Entity::getUsedConfig('inquest_config', $entityId, 'inquest_rate');
 
             if ($rate > 0) {
-                $tabentities[$entity['id']] = $rate;
+                $tabentities[$entityId] = $rate;
             }
         }
 
@@ -7397,44 +7239,18 @@ class Ticket extends CommonITILObject
             $type          = Entity::getUsedConfig('inquest_config', $entity);
             $max_closedate = Entity::getUsedConfig('inquest_config', $entity, 'max_closedate');
 
-            $table = self::getTable();
-            $iterator = $DB->request([
-               'SELECT'    => [
-                  "$table.id",
-                  "$table.closedate",
-                  "$table.entities_id"
-               ],
-               'FROM'      => $table,
-               'LEFT JOIN' => [
-                  'glpi_ticketsatisfactions' => [
-                     'ON' => [
-                        'glpi_ticketsatisfactions' => 'tickets_id',
-                        'glpi_tickets'             => 'id'
-                     ]
-                  ],
-                  'glpi_entities'            => [
-                     'ON' => [
-                        'glpi_tickets'    => 'entities_id',
-                        'glpi_entities'   => 'id'
-                     ]
-                  ]
-               ],
-               'WHERE'     => [
-                  "$table.entities_id"          => $entity,
-                  "$table.is_deleted"           => 0,
-                  "$table.status"               => $_SESSION['CLOSED'],
-                  "$table.closedate"            => ['>', $max_closedate],
-                  new QueryExpression("ADDDATE(" . $DB->quoteName("$table.closedate") . ", INTERVAL $delay DAY) <= NOW()"),
-                  new QueryExpression("ADDDATE(" . $DB->quoteName("glpi_entities.max_closedate") . ", INTERVAL $duration DAY) <= NOW()"),
-                  "glpi_ticketsatisfactions.id" => null
-               ],
-               'ORDERBY'   => 'closedate ASC'
-            ]);
+            $rows = $candidates->surveyCandidates(
+                (int)$entity,
+                (int)$_SESSION['CLOSED'],
+                $max_closedate ? new DateTimeImmutable($max_closedate) : null,
+                (int)$delay,
+                (int)$duration
+            );
 
             $nb            = 0;
             $max_closedate = '';
 
-            while ($tick = $iterator->next()) {
+            foreach ($rows as $tick) {
                 $max_closedate = $tick['closedate'];
                 if (mt_rand(1, 100) <= $rate) {
                     if (
@@ -7500,36 +7316,20 @@ class Ticket extends CommonITILObject
         //search entities
         $tot = 0;
 
-        $entities = $DB->request(
-            [
-              'SELECT' => 'id',
-              'FROM'   => Entity::getTable(),
-            ]
-        );
+        $candidates = new \itsmng\Database\Repository\TicketAutomaticActionRepository(\itsmng\Database\Orm::create($DB));
+        $entities = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+            ->identifiers(Entity::getTable(), 'id', [], ['id ASC']);
 
-        foreach ($entities as $entity) {
-            $delay  = Entity::getUsedConfig('autopurge_delay', $entity['id'], '', Entity::CONFIG_NEVER);
+        foreach ($entities as $entityId) {
+            $delay  = Entity::getUsedConfig('autopurge_delay', $entityId, '', Entity::CONFIG_NEVER);
             if ($delay >= 0) {
-                $criteria = [
-                   'FROM'   => $ticket->getTable(),
-                   'WHERE'  => [
-                      'entities_id'  => $entity['id'],
-                      'status'       => $ticket->getClosedStatusArray(),
-                   ]
-                ];
-
-                if ($delay > 0) {
-                    // remove all days
-                    $criteria['WHERE'][] = new \QueryExpression("ADDDATE(`closedate`, INTERVAL " . $delay . " DAY) < NOW()");
-                }
-
-                $iterator = $DB->request($criteria);
+                $ids = $candidates->purgeCandidates($entityId, $ticket->getClosedStatusArray(), (int)$delay);
                 $nb = 0;
 
-                foreach ($iterator as $tick) {
+                foreach ($ids as $id) {
                     $ticket->delete(
                         [
-                          'id'           => $tick['id'],
+                          'id'           => $id,
                           '_auto_update' => true
                         ],
                         true
@@ -7540,7 +7340,7 @@ class Ticket extends CommonITILObject
                 if ($nb) {
                     $tot += $nb;
                     $task->addVolume($nb);
-                    $task->log(Dropdown::getDropdownName('glpi_entities', $entity['id']) . " : $nb");
+                    $task->log(Dropdown::getDropdownName('glpi_entities', $entityId) . " : $nb");
                 }
             }
         }
@@ -8117,7 +7917,7 @@ class Ticket extends CommonITILObject
                            'itemtype' => 'Ticket'
                         ]);
                         foreach ($tomerge as $fup2) {
-                            $fup2['items_id'] = $merge_target_id;
+                            $fup2 = \itsmng\Database\Entity\ITILFollowup::withReference($fup2, 'Ticket', (int)$merge_target_id);
                             $fup2['sourceitems_id'] = $id;
                             $fup2['content'] = $DB->escape($fup2['content']);
                             unset($fup2['id']);
@@ -8168,7 +7968,7 @@ class Ticket extends CommonITILObject
                         ]);
 
                         foreach ($tomerge as $document_item2) {
-                            $document_item2['items_id'] = $merge_target_id;
+                            $document_item2 = \itsmng\Database\Entity\DocumentItem::withReference($document_item2, 'Ticket', (int)$merge_target_id);
                             unset($document_item2['id']);
                             if (!$document_item->add($document_item2)) {
                                 //Cannot add document. Abort/fail the merge

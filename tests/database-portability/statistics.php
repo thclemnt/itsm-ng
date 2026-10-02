@@ -176,7 +176,8 @@ try {
         verify(Stat::constructEntryValues('Ticket', 'inter_total', '2025-01-01', '2025-01-31', $dimension, 0)['2025-01'] === 1, 'Empty association dimension: ' . $dimension);
     }
     $otherSolution = $create('glpi_solutiontypes', ['name' => 'Different item type solution']);
-    $create('glpi_itilsolutions', ['itemtype' => 'Problem', 'items_id' => $anonymous, 'solutiontypes_id' => $otherSolution]);
+    $overlappingProblem = $create('glpi_problems', ['id' => $anonymous, 'name' => 'Overlapping solution subject']);
+    $create('glpi_itilsolutions', ['itemtype' => 'Problem', 'items_id' => $overlappingProblem, 'solutiontypes_id' => $otherSolution]);
     verify(Stat::constructEntryValues('Ticket', 'inter_total', '2025-01-01', '2025-01-31', 'solutiontypes_id', $otherSolution)['2025-01'] === 0, 'Solution discriminator prevents ID collisions');
     $templateType = $create('glpi_computertypes', ['name' => 'Only templates']);
     $template = $create('glpi_computers', ['entities_id' => $entity, 'is_template' => true, 'computertypes_id' => $templateType]);

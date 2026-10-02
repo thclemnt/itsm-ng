@@ -18,12 +18,12 @@ final class FinancialRepository
 
     public static function supports(string $itemtype): bool
     {
-        return isset(EntityRegistry::TABLES[\getTableForItemType($itemtype)]);
+        return isset(EntityRegistry::tables()[\getTableForItemType($itemtype)]);
     }
 
     public function rows(string $itemtype, string $begin, string $end, ?array $entities, bool $assets): array
     {
-        $class = EntityRegistry::TABLES[\getTableForItemType($itemtype)];
+        $class = EntityRegistry::tables()[\getTableForItemType($itemtype)];
         $query = $this->em->createQueryBuilder()->select('i')->from(Entity\Infocom::class, 'i')
             ->innerJoin($class, 'a', 'WITH', 'a.id = i.items_id')
             ->where('i.itemtype = :itemtype')->setParameter('itemtype', $itemtype);
@@ -36,7 +36,7 @@ final class FinancialRepository
         } elseif ($itemtype === 'SoftwareLicense') {
             $query->innerJoin('a.softwares', 's');
         } elseif (is_a($itemtype, \CommonDBChild::class, true)) {
-            $parent = EntityRegistry::TABLES[$itemtype::$itemtype::getTable()];
+            $parent = EntityRegistry::tables()[$itemtype::$itemtype::getTable()];
             $metadata = $this->em->getClassMetadata($class);
             $column = $itemtype::$items_id;
             $field = $metadata->getFieldName($column);

@@ -2,9 +2,9 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Migration\LocationReferences;
-use itsmng\Database\OptionalReferences;
 
 $directory = $argv[1] ?? '';
 if (!is_file($directory . '/config_db.php')) {
@@ -38,7 +38,7 @@ try {
     $unrelated = $fixtures->create('glpi_locations', ['name' => 'Unrelated item location']);
     $children = [];
     $others = [];
-    foreach (OptionalReferences::LOCATIONS as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'LOCATIONS') as $table => $relations) {
         $values = ['locations_id' => $locationId];
         $otherValues = ['locations_id' => $unrelated];
         if ($table === 'glpi_users') {
@@ -135,7 +135,7 @@ $quote = $platform->quoteIdentifier(...);
 $migration = new LocationReferences();
 $legacyId = null;
 try {
-    foreach (OptionalReferences::LOCATIONS as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'LOCATIONS') as $table => $relations) {
         foreach ($relations as $column => $target) {
             $connection->executeStatement($platform->getDropForeignKeySQL(ForeignKeys::name($table, $column), $table));
             $connection->executeStatement('UPDATE ' . $quote($table) . ' SET ' . $quote($column) . ' = 0 WHERE ' . $quote($column) . ' IS NULL');

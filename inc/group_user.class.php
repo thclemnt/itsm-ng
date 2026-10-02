@@ -49,6 +49,12 @@ class Group_User extends CommonDBRelation
     public static $itemtype_2                 = 'Group';
     public static $items_id_2                 = 'groups_id';
 
+    private static function repository(): \itsmng\Database\Repository\GroupMembershipRepository
+    {
+        global $DB;
+        return new \itsmng\Database\Repository\GroupMembershipRepository(\itsmng\Database\Orm::create($DB));
+    }
+
     /**
     * Check if a user belongs to a group
     *
@@ -80,37 +86,7 @@ class Group_User extends CommonDBRelation
     **/
     public static function getUserGroups($users_id, $condition = [])
     {
-        global $DB;
-
-        $groups = [];
-        $iterator = $DB->request([
-           'SELECT' => [
-              'glpi_groups.*',
-              'glpi_groups_users.id AS IDD',
-              'glpi_groups_users.id AS linkid',
-              'glpi_groups_users.is_dynamic AS is_dynamic',
-              'glpi_groups_users.is_manager AS is_manager',
-              'glpi_groups_users.is_userdelegate AS is_userdelegate'
-           ],
-           'FROM'   => self::getTable(),
-           'LEFT JOIN'    => [
-              Group::getTable() => [
-                 'FKEY' => [
-                    Group::getTable() => 'id',
-                    self::getTable()  => 'groups_id'
-                 ]
-              ]
-           ],
-           'WHERE'        => [
-              'glpi_groups_users.users_id' => $users_id
-           ] + $condition,
-           'ORDER'        => 'glpi_groups.name'
-        ]);
-        while ($row = $iterator->next()) {
-            $groups[] = $row;
-        }
-
-        return $groups;
+        return self::repository()->groupsForUser((int)$users_id, $condition);
     }
 
 
@@ -126,38 +102,7 @@ class Group_User extends CommonDBRelation
     **/
     public static function getGroupUsers($groups_id, $condition = [])
     {
-        global $DB;
-
-        $users = [];
-
-        $iterator = $DB->request([
-           'SELECT' => [
-              'glpi_users.*',
-              'glpi_groups_users.id AS IDD',
-              'glpi_groups_users.id AS linkid',
-              'glpi_groups_users.is_dynamic AS is_dynamic',
-              'glpi_groups_users.is_manager AS is_manager',
-              'glpi_groups_users.is_userdelegate AS is_userdelegate'
-           ],
-           'FROM'   => self::getTable(),
-           'LEFT JOIN'    => [
-              User::getTable() => [
-                 'FKEY' => [
-                    User::getTable() => 'id',
-                    self::getTable()  => 'users_id'
-                 ]
-              ]
-           ],
-           'WHERE'        => [
-              'glpi_groups_users.groups_id' => $groups_id
-           ] + $condition,
-           'ORDER'        => 'glpi_users.name'
-        ]);
-        while ($row = $iterator->next()) {
-            $users[] = $row;
-        }
-
-        return $users;
+        return self::repository()->usersForGroup((int)$groups_id, $condition);
     }
 
 
@@ -372,22 +317,7 @@ class Group_User extends CommonDBRelation
     **/
     public static function getDataForGroup(Group $group, &$members, &$ids, $crit = '', $tree = 0)
     {
-        global $DB;
-
-        // Entity restriction for this group, according to user allowed entities
-        if ($group->fields['is_recursive']) {
-            $entityrestrict = getSonsOf('glpi_entities', $group->fields['entities_id']);
-
-            // active entity could be a child of object entity
-            if (
-                ($_SESSION['glpiactive_entity'] != $group->fields['entities_id'])
-                && in_array($_SESSION['glpiactive_entity'], $entityrestrict)
-            ) {
-                $entityrestrict = getSonsOf('glpi_entities', $_SESSION['glpiactive_entity']);
-            }
-        } else {
-            $entityrestrict = $group->fields['entities_id'];
-        }
+        $entityrestrict = self::getEntityRestrictForGroup($group);
 
         if ($tree) {
             $restrict = getSonsOf('glpi_groups', $group->getID());
@@ -395,45 +325,10 @@ class Group_User extends CommonDBRelation
             $restrict = $group->getID();
         }
 
-        // All group members
-        $pu_table = Profile_User::getTable();
-        $iterator = $DB->request([
-           'SELECT' => [
-              'glpi_users.id',
-              'glpi_groups_users.id AS linkid',
-              'glpi_groups_users.groups_id',
-              'glpi_groups_users.is_dynamic AS is_dynamic',
-              'glpi_groups_users.is_manager AS is_manager',
-              'glpi_groups_users.is_userdelegate AS is_userdelegate'
-           ],
-           'DISTINCT'  => true,
-           'FROM'      => self::getTable(),
-           'LEFT JOIN' => [
-              User::getTable() => [
-                 'ON' => [
-                    self::getTable() => 'users_id',
-                    User::getTable() => 'id'
-                 ]
-              ],
-              $pu_table => [
-                 'ON' => [
-                    $pu_table        => 'users_id',
-                    User::getTable() => 'id'
-                 ]
-              ]
-           ],
-           'WHERE' => [
-              self::getTable() . '.groups_id'  => $restrict,
-              'OR' => [
-                 "$pu_table.entities_id" => null
-              ] + getEntitiesRestrictCriteria($pu_table, '', $entityrestrict, 1)
-           ],
-           'ORDERBY' => [
-              User::getTable() . '.realname',
-              User::getTable() . '.firstname',
-              User::getTable() . '.name'
-           ]
-        ]);
+        $iterator = new \itsmng\Database\RowIterator(self::repository()->members(
+            (array)$restrict,
+            getEntitiesRestrictCriteria(Profile_User::getTable(), '', $entityrestrict, true)
+        )['rows']);
 
         while ($data = $iterator->next()) {
             // Add to display list, according to criterion
@@ -483,108 +378,10 @@ class Group_User extends CommonDBRelation
      */
     private static function getDirectMembersForGroup(Group $group)
     {
-        global $DB;
-
-        $entityrestrict = self::getEntityRestrictForGroup($group);
-        $pu_table       = Profile_User::getTable();
-        $ids            = [];
-
-        $iterator = $DB->request([
-           'SELECT'    => [self::getTable() . '.users_id'],
-           'DISTINCT'  => true,
-           'FROM'      => self::getTable(),
-           'LEFT JOIN' => [
-              User::getTable() => [
-                 'ON' => [
-                    self::getTable() => 'users_id',
-                    User::getTable() => 'id'
-                 ]
-              ],
-              $pu_table => [
-                 'ON' => [
-                    $pu_table        => 'users_id',
-                    User::getTable() => 'id'
-                 ]
-              ]
-           ],
-           'WHERE' => [
-              self::getTable() . '.groups_id' => $group->getID(),
-              'OR' => [
-                 "$pu_table.entities_id" => null
-              ] + getEntitiesRestrictCriteria($pu_table, '', $entityrestrict, 1)
-           ],
-        ]);
-
-        while ($row = $iterator->next()) {
-            $ids[] = (int)$row['users_id'];
-        }
-
-        return $ids;
-    }
-
-    /**
-     * Get allowed sort clauses for the paginated members table.
-     *
-     * @param string  $sort  Requested sort field
-     * @param string  $order Requested sort order
-     * @param boolean $tree  Whether child groups are included
-     *
-     * @return array
-     */
-    private static function getMembersSortClauses($sort, $order, $tree)
-    {
-        $order = (strtoupper($order) === 'DESC') ? 'DESC' : 'ASC';
-
-        switch ($sort) {
-            case 'parent':
-                return [
-                   'glpi_groups.completename ' . $order,
-                   'glpi_users.realname ASC',
-                   'glpi_users.firstname ASC',
-                   'glpi_users.name ASC'
-                ];
-
-            case 'dynamic':
-                return [
-                   self::getTable() . '.is_dynamic ' . $order,
-                   'glpi_users.realname ASC',
-                   'glpi_users.firstname ASC',
-                   'glpi_users.name ASC'
-                ];
-
-            case 'manager':
-                return [
-                   self::getTable() . '.is_manager ' . $order,
-                   'glpi_users.realname ASC',
-                   'glpi_users.firstname ASC',
-                   'glpi_users.name ASC'
-                ];
-
-            case 'delegatee':
-                return [
-                   self::getTable() . '.is_userdelegate ' . $order,
-                   'glpi_users.realname ASC',
-                   'glpi_users.firstname ASC',
-                   'glpi_users.name ASC'
-                ];
-
-            case 'group':
-            default:
-                if ($tree) {
-                    return [
-                       'glpi_groups.completename ' . $order,
-                       'glpi_users.realname ASC',
-                       'glpi_users.firstname ASC',
-                       'glpi_users.name ASC'
-                    ];
-                }
-
-                return [
-                   'glpi_users.realname ' . $order,
-                   'glpi_users.firstname ' . $order,
-                   'glpi_users.name ' . $order
-                ];
-        }
+        return self::repository()->directUserIds(
+            (int)$group->getID(),
+            getEntitiesRestrictCriteria(Profile_User::getTable(), '', self::getEntityRestrictForGroup($group), true)
+        );
     }
 
     /**
@@ -609,72 +406,21 @@ class Group_User extends CommonDBRelation
         $sort = 'group',
         $order = 'ASC'
     ) {
-        global $DB, $CFG_GLPI;
+        global $CFG_GLPI;
 
         $entityrestrict = self::getEntityRestrictForGroup($group);
         $restrict       = $tree ? getSonsOf('glpi_groups', $group->getID()) : $group->getID();
-        $pu_table       = Profile_User::getTable();
-        $where          = [
-           self::getTable() . '.groups_id' => $restrict,
-           'OR' => [
-              "$pu_table.entities_id" => null
-           ] + getEntitiesRestrictCriteria($pu_table, '', $entityrestrict, 1)
-        ];
-
-        if (in_array($crit, ['is_manager', 'is_userdelegate'], true)) {
-            $where[self::getTable() . '.' . $crit] = 1;
-        }
-
-        $joins = [
-           User::getTable() => [
-              'ON' => [
-                 self::getTable() => 'users_id',
-                 User::getTable() => 'id'
-              ]
-           ],
-           $pu_table => [
-              'ON' => [
-                 $pu_table        => 'users_id',
-                 User::getTable() => 'id'
-              ]
-           ],
-           Group::getTable() => [
-              'ON' => [
-                 self::getTable() => 'groups_id',
-                 Group::getTable() => 'id'
-              ]
-           ]
-        ];
-
-        $count = $DB->request([
-           'SELECT'    => ['COUNT DISTINCT' => self::getTable() . '.id AS cpt'],
-           'FROM'      => self::getTable(),
-           'LEFT JOIN' => $joins,
-           'WHERE'     => $where
-        ])->next();
-
-        $params = [
-           'SELECT'    => [
-              'glpi_users.id',
-              self::getTable() . '.id AS linkid',
-              self::getTable() . '.groups_id',
-              self::getTable() . '.is_dynamic AS is_dynamic',
-              self::getTable() . '.is_manager AS is_manager',
-              self::getTable() . '.is_userdelegate AS is_userdelegate'
-           ],
-           'DISTINCT'  => true,
-           'FROM'      => self::getTable(),
-           'LEFT JOIN' => $joins,
-           'WHERE'     => $where,
-           'ORDER'     => self::getMembersSortClauses($sort, $order, $tree),
-        ];
-
-        if ($limit > 0) {
-            $params['START'] = max(0, (int)$offset);
-            $params['LIMIT'] = max(1, (int)$limit);
-        }
-
-        $iterator = $DB->request($params);
+        $page = self::repository()->members(
+            (array)$restrict,
+            getEntitiesRestrictCriteria(Profile_User::getTable(), '', $entityrestrict, true),
+            $crit,
+            (int)$offset,
+            (int)$limit,
+            $sort,
+            $order,
+            (bool)$tree
+        );
+        $iterator = new \itsmng\Database\RowIterator($page['rows']);
         $rows     = [];
         $user     = new User();
         $tmpgrp   = new Group();
@@ -721,7 +467,7 @@ class Group_User extends CommonDBRelation
         }
 
         return [
-           'total' => (int)$count['cpt'],
+           'total' => $page['total'],
            'rows'  => $rows
         ];
     }

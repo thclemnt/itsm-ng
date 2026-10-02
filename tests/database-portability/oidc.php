@@ -4,7 +4,6 @@
 
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Migration\OidcReferences;
-use itsmng\Database\OptionalReferences;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 

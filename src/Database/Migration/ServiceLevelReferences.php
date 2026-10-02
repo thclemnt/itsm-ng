@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\OptionalReferences;
 
 final class ServiceLevelReferences
 {
@@ -13,11 +12,11 @@ final class ServiceLevelReferences
 
     public function plan(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::SERVICE_LEVELS, 'ticket service-level'))->plan($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'SERVICE_LEVELS'), 'ticket service-level'))->plan($connection);
     }
 
     public function apply(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::SERVICE_LEVELS, 'ticket service-level'))->apply($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'SERVICE_LEVELS'), 'ticket service-level'))->apply($connection);
     }
 }

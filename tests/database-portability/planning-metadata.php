@@ -2,9 +2,9 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Migration\PlanningMetadataReferences;
-use itsmng\Database\OptionalReferences;
 
 $directory = $argv[1] ?? '';
 if (!is_file($directory . '/config_db.php')) {
@@ -34,7 +34,7 @@ $DB->beginTransaction();
 try {
     $fixtures = new FixtureRecords($DB);
     $storage = new \itsmng\Database\MappedStorage($DB);
-    foreach (OptionalReferences::PLANNING_METADATA as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'PLANNING_METADATA') as $table => $relations) {
         foreach ($relations as $column => $target) {
             $parent = $fixtures->create($target, ['name' => 'Planning original']);
             $replacement = $fixtures->create($target, ['name' => 'Planning replacement']);
@@ -72,7 +72,8 @@ try {
     ]);
     $plain = $make([]);
     $colored = $make(['planningeventcategories_id' => $category]);
-    $guest = $make(['users_id' => $otherUser, 'users_id_guests' => json_encode([(string)$owner])]);
+    $guest = $make(['users_id' => $otherUser]);
+    (new \itsmng\Database\Repository\PlanningGuestRepository(\itsmng\Database\Orm::create($DB)))->replaceGuests($guest, [$owner]);
     $groupEvent = $make(['users_id' => $otherUser, 'groups_id' => $group]);
     $hidden = $make(['users_id' => $otherUser]);
     $boundary = $make(['end' => '2026-09-28 10:00:00']);
@@ -131,7 +132,7 @@ $quote = $platform->quoteIdentifier(...);
 $migration = new PlanningMetadataReferences();
 $legacyId = null;
 try {
-    foreach (OptionalReferences::PLANNING_METADATA as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'PLANNING_METADATA') as $table => $relations) {
         foreach ($relations as $column => $target) {
             $connection->executeStatement($platform->getDropForeignKeySQL(ForeignKeys::name($table, $column), $table));
             $connection->executeStatement('UPDATE ' . $quote($table) . ' SET ' . $quote($column) . ' = 0 WHERE ' . $quote($column) . ' IS NULL');

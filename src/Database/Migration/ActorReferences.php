@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\OptionalReferences;
 
 final class ActorReferences
 {
@@ -13,7 +12,7 @@ final class ActorReferences
 
     public function plan(Connection $connection): array
     {
-        $plan = (new NullableReferences(OptionalReferences::ITIL_ACTORS, 'ITIL actor'))->plan($connection);
+        $plan = (new NullableReferences(ReferenceHistory::get('optional', 'ITIL_ACTORS'), 'ITIL actor'))->plan($connection);
         array_push($plan['sql'], ...(new ActorUniqueness())->plan($connection));
         return $plan;
     }
@@ -25,7 +24,7 @@ final class ActorReferences
             throw new \RuntimeException('MySQL ITIL actor DDL must run outside an application transaction.');
         }
         $apply = static function () use ($connection): array {
-            $counts = (new NullableReferences(OptionalReferences::ITIL_ACTORS, 'ITIL actor'))->apply($connection);
+            $counts = (new NullableReferences(ReferenceHistory::get('optional', 'ITIL_ACTORS'), 'ITIL actor'))->apply($connection);
             foreach ((new ActorUniqueness())->plan($connection) as $sql) {
                 $connection->executeStatement($sql);
             }

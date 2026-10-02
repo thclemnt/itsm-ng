@@ -343,11 +343,8 @@ class RuleCriteria extends CommonDBChild
         global $DB;
 
         $rules_list = [];
-        $params = ['FROM'  => $this->getTable(),
-                   'WHERE' => [static::$items_id => $rules_id],
-                   'ORDER' => 'id'
-                  ];
-        foreach ($DB->request($params) as $rule) {
+        $records = new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB));
+        foreach ($records->matching($this->getTable(), [static::$items_id => $rules_id], 'id') as $rule) {
             $tmp          = new self();
             $tmp->fields  = $rule;
             $rules_list[] = $tmp;

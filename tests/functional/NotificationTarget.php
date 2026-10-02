@@ -45,11 +45,13 @@ class NotificationTarget extends DbTestCase
 
         $notif = new \Notification();
         $this->boolean($notif->getFromDB(1))->isTrue();
+        $group = (new \Group())->add(['name' => 'Notification preselection fixture']);
+        $this->integer($group)->isGreaterThan(0);
 
         \NotificationTarget::updateTargets([
            'notifications_id' => $notif->getID(),
            'itemtype'         => $notif->getField('itemtype'),
-           '_targets'         => ['1_1', '3_1'],
+           '_targets'         => ['1_1', '3_' . $group],
         ]);
 
         $target = \NotificationTarget::getInstanceByType(
@@ -64,7 +66,7 @@ class NotificationTarget extends DbTestCase
                 $target->showForNotification($notif);
             }
         )->contains('"1_1":"1_1"')
-          ->contains('"3_1":"3_1"')
+          ->contains('"3_' . $group . '":"3_' . $group . '"')
           ->notContains('value="Array"')
           ->notContains('JSON.parse(\'"{\\\"');
     }
@@ -75,11 +77,13 @@ class NotificationTarget extends DbTestCase
 
         $notif = new \Notification();
         $this->boolean($notif->getFromDB(1))->isTrue();
+        $group = (new \Group())->add(['name' => 'Notification posted target fixture']);
+        $this->integer($group)->isGreaterThan(0);
 
         \NotificationTarget::updateTargets([
            'notifications_id' => $notif->getID(),
            'itemtype'         => $notif->getField('itemtype'),
-           '_targets'         => ['1_1', '3_1'],
+           '_targets'         => ['1_1', '3_' . $group],
         ]);
 
         $this->integer(countElementsInTable(\NotificationTarget::getTable(), [
@@ -91,7 +95,7 @@ class NotificationTarget extends DbTestCase
         $this->integer(countElementsInTable(\NotificationTarget::getTable(), [
            'notifications_id' => $notif->getID(),
            'type'             => 3,
-           'items_id'         => 1,
+           'items_id'         => $group,
         ]))->isIdenticalTo(1);
     }
 

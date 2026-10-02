@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\OptionalReferences;
 
 final class AssetClassification
 {
@@ -13,11 +12,11 @@ final class AssetClassification
 
     public function plan(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::ASSET_CLASSIFICATION, 'asset classification'))->plan($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'ASSET_CLASSIFICATION'), 'asset classification'))->plan($connection);
     }
 
     public function apply(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::ASSET_CLASSIFICATION, 'asset classification'))->apply($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'ASSET_CLASSIFICATION'), 'asset classification'))->apply($connection);
     }
 }

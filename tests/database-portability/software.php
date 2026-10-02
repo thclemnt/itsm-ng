@@ -137,6 +137,201 @@ try {
     $installed->updateDatasForItem('Computer', $asset);
     verify($SQL_TOTAL_REQUEST === 0, 'Mapped software queries bypass legacy execution');
 
+    $transferSource = $fixtures->create('glpi_softwares', ['name' => 'Transfer source', 'entities_id' => $otherEntity]);
+    $transferOther = $fixtures->create('glpi_softwares', ['name' => 'Transfer other']);
+    $transferVersion = $fixtures->create('glpi_softwareversions', ['softwares_id' => $transferSource, 'name' => 'Transfer version']);
+    $transferTemplate = $fixtures->create('glpi_softwarelicenses', ['softwares_id' => $transferSource, 'is_template' => true]);
+    $transferDeleted = $fixtures->create('glpi_softwarelicenses', ['softwares_id' => $transferSource, 'is_deleted' => true]);
+    $fixtures->create('glpi_softwarelicenses', ['softwares_id' => $transferOther]);
+    $fixtures->create('glpi_softwareversions', ['softwares_id' => $transferOther]);
+    $transfer = new class () extends Transfer {
+        public array $calls = [];
+        public ?Closure $duringTransfer = null;
+
+        public function transferItem($itemtype, $ID, $newID)
+        {
+            $this->calls[] = [$itemtype, $ID, $newID];
+            if ($this->duringTransfer !== null) {
+                ($this->duringTransfer)($ID);
+            }
+        }
+    };
+    $SQL_TOTAL_REQUEST = 0;
+    $transfer->transferSoftwareLicensesAndVersions($transferSource);
+    verify($transfer->calls === [['SoftwareLicense', $transferTemplate, $transferTemplate], ['SoftwareLicense', $transferDeleted, $transferDeleted]], 'Transfer discovers all owned licenses including templates, trash and foreign entity rows');
+    verify($transfer->already_transfer['SoftwareVersion'] === [$transferVersion => $transferVersion], 'Transfer records only the source software versions');
+    verify($SQL_TOTAL_REQUEST === 0, 'Public transfer discovery bypasses legacy adapter execution');
+    $transfer->calls = [];
+    $transfer->already_transfer = [];
+    $transfer->duringTransfer = static function (int $id) use ($DB, $transferTemplate, $transferDeleted, $transferVersion, $transferOther): void {
+        if ($id === $transferTemplate) {
+            verify((new SoftwareLicense())->delete(['id' => $transferDeleted], true), 'License callback mutates transfer candidates');
+            $em = Orm::create($DB);
+            $version = $em->find(\itsmng\Database\Entity\SoftwareVersion::class, $transferVersion);
+            $version->softwares = $em->getReference(\itsmng\Database\Entity\Software::class, $transferOther);
+            $em->flush();
+        }
+    };
+    $transfer->transferSoftwareLicensesAndVersions($transferSource);
+    verify(count($transfer->calls) === 2, 'Transfer snapshots license IDs before callbacks mutate the selected rows');
+    verify(empty($transfer->already_transfer['SoftwareVersion']), 'Transfer discovers versions after the license callbacks finish');
+
+    $cleanupSoftware = $fixtures->create('glpi_softwares', ['name' => 'Cleanup versions']);
+    $unusedVersion = $fixtures->create('glpi_softwareversions', ['softwares_id' => $cleanupSoftware]);
+    $boughtVersion = $fixtures->create('glpi_softwareversions', ['softwares_id' => $cleanupSoftware]);
+    $usedVersion = $fixtures->create('glpi_softwareversions', ['softwares_id' => $cleanupSoftware]);
+    $installedVersion = $fixtures->create('glpi_softwareversions', ['softwares_id' => $cleanupSoftware]);
+    $fixtures->create('glpi_softwarelicenses', ['softwares_id' => $transferOther, 'softwareversions_id_buy' => $boughtVersion, 'is_template' => true]);
+    $fixtures->create('glpi_softwarelicenses', ['softwares_id' => $transferOther, 'softwareversions_id_use' => $usedVersion, 'is_deleted' => true]);
+    $fixtures->create('glpi_items_softwareversions', ['softwareversions_id' => $installedVersion, 'itemtype' => 'Computer', 'items_id' => $asset, 'is_deleted' => true]);
+    $SQL_TOTAL_REQUEST = 0;
+    verify(!$repo()->isVersionReferenced($unusedVersion) && $repo()->isVersionReferenced($boughtVersion)
+        && $repo()->isVersionReferenced($usedVersion) && $repo()->isVersionReferenced($installedVersion), 'Cleanup retains buy/use and deleted installation references globally');
+    verify($repo()->hasInventory($cleanupSoftware) && $repo()->hasInventory($transferSource), 'Cleanup sees both version-only and license-only software');
+    verify($SQL_TOTAL_REQUEST === 0, 'Cleanup relationship queries bypass legacy adapter execution');
+    $cleanup = new Transfer();
+    $cleanup->already_transfer['SoftwareVersion'] = array_combine([$unusedVersion, $boughtVersion, $usedVersion, $installedVersion], [$unusedVersion, $boughtVersion, $usedVersion, $installedVersion]);
+    $cleanup->cleanSoftwareVersions();
+    verify($read('glpi_softwareversions', $unusedVersion) === null && $read('glpi_softwareversions', $boughtVersion) !== null
+        && $read('glpi_softwareversions', $usedVersion) !== null && $read('glpi_softwareversions', $installedVersion) !== null, 'Public version cleanup removes only the unreferenced version');
+    $emptySoftware = $fixtures->create('glpi_softwares', ['name' => 'Cleanup empty']);
+    $cleanup->already_transfer['Software'] = [$emptySoftware => $emptySoftware, $cleanupSoftware => $cleanupSoftware, $transferSource => $transferSource];
+    $cleanup->options = ['clean_software' => 0];
+    $cleanup->cleanSoftwares();
+    verify($read('glpi_softwares', $emptySoftware)['is_deleted'] === 0, 'Keep option preserves empty software');
+    $cleanup->options['clean_software'] = 1;
+    $cleanup->cleanSoftwares();
+    verify($read('glpi_softwares', $emptySoftware)['is_deleted'] === 1 && $read('glpi_softwares', $cleanupSoftware)['is_deleted'] === 0
+        && $read('glpi_softwares', $transferSource)['is_deleted'] === 0, 'Trash option applies only to software without inventory');
+    $cleanup->options['clean_software'] = 2;
+    $cleanup->cleanSoftwares();
+    verify($read('glpi_softwares', $emptySoftware) === null && $read('glpi_softwares', $cleanupSoftware) !== null
+        && $read('glpi_softwares', $transferSource) !== null, 'Purge option uses the application lifecycle and preserves referenced software');
+
+    $transferInstallations = new class () extends Transfer {
+        public array $versions = [];
+        public array $licenses = [];
+
+        public function copySingleVersion($ID)
+        {
+            return $this->versions[$ID] ?? $ID;
+        }
+
+        public function transferAffectedLicense($ID)
+        {
+            $this->licenses[] = $ID;
+        }
+    };
+    $installationSource = $fixtures->create('glpi_softwareversions', ['softwares_id' => $cleanupSoftware]);
+    $installationTarget = $fixtures->create('glpi_softwareversions', ['softwares_id' => $cleanupSoftware]);
+    $installationExcluded = $fixtures->create('glpi_softwareversions', ['softwares_id' => $cleanupSoftware]);
+    $installationRejected = $fixtures->create('glpi_softwareversions', ['softwares_id' => $cleanupSoftware]);
+    $overlappingMonitor = $fixtures->create('glpi_monitors', ['id' => $otherAsset, 'name' => 'Transfer type overlap']);
+    $moveInstallation = $fixtures->create('glpi_items_softwareversions', ['itemtype' => 'Computer', 'items_id' => $otherAsset,
+        'softwareversions_id' => $installationSource, 'date_install' => '2023-03-21', 'is_deleted' => true, 'is_dynamic' => true, 'is_template_item' => true]);
+    $excludeInstallation = $fixtures->create('glpi_items_softwareversions', ['itemtype' => 'Computer', 'items_id' => $otherAsset, 'softwareversions_id' => $installationExcluded]);
+    $rejectInstallation = $fixtures->create('glpi_items_softwareversions', ['itemtype' => 'Computer', 'items_id' => $otherAsset, 'softwareversions_id' => $installationRejected]);
+    $monitorInstallation = $fixtures->create('glpi_items_softwareversions', ['itemtype' => 'Monitor', 'items_id' => $overlappingMonitor, 'softwareversions_id' => $installationSource]);
+    $computerLicense = $fixtures->create('glpi_items_softwarelicenses', ['itemtype' => 'Computer', 'items_id' => $otherAsset, 'softwarelicenses_id' => $transferTemplate]);
+    $monitorLicense = $fixtures->create('glpi_items_softwarelicenses', ['itemtype' => 'Monitor', 'items_id' => $overlappingMonitor, 'softwarelicenses_id' => $transferTemplate]);
+    $transferInstallations->options = ['keep_software' => 1];
+    $transferInstallations->noneedtobe_transfer['SoftwareVersion'] = [900000000 => $installationExcluded];
+    $transferInstallations->versions = [$installationSource => $installationTarget, $installationRejected => -1];
+    $SQL_TOTAL_REQUEST = 0;
+    $transferInstallations->transferItemSoftwares('Computer', $otherAsset);
+    verify($SQL_TOTAL_REQUEST === 0, 'Public installation transfer reads and mutations bypass legacy adapter execution');
+    verify($transferInstallations->licenses === [$computerLicense], 'Transfer visits only the selected asset type license assignments');
+    $movedInstallation = $read('glpi_items_softwareversions', $moveInstallation);
+    verify((int)$movedInstallation['softwareversions_id'] === $installationTarget && $movedInstallation['date_install'] === '2023-03-21'
+        && $movedInstallation['is_deleted'] === 1 && $movedInstallation['is_dynamic'] === 1 && $movedInstallation['is_template_item'] === 1, 'Retarget retains installation date and flags');
+    verify((int)$read('glpi_items_softwareversions', $excludeInstallation)['softwareversions_id'] === $installationExcluded
+        && (int)$read('glpi_items_softwareversions', $rejectInstallation)['softwareversions_id'] === $installationRejected, 'Excluded and unsuccessful version copies retain their original installations');
+    verify((int)$read('glpi_items_softwareversions', $monitorInstallation)['softwareversions_id'] === $installationSource, 'Transfer preserves another type with the same numeric asset ID');
+    $transferInstallations->options['keep_software'] = 0;
+    $SQL_TOTAL_REQUEST = 0;
+    $transferInstallations->transferItemSoftwares('Computer', $otherAsset);
+    verify($SQL_TOTAL_REQUEST === 0, 'Public discard deletes through ORM queries');
+    verify($read('glpi_items_softwareversions', $moveInstallation) === null && $read('glpi_items_softwareversions', $rejectInstallation) === null
+        && $read('glpi_items_softwareversions', $excludeInstallation) !== null, 'Discard respects the excluded version set');
+    verify($read('glpi_items_softwarelicenses', $computerLicense) === null && $read('glpi_items_softwarelicenses', $monitorLicense) !== null
+        && $read('glpi_items_softwareversions', $monitorInstallation) !== null, 'Discard removes only the chosen asset type relationships');
+    verify($read('glpi_softwareversions', $installationTarget) !== null && $read('glpi_softwarelicenses', $transferTemplate) !== null, 'Discard preserves version and license targets');
+
+    // Exercise the real copy callbacks, including literal names and owning targets.
+    $copyName = "Transfer O'Reilly \\path 日本語 NULL";
+    $copyManufacturer = $fixtures->create('glpi_manufacturers', ['name' => 'Transfer manufacturer']);
+    $wrongManufacturer = $fixtures->create('glpi_manufacturers', ['name' => 'Other manufacturer']);
+    $copySource = $fixtures->create('glpi_softwares', ['name' => $copyName, 'entities_id' => $otherEntity, 'manufacturers_id' => $copyManufacturer]);
+    $fixtures->create('glpi_softwares', ['name' => $copyName, 'entities_id' => $otherEntity, 'manufacturers_id' => $copyManufacturer]);
+    $unclassifiedDestination = $fixtures->create('glpi_softwares', ['name' => $copyName, 'manufacturers_id' => $wrongManufacturer]);
+    $copyDestination = $fixtures->create('glpi_softwares', ['name' => $copyName, 'manufacturers_id' => $copyManufacturer, 'is_template' => true, 'is_deleted' => true]);
+    $fixtures->create('glpi_softwares', ['name' => $copyName, 'manufacturers_id' => $copyManufacturer]);
+    $copy = new Transfer();
+    $copy->to = 0;
+    $DB->clearSchemaCache();
+    $SQL_TOTAL_REQUEST = 0;
+    verify($copy->copySingleSoftware($copySource) === $copyDestination, 'Software reuse matches literal name, destination entity and selected manufacturer including template/trash rows');
+    verify($copy->copySingleSoftware($copySource) === $copyDestination, 'Repeated copy uses recorded destination');
+    verify($SQL_TOTAL_REQUEST === 0, 'Public software reuse bypasses legacy adapter SQL');
+    $unclassifiedSource = $fixtures->create('glpi_softwares', ['name' => $copyName, 'entities_id' => $otherEntity]);
+    $unclassified = new Transfer();
+    $unclassified->to = 0;
+    verify($unclassified->copySingleSoftware($unclassifiedSource) === $unclassifiedDestination, 'Unselected manufacturer preserves unrestricted destination reuse');
+    $createSource = $fixtures->create('glpi_softwares', ['name' => $copyName . ' new', 'entities_id' => $otherEntity, 'comment' => "Copied O'Reilly \\path"]);
+    $createdSoftware = $copy->copySingleSoftware($createSource);
+    verify($createdSoftware > 0 && $createdSoftware !== $createSource && $read('glpi_softwares', $createdSoftware)['name'] === $copyName . ' new'
+        && $read('glpi_softwares', $createdSoftware)['comment'] === "Copied O'Reilly \\path" && (int)$read('glpi_softwares', $createdSoftware)['entities_id'] === 0, 'Software copy creates a destination through the public lifecycle with literal data');
+    $sourceCopyVersion = $fixtures->create('glpi_softwareversions', ['softwares_id' => $copySource, 'name' => $copyName]);
+    $fixtures->create('glpi_softwareversions', ['softwares_id' => $transferOther, 'name' => $copyName]);
+    $targetCopyVersion = $fixtures->create('glpi_softwareversions', ['softwares_id' => $copyDestination, 'name' => $copyName]);
+    $SQL_TOTAL_REQUEST = 0;
+    verify($copy->copySingleVersion($sourceCopyVersion) === $targetCopyVersion, 'Version reuse matches literal name and owning destination software');
+    verify($SQL_TOTAL_REQUEST === 0, 'Public version reuse bypasses legacy adapter SQL');
+    $newSourceVersion = $fixtures->create('glpi_softwareversions', ['softwares_id' => $createSource, 'name' => $copyName . ' new version']);
+    $newTargetVersion = $copy->copySingleVersion($newSourceVersion);
+    verify($newTargetVersion > 0 && $newTargetVersion !== $newSourceVersion && (int)$read('glpi_softwareversions', $newTargetVersion)['softwares_id'] === $createdSoftware
+        && $read('glpi_softwareversions', $newTargetVersion)['name'] === $copyName . ' new version', 'Version copy creates a destination owned by the copied software');
+    $copy->already_transfer['Software'][$transferOther] = $transferOther;
+    $unchangedVersion = $fixtures->create('glpi_softwareversions', ['softwares_id' => $transferOther]);
+    verify($copy->copySingleVersion($unchangedVersion) === $unchangedVersion && $copy->copySingleSoftware(2147483647) === -1
+        && $copy->copySingleVersion(2147483647) === -1, 'Retained software preserves its version and missing copy targets fail without a mutation');
+    $copySerial = "Serial ' \\ 日本語";
+    $sourceCopyLicense = $fixtures->create('glpi_softwarelicenses', ['softwares_id' => $copySource, 'name' => $copyName, 'serial' => $copySerial, 'number' => 2]);
+    $fixtures->create('glpi_softwarelicenses', ['softwares_id' => $copyDestination, 'name' => $copyName, 'serial' => 'Different serial', 'number' => 9]);
+    $targetCopyLicense = $fixtures->create('glpi_softwarelicenses', ['softwares_id' => $copyDestination, 'name' => $copyName, 'serial' => $copySerial, 'number' => 5]);
+    $copyAssignment = $fixtures->create('glpi_items_softwarelicenses', ['softwarelicenses_id' => $sourceCopyLicense, 'itemtype' => 'Computer', 'items_id' => $asset]);
+    $SQL_TOTAL_REQUEST = 0;
+    $copy->transferAffectedLicense($copyAssignment);
+    verify((int)$read('glpi_softwarelicenses', $sourceCopyLicense)['number'] === 1 && (int)$read('glpi_softwarelicenses', $targetCopyLicense)['number'] === 6
+        && (int)$read('glpi_items_softwarelicenses', $copyAssignment)['softwarelicenses_id'] === $targetCopyLicense, 'Real affected-license transfer decrements source, increments matching name/serial destination and retargets only the assignment');
+    verify($SQL_TOTAL_REQUEST === 0, 'Public license reuse and lifecycle updates bypass legacy adapter SQL');
+    $lastSourceLicense = $fixtures->create('glpi_softwarelicenses', ['softwares_id' => $copySource, 'name' => $copyName, 'serial' => $copySerial, 'number' => 1]);
+    $lastAssignment = $fixtures->create('glpi_items_softwarelicenses', ['softwarelicenses_id' => $lastSourceLicense, 'itemtype' => 'Computer', 'items_id' => $otherAsset]);
+    $copy->transferAffectedLicense($lastAssignment);
+    verify($read('glpi_softwarelicenses', $lastSourceLicense)['is_deleted'] === 1 && (int)$read('glpi_softwarelicenses', $targetCopyLicense)['number'] === 7
+        && (int)$read('glpi_items_softwarelicenses', $lastAssignment)['softwarelicenses_id'] === $targetCopyLicense, 'Moving the last license preserves the source trash lifecycle and retargets its assignment');
+    $newSourceLicense = $fixtures->create('glpi_softwarelicenses', ['softwares_id' => $createSource, 'name' => $copyName . ' new license', 'serial' => $copySerial,
+        'number' => 2, 'softwareversions_id_buy' => $newSourceVersion, 'softwareversions_id_use' => $newSourceVersion]);
+    $newCopyAssignment = $fixtures->create('glpi_items_softwarelicenses', ['softwarelicenses_id' => $newSourceLicense, 'itemtype' => 'Computer', 'items_id' => $otherAsset]);
+    $DB->clearSchemaCache();
+    $SQL_TOTAL_REQUEST = 0;
+    $copy->transferAffectedLicense($newCopyAssignment);
+    $createdLicense = $read('glpi_softwarelicenses', (int)$read('glpi_items_softwarelicenses', $newCopyAssignment)['softwarelicenses_id']);
+    verify($createdLicense['id'] !== $newSourceLicense && (int)$createdLicense['softwares_id'] === $createdSoftware && (int)$createdLicense['number'] === 1
+        && (int)$createdLicense['softwareversions_id_buy'] === $newTargetVersion && (int)$createdLicense['softwareversions_id_use'] === $newTargetVersion
+        && $createdLicense['serial'] === $copySerial, 'Real affected-license copy preserves serial and owns the copied software and buy/use versions');
+    verify($SQL_TOTAL_REQUEST === 0, 'Real license copy and owning version transfer bypass legacy adapter SQL with a cold schema cache');
+    $invalidCopyLicense = $fixtures->create('glpi_softwarelicenses', ['softwares_id' => $createdSoftware, 'is_valid' => false, 'is_template' => true, 'is_deleted' => true, 'entities_id' => $otherEntity]);
+    $SQL_TOTAL_REQUEST = 0;
+    Software::updateValidityIndicator($createdSoftware);
+    verify($read('glpi_softwares', $createdSoftware)['is_valid'] === 0 && !$repo()->hasInvalidLicense($copySource), 'Validity follows only owning licenses and includes invalid templates, trash and foreign entities');
+    $em = Orm::create($DB);
+    $nativeLicense = $em->find(\itsmng\Database\Entity\SoftwareLicense::class, $invalidCopyLicense);
+    $nativeLicense->is_valid = true;
+    $em->flush();
+    Software::updateValidityIndicator($createdSoftware);
+    verify($read('glpi_softwares', $createdSoftware)['is_valid'] === 1 && $SQL_TOTAL_REQUEST === 0, 'Validity restoration uses the latest owning license state and bypasses adapter SQL');
+
     // Purging a software must purge its licenses, including previously trashed ones.
     $trashed = new SoftwareLicense();
     verify($trashed->delete(['id' => $license]), 'Trash license before parent purge');
@@ -147,4 +342,4 @@ try {
 } finally {
     $DB->rollBack();
 }
-echo $DB->getProvider() . ": software associations, quantities, version lists, booleans, atomic merge and purge passed.\n";
+echo $DB->getProvider() . ": software associations, quantities, atomic merge, transfer discovery, installation transfer/discard, software/version/license copy, cleanup and purge passed.\n";

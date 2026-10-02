@@ -17,6 +17,89 @@ final class SoftwareRepository
     {
     }
 
+    public function softwareForTransfer(int $entity, string $name, ?int $manufacturer): ?int
+    {
+        $query = $this->em->createQueryBuilder()->select('s.id AS id')->from(Entity\Software::class, 's')
+            ->where('s.entities = :entity AND s.name = :name')
+            ->setParameter('entity', $entity, Types::INTEGER)->setParameter('name', $name, Types::STRING);
+        // An unselected source manufacturer historically does not constrain reuse.
+        if ($manufacturer !== null) {
+            $query->andWhere('s.manufacturers = :manufacturer')->setParameter('manufacturer', $manufacturer, Types::INTEGER);
+        }
+        $rows = $query->orderBy('s.id')->setMaxResults(1)->getQuery()->getScalarResult();
+        return $rows ? (int)$rows[0]['id'] : null;
+    }
+
+    public function versionForTransfer(int $software, string $name): ?int
+    {
+        $rows = $this->em->createQueryBuilder()->select('v.id AS id')->from(Entity\SoftwareVersion::class, 'v')
+            ->where('v.softwares = :software AND v.name = :name')
+            ->setParameter('software', $software, Types::INTEGER)->setParameter('name', $name, Types::STRING)
+            ->orderBy('v.id')->setMaxResults(1)->getQuery()->getScalarResult();
+        return $rows ? (int)$rows[0]['id'] : null;
+    }
+
+    /** Include templates and trashed licenses, matching the internal transfer selection. */
+    public function licenseForTransfer(int $software, string $name, string $serial): ?array
+    {
+        $rows = $this->em->createQueryBuilder()->select('l.id AS id', 'l.number AS number')->from(Entity\SoftwareLicense::class, 'l')
+            ->where('l.softwares = :software AND l.name = :name AND l.serial = :serial')
+            ->setParameter('software', $software, Types::INTEGER)->setParameter('name', $name, Types::STRING)
+            ->setParameter('serial', $serial, Types::STRING)->orderBy('l.id')->setMaxResults(1)->getQuery()->getScalarResult();
+        return $rows ? ['id' => (int)$rows[0]['id'], 'number' => (int)$rows[0]['number']] : null;
+    }
+
+    public function licensesForTransfer(int $software): array
+    {
+        $rows = $this->em->createQueryBuilder()->select('l.id AS id')->from(Entity\SoftwareLicense::class, 'l')
+            ->where('l.softwares = :software')->setParameter('software', $software, Types::INTEGER)
+            ->orderBy('l.id')->getQuery()->getScalarResult();
+        return array_map('intval', array_column($rows, 'id'));
+    }
+
+    public function versionsForTransfer(int $software): array
+    {
+        $rows = $this->em->createQueryBuilder()->select('v.id AS id')->from(Entity\SoftwareVersion::class, 'v')
+            ->where('v.softwares = :software')->setParameter('software', $software, Types::INTEGER)
+            ->orderBy('v.id')->getQuery()->getScalarResult();
+        return array_map('intval', array_column($rows, 'id'));
+    }
+
+    /** Deleted installations and template licenses still retain their references. */
+    public function isVersionReferenced(int $version): bool
+    {
+        $license = $this->em->createQueryBuilder()->select('l.id')->from(Entity\SoftwareLicense::class, 'l')
+            ->where('l.buyVersion = :version OR l.useVersion = :version')->setParameter('version', $version, Types::INTEGER)
+            ->setMaxResults(1)->getQuery()->getScalarResult();
+        if ($license) {
+            return true;
+        }
+        return (bool)$this->em->createQueryBuilder()->select('i.id')->from(Entity\ItemSoftwareVersion::class, 'i')
+            ->where('i.softwareversions = :version')->setParameter('version', $version, Types::INTEGER)
+            ->setMaxResults(1)->getQuery()->getScalarResult();
+    }
+
+    public function hasInventory(int $software): bool
+    {
+        $license = $this->em->createQueryBuilder()->select('l.id')->from(Entity\SoftwareLicense::class, 'l')
+            ->where('l.softwares = :software')->setParameter('software', $software, Types::INTEGER)
+            ->setMaxResults(1)->getQuery()->getScalarResult();
+        if ($license) {
+            return true;
+        }
+        return (bool)$this->em->createQueryBuilder()->select('v.id')->from(Entity\SoftwareVersion::class, 'v')
+            ->where('v.softwares = :software')->setParameter('software', $software, Types::INTEGER)
+            ->setMaxResults(1)->getQuery()->getScalarResult();
+    }
+
+    public function hasInvalidLicense(int $software): bool
+    {
+        return (bool)$this->em->createQueryBuilder()->select('l.id')->from(Entity\SoftwareLicense::class, 'l')
+            ->where('l.softwares = :software AND l.is_valid = :invalid')
+            ->setParameter('software', $software, Types::INTEGER)->setParameter('invalid', false, Types::BOOLEAN)
+            ->setMaxResults(1)->getQuery()->getScalarResult();
+    }
+
     public function versions(int $software, array $excluded = []): array
     {
         $query = $this->em->createQueryBuilder()->select('v', 's.name AS sname')
@@ -108,8 +191,8 @@ final class SoftwareRepository
             ->where('IDENTITY(s.entities) = :entity AND s.is_deleted = :inactive AND s.is_template = :inactive')
             ->setParameter('entity', $entity, Types::INTEGER)->setParameter('inactive', false, Types::BOOLEAN)
             ->andWhere('r.expire < :cutoff')->setParameter('cutoff', $cutoff, Types::DATE_IMMUTABLE)
-            ->andWhere('NOT EXISTS (SELECT a.id FROM ' . Entity\Alert::class . ' a WHERE a.items_id = r.id AND a.itemtype = :type AND a.date IS NOT NULL)')
-            ->setParameter('type', 'SoftwareLicense', Types::STRING)->orderBy('r.id');
+            ->andWhere('NOT EXISTS (SELECT a.id FROM ' . Entity\Alert::class . ' a WHERE a.softwareLicense = r AND a.date IS NOT NULL)')
+            ->orderBy('r.id');
         return $this->licenseRows($query);
     }
 
@@ -162,13 +245,7 @@ final class SoftwareRepository
                 $matches = $records->matching('glpi_softwareversions', ['softwares_id' => $target, 'name' => $from['name']], ['id'], 1, legacyValues: false);
                 if ($matches) {
                     $destination = (int)$matches[0]['id'];
-                    foreach (['buyVersion', 'useVersion'] as $field) {
-                        $this->em->createQueryBuilder()->update(Entity\SoftwareLicense::class, 'l')
-                            ->set('l.' . $field, ':destination')->setParameter('destination', $destination, Types::INTEGER)
-                            ->where('l.' . $field . ' = :source')->setParameter('source', $from['id'], Types::INTEGER)
-                            ->getQuery()->execute();
-                    }
-                    $this->moveInstallations((int)$from['id'], $destination);
+                    $this->moveVersionReferences((int)$from['id'], $destination);
                     $this->em->createQueryBuilder()->delete(Entity\SoftwareVersion::class, 'v')
                         ->where('v.id = :id')->setParameter('id', $from['id'], Types::INTEGER)->getQuery()->execute();
                 } else {
@@ -194,6 +271,38 @@ final class SoftwareRepository
                 $progress(count($versions) + 1, count($versions) + 1);
             }
         });
+    }
+
+    /** Dictionary renames retain entity ownership; a merged version uses its lifecycle. */
+    public function moveDictionaryVersion(int $target, int $version, ?string $name, callable $remove): void
+    {
+        $this->em->getConnection()->transactional(function () use ($target, $version, $name, $remove): void {
+            $destination = (new SoftwareDictionaryRepository($this->em))->versionId($target, $name);
+            if ($destination === $version) {
+                return;
+            }
+            if ($destination === -1) {
+                $this->em->createQueryBuilder()->update(Entity\SoftwareVersion::class, 'v')
+                    ->set('v.name', ':name')->setParameter('name', $name, Types::STRING)
+                    ->set('v.softwares', ':target')->setParameter('target', $target, Types::INTEGER)
+                    ->where('v.id = :id')->setParameter('id', $version, Types::INTEGER)->getQuery()->execute();
+                return;
+            }
+            $this->moveVersionReferences($version, $destination);
+            if (!$remove($version)) {
+                throw new \RuntimeException('Unable to delete software version after dictionary merging.');
+            }
+        });
+    }
+
+    private function moveVersionReferences(int $source, int $destination): void
+    {
+        foreach (['buyVersion', 'useVersion'] as $field) {
+            $this->em->createQueryBuilder()->update(Entity\SoftwareLicense::class, 'l')
+                ->set('l.' . $field, ':destination')->setParameter('destination', $destination, Types::INTEGER)
+                ->where('l.' . $field . ' = :source')->setParameter('source', $source, Types::INTEGER)->getQuery()->execute();
+        }
+        $this->moveInstallations($source, $destination);
     }
 
     private function moveInstallations(int $source, int $destination): void

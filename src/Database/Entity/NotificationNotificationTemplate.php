@@ -13,15 +13,17 @@ class NotificationNotificationTemplate
 {
     #[ORM\ManyToOne(targetEntity: Notification::class)]
     #[ORM\JoinColumn(name: 'notifications_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?Notification $notifications = null;
 
     #[ORM\ManyToOne(targetEntity: NotificationTemplate::class)]
     #[ORM\JoinColumn(name: 'notificationtemplates_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?NotificationTemplate $notificationtemplates = null;
 
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
     #[ORM\Column(name: '`mode`', type: 'string', length: 20, nullable: false)]

@@ -5,6 +5,8 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_networkportaliases')]
@@ -13,7 +15,7 @@ class NetworkPortAlias
 {
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
     #[ORM\ManyToOne(targetEntity: NetworkPort::class)]
@@ -22,6 +24,7 @@ class NetworkPortAlias
 
     #[ORM\ManyToOne(targetEntity: NetworkPort::class)]
     #[ORM\JoinColumn(name: 'networkports_id_alias', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?NetworkPort $networkports_id_alias = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]

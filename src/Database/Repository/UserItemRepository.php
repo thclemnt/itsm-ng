@@ -19,7 +19,7 @@ final class UserItemRepository
 
     public static function supports(string $type): bool
     {
-        return isset(EntityRegistry::TABLES[\getTableForItemType($type)]);
+        return isset(EntityRegistry::tables()[\getTableForItemType($type)]);
     }
 
     public function groups(int $user): array
@@ -39,7 +39,7 @@ final class UserItemRepository
         if (!$actors) {
             return;
         }
-        $class = EntityRegistry::TABLES[\getTableForItemType($type)];
+        $class = EntityRegistry::tables()[\getTableForItemType($type)];
         $metadata = $this->em->getClassMetadata($class);
         $criteria = [[$field => array_values($actors)], $scope];
         foreach (['is_deleted', 'is_template'] as $flag) {
@@ -88,11 +88,6 @@ final class UserItemRepository
             ->where('IDENTITY(s.users) = :user AND s.is_private = :public')
             ->setParameter('none', null, Types::INTEGER)->setParameter('user', $user, Types::INTEGER)
             ->setParameter('public', false, Types::BOOLEAN)->getQuery()->execute();
-        $this->em->createQueryBuilder()->update(Entity\Consumable::class, 'c')
-            ->set('c.items_id', ':none')->set('c.itemtype', ':type')->set('c.date_out', ':date')
-            ->where('c.items_id = :user AND c.itemtype = :recipient')
-            ->setParameter('none', 0, Types::INTEGER)->setParameter('type', null, Types::STRING)
-            ->setParameter('date', null, Types::DATE_MUTABLE)->setParameter('user', $user, Types::INTEGER)
-            ->setParameter('recipient', 'User', Types::STRING)->getQuery()->execute();
+        (new ConsumableRepository($this->em))->releaseUser($user);
     }
 }

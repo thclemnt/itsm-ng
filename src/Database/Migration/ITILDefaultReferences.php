@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\OptionalReferences;
 
 final class ITILDefaultReferences
 {
@@ -13,11 +12,11 @@ final class ITILDefaultReferences
 
     public function plan(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::ITIL_DEFAULTS, 'ITIL default'))->plan($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'ITIL_DEFAULTS'), 'ITIL default'))->plan($connection);
     }
 
     public function apply(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::ITIL_DEFAULTS, 'ITIL default'))->apply($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'ITIL_DEFAULTS'), 'ITIL default'))->apply($connection);
     }
 }

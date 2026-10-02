@@ -143,7 +143,8 @@ try {
     verify($repo->needsErrorNotification($errors, now: $now), 'Exact one-day alert boundary is eligible');
     $writer->update('glpi_alerts', $alert, ['items_id' => $short, 'date' => '2030-01-10 12:00:00']);
     verify($repo->needsErrorNotification($errors, now: $now), 'Other task alert does not suppress');
-    $writer->update('glpi_alerts', $alert, ['items_id' => $errors, 'itemtype' => 'Ticket']);
+    $writer->insert('glpi_contracts', ['id' => $errors, 'entities_id' => 0]);
+    $writer->update('glpi_alerts', $alert, ['items_id' => $errors, 'itemtype' => 'Contract']);
     verify($repo->needsErrorNotification($errors, now: $now), 'Other itemtype alert does not suppress');
 
     $_SESSION['glpi_use_mode'] = Session::DEBUG_MODE;

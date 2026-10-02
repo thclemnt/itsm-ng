@@ -148,7 +148,9 @@ try {
         $after->getColumn($column)->setNotnull(true)->setDefault(0);
     }
     // The legacy id was UNIQUE AUTO_INCREMENT even with a composite primary key.
-    $after->addUniqueIndex(['id'], 'legacy_dashboard_id');
+    if (!$after->hasIndex('legacy_dashboard_id')) {
+        $after->addUniqueIndex(['id'], 'legacy_dashboard_id');
+    }
     $after->dropPrimaryKey();
     $after->setPrimaryKey(['`profileId`', '`userId`']);
     foreach ($platform->getAlterTableSQL($manager->createComparator()->compareTables($before, $after)) as $sql) {
@@ -200,6 +202,9 @@ try {
     }
     $migration->apply($connection);
     (new ForeignKeys())->apply($connection);
+    if ($connection->createSchemaManager()->introspectTable($table)->hasIndex('legacy_dashboard_id')) {
+        $connection->executeStatement($platform->getDropIndexSQL('legacy_dashboard_id', $table));
+    }
     $DB->synchronizeSequences();
 }
 echo $DB->getProvider() . ": Dashboard selection, ownership, generated mapping DDL and migration passed.\n";

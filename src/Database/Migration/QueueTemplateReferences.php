@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\OptionalReferences;
 
 final class QueueTemplateReferences
 {
@@ -13,11 +12,11 @@ final class QueueTemplateReferences
 
     public function plan(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::QUEUE_TEMPLATES, 'queue template'))->plan($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'QUEUE_TEMPLATES'), 'queue template'))->plan($connection);
     }
 
     public function apply(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::QUEUE_TEMPLATES, 'queue template'))->apply($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'QUEUE_TEMPLATES'), 'queue template'))->apply($connection);
     }
 }

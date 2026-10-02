@@ -241,7 +241,8 @@ class AuthMail extends CommonDBTM
      */
     public static function useAuthMail()
     {
-        return (countElementsInTable('glpi_authmails', ['is_active' => 1]) > 0);
+        global $DB;
+        return (new \itsmng\Database\Repository\MailAuthenticationRepository(\itsmng\Database\Orm::create($DB)))->activeCount() > 0;
     }
 
 
@@ -332,7 +333,10 @@ class AuthMail extends CommonDBTM
 
     public function cleanDBonPurge()
     {
+        global $DB;
         Rule::cleanForItemCriteria($this, 'MAIL_SERVER');
+        (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+            ->reassignMailServer((int)$this->getID(), (int)($this->input['_replace_by'] ?? 0));
     }
 
     public function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)

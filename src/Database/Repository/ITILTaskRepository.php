@@ -13,24 +13,37 @@ use itsmng\Database\RecordCriteria;
 /** Task projections share the mapped parent relation across Ticket, Change and Problem. */
 final class ITILTaskRepository
 {
-    private const TYPES = [
-        'TicketTask' => [Entity\TicketTask::class, Entity\Ticket::class, 'tickets'],
-        'ProblemTask' => [Entity\ProblemTask::class, Entity\Problem::class, 'problems'],
-        'ChangeTask' => [Entity\ChangeTask::class, Entity\Change::class, 'changes'],
-    ];
-
     public function __construct(private EntityManager $em)
     {
     }
 
-    private function type(string $type): array
+    public function definition(string $type): array
     {
-        return self::TYPES[$type] ?? throw new \InvalidArgumentException('Unsupported ITIL task type');
+        if (!preg_match('/^[A-Za-z][A-Za-z0-9]*$/D', $type) || !class_exists($class = 'itsmng\\Database\\Entity\\' . $type)) {
+            throw new \InvalidArgumentException('Unsupported ITIL task type');
+        }
+        $metadata = $this->em->getClassMetadata($class);
+        foreach ($metadata->associationMappings as $property => $association) {
+            foreach ((new \ReflectionProperty($class, $property))->getAttributes(\itsmng\Database\Mapping\ITILStatisticsRelation::class) as $attribute) {
+                if ($attribute->newInstance()->role === \itsmng\Database\Mapping\ITILStatisticsRole::Tasks && $association->isToOneOwningSide()) {
+                    return [$class, $association->targetEntity, $property];
+                }
+            }
+        }
+        throw new \InvalidArgumentException('Unsupported ITIL task type');
+    }
+
+    public function parentTasks(string $type, int $parent): array
+    {
+        [$task, , $relation] = $this->definition($type);
+        $query = $this->em->createQueryBuilder()->select('r')->from($task, 'r')
+            ->where('IDENTITY(r.' . $relation . ') = :parent')->setParameter('parent', $parent, Types::INTEGER)->orderBy('r.id');
+        return $this->rows($query);
     }
 
     public function taskList(string $type, array $statuses, bool $todo, int $user, ?array $groups, array $scope, ?int $start, ?int $limit): array
     {
-        [$task, $parent, $relation] = $this->type($type);
+        [$task, $parent, $relation] = $this->definition($type);
         if ($groups === [] || ($groups === null && $user <= 0)) {
             return [];
         }
@@ -54,7 +67,7 @@ final class ITILTaskRepository
 
     public function calendarTasks(string $type, array $criteria): array
     {
-        [$task, , $relation] = $this->type($type);
+        [$task, , $relation] = $this->definition($type);
         $query = $this->em->createQueryBuilder()->select('r')->from($task, 'r')->join('r.' . $relation, 'parent');
         $query->where((new RecordCriteria($query, $this->em->getClassMetadata($task)))->where($criteria))
             ->andWhere('parent.is_deleted = :deleted')->setParameter('deleted', false, Types::BOOLEAN)->orderBy('r.id');
@@ -63,7 +76,7 @@ final class ITILTaskRepository
 
     public function planningTasks(string $type, \DateTimeImmutable $begin, \DateTimeImmutable $end, bool $unplanned, int $user, array $groups, array $profileScope, bool $displayDone, array $closedStatuses): array
     {
-        [$task, , $relation] = $this->type($type);
+        [$task, , $relation] = $this->definition($type);
         $query = $this->em->createQueryBuilder()->select('t')->from($task, 't')->join('t.' . $relation, 'parent')
             ->where('parent.is_deleted = :deleted')->setParameter('deleted', false, Types::BOOLEAN)
             ->setParameter('begin', $begin, Types::DATETIMETZ_IMMUTABLE)->setParameter('end', $end, Types::DATETIMETZ_IMMUTABLE);

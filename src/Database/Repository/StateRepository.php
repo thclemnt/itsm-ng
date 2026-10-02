@@ -16,13 +16,13 @@ final class StateRepository
 
     public static function supports(string $itemtype): bool
     {
-        return isset(EntityRegistry::TABLES[\getTableForItemType($itemtype)]);
+        return isset(EntityRegistry::tables()[\getTableForItemType($itemtype)]);
     }
 
     /** NULL state is exposed as the existing "no state" bucket, ID zero. */
     public function counts(string $itemtype, ?array $entities): array
     {
-        $class = EntityRegistry::TABLES[\getTableForItemType($itemtype)] ?? throw new \InvalidArgumentException('Unmapped state item type');
+        $class = EntityRegistry::tables()[\getTableForItemType($itemtype)] ?? throw new \InvalidArgumentException('Unmapped state item type');
         $metadata = $this->em->getClassMetadata($class);
         $query = $this->em->createQueryBuilder()->select('IDENTITY(a.states) AS states_id', 'COUNT(a.id) AS cpt')
             ->from($class, 'a')->groupBy('a.states');

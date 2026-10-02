@@ -41,6 +41,80 @@ if (!defined('GLPI_ROOT')) {
 /// @since 0.84
 class NetworkPortAggregate extends NetworkPortInstantiation
 {
+    private ?array $pendingOrigins = null;
+
+    private function originsRepository(): \itsmng\Database\Repository\NetworkPortAggregateRepository
+    {
+        global $DB;
+        return new \itsmng\Database\Repository\NetworkPortAggregateRepository(\itsmng\Database\Orm::create($DB));
+    }
+
+    private function atomic(callable $operation)
+    {
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $connection->beginTransaction();
+        $this->pendingOrigins = null;
+        try {
+            $result = $operation();
+            $result === false ? $connection->rollBack() : $connection->commit();
+            return $result;
+        } catch (Throwable $error) {
+            $connection->rollBack();
+            throw $error;
+        } finally {
+            $this->pendingOrigins = null;
+        }
+    }
+
+    public function add(array $input, $options = [], $history = true)
+    {
+        return $this->atomic(fn () => parent::add($input, $options, $history));
+    }
+
+    public function update(array $input, $history = 1, $options = [])
+    {
+        return $this->atomic(fn () => parent::update($input, $history, $options));
+    }
+
+    public function post_getEmpty()
+    {
+        parent::post_getEmpty();
+        $this->fields['networkports_id_list'] = '[]';
+    }
+
+    public function post_getFromDB()
+    {
+        parent::post_getFromDB();
+        $this->fields['networkports_id_list'] = json_encode($this->originsRepository()->originIds((int)$this->fields['id']), JSON_THROW_ON_ERROR);
+    }
+
+    private function saveOrigins(): void
+    {
+        if ($this->pendingOrigins !== null) {
+            $this->originsRepository()->replaceOrigins((int)$this->fields['id'], $this->pendingOrigins);
+            $this->fields['networkports_id_list'] = json_encode($this->pendingOrigins, JSON_THROW_ON_ERROR);
+        }
+    }
+
+    public function post_addItem()
+    {
+        $this->saveOrigins();
+        parent::post_addItem();
+    }
+
+    public function post_updateItem($history = 1)
+    {
+        $this->saveOrigins();
+        parent::post_updateItem($history);
+    }
+
+    public function cleanDBonPurge()
+    {
+        $this->originsRepository()->removeForAggregate((int)$this->fields['id']);
+        parent::cleanDBonPurge();
+    }
+
     public static function getTypeName($nb = 0)
     {
         return __('Aggregation port');
@@ -50,11 +124,8 @@ class NetworkPortAggregate extends NetworkPortInstantiation
     public function prepareInputForAdd($input)
     {
 
-        if ((isset($input['networkports_id_list'])) && is_array($input['networkports_id_list'])) {
-            $input['networkports_id_list'] = exportArrayToDB($input['networkports_id_list']);
-        } else {
-            $input['networkports_id_list'] = exportArrayToDB([]);
-        }
+        $input['networkports_id_list'] ??= [];
+        $input = $this->prepareOrigins($input);
         return parent::prepareInputForAdd($input);
     }
 
@@ -62,12 +133,24 @@ class NetworkPortAggregate extends NetworkPortInstantiation
     public function prepareInputForUpdate($input)
     {
 
-        if ((isset($input['networkports_id_list'])) && is_array($input['networkports_id_list'])) {
-            $input['networkports_id_list'] = exportArrayToDB($input['networkports_id_list']);
-        } else {
-            $input['networkports_id_list'] = exportArrayToDB([]);
-        }
+        $input = $this->prepareOrigins($input);
         return parent::prepareInputForUpdate($input);
+    }
+
+    private function prepareOrigins(array $input): array
+    {
+        if (array_key_exists('networkports_id_list', $input)) {
+            $values = $input['networkports_id_list'];
+            if (is_string($values)) {
+                $values = json_decode(\itsmng\Database\LegacyValues::decodeString($values), true, flags: JSON_THROW_ON_ERROR);
+            }
+            if (!is_array($values)) {
+                throw new InvalidArgumentException('Aggregate origin selection requires an array');
+            }
+            $this->pendingOrigins = \itsmng\Database\Repository\NetworkPortAggregateRepository::origins($values);
+            unset($input['networkports_id_list']);
+        }
+        return $input;
     }
 
 
@@ -84,22 +167,10 @@ class NetworkPortAggregate extends NetworkPortInstantiation
         }
 
         $lastItem = $recursiveItems[count($recursiveItems) - 1];
+        $possible_ports = [];
         $netport_types = ['NetworkPortEthernet', 'NetworkPortWifi'];
         foreach ($netport_types as $netport_type) {
-            $iterator = $DB->request([
-               'SELECT' => [
-                  'port.id',
-                  'port.name',
-                  'port.mac'
-               ],
-               'FROM'   => 'glpi_networkports AS port',
-               'WHERE'  => [
-                  'items_id'           => $lastItem->getID(),
-                  'itemtype'           => $lastItem->getType(),
-                  'instantiation_type' => $netport_type
-               ],
-               'ORDER'  => ['logical_number', 'name']
-            ]);
+            $iterator = new \itsmng\Database\RowIterator($this->originsRepository()->availablePorts($lastItem->getType(), (int)$lastItem->getID(), $netport_type));
 
             if (count($iterator)) {
                 $array_element_name = call_user_func(
@@ -123,7 +194,7 @@ class NetworkPortAggregate extends NetworkPortInstantiation
         }
         $checklistOptions = [];
         foreach ($possible_ports as $key => $value) {
-            $checklistOptions = array_merge($checklistOptions, $value);
+            $checklistOptions += $value;
         }
 
         return [

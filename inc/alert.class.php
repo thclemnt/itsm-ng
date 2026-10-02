@@ -217,8 +217,9 @@ class Alert extends CommonDBTM
         if ($items_id <= 0 || $type <= 0) {
             return false;
         }
-        $iter = $DB->request(self::getTable(), ['itemtype' => $itemtype, 'items_id' => $items_id, 'type' => $type]);
-        if ($row = $iter->next()) {
+        $rows = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+            ->matching(self::getTable(), ['itemtype' => $itemtype, 'items_id' => $items_id, 'type' => $type], 'id', 1);
+        if ($row = $rows[0] ?? null) {
             return $row['id'];
         }
         return false;
@@ -244,8 +245,9 @@ class Alert extends CommonDBTM
         if ($items_id <= 0 || $type <= 0) {
             return false;
         }
-        $iter = $DB->request(self::getTable(), ['itemtype' => $itemtype, 'items_id' => $items_id, 'type' => $type]);
-        if ($row = $iter->next()) {
+        $rows = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+            ->matching(self::getTable(), ['itemtype' => $itemtype, 'items_id' => $items_id, 'type' => $type], 'id', 1);
+        if ($row = $rows[0] ?? null) {
             return $row['date'];
         }
         return false;
@@ -265,12 +267,9 @@ class Alert extends CommonDBTM
         global $DB;
 
         if ($items_id) {
-            $iter = $DB->request(self::getTable(), ['FIELDS'   => 'date',
-                                                    'ORDER'    => 'date DESC',
-                                                    'LIMIT'    => 1,
-                                                    'itemtype' => $itemtype,
-                                                    'items_id' => $items_id]);
-            if ($row = $iter->next()) {
+            $rows = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+                ->matching(self::getTable(), ['itemtype' => $itemtype, 'items_id' => $items_id], ['date DESC', 'id DESC'], 1);
+            if ($row = $rows[0] ?? null) {
                 //TRANS: %s is the date
                 echo sprintf(__('Alert sent on %s'), Html::convDateTime($row['date']));
             }

@@ -36,7 +36,7 @@ try {
     $_SESSION['glpishowallentities'] = false;
     $_SESSION['glpiactiveentities'] = [0];
     $tested = 0;
-    foreach (\itsmng\Database\ForeignKeys::RELATIONS as $table => $relations) {
+    foreach (\itsmng\Database\ForeignKeys::relations() as $table => $relations) {
         if (!str_starts_with($table, 'glpi_items_device')) {
             continue;
         }

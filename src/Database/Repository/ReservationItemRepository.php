@@ -7,7 +7,6 @@ namespace itsmng\Database\Repository;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Entity;
-use itsmng\Database\EntityRegistry;
 use itsmng\Database\RecordCriteria;
 
 final class ReservationItemRepository
@@ -18,7 +17,12 @@ final class ReservationItemRepository
 
     public static function supports(string $type): bool
     {
-        return isset(EntityRegistry::TABLES[\getTableForItemType($type)]);
+        try {
+            Entity\ReservationItem::referenceAssociation($type);
+            return true;
+        } catch (\InvalidArgumentException) {
+            return false;
+        }
     }
 
     public function types(array $entities): array
@@ -33,20 +37,22 @@ final class ReservationItemRepository
     {
         return $this->em->createQueryBuilder()->select('DISTINCT t.id', 't.name')
             ->from(Entity\ReservationItem::class, 'i')
-            ->innerJoin(Entity\Peripheral::class, 'p', 'WITH', 'i.items_id = p.id AND i.itemtype = :type')
+            ->innerJoin('i.peripheral', 'p')
             ->join('p.peripheraltypes', 't')
             ->where('i.is_active = :active AND IDENTITY(i.entities) IN (:entities)')
-            ->setParameter('active', true, Types::BOOLEAN)->setParameter('type', 'Peripheral')
+            ->setParameter('active', true, Types::BOOLEAN)
             ->setParameter('entities', $entities ?: [-1])->orderBy('t.name')->addOrderBy('t.id')->getQuery()->getScalarResult();
     }
 
-    /** Polymorphic asset types resolve through the explicit core entity registry. */
+    /** Asset identity is the selected owning association, enforced by the database. */
     public function available(string $type, string $nameField, array $scope, ?string $begin, ?string $end, ?int $peripheralType = null): array
     {
-        $class = EntityRegistry::TABLES[\getTableForItemType($type)];
+        $association = Entity\ReservationItem::referenceAssociation($type);
+        $itemMetadata = $this->em->getClassMetadata(Entity\ReservationItem::class);
+        $class = $itemMetadata->getAssociationTargetClass($association);
         $metadata = $this->em->getClassMetadata($class);
-        $query = $this->em->createQueryBuilder()->from($class, 'r')
-            ->innerJoin(Entity\ReservationItem::class, 'i', 'WITH', 'i.items_id = r.id AND i.itemtype = :type')
+        $query = $this->em->createQueryBuilder()->from(Entity\ReservationItem::class, 'i')
+            ->innerJoin('i.' . $association, 'r')
             ->leftJoin('r.locations', 'l');
         $compiler = new RecordCriteria($query, $metadata);
         $query->select(
@@ -60,7 +66,7 @@ final class ReservationItemRepository
             'r.id AS items_id'
         )
             ->where($compiler->where($scope))->andWhere('i.is_active = :active AND i.is_deleted = :deleted')
-            ->setParameter('type', $type)->setParameter('active', true, Types::BOOLEAN)->setParameter('deleted', false, Types::BOOLEAN);
+            ->setParameter('active', true, Types::BOOLEAN)->setParameter('deleted', false, Types::BOOLEAN);
         if ($metadata->hasField('is_deleted')) {
             $query->andWhere('r.is_deleted = :deleted');
         }

@@ -5,6 +5,8 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_computervirtualmachines')]
@@ -12,11 +14,13 @@ class ComputerVirtualMachine
 {
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
     #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
+    #[ReferencePolicy(ReferenceKind::RootEntity)]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?Entity $entities = null;
 
     #[ORM\ManyToOne(targetEntity: Computer::class)]
@@ -28,14 +32,17 @@ class ComputerVirtualMachine
 
     #[ORM\ManyToOne(targetEntity: VirtualMachineState::class)]
     #[ORM\JoinColumn(name: 'virtualmachinestates_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?VirtualMachineState $virtualmachinestates = null;
 
     #[ORM\ManyToOne(targetEntity: VirtualMachineSystem::class)]
     #[ORM\JoinColumn(name: 'virtualmachinesystems_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?VirtualMachineSystem $virtualmachinesystems = null;
 
     #[ORM\ManyToOne(targetEntity: VirtualMachineType::class)]
     #[ORM\JoinColumn(name: 'virtualmachinetypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?VirtualMachineType $virtualmachinetypes = null;
 
     #[ORM\Column(name: '`uuid`', type: 'string', length: 255, nullable: false, options: ['default' => ''])]

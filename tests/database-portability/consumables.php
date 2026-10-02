@@ -75,6 +75,9 @@ try {
     $cases = [];
     foreach (['old', 'boundary', 'recent', 'missing', 'other_type', 'deleted', 'disabled', 'foreign'] as $case) {
         $cases[$case] = $fixtures->create('glpi_consumableitems', ['name' => 'Alert ' . $case, 'entities_id' => $case === 'foreign' ? $child : 0, 'is_deleted' => $case === 'deleted', 'alarm_threshold' => $case === 'disabled' ? -1 : 2]);
+        if ($case === 'other_type') {
+            $fixtures->create('glpi_cartridgeitems', ['id' => $cases[$case]]);
+        }
         if (in_array($case, ['old', 'boundary', 'recent', 'other_type'], true)) {
             $date = match ($case) {
                 'old' => '2026-09-28 11:59:59', 'boundary' => '2026-09-28 12:00:00', default => '2026-09-28 12:00:01',
@@ -103,7 +106,11 @@ try {
     verify($SQL_TOTAL_REQUEST === 0, 'Stock queries bypass legacy adapter execution');
 
     Session::changeActiveEntities(0, false);
-    $fixtures->create('glpi_consumables', ['consumableitems_id' => $model, 'itemtype' => 'PluginRemovedRecipient', 'items_id' => 1, 'date_out' => '2026-01-01']);
+    try {
+        $fixtures->create('glpi_consumables', ['consumableitems_id' => $model, 'itemtype' => 'PluginRemovedRecipient', 'items_id' => 1, 'date_out' => '2026-01-01']);
+        throw new RuntimeException('Unsupported consumable recipient was accepted');
+    } catch (InvalidArgumentException) {
+    }
     ob_start();
     Consumable::showSummary();
     $html = ob_get_clean();
@@ -113,7 +120,7 @@ try {
     ob_start();
     Consumable::showForConsumableItem($modelObject, true);
     $html = ob_get_clean();
-    verify(str_contains($html, 'Consumable group'), 'Used stock list renders mapped recipients without failing on removed plugin classes');
+    verify(str_contains($html, 'Consumable group'), 'Used stock list renders mapped recipients');
 } finally {
     $DB->rollBack();
 }

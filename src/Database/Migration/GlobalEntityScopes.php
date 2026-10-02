@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\GlobalEntityScopes as Scopes;
 
 final class GlobalEntityScopes
 {
@@ -13,11 +12,11 @@ final class GlobalEntityScopes
 
     public function plan(Connection $connection): array
     {
-        return (new NullableReferences(Scopes::RELATIONS, 'global configuration entity', -1))->plan($connection);
+        return (new NullableReferences(ReferenceHistory::get('global', 'RELATIONS'), 'global configuration entity', -1))->plan($connection);
     }
 
     public function apply(Connection $connection): array
     {
-        return (new NullableReferences(Scopes::RELATIONS, 'global configuration entity', -1))->apply($connection);
+        return (new NullableReferences(ReferenceHistory::get('global', 'RELATIONS'), 'global configuration entity', -1))->apply($connection);
     }
 }

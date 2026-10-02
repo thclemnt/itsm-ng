@@ -210,15 +210,7 @@ class Profile extends CommonDBTM
         }
 
         if (in_array('is_default', $this->updates) && ($this->input["is_default"] == 1)) {
-            $DB->update(
-                $this->getTable(),
-                [
-                  'is_default' => 0
-                ],
-                [
-                  'id' => ['<>', $this->input['id']]
-                ]
-            );
+            (new \itsmng\Database\Repository\ProfileRepository(\itsmng\Database\Orm::create($DB)))->clearOtherDefaults((int)$this->input['id']);
         }
 
         // To avoid log out and login when rights change (very useful in debug mode)
@@ -248,15 +240,7 @@ class Profile extends CommonDBTM
         unset($this->profileRight);
 
         if (isset($this->fields['is_default']) && ($this->fields["is_default"] == 1)) {
-            $DB->update(
-                $this->getTable(),
-                [
-                  'is_default' => 0
-                ],
-                [
-                  'id' => ['<>', $this->fields['id']]
-                ]
-            );
+            (new \itsmng\Database\Repository\ProfileRepository(\itsmng\Database\Orm::create($DB)))->clearOtherDefaults((int)$this->fields['id']);
         }
     }
 
@@ -285,6 +269,10 @@ class Profile extends CommonDBTM
         (new Dashboard())->deleteByCriteria(['profileId' => $this->getID()]);
         global $DB;
 
+        (new \itsmng\Database\Repository\NotificationRecipientRepository(\itsmng\Database\Orm::create($DB)))->replaceProfile(
+            (int)$this->getID(),
+            (int)($this->input['_replace_by'] ?? 0)
+        );
         $repository = new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB));
         foreach ($repository->defaultProfileReplacements((int)$this->getID(), (int)($this->input['_replace_by'] ?? 0)) as $row) {
             $user = new User();
@@ -584,58 +572,31 @@ class Profile extends CommonDBTM
      **/
     public static function getUnderActiveProfileRestrictCriteria()
     {
-
-        // Not logged -> no profile to see
+        global $DB;
         if (!isset($_SESSION['glpiactiveprofile'])) {
-            return [0];
+            return ['glpi_profiles.id' => ['<', 0]];
         }
-
-        // Profile right : may modify profile so can attach all profile
         if (Profile::canCreate()) {
-            return [1];
+            return [];
         }
+        $ids = (new \itsmng\Database\Repository\ProfileRepository(\itsmng\Database\Orm::create($DB)))->manageableIds(
+            self::activeRights(),
+            Session::getCurrentInterface()
+        );
+        return ['glpi_profiles.id' => $ids ?: ['<', 0]];
+    }
 
-        $criteria = ['glpi_profiles.interface' => Session::getCurrentInterface()];
-
-        // First, get all possible rights
-        $right_subqueries = [];
+    private static function activeRights(): array
+    {
+        $rights = [];
+        $interface = Session::getCurrentInterface();
         foreach (ProfileRight::getAllPossibleRights() as $key => $default) {
-            $val = isset($_SESSION['glpiactiveprofile'][$key]) ? $_SESSION['glpiactiveprofile'][$key] : 0;
-
-            if (
-                !is_array($val) // Do not include entities field added by login
-                && (Session::getCurrentInterface() == 'central'
-                   || in_array($key, self::$helpdesk_rights))
-            ) {
-                $right_subqueries[] = [
-                   'glpi_profilerights.name'     => $key,
-                   'RAW'                         => [
-                      '(' . DBmysql::quoteName('glpi_profilerights.rights') . ' | ' . DBmysql::quoteValue($val) . ')' => $val
-                   ]
-                ];
+            $value = $_SESSION['glpiactiveprofile'][$key] ?? 0;
+            if (!is_array($value) && ($interface === 'central' || in_array($key, self::$helpdesk_rights))) {
+                $rights[$key] = (int)$value;
             }
         }
-
-        $sub_query = new QuerySubQuery([
-           'FROM'   => 'glpi_profilerights',
-           'COUNT'  => 'cpt',
-           'WHERE'  => [
-              'glpi_profilerights.profiles_id' => new \QueryExpression(\DBmysql::quoteName('glpi_profiles.id')),
-              'OR'                             => $right_subqueries
-           ]
-        ]);
-        $criteria[] = new \QueryExpression(count($right_subqueries) . " = " . $sub_query->getQuery());
-
-        if (Session::getCurrentInterface() == 'central') {
-            return [
-               'OR'  => [
-                  'glpi_profiles.interface' => 'helpdesk',
-                  $criteria
-               ]
-            ];
-        }
-
-        return $criteria;
+        return $rights;
     }
 
 
@@ -656,14 +617,8 @@ class Profile extends CommonDBTM
         if (!isset($_SESSION['glpiactiveprofile'])) {
             return false;
         }
-        $rights = [];
+        $rights = self::activeRights();
         $interface = Session::getCurrentInterface();
-        foreach (ProfileRight::getAllPossibleRights() as $key => $default) {
-            $value = $_SESSION['glpiactiveprofile'][$key] ?? 0;
-            if (!is_array($value) && ($interface === 'central' || in_array($key, self::$helpdesk_rights))) {
-                $rights[$key] = (int)$value;
-            }
-        }
         return (new \itsmng\Database\Repository\ProfileRepository(\itsmng\Database\Orm::create($DB)))
             ->canManage($IDs, $rights, $interface, Profile::canCreate());
     }
@@ -3395,16 +3350,8 @@ class Profile extends CommonDBTM
             }
         }
 
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => self::getUnderActiveProfileRestrictCriteria(),
-           'ORDER'  => 'name'
-        ]);
-
-        //New rule -> get the next free ranking
-        while ($data = $iterator->next()) {
-            $profiles[$data['id']] = $data['name'];
-        }
+        $profiles = array_column((new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+            ->matching(self::getTable(), self::getUnderActiveProfileRestrictCriteria(), ['name']), 'name', 'id');
         Dropdown::showFromArray(
             $p['name'],
             $profiles,
@@ -3425,11 +3372,7 @@ class Profile extends CommonDBTM
     public static function getDefault()
     {
         global $DB;
-
-        foreach ($DB->request('glpi_profiles', ['is_default' => 1]) as $data) {
-            return $data['id'];
-        }
-        return 0;
+        return (new \itsmng\Database\Repository\ProfileRepository(\itsmng\Database\Orm::create($DB)))->defaultId();
     }
 
 
@@ -3529,15 +3472,8 @@ class Profile extends CommonDBTM
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'FROM'   => DomainRecordType::getTable(),
-        ]);
-
-        $types = [];
-        while ($row = $iterator->next()) {
-            $types[$row['id']] = $row['name'];
-        }
-        return $types;
+        return array_column((new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+            ->matching(DomainRecordType::getTable()), 'name', 'id');
     }
 
     /**
@@ -3589,40 +3525,12 @@ class Profile extends CommonDBTM
     public static function haveUserRight($user_id, $rightname, $rightvalue, $entity_id)
     {
         global $DB;
-
-        $result = $DB->request(
-            [
-              'COUNT'      => 'cpt',
-              'FROM'       => 'glpi_profilerights',
-              'INNER JOIN' => [
-                 'glpi_profiles' => [
-                    'FKEY' => [
-                       'glpi_profilerights' => 'profiles_id',
-                       'glpi_profiles'      => 'id',
-                    ]
-                 ],
-                 'glpi_profiles_users' => [
-                    'FKEY' => [
-                       'glpi_profiles_users' => 'profiles_id',
-                       'glpi_profiles'       => 'id',
-                       [
-                          'AND' => ['glpi_profiles_users.users_id' => $user_id],
-                       ],
-                    ]
-                 ],
-              ],
-              'WHERE'      => [
-                 'glpi_profilerights.name'   => $rightname,
-                 'glpi_profilerights.rights' => ['&',  $rightvalue],
-              ] + getEntitiesRestrictCriteria('glpi_profiles_users', '', $entity_id, true),
-            ]
+        return (new \itsmng\Database\Repository\ProfileRightRepository(\itsmng\Database\Orm::create($DB)))->userHas(
+            (int)$user_id,
+            $rightname,
+            (int)$rightvalue,
+            getEntitiesRestrictCriteria('glpi_profiles_users', '', $entity_id, true)
         );
-
-        if (!$data = $result->next()) {
-            return false;
-        }
-
-        return $data['cpt'] > 0;
     }
 
 

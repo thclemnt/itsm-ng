@@ -399,7 +399,7 @@ JAVASCRIPT;
         $count = 0;
         foreach ($target_types as $itemtype) {
             $itemtable = $itemtype::getTable();
-            if (isset(\itsmng\Database\EntityRegistry::TABLES[$itemtable])) {
+            if (isset(\itsmng\Database\EntityRegistry::tables()[$itemtable])) {
                 $count += $repository->count(true, (int)$softwarelicenses_id, false, $itemtype, $itemtable, $entity === -1 ? [] : getEntitiesRestrictCriteria($itemtable, '', $entity));
                 continue;
             }
@@ -457,7 +457,7 @@ JAVASCRIPT;
         $count = 0;
         foreach ($target_types as $itemtype) {
             $itemtable = $itemtype::getTable();
-            if (isset(\itsmng\Database\EntityRegistry::TABLES[$itemtable])) {
+            if (isset(\itsmng\Database\EntityRegistry::tables()[$itemtable])) {
                 $count += $repository->count(true, (int)$softwares_id, true, $itemtype, $itemtable, getEntitiesRestrictCriteria($itemtable));
                 continue;
             }
@@ -532,7 +532,7 @@ JAVASCRIPT;
         $counts = [];
         foreach ($repository->itemTypes(true, (int)$softwarelicense_id) as $itemtype) {
             $table = $itemtype::getTable();
-            if (isset(\itsmng\Database\EntityRegistry::TABLES[$table])) {
+            if (isset(\itsmng\Database\EntityRegistry::tables()[$table])) {
                 foreach ($repository->countsByEntity(true, (int)$softwarelicense_id, $itemtype, $table, getEntitiesRestrictCriteria($table)) as $entity => $quantity) {
                     $counts[$entity][$itemtype] = $quantity;
                 }

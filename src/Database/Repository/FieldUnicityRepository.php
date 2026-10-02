@@ -62,7 +62,7 @@ final class FieldUnicityRepository
         if (!$fields || $entities === []) {
             return [];
         }
-        $class = EntityRegistry::TABLES[$table] ?? throw new \InvalidArgumentException('Unmapped uniqueness target');
+        $class = EntityRegistry::tables()[$table] ?? throw new \InvalidArgumentException('Unmapped uniqueness target');
         $metadata = $this->em->getClassMetadata($class);
         $query = $this->em->createQueryBuilder()->from($class, 'r')->select('COUNT(r.id) AS cpt')->having('COUNT(r.id) > 1');
         $compiler = new RecordCriteria($query, $metadata);

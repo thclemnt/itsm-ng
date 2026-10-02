@@ -185,13 +185,24 @@ abstract class CommonDBConnexity extends CommonDBTM
     **/
     public static function getItemsAssociatedTo($itemtype, $items_id)
     {
-        $res = [];
-        $iterator = static::getItemsAssociationRequest($itemtype, $items_id);
+        global $DB;
 
-        while ($row = $iterator->next()) {
-            $input = Toolbox::addslashes_deep($row);
+        $res = [];
+        $criteria = static::getSQLCriteriaToSearchForItem($itemtype, $items_id);
+        if ($criteria === null) {
+            return $res;
+        }
+        if (\itsmng\Database\MappedStorage::supports(static::getTable())
+            && !array_diff(array_keys($criteria), ['SELECT', 'FROM', 'WHERE'])
+            && ($criteria['FROM'] ?? null) === static::getTable() && is_array($criteria['WHERE'] ?? null)) {
+            $ids = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+                ->identifiers(static::getTable(), static::getIndexName(), $criteria['WHERE']);
+        } else {
+            $ids = array_column(iterator_to_array(static::getItemsAssociationRequest($itemtype, $items_id)), 'id');
+        }
+        foreach ($ids as $id) {
             $item = new static();
-            $item->getFromDB($input['id']);
+            $item->getFromDB($id);
             $res[] = $item;
         }
         return $res;

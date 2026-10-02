@@ -12,16 +12,17 @@ class ApplianceItemRelation
 {
     #[ORM\ManyToOne(targetEntity: ApplianceItem::class)]
     #[ORM\JoinColumn(name: 'appliances_items_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?ApplianceItem $appliances_items = null;
 
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
     #[ORM\Column(name: '`itemtype`', type: 'string', length: 100, nullable: false)]
     public string $itemtype = '';
 
-    #[ORM\Column(name: '`items_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
+    #[ORM\Column(name: '`items_id`', type: 'bigint', nullable: false, options: ['default' => '0'])]
     public int $items_id = 0;
 }

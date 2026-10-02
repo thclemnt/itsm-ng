@@ -2,9 +2,9 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Migration\ITILDefaultReferences;
-use itsmng\Database\OptionalReferences;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 
@@ -40,7 +40,7 @@ set_error_handler(static function (int $severity, string $message, string $file,
 }, E_WARNING);
 $DB->beginTransaction();
 try {
-    foreach (OptionalReferences::ITIL_DEFAULTS as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'ITIL_DEFAULTS') as $table => $relations) {
         foreach ($relations as $column => $target) {
             $parent = $fixtures->create($target, ['name' => 'ITIL default parent ' . $table . '.' . $column]);
             $replacement = $fixtures->create($target, ['name' => 'ITIL default replacement ' . $table . '.' . $column]);
@@ -106,7 +106,7 @@ $quote = $platform->quoteIdentifier(...);
 $migration = new ITILDefaultReferences();
 $legacy = null;
 try {
-    foreach (OptionalReferences::ITIL_DEFAULTS as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'ITIL_DEFAULTS') as $table => $relations) {
         foreach ($relations as $column => $target) {
             $connection->executeStatement($platform->getDropForeignKeySQL(ForeignKeys::name($table, $column), $table));
             $connection->executeStatement('UPDATE ' . $quote($table) . ' SET ' . $quote($column) . ' = 0 WHERE ' . $quote($column) . ' IS NULL');

@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\OptionalReferences;
 
 final class ReservationUserReferences
 {
@@ -13,11 +12,11 @@ final class ReservationUserReferences
 
     public function plan(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::RESERVATION_USERS, 'reservation user'))->plan($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'RESERVATION_USERS'), 'reservation user'))->plan($connection);
     }
 
     public function apply(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::RESERVATION_USERS, 'reservation user'))->apply($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'RESERVATION_USERS'), 'reservation user'))->apply($connection);
     }
 }

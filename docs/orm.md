@@ -1,9 +1,11 @@
 # Mapped persistence and reporting
 
 Doctrine ORM 3 is an explicit dependency alongside DBAL 4.4+ (PHP 8.2+). The attributes in
-`src/Database/Entity` now map every column of all 355 baseline tables,
+`src/Database/Entity` now map every column of all 357 current core tables,
 including the dashboard's generated numeric primary key and explicitly assigned IDs elsewhere.
-`EntityRegistry` lists each table and mapped class. These are persistence records;
+`EntityRegistry` discovers tables, mapped classes, boolean columns and ordinary
+FK targets from Doctrine metadata. It contains no hand-maintained declarations.
+These are persistence records;
 application permissions, validation, hooks, history and notifications remain in
 `CommonDBTM` and its subclasses.
 
@@ -26,7 +28,7 @@ normalization; remaining optional and polymorphic references remain scalar colum
 types; decimals remain strings to avoid rounding through floating point.
 
 `MappedStorage` now handles insert/update/delete, soft deletion and restoration
-for all 355 registered core tables through `RecordWriter`. `CommonDBTM` calls it
+for all 357 registered core tables through `RecordWriter`. `CommonDBTM` calls it
 below lifecycle processing; direct bulk SQL elsewhere is still pending migration.
 The writer supports assigned IDs, generated IDs, the dashboard's alternate key,
 JSON, native booleans, UUID values and clock boundaries. Bulk legacy SQL can still
@@ -34,6 +36,49 @@ write these tables and the same foreign keys remain authoritative.
 Calling `EntityManager::flush()` directly is not an alternative application API:
 it would bypass those lifecycle services.
 
+Account maintenance now uses `UserRepository` for duplicate-login checks,
+token collisions, partial entity-grant removal, authentication-source changes,
+password clearing and synchronization snapshots. `LdapRepository` binds directory
+DNs and attribute values through mapped groups; stored LDAP values remain the LIKE
+patterns. Group/email additions and removals keep their existing model hooks.
+`UserPasswordRepository` handles reset-token ambiguity and expiry, notification
+eligibility and bulk account locking through DQL. Date arithmetic uses the database
+clock and Doctrine's platform functions; locking also clears persistent-login
+tokens atomically. The account contract exercises both providers and caller
+savepoints without contacting a directory or delivering external notifications.
+`UserSelectionRepository` now handles the remaining email and dropdown queries.
+Explicit mapped joins compile the existing nested permission predicates into
+DQL, including recursive entity grants and rights masks. User identities are
+selected before complete rows, so multiple grants/emails cannot duplicate JSON
+records. Search, lifecycle dates and pagination run in the database; count keeps
+the existing pre-search eligibility contract. `RowIterator` preserves dropdown
+callers' first `next()`, rewind, key and count behavior without a driver result.
+`inc/user.class.php` now contains no direct query-adapter calls.
+
+`Auth` and `AuthMail` now read credentials and authentication sources through
+mapped repositories as well. Local password lookup selects only the local source
+with code zero, binds the decoded login, and computes expiry/lock dates with DQL
+date functions. Email existence uses the mapped user-email association without
+duplicating account selection. Active LDAP/mail menus, directory synchronization
+eligibility and the full configuration used for external authentication all use
+mapped reads. Password verification, account locking, rehashing and login rules
+remain in their existing application lifecycle. `authentication.php` covers source
+isolation, quoted/literal logins, email joins, NULL dates, DST, strict lock boundaries
+and adapter-free queries on both providers; the functional `Auth` tests cover the
+complete local login and account-lock flow.
+
+Empty group/right lists fail closed. Explicit empty entity arrays no longer
+activate the show-all shortcut in `getEntitiesRestrictCriteria`, and change
+validation creation uses the declared global `CREATE` permission instead of an
+undefined class constant. `user-selection.php` covers these authorization paths,
+mixed central/helpdesk grants, name/email search, ambiguity, exclusions, JSON
+fan-out and stable pages on both providers.
+
+Mapping configuration and serialized metadata are cached by provider in the
+process. Each manager receives isolated metadata objects and a configuration
+copy: assigned-ID imports or other mapping changes cannot leak to later managers.
+Symfony Cache supplies the PSR-6 pool; its compatible 5.4 line is used because
+the existing Laminas Cache dependency requires PSR Cache 1.
 Every operation gets a short-lived entity manager on the adapter's existing
 DBAL connection. It shares the legacy transaction and uses nested savepoints.
 It never retains managed objects across legacy writes. Pre-escaped legacy values
@@ -49,11 +94,72 @@ The callers supply the active entity scope: `null` means all authorized entities
 whereas an empty list returns nothing. Report entry points still perform their
 existing rights checks. Plugin asset counts retain the query-iterator path.
 
+## Legacy-to-ORM master migration
+
+Existing legacy 2.2 installations and partially converted ORM databases now use
+one migration, `20261001_legacy_to_orm_bigint`, through one command:
+
+```sh
+php bin/console db:legacy_to_orm --config-dir=/path/to/config
+php bin/console db:legacy_to_orm --config-dir=/path/to/config --apply
+```
+
+The first invocation audits and previews without writing. Apply during maintenance
+with application writers stopped. All previous conversion steps, uniqueness rules,
+CHECK constraints and audited foreign keys run in their existing dependency order.
+The former individual conversion and foreign-key commands have been removed;
+their domain helpers remain internal implementation details of the master.
+CLI and web fresh installation call the same master after loading seed data.
+
+Primary IDs, owning association columns, scalar and polymorphic reference IDs use
+`BIGINT` in both the installer and ORM metadata. Counters, enum codes, rights masks,
+positions and unrelated numeric values are not promoted to `BIGINT`. MySQL's
+legacy tinyint/text/float storage is adopted to the frozen installer's wider
+SMALLINT/LONGTEXT/DOUBLE declarations, preserving values. Column Unicode overrides
+and quoted comments are preserved in the baseline as well. The frozen
+scope covers 1,228 identity/reference columns, including removed legacy columns
+needed during conversion. Generated identity columns also use `BIGINT`, and
+PostgreSQL sequences are widened without resetting their next values. PHP must
+use 64-bit integers. MySQL retains each column's existing signedness and sentinels
+until its established normalization step; root entity zero remains a real ID.
+
+Widening preserves existing indexes and foreign-key definitions, including actual
+FK references from plugin/custom tables. These constrained plugin references are
+widened together with their core targets; unconstrained plugin fields require the
+plugin's own upgrade. No relationship is invented from an ID-like column name.
+The master uses frozen ID and FK definitions in
+`src/Database/Migration/history/20261001-legacy-to-orm.json` and the frozen internal
+step order in `20261001-stages.json`.
+
+`itsmng_migrations` stores one completion record. PostgreSQL runs the whole upgrade
+transactionally. MySQL stores the widening operations before removing constraints,
+checkpoints each successful DDL operation, and resumes that journal after an
+interruption. Existing idempotent conversion steps can then be replayed. Completion
+is recorded only after the final orphan audit, FK enforcement and ID type check.
+The atomic PostgreSQL upgrade locks many tables, indexes and sequences. A default
+relation-lock budget can be insufficient; the populated upgrade validation uses
+`max_locks_per_transaction=512`. Size this server setting for the installation
+before applying; changing it requires a PostgreSQL restart. Exhaustion rolls back
+the migration and reports the setting to adjust.
+A completed rerun does no work; use `db:check` to diagnose later schema drift.
+
+Validation on 2026-10-01: MariaDB passes all 116 portability contracts. The
+PostgreSQL suite and corrected fixture/schema/master reruns also pass. Populated
+raw legacy upgrades preserve audit data on both engines and converge to the
+current core schema. Dedicated contracts cover interrupted DDL replay, generated
+keys and FK supporting indexes, plugin references, sequence widening, required
+orphan rejection and ORM log IDs above the unsigned 32-bit limit. These are local
+PHP 8.5 checks, not remote CI or production-sized log-table benchmarks.
+
+Back up the database before applying a production upgrade: `BIGINT` increases
+storage for each widened column and index and ALTER operations can rebuild large
+tables such as logs. This migration has no narrowing downgrade.
+
 ## Schema ownership
 
 The mappings can generate a scoped schema model with Doctrine `SchemaTool`, and
 tests check mapping validity and exact column coverage against the baseline.
-The existing installer still owns the complete 355-table schema, including
+The existing installer still owns the complete 357-table schema, including
 legacy indexes, provider-specific indexes/triggers and seeding. The entity metadata
 does not yet replace that schema or introduce a second installation path. Never apply
 `SchemaTool::updateSchema()` or `schema:update --force` to an installation: plugin
@@ -70,25 +176,32 @@ expressions, triggers and CHECK constraints are outside this command's compariso
 
 ## Next architecture work
 
-The port should remove duplicate declarations, rather than keep adding to them:
+Table/class, boolean and owning-association target discovery now use entity-local
+Doctrine declarations. The former `BooleanColumns`, table/class constant and
+FK-target catalogue have been removed. Nullable associations retain their explicit
+Doctrine join-column metadata; this does not infer legacy sentinel semantics.
+`ReferencePolicy` attributes now live beside owning associations. Optional empty
+selections, real root entity zero, unrestricted audiences, global scopes and
+inherited entity settings are explicit. Targets come only from Doctrine's
+association metadata. User history reassignment is declared on the affected
+properties. The detached optional, ownership and scope catalogues and inherited
+field definitions have been removed. Legacy conversion and criteria compilation
+read these declarations; nullable columns alone never imply sentinel semantics.
 
-- Derive table/class lookup, boolean types and ordinary association targets from
-  Doctrine metadata. All 398 audited booleans already have entity attributes. A
-  cached lookup service is useful; a second hand-maintained catalogue is not.
-- Keep reference semantics beside the relationship using explicit attributes or
-  domain methods. Nullable alone does not tell whether legacy zero means empty,
-  zero is the real root entity, minus one means global, or minus two means inherit.
-  Preserve these distinctions when replacing `OptionalReferences`, ownership and
-  scope registries. Deletion/reassignment behavior likewise needs explicit domain
-  policy; an SQL foreign key cannot replace all legacy lifecycle hooks.
-- Replace repository `TYPES` maps with typed domain capabilities and local role
-  mappings. Organize entities and repositories by domain as they are converted.
+Historical upgrade inputs are frozen in
+`src/Database/Migration/history/20260930-reference-upgrades.json`; migrations
+and migration fixtures read this snapshot independently of current entities.
+This preserves existing upgrade behavior when the runtime model evolves.
+
+Mapping configuration and serialized metadata are shared across short-lived
+managers. The remaining architecture work is:
+
+- Organize entities and repositories by domain as they are converted.
   Keep database transport, schema operations and mapping infrastructure separate.
-- Share cached immutable mapping configuration while keeping entity managers
-  short-lived: legacy writers still bypass the ORM identity map.
 
-Replace `BaselineSchema`'s runtime SQL reader and `Toolbox::createSchema()`'s list
-of migration helpers with one versioned migration runner and execution ledger.
+The master migration and completion ledger replace `Toolbox::createSchema()`'s
+list of independently invoked helpers. A future baseline change should replace
+`BaselineSchema`'s runtime SQL reader.
 Define a frozen baseline using DBAL `Schema`/`Table` APIs, then run the complete
 migration history for every new CLI or web installation. Freeze migration data
 and relationship definitions within history; historical migrations must not import
@@ -148,18 +261,52 @@ relationship candidates, polymorphic references and legacy SQL/driver call sites
 This is an intentionally incomplete static inventory: it cannot prove discovery of
 serialized references, dynamic SQL or alternate connection variables. Each
 candidate needs semantic review before installing its FK. The current inventory
-contains 825 candidate reference columns: 130 enforced, 632 pending, 62 polymorphic
-and one ambiguous (`users.auths_id`, whose target depends on authentication type).
+contains 1,068 candidate reference columns: 1,003 enforced, 23 discriminated
+identities with FK-backed branches, 41 polymorphic and one pending
+(`events.items_id`). All 357 core tables have mapped lifecycle persistence.
+Token discovery finds 2,896 legacy adapter calls, including 2,491 in installation
+and historical upgrade scripts, and 23 native driver calls in `DBpgsql`.
+These counts describe static coverage, not end-to-end conversion completeness.
 
-`tools/database/generate-mappings.php` is a development scaffold for explicit
-attributes, not a runtime mapping driver. Review regenerated mappings before use.
+The former dump-to-entity scaffold has been removed: rebuilding entities from
+the old SQL dump would overwrite local types, enums and domain policies.
 `orm-records.php` compares typed ORM records with native rows from each core table
 (up to 25 seeded rows per table); empty tables only have metadata/query coverage.
 The full conversion is not complete: direct SQL, the native adapters, optional
 sentinel references and polymorphic schemas still need migration. Complete entity
 mappings are necessary infrastructure, not evidence that every query uses ORM.
 
-Current regression evidence: the full-mapping stage passes the PHP 8.3 Calendar
+## Consolidated revision validation (2026-10-02)
+
+Fresh PostgreSQL and MariaDB installations pass all 127 portability contracts,
+including the final schema-check contract. The infrastructure upgrade fixture now
+retains and checks the legacy identity-column comment when rebuilding its tables.
+
+Final lifecycle validation exposed and corrected two application regressions:
+unqualified filters belonging to a uniquely mapped joined table now retain their
+scope (ambiguous joined columns are rejected), and ticket merges retarget both
+follow-up and document owning associations when copying their legacy rows.
+Fixtures now resolve supplier IDs, identify the correct template parent type and
+distinguish internal ORM tables from standalone legacy models.
+
+After these final repairs, ten affected portability contracts pass again on each
+provider, including public ticket merges, membership authorization and schema
+comparison. The PHP 8.3 MariaDB lifecycle/API run passes all 178 methods with
+10,528 assertions. The full portability matrices were not restarted after these
+scoped repairs. Syntax, formatting, Composer, migration JSON and SQL inventory
+checks pass. These are local CLI/database results; remote CI, browser/E2E and
+replicated deployments are not verified by this batch.
+
+The following checkpoints are historical validation, not current scope or a
+claim that conversion is complete.
+
+## Historical checkpoints
+
+The individual commands mentioned below were used at earlier implementation
+checkpoints and have been superseded by `db:legacy_to_orm`. Their validation
+results describe those revisions.
+
+Historical regression evidence: the full-mapping stage passes the PHP 8.3 Calendar
 and CommonDBTM suites (26 methods, 775 assertions). After enabling the additional
 calendar/rule/network writes, Calendar, Rule, RuleTicket, RuleCriteria and
 NetworkPort pass 2,520 assertions (83 executed methods and one pre-existing void
@@ -2811,8 +2958,9 @@ CLI installation calls `GLPIKey::generate(false)` only after its database
 guards. Creating the initial key does not query nonexistent tables or migrate
 values from a previously loaded database connection. Default `generate()` still
 migrates stored values for existing-key rotation, whose legacy query and failure
-recovery behavior remains pending. MySQL web installer raw connections and key
-creation paths also remain pending conversion.
+recovery behavior remains pending. Fresh web installation now uses DBAL server
+connections and generates its initial key without attempting to migrate stored
+credentials; see the web installation stage below.
 
 Fresh PostgreSQL and MariaDB installations complete without the earlier
 missing-table key-migration errors. The ORM initial-data contract covers raw
@@ -3006,10 +3154,1616 @@ the new contract, but remote CI has not been rerun. Statistics collision fixture
 now assign all parent IDs explicitly so a PostgreSQL sequence advanced by earlier
 rolled-back tests cannot collide with the fixture's manually assigned ID.
 
-The token audit finds 3157 legacy call sites: 3127 known adapter calls and 30
+The token audit finds 3135 legacy call sites: 3105 known adapter calls and 30
 direct-driver calls. Historical update scripts account for 2442 sites, leaving
-715 elsewhere. The six remaining ordinary candidates include the entity parent,
+693 elsewhere. The six remaining ordinary candidates at this stage include the entity parent,
 historical event and notification discriminators, serialized network-port/guest
 lists and the obsolete project-template reference. These and the polymorphic
 relationships still need explicit domain designs; the overall conversion is
 ongoing.
+
+### Entity-owned relationship metadata
+
+The detached `OptionalReferences`, `EntityOwnership`, `ContentAudienceScopes`,
+`GlobalEntityScopes` and `BooleanColumns` runtime catalogues are removed.
+`EntityConfigurationReferences` contains compatibility operations rather than
+field/relationship constants. Doctrine attributes on the owning properties define
+targets and nullability; `ReferencePolicy` on those same properties declares
+empty-selection, real-root, audience, global and inherited semantics.
+`EntityRegistry` derives immutable lookup projections from Doctrine metadata,
+including all 355 table mappings, 398 boolean columns and the FK inventory.
+Normalization, mapped criteria, lifecycle operations and schema tooling consume
+those projections. The old dump-to-mapping generator is removed.
+
+Versioned upgrade inputs remain frozen under `Migration/history`.
+They keep historical migrations reproducible when current entities change, and
+support the corresponding installation compatibility steps. Runtime CRUD and
+relationship discovery never read that snapshot.
+
+The entity hierarchy now maps its parent as a nullable self association. Root
+ID zero has no parent; every other entity has a real parent, including zero.
+Public model reads retain `-1` for the root while canonical storage uses NULL.
+`db:entity_parents --apply` audits existing parents and cycles before DDL,
+normalizes the root, and installs a self FK and root/parent CHECK constraint.
+Run it with application writers stopped. Fresh installs include the same mapping.
+The CHECK rejects self-parenting; multi-node cycles are checked by the migration
+and model lifecycle rather than the FK itself.
+
+Current coverage is 755 enforced references, five pending ordinary candidates,
+62 polymorphic references and one ambiguous reference. The overall Doctrine
+conversion remains ongoing.
+
+Local validation passes all 90 PostgreSQL portability contracts. MariaDB/PHP 8.3
+passes 89 contracts in the full run and the remaining all-table write contract
+after its fixture was corrected to honor declared association defaults. Fresh
+installations pass metadata, root-parent and inherited-setting checks on both
+providers, with 1238/832 baseline portability assertions. Legacy Entity, User,
+Group_User and Ticket tests pass 83 methods and 4805 assertions. Syntax checks
+pass all 333 changed/new PHP files; formatting, SQL inventory and diff checks
+also pass. These are local results; remote CI and production upgrades have not
+been run.
+
+### Notification recipient projections
+
+The common ITIL and base notification targets now select recipients through
+`NotificationRecipientRepository`, using mapped user grants, group membership,
+actors, child authors and notification associations. The existing profile-join
+hook is validated against the actual associations before compiling its criteria.
+Recursive entity scope, private-followup rights, anonymous and alternative-email
+handling, group managers, account lifecycle exclusions and recipient hooks retain
+their existing behavior. Template attachments share the document access predicates
+used by the ORM document repository. `Profile_User::getUserProfiles` also uses its
+mapped projection.
+
+This removes 25 direct adapter queries. The current inventory has 3110 legacy
+call sites: 3080 adapter calls and 30 driver calls. Historical update scripts account
+for 2442, leaving 668 elsewhere; the complete ORM conversion remains ongoing.
+Relationship coverage is unchanged at 755 enforced references, five ordinary
+pending candidates, 62 polymorphic references and one ambiguous reference.
+
+Local validation passes all 91 portability contracts on both PostgreSQL and
+MariaDB/PHP 8.3. Legacy notification target/event, User and Group_User tests pass
+42 methods and 1027 assertions. PHP syntax passes all 339 changed/new PHP files;
+formatting, SQL inventory and diff checks pass. No remote CI or production upgrade
+was run.
+
+### Typed notification target recipients
+
+`NotificationTarget` owns its group/profile associations and their recipient-kind
+attributes. Types 3, 5 and 6 select a group; type 2 selects a profile. Other types
+retain an integer recipient code, including plugin-specific kinds. User-recipient
+constants are payloads and do not acquire a guessed user foreign key.
+`items_id` is a generated, read-only compatibility projection of the selected
+association or code. Native Doctrine persists the associations and refreshes that
+projection; legacy form/plugin input is converted by the entity at the write
+boundary. Canonical changes still expose the logical `items_id` field to history.
+
+Fresh installations include two real foreign keys and a CHECK requiring exactly
+the branch selected by the recipient kind. Group/profile purge hooks delete or
+replace their targets without changing colliding constant payloads. The author
+mailing existence query also uses the mapped recipient and template associations.
+The versioned `db:notification_recipients` command audits legacy recipients before
+DDL; `--apply` requires stopped application writers. PostgreSQL upgrades are
+transactional. MariaDB converts the compatibility column without dropping its
+custom indexes; additions and retries are idempotent, and DDL is refused inside an
+application transaction. Historical upgrade definitions are frozen separately
+from entity-owned runtime discovery.
+
+Coverage is 757 enforced references, one discriminator backed by typed
+associations, four ordinary pending candidates, 62 polymorphic references and one
+ambiguous reference. The SQL inventory records 3109 remaining legacy call sites
+(3079 adapter calls and 30 driver calls); the complete conversion is ongoing.
+
+All 92 portability contracts pass on both PostgreSQL and MariaDB/PHP 8.3.
+Focused recipient contracts pass on both providers, including native persistence
+of a new group and recipient in one flush, generated-key refresh, raw FK/CHECK
+rejection, model replacement/purge, preflight conflicts and migration retry.
+Fresh installations pass 1240 PostgreSQL and 834 MariaDB portability assertions.
+The legacy notification, User and Group_User run passes 42 methods and 1031
+assertions. Syntax checks pass all 351 changed/new PHP files. These are local
+results; no remote CI or production upgrade was run.
+
+### Profile permission queries
+
+`ProfileRightRepository` now discovers, registers, completes, deletes and copies
+permission definitions through Doctrine. Definition installation is atomic across
+profiles. Migration grants combine integer masks and select their source through
+structured criteria; all eleven historical callers use those criteria. The public
+grant helper now requires an array predicate, so external callers supplying raw SQL
+must convert it to structured criteria as well.
+
+`ProfileRepository` shares the permission-containment query used by profile
+selection and management checks, including explicit zero masks and missing-right
+rejection. Scoped user checks join mapped profile grants and retain any-bit masks
+and recursive entity scope. Default-profile selection and clearing also use ORM
+queries. Application permission updates retain model callbacks for active-session
+rights, menu invalidation and profile history, while exact-name lookups use bound
+values without SQL unescaping.
+
+This removes all 18 direct adapter calls from `Profile` and `ProfileRight`.
+The inventory now records 3091 remaining legacy call sites: 3061 adapter calls and
+30 driver calls. Historical updates account for 2442 sites, leaving 649 elsewhere.
+Relationship coverage remains 757 enforced references, one typed discriminator,
+four ordinary pending candidates, 62 polymorphic and one ambiguous reference.
+The complete conversion remains ongoing.
+
+All 93 portability contracts pass on PostgreSQL and MariaDB/PHP 8.3. The new
+permission contract covers literal names with quotes/backslashes, combined masks,
+recursive and nonrecursive grants, missing rights, atomic duplicate failure,
+idempotent completion, default-profile changes and active-session/history hooks.
+The legacy Profile, notification, User and Group_User run passes 46 methods and
+1125 assertions. PHP syntax passes all 356 changed/new files; formatting, SQL
+inventory and diff checks also pass. These are local results; remote CI and
+production upgrades have not been run.
+
+### Profile grants and group membership queries
+
+`ProfileUserRepository` selects authorization scopes, permission-filtered scopes,
+users associated with an entity, scoped profile users and their tab counts through
+mapped grants. Recursive entity expansion remains in the entity tree service;
+root ID zero remains a real authorization. Separate grants retain their link IDs
+and flags in application views even when they concern the same user.
+
+`GroupMembershipRepository` selects users/groups through their owning
+associations and compiles structured filters against the joined metadata. Member
+visibility uses grant existence predicates, retaining users with no authorization
+while avoiding duplicate rows from multiple grants. Counts and positive page
+limits apply in the database. Name ordering preserves MySQL's NULL ordering on
+PostgreSQL and uses membership IDs to make tied page boundaries stable. Manager,
+delegate and dynamic flags, direct-member exclusions and rendered table rows
+retain their application contracts.
+
+All 14 remaining direct adapter calls are removed from `Profile_User` and
+`Group_User`. The inventory records 3077 remaining sites: 3047 adapter calls and
+30 direct-driver calls. Historical update scripts account for 2442 sites,
+leaving 635 elsewhere. Coverage remains 757 enforced references, one typed
+discriminator, four ordinary pending candidates, 62 polymorphic and one ambiguous
+reference. The full conversion remains ongoing.
+
+All 94 portability contracts pass on PostgreSQL and MariaDB/PHP 8.3. The
+membership contract covers recursive scopes, literal permission names, separate
+grant IDs, manager/delegate filters, grant deduplication, stable page boundaries
+and rendered application views. Its entity-tree cache is isolated because rolled
+back fixture IDs can be reused by later contracts. The legacy Group_User, Profile
+and User run passes 30 methods and 872 assertions; the PostgreSQL application
+smoke also passes. PHP syntax passes all 360 changed/new files, and formatting,
+SQL inventory and diff checks pass. These are local results; remote CI and
+production upgrades have not been run.
+
+### Rule collections and rule payloads
+
+`RuleRepository` selects and counts collections, orders inherited rules through
+their owning entity association, applies condition masks, discovers distinct
+criteria through their parent rules and computes collection ranks. Page limits
+apply before hydration; tied ranks/names use rule IDs for stable boundaries.
+Rule/action variants resolve their parent association from Doctrine metadata.
+Action lookups return each parent once instead of multiplying rule objects when
+several matching actions exist. Dropdown replacement binds the mapped scalar
+pattern/value types, while rule disabling and reordering retain model updates.
+Rank changes write only the ID and rank, preserving unrelated text payloads.
+
+`Rule`, `RuleCollection`, `RuleAction` and `RuleCriteria` execute no direct adapter
+SQL or embedded SQL expressions. Criteria/action loaders use mapped records;
+entity tab counts join actions to rules. Validation group selection uses mapped
+membership IDs. XML entity/criterion/action names are bound literally rather
+than escaped and decoded as SQL values. `getRuleListCriteria()` now returns
+structured filters, ordering and page bounds, with no SQL FROM/SELECT/JOIN
+declarations; external consumers must use the mapped collection path.
+
+This batch removes 19 inventory call sites. The remaining 3058 sites comprise
+3028 adapter calls and 30 direct-driver calls; 2442 are historical update scripts
+and 616 are elsewhere. Relationship coverage remains 757 enforced references,
+one typed discriminator, four ordinary pending candidates, 62 polymorphic and
+one ambiguous reference. The full conversion remains ongoing.
+
+All 95 portability contracts pass on PostgreSQL and MariaDB/PHP 8.3. The rule
+contract covers recursive/direct/child scope, condition masks, ordered child
+payloads, distinct parent lookups, SLA/OLA variants, database-side pages, NULL/tied
+name ordering, rank changes across excluded neighbors, dropdown replacement and
+disabling, literal XML names and absence of legacy adapter queries on rule reads.
+The legacy Rule, RuleCriteria, RuleTicket and collection run passes 2328 assertions
+across 76 nonvoid methods, with one existing void method. Its empty-category
+assertion now expects the canonical NULL FK; the old zero assertion also failed
+with the pre-batch rule files. Syntax passes all 367 changed/new PHP files;
+formatting, SQL inventory and diff checks pass.
+
+The first MariaDB sequence passed 94/95 contracts: group purge encountered error
+1020 (record changed since last read). That contract passed in isolation with both
+current and pre-batch rule files; the subsequent complete isolated sequence passed
+95/95 without reproducing the error. These are local results; remote CI and
+production upgrades have not been run.
+
+### User authentication sources
+
+`User::$authldap` and `User::$authmail` now declare the authentication-source
+relationships directly. The shared authentication-kind enum also supplies the
+existing `Auth` constants; the mapped kind remains an integer to support custom
+authentication kinds. Pending, LDAP, external, CAS and X509 accounts select an LDAP
+association; mail accounts select a mail association. A missing association is
+valid and retains the existing no-server fallback behavior. Non-server and custom
+authentication kinds keep their opaque source code, including signed values.
+
+`auths_id` is a generated, read-only compatibility selection. Its zero value for
+an absent server preserves the existing login uniqueness key; nullable foreign
+keys alone would allow duplicate no-server logins. Native Doctrine persistence,
+mapped legacy writes and the bulk authentication updater maintain the selected
+branch. FK and CHECK constraints reject orphaned servers and inconsistent kinds.
+The source-code column defaults to NULL so an insert that omits authentication
+fields produces a valid pending account; native and mapped opaque kinds supply
+their explicit code.
+Server purge/replacement uses owning associations without replaying remote user
+synchronization hooks. Generic relation cleanup also filters the owning branch,
+so colliding IDs in unrelated kinds or opaque payloads are preserved.
+
+The frozen `UserAuthenticationSources` upgrade is wired into fresh installation
+and available through `itsmng:database:user_authentication_sources`. Dry-run is
+the default; stop application writers before `--apply`. Preflight rejects orphan
+servers, conflicting partial canonical data, and login-key collisions caused by
+normalizing negative no-server sentinels to zero. Existing indexes are retained.
+PostgreSQL DDL is transactional; MySQL/MariaDB application transactions are
+refused when DDL remains. A retry can finish already added canonical columns.
+Historical SQL is frozen migration code rather than a runtime relation catalogue.
+
+The focused contract exercises native source/user persistence in one flush,
+serverless accounts, kind transitions, bulk maintenance, FK/CHECK enforcement,
+uniqueness, mail purge/replacement, and reconstructed legacy upgrade retries on
+both providers. Fresh installation and the reconstructed legacy upgrades pass
+on both providers. The local legacy User, Auth, AuthLdapReplicate,
+NotificationTarget and RuleTicket tests pass: 51 methods, 1919 assertions.
+
+The final full runs initially passed 93/96 PostgreSQL and 94/96 MariaDB contracts.
+Both exposed an invalid default for raw pending-account inserts. PostgreSQL also
+hit the selector fixture's memory-cache limit, which counted the whole PHP
+process. The source-code default is now NULL; that isolated test cache no longer
+applies an implicit process-memory cap. Fresh fixtures on both providers pass all
+ten affected/schema contracts, including the failed contracts, complete-table
+ORM writes, metadata/schema checks, account maintenance, and authentication
+upgrade retries. The full 96-contract runs were not repeated after these narrow
+corrections.
+
+The current inventory has 759 enforced relationships and two typed discriminator
+selections across 355 mapped tables. Four ordinary candidates and 62 polymorphic
+references remain; the ambiguous authentication-source candidate is now typed.
+The SQL-call inventory is unchanged at 3058 legacy sites (2442 in historical
+`install/update_*` scripts and 616 elsewhere). This batch adds FK coverage;
+the full ORM/SQL migration remains active.
+
+### Dictionary replay
+
+Software and dropdown dictionary replay now query mapped entities and owning
+associations. Scalar streams have stable ID ordering and offsets; software groups
+retain their distinct name/manufacturer/entity criteria. Model replay resolves
+the model and manufacturer properties from Doctrine metadata. It does not carry
+another relationship catalogue or guess join-column names.
+
+Software version moves share the ordinary merge's reference-transfer primitive.
+Buy/use license references and installations move together; installation
+collisions preserve destination metadata and distinguish asset types. Version
+names remain literal, including quotes, backslashes, NULL, empty strings and the
+text `NULL`. Failed deletion rolls back the reference transfers. Public software
+deletion/trash and plain dropdown replacement still invoke their existing model
+lifecycle behavior.
+
+Model replay remaps each source model's manufacturer partitions transactionally.
+Printer cartridge compatibility is copied to the distinct destination models;
+the source links are removed before deleting an unused model, satisfying the
+restrictive foreign keys. A partially used source retains its compatibility.
+Compatibility insertion uses native mapped associations and is idempotent for
+an existing pair. The former direct model deletion bypassed hooks; this path
+keeps that boundary while deleting through Doctrine after dependent links.
+
+The software dictionary, ordinary software merge, dropdown dictionary, stock and
+asset-classification contracts pass on PostgreSQL and MariaDB. The new dictionary
+contracts cover public replay, manufacturer/NULL partitions, quoted names,
+restrictive cleanup, collision handling and rollback. Their repository-operation
+checks execute no legacy adapter SQL; generic public import/lifecycle code still
+contains legacy paths outside this batch. The existing software/dropdown
+dictionary tests pass 16 methods and 200 assertions. These focused checks do not
+constitute a new complete portability-suite run or remote CI validation.
+
+This batch removes 21 inventory call sites. The refreshed inventory contains
+3037 legacy sites: 3007 adapter calls and 30 direct-driver calls, with 2442 in
+historical `install/update_*` scripts and 595 elsewhere. Both dictionary collection
+classes now contain no direct adapter calls. Coverage remains 759 enforced
+relationships and two typed discriminator selections across 355 mapped tables;
+four ordinary candidates and 62 polymorphic references remain. The full goal is
+still in progress.
+
+### Owning lifecycle relationships
+
+`inc/relation.constant.php` is now a compatibility entry point for
+`EntityRegistry::lifecycleRelations()`. Its manually maintained core relationship
+catalogue is removed. Ordinary targets and columns come from Doctrine owning
+associations. `ApplicationManaged` on the owning property identifies links handled
+by the model's purge/replace hooks rather than generic replacement. Discriminated
+associations project their existing logical field for older callers while retaining
+the branch's own handling policy.
+
+The old catalogue's 725 child entries compare equal after normalizing singleton
+arrays and column order. The derived view also includes five model-managed typed
+links absent from the old catalogue: appliance-item relations, domain owners,
+notification group/profile recipients and reminder translations. No foreign-key
+target is declared a second time for this compatibility view.
+
+Existing polymorphic lifecycle targets now sit on their ID properties as
+`PolymorphicReference` attributes. `VirtualAssetLink` marks the four generic asset
+links used by recursion checks. These describe application behavior; they do not
+turn scalar item IDs into foreign keys. The remaining polymorphic migration still
+requires explicit domain storage designs.
+
+`CommonDropdown` ownership lookup, usage checks and import-name lookup use
+`DropdownLifecycleRepository`. Usage tests query owning associations and respect
+model-managed links; polymorphic usage binds both ID and item type. Authentication
+usage follows its selected association, excluding opaque source codes. Import
+lookups apply entity scope before their database limit, use stable ID ordering,
+and treat quoted/backslash names and literal `NULL`/`null` as strings. Plugin usage
+declarations pass through mapped reads and require registered entities.
+
+The focused lifecycle contract passes on PostgreSQL and MariaDB, including root
+and recursive ownership, empty scope, typed source branches, colliding polymorphic
+IDs, idempotent import and public calendar replacement/purge. The legacy Calendar,
+Dropdown and dropdown dictionary tests pass 22 methods and 695 assertions. Syntax
+checks pass 165 PHP files; formatting and diff checks pass.
+
+The complete 99-contract portability suite passes on both PostgreSQL and
+MariaDB/PHP 8.3, including ORM/native parity for all 355 tables and 3669 field
+values, 728 planned search columns, concurrent stock allocation, and the earlier
+dictionary conversions. Every contract's completion output was checked alongside
+the runner's terminal result. After strengthening the polymorphic collision
+fixture to reference a real task, the lifecycle contract was repeated on both
+providers. These are local checks; production upgrades and remote CI were not run.
+
+This batch removes four direct adapter call sites from `CommonDropdown`. The
+refreshed inventory has 3033 legacy sites: 3003 adapter calls and 30 direct-driver
+calls, with 2442 in historical `install/update_*` scripts and 591 elsewhere.
+Relationship coverage is unchanged at 759 enforced references, two typed
+discriminator selections, four ordinary candidates and 62 polymorphic references
+across 355 mapped tables. The full conversion remains active.
+
+### Printer dictionary replay
+
+`RuleDictionnaryPrinterCollection` now selects replay inputs and explicit printers
+through `PrinterDictionaryRepository`. Queries use the mapped manufacturer and
+entity associations, bound literal names, stable group ordering and database
+offsets. Complete inputs group by name, manufacturer and comment; initial replay
+excludes trash and templates, while explicit replay retains its existing trash
+selection and excludes templates. Empty ID lists and past-end offsets terminate.
+
+Replay previously read `entities_id` but used a separate `entity` parameter that
+defaulted to root. It now uses the actual owning entity to create or restore each
+destination. Escaped rule output is decoded for logical name comparisons while
+public import/update boundaries keep their existing escaped input contract.
+
+Connection movement queries `ComputerItem` with both the printer ID and item type.
+Duplicate destination connections retain their metadata. Source duplicates,
+including dynamic locks, are purged through the public relation lifecycle without
+the asset-field cleanup used for disconnection. Nonduplicates move through public
+updates. A failed connection lifecycle rolls back earlier moves; explicit replay
+also wraps destination restoration, connection movement and source trash together.
+Invalid destination printers are rejected before changing any link. This does not
+claim an FK for the still-polymorphic `ComputerItem.items_id` column.
+
+The new printer dictionary contract passes on PostgreSQL and MariaDB, covering
+literal quotes/backslashes/Unicode, nullable manufacturers, real root/child
+ownership, creation/restoration, type collisions, dynamic duplicates, public rule
+processing and rollback. The six adjacent asset-workflow, dropdown-dictionary,
+dropdown-lifecycle, software-dictionary, stock and rule-collection contracts also
+pass on both providers. Existing printer tests pass four methods and 106
+assertions. Syntax, formatting, diff and SQL-inventory checks pass. The suite now
+discovers 100 contracts; this batch ran the new contract and the six affected
+neighbors, not another complete suite or remote CI run.
+
+Three direct adapter requests are removed; this collection contains no direct
+adapter SQL calls or legacy query helpers. Repository selection checks execute no
+adapter SQL. Other public model lifecycle paths still need conversion. The refreshed
+inventory contains 3030 legacy sites: 3000 adapter calls and 30 direct-driver calls,
+with 2442 in historical `install/update_*` scripts and 588 elsewhere. Relationship
+coverage remains 759 enforced references, two typed discriminator selections,
+four ordinary candidates and 62 polymorphic references across 355 mapped tables.
+The full goal remains active.
+
+### Generic relationship lifecycle
+
+`CommonDBTM::cleanRelationData()` selects core replacements through
+`RelationshipLifecycleRepository`. The owning Doctrine property supplies the
+target and column; `ApplicationManaged` excludes links handled by specialized
+hooks. Public child keys are snapshotted before those hooks run. Ordinary
+associations use physical IDs, while polymorphic links bind the logical ID and
+item type together. Discriminated authentication sources select their canonical
+association and project the existing logical update field, so another source
+branch or an opaque source code cannot be replaced accidentally.
+
+`CommonDBTM::canUnrecurs()` now queries mapped ownership policies, peer
+associations and virtual asset links. Dynamic item types resolve through registered
+models before entering DQL. Self-parent tree restrictions and specialized computer
+and device checks remain. Reverse document checks use the document's owner even
+when the link's cached entity differs. Plugin declarations require registered
+entities and pass through mapped criteria rather than a raw SQL fallback.
+
+These selections retain public model update hooks and their existing behavior;
+this does not make all generic replacements atomic or guarantee that every hook
+accepts a replacement. In particular, shared Kanban rows still need a dedicated
+domain lifecycle for their nullable owner and uniqueness rules. The covered
+personal Kanban replacement preserves the item type and leaves a colliding task
+ID untouched. Neither that scalar reference nor virtual asset IDs gain foreign
+keys from this conversion.
+
+The focused contract passes on PostgreSQL and MariaDB, covering paired
+polymorphic replacement, authentication source branches, managed child
+exclusions, tree recursion, cross-entity assets,
+deleted assets, reverse document ownership and registered plugin boundaries.
+The existing CommonDBTM, Calendar and Dropdown tests pass 40 methods and 1279
+assertions. Syntax, formatting, diff and SQL-inventory checks pass.
+
+The complete 101-contract portability suite passes on both PostgreSQL and
+MariaDB/PHP 8.3. Every contract's completion output was checked alongside the
+runner's terminal result, including the strengthened authentication replacement
+fixture. The suites also cover ORM/native parity for all 355 tables, 3669 field
+values, 728 planned search columns, concurrent stock allocation and both earlier
+dictionary conversions. Production upgrades and remote CI were not run.
+
+One direct adapter request is removed. The refreshed inventory contains 3029
+legacy sites: 2999 adapter calls and 30 direct-driver calls, with 2442 in historical
+`install/update_*` scripts and 587 elsewhere. Relationship coverage remains 759
+enforced references, two typed discriminator selections, four ordinary candidates
+and 62 polymorphic references across 355 mapped tables. The full goal remains
+active.
+
+### Network port aggregate origins
+
+Aggregate origin ports now use the ordered `NetworkPortAggregateOrigin` entity.
+Its two owning associations declare the aggregate and port targets locally, with
+unique constraints for membership and position. The serialized
+`glpi_networkportaggregates.networkports_id_list` storage column is removed.
+The public model still projects that field for existing forms and plugin inputs;
+it does not persist another copy of the membership list.
+
+`NetworkPortAggregateRepository` selects and edits origins through ORM. Aggregate
+updates lock the aggregate, validate every selected port before replacing its
+memberships, and share the public model's transaction so an invalid origin also
+rolls back scalar updates or creation. Partial updates preserve omitted origins.
+Port replacement preserves ordering and deduplicates a destination already in
+the set; purge removes memberships before deleting either parent. Reverse lookup
+and virtual peers use exact associations, replacing serialized-list LIKE searches.
+Port selectors bind the owner and instantiation type through mapped queries. The
+aggregate form also preserves actual numeric port IDs when combining its options.
+
+The frozen `20261001_networkport_aggregate_origins` upgrade accepts the existing
+JSON and old key/value list encodings, preserving the first occurrence and order.
+It rejects malformed IDs, orphan targets, incompatible canonical constraints and
+conflicting copied data before dropping the old column. Fresh installation also
+creates the membership table and both foreign keys. Review the plan with
+`php bin/console db:aggregate_origins`; stop application writers before applying
+it with `--apply`. PostgreSQL DDL and data copy share a transaction. MySQL DDL must
+run outside an application transaction; interrupted upgrades can be retried.
+
+Fresh installations succeed on PostgreSQL and MariaDB. The new contract covers
+raw foreign-key rejection at both ends, ordering, the form's real IDs, public
+replacement and purge, exact peers, rollback, legacy upgrade refusal and retry.
+The 11 aggregate and adjacent portability contracts pass on both providers,
+including ORM column parity and insert/read/delete across all 356 tables.
+Existing CommonDBTM and NetworkPort tests pass 26 methods and 757 assertions.
+Syntax, formatting, diff and SQL-inventory checks pass. This batch did not rerun
+the complete 102-contract suite or remote CI, and did not upgrade production.
+
+Coverage now contains 761 enforced references, two typed discriminator selections,
+three ordinary candidates and 62 polymorphic references across 356 mapped tables.
+Three direct adapter requests are removed. The refreshed inventory contains 3026
+legacy sites: 2996 adapter calls and 30 direct-driver calls, with 2442 in historical
+`install/update_*` scripts and 584 elsewhere. The full goal remains active.
+
+### Planning event guests
+
+`PlanningExternalEventGuest` now owns an event association and a user association,
+with unique membership and position constraints. The serialized
+`glpi_planningexternalevents.users_id_guests` column is removed. The public event
+model projects an ordered array for forms, recurrence clones, reminder recipient
+selection and plugin inputs. `PlanningGuestRepository` validates positive existing
+users, serializes edits with an event lock and preserves first-occurrence order.
+Partial updates preserve omitted guests; explicit empty arrays clear them.
+
+Public event add, update and deletion share a transaction with their memberships.
+Memberships are saved before scalar history reload and update hooks. Guest-only
+updates retain history and the update hook. Invalid guests roll back scalar changes
+or event creation; a failure after purge cleanup restores both the parent and its
+guests. User replacement deduplicates a destination already invited, while user
+purge removes the corresponding memberships. Both relationship ends use
+`ApplicationManaged` beside their owning associations so generic replacement does
+not bypass these domain rules.
+
+Calendar and iCalendar selection now join typed guest memberships instead of
+matching user IDs inside JSON text. Event projections use DISTINCT to prevent
+membership fan-out from duplicating owned or group events. The Guests search
+option joins users through the membership table and searches/displays users.
+Existing reminder recipient selection reads the projected canonical array.
+
+The frozen `20261001_planning_event_guests` migration audits legacy JSON and old
+key/value lists, rejects invalid IDs and orphan users, preserves order and removes
+duplicates. Canonical constraint validation and copied-data agreement protect
+upgrade retries. `php bin/console db:planning_guests` prints the audit/DDL plan;
+stop writers before `--apply`. PostgreSQL applies DDL and copied data atomically.
+MySQL DDL runs outside an application transaction and permits interrupted retries.
+
+Fresh installations pass on PostgreSQL and MariaDB. The 16 planning and adjacent
+contracts pass on both providers, including all 357 tables' ORM parity and writes,
+calendar recurrence and visibility, users, notification targets, search semantics
+and 728 planned search columns. The final strengthened guest contract also passes
+on both providers, covering raw FK rejection, guest-only history, reminder targets,
+recurrence cloning, public user/event lifecycle and failed purge rollback.
+Existing planning, template and reminder tests pass 11 methods and 247 assertions.
+Syntax, formatting, diff and SQL-inventory checks pass. This batch did not run the
+complete 103-contract suite, remote CI, external notification dispatch or a
+production upgrade.
+
+Coverage now contains 763 enforced references, two typed discriminator selections,
+two ordinary candidates and 62 polymorphic references across 357 mapped tables.
+The legacy inventory remains 3026 sites: 2996 adapter calls and 30 direct-driver
+calls, with 2442 in historical `install/update_*` scripts and 584 elsewhere.
+Removing the serialized guest storage improves FK coverage without completing
+the remaining SQL conversion. The full goal remains active.
+
+### Event queries and unused project-template cleanup
+
+`EventRepository` now owns event insertion from `Event::log`, user-prefix reads,
+ordered pages/counts and retention. The public logging lifecycle still applies the
+configured level gate and runs file/plugin hooks. Its raw input boundary binds
+literal `NULL`, quotes and backslashes without the old escape/decode round trip;
+public `Event::add()` retains its legacy pre-escaped input contract. File output
+uses the hydrated raw message without stripping a second layer of backslashes.
+
+User-prefix queries bind literal usernames, including `%`, `_`, `!` and backslashes,
+and preserve case-insensitive matching. Pages use the six existing sort fields,
+explicit portable NULL ordering and the event ID as a stable tie breaker. Both
+the page and its total use the application's explicitly selected read connection.
+Retention is a mapped bulk delete on the supplied write connection, returns the
+affected count and preserves NULL dates, transaction rollback and the strict
+whole-second database-clock boundary. `CURRENT_EPOCH_SECONDS()` handles that clock
+precision without changing elapsed-duration `EPOCH_SECONDS()` calculations.
+
+Core never implemented a project-template target table or a consumer for
+`glpi_projects.projecttemplates_id`. Its obsolete scalar mapping is removed.
+Frozen `20261001_unused_project_template_reference` drops the unused column and
+single-column index only after checking existing values. Nonzero selections,
+custom composite/unique indexes and outgoing or incoming foreign keys refuse the
+upgrade before DDL. Fresh installation uses the same frozen cleanup.
+
+For existing installations, stop application writers and inspect the plan before
+applying `php bin/console db:project_template_reference --apply`. PostgreSQL DDL
+runs transactionally; MySQL DDL must run outside an application transaction, and
+retries are idempotent. Unknown plugin-owned selections require their own explicit
+migration instead of silent deletion.
+
+Dedicated PostgreSQL and MariaDB fresh installations and 18 affected contracts
+passed, including project upgrade refusal/retry, raw event logging, level filtering,
+literal user scope, tied/NULL sorting, HTML rendering, retention and rollback.
+The existing Project and CronTask tests passed 203 assertions. Warm event operations
+produced no adapter SQL calls. This verifies the supplied connection locally;
+it does not establish live replica freshness or remote CI results.
+
+The current inventory is 357 mapped tables, 763 enforced references, two typed
+discriminator selections, one ordinary candidate and 62 polymorphic references.
+`glpi_events.items_id` still stores historical logical IDs, including deleted
+subjects and special legacy type codes; moving its queries to ORM does not supply
+a foreign key. Its target design remains outstanding. The static SQL inventory
+contains 3,024 legacy call sites (2,442 historical update scripts and 582 elsewhere).
+The broader goal remains active.
+
+### Typed ITIL subjects and association-local reporting roles
+
+Followups and solutions now own explicit Ticket, Problem and Change associations.
+The shared `ITILSubject` mapping declares each target, join column and discriminator
+beside its property. Six real foreign keys and a CHECK constraint require exactly
+one matching parent. The legacy `items_id` is a read-only generated projection;
+forms and legacy criteria can still use it, while new followup, document and
+statistics queries use the selected owning association directly.
+
+The frozen `20261001_itil_subjects` upgrade audits both child tables before DDL.
+Unknown types, missing parents, conflicting canonical values and custom incoming
+or outgoing legacy-key dependencies require an explicit migration. Existing
+positive selections are copied without inventing targets. Stop writers before
+applying `php bin/console db:itil_subjects --apply`; PostgreSQL applies transactionally,
+while MySQL DDL runs outside application transactions and supports retry.
+
+Native ORM persistence validates the selected subject. Partial legacy updates keep
+the existing parent. Retargeting clears the other branches, and duplicating a
+Ticket solution explicitly assigns the copied solution to its new parent. Parent
+purge removes only its own timeline, including when different parent types have
+overlapping numeric IDs.
+
+The detached ITIL statistics, task and cost relationship arrays are removed.
+Reporting roles are attributes on the actual owning associations; repositories
+derive their parent properties and related classes from those declarations.
+Frozen versioned migration descriptions remain separate from runtime metadata.
+
+Fresh installations passed on PostgreSQL and MariaDB. The full 106-contract suite
+ran on each provider; failed fixtures were repaired and all affected contracts
+rerun successfully, including the final PostgreSQL migration/schema checks.
+Coverage includes native ORM writes, FK/CHECK rejection, overlapping parent IDs,
+public parent purge, solution copying, upgrade refusal/retry, typed repository
+queries and installed-schema comparison. The existing followup and solution tests
+passed 492 assertions with no skipped methods. PHP syntax, formatting and SQL
+inventory checks also passed. This is local disposable-database proof, not remote
+CI, production upgrade or external notification-dispatch proof.
+
+The inventory contains 357 mapped tables, 769 enforced references, four typed
+logical discriminator selections, one ordinary candidate and 60 polymorphic
+references. There are still 3,024 legacy SQL call sites, including 2,442 historical
+update-script sites. These changes do not complete the broader conversion.
+
+### Typed project links to ITIL subjects
+
+`ItilProject` now uses the entity-local `ITILSubject` mapping for its Ticket,
+Problem and Change owners. Three additional foreign keys and an exactly-one
+CHECK replace the unchecked type/ID pair. The generated legacy `items_id`
+preserves existing criteria and the unique `(itemtype, items_id, projects_id)`
+link key. Each versioned migration retains its own frozen table scope; the shared
+DDL mechanism preserves existing followup/solution upgrade behavior.
+
+`ItilProjectRepository` reads both project and ITIL tabs through owning
+associations, and `ITILTaskRepository::parentTasks()` supplies their planned tasks.
+These replace all three direct adapter SQL requests in `Itil_Project`. Rows keep
+their relationship IDs for link actions, with portable name ordering and stable
+ties. Rendering also keeps planned task IDs separate from subject rows and uses
+HTML line breaks without the undefined output-mode variable.
+
+Frozen `20261001_itil_project_subjects` preserves existing links, generated-key
+uniqueness and idempotent retry. Unknown types, missing parents, conflicting
+branches and custom legacy-key dependencies refuse the upgrade before DDL.
+Stop writers before applying `php bin/console db:itil_project_subjects --apply`.
+PostgreSQL is transactional; MySQL DDL runs outside application transactions.
+Project cloning retains the subject, while public Project and ITIL purge remove
+only their own links, including across overlapping numeric IDs.
+
+The budget repository's duplicate cost relationship array is removed. Budget
+and cost projections now share the reporting parent declared on each cost's
+owning association.
+
+Fresh installations and 21 affected contracts passed on PostgreSQL and MariaDB,
+including generic ORM CRUD across all 357 tables, native/public project links,
+database constraint rejection, rendered tabs, upgrade refusal/retry and schema
+comparison. The final focused runs also exercise command preview and idempotent
+application. Existing Project, project-link, followup and solution tests passed
+692 assertions across 18 methods with none skipped. PHP syntax, formatting and
+SQL inventory checks passed. This batch did not rerun the full portability suite;
+the evidence is local, with no remote CI, production upgrade or external
+notification-dispatch validation.
+
+Current coverage is 357 mapped tables, 772 enforced references, five typed logical
+discriminator selections, one ordinary candidate and 59 polymorphic references.
+The legacy SQL inventory has 3,021 sites: 2,991 adapter calls and 30 direct-driver
+calls. The full ORM/FK conversion remains active.
+
+### Project notification projections
+
+Project and project-task notifications now read their scoped team recipient IDs
+through `ProjectRepository` and their attached documents through the owning
+`DocumentItem.documents` association. These replace ten direct adapter queries.
+Eight remaining template queries now use mapped record criteria for teams,
+tasks, costs, ITIL links, assets and ticket bindings. User languages, group roles,
+external recipient types, duplicate document bindings and deleted-document
+metadata retain their existing behavior. Team and document bindings use stable
+relationship-ID ordering.
+
+Project asset criteria no longer reuse the Ticket filter left by the ITIL loop,
+so linked assets appear in notification templates. The document repository also
+derives each ITIL task's parent from the association's reporting attribute rather
+than maintaining another task/parent relationship list.
+
+Eight affected contracts passed on PostgreSQL and MariaDB, including public
+template data, recipient roles, overlapping owner/member IDs, document access,
+project visibility/planning, task queries and project-link migration. The tests
+capture notification data without dispatching mail. Six changed PHP files passed
+syntax and formatting checks, and SQL inventory checks passed. This batch did
+not rerun the full suite or remote CI and introduces no schema change.
+
+Coverage remains 357 mapped tables and 772 enforced references, with 59
+polymorphic references and one ordinary candidate still unresolved. The current
+SQL inventory has 3,011 legacy sites: 2,981 adapter calls and 30 direct-driver
+calls. The complete ORM/FK goal remains active.
+
+### Typed project and task team members
+
+`ProjectTeam` and `ProjectTaskTeam` now declare User, Group, Supplier and Contact
+owning associations through `ProjectTeamMember`. Each property carries its target,
+join column, discriminator and lifecycle policy. Runtime normalization derives
+the selected association from these declarations. The common
+`RequiredItemReference` behavior also serves ITIL subjects, without a separate
+runtime table/target catalogue.
+
+Eight additional foreign keys and two exactly-one CHECK constraints enforce the
+member selection. `itemtype` is required; the legacy `items_id` remains a
+read-only generated projection and the existing member uniqueness/indexes remain
+intact. Project visibility and notification member projections query the selected
+owning association. Public cloning, retargeting and member/owner purge preserve
+type boundaries even when different member tables share numeric IDs.
+
+The frozen `20261001_project_team_members` upgrade audits both tables before DDL,
+copies valid selections, refuses unknown types, missing targets, conflicting
+branches and custom legacy-key dependencies, and supports idempotent retry.
+Its targets are frozen migration history; runtime mappings are authoritative for
+application queries and persistence. The shared typed-item DDL mechanism also
+requires non-NULL discriminator values for existing ITIL subject tables. Stop
+writers before applying `php bin/console db:project_team_members --apply`.
+PostgreSQL applies transactionally; MySQL DDL runs outside application transactions.
+
+Fresh installation passed on PostgreSQL and MariaDB. Twenty-four affected
+contracts passed on each provider, with the MariaDB schema check rerun after
+repairing an index lost by an earlier failed test reconstruction. Final focused
+contracts explicitly verify index preservation and frozen upgrade refusal/retry.
+Coverage includes ORM CRUD across all 357 tables, native/public memberships,
+FK/CHECK/uniqueness rejection, clone/purge, overlapping IDs and installed-schema
+comparison. Existing Project, ProjectTeam, ProjectTaskTeam, followup and solution
+tests passed 682 assertions across 19 methods with none skipped. Seventeen PHP
+files passed syntax and formatting checks; the SQL inventory contract passed.
+This is local disposable-database evidence, without a full-suite rerun, remote CI,
+production upgrade or external notification dispatch.
+
+Current coverage is 357 mapped tables, 780 enforced references, seven typed
+logical discriminator selections, one ordinary candidate and 57 polymorphic
+references. The legacy SQL inventory remains 3,011 sites: 2,981 adapter calls and
+30 direct-driver calls. The complete ORM/FK conversion remains active.
+
+### Dropdown translation reads
+
+`DropdownTranslationRepository` now supplies translation rows, distinct available
+fields and literal dropdown-name lookup through ORM. The public translation
+model no longer issues its nine direct adapter requests. Translation selection
+binds the kind, identifier, field and language together; overlapping IDs in
+different dropdown tables cannot share a translation. Canonical predicates keep
+literal `NULL` names/keys, apostrophes, backslashes, Unicode and nullable values
+distinct from SQL NULL. Missing languages retain the original dropdown fallback.
+
+Tree translation regeneration snapshots only child identifiers through their
+mapped parent association before invoking the existing recursive model hooks.
+Changing or deleting an ancestor's translation regenerates descendant complete
+names while preserving each child's own translation. Unmapped plugin dropdowns
+retain their existing model extension path; no new runtime relationship catalogue
+is introduced. Translation lists and used-field selectors preserve their public
+interfaces and use stable ordering.
+
+Twelve affected contracts passed on PostgreSQL and MariaDB, followed by focused
+checks of the final child-ID projection and rendered selector. These cover scoped
+translation reads, literal values, fallback, three-level tree update/purge,
+DISTINCT field discovery, rendered lists, used-field filtering and zero adapter
+queries for warmed public reads. Existing Location and five operating-system
+dropdown suites passed 766 assertions across 61 methods with none skipped. Three
+PHP files passed syntax and formatting checks; SQL inventory and diff checks
+passed. This batch did not rerun the full suite, remote CI, production upgrades or
+live browser workflows.
+
+There is no schema change in this batch. Coverage remains 357 mapped tables and
+780 enforced references, with one ordinary candidate and 57 polymorphic
+references unresolved. In particular, translation `items_id` still needs a
+polymorphic schema design before it can have real foreign keys. The SQL inventory
+now has 3,002 legacy sites: 2,972 adapter calls and 30 direct-driver calls. The full
+ORM/FK goal remains active.
+
+### Web installation through Doctrine
+
+The MySQL web installer uses the shared DBAL installation service for server
+version checks, visible database metadata, database creation and database
+selection. Database names are quoted only for DDL and remain literal connection
+parameters; names containing backticks can be created and selected correctly.
+Connections close on successful and failed requests, and failed creation and
+selection retain their respective error pages. Selecting an existing database
+does not attempt CREATE. Fresh key generation does not migrate credentials from
+an old connection or query application tables before they exist.
+
+Installation completion writes URL settings through the mapped configuration
+API. The historical 0.68 OCS connection helper also owns its connection through
+the DBAL transport; its obsolete configuration table remains a frozen migration
+query rather than acquiring an artificial current ORM mapping.
+
+Local HTTP checks pass for PostgreSQL installation/reinstall refusal and MariaDB
+database creation with a backtick name, rejected credentials, missing selection,
+overlong-name creation failure, existing selection and update preflight. Both
+engines pass login and four core list pages. Web-installed databases pass their
+FK portability, initial-data and schema-check contracts; the OCS helper contract
+covers disabled/missing configuration and execution through DBAL. Syntax,
+formatting, workflow YAML and SQL-inventory checks pass. CI now runs the MySQL web
+flow on its MariaDB/MySQL matrix; remote CI and real historical OCS servers are
+not claimed.
+
+The token inventory now reports 2,993 legacy sites: 2,970 direct adapter calls
+and 23 direct-driver calls, all in `DBpgsql`. It finds no native mysqli calls in
+the scanned `inc`, `src`, `front`, `ajax` or `install` PHP trees. This does not
+establish coverage of arbitrary plugins, callbacks or generated code. FK coverage
+remains 780 enforced references, seven discriminated references, 57 polymorphic
+references and one ordinary candidate across 357 mapped tables. The full ORM/FK
+goal remains active.
+
+### Inventory lock selection
+
+`Lock` uses `InventoryLockRepository` for both its form and bulk unlock. Component
+labels follow the owning Doctrine device association, software labels follow the
+mapped installation/license associations, and network descendants bind the item
+kind at each ancestry hop. Only the selected assignment must be dynamic and
+deleted; live network ancestors remain eligible. No separate table/foreign-key
+catalogue is introduced. Component extensions require registered ORM entities.
+
+Bulk unlock now uses the source asset kind for disks and software installations,
+the computer association for virtual machines, and column joins for IP ancestry.
+Rendering, source rights, inventory hooks and per-model restore remain in the
+application. The old `Lock::getLocksQueryInfosByItemType()` SQL-description factory
+is removed; consumers can obtain selected rows from the repository instead.
+
+The inventory-lock contract passes on PostgreSQL and MariaDB, including all 17
+component associations, live network ancestors, differently typed IDs, software
+labels, source rights, form HTML and actual bulk restore. The related component,
+software-installation, network-name and network-port contracts pass on both
+providers. These are local database and rendered-HTML checks, not live browser
+or remote CI checks. Syntax, formatting and SQL-inventory checks pass.
+
+Ten direct adapter call sites are removed from `Lock`; the current token inventory
+reports 2,976 legacy/native call sites (2,953 adapter calls and 23 direct-driver
+calls). FK coverage is unchanged at 780 enforced references, seven discriminated
+references, 57 polymorphic references and one pending ordinary candidate across
+357 mapped tables. The full ORM/FK goal remains active.
+
+### Owning reservable asset relationships
+
+`ReservationItem` owns exactly one computer, monitor, network equipment,
+peripheral, phone, printer or software association. Each branch has a real foreign
+key and the database CHECK requires the selected asset kind, a positive target
+and no second branch. Native Doctrine lifecycle callbacks enforce the same
+selection. The legacy `items_id` is a read-only generated projection; forms and
+model callers still exchange `itemtype/items_id`, while ORM writes select and
+clear the corresponding owning association. Existing booking IDs remain stable.
+
+Availability and peripheral-category queries join the owning associations. The
+reservation view no longer assembles an adapter SQL fallback. Unmapped plugin
+asset kinds require an explicit owning association and schema upgrade; they are
+not accepted as unenforced scalar references.
+
+`bin/console itsmng:database:reservation_assets` audits and previews the frozen
+upgrade. With application writers stopped, `--apply` preserves asset identity,
+availability flags, descriptions, existing bookings and selection indexes.
+Unsupported asset kinds, missing targets, conflicting canonical columns and
+custom dependencies on the legacy identity refuse before DDL. The migration is
+idempotent; its versioned scope is independent of future mapping changes. Fresh
+installation includes the seven foreign keys and exact-selection CHECK.
+
+### Bidirectional content audience mappings
+
+Reminder and RSS feed audience collections are genuine Doctrine `OneToMany`
+associations. Each audience link declares its owning `ManyToOne`, inverse, target and
+join column on its own entity. `SharedContentRepository` resolves those mapped
+collections rather than maintaining a parallel list of link classes and parent
+properties. Its visibility predicates retain separate `EXISTS` queries so an
+item shared with several audiences appears once. SLA/OLA level targets likewise
+come from their queue entity's owning association.
+
+Flat legacy rows and fixtures expose owning join columns only; inverse
+collections remain lazy and are not converted into physical columns. Native
+audience collection hydration, scoped visibility, ownership, translations,
+expiry, purge and document permissions pass on PostgreSQL and MariaDB. Doctrine
+validates all 357 mappings, and ORM insert/read/delete across all tables plus
+340 table updates pass on both providers. Historical migration inputs remain
+frozen to preserve upgrades; they are not the live relationship model.
+
+The reservable-asset contract passes on both providers, including transfer
+copy/discard, overlapping asset IDs, native and public writes, physical orphan
+rejection, exact selection, booking preservation, purge, migration retry and
+refusal of incoming dependencies before DDL. Transfer creates a new model for
+the copied entry instead of unsetting the source model's required fields.
+
+The complete local CLI portability suites pass 113/113 contracts on PostgreSQL
+and 113/113 on MariaDB/PHP 8.3. Each contract's completion output was checked;
+formatting, syntax and SQL-inventory checks also pass. These results do not
+include live-browser or remote-CI validation. Current static coverage remains
+357 mapped tables, 787 enforced references, eight discriminated references,
+56 polymorphic references and one pending ordinary candidate. The 2,975
+remaining legacy/native SQL call sites mean the broader ORM/FK conversion is
+still ongoing.
+
+### Consumable recipient associations
+
+`Consumable` owns its user or group recipient through two nullable `ManyToOne`
+associations, each protected by a real foreign key. The exact-selection CHECK
+requires the selected recipient kind and only its corresponding positive target.
+Unassigned stock has no recipient and no usage date. Returning assigned stock
+preserves its last recipient as history; deleting that recipient returns the stock
+and clears the association. User and group IDs may overlap without affecting each
+other's stock. Assignment, replacement, purge and group queries use the owning
+associations. The read-only generated `items_id` preserves the forms' legacy
+projection, including zero for unassigned stock.
+
+Native Doctrine callbacks enforce recipient selection and stock state before
+flush. Required asset and project-team selections retain their existing rules
+through the shared attribute-driven item-reference trait. No separate runtime
+recipient catalogue is introduced. Additional recipient kinds require an owning
+association and a schema upgrade; unsupported scalar kinds are rejected.
+
+Fresh installations include both recipient foreign keys and the stock CHECK.
+`bin/console itsmng:database:legacy_to_orm` audits and previews the frozen
+upgrade, including the consumable-recipient stage. With application writers stopped, `--apply` preserves assignment,
+returned history, stock dates and selection indexes, and normalizes empty legacy
+kinds to NULL. Unsupported kinds, orphaned targets, conflicting canonical columns,
+issued stock with no recipient and custom dependencies on the legacy identity
+refuse before DDL. Repeating the upgrade makes no further changes.
+
+Local regression validation covers all 114 CLI contracts on PostgreSQL and
+MariaDB/PHP 8.3. Each full run passed 113 contracts and exposed an ownership
+fixture that incorrectly selected a computer as a consumable recipient. The
+fixture now selects a declared owning target, and the corrected ownership
+contract passes on both providers. The recipient contract also passes with
+execution checks confirming that assignment, return, retarget and reads issue
+no legacy adapter SQL. Each contract's completion output was checked; syntax,
+formatting and SQL-inventory checks pass. Live-browser and remote-CI validation
+are not included.
+
+Current static coverage is 357 mapped tables, 789 enforced references, nine
+discriminated references, 55 polymorphic references and one pending ordinary
+candidate. The inventory still reports 2,975 legacy/native SQL call sites
+(2,952 adapter calls and 23 direct-driver calls). These counts are discovery
+evidence, not completion proof; the broader ORM/FK conversion remains active.
+
+### Owning physical placement assets
+
+Rack and enclosure placements own exactly one computer, monitor, network
+equipment, peripheral, enclosure, PDU or passive DC equipment association.
+Each table has seven real asset foreign keys and an exact-selection CHECK.
+The shared mapping trait declares those associations next to their discriminator
+and generated identity; no runtime relationship catalogue is maintained.
+Asset columns use an `asset_` prefix so a placed enclosure remains distinct from
+its enclosure container. Native lifecycle callbacks validate the same selection
+before persist or update. Existing forms retain `itemtype/items_id`, with the
+identity generated from the owning association.
+
+Rack reservations retain their separate uniqueness flag. Placement positions,
+orientation, half-width positions, colors, global selector exclusions, rack
+geometry and statistics retain their existing behavior. The PDU selector follows
+the owning PDU association. Asset purge removes both installed and reserved
+placements while preserving other asset kinds with overlapping IDs; container
+purge removes placements without deleting their assets.
+
+Fresh installation includes all fourteen asset foreign keys.
+`bin/console itsmng:database:legacy_to_orm` audits and previews the frozen
+upgrade, including the physical-placement stage. With application writers stopped, `--apply` preserves container IDs,
+selected asset IDs, geometry, reservations and unique selection indexes. Both
+tables are audited before either changes. Unsupported kinds, orphaned assets,
+conflicting canonical references and incoming dependencies on the old identity
+refuse before DDL. Repeating the upgrade makes no further changes.
+
+### Software transfer queries
+
+Software transfer discovers licenses and versions through their owning software
+associations. License IDs are selected before callbacks run; version IDs are
+selected afterward so changes made by those callbacks are visible. Templates,
+trashed records and records in other entities remain part of this internal
+transfer selection. Version cleanup checks both license version associations
+and installation ownership. Software cleanup checks license and version
+ownership before invoking the existing keep, trash or purge behavior.
+
+Installation transfer selects a typed asset's relationships through ORM queries,
+excluding the caller's retained version IDs. Retargeting changes only the owning
+version association and preserves installation dates and flags. Discard removes
+the selected installation and license-assignment records, preserving their
+targets and relationships belonging to another asset type with the same numeric
+ID. License/version copy callbacks and application deletion hooks retain their
+existing responsibilities. These converted queries and mutations execute no
+legacy adapter SQL; other transfer paths remain to be converted.
+
+Before identifier widening and command consolidation, local validation verified
+all 115 CLI contracts on PostgreSQL 17.5 and
+MariaDB 12.2.2. Each full suite passed 114 contracts. The remaining infrastructure
+fixture combined an asset branch with an unrelated legacy identity; it now
+selects container relationships from the owning association metadata, while the
+physical-placement contract tests every typed asset branch. Its corrected rerun
+passes on both providers, as does the expanded software transfer contract.
+Every contract's completion output was checked. Syntax, formatting,
+SQL-inventory discovery and whitespace checks pass. PostgreSQL contracts ran on
+host PHP 8.5; MariaDB contracts ran on PHP 8.3. Live-browser and remote-CI
+validation are not included.
+
+Current static coverage is 357 mapped tables, 803 enforced references, eleven
+discriminated references, 53 polymorphic references and one pending ordinary
+candidate. The inventory reports 2,968 legacy/native SQL call sites, including
+2,945 adapter calls and 23 direct-driver calls. The transfer changes remove seven
+explicit adapter call sites and replace five generic count queries with owning
+association checks. These counts are discovery evidence; the full ORM/FK
+conversion remains active.
+
+### Validation after consolidated identifier widening
+
+All 116 CLI contracts have completion evidence on PostgreSQL 17.5 and MariaDB
+12.2.2 through the full suites and focused reruns. These were not uninterrupted
+clean full runs: PostgreSQL passed 115/116 and its all-foreign-key contract passed
+on rerun after a concurrent migration released relation locks. MariaDB passed
+113/116; the installation-catalogue check passed on rerun, and the two reconstructed
+typed migration fixtures now use widened target IDs, matching the master's stage
+order. Both corrected fixtures pass on both providers.
+
+The consolidated command also upgrades populated, previously 32-bit schemas on
+both providers, preserves its journal during preview, converges on repetition,
+and enforces native placement references above 32 bits. The MariaDB check resumed
+the actual partially applied journal after fixing inline JSON CHECK preservation;
+the focused regression verifies that malformed JSON still fails afterward.
+The PostgreSQL whole-schema upgrade used a dedicated server configured with
+`max_locks_per_transaction=2048` after the default-capacity test server exhausted
+its relation-lock pool. PostgreSQL contracts ran with PHP 8.5.10 and MariaDB
+contracts with PHP 8.3.33. No browser or remote-CI validation is claimed.
+
+### Software copy and core field discovery
+
+Software, version and license destination lookups use owning Doctrine
+associations with bound literal names and serials. Reuse retains the existing
+entity and selected-manufacturer rules, including unrestricted manufacturer
+reuse when the source has none. Templates and trashed records remain eligible
+for this internal selection. Public creation, quantity updates, version copying
+and deletion hooks retain their responsibilities. Software validity checks use
+the owning license association and retain their global scope.
+
+Mapped core objects discover their scalar and owning join columns from Doctrine
+metadata for empty forms and input filtering. Associated-item discovery uses
+mapped criteria with the existing item discriminator. Custom plugin queries
+retain the existing fallback. Cold-cache software/version/license copying,
+associated-item loading and validity updates issue no legacy adapter SQL.
+
+All 116 CLI contracts have passing completion evidence on both providers through
+full suites and focused reruns. Each full suite passed 113/116. The metadata
+test's DBAL column-list comparison was corrected and passes on both providers.
+The migration planner changed concurrently in this checkout; its completion and
+schema checks pass against fresh installations from the current source, while
+the earlier fixtures predate those storage changes. These are not uninterrupted
+clean full-suite runs. Syntax, formatting, SQL-inventory and whitespace checks
+pass. No browser or remote-CI validation is claimed.
+
+The static inventory now reports 2,965 legacy/native SQL call sites: 2,942
+adapter calls and 23 direct-driver calls. Relationship coverage remains 803
+enforced references, eleven discriminated references, 53 polymorphic references
+and one pending ordinary candidate across 357 mapped tables. The full ORM and
+foreign-key conversion remains active.
+
+### Contract and document transfer bindings
+
+Contract/document transfer snapshots the selected links through their owning
+parent association. Other asset kinds with the same numeric ID remain outside
+the selection. Destination reuse compares bound literal names in the target
+entity, includes templates/trash where applicable, and selects a stable ID.
+Contract reuse now reads the destination result rather than consuming the next
+source link. Parent moves and copies keep the existing public callbacks;
+retargeting, link copies and scoped unlinking use ORM persistence. Cleanup only
+trashes or purges an old parent after checking its owning references.
+
+The shared distinct-item-kind helper compiles mapped criteria through ORM while
+retaining subclass filters, reverse document links and the iterator contract.
+Custom plugin queries retain their existing extension path.
+
+Public dropdown labels, including the tree labels used by history, read mapped
+records through ORM. Translation joins bind the item kind, field and language.
+Tree projections select their display columns without loading the complete
+entity settings row. Existing fallback names, root entity zero, contact and
+location tooltips, stored comments and encoded tree separators are retained.
+Unmapped plugin dropdowns keep their existing lookup path.
+
+All 117 CLI contracts pass in uninterrupted full runs on PostgreSQL 17.5 with
+PHP 8.5.10 and MariaDB 12.2.2 with PHP 8.3.33. The new transfer contract exercises
+IDs above 32 bits, literal names, destination reuse, owning link mutation,
+shared-parent retention and public parent copy/trash/purge with a cold schema
+cache and zero legacy adapter queries. It isolates parent transfer callbacks
+from the other transfer stages. The expanded translation contract covers plain
+and tree labels, language/type isolation, missing values, root zero and tooltips.
+Syntax, formatting, SQL-inventory and whitespace checks also pass. No browser
+or remote-CI validation is claimed.
+
+The inventory reports 2,949 legacy/native SQL call sites, including 2,926 adapter
+calls and 23 direct-driver calls. This batch removes sixteen explicit adapter
+call sites; the shared kind/label helpers also bypass adapter execution for
+mapped core tables. FK coverage remains 803 enforced references, eleven
+discriminated references, 53 polymorphic references and one pending candidate
+across 357 mapped tables. The full conversion remains active.
+
+### Fresh inherited settings and asset classification discovery
+
+Fresh inherited setting columns, enum defaults and selection constraints now
+come from the owning associations and their mapped mode fields. The installer
+no longer reads the historical inherited-field snapshot. The versioned upgrade
+retains its frozen inputs and still validates existing installations independently.
+
+The default inventory report discovers mapped record classes through
+`EntityRegistry`. `AssetClassification` declares the report's classification
+role on the owning property, so grouping queries use that association directly.
+The repository's duplicate asset type catalogue and association-name convention
+have been removed. An Appliance added to the configured report types exercises
+the same ORM queries, entity visibility and trash filters as existing assets;
+unmapped plugin types retain their existing extension path.
+
+Both fresh installations pass all 117 CLI contracts in full runs: PostgreSQL
+17.5 with PHP 8.5.10 and MariaDB 12.2.2 with PHP 8.3.33. Inherited settings retain
+their native FK/CHECK enforcement, sentinel compatibility, permissions, public
+lifecycle behavior and upgrade retry checks. Reporting verifies scoped counts,
+unclassified groups, additional mapped assets and zero adapter query execution.
+Syntax, scoped formatting and the SQL inventory contract also pass. These are
+local CLI/database checks; browser behavior and remote CI are not validated here.
+
+### Planning recall subjects
+
+Planning recalls select one of six owning Doctrine associations declared on the
+record: ChangeTask, ProblemTask, Reminder, TicketTask, ProjectTask or
+PlanningExternalEvent. Native foreign keys protect those subjects, and a CHECK
+requires exactly the branch selected by the item discriminator. The legacy
+`items_id` is generated from the selected association. Rescheduling queries the
+owning association directly with a BIGINT parameter, preserving isolation when
+different item kinds share the same numeric ID.
+
+Fresh required-subject columns, generated identity and selection constraint are
+derived from the owning mapping. The versioned upgrade keeps its frozen scope,
+refuses unsupported, missing or conflicting legacy subjects before DDL, and
+supports retry after partial or complete conversion. Existing plugin recall
+kinds require an explicit mapped extension before this upgrade can accept them.
+
+ProjectTask and PlanningExternalEvent public purges now remove their recall
+children through the existing lifecycle, including delivery-marker cleanup.
+The other four subject types already perform this cleanup. Direct native parent
+deletion remains restricted while a recall references it.
+
+The recall contract verifies all six branches, IDs above 32 bits, overlapping
+identities, canonical retargeting, same-unit-of-work parent creation, invalid
+native selections, public recall edits, rescheduling, delivery markers and
+parent/user purges. Upgrade checks retain the scheduling date and offset,
+exercise invalid-input refusal and verify idempotent retry. The mapped query
+paths execute no legacy adapter queries.
+
+The placement upgrade fixture also uses a bounded legacy identifier, independent
+of sequences advanced by wide-ID contracts, and restores its schema after a
+rejected upgrade. This keeps repeated MariaDB matrix runs from overflowing the
+old INT key or leaving subsequent contracts with partial placement tables.
+
+Both providers complete clean 118/118 full runs: PostgreSQL 17.5 with PHP 8.5.10
+and MariaDB 12.2.2 with PHP 8.3.33. PostgreSQL's full run precedes the placement
+fixture correction, which also passes a subsequent focused PostgreSQL run;
+production source remains unchanged. MariaDB's final full run uses a fresh
+installation and includes both fixture corrections. Syntax, scoped formatting,
+SQL inventory and whitespace checks pass. These are local CLI/database checks;
+browser behavior, remote CI and publication are not validated here.
+
+The static inventory reports 809 enforced references, twelve discriminated
+references, 52 remaining polymorphic references and one pending candidate across
+357 mapped tables. It still reports 2,949 legacy/native SQL call sites, including
+2,926 adapter calls and 23 direct-driver calls. The full conversion remains
+active; this batch does not reduce the explicit adapter-call inventory.
+
+
+## Calendar object subjects and fresh required-subject discovery
+
+Calendar data now declares six owning subject associations on `Entity\VObject`.
+Foreign keys and a selection CHECK require the discriminator's matching subject;
+the compatibility `items_id` is generated from that association. Raw iCalendar
+data, custom properties, timestamps and the existing unique subject key remain
+preserved. The frozen `VObjectSubjects` upgrade audits unsupported, missing and
+conflicting subjects before DDL and supports retry after partial conversion.
+
+Fresh required string-discriminator subjects are discovered from Doctrine
+metadata. Their owning columns, generated identities and selection CHECKs no
+longer depend on historical ITIL, project-team, reservation, physical-placement
+or planning-recall target lists. Optional and fallback identities retain their
+separate schema handling; the legacy baseline importer still exists. ITIL owning
+records also declare their stable subject CHECK name. This prevents fresh
+installation and the frozen upgrade from adding duplicate checks, which would
+otherwise interfere with MariaDB legacy-table reconstruction.
+
+CalDAV UID lookup uses bounded, parameterized Doctrine queries against the
+mapped subject classes, preserving ambiguity detection and BIGINT identities.
+Unmapped plugin calendar kinds retain their public model lookup extension.
+Reminder's user and entity audience loaders use the existing record repository.
+CalDAV deletion invokes the public purge lifecycle so stored calendar data,
+planning recalls and delivery markers are removed before the subject.
+
+The calendar contract exercises all six subjects, overlapping IDs above 32 bits,
+native invalid selections, same-unit-of-work persistence, public CalDAV CRUD,
+custom iCalendar properties, literal and ambiguous UIDs, parent purges, and
+upgrade data preservation/refusal/retry. The public core UID lookup and calendar
+conversion execute no legacy adapter SQL.
+
+
+After retaining the stable ITIL CHECK names on their owning records, both fresh
+installations complete clean 119/119 full contract runs: PostgreSQL 17.5 with
+PHP 8.5.10 and MariaDB 12.2.2 with PHP 8.3.33. The first MariaDB run exposed the
+duplicate-CHECK reconstruction problem; the corrected run includes the exact
+failure path and final schema check. Scoped source hashes remain unchanged
+during both clean suites. Syntax, formatting, SQL inventory and whitespace
+checks pass. Browser behavior, remote CI and publication remain unverified.
+
+The current inventory reports 815 enforced references, thirteen discriminated
+references, 51 polymorphic references and one pending candidate across 357
+mapped tables. Legacy/native call sites total 2,946: 2,923 adapter calls and 23
+direct-driver calls. This batch removes three explicit adapter calls; broader
+relationship and SQL conversion remains active.
+
+
+## Alert subjects and association-based deduplication
+
+Alerts declare ten owning subject associations on `Entity\Alert`, covering the
+core stock, certificate, contract, financial, reservation, software-license,
+planning-recall, cron-task and user producers. A generated compatibility identity
+and selection CHECK require one matching positive subject. Native foreign keys
+restrict parent deletion while its alerts remain, and the existing unique key
+continues to separate event types for each subject.
+
+Certificate, CronTask and Reservation public purge hooks now remove their alert
+children before deleting the parent. Other producers already perform this
+cleanup. Native ORM creation also initializes the required delivery date without
+relying on a provider's treatment of a NULL timestamp.
+
+Alert existence, delivery-date and latest-alert display use bounded ORM record
+queries. Stock threshold, certificate/license expiry, password notice,
+reservation expiry and planning recall deduplication query the owning alert
+association directly; cron throttling uses its canonical cron-task reference.
+These retain the existing event-type, date and strict-boundary rules.
+
+Cross-type notification tests now use real supported subjects with overlapping
+IDs. Their old fake subjects would become orphans under native foreign keys;
+replacing them preserves the query-isolation test while honoring the new schema.
+The alert contract checks all ten producers, IDs above 32 bits, event uniqueness,
+invalid native selections, retargeting, same-unit-of-work creation, public reads,
+clear/purge behavior and parent cleanup. A reconstructed legacy fixture checks
+unsupported/orphaned/conflicting input refusal, event/date preservation and
+idempotent upgrade retry through the frozen `AlertSubjects` stage.
+
+
+The consumable upgrade fixture uses an explicit recipient ID within the legacy
+INT range and restores its schema in cleanup. Wide producer tests advance
+MariaDB's auto-increment sequence even after rollback; relying on the next user
+ID would overflow the reconstructed legacy key and obscure the intended
+conflicting-recipient audit. The bounded fixture preserves that audit and avoids
+leaving later contracts with partial recipient columns.
+
+The project-team legacy fixture likewise selects a bounded user ID and restores
+both team schemas during cleanup. Notification recipient collision controls use
+an ID within the opaque integer code's range; separate group and profile cases
+explicitly verify identifiers above 32 bits through their owning associations.
+These controls keep legacy preflight tests independent of MariaDB sequences
+advanced by earlier wide-ID contracts.
+
+Dedicated fresh installations pass the full 120/120 contract matrix on
+PostgreSQL 17.5 with PHP 8.5.10 and MariaDB 12.2.2 with PHP 8.3.33. The final
+MariaDB suite includes all fixture corrections. PostgreSQL's full suite preceded
+those test-only corrections; all three corrected contracts subsequently pass
+there individually. Scoped production fingerprints stayed unchanged. PHP
+syntax, scoped formatting, SQL inventory and whitespace checks pass. These are
+local database/CLI results; browser behavior, remote CI and publication remain
+unverified.
+
+The current inventory reports 825 enforced references, fourteen discriminated
+references, 50 polymorphic references and one pending candidate across 357
+mapped tables. It still lists 2,943 legacy/native SQL sites: 2,920 adapter calls
+and 23 direct-driver calls. This batch removes three explicit adapter calls;
+the wider migration remains active.
+
+
+## Object lock subjects
+
+`Entity\ObjectLock` now owns thirty explicit subject associations for the core
+lockable objects. Each association has a native foreign key; a generated legacy
+identity and a selection CHECK require exactly one matching positive subject.
+The locking user remains a separate owning association. Runtime subject discovery,
+normalization and fresh schema generation read these entity mappings.
+
+Public parent purges clear their own object locks through the shared model
+lifecycle before deleting the parent. The cleanup derives supported subjects from
+Doctrine metadata. It preserves locks on other kinds with overlapping IDs. Native
+creation initializes the lock timestamp, and the existing unique key continues
+to prevent two locks on the same subject.
+
+The frozen `ObjectLockSubjects` upgrade audits unsupported, orphaned and conflicting
+selections before DDL. It preserves the owner and original modification date when
+copying the subject, so conversion does not renew an expiring lock. The shared
+typed upgrade uses numbered join aliases to avoid reserved target names and
+preserves the legacy identity column comment when recreating its generated key.
+Historical upgrade scopes remain frozen; current runtime relationships belong to
+the owning entities.
+
+The new contract exercises all thirty subject foreign keys, native CHECK and
+uniqueness rejection, identifiers above 32 bits, public lock status and strict
+expiry boundaries, native persistence, canonical retargeting, explicit unlock,
+all thirty public parent purges and idempotent legacy upgrade. Reconstructed
+legacy ITIL and reservation fixtures use bounded parent IDs independently of
+MariaDB sequences advanced by wide-ID tests. Generic foreign-key rejection
+fixtures also distinguish real root ownership from positive lock subjects.
+
+The static inventory now reports 855 enforced references, fifteen discriminated
+references, 49 polymorphic references and one pending candidate across 357 mapped
+tables. It lists 2,943 legacy/native SQL sites: 2,920 adapter calls and 23 direct
+PostgreSQL-driver calls. Of the adapter calls, 2,491 are under `install/` and 429
+are elsewhere. This path grouping does not establish which calls still need ORM
+conversion. The broader relationship and runtime SQL migration remains active.
+
+The 121-contract fresh-install matrices completed with 120/121 passes on
+PostgreSQL and 119/121 on MariaDB before the final corrections. Both exposed the
+generic parent-purge fixture's root-ID assumption; MariaDB additionally detected
+the generated identity's missing comment. DBAL omits automatic inline comments
+for custom column definitions, so both fresh declarations and typed upgrades now
+include the platform's comment declaration explicitly.
+
+After these corrections, the thirty-subject lock contract, generic FK rejection
+and parent-purge contracts pass on both providers. New untouched installations
+also pass schema comparison. Rechecking schema after the matrix exposed a
+calendar upgrade fixture that recreated a nonunique lookup index as unique; the
+fixture now preserves its original uniqueness. Schema, entity metadata, master
+upgrade/retry and calendar upgrade/cleanup pass together, including a final
+schema check after calendar cleanup. These targeted reruns verify the affected
+contracts; a full 121/121 matrix was not repeated after the last corrections.
+
+Validation used PostgreSQL 17.5 with PHP 8.5.10 and MariaDB 12.2.2 with PHP 8.3.33.
+Scoped production/test fingerprints remained unchanged during final checks;
+syntax, scoped formatting, SQL inventory and whitespace checks pass. This is
+local database/CLI evidence. Browser behavior, remote CI, publication and a live
+replicated deployment remain unverified.
+
+
+## Ticket automatic actions
+
+`TicketAutomaticActionRepository` selects candidates for automatic closure,
+closed-ticket purge, overdue alerts and satisfaction surveys through mapped
+Doctrine queries. Entity enumeration also uses ORM. The callbacks retain their
+public ticket/entity/satisfaction model operations, history and notification
+hooks, per-entity accounting, working-calendar calculations and inherited
+configuration resolution. The supplied application connection and transaction
+remain authoritative.
+
+Closure and purge keep strict elapsed-day comparisons; working-calendar closure
+and survey delay/duration cutoffs remain inclusive. Zero closure/purge delays
+keep undated rows eligible. Purge still includes soft-deleted closed tickets.
+Survey selection distinguishes the inherited selection watermark from the
+ticket entity's own stored duration gate, excludes existing surveys through a
+mapped association, and retains the existing parent-watermark routing and
+sampling behavior. Identifier snapshots allow public hooks to change/delete
+the selected rows without mutating the active query cursor.
+
+The new automatic-action contract checks entity isolation and identifiers above
+32 bits, exact date boundaries across the spring clock change, null dates,
+working and empty calendars, public status/date hooks, inherited settings,
+purge cleanup of constrained locks and surveys, repeat runs and sampled-out
+watermark advancement. Candidate repository operations issue no legacy adapter
+SQL. Overdue event/accounting runs with delivery modes disabled; external
+notification delivery was not exercised.
+
+The automatic-action, entity configuration, scheduler, application CRUD, ITIL
+task/user, notification target/queue and schema contracts pass together: 9/9 on
+PostgreSQL 17.5 with PHP 8.5.10 and 9/9 on MariaDB 12.2.2 with PHP 8.3.33.
+The suite now contains 122 contracts; the full matrix was not repeated for this
+runtime-only change. Syntax, scoped formatting, SQL inventory, source fingerprints
+and whitespace checks pass. These are local database/CLI results; browser,
+remote CI and replicated-deployment behavior remain unverified.
+
+This batch removes seven explicit adapter calls. The static inventory remains
+at 855 enforced references, fifteen discriminated references, 49 polymorphic
+references and one pending candidate across 357 mapped tables. It now lists
+2,936 legacy/native SQL sites: 2,913 adapter calls and 23 direct-driver calls.
+These counts include historical installation SQL and require semantic review;
+the broader migration remains active.
+
+## Ticket asset associations and queries
+
+`ItemTicket` owns the twenty core ticket asset associations. Each uses a real
+foreign key, with a database check requiring exactly the association selected
+by `itemtype`. `items_id` is a generated compatibility identity. Fresh schema
+uses the owning entity metadata; the versioned `TicketAssets` upgrade retains
+its frozen scope and rejects unsupported, orphaned or conflicting legacy
+references before DDL. Existing lookup indexes and relation IDs are preserved.
+
+`TicketAssetRepository` follows the selected owning association for active and
+recent ticket lookups, counters, the incident/demand picker, cost rows and
+transfer snapshots. Public methods retain their row iterator, currency/rounding
+behavior and model hooks. Transfer keeps the selected relation identifier for
+retargeting and fixes the keep-ticket branch to delete that actual identifier.
+This removes six explicit legacy adapter calls.
+
+The ticket asset contract checks all twenty kinds with overlapping IDs above
+32 bits, native FK/check/uniqueness rejection, native ORM persistence, partial
+updates and retargeting, strict solved-date boundaries across the spring clock
+change, null dates, deleted tickets, ticket type filters, mixed-sign cost rows,
+public transfer and purge behavior, legacy upgrade preflight and retry. Lookup,
+cost and snapshot queries issue no legacy adapter SQL.
+
+Both fresh-install matrices passed 122/123 contracts. The sole failure was a
+hardware statistics fixture that still created empty/zero asset links; it now
+uses an unlinked ticket to verify exclusion and rejects a noncanonical asset
+type. That corrected contract passes on both providers, and final post-matrix
+schema comparisons pass: all 123 current contracts have passing evidence on
+PostgreSQL 17.5/PHP 8.5.10 and MariaDB 12.2.2/PHP 8.3.33. The complete matrix was
+not restarted after this test-only correction. Scoped source fingerprints, PHP
+syntax, formatting, migration JSON, SQL inventory and whitespace checks pass.
+These are local database/CLI results; browser, remote CI and replicated
+deployment behavior remain unverified.
+
+The current audit records 357 mapped tables, 875 enforced references, sixteen
+discriminated references, 48 polymorphic references and one pending candidate.
+The SQL inventory records 2,930 legacy/native sites: 2,907 legacy adapter calls
+and 23 direct-driver calls, including historical installation code. The broader
+migration remains active.
+
+## Change and problem asset associations
+
+`ChangeItem` and `ItemProblem` now own all twenty core helpdesk asset kinds.
+Together they add forty foreign keys. Required checks allow exactly one
+association matching `itemtype`; `items_id` remains a generated compatibility
+identity. Ticket, change and problem links share the actual owning properties
+in `ITILAssetAssociations`, while each keeps its own parent, uniqueness and
+legacy discriminator width. Runtime relationships are still derived from
+Doctrine declarations, with no separate schema catalogue.
+
+`ITILAssetRepository` follows the asset and parent owning associations for active
+change/problem pickers. It obtains the parent/link metadata from the existing
+ITIL statistics declarations, preserves exclusion of solved/closed/deleted
+objects, returns stable ID/name/priority projections and keeps the public row
+iterator interface. User/group/supplier tab counts also execute mapped ORM
+counts. These paths remove four direct adapter calls.
+
+Cold entity-tree cache misses in public uniqueness validation previously issued
+adapter schema probes. Tree helpers now obtain cache-column availability from
+the mapped entity metadata, retaining schema discovery for unmapped plugin
+tables. The transfer contract disables schema caching and clears its fixture
+tree-cache keys before the public move, preventing warm caches from masking
+those calls. It separately checks zero adapter SQL and the resulting entity.
+
+The dedicated contract exercises every asset kind with overlapping wide IDs,
+native FK/check/uniqueness rejection, native ORM graph persistence, retargeting
+and partial updates, active/finished/deleted filters, both public picker APIs,
+actor tab counts, parent and all twenty asset purges. It reconstructs both legacy
+relationship tables, verifies refusal of unsupported/orphaned/conflicting
+references before DDL, preserves IDs and index uniqueness, and checks retry
+idempotence. A temporary fixture index keeps MariaDB parent foreign keys
+enforceable while reconstructing an old composite index. The production upgrade
+remains frozen in `ChangeProblemAssets`.
+
+The full first matrices passed 123/124 contracts each. PostgreSQL exhausted
+the unchanged 128 MiB memory limit while purging the expanded relationship
+graph; collecting discarded Doctrine managers every eight operations resolves
+it. The measured standalone ORM rerun peaks at 126,353,408 bytes. MariaDB
+exposed the cold-tree schema probes above; the strengthened cold-cache transfer
+contract now passes on both providers.
+
+The final source set passes a full 124/124 matrix on PostgreSQL 17.5/PHP
+8.5.10. MariaDB 12.2.2/PHP 8.3.33 passed 123/124; its sole failure was a missing
+`glpi_changes_items.item` index in the older disposable fixture, left behind
+by the initial failed test reconstruction. Comparing against the independent
+fresh fixture showed that as the only index difference. After restoring the
+exact declared index, the asset upgrade contract preserves it and the schema
+contract passes. All 124 current contracts therefore have passing evidence on
+both providers; the full MariaDB matrix was not restarted after this fixture
+correction. Both final post-matrix schema comparisons pass.
+
+All seventeen scoped source fingerprints stayed unchanged during the final
+matrices. PHP syntax, scoped formatting, frozen migration JSON, SQL inventory
+and whitespace checks pass. These are local database/CLI results; browser,
+remote CI and replicated-deployment behavior remain unverified.
+
+The audit now records 357 mapped tables, 915 enforced references, eighteen
+discriminated references, 46 polymorphic references and one pending candidate.
+The SQL inventory lists 2,926 legacy/native sites: 2,903 adapter calls and 23
+direct-driver calls, including historical installation SQL. The broader goal
+remains active.
+
+## Contract asset associations and queries
+
+Contract links now declare thirty-five nullable owning Doctrine associations:
+eighteen configured assets and seventeen installed-component kinds. Exactly one
+association must match `itemtype`; the compatibility `items_id` is generated from
+that association. Native foreign keys, the selection CHECK and the existing unique
+key reject orphans, missing subjects, unsupported kinds and duplicate links.
+Twelve common asset properties are shared with ITIL links through
+`AssetAssociations`; component properties live in `DeviceItemAssociations`.
+Neither trait contains a separate relationship catalogue. The versioned
+`ContractAssets` migration freezes its upgrade targets and audits legacy rows
+before DDL, preserving identifiers and indexes on a retry.
+
+Contract cloning and scoped asset lists use ORM queries. Lists count first and
+load rows only within the existing display limit; installed-component names join
+their owning definition association. Transfer operations retarget and query the
+selected owning asset, retaining parent callbacks and overlapping-kind isolation.
+`Contract_Item` contains no direct adapter query calls. Document bindings were
+converted in the subsequent document-subject stage described below.
+
+Local PostgreSQL and MariaDB runs each passed 123 of 125 contracts initially.
+The remaining two tests were corrected and rerun successfully: the curated ORM
+fixture now selects one contract subject instead of populating all branches, and
+the ticket test compares supported kinds without depending on reflection order.
+All 125 contracts therefore have passing evidence on both providers; the full
+suite was not restarted after those test-only corrections. Production sources
+remained unchanged during validation. The new contract covers all thirty-five
+native/public branches, wide overlapping IDs, FK/CHECK/uniqueness rejection,
+component names, bounded scoped lists, template exclusion, transfer, cloning,
+purge and legacy upgrade refusal/index preservation/retry.
+
+The current audit records 357 mapped tables, 950 enforced references, nineteen
+discriminated identities, forty-five polymorphic candidates and one pending
+candidate. Static discovery still finds 2,901 legacy adapter sites and 23 direct
+driver sites. The detached runtime schema catalogues are removed; the overall ORM
+conversion remains incomplete.
+
+## Document subject associations and queries
+
+Document links now declare thirty-three owning Doctrine subject associations.
+The selected subject must match `itemtype`; the compatibility `items_id` is a
+generated, read-only projection. Native foreign keys, a selection CHECK and the
+existing composite unique key enforce the graph. Twelve common asset properties
+come from `AssetAssociations`; the remaining subject properties are declared on
+`DocumentItem`. Runtime targets and policies come from those owning properties.
+The versioned `DocumentSubjects` migration freezes only the historical upgrade
+scope and audits legacy rows before changing the schema.
+
+The subject document, entity and user have separate columns from the attachment's
+parent document, ownership entity and author. The entity subject permits the real
+root identifier zero through its property-local discriminator policy; NULL still
+means that no subject is selected. Every other subject requires a positive ID.
+The shared native lifecycle, input normalization and current schema CHECK honor
+that policy; historical migration stages keep their own frozen policy.
+
+Attachment lookup and listing query the selected owning association, including
+both directions of document-to-document links. Transfer lookup, copy, retarget
+and unlink also use owning associations, with no remaining scalar fallback.
+The focused contract covers every native/public subject kind, overlapping IDs
+beyond 32 bits, root zero, distinct ownership/author roles, missing and invalid
+subjects, FK and uniqueness rejection, lookup ordering, transfer, public purge,
+legacy upgrade refusal, partial conflicts, index preservation and idempotent
+retry. The generic ORM purge fixture now selects one document subject rather
+than appending a conflicting legacy identity.
+
+The complete local matrices passed 124/126 contracts on PostgreSQL 17.5/PHP
+8.5.10 and 125/126 on MariaDB 12.2.2/PHP 8.3.33. The corrected dropdown lifecycle
+contract passes on both providers. The generic parent-purge contract now gives
+each attachment graph a distinct parent, avoiding duplicate subjects retained
+after author cleanup; that correction passes on both fresh fixtures and within
+the MariaDB matrix. All 126 distinct contracts therefore have passing evidence
+on both providers; the matrices were not restarted after these test-only
+corrections. Production source fingerprints remained unchanged during validation.
+
+Independent fresh installations on both providers pass the initial portability,
+initial-data, entity-metadata and document-subject contracts. The first fresh
+attempts used missing cache directories and exhausted the memory-cache limit;
+preparing the cache and using new disposable databases resolved the fixture
+setup failure without changing production code. These results cover local
+database/CLI behavior; browser, remote CI and replicated deployment are not
+verified by this batch.
+
+Both final post-matrix schema comparisons pass against the current Doctrine
+mapping, after all table-reconstruction contracts. Fourteen scoped source
+fingerprints match the final verified files; syntax, formatting and whitespace
+checks pass.
+
+The audit now records 357 mapped tables, 983 enforced references, twenty
+discriminated identities, forty-four polymorphic candidates and one pending
+candidate. Static discovery still finds 2,901 legacy adapter sites and 23 direct
+driver sites. The broader relationship and SQL conversion remains active.
+
+## Infrastructure asset associations
+
+Certificate, domain and cluster links now declare twenty owning subject
+associations: nine certificate kinds, nine domain kinds and two cluster kinds.
+Exactly one association must match `itemtype`; `items_id` is its generated,
+read-only compatibility projection. Native foreign keys, selection CHECKs and
+the existing composite unique keys reject orphans and invalid or duplicate
+subjects. Entity properties declare runtime targets and discriminator policies;
+the three versioned upgrade stages freeze only their historical target scopes.
+
+Domain asset and associated-domain lists query owning associations and retain
+the original entity, recursion and template criteria. Relation-category tabs
+select `domainrelations` independently of the selected asset. The associated
+domain query hydrates each link as its root, preserving several associations
+that point at the same domain rather than collapsing them into one result.
+External domain-name lookup and global cluster selection also use owning
+identities, including identifiers beyond 32 bits. `Domain_Item` has no direct
+adapter query calls; its exhausted second rendering loop and empty wrapper were
+removed with the duplicate query code.
+
+Restrictive subject foreign keys exposed missing certificate cleanup when
+purging a phone. The shared purge path now derives certificate subject support
+from Doctrine metadata and invokes the existing relation lifecycle. It covers
+all nine certificate subject kinds without adding a detached relationship list.
+The focused contract exercises all twenty native/public graphs, selected branch
+retargeting, overlapping wide identifiers, FK/CHECK/uniqueness rejection, scoped
+queries, category tabs, public rendering, parent/subject purges and legacy
+upgrade refusal, partial conflicts, index preservation and idempotent retry.
+
+The focused infrastructure contract passes on PostgreSQL and MariaDB. Fresh
+installation on both providers also passes the portability, initial-data,
+entity-metadata and infrastructure contracts (four on each). Scoped syntax, JSON,
+formatting and whitespace checks pass.
+
+The current audit records 357 mapped tables and 1,003 enforced references, with
+twenty-three discriminated identities, forty-one polymorphic candidates and one
+pending candidate. The domain conversion removes five legacy query sites; static
+discovery now finds 2,896 adapter sites and 23 native driver sites. The wider
+relationship and SQL conversion remains active.

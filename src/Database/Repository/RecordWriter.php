@@ -18,7 +18,7 @@ final class RecordWriter
 
     public function insert(string $table, array $values): int
     {
-        $class = EntityRegistry::TABLES[$table];
+        $class = EntityRegistry::tables()[$table];
         $metadata = $this->em->getClassMetadata($class);
         $record = new $class();
         $generatorType = $metadata->generatorType;
@@ -35,6 +35,9 @@ final class RecordWriter
             }
         }
         foreach ($metadata->associationMappings as $mapping) {
+            if (!$mapping->isToOneOwningSide()) {
+                continue;
+            }
             $join = $mapping->joinColumns[0];
             if (array_key_exists('default', $join->options ?? []) && !array_key_exists($join->name, $values)) {
                 $values[$join->name] = $join->options['default'];
@@ -55,7 +58,7 @@ final class RecordWriter
     /** @return string[] Changed physical column names for application history. */
     public function update(string $table, int $id, array $values): array
     {
-        $class = EntityRegistry::TABLES[$table];
+        $class = EntityRegistry::tables()[$table];
         // Some legacy tables use an alternate/composite PK and a unique numeric id.
         $record = $this->em->getRepository($class)->findOneBy(['id' => $id]);
         if ($record === null) {
@@ -72,12 +75,12 @@ final class RecordWriter
                 : $metadata->getColumnName($field);
         }
         $this->em->flush();
-        return $columns;
+        return $record instanceof \itsmng\Database\Mapping\LegacyInput ? $record->legacyChanges($columns) : $columns;
     }
 
     public function delete(string $table, int $id): void
     {
-        $record = $this->em->getRepository(EntityRegistry::TABLES[$table])->findOneBy(['id' => $id]);
+        $record = $this->em->getRepository(EntityRegistry::tables()[$table])->findOneBy(['id' => $id]);
         if ($record !== null) {
             $this->em->remove($record);
             $this->em->flush();
@@ -86,8 +89,14 @@ final class RecordWriter
 
     private function assign(ClassMetadata $metadata, object $record, array $values): void
     {
+        if ($record instanceof \itsmng\Database\Mapping\LegacyInput) {
+            $values = $record->normalizeInput($values);
+        }
         $associations = [];
         foreach ($metadata->associationMappings as $field => $mapping) {
+            if (!$mapping->isToOneOwningSide()) {
+                continue;
+            }
             $associations[$mapping->joinColumns[0]->name] = $field;
         }
         foreach ($values as $column => $value) {
@@ -115,7 +124,7 @@ final class RecordWriter
             if ($value !== null) {
                 $value = match ($mapping->type) {
                     'boolean' => (bool)(int)$value,
-                    'integer', 'smallint' => (int)$value,
+                    'integer', 'smallint', 'bigint' => (int)$value,
                     'float' => (float)$value,
                     'date', 'datetime', 'datetimetz' => $value instanceof \DateTimeInterface ? \DateTime::createFromInterface($value) : new \DateTime((string)$value),
                     'json' => is_array($value) ? $value : json_decode((string)$value, true, flags: JSON_THROW_ON_ERROR),

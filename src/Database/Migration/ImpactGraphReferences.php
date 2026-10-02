@@ -7,7 +7,6 @@ namespace itsmng\Database\Migration;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Types\BooleanType;
-use itsmng\Database\OptionalReferences;
 
 final class ImpactGraphReferences
 {
@@ -16,7 +15,7 @@ final class ImpactGraphReferences
 
     private function references(): NullableReferences
     {
-        return new NullableReferences(OptionalReferences::IMPACT_GRAPH, 'impact graph');
+        return new NullableReferences(ReferenceHistory::get('optional', 'IMPACT_GRAPH'), 'impact graph');
     }
 
     private function booleanSql(Connection $connection): array

@@ -219,15 +219,10 @@ abstract class CommonDropdown extends CommonDBTM
 
         // if item based on location, create item in the same entity as location
         if (isset($input['locations_id']) && !isset($input['_is_update'])) {
-            $iterator = $DB->request([
-               'SELECT' => ['entities_id'],
-               'FROM'   => 'glpi_locations',
-               'WHERE'  => [
-                  'id' => $input['locations_id']
-               ]
-            ]);
-            while ($data = $iterator->next()) {
-                $input['entities_id'] = $data['entities_id'];
+            $entity = (new \itsmng\Database\Repository\DropdownLifecycleRepository(\itsmng\Database\Orm::create($DB)))
+                ->locationEntity((int)$input['locations_id']);
+            if ($entity !== null) {
+                $input['entities_id'] = $entity;
             }
         }
 
@@ -433,32 +428,24 @@ abstract class CommonDropdown extends CommonDBTM
     {
         global $DB;
 
-        $ID = $this->fields['id'];
-
-        $RELATION = getDbRelations();
-        if (isset($RELATION[$this->getTable()])) {
-            foreach ($RELATION[$this->getTable()] as $tablename => $field) {
-                if ($tablename[0] != '_') {
-                    if (!is_array($field)) {
-                        $row = $DB->request([
-                           'FROM'   => $tablename,
-                           'COUNT'  => 'cpt',
-                           'WHERE'  => [$field => $ID]
-                        ])->next();
-                        if ($row['cpt'] > 0) {
-                            return true;
-                        }
-                    } else {
-                        foreach ($field as $f) {
-                            $row = $DB->request([
-                               'FROM'   => $tablename,
-                               'COUNT'  => 'cpt',
-                               'WHERE'  => [$f => $ID]
-                            ])->next();
-                            if ($row['cpt'] > 0) {
-                                return true;
-                            }
-                        }
+        if ((new \itsmng\Database\Repository\DropdownLifecycleRepository(\itsmng\Database\Orm::create($DB)))
+            ->isUsed($this->getTable(), (int)$this->fields['id'], $this->getType())) {
+            return true;
+        }
+        // Plugin links use the same mapped boundary and must register their entities.
+        foreach (Plugin::getDatabaseRelations()[$this->getTable()] ?? [] as $table => $columns) {
+            if (str_starts_with($table, '_')) {
+                continue;
+            }
+            $columns = (array)$columns;
+            if (in_array('itemtype', $columns, true)) {
+                if (\itsmng\Database\MappedReads::countMatching($DB, $table, ['items_id' => $this->fields['id'], 'itemtype' => $this->getType()])) {
+                    return true;
+                }
+            } else {
+                foreach ($columns as $column) {
+                    if (\itsmng\Database\MappedReads::countMatching($DB, $table, [$column => $this->fields['id']])) {
+                        return true;
                     }
                 }
             }
@@ -564,17 +551,10 @@ abstract class CommonDropdown extends CommonDBTM
         global $DB;
 
         if (!empty($input["name"])) {
-            $crit = [
-               'SELECT' => 'id',
-               'FROM'   => $this->getTable(),
-               'WHERE'  => [
-                  'name'   => $input['name']
-               ],
-               'LIMIT'  => 1
-            ];
+            $scope = [];
 
             if ($this->isEntityAssign()) {
-                $crit['WHERE'] += getEntitiesRestrictCriteria(
+                $scope = getEntitiesRestrictCriteria(
                     $this->getTable(),
                     '',
                     $input['entities_id'],
@@ -582,13 +562,8 @@ abstract class CommonDropdown extends CommonDBTM
                 );
             }
 
-            $iterator = $DB->request($crit);
-
-            // Check twin :
-            if (count($iterator) > 0) {
-                $result = $iterator->next();
-                return $result['id'];
-            }
+            return (new \itsmng\Database\Repository\DropdownLifecycleRepository(\itsmng\Database\Orm::create($DB)))
+                ->findId($this->getTable(), \itsmng\Database\LegacyValues::decodeString((string)$input['name']), $scope);
         }
         return -1;
     }

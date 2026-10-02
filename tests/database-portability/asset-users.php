@@ -2,9 +2,9 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Migration\AssetUserReferences;
-use itsmng\Database\OptionalReferences;
 
 $directory = $argv[1] ?? '';
 if (!is_file($directory . '/config_db.php')) {
@@ -38,7 +38,7 @@ try {
     $unrelated = $fixtures->create('glpi_users', ['name' => 'Asset unrelated']);
     $records = [];
     $others = [];
-    foreach (OptionalReferences::ASSET_USERS as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'ASSET_USERS') as $table => $relations) {
         $extra = $table === 'glpi_items_devicesimcards'
             ? ['itemtype' => 'Computer', 'items_id' => $fixtures->create('glpi_computers')]
             : ['name' => 'Assigned ' . $table];
@@ -47,7 +47,7 @@ try {
     }
     $user = new User();
     verify($user->delete(['id' => $original, '_replace_by' => $replacement], true), 'Replace assigned user');
-    foreach (OptionalReferences::ASSET_USERS as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'ASSET_USERS') as $table => $relations) {
         $model = getItemForItemtype(getItemTypeForTable($table));
         verify($model->getFromDB($records[$table]), 'Replacement preserves asset');
         foreach ($relations as $column => $target) {
@@ -58,9 +58,10 @@ try {
     $public = $fixtures->create('glpi_savedsearches', ['name' => 'Public user search', 'users_id' => $replacement, 'is_private' => false, 'itemtype' => 'Computer']);
     $otherSearch = $fixtures->create('glpi_savedsearches', ['name' => 'Unrelated search', 'users_id' => $unrelated, 'is_private' => false, 'itemtype' => 'Computer']);
     $stock = $fixtures->create('glpi_consumables', ['itemtype' => 'User', 'items_id' => $replacement, 'date_out' => '2026-09-29']);
+    $fixtures->create('glpi_groups', ['id' => $replacement, 'name' => 'Same ID consumable group']);
     $groupStock = $fixtures->create('glpi_consumables', ['itemtype' => 'Group', 'items_id' => $replacement, 'date_out' => '2026-09-29']);
     verify($user->delete(['id' => $replacement], true), 'Purge assigned user');
-    foreach (OptionalReferences::ASSET_USERS as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'ASSET_USERS') as $table => $relations) {
         $model = getItemForItemtype(getItemTypeForTable($table));
         verify($model->getFromDB($records[$table]), 'Purge preserves asset');
         foreach ($relations as $column => $target) {
@@ -131,7 +132,7 @@ $quote = $platform->quoteIdentifier(...);
 $migration = new AssetUserReferences();
 $legacyId = null;
 try {
-    foreach (OptionalReferences::ASSET_USERS as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'ASSET_USERS') as $table => $relations) {
         foreach ($relations as $column => $target) {
             $connection->executeStatement($platform->getDropForeignKeySQL(ForeignKeys::name($table, $column), $table));
             $connection->executeStatement('UPDATE ' . $quote($table) . ' SET ' . $quote($column) . ' = 0 WHERE ' . $quote($column) . ' IS NULL');

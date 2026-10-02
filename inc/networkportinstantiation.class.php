@@ -317,23 +317,8 @@ class NetworkPortInstantiation extends CommonDBChild
         if (($this->canHaveVirtualPort) && ($display_options['virtual_ports'])) {
             $virtual_header = $row->getHeaderByName('Instantiation', 'VirtualPorts');
 
-            $iterator = $DB->request([
-               'FROM' => new \QueryUnion(
-                   [
-                     [
-                        'SELECT' => 'networkports_id',
-                        'FROM'   => 'glpi_networkportaliases',
-                        'WHERE'  => ['networkports_id_alias' => $netport->getID()]
-                     ], [
-                        'SELECT' => 'networkports_id',
-                        'FROM'   => 'glpi_networkportaggregates',
-                        'WHERE'  => ['networkports_id_list' => ['LIKE', '%"' . $netport->getID() . '"%']]
-                     ]
-                   ],
-                   false,
-                   'networkports'
-               )
-            ]);
+            $iterator = new \itsmng\Database\RowIterator((new \itsmng\Database\Repository\NetworkPortAggregateRepository(\itsmng\Database\Orm::create($DB)))
+                ->virtualPorts((int)$netport->getID()));
 
             if (count($iterator)) {
                 $new_father = $row->addCell($virtual_header, __('this port'), $father);
@@ -754,21 +739,8 @@ class NetworkPortInstantiation extends CommonDBChild
 
         $macAddresses = [];
         foreach ($netport_types as $netport_type) {
-            $instantiationTable = getTableForItemType($netport_type);
-            $iterator = $DB->request([
-               'SELECT' => [
-                  'port.id',
-                  'port.name',
-                  'port.mac'
-               ],
-               'FROM'   => 'glpi_networkports AS port',
-               'WHERE'  => [
-                  'items_id'           => $lastItem->getID(),
-                  'itemtype'           => $lastItem->getType(),
-                  'instantiation_type' => $netport_type
-               ],
-               'ORDER'  => ['logical_number', 'name']
-            ]);
+            $iterator = new \itsmng\Database\RowIterator((new \itsmng\Database\Repository\NetworkPortAggregateRepository(\itsmng\Database\Orm::create($DB)))
+                ->availablePorts($lastItem->getType(), (int)$lastItem->getID(), $netport_type));
 
             if (count($iterator)) {
                 $array_element_name = call_user_func(

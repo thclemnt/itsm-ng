@@ -8,7 +8,6 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Types\Types;
-use itsmng\Database\EntityConfigurationReferences as References;
 
 /** Split inheritance policy from selected IDs with writers stopped during upgrade. */
 final class EntityConfigurationReferences
@@ -17,7 +16,7 @@ final class EntityConfigurationReferences
 
     public static function configureTable(Table $table): void
     {
-        foreach (References::FIELDS as $column => $definition) {
+        foreach (ReferenceHistory::get('inherited', 'FIELDS') as $column => $definition) {
             $table->getColumn($column)->setNotnull(false)->setDefault(null);
             if (!$table->hasColumn($definition['mode'])) {
                 $table->addColumn($definition['mode'], Types::STRING, ['length' => 16, 'notnull' => true, 'default' => $definition['default']]);
@@ -27,12 +26,12 @@ final class EntityConfigurationReferences
 
     public static function checkName(string $column): string
     {
-        return 'glpi_entities_' . References::FIELDS[$column]['mode'] . '_selection';
+        return 'glpi_entities_' . ReferenceHistory::get('inherited', 'FIELDS')[$column]['mode'] . '_selection';
     }
 
     public static function checkSql(string $column): string
     {
-        $definition = References::FIELDS[$column];
+        $definition = ReferenceHistory::get('inherited', 'FIELDS')[$column];
         $mode = $definition['mode'];
         $choices = $definition['empty_zero'] ? "'explicit', 'inherit'" : "'explicit', 'inherit', 'unchanged'";
         $selected = $definition['empty_zero'] ? "($column IS NULL OR $column > 0)" : "($column IS NOT NULL AND $column >= 0)";
@@ -50,7 +49,7 @@ final class EntityConfigurationReferences
         $quote = $platform->quoteIdentifier(...);
         $counts = [];
         $checks = [];
-        foreach (References::FIELDS as $column => $definition) {
+        foreach (ReferenceHistory::get('inherited', 'FIELDS') as $column => $definition) {
             $field = $quote($column);
             $present = $definition['empty_zero'] ? '> 0' : '>= 0';
             $sentinels = $definition['empty_zero'] ? '-2' : '-2, -10';
@@ -104,7 +103,7 @@ final class EntityConfigurationReferences
             }
             $quote = $connection->getDatabasePlatform()->quoteIdentifier(...);
             $connection->transactional(static function () use ($connection, $quote): void {
-                foreach (References::FIELDS as $column => $definition) {
+                foreach (ReferenceHistory::get('inherited', 'FIELDS') as $column => $definition) {
                     $field = $quote($column);
                     $mode = $quote($definition['mode']);
                     $connection->executeStatement("UPDATE glpi_entities SET $mode = 'inherit', $field = NULL WHERE $field = -2");

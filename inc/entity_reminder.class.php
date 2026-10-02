@@ -61,14 +61,9 @@ class Entity_Reminder extends CommonDBRelation
         global $DB;
 
         $ent   = [];
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => [
-              'reminders_id' => $reminder->fields['id']
-           ]
-        ]);
-
-        while ($data = $iterator->next()) {
+        $rows = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
+            ->matching(self::getTable(), ['reminders_id' => $reminder->fields['id']], 'id');
+        foreach ($rows as $data) {
             $ent[$data['entities_id']][] = $data;
         }
         return $ent;

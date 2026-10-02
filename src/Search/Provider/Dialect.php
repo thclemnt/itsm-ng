@@ -22,7 +22,7 @@ final class Dialect
     public function column(string $table, string $column, ?string $alias = null): string
     {
         $sql = $this->quote(($alias ?? $table) . '.' . $column);
-        if ($this->postgres() && \itsmng\Database\BooleanColumns::contains($table, $column)) {
+        if ($this->postgres() && \itsmng\Database\EntityRegistry::isBoolean($table, $column)) {
             // The existing display encoding uses 0/1. Preserve NULL on outer joins.
             return 'CAST(' . $sql . ' AS integer)';
         }

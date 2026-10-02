@@ -2,9 +2,9 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Migration\UserMetadataReferences;
-use itsmng\Database\OptionalReferences;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\Repository\UserRepository;
@@ -38,7 +38,7 @@ $fixtures = new FixtureRecords($DB);
 $read = static fn (string $table, int $id): ?array => (new RecordRepository(Orm::create($DB)))->find($table, 'id', $id);
 $DB->beginTransaction();
 try {
-    foreach (OptionalReferences::USER_METADATA['glpi_users'] as $column => $target) {
+    foreach (ReferenceHistory::get('optional', 'USER_METADATA')['glpi_users'] as $column => $target) {
         $suffix = bin2hex(random_bytes(4));
         $parent = $target === 'glpi_profiles' ? (new Profile())->add(['name' => 'Metadata parent ' . $suffix]) : $fixtures->create($target, ['name' => 'Metadata parent ' . $suffix]);
         $replacement = $target === 'glpi_profiles' ? (new Profile())->add(['name' => 'Metadata replacement ' . $suffix]) : $fixtures->create($target, ['name' => 'Metadata replacement ' . $suffix]);
@@ -151,7 +151,7 @@ $quote = $platform->quoteIdentifier(...);
 $migration = new UserMetadataReferences();
 $legacy = null;
 try {
-    foreach (OptionalReferences::USER_METADATA as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'USER_METADATA') as $table => $relations) {
         foreach ($relations as $column => $target) {
             $connection->executeStatement($platform->getDropForeignKeySQL(ForeignKeys::name($table, $column), $table));
             $connection->executeStatement('UPDATE ' . $quote($table) . ' SET ' . $quote($column) . ' = 0 WHERE ' . $quote($column) . ' IS NULL');

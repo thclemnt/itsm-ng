@@ -280,7 +280,7 @@ class CommonDBTM extends CommonGLPI
             return false;
         }
 
-        if (isset(\itsmng\Database\EntityRegistry::TABLES[$this->getTable()])) {
+        if (isset(\itsmng\Database\EntityRegistry::tables()[$this->getTable()])) {
             $manager = \itsmng\Database\Orm::create($DB);
             try {
                 $row = (new \itsmng\Database\Repository\RecordRepository($manager))->find(
@@ -594,12 +594,15 @@ class CommonDBTM extends CommonGLPI
 
         //make an empty database object
         $table = $this->getTable();
+        if (empty($table)) {
+            return false;
+        }
 
-        if (
-            !empty($table) &&
-            ($fields = $DB->listFields($table))
-        ) {
-            foreach (array_keys($fields) as $key) {
+        $columns = \itsmng\Database\MappedStorage::supports($table)
+            ? \itsmng\Database\EntityRegistry::columnNames($table)
+            : array_keys($DB->listFields($table) ?: []);
+        if ($columns) {
+            foreach ($columns as $key) {
                 $this->fields[$key] = "";
             }
         } else {
@@ -864,46 +867,50 @@ class CommonDBTM extends CommonGLPI
     {
         global $DB, $CFG_GLPI;
 
-        $RELATION = getDbRelations();
-        if (isset($RELATION[$this->getTable()])) {
-            $newval = (isset($this->input['_replace_by']) ? $this->input['_replace_by'] : 0);
+        $newval = $this->input['_replace_by'] ?? 0;
+        $physicalReplacement = $newval;
+        if ($this->getIndexName() !== 'id' && $newval) {
+            $replacement = getItemForItemtype($this->getType());
+            if (!$replacement || !$replacement->getFromDB($newval)) {
+                throw new InvalidArgumentException('Unknown replacement for ' . $this->getType());
+            }
+            $physicalReplacement = $replacement->fields['id'];
+        }
+        $lifecycle = new \itsmng\Database\Repository\RelationshipLifecycleRepository(\itsmng\Database\Orm::create($DB));
+        $index = static function (string $table): ?string {
+            $model = getItemForItemtype(getItemTypeForTable($table));
+            return $model ? $model->getIndexName() : null;
+        };
+        foreach ($lifecycle->replacements($this->getTable(), (int)$this->fields['id'], (int)$this->getID(), $this->getType(), $index) as $selection) {
+            foreach ($selection['ids'] as $id) {
+                $related = getItemForItemtype(getItemTypeForTable($selection['table']));
+                $related->update([$selection['index'] => $id, $selection['column'] => $selection['physical'] ? $physicalReplacement : $newval, '_disablenotif' => true]);
+            }
+        }
 
-            foreach ($RELATION[$this->getTable()] as $tablename => $field) {
-                if ($tablename[0] != '_') {
-                    $itemtype = getItemTypeForTable($tablename);
-
-                    // Code factorization : we transform the singleton to an array
-                    if (!is_array($field)) {
-                        $field = [$field];
-                    }
-
-                    foreach ($field as $f) {
-                        $referenceId = $this->getID();
-                        $replacementId = $newval;
-                        if (
-                            $this->getIndexName() !== 'id'
-                            && (\itsmng\Database\ForeignKeys::RELATIONS[$tablename][$f] ?? null) === $this->getTable()
-                        ) {
-                            // Mapped FKs reference the physical ID, even when the public model key differs.
-                            $referenceId = $this->fields['id'];
-                            if ($newval) {
-                                $replacement = getItemForItemtype($this->getType());
-                                if (!$replacement->getFromDB($newval)) {
-                                    throw new InvalidArgumentException('Unknown replacement for ' . $this->getType());
-                                }
-                                $replacementId = $replacement->fields['id'];
-                            }
-                        }
-                        $object = getItemForItemtype($itemtype);
-                        if (!$object || $object->getIndexName() === $f) {
-                            continue;
-                        }
-                        $idName = $object->getIndexName();
-                        foreach ($object->findIds([$f => $referenceId]) as $id) {
-                            $related = getItemForItemtype($itemtype);
-                            $related->update([$idName => $id, $f => $replacementId, '_disablenotif' => true]);
-                        }
-                    }
+        // Plugin links keep the public lifecycle, with mapped identifier reads.
+        foreach (Plugin::getDatabaseRelations()[$this->getTable()] ?? [] as $table => $columns) {
+            if (str_starts_with($table, '_')) {
+                continue;
+            }
+            $model = getItemForItemtype(getItemTypeForTable($table));
+            if (!$model) {
+                continue;
+            }
+            $columns = (array)$columns;
+            $paired = in_array('itemtype', $columns, true);
+            foreach ($paired ? ['items_id'] : $columns as $column) {
+                if ($column === $model->getIndexName()) {
+                    continue;
+                }
+                $physical = (\itsmng\Database\ForeignKeys::relations()[$table][$column] ?? null) === $this->getTable();
+                $criteria = [$column => $physical ? $this->fields['id'] : $this->getID()];
+                if ($paired) {
+                    $criteria['itemtype'] = $this->getType();
+                }
+                foreach (\itsmng\Database\MappedReads::identifiers($DB, $table, $model->getIndexName(), $criteria) as $id) {
+                    $related = getItemForItemtype($model->getType());
+                    $related->update([$model->getIndexName() => $id, $column => $physical ? $physicalReplacement : $newval, '_disablenotif' => true]);
                 }
             }
         }
@@ -1002,6 +1009,10 @@ class CommonDBTM extends CommonGLPI
     {
         global $CFG_GLPI, $DB;
 
+        if (isset(\itsmng\Database\EntityRegistry::discriminatedReferences(ObjectLock::getTable())['items_id']['selections'][$this->getType()])) {
+            (new ObjectLock())->deleteByCriteria(['itemtype' => $this->getType(), 'items_id' => $this->getID()]);
+        }
+
         // If this type have INFOCOM, clean one associated to purged item
         if (Infocom::canApplyOn($this)) {
             $infocom = new Infocom();
@@ -1034,6 +1045,10 @@ class CommonDBTM extends CommonGLPI
         if (in_array($this->getType(), $CFG_GLPI['contract_types'])) {
             $ci = new Contract_Item();
             $ci->cleanDBonItemDelete($this->getType(), $this->fields['id']);
+        }
+
+        if (isset(\itsmng\Database\EntityRegistry::discriminatedReferences(Certificate_Item::getTable())['items_id']['selections'][$this->getType()])) {
+            (new Certificate_Item())->cleanDBonItemDelete($this->getType(), $this->getID());
         }
 
         // If this type have DOCUMENT, clean one associated to purged item
@@ -1282,7 +1297,9 @@ class CommonDBTM extends CommonGLPI
 
         if ($this->input && is_array($this->input)) {
             $this->fields = [];
-            $table_fields = $DB->listFields($this->getTable());
+            $table_fields = \itsmng\Database\MappedStorage::supports($this->getTable())
+                ? array_fill_keys(\itsmng\Database\EntityRegistry::columnNames($this->getTable()), true)
+                : $DB->listFields($this->getTable());
 
             // fill array for add
             foreach (array_keys($this->input) as $key) {
@@ -2510,144 +2527,19 @@ class CommonDBTM extends CommonGLPI
 
         $entities = getAncestorsOf('glpi_entities', $this->fields['entities_id']);
         $entities[] = $this->fields['entities_id'];
-        $RELATION  = getDbRelations();
-
-        if ($this instanceof CommonTreeDropdown) {
-            $f = getForeignKeyFieldForTable($this->getTable());
-
-            if (
-                countElementsInTable(
-                    $this->getTable(),
-                    [ $f => $ID, 'NOT' => [ 'entities_id' => $entities ]]
-                ) > 0
-            ) {
-                return false;
+        $lifecycle = new \itsmng\Database\Repository\RelationshipLifecycleRepository(\itsmng\Database\Orm::create($DB));
+        $resolveType = static function (string $type): ?string {
+            $model = getItemForItemtype($type);
+            if (!$model || !$model->isEntityAssign()) {
+                return null;
             }
-        }
-
-        if (isset($RELATION[$this->getTable()])) {
-            foreach ($RELATION[$this->getTable()] as $tablename => $field) {
-                if ($tablename[0] != '_') {
-                    $itemtype = getItemTypeForTable($tablename);
-                    $item     = new $itemtype();
-
-                    if ($item->isEntityAssign()) {
-                        // 1->N Relation
-                        if (is_array($field)) {
-                            foreach ($field as $f) {
-                                if (
-                                    countElementsInTable(
-                                        $tablename,
-                                        [ $f => $ID, 'NOT' => [ 'entities_id' => $entities ]]
-                                    ) > 0
-                                ) {
-                                    return false;
-                                }
-                            }
-                        } else {
-                            if (
-                                countElementsInTable(
-                                    $tablename,
-                                    [ $field => $ID, 'NOT' => [ 'entities_id' => $entities ]]
-                                ) > 0
-                            ) {
-                                return false;
-                            }
-                        }
-                    } else {
-                        foreach ($RELATION as $othertable => $rel) {
-                            // Search for a N->N Relation with devices
-                            if (
-                                ($othertable == "_virtual_device")
-                                && isset($rel[$tablename])
-                            ) {
-                                $devfield  = $rel[$tablename][0]; // items_id...
-                                $typefield = $rel[$tablename][1]; // itemtype...
-
-                                $iterator = $DB->request([
-                                   'SELECT'          => $typefield,
-                                   'DISTINCT'        => true,
-                                   'FROM'            => $tablename,
-                                   'WHERE'           => [$field => $ID]
-                                ]);
-
-                                // Search linked device of each type
-                                while ($data = $iterator->next()) {
-                                    $itemtype  = $data[$typefield];
-                                    $itemtable = getTableForItemType($itemtype);
-                                    $item      = new $itemtype();
-
-                                    if ($item->isEntityAssign()) {
-                                        if (
-                                            countElementsInTable(
-                                                [$tablename, $itemtable],
-                                                ["$tablename.$field"     => $ID,
-                                                                   "$tablename.$typefield" => $itemtype,
-                                                                   'FKEY' => [$tablename => $devfield, $itemtable => 'id'],
-                                                                   'NOT'  => [$itemtable . '.entities_id' => $entities ]]
-                                            ) > '0'
-                                        ) {
-                                            return false;
-                                        }
-                                    }
-                                }
-                            } elseif (
-                                ($othertable != $this->getTable())
-                                     && isset($rel[$tablename])
-                            ) {
-                                // Search for another N->N Relation
-                                $itemtype = getItemTypeForTable($othertable);
-                                $item     = new $itemtype();
-
-                                if ($item->isEntityAssign()) {
-                                    if (is_array($rel[$tablename])) {
-                                        foreach ($rel[$tablename] as $otherfield) {
-                                            if (
-                                                countElementsInTable(
-                                                    [$tablename, $othertable],
-                                                    ["$tablename.$field" => $ID,
-                                                                      'FKEY' => [$tablename => $otherfield, $othertable => 'id'],
-                                                                      'NOT'  => [$othertable . '.entities_id' => $entities ]]
-                                                ) > '0'
-                                            ) {
-                                                return false;
-                                            }
-                                        }
-                                    } else {
-                                        $otherfield = $rel[$tablename];
-                                        if (
-                                            countElementsInTable(
-                                                [$tablename, $othertable],
-                                                ["$tablename.$field" => $ID,
-                                                                  'FKEY' => [$tablename => $otherfield, $othertable => 'id'],
-                                                                  'NOT'  => [ $othertable . '.entities_id' => $entities ]]
-                                            ) > '0'
-                                        ) {
-                                            return false;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Doc links to this item
-        if (
-            ($this->getType() > 0)
-            && countElementsInTable(
-                ['glpi_documents_items', 'glpi_documents'],
-                ['glpi_documents_items.items_id' => $ID,
-                                     'glpi_documents_items.itemtype' => $this->getType(),
-                                     'FKEY' => ['glpi_documents_items' => 'documents_id','glpi_documents' => 'id'],
-                                     'NOT'  => ['glpi_documents.entities_id' => $entities]]
-            ) > '0'
-        ) {
+            return \itsmng\Database\EntityRegistry::tables()[$model->getTable()]
+                ?? throw new InvalidArgumentException('Lifecycle item type requires a registered entity: ' . $type);
+        };
+        if ($lifecycle->hasOutsideEntities($this->getTable(), (int)$ID, (int)$this->getID(), $this->getType(), $entities, $resolveType)
+            || $lifecycle->hasDeclaredOutsideEntities($this->getTable(), Plugin::getDatabaseRelations()[$this->getTable()] ?? [], (int)$this->getID(), $this->getType(), $entities, $resolveType)) {
             return false;
         }
-        // TODO : do we need to check all relations in $RELATION["_virtual_device"] for this item
 
         // check connections of a computer
         $connectcomputer = $CFG_GLPI["directconnect_types"];
@@ -3353,7 +3245,7 @@ class CommonDBTM extends CommonGLPI
     **/
     public function checkEntity($recursive = false)
     {
-        if (isset(\itsmng\Database\GlobalEntityScopes::RELATIONS[$this->getTable()])
+        if (\itsmng\Database\EntityRegistry::hasPolicy($this->getTable(), 'entities_id', \itsmng\Database\Mapping\ReferenceKind::GlobalScope)
             && array_key_exists('entities_id', $this->fields) && $this->fields['entities_id'] === null) {
             // Global entity scope still requires the model's ordinary global rights.
             return true;

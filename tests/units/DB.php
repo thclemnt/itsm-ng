@@ -318,6 +318,10 @@ class DB extends \GLPITestCase
             $this->array($line)
                ->hasSize(1);
             $table = $line['TABLE_NAME'];
+            if (in_array($table, ['glpi_planningexternaleventguests', 'glpi_networkportaggregateorigins', 'itsmng_migrations'])) {
+                // Internal ORM memberships and the migration ledger have no standalone legacy model.
+                continue;
+            }
             if (in_array($table, ['glpi_appliancerelations', 'glpi_oidc_config', 'glpi_oidc_users', 'glpi_oidc_mapping'])) {
                 //FIXME temporary hack for unit tests
                 continue;

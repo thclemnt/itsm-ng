@@ -19,8 +19,8 @@ final class ConsumableRepository
     public function replaceGroup(int $group, int $replacement): void
     {
         $query = $this->em->createQueryBuilder()->update(Entity\Consumable::class, 'c')
-            ->set('c.items_id', ':replacement')->setParameter('replacement', $replacement)
-            ->where('c.itemtype = :type AND c.items_id = :group')->setParameter('type', 'Group')->setParameter('group', $group);
+            ->set('c.recipientGroup', ':replacement')->setParameter('replacement', $replacement === 0 ? null : $replacement, Types::INTEGER)
+            ->where('IDENTITY(c.recipientGroup) = :group')->setParameter('group', $group, Types::INTEGER);
         if ($replacement === 0) {
             $query->set('c.itemtype', 'NULL')->set('c.date_out', 'NULL');
         }
@@ -34,13 +34,32 @@ final class ConsumableRepository
             ->where('c.id = :id')->setParameter('id', $id, Types::INTEGER)->getQuery()->execute();
     }
 
-    public function give(int $id, string $itemtype, int $recipient): void
+    public function give(int $id, string $itemtype, int $recipient): bool
     {
-        $this->em->createQueryBuilder()->update(Entity\Consumable::class, 'c')
+        $association = Entity\Consumable::referenceAssociation($itemtype);
+        if ($recipient <= 0) {
+            throw new \InvalidArgumentException('Consumable recipient requires a positive identifier');
+        }
+        $target = $this->em->getClassMetadata(Entity\Consumable::class)->getAssociationTargetClass($association);
+        if ($this->em->getRepository($target)->find($recipient) === null) {
+            return false;
+        }
+        $updated = $this->em->createQueryBuilder()->update(Entity\Consumable::class, 'c')
             ->set('c.date_out', ':today')->setParameter('today', new \DateTimeImmutable('today'), Types::DATE_IMMUTABLE)
             ->set('c.itemtype', ':type')->setParameter('type', $itemtype, Types::STRING)
-            ->set('c.items_id', ':recipient')->setParameter('recipient', $recipient, Types::INTEGER)
-            ->where('c.id = :id')->setParameter('id', $id, Types::INTEGER)->getQuery()->execute();
+            ->set('c.recipientUser', $association === 'recipientUser' ? ':recipient' : 'NULL')
+            ->set('c.recipientGroup', $association === 'recipientGroup' ? ':recipient' : 'NULL')
+            ->setParameter('recipient', $recipient, Types::INTEGER)
+            ->where('c.id = :id')->setParameter('id', $id, Types::INTEGER)->getQuery()->execute() > 0;
+        return $updated || (bool)$this->em->createQueryBuilder()->select('COUNT(c.id)')->from(Entity\Consumable::class, 'c')
+            ->where('c.id = :id')->setParameter('id', $id, Types::INTEGER)->getQuery()->getSingleScalarResult();
+    }
+
+    public function releaseUser(int $user): void
+    {
+        $this->em->createQueryBuilder()->update(Entity\Consumable::class, 'c')
+            ->set('c.recipientUser', 'NULL')->set('c.itemtype', 'NULL')->set('c.date_out', 'NULL')
+            ->where('IDENTITY(c.recipientUser) = :user')->setParameter('user', $user, Types::INTEGER)->getQuery()->execute();
     }
 
     public function forModel(int $model, bool $used, int $limit, int $offset): array
@@ -81,8 +100,8 @@ final class ConsumableRepository
     public function alertCandidates(int $entity, \DateTimeImmutable $before): array
     {
         $query = $this->em->createQueryBuilder()->select('r.id AS consID', 'IDENTITY(r.entities) AS entity', 'r.ref AS ref', 'r.name AS name', 'r.alarm_threshold AS threshold', 'a.id AS alertID', 'a.date AS date')
-            ->from(Entity\ConsumableItem::class, 'r')->leftJoin(Entity\Alert::class, 'a', 'WITH', 'a.items_id = r.id AND a.itemtype = :type')
-            ->setParameter('type', 'ConsumableItem', Types::STRING)
+            ->from(Entity\ConsumableItem::class, 'r')->leftJoin(Entity\Alert::class, 'a', 'WITH', 'a.consumableItem = r')
+
             ->where('r.is_deleted = :false AND r.alarm_threshold >= 0 AND IDENTITY(r.entities) = :entity')
             ->setParameter('false', false, Types::BOOLEAN)->setParameter('entity', $entity, Types::INTEGER)
             ->andWhere('a.date IS NULL OR a.date < :before')->setParameter('before', $before, Types::DATETIMETZ_IMMUTABLE)

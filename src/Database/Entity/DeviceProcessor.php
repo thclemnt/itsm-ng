@@ -5,6 +5,8 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_deviceprocessors')]
@@ -12,11 +14,12 @@ class DeviceProcessor
 {
     #[ORM\ManyToOne(targetEntity: DeviceProcessorModel::class)]
     #[ORM\JoinColumn(name: 'deviceprocessormodels_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?DeviceProcessorModel $deviceprocessormodels = null;
 
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
     #[ORM\Column(name: '`designation`', type: 'string', length: 255, nullable: true)]
@@ -30,6 +33,7 @@ class DeviceProcessor
 
     #[ORM\ManyToOne(targetEntity: Manufacturer::class)]
     #[ORM\JoinColumn(name: 'manufacturers_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?Manufacturer $manufacturers = null;
 
     #[ORM\Column(name: '`frequency_default`', type: 'integer', nullable: false, options: ['default' => '0'])]
@@ -43,6 +47,7 @@ class DeviceProcessor
 
     #[ORM\ManyToOne(targetEntity: Entity::class)]
     #[ORM\JoinColumn(name: 'entities_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT', options: ['default' => 0])]
+    #[ReferencePolicy(ReferenceKind::RootEntity)]
     public ?Entity $entities = null;
 
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]

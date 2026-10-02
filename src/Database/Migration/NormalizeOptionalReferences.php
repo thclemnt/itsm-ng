@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\OptionalReferences;
 
 /** Idempotent data migration; existing nullable column definitions stay unchanged. */
 final class NormalizeOptionalReferences
@@ -17,7 +16,7 @@ final class NormalizeOptionalReferences
         $counts = [];
         $quote = $connection->getDatabasePlatform()->quoteIdentifier(...);
         $manager = $connection->createSchemaManager();
-        foreach (OptionalReferences::MODELS as $table => $relations) {
+        foreach (ReferenceHistory::get('optional', 'MODELS') as $table => $relations) {
             $columns = $manager->listTableColumns($table);
             foreach ($relations as $column => $target) {
                 if ($columns[$column]->getNotnull()) {

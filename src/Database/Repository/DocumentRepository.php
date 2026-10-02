@@ -60,14 +60,44 @@ final class DocumentRepository
         if ($access->user <= 0) {
             return false;
         }
-        $task = match ($type) {
-            'Ticket' => [Entity\TicketTask::class, 'tickets'],
-            'Change' => [Entity\ChangeTask::class, 'changes'],
-            'Problem' => [Entity\ProblemTask::class, 'problems'],
-            default => throw new \InvalidArgumentException('Unsupported ITIL document type'),
-        };
+        return $this->itilBindings($type, $item, $access)->andWhere('IDENTITY(d.documents) = :document')
+            ->setParameter('document', $document, Types::INTEGER)->setMaxResults(1)->getQuery()->getOneOrNullResult() !== null;
+    }
+
+    /** Template attachments retain one row per visible timeline binding. */
+    public function notificationDocuments(string $type, int $item, ITILDocumentAccess $access): array
+    {
+        $query = $this->itilBindings($type, $item, $access)->select('d', 'document')->join('d.documents', 'document')
+            ->andWhere('d.timeline_position > :inline')->setParameter('inline', \CommonITILObject::NO_TIMELINE, Types::INTEGER)
+            ->orderBy('d.id');
+        $records = new RecordRepository($this->em);
+        $rows = [];
+        foreach ($query->getQuery()->toIterable() as $binding) {
+            $rows[] = $records->toRow($binding->documents);
+            $this->em->detach($binding);
+        }
+        return $rows;
+    }
+
+    /** One document row per binding, scoped to the complete legacy item identity. */
+    public function documentsForItem(string $type, int $item): array
+    {
+        $query = $this->em->createQueryBuilder()->select('binding', 'document')->from(Entity\DocumentItem::class, 'binding')
+            ->join('binding.documents', 'document')->where('binding.itemtype = :type AND binding.items_id = :item')
+            ->setParameter('type', $type)->setParameter('item', $item, Types::INTEGER)->orderBy('binding.id');
+        $records = new RecordRepository($this->em);
+        $rows = [];
+        foreach ($query->getQuery()->toIterable() as $binding) {
+            $rows[] = $records->toRow($binding->documents);
+            $this->em->detach($binding);
+        }
+        return $rows;
+    }
+
+    private function itilBindings(string $type, int $item, ITILDocumentAccess $access): \Doctrine\ORM\QueryBuilder
+    {
+        [$task, , $taskAssociation] = (new ITILTaskRepository($this->em))->definition($type . 'Task');
         $query = $this->em->createQueryBuilder()->select('d.id')->from(Entity\DocumentItem::class, 'd')
-            ->where('IDENTITY(d.documents) = :document')->setParameter('document', $document, Types::INTEGER)
             ->setParameter('type', $type)->setParameter('item', $item, Types::INTEGER);
         $conditions = ['(d.itemtype = :type AND d.items_id = :item)'];
         if ($access->followups) {
@@ -76,10 +106,12 @@ final class DocumentRepository
                 $private = ' AND (f.is_private = :public OR IDENTITY(f.author) = :viewer)';
                 $query->setParameter('public', false, Types::BOOLEAN)->setParameter('viewer', $access->user, Types::INTEGER);
             }
-            $conditions[] = "(d.itemtype = 'ITILFollowup' AND EXISTS (SELECT f.id FROM " . Entity\ITILFollowup::class . ' f WHERE f.id = d.items_id AND f.itemtype = :type AND f.items_id = :item' . $private . '))';
+            $subject = Entity\ITILFollowup::subjectAssociation($type);
+            $conditions[] = "(d.itemtype = 'ITILFollowup' AND EXISTS (SELECT f.id FROM " . Entity\ITILFollowup::class . ' f WHERE f.id = d.items_id AND IDENTITY(f.' . $subject . ') = :item' . $private . '))';
         }
         if ($access->solutions) {
-            $conditions[] = "(d.itemtype = 'ITILSolution' AND EXISTS (SELECT s.id FROM " . Entity\ITILSolution::class . ' s WHERE s.id = d.items_id AND s.itemtype = :type AND s.items_id = :item))';
+            $subject = Entity\ITILSolution::subjectAssociation($type);
+            $conditions[] = "(d.itemtype = 'ITILSolution' AND EXISTS (SELECT s.id FROM " . Entity\ITILSolution::class . ' s WHERE s.id = d.items_id AND IDENTITY(s.' . $subject . ') = :item))';
         }
         if ($access->tasks) {
             $private = '';
@@ -87,9 +119,9 @@ final class DocumentRepository
                 $private = ' AND (t.is_private = :public OR IDENTITY(t.author) = :viewer)';
                 $query->setParameter('public', false, Types::BOOLEAN)->setParameter('viewer', $access->user, Types::INTEGER);
             }
-            $conditions[] = '(d.itemtype = :taskType AND EXISTS (SELECT t.id FROM ' . $task[0] . ' t WHERE t.id = d.items_id AND IDENTITY(t.' . $task[1] . ') = :item' . $private . '))';
+            $conditions[] = '(d.itemtype = :taskType AND EXISTS (SELECT t.id FROM ' . $task . ' t WHERE t.id = d.items_id AND IDENTITY(t.' . $taskAssociation . ') = :item' . $private . '))';
             $query->setParameter('taskType', $type . 'Task');
         }
-        return $query->andWhere('(' . implode(' OR ', $conditions) . ')')->setMaxResults(1)->getQuery()->getOneOrNullResult() !== null;
+        return $query->where('(' . implode(' OR ', $conditions) . ')');
     }
 }

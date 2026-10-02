@@ -41,6 +41,11 @@ final class Installer
         $enabled = (int)$connection->fetchOne('SELECT @@FOREIGN_KEY_CHECKS');
         $connection->executeStatement('SET FOREIGN_KEY_CHECKS = 0');
         try {
+            // A forced fresh install replaces the core schema and its adoption record.
+            // An old completion/journal must never suppress the new seed conversion.
+            if (isset($existing[Migration\LegacyToOrm::LEDGER])) {
+                $connection->executeStatement($platform->getDropTableSQL(Migration\LegacyToOrm::LEDGER));
+            }
             foreach ($schema->getTables() as $table) {
                 if (isset($existing[$table->getName()])) {
                     $connection->executeStatement($platform->getDropTableSQL($table->getQuotedName($platform)));

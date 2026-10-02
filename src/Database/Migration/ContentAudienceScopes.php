@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\ContentAudienceScopes as Scopes;
 
 final class ContentAudienceScopes
 {
@@ -13,11 +12,11 @@ final class ContentAudienceScopes
 
     public function plan(Connection $connection): array
     {
-        return (new NullableReferences(Scopes::RELATIONS, 'content audience entity', -1))->plan($connection);
+        return (new NullableReferences(ReferenceHistory::get('audience', 'RELATIONS'), 'content audience entity', -1))->plan($connection);
     }
 
     public function apply(Connection $connection): array
     {
-        return (new NullableReferences(Scopes::RELATIONS, 'content audience entity', -1))->apply($connection);
+        return (new NullableReferences(ReferenceHistory::get('audience', 'RELATIONS'), 'content audience entity', -1))->apply($connection);
     }
 }

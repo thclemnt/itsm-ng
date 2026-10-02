@@ -11,6 +11,7 @@ if (!is_file($directory . '/config_db.php')) {
 define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
+require __DIR__ . '/FixtureRecords.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
     exit(1);
@@ -33,16 +34,22 @@ try {
             return $created[$table];
         }
         $em = Orm::create($DB);
-        $metadata = $em->getClassMetadata(EntityRegistry::TABLES[$table]);
+        $metadata = $em->getClassMetadata(EntityRegistry::tables()[$table]);
         $values = [];
-        foreach (ForeignKeys::RELATIONS[$table] ?? [] as $column => $parent) {
+        foreach (ForeignKeys::relations()[$table] ?? [] as $column => $parent) {
             $nullable = false;
+            $options = [];
             foreach ($metadata->associationMappings as $mapping) {
+                if (!$mapping->isToOneOwningSide()) {
+                    continue;
+                }
                 if ($mapping->joinColumns[0]->name === $column) {
                     $nullable = $mapping->joinColumns[0]->nullable;
+                    $options = $mapping->joinColumns[0]->options ?? [];
                 }
             }
-            $values[$column] = $nullable ? null : ($parent === 'glpi_entities' ? 0 : $create($parent));
+            $values[$column] = array_key_exists('default', $options) ? $options['default']
+                : ($nullable ? null : ($parent === 'glpi_entities' ? 0 : $create($parent)));
         }
         if ($metadata->hasField('name')) {
             $values['name'] = $stamp;
@@ -53,6 +60,7 @@ try {
                 $values[$metadata->getColumnName($field)] = (int)$max + 1;
             }
         }
+        $values = FixtureRecords::requiredSubjects($metadata, $values, $create);
         $created[$table] = (new RecordWriter($em))->insert($table, $values);
         if ($created[$table] <= 0) {
             throw new RuntimeException('Missing generated/assigned id for ' . $table);
@@ -60,7 +68,7 @@ try {
         $em->clear();
         return $created[$table];
     };
-    foreach (EntityRegistry::TABLES as $table => $class) {
+    foreach (EntityRegistry::tables() as $table => $class) {
         $create($table);
     }
     $updates = 0;
@@ -71,7 +79,15 @@ try {
         if ($record === null) {
             throw new RuntimeException('ORM inserted row is unreadable: ' . $table);
         }
-        $metadata = $em->getClassMetadata(EntityRegistry::TABLES[$table]);
+        $metadata = $em->getClassMetadata(EntityRegistry::tables()[$table]);
+        $conditionalPayloads = [];
+        foreach ($metadata->fieldMappings as $field => $mapping) {
+            foreach ((new ReflectionProperty($metadata->name, $field))->getAttributes(\itsmng\Database\Mapping\DiscriminatorKey::class) as $attribute) {
+                if (($fallback = $attribute->newInstance()->fallbackProperty) !== null) {
+                    $conditionalPayloads[$fallback] = true;
+                }
+            }
+        }
         foreach ($metadata->fieldMappings as $mapping) {
             if (!$mapping->nullable || !isset($mapping->options['default']) || $mapping->columnName === 'name') {
                 continue;
@@ -82,6 +98,10 @@ try {
                 'float' => (float)$mapping->options['default'],
                 default => (string)$mapping->options['default'],
             };
+            // Entity callbacks select the fallback payload or an association, never both.
+            if (isset($conditionalPayloads[$mapping->fieldName])) {
+                continue;
+            }
             if ($record[$mapping->columnName] !== $default) {
                 throw new RuntimeException('Omitted nullable field lost its schema default: ' . $table . '.' . $mapping->columnName);
             }
@@ -94,8 +114,10 @@ try {
             ++$nullableDefaults;
         }
         // Update a stored non-identifier field on each table, using real type conversion.
+        $discriminators = array_column(EntityRegistry::discriminatedReferences($table), 'discriminator');
         foreach ($metadata->fieldMappings as $field => $mapping) {
-            if (in_array($field, $metadata->identifier, true) || $field === 'id' || ($mapping->notUpdatable ?? false)) {
+            if (in_array($field, $metadata->identifier, true) || $field === 'id' || ($mapping->notUpdatable ?? false)
+                || in_array($mapping->columnName, $discriminators, true)) {
                 continue;
             }
             $value = match ($mapping->type) {
@@ -119,7 +141,7 @@ try {
     }
     $em = Orm::create($DB);
     $writer = new RecordWriter($em);
-    $locationClass = EntityRegistry::TABLES['glpi_locations'];
+    $locationClass = EntityRegistry::tables()['glpi_locations'];
     $max = $em->createQueryBuilder()->select('MAX(l.id)')->from($locationClass, 'l')->getQuery()->getSingleScalarResult();
     $assigned = (int)$max + 100;
     $literal = "NULL O'Reilly C:\\new\\file %_ 日本語";

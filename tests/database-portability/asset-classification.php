@@ -2,10 +2,10 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\ReferenceHistory;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\MappedStorage;
 use itsmng\Database\Migration\AssetClassification;
-use itsmng\Database\OptionalReferences;
 
 $directory = $argv[1] ?? '';
 if (!is_file($directory . '/config_db.php')) {
@@ -36,7 +36,7 @@ try {
     $fixtures = new FixtureRecords($DB);
     $storage = new MappedStorage($DB);
     $tested = 0;
-    foreach (OptionalReferences::ASSET_CLASSIFICATION as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'ASSET_CLASSIFICATION') as $table => $relations) {
         foreach ($relations as $column => $target) {
             $parent = $fixtures->create($target, ['name' => 'Asset classification']);
             $replacement = $fixtures->create($target, ['name' => 'Replacement classification']);
@@ -117,7 +117,7 @@ $quote = $platform->quoteIdentifier(...);
 $migration = new AssetClassification();
 $legacyId = null;
 try {
-    foreach (OptionalReferences::ASSET_CLASSIFICATION as $table => $relations) {
+    foreach (ReferenceHistory::get('optional', 'ASSET_CLASSIFICATION') as $table => $relations) {
         foreach ($relations as $column => $target) {
             $connection->executeStatement($platform->getDropForeignKeySQL(ForeignKeys::name($table, $column), $table));
             $connection->executeStatement('UPDATE ' . $quote($table) . ' SET ' . $quote($column) . ' = 0 WHERE ' . $quote($column) . ' IS NULL');

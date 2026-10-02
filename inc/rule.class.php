@@ -2120,17 +2120,7 @@ class Rule extends CommonDBTM
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'SELECT' => ['MAX' => 'ranking AS rank'],
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['sub_type' => $this->getType()]
-        ]);
-
-        if (count($iterator)) {
-            $data = $iterator->next();
-            return $data["rank"] + 1;
-        }
-        return 0;
+        return 1 + (new \itsmng\Database\Repository\RuleRepository(\itsmng\Database\Orm::create($DB)))->maximumRank($this->getType());
     }
 
 
@@ -3015,31 +3005,10 @@ class Rule extends CommonDBTM
 
         $rules = [];
 
-        /// TODO : not working for SLALevels : no sub_type
-
-        //Get all the rules whose sub_type is $sub_type and entity is $ID
-        $query = [
-           'SELECT' => $this->getTable() . '.id',
-           'FROM'   => [
-              getTableForItemType($this->ruleactionclass),
-              $this->getTable()
-           ],
-           'WHERE'  => [
-              getTableForItemType($this->ruleactionclass) . "." . $this->rules_id_field   => new \QueryExpression(DBmysql::quoteName($this->getTable() . '.id')),
-              $this->getTable() . '.sub_type'                                           => get_class($this)
-
-           ]
-        ];
-
-        foreach ($crit as $field => $value) {
-            $query['WHERE'][getTableForItemType($this->ruleactionclass) . '.' . $field] = $value;
-        }
-
-        $iterator = $DB->request($query);
-
-        while ($rule = $iterator->next()) {
-            $affect_rule = new Rule();
-            $affect_rule->getRuleWithCriteriasAndActions($rule["id"], 0, 1);
+        $repository = new \itsmng\Database\Repository\RuleRepository(\itsmng\Database\Orm::create($DB));
+        foreach ($repository->rulesForActions(getTableForItemType($this->ruleactionclass), $this->rules_id_field, get_class($this), $crit) as $ruleId) {
+            $affect_rule = clone $this;
+            $affect_rule->getRuleWithCriteriasAndActions($ruleId, 0, 1);
             $rules[]     = $affect_rule;
         }
         return $rules;
@@ -3257,25 +3226,19 @@ class Rule extends CommonDBTM
         }
 
         if (isset($item->input['_replace_by']) && ($item->input['_replace_by'] > 0)) {
-            $DB->update(
+            (new \itsmng\Database\Repository\RuleRepository(\itsmng\Database\Orm::create($DB)))->replaceSelection(
                 $table,
-                [
-                  $valfield => $item->input['_replace_by']
-                ],
-                [
-                  $valfield   => $item->getField('id'),
-                  $fieldfield => ['LIKE', $field]
-                ]
+                $valfield,
+                $fieldfield,
+                (int)$item->getField('id'),
+                (int)$item->input['_replace_by'],
+                $field
             );
         } else {
-            $iterator = $DB->request([
-               'SELECT' => [$fieldid],
-               'FROM'   => $table,
-               'WHERE'  => [
-                  $valfield   => $item->getField('id'),
-                  $fieldfield => ['LIKE', $field]
-               ]
-            ]);
+            $records = new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB));
+            $iterator = new \itsmng\Database\RowIterator($records->matching($table, [
+                $valfield => (string)$item->getField('id'), $fieldfield => ['LIKE', $field],
+            ]));
 
             if (count($iterator) > 0) {
                 $input['is_active'] = 0;
@@ -3376,15 +3339,9 @@ class Rule extends CommonDBTM
                             $types[] = 'RuleMailCollector';
                         }
                         if (count($types)) {
-                            $nb = countElementsInTable(
-                                ['glpi_rules', 'glpi_ruleactions'],
-                                [
-                                  'glpi_ruleactions.rules_id'   => new \QueryExpression(DB::quoteName('glpi_rules.id')),
-                                  'glpi_rules.sub_type'         => $types,
-                                  'glpi_ruleactions.field'      => 'entities_id',
-                                  'glpi_ruleactions.value'      => $item->getID()
-                                ]
-                            );
+                            global $DB;
+                            $nb = (new \itsmng\Database\Repository\RuleRepository(\itsmng\Database\Orm::create($DB)))
+                                ->entityActionCount($types, (int)$item->getID());
                         }
                     }
                     return self::createTabEntry(self::getTypeName(Session::getPluralNumber()), $nb);

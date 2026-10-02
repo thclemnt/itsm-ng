@@ -125,11 +125,6 @@ trait PlanningEvent
             $input['users_id'] = Session::getLoginUserID();
         }
 
-        // manage guests
-        if (isset($input['users_id_guests']) && is_array($input['users_id_guests'])) {
-            $input['users_id_guests'] = exportArrayToDB($input['users_id_guests']);
-        }
-
         Toolbox::manageBeginAndEndPlanDates($input['plan']);
 
         if (!isset($input['uuid'])) {
@@ -180,14 +175,6 @@ trait PlanningEvent
 
     public function prepareInputForUpdate($input)
     {
-        // manage guests
-        if (isset($input['users_id_guests']) && is_array($input['users_id_guests'])) {
-            $input['users_id_guests'] = exportArrayToDB($input['users_id_guests']);
-
-            // avoid warning on update method (string comparison with old value)
-            $this->fields['users_id_guests'] = exportArrayToDB($input['users_id_guests']);
-        }
-
         Toolbox::manageBeginAndEndPlanDates($input['plan']);
 
         if (isset($input['_planningrecall'])) {
@@ -453,7 +440,7 @@ trait PlanningEvent
             if (array_key_exists('users_id_guests', $event_obj->fields)) {
                 $nreadpriv = ['OR' => [
                    "$table.users_id" => $who,
-                   "$table.users_id_guests" => ['LIKE', '%"' . $who . '"%'],
+                   'glpi_planningexternaleventguests.users_id' => $who,
                 ]];
             }
         }
@@ -1037,10 +1024,18 @@ trait PlanningEvent
         if (isset($this->fields['users_id_guests'])) {
             $tab[] = [
                'id'            => '12',
-               'table'         => self::getTable(),
-               'field'         => 'users_id_guests',
+               'table'         => User::getTable(),
+               'field'         => 'name',
                'name'          => __('Guests'),
-               'datatype'      => 'text',
+               'datatype'      => 'itemlink',
+               'forcegroupby'  => true,
+               'massiveaction' => false,
+               'joinparams'    => [
+                   'beforejoin' => [
+                       'table' => 'glpi_planningexternaleventguests',
+                       'joinparams' => ['jointype' => 'child'],
+                   ],
+               ],
             ];
         }
 

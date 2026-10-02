@@ -17,13 +17,13 @@ final class LocationRepository
 
     public static function supports(string $itemtype): bool
     {
-        return isset(EntityRegistry::TABLES[\getTableForItemType($itemtype)]);
+        return isset(EntityRegistry::tables()[\getTableForItemType($itemtype)]);
     }
 
     /** Fetch mapped item rows and their entity labels without a per-item lookup. */
     public function items(string $itemtype, int $location, array $scope, ?string $language = null): array
     {
-        $class = EntityRegistry::TABLES[\getTableForItemType($itemtype)] ?? throw new \InvalidArgumentException('Unmapped location item type');
+        $class = EntityRegistry::tables()[\getTableForItemType($itemtype)] ?? throw new \InvalidArgumentException('Unmapped location item type');
         $metadata = $this->em->getClassMetadata($class);
         $criteria = ['locations_id' => $location] + $scope;
         if ($metadata->hasField('is_deleted')) {

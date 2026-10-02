@@ -19,12 +19,12 @@ final class AssetContractReportRepository
 
     public static function supports(string $itemtype): bool
     {
-        return isset(EntityRegistry::TABLES[\getTableForItemType($itemtype)]);
+        return isset(EntityRegistry::tables()[\getTableForItemType($itemtype)]);
     }
 
     public function rows(string $itemtype, array $years, ?array $entities, bool $underContract): array
     {
-        $class = EntityRegistry::TABLES[\getTableForItemType($itemtype)];
+        $class = EntityRegistry::tables()[\getTableForItemType($itemtype)];
         $metadata = $this->em->getClassMetadata($class);
         $query = $this->em->createQueryBuilder()->from($class, 'a')
             ->select('a.id AS itemid', 'ct.name AS type', 'c.duration', 'c.begin_date', 'e.completename AS entname', 'e.id AS entID')

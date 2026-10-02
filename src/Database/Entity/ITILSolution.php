@@ -5,24 +5,25 @@
 namespace itsmng\Database\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
+use itsmng\Database\Mapping\ReferenceKind;
+use itsmng\Database\Mapping\ReferencePolicy;
+use itsmng\Database\Mapping\UserReferenceAction;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_itilsolutions')]
-class ITILSolution
+#[ORM\HasLifecycleCallbacks]
+#[\itsmng\Database\Mapping\RequiredSubjectConstraint('subject_kind')]
+class ITILSolution implements \itsmng\Database\Mapping\LegacyInput
 {
+    use \itsmng\Database\Mapping\ITILSubject;
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
-    #[ORM\Column(name: '`id`', type: 'integer', nullable: false)]
+    #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
-
-    #[ORM\Column(name: '`itemtype`', type: 'string', length: 100, nullable: false)]
-    public string $itemtype = '';
-
-    #[ORM\Column(name: '`items_id`', type: 'integer', nullable: false, options: ['default' => '0'])]
-    public int $items_id = 0;
 
     #[ORM\ManyToOne(targetEntity: SolutionType::class)]
     #[ORM\JoinColumn(name: 'solutiontypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?SolutionType $solutiontypes = null;
 
     #[ORM\Column(name: '`solutiontype_name`', type: 'string', length: 255, nullable: true)]
@@ -42,6 +43,7 @@ class ITILSolution
 
     #[ORM\ManyToOne(targetEntity: User::class)]
     #[ORM\JoinColumn(name: 'users_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection, userPurge: UserReferenceAction::ReassignHistory)]
     public ?User $author = null;
 
     #[ORM\Column(name: '`user_name`', type: 'string', length: 255, nullable: true)]
@@ -49,10 +51,12 @@ class ITILSolution
 
     #[ORM\ManyToOne(targetEntity: User::class)]
     #[ORM\JoinColumn(name: 'users_id_editor', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection, userPurge: UserReferenceAction::ReassignHistory)]
     public ?User $editor = null;
 
     #[ORM\ManyToOne(targetEntity: User::class)]
     #[ORM\JoinColumn(name: 'users_id_approval', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection, userPurge: UserReferenceAction::ReassignHistory)]
     public ?User $approver = null;
 
     #[ORM\Column(name: '`user_name_approval`', type: 'string', length: 255, nullable: true)]
@@ -63,5 +67,6 @@ class ITILSolution
 
     #[ORM\ManyToOne(targetEntity: ITILFollowup::class)]
     #[ORM\JoinColumn(name: 'itilfollowups_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?ITILFollowup $followup = null;
 }

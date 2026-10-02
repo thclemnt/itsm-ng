@@ -7,6 +7,8 @@ namespace itsmng\Database;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Schema;
+use Doctrine\DBAL\Types\Types;
+use itsmng\Database\Mapping\ReferenceKind;
 
 /**
  * Imports the legacy baseline into Doctrine's engine-neutral schema model.
@@ -107,8 +109,11 @@ final class BaselineSchema
                 'date' => 'date', 'time' => 'time', 'json' => 'json',
                 default => throw new \RuntimeException('Unsupported baseline type: ' . $type),
             };
-            if ($postgres && BooleanColumns::contains($table->getName(), $name)) {
+            if ($postgres && EntityRegistry::isBoolean($table->getName(), $name)) {
                 $dbalType = 'boolean';
+            }
+            if (!$postgres && preg_match('/\bCOLLATE\s+([a-z0-9_]+)/i', $rest, $collation) && $collation[1] !== $table->getOption('collation')) {
+                $options['platformOptions'] = ['collation' => $collation[1], 'charset' => explode('_', $collation[1], 2)[0]];
             }
             if ($type === 'varchar' || $type === 'char') {
                 $options['length'] = (int)$size;
@@ -130,8 +135,8 @@ final class BaselineSchema
                     $options['default'] = (bool)(int)$options['default'];
                 }
             }
-            if (preg_match("/\\bCOMMENT\\s+'((?:[^'\\\\]|\\\\.)*)'/i", $rest, $comment)) {
-                $options['comment'] = stripcslashes($comment[1]);
+            if (preg_match("/\\bCOMMENT\\s+'((?:[^'\\\\]|\\\\.|'')*)'/i", $rest, $comment)) {
+                $options['comment'] = str_replace("''", "'", stripcslashes($comment[1]));
             }
             if ($type === 'timestamp' && !$postgres) {
                 // DBAL's MySQL datetimetz declaration is DATETIME, which loses
@@ -166,17 +171,26 @@ final class BaselineSchema
         foreach (['glpi_slms', 'glpi_slas', 'glpi_olas'] as $tableName) {
             Migration\ServiceLevelCalendars::configureTable($schema->getTable($tableName));
         }
-        foreach ([...ContentAudienceScopes::RELATIONS, ...GlobalEntityScopes::RELATIONS] as $name => $relations) {
+        foreach ([...EntityRegistry::relationsByPolicy(Mapping\ReferenceKind::Audience), ...EntityRegistry::relationsByPolicy(Mapping\ReferenceKind::GlobalScope)] as $name => $relations) {
             $schema->getTable($name)->getColumn('entities_id')->setNotnull(false)->setDefault(null);
         }
         Migration\DashboardOwnership::configureTable($schema->getTable('glpi_dashboards'), $platform);
         Migration\OidcReferences::configureTable($schema->getTable('glpi_oidc_users'));
-        Migration\EntityConfigurationReferences::configureTable($schema->getTable('glpi_entities'));
-        foreach (array_keys(EntityConfigurationReferences::FIELDS) as $column) {
-            $this->extraSql['glpi_entities'][] = Migration\EntityConfigurationReferences::checkSql($column);
-        }
+        $this->configureInheritedReferences($schema, $platform);
+        Migration\EntityParents::configureTable($schema->getTable('glpi_entities'));
+        Migration\NotificationRecipients::configureTable($schema->getTable('glpi_notificationtargets'));
+        Migration\UserAuthenticationSources::configureTable($schema->getTable('glpi_users'));
+        Migration\NetworkPortAggregateOrigins::configureSchema($schema);
+        Migration\PlanningEventGuests::configureSchema($schema);
+        Migration\UnusedProjectTemplateReference::configureTable($schema->getTable('glpi_projects'));
+        Migration\ConsumableRecipients::configureTable($schema->getTable('glpi_consumables'));
+        $this->extraSql['glpi_consumables'][] = Migration\ConsumableRecipients::checkSql('glpi_consumables');
+        $this->configureRequiredSubjects($schema, $platform);
+        $this->extraSql['glpi_users'][] = Migration\UserAuthenticationSources::checkSql();
+        $this->extraSql['glpi_notificationtargets'][] = Migration\NotificationRecipients::checkSql();
+        $this->extraSql['glpi_entities'][] = Migration\EntityParents::checkSql();
         $this->extraSql['glpi_slms'][] = Migration\ServiceLevelCalendars::checkSql();
-        foreach (OptionalReferences::RELATIONS as $tableName => $relations) {
+        foreach (EntityRegistry::relationsByPolicy(Mapping\ReferenceKind::EmptySelection) as $tableName => $relations) {
             foreach ($relations as $column => $target) {
                 $schema->getTable($tableName)->getColumn($column)->setNotnull(false)->setDefault(null);
             }
@@ -190,6 +204,7 @@ final class BaselineSchema
         foreach (array_keys(Migration\TreeUniqueness::TABLES) as $table) {
             Migration\TreeUniqueness::addToTable($schema->getTable($table), $platform);
         }
+        Migration\IdentifierColumns::configureSchema($schema);
         if ($foreignKeys) {
             (new ForeignKeys())->addToSchema($schema);
         }
@@ -200,6 +215,55 @@ final class BaselineSchema
     {
         $schema = $this->build($platform, $foreignKeys);
         return array_merge($schema->toSql($platform), ...array_values($this->extraSql));
+    }
+
+    /** Fresh installations use current mappings; upgrade snapshots remain immutable. */
+    private function configureInheritedReferences(Schema $schema, AbstractPlatform $platform): void
+    {
+        foreach (array_keys(EntityRegistry::tables()) as $name) {
+            foreach (EntityRegistry::references($name) as $reference) {
+                if ($reference->policy->kind !== ReferenceKind::Inherited) {
+                    continue;
+                }
+                $table = $schema->getTable($name);
+                $table->getColumn($reference->column)->setNotnull(false)->setDefault(null);
+                $table->addColumn('`' . $reference->modeColumn . '`', Types::STRING, [
+                    'length' => $reference->modeLength,
+                    'notnull' => true,
+                    'default' => $reference->defaultMode->value,
+                ]);
+                $column = $platform->quoteIdentifier($reference->column);
+                $mode = $platform->quoteIdentifier($reference->modeColumn);
+                $constraint = $platform->quoteIdentifier($name . '_' . $reference->modeColumn . '_selection');
+                $choices = $reference->policy->emptyZero ? "'explicit', 'inherit'" : "'explicit', 'inherit', 'unchanged'";
+                $selected = $reference->policy->emptyZero ? "($column IS NULL OR $column > 0)" : "($column IS NOT NULL AND $column >= 0)";
+                $this->extraSql[$name][] = 'ALTER TABLE ' . $table->getQuotedName($platform) . ' ADD CONSTRAINT ' . $constraint
+                    . " CHECK ($mode IN ($choices) AND (($mode = 'explicit' AND $selected) OR ($mode <> 'explicit' AND $column IS NULL)))";
+            }
+        }
+    }
+
+    private function configureRequiredSubjects(Schema $schema, AbstractPlatform $platform): void
+    {
+        // An explicit version keeps offline schema inspection independent of a server.
+        $connection = \Doctrine\DBAL\DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
+        $em = new \Doctrine\ORM\EntityManager($connection, Orm::configuration($platform));
+        try {
+            foreach ($em->getMetadataFactory()->getAllMetadata() as $metadata) {
+                foreach ($metadata->fieldMappings as $property => $field) {
+                    foreach ((new \ReflectionProperty($metadata->name, $property))->getAttributes(Mapping\DiscriminatorKey::class) as $attribute) {
+                        $key = $attribute->newInstance();
+                        if ($key->fallbackProperty !== null || $key->emptyValue !== null) {
+                            continue;
+                        }
+                        $key->configureRequiredTable($schema->getTable($metadata->getTableName()), $platform, $metadata, $property);
+                        $this->extraSql[$metadata->getTableName()][] = $key->requiredCheckSql($platform, $metadata, $property);
+                    }
+                }
+            }
+        } finally {
+            $connection->close();
+        }
     }
 
     private function columns(string $input): array

@@ -8,7 +8,6 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Table;
-use itsmng\Database\OptionalReferences;
 
 /** NULL means shared board state; its identity must remain unique after migration. */
 final class KanbanOwnership
@@ -32,7 +31,7 @@ final class KanbanOwnership
 
     public function plan(Connection $connection): array
     {
-        $plan = (new NullableReferences(OptionalReferences::KANBAN_OWNERS, 'Kanban owner'))->plan($connection);
+        $plan = (new NullableReferences(ReferenceHistory::get('optional', 'KANBAN_OWNERS'), 'Kanban owner'))->plan($connection);
         array_push($plan['sql'], ...$this->uniquenessPlan($connection));
         return $plan;
     }
@@ -44,7 +43,7 @@ final class KanbanOwnership
             throw new \RuntimeException('MySQL Kanban DDL must run outside an application transaction.');
         }
         $apply = function () use ($connection): array {
-            $counts = (new NullableReferences(OptionalReferences::KANBAN_OWNERS, 'Kanban owner'))->apply($connection);
+            $counts = (new NullableReferences(ReferenceHistory::get('optional', 'KANBAN_OWNERS'), 'Kanban owner'))->apply($connection);
             foreach ($this->uniquenessPlan($connection) as $sql) {
                 $connection->executeStatement($sql);
             }

@@ -176,16 +176,10 @@ class Domain_Item extends CommonDBRelation
         $canedit = $domain->can($instID, UPDATE);
         $rand    = mt_rand();
 
-        $iterator = $DB->request([
-           'SELECT'    => 'itemtype',
-           'DISTINCT'  => true,
-           'FROM'      => self::getTable(),
-           'WHERE'     => ['domains_id' => $instID],
-           'ORDER'     => 'itemtype',
-           'LIMIT'     => count(Domain::getTypes(true))
-        ]);
+        $repository = new \itsmng\Database\Repository\DomainAssetRepository(\itsmng\Database\Orm::create($DB));
+        $types = $repository->types($instID, count(Domain::getTypes(true)));
 
-        $number = count($iterator);
+        $number = count($types);
 
         if (Session::isMultiEntitiesMode()) {
             $colsup = 1;
@@ -291,7 +285,7 @@ class Domain_Item extends CommonDBRelation
         }
         $values = [];
         $massive_action = [];
-        while ($data = $iterator->next()) {
+        foreach ($types as $data) {
             $itemtype = $data['itemtype'];
             if (!($item = getItemForItemtype($itemtype))) {
                 continue;
@@ -299,46 +293,16 @@ class Domain_Item extends CommonDBRelation
 
             if ($item->canView()) {
                 $itemTable = getTableForItemType($itemtype);
-                $linked_criteria = [
-                   'SELECT' => [
-                      "$itemTable.*",
-                      'glpi_domains_items.id AS items_id',
-                      'glpi_domains_items.domainrelations_id',
-                      'glpi_entities.id AS entity'
-                   ],
-                   'FROM'   => self::getTable(),
-                   'INNER JOIN'   => [
-                      $itemTable  => [
-                         'ON'  => [
-                            $itemTable  => 'id',
-                            self::getTable()  => 'items_id'
-                         ]
-                      ]
-                   ],
-                   'LEFT JOIN'    => [
-                      'glpi_entities'   => [
-                         'ON'  => [
-                            'glpi_entities'   => 'id',
-                            $itemTable        => 'entities_id'
-                         ]
-                      ]
-                   ],
-                   'WHERE'        => [
-                      self::getTable() . '.itemtype'   => $itemtype,
-                      self::getTable() . '.domains_id' => $instID
-                   ] + getEntitiesRestrictCriteria($itemTable, '', '', $item->maybeRecursive())
-                ];
-
+                $scope = getEntitiesRestrictCriteria($itemTable, '', '', $item->maybeRecursive());
                 if ($item->maybeTemplate()) {
-                    $linked_criteria['WHERE']["$itemTable.is_template"] = 0;
+                    $scope["$itemTable.is_template"] = 0;
                 }
+                $linked_items = $repository->assets($instID, $itemtype, $scope);
 
-                $linked_iterator = $DB->request($linked_criteria);
-
-                if (count($linked_iterator)) {
+                if (count($linked_items)) {
                     Session::initNavigateListItems($itemtype, Domain::getTypeName(2) . " = " . $domain->fields['name']);
 
-                    while ($data = $linked_iterator->next()) {
+                    foreach ($linked_items as $data) {
                         $item->getFromDB($data["id"]);
 
                         $ID = "";
@@ -374,100 +338,10 @@ class Domain_Item extends CommonDBRelation
            'values' => $values,
            'massive_action' => $massive_action,
         ]);
-        echo "<div class='spaced'>";
-        echo "<table class='tab_cadre_fixe' aria-label='Show Domain'>";
-        echo "<tr>";
-
-        while ($data = $iterator->next()) {
-            $itemtype = $data['itemtype'];
-            if (!($item = getItemForItemtype($itemtype))) {
-                continue;
-            }
-
-            if ($item->canView()) {
-                $itemTable = getTableForItemType($itemtype);
-                $linked_criteria = [
-                   'SELECT' => [
-                      "$itemTable.*",
-                      'glpi_domains_items.id AS items_id',
-                      'glpi_domains_items.domainrelations_id',
-                      'glpi_entities.id AS entity'
-                   ],
-                   'FROM'   => self::getTable(),
-                   'INNER JOIN'   => [
-                      $itemTable  => [
-                         'ON'  => [
-                            $itemTable  => 'id',
-                            self::getTable()  => 'items_id'
-                         ]
-                      ]
-                   ],
-                   'LEFT JOIN'    => [
-                      'glpi_entities'   => [
-                         'ON'  => [
-                            'glpi_entities'   => 'id',
-                            $itemTable        => 'entities_id'
-                         ]
-                      ]
-                   ],
-                   'WHERE'        => [
-                      self::getTable() . '.itemtype'   => $itemtype,
-                      self::getTable() . '.domains_id' => $instID
-                   ] + getEntitiesRestrictCriteria($itemTable, '', '', $item->maybeRecursive())
-                ];
-
-                if ($item->maybeTemplate()) {
-                    $linked_criteria['WHERE']["$itemTable.is_template"] = 0;
-                }
-
-                $linked_iterator = $DB->request($linked_criteria);
-
-                if (count($linked_iterator)) {
-                    Session::initNavigateListItems($itemtype, Domain::getTypeName(2) . " = " . $domain->fields['name']);
-
-                    while ($data = $linked_iterator->next()) {
-                        Session::addToNavigateListItems($itemtype, $data["id"]);
-                        $item->getFromDB($data["id"]);
-
-                        $ID = "";
-
-                        if ($_SESSION["glpiis_ids_visible"] || empty($data["name"])) {
-                            $ID = " (" . $data["id"] . ")";
-                        }
-
-                        $link = Toolbox::getItemTypeFormURL($itemtype);
-                        $name = "<a href=\"" . $link . "?id=" . $data["id"] . "\">"
-                                 . $data["name"] . "$ID</a>";
-
-                        echo "<tr class='tab_bg_1'>";
-
-                        if ($canedit) {
-                            echo "<td width='10'>";
-                            Html::showMassiveActionCheckBox(__CLASS__, $data["items_id"]);
-                            echo "</td>";
-                        }
-                        echo "<td class='center'>" . $item->getTypeName(1) . "</td>";
-
-                        echo "<td class='center' " . (isset($data['is_deleted']) && $data['is_deleted'] ? "class='tab_bg_2_2'" : "") .
-                              ">" . $name . "</td>";
-                        if (Session::isMultiEntitiesMode()) {
-                            echo "<td class='center'>" . Dropdown::getDropdownName("glpi_entities", $data['entity']) . "</td>";
-                        }
-                        echo "<td class='center'>" . Dropdown::getDropdownName("glpi_domainrelations", $data['domainrelations_id']) . "</td>";
-                        echo "<td class='center'>" . (isset($data["serial"]) ? "" . $data["serial"] . "" : "-") . "</td>";
-                        echo "<td class='center'>" . (isset($data["otherserial"]) ? "" . $data["otherserial"] . "" : "-") . "</td>";
-
-                        echo "</tr>";
-                    }
-                }
-            }
-        }
-        echo "</table>";
 
         if ($canedit && $number) {
             Html::closeForm();
         }
-        echo "</div>";
     }
 
     /**
@@ -503,53 +377,16 @@ class Domain_Item extends CommonDBRelation
         $rand         = mt_rand();
         $is_recursive = $item->isRecursive();
 
-        $criteria = [
-           'SELECT'    => [
-              'glpi_domains_items.id AS assocID',
-              'glpi_domains_items.domainrelations_id',
-              'glpi_entities.id AS entity',
-              'glpi_domains.name AS assocName',
-              'glpi_domains.*'
+        $repository = new \itsmng\Database\Repository\DomainAssetRepository(\itsmng\Database\Orm::create($DB));
+        $rows = $repository->domains($item->getType(), $ID, getEntitiesRestrictCriteria(Domain::getTable(), '', '', true), $item instanceof DomainRelation);
 
-           ],
-           'FROM'      => self::getTable(),
-           'LEFT JOIN' => [
-              Domain::getTable()   => [
-                 'ON'  => [
-                    Domain::getTable()   => 'id',
-                    self::getTable()     => 'domains_id'
-                 ]
-              ],
-              Entity::getTable()   => [
-                 'ON'  => [
-                    Domain::getTable()   => 'entities_id',
-                    Entity::getTable()   => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [],//to be filled
-           'ORDER'     => 'assocName'
-        ];
-
-        if ($item instanceof DomainRelation) {
-            $criteria['WHERE'] = ['glpi_domains_items.domainrelations_id' => $ID];
-        } else {
-            $criteria['WHERE'] = [
-               'glpi_domains_items.itemtype' => $item->getType(),
-               'glpi_domains_items.items_id' => $ID
-            ];
-        }
-        $criteria['WHERE'] += getEntitiesRestrictCriteria(Domain::getTable(), '', '', true);
-
-        $iterator = $DB->request($criteria);
-
-        $number = count($iterator);
+        $number = count($rows);
         $i      = 0;
 
         $domains = [];
         $domain  = new Domain();
         $used    = [];
-        while ($data = $iterator->next()) {
+        foreach ($rows as $data) {
             $domains[$data['assocID']] = $data;
             $used[$data['id']]         = $data['id'];
         }
@@ -572,13 +409,10 @@ class Domain_Item extends CommonDBRelation
                 }
             }
 
-            $domain_iterator = $DB->request([
-               'COUNT'  => 'cpt',
-               'FROM'   => Domain::getTable(),
-               'WHERE'  => ['is_deleted' => 0] + getEntitiesRestrictCriteria(Domain::getTable(), '', $entities, true)
-            ]);
-            $result = $domain_iterator->next();
-            $nb     = $result['cpt'];
+            $nb = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))->countMatching(
+                Domain::getTable(),
+                ['is_deleted' => false] + getEntitiesRestrictCriteria(Domain::getTable(), '', $entities, true)
+            );
 
             if (
                 Session::haveRight('domain', READ)

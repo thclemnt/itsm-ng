@@ -44,6 +44,13 @@ final class LdapRepository
             ->where('d.is_active = :yes')->setParameter('yes', true, Types::BOOLEAN)->getQuery()->getSingleScalarResult();
     }
 
+    public function isActive(int $id): bool
+    {
+        return $this->em->createQueryBuilder()->select('d.id')->from(Entity\AuthLDAP::class, 'd')
+            ->where('d.id = :id AND d.is_active = :yes')->setParameter('id', $id, Types::INTEGER)
+            ->setParameter('yes', true, Types::BOOLEAN)->getQuery()->getOneOrNullResult() !== null;
+    }
+
     public function defaultId(): int
     {
         $row = $this->em->createQueryBuilder()->select('d.id')->from(Entity\AuthLDAP::class, 'd')
@@ -95,11 +102,17 @@ final class LdapRepository
     /** Source maintenance must not replay user hooks that connect to the directory being deleted. */
     public function reassignUsers(int $server, int $replacement): void
     {
-        $this->em->createQueryBuilder()->update(Entity\User::class, 'u')->set('u.auths_id', ':replacement')
-            ->where('u.auths_id = :server AND u.authtype IN (:types)')->setParameter('server', $server, Types::INTEGER)
-            ->setParameter('replacement', $replacement, Types::INTEGER)
-            ->setParameter('types', [-1, \Auth::NOT_YET_AUTHENTIFIED, \Auth::LDAP, \Auth::EXTERNAL, \Auth::CAS, \Auth::X509, \Auth::API, \Auth::COOKIE])
-            ->getQuery()->execute();
+        $this->em->getConnection()->transactional(function () use ($server, $replacement): void {
+            $this->em->createQueryBuilder()->update(Entity\User::class, 'u')->set('u.authldap', ':replacement')
+                ->where('IDENTITY(u.authldap) = :server')->setParameter('server', $server, Types::INTEGER)
+                ->setParameter('replacement', $replacement > 0 ? $this->em->getReference(Entity\AuthLDAP::class, $replacement) : null)
+                ->getQuery()->execute();
+            // Older unclassified/API/cookie accounts carry an opaque source code; preserve their cleanup behavior.
+            $this->em->createQueryBuilder()->update(Entity\User::class, 'u')->set('u.auth_source_code', ':replacement')
+                ->where('u.auth_source_code = :server AND u.authtype IN (:types)')->setParameter('server', $server, Types::INTEGER)
+                ->setParameter('replacement', $replacement, Types::INTEGER)
+                ->setParameter('types', [-1, \Auth::API, \Auth::COOKIE])->getQuery()->execute();
+        });
     }
 
     public function groupIdentifiers(array $entityScope): array
@@ -124,6 +137,39 @@ final class LdapRepository
         return $this->em->createQueryBuilder()->select('u.id')->from(Entity\User::class, 'u')
             ->where('u.auths_id = :server AND u.sync_field IS NOT NULL')->setParameter('server', $server, Types::INTEGER)
             ->setMaxResults(1)->getQuery()->getOneOrNullResult() !== null;
+    }
+
+    public function membershipFields(): array
+    {
+        return array_column($this->em->createQueryBuilder()->select('DISTINCT g.ldap_field')->from(Entity\Group::class, 'g')
+            ->where("g.ldap_field <> ''")->orderBy('g.ldap_field')->getQuery()->getScalarResult(), 'ldap_field');
+    }
+
+    public function groupsForDns(array $dns): array
+    {
+        if (!$dns) {
+            return [];
+        }
+        return array_column($this->em->createQueryBuilder()->select('g.id')->from(Entity\Group::class, 'g')
+            ->where('g.ldap_group_dn IN (:dns)')->setParameter('dns', array_values($dns))->orderBy('g.id')
+            ->getQuery()->getScalarResult(), 'id');
+    }
+
+    /** Directory values are subjects; the stored ldap_value supplies the LIKE pattern. */
+    public function groupsForAttribute(string $field, array $values): array
+    {
+        if (!$values) {
+            return [];
+        }
+        $query = $this->em->createQueryBuilder()->select('g.id')->from(Entity\Group::class, 'g')
+            ->where('LOWER(g.ldap_field) = LOWER(:field)')->setParameter('field', $field);
+        $matches = [];
+        foreach (array_values($values) as $index => $value) {
+            $matches[] = ':value' . $index . ' LIKE g.ldap_value';
+            $query->setParameter('value' . $index, $value);
+        }
+        return array_column($query->andWhere('(' . implode(' OR ', $matches) . ')')->orderBy('g.id')
+            ->getQuery()->getScalarResult(), 'id');
     }
 
     private function rows(QueryBuilder $query): array

@@ -337,8 +337,6 @@ class Profile_User extends CommonDBRelation
      **/
     public static function showForEntity(Entity $entity)
     {
-        global $DB;
-
         $ID = $entity->getField('id');
         if (!$entity->can($ID, READ)) {
             return false;
@@ -402,45 +400,7 @@ class Profile_User extends CommonDBRelation
             echo "</div>";
         }
 
-        $putable = Profile_User::getTable();
-        $ptable = Profile::getTable();
-        $utable = User::getTable();
-
-        $iterator = $DB->request([
-            'SELECT' => [
-                "glpi_users.*",
-                "$putable.id AS linkid",
-                "$putable.is_recursive",
-                "$putable.is_dynamic",
-                "$ptable.id AS pid",
-                "$ptable.name AS pname"
-            ],
-            'FROM' => $putable,
-            'INNER JOIN' => [
-                $utable => [
-                    'ON' => [
-                        $putable => 'users_id',
-                        $utable => 'id'
-                    ]
-                ],
-                $ptable => [
-                    'ON' => [
-                        $putable => 'profiles_id',
-                        $ptable => 'id'
-                    ]
-                ]
-            ],
-            'WHERE' => [
-                "$utable.is_deleted" => 0,
-                "$putable.entities_id" => $ID
-            ],
-            'ORDERBY' => [
-                "$putable.profiles_id",
-                "$utable.name",
-                "$utable.realname",
-                "$utable.firstname"
-            ]
-        ]);
+        $iterator = new \itsmng\Database\RowIterator(self::repository()->usersInEntity((int)$ID));
 
         $nb = count($iterator);
 
@@ -554,8 +514,6 @@ class Profile_User extends CommonDBRelation
      **/
     public static function showForProfile(Profile $prof)
     {
-        global $DB;
-
         $ID = $prof->fields['id'];
         $canedit = Session::haveRightsOr("user", [CREATE, UPDATE, DELETE, PURGE]);
         $rand = mt_rand();
@@ -566,40 +524,10 @@ class Profile_User extends CommonDBRelation
         $canshowentity = Entity::canView();
         $canshowuser = User::canView();
 
-        $utable = User::getTable();
-        $putable = Profile_User::getTable();
-        $etable = Entity::getTable();
-        $iterator = $DB->request([
-            'SELECT' => [
-                "$utable.*",
-                "$putable.entities_id AS entity",
-                "$putable.id AS linkid",
-                "$putable.is_dynamic",
-                "$putable.is_recursive",
-                "$etable.completename AS entityname"
-            ],
-            'DISTINCT' => true,
-            'FROM' => $putable,
-            'LEFT JOIN' => [
-                $etable => [
-                    'ON' => [
-                        $putable => 'entities_id',
-                        $etable => 'id'
-                    ]
-                ],
-                $utable => [
-                    'ON' => [
-                        $putable => 'users_id',
-                        $utable => 'id'
-                    ]
-                ]
-            ],
-            'WHERE' => [
-                "$putable.profiles_id" => $ID,
-                "$utable.is_deleted" => 0
-            ] + getEntitiesRestrictCriteria($putable, 'entities_id', $_SESSION['glpiactiveentities'], true),
-            'ORDERBY' => ["$etable.completename", "$utable.name"]
-        ]);
+        $iterator = new \itsmng\Database\RowIterator(self::repository()->usersWithProfile(
+            (int)$ID,
+            getEntitiesRestrictCriteria(self::getTable(), 'entities_id', $_SESSION['glpiactiveentities'], true)
+        ));
 
         $nb = count($iterator);
 
@@ -739,17 +667,7 @@ class Profile_User extends CommonDBRelation
      **/
     public static function getUserEntities($user_ID, $is_recursive = true, $default_first = false)
     {
-        global $DB;
-
-        $iterator = $DB->request([
-            'SELECT' => [
-                'entities_id',
-                'is_recursive'
-            ],
-            'DISTINCT' => true,
-            'FROM' => 'glpi_profiles_users',
-            'WHERE' => ['users_id' => $user_ID]
-        ]);
+        $iterator = new \itsmng\Database\RowIterator(self::repository()->scopes((int)$user_ID));
         $entities = [];
 
         while ($data = $iterator->next()) {
@@ -792,38 +710,7 @@ class Profile_User extends CommonDBRelation
      **/
     public static function getUserEntitiesForRight($user_ID, $rightname, $rights, $is_recursive = true)
     {
-        global $DB;
-
-        $putable = Profile_User::getTable();
-        $ptable = Profile::getTable();
-        $prtable = ProfileRight::getTable();
-        $iterator = $DB->request([
-            'SELECT' => [
-                "$putable.entities_id",
-                "$putable.is_recursive"
-            ],
-            'DISTINCT' => true,
-            'FROM' => $putable,
-            'INNER JOIN' => [
-                $ptable => [
-                    'ON' => [
-                        $putable => 'profiles_id',
-                        $ptable => 'id'
-                    ]
-                ],
-                $prtable => [
-                    'ON' => [
-                        $prtable => 'profiles_id',
-                        $ptable => 'id'
-                    ]
-                ]
-            ],
-            'WHERE' => [
-                "$putable.users_id" => $user_ID,
-                "$prtable.name" => $rightname,
-                "$prtable.rights" => ['&', $rights]
-            ]
-        ]);
+        $iterator = new \itsmng\Database\RowIterator(self::repository()->scopes((int)$user_ID, right: $rightname, mask: (int)$rights));
 
         if (count($iterator) > 0) {
             $entities = [];
@@ -857,25 +744,15 @@ class Profile_User extends CommonDBRelation
     public static function getUserProfiles($user_ID, $sqlfilter = [])
     {
         global $DB;
-
+        $ids = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))->identifiers(
+            self::getTable(),
+            'profiles_id',
+            ['users_id' => $user_ID] + $sqlfilter
+        );
         $profiles = [];
-
-        $where = ['users_id' => $user_ID];
-        if (count($sqlfilter) > 0) {
-            $where = $where + $sqlfilter;
+        foreach ($ids as $id) {
+            $profiles[$id] = $id;
         }
-
-        $iterator = $DB->request([
-            'SELECT' => 'profiles_id',
-            'DISTINCT' => true,
-            'FROM' => 'glpi_profiles_users',
-            'WHERE' => $where
-        ]);
-
-        while ($data = $iterator->next()) {
-            $profiles[$data['profiles_id']] = $data['profiles_id'];
-        }
-
         return $profiles;
     }
 
@@ -892,16 +769,7 @@ class Profile_User extends CommonDBRelation
      **/
     public static function getEntitiesForProfileByUser($users_id, $profiles_id, $child = false)
     {
-        global $DB;
-
-        $iterator = $DB->request([
-            'SELECT' => ['entities_id', 'is_recursive'],
-            'FROM' => self::getTable(),
-            'WHERE' => [
-                'users_id' => $users_id,
-                'profiles_id' => $profiles_id
-            ]
-        ]);
+        $iterator = new \itsmng\Database\RowIterator(self::repository()->scopes((int)$users_id, (int)$profiles_id));
 
         $entities = [];
         while ($data = $iterator->next()) {
@@ -933,13 +801,7 @@ class Profile_User extends CommonDBRelation
      **/
     public static function getEntitiesForUser($users_id, $child = false)
     {
-        global $DB;
-
-        $iterator = $DB->request([
-            'SELECT' => ['entities_id', 'is_recursive'],
-            'FROM' => 'glpi_profiles_users',
-            'WHERE' => ['users_id' => $users_id]
-        ]);
+        $iterator = new \itsmng\Database\RowIterator(self::repository()->scopes((int)$users_id));
 
         $entities = [];
         while ($data = $iterator->next()) {
@@ -978,6 +840,12 @@ class Profile_User extends CommonDBRelation
     }
 
 
+    private static function repository(): \itsmng\Database\Repository\ProfileUserRepository
+    {
+        global $DB;
+        return new \itsmng\Database\Repository\ProfileUserRepository(\itsmng\Database\Orm::create($DB));
+    }
+
     /**
      * @param $user_ID
      * @param $profile_id
@@ -986,15 +854,10 @@ class Profile_User extends CommonDBRelation
     {
         global $DB;
 
-        $result = $DB->request([
-            'COUNT' => 'cpt',
-            'FROM' => self::getTable(),
-            'WHERE' => [
-                'users_id' => $user_ID,
-                'profiles_id' => $profile_id
-            ]
-        ])->next();
-        return $result['cpt'];
+        return (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))->countMatching(
+            self::getTable(),
+            ['users_id' => (int)$user_ID, 'profiles_id' => (int)$profile_id]
+        );
     }
 
 
@@ -1115,31 +978,13 @@ class Profile_User extends CommonDBRelation
 
     public function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)
     {
-        global $DB;
-
         if (!$withtemplate) {
             $nb = 0;
             switch ($item->getType()) {
                 case 'Entity':
                     if (Session::haveRight('user', READ)) {
                         if ($_SESSION['glpishow_count_on_tabs']) {
-                            $count = $DB->request([
-                                'COUNT' => 'cpt',
-                                'FROM' => $this->getTable(),
-                                'LEFT JOIN' => [
-                                    User::getTable() => [
-                                        'FKEY' => [
-                                            $this->getTable() => 'users_id',
-                                            User::getTable() => 'id'
-                                        ]
-                                    ]
-                                ],
-                                'WHERE' => [
-                                    User::getTable() . '.is_deleted' => 0,
-                                    $this->getTable() . '.entities_id' => $item->getID()
-                                ]
-                            ])->next();
-                            $nb = $count['cpt'];
+                            $nb = self::repository()->countUsersInEntity((int)$item->getID());
                         }
                         return self::createTabEntry(User::getTypeName(Session::getPluralNumber()), $nb);
                     }

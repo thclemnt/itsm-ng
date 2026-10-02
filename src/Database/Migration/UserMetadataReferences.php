@@ -5,7 +5,6 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\OptionalReferences;
 
 final class UserMetadataReferences
 {
@@ -13,11 +12,11 @@ final class UserMetadataReferences
 
     public function plan(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::USER_METADATA, 'user metadata'))->plan($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'USER_METADATA'), 'user metadata'))->plan($connection);
     }
 
     public function apply(Connection $connection): array
     {
-        return (new NullableReferences(OptionalReferences::USER_METADATA, 'user metadata'))->apply($connection);
+        return (new NullableReferences(ReferenceHistory::get('optional', 'USER_METADATA'), 'user metadata'))->apply($connection);
     }
 }

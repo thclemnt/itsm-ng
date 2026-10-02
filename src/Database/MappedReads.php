@@ -11,20 +11,20 @@ final class MappedReads
 {
     public static function matching(\DBAdapter $database, string $table, array $criteria = [], array|string $order = [], ?int $limit = null, int $offset = 0): array
     {
-        if (!isset(EntityRegistry::TABLES[$table])) {
+        if (!isset(EntityRegistry::tables()[$table])) {
             throw new UnsupportedCriteria('Unmapped table requires a registered entity.');
         }
         $em = Orm::create($database);
         try {
             $rows = (new RecordRepository($em))->matching($table, $criteria, $order, $limit, $offset);
-            return $table === 'glpi_entities' ? array_map(EntityConfigurationReferences::legacyRow(...), $rows) : $rows;
+            return array_map(static fn (array $row): array => ReferenceValues::legacyRow($table, $row), $rows);
         } finally {
             $em->clear();
         }
     }
     public static function countMatching(\DBAdapter $database, string $table, array $criteria): int
     {
-        if (!isset(EntityRegistry::TABLES[$table])) {
+        if (!isset(EntityRegistry::tables()[$table])) {
             throw new UnsupportedCriteria('Unmapped table requires a registered entity.');
         }
         $em = Orm::create($database);
@@ -37,7 +37,7 @@ final class MappedReads
 
     public static function identifiers(\DBAdapter $database, string $table, string $column, array $criteria, array|string $order = []): array
     {
-        if (!isset(EntityRegistry::TABLES[$table])) {
+        if (!isset(EntityRegistry::tables()[$table])) {
             throw new UnsupportedCriteria('Unmapped table requires a registered entity.');
         }
         $em = Orm::create($database);

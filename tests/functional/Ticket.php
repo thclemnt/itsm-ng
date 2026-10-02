@@ -2533,6 +2533,7 @@ class Ticket extends DbTestCase
         $this->login();
         $group = new \Group();
         $group_id = $group->add(['name' => 'Test group']);
+        $supplier_id = getItemByTypeName('Supplier', '_suplier01_name', true);
         $this->integer((int)$group_id)->isGreaterThan(0);
 
         $group_user = new \Group_User();
@@ -2633,7 +2634,7 @@ class Ticket extends DbTestCase
            /* Not computing delay, do not know why
            [
               'input'    => [
-                 '_suppliers_id_assign' => '1', // "_suplier01_name"
+                 '_suppliers_id_assign' => $supplier_id,
               ],
               'computed' => true, // computed on asignment
            ],
@@ -2641,7 +2642,7 @@ class Ticket extends DbTestCase
            [
               'input'    => [
                  '_additional_suppliers_assigns' => [
-                    ['suppliers_id' => '1'], // "_suplier01_name"
+                    ['suppliers_id' => $supplier_id],
                  ],
               ],
               'computed' => true, // computed on asignment
@@ -2751,6 +2752,7 @@ class Ticket extends DbTestCase
 
         $group = new \Group();
         $group_id = $group->add(['name' => 'Test group']);
+        $supplier_id = getItemByTypeName('Supplier', '_suplier01_name', true);
         $this->integer((int)$group_id)->isGreaterThan(0);
 
         return [
@@ -2770,7 +2772,7 @@ class Ticket extends DbTestCase
            ],
            [
               'input'    => [
-                 '_suppliers_id_assign' => '1', // "_suplier01_name"
+                 '_suppliers_id_assign' => $supplier_id,
                  'status' => \CommonITILObject::INCOMING,
               ],
               'expected' => \CommonITILObject::ASSIGNED, // incoming changed to assign as actors are set
@@ -2793,7 +2795,7 @@ class Ticket extends DbTestCase
            ],
            [
               'input'    => [
-                 '_suppliers_id_assign' => '1', // "_suplier01_name"
+                 '_suppliers_id_assign' => $supplier_id,
                  'status' => \CommonITILObject::INCOMING,
                  '_do_not_compute_status' => '1',
               ],
@@ -2815,7 +2817,7 @@ class Ticket extends DbTestCase
            ],
            [
               'input'    => [
-                 '_suppliers_id_assign' => '1', // "_suplier01_name"
+                 '_suppliers_id_assign' => $supplier_id,
                  'status' => \CommonITILObject::WAITING,
               ],
               'expected' => \CommonITILObject::WAITING, // status not changed as not "new"
