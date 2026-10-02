@@ -44,6 +44,17 @@ abstract class TypedItemMigration
         return $table . '_typed_item_kind';
     }
 
+    /** Appended frozen migrations can expand a formerly complete subject set. */
+    protected function expandsTargets(): bool
+    {
+        return false;
+    }
+
+    protected function rebuildsProjection(Connection $connection): bool
+    {
+        return false;
+    }
+
     protected static function identity(string $alias = ''): string
     {
         $cases = [];
@@ -80,12 +91,13 @@ abstract class TypedItemMigration
         $table->getColumn('items_id')->setNotnull(false)->setDefault(null)->setColumnDefinition(self::keyDeclaration());
     }
 
-    private static function validReferenceSql(): string
+    private static function validReferenceSql(?array $targets = null): string
     {
+        $targets ??= static::targets();
         $branches = [];
-        foreach (static::targets() as $kind => $target) {
+        foreach ($targets as $kind => $target) {
             $branch = ["itemtype = '" . $kind . "'", static::column($target) . ' IS NOT NULL', static::column($target) . ' >= ' . static::minimumId($kind)];
-            foreach (static::targets() as $other) {
+            foreach ($targets as $other) {
                 if ($other !== $target) {
                     $branch[] = static::column($other) . ' IS NULL';
                 }
@@ -97,7 +109,7 @@ abstract class TypedItemMigration
             return $selected;
         }
         $empty = ['itemtype IS NULL', static::emptyReferenceSql()];
-        foreach (static::targets() as $target) {
+        foreach ($targets as $target) {
             $empty[] = static::column($target) . ' IS NULL';
         }
         return '((' . implode(' AND ', $empty) . ') OR (' . $selected . '))';
@@ -159,7 +171,10 @@ abstract class TypedItemMigration
                     throw new \RuntimeException('Canonical and legacy typed item references disagree: ' . $table . '.' . $column);
                 }
             }
-            if (($generated || !$hasKey) && $connection->fetchOne('SELECT COUNT(*) FROM ' . $table . ' WHERE NOT (' . self::validReferenceSql() . ')')) {
+            $canonicalTargets = $this->expandsTargets()
+                ? array_filter(static::targets(), static fn ($target) => $before->hasColumn(static::column($target)))
+                : null;
+            if (($generated || !$hasKey) && $connection->fetchOne('SELECT COUNT(*) FROM ' . $table . ' WHERE NOT (' . self::validReferenceSql($canonicalTargets) . ')')) {
                 throw new \RuntimeException('Invalid canonical typed item references: ' . $table);
             }
             $after = clone $before;
@@ -167,7 +182,7 @@ abstract class TypedItemMigration
             $after->getColumn('itemtype')->setNotnull(!static::allowsEmptyReference())->setDefault(null);
             $sql = $platform->getAlterTableSQL($manager->createComparator()->compareTables($before, $after));
             $keySql = [];
-            if (!$generated) {
+            if (!$generated || $this->rebuildsProjection($connection)) {
                 $incoming = $connection->fetchOne($postgres
                     ? "SELECT COUNT(*) FROM information_schema.constraint_column_usage c JOIN information_schema.table_constraints t ON t.constraint_schema = c.constraint_schema AND t.constraint_name = c.constraint_name WHERE c.table_schema = ? AND c.table_name = ? AND c.column_name = 'items_id' AND t.constraint_type = 'FOREIGN KEY'"
                     : "SELECT COUNT(*) FROM information_schema.key_column_usage WHERE referenced_table_schema = ? AND referenced_table_name = ? AND referenced_column_name = 'items_id'", [$schema, $table]);
@@ -210,6 +225,13 @@ abstract class TypedItemMigration
                         $platform->getAlterTableSQL($manager->createComparator()->compareTables($without, $withKey))
                     )
                     : $platform->getAlterTableSQL($manager->createComparator()->compareTables($after, $withKey));
+                if (!$postgres && $generated && $this->expandsTargets() && $this->rebuildsProjection($connection)) {
+                    // DBAL does not introspect generated expressions, so an
+                    // unchanged BIGINT declaration can compare equal despite
+                    // this appended migration's expanded frozen expression.
+                    $keySql = ['ALTER TABLE ' . $platform->quoteIdentifier($table)
+                        . ' MODIFY COLUMN ' . $platform->quoteIdentifier('items_id') . ' ' . $declaration];
+                }
             }
             $checked = $connection->fetchOne('SELECT COUNT(*) FROM information_schema.table_constraints WHERE constraint_schema = ? AND table_name = ? AND constraint_name = ? AND constraint_type = ?', [$schema, $table, static::constraintName($table), 'CHECK']);
             $constraints = $checked ? [] : [self::checkSql($table)];

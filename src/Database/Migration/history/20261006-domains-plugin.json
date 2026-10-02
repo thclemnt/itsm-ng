@@ -1,0 +1,2647 @@
+{
+    "provenance": {
+        "source_commit": "e628ee87b84a87867365dbc77d06738e9e74a246",
+        "format": "infotel-domains-2.1.0-completed-v1",
+        "core_metadata_checkpoint": "448699cfbb7d4847a73edc36eabf0f3da1042fb3",
+        "purpose": "Frozen pre-adoption identity roles. Current entity metadata cannot rewrite this migration.",
+        "scope_policy": "Frozen CommonDBRelation symmetric recursion; known entity-capability overrides User unassigned and Entity own id/always recursive. Guarded relation owners captured from actual public declarations; KB audience and writable Ticket shortcut are distinct."
+    },
+    "source": {
+        "glpi_plugin_domains_domaintypes": [
+            "id",
+            "entities_id",
+            "name",
+            "comment",
+            "is_recursive"
+        ],
+        "glpi_plugin_domains_domains": [
+            "id",
+            "entities_id",
+            "is_recursive",
+            "name",
+            "plugin_domains_domaintypes_id",
+            "date_creation",
+            "date_expiration",
+            "users_id_tech",
+            "groups_id_tech",
+            "suppliers_id",
+            "comment",
+            "others",
+            "is_helpdesk_visible",
+            "date_mod",
+            "is_deleted"
+        ],
+        "glpi_plugin_domains_domains_items": [
+            "id",
+            "plugin_domains_domains_id",
+            "items_id",
+            "itemtype"
+        ],
+        "glpi_plugin_domains_configs": [
+            "id",
+            "delay_expired",
+            "delay_whichexpire"
+        ]
+    },
+    "identities": {
+        "glpi_alerts": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": {
+                "items_id": {
+                    "discriminator": "itemtype",
+                    "selections": {
+                        "CartridgeItem": {
+                            "column": "cartridgeitems_id",
+                            "target": "glpi_cartridgeitems",
+                            "empty_value": null
+                        },
+                        "ConsumableItem": {
+                            "column": "consumableitems_id",
+                            "target": "glpi_consumableitems",
+                            "empty_value": null
+                        },
+                        "Certificate": {
+                            "column": "certificates_id",
+                            "target": "glpi_certificates",
+                            "empty_value": null
+                        },
+                        "Contract": {
+                            "column": "contracts_id",
+                            "target": "glpi_contracts",
+                            "empty_value": null
+                        },
+                        "Infocom": {
+                            "column": "infocoms_id",
+                            "target": "glpi_infocoms",
+                            "empty_value": null
+                        },
+                        "Reservation": {
+                            "column": "reservations_id",
+                            "target": "glpi_reservations",
+                            "empty_value": null
+                        },
+                        "SoftwareLicense": {
+                            "column": "softwarelicenses_id",
+                            "target": "glpi_softwarelicenses",
+                            "empty_value": null
+                        },
+                        "PlanningRecall": {
+                            "column": "planningrecalls_id",
+                            "target": "glpi_planningrecalls",
+                            "empty_value": null
+                        },
+                        "CronTask": {
+                            "column": "crontasks_id",
+                            "target": "glpi_crontasks",
+                            "empty_value": null
+                        },
+                        "User": {
+                            "column": "users_id",
+                            "target": "glpi_users",
+                            "empty_value": null
+                        }
+                    }
+                }
+            }
+        },
+        "glpi_appliances_items": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": {
+                "items_id": {
+                    "discriminator": "itemtype",
+                    "selections": {
+                        "Computer": {
+                            "column": "computers_id",
+                            "target": "glpi_computers",
+                            "empty_value": null
+                        },
+                        "Monitor": {
+                            "column": "monitors_id",
+                            "target": "glpi_monitors",
+                            "empty_value": null
+                        },
+                        "NetworkEquipment": {
+                            "column": "networkequipments_id",
+                            "target": "glpi_networkequipments",
+                            "empty_value": null
+                        },
+                        "Peripheral": {
+                            "column": "peripherals_id",
+                            "target": "glpi_peripherals",
+                            "empty_value": null
+                        },
+                        "Phone": {
+                            "column": "phones_id",
+                            "target": "glpi_phones",
+                            "empty_value": null
+                        },
+                        "Printer": {
+                            "column": "printers_id",
+                            "target": "glpi_printers",
+                            "empty_value": null
+                        },
+                        "Software": {
+                            "column": "softwares_id",
+                            "target": "glpi_softwares",
+                            "empty_value": null
+                        },
+                        "Cluster": {
+                            "column": "clusters_id",
+                            "target": "glpi_clusters",
+                            "empty_value": null
+                        }
+                    }
+                }
+            }
+        },
+        "glpi_appliances_items_relations": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": {
+                "items_id": {
+                    "discriminator": "itemtype",
+                    "selections": {
+                        "Location": {
+                            "column": "locations_id",
+                            "target": "glpi_locations",
+                            "empty_value": null
+                        },
+                        "Network": {
+                            "column": "networks_id",
+                            "target": "glpi_networks",
+                            "empty_value": null
+                        },
+                        "Domain": {
+                            "column": "domains_id",
+                            "target": "glpi_domains",
+                            "empty_value": null
+                        }
+                    }
+                }
+            }
+        },
+        "glpi_certificates_items": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": {
+                "items_id": {
+                    "discriminator": "itemtype",
+                    "selections": {
+                        "Computer": {
+                            "column": "computers_id",
+                            "target": "glpi_computers",
+                            "empty_value": null
+                        },
+                        "NetworkEquipment": {
+                            "column": "networkequipments_id",
+                            "target": "glpi_networkequipments",
+                            "empty_value": null
+                        },
+                        "Peripheral": {
+                            "column": "peripherals_id",
+                            "target": "glpi_peripherals",
+                            "empty_value": null
+                        },
+                        "Phone": {
+                            "column": "phones_id",
+                            "target": "glpi_phones",
+                            "empty_value": null
+                        },
+                        "Printer": {
+                            "column": "printers_id",
+                            "target": "glpi_printers",
+                            "empty_value": null
+                        },
+                        "SoftwareLicense": {
+                            "column": "softwarelicenses_id",
+                            "target": "glpi_softwarelicenses",
+                            "empty_value": null
+                        },
+                        "User": {
+                            "column": "users_id",
+                            "target": "glpi_users",
+                            "empty_value": null
+                        },
+                        "Domain": {
+                            "column": "domains_id",
+                            "target": "glpi_domains",
+                            "empty_value": null
+                        },
+                        "Appliance": {
+                            "column": "appliances_id",
+                            "target": "glpi_appliances",
+                            "empty_value": null
+                        }
+                    }
+                }
+            }
+        },
+        "glpi_changes_items": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": {
+                "items_id": {
+                    "discriminator": "itemtype",
+                    "selections": {
+                        "DCRoom": {
+                            "column": "dcrooms_id",
+                            "target": "glpi_dcrooms",
+                            "empty_value": null
+                        },
+                        "Rack": {
+                            "column": "racks_id",
+                            "target": "glpi_racks",
+                            "empty_value": null
+                        },
+                        "Enclosure": {
+                            "column": "enclosures_id",
+                            "target": "glpi_enclosures",
+                            "empty_value": null
+                        },
+                        "PDU": {
+                            "column": "pdus_id",
+                            "target": "glpi_pdus",
+                            "empty_value": null
+                        },
+                        "Domain": {
+                            "column": "domains_id",
+                            "target": "glpi_domains",
+                            "empty_value": null
+                        },
+                        "DomainRecord": {
+                            "column": "domainrecords_id",
+                            "target": "glpi_domainrecords",
+                            "empty_value": null
+                        },
+                        "Item_DeviceSimcard": {
+                            "column": "items_devicesimcards_id",
+                            "target": "glpi_items_devicesimcards",
+                            "empty_value": null
+                        },
+                        "PassiveDCEquipment": {
+                            "column": "passivedcequipments_id",
+                            "target": "glpi_passivedcequipments",
+                            "empty_value": null
+                        },
+                        "Computer": {
+                            "column": "computers_id",
+                            "target": "glpi_computers",
+                            "empty_value": null
+                        },
+                        "Monitor": {
+                            "column": "monitors_id",
+                            "target": "glpi_monitors",
+                            "empty_value": null
+                        },
+                        "NetworkEquipment": {
+                            "column": "networkequipments_id",
+                            "target": "glpi_networkequipments",
+                            "empty_value": null
+                        },
+                        "Peripheral": {
+                            "column": "peripherals_id",
+                            "target": "glpi_peripherals",
+                            "empty_value": null
+                        },
+                        "Phone": {
+                            "column": "phones_id",
+                            "target": "glpi_phones",
+                            "empty_value": null
+                        },
+                        "Printer": {
+                            "column": "printers_id",
+                            "target": "glpi_printers",
+                            "empty_value": null
+                        },
+                        "Software": {
+                            "column": "softwares_id",
+                            "target": "glpi_softwares",
+                            "empty_value": null
+                        },
+                        "SoftwareLicense": {
+                            "column": "softwarelicenses_id",
+                            "target": "glpi_softwarelicenses",
+                            "empty_value": null
+                        },
+                        "Certificate": {
+                            "column": "certificates_id",
+                            "target": "glpi_certificates",
+                            "empty_value": null
+                        },
+                        "Line": {
+                            "column": "lines_id",
+                            "target": "glpi_lines",
+                            "empty_value": null
+                        },
+                        "Cluster": {
+                            "column": "clusters_id",
+                            "target": "glpi_clusters",
+                            "empty_value": null
+                        },
+                        "Appliance": {
+                            "column": "appliances_id",
+                            "target": "glpi_appliances",
+                            "empty_value": null
+                        }
+                    }
+                }
+            }
+        },
+        "glpi_computers_items": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_consumables": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": {
+                "items_id": {
+                    "discriminator": "itemtype",
+                    "selections": {
+                        "User": {
+                            "column": "users_id",
+                            "target": "glpi_users",
+                            "empty_value": null
+                        },
+                        "Group": {
+                            "column": "groups_id",
+                            "target": "glpi_groups",
+                            "empty_value": null
+                        }
+                    }
+                }
+            }
+        },
+        "glpi_contracts_items": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": {
+                "items_id": {
+                    "discriminator": "itemtype",
+                    "selections": {
+                        "DCRoom": {
+                            "column": "dcrooms_id",
+                            "target": "glpi_dcrooms",
+                            "empty_value": null
+                        },
+                        "Rack": {
+                            "column": "racks_id",
+                            "target": "glpi_racks",
+                            "empty_value": null
+                        },
+                        "Enclosure": {
+                            "column": "enclosures_id",
+                            "target": "glpi_enclosures",
+                            "empty_value": null
+                        },
+                        "PDU": {
+                            "column": "pdus_id",
+                            "target": "glpi_pdus",
+                            "empty_value": null
+                        },
+                        "Domain": {
+                            "column": "domains_id",
+                            "target": "glpi_domains",
+                            "empty_value": null
+                        },
+                        "Project": {
+                            "column": "projects_id",
+                            "target": "glpi_projects",
+                            "empty_value": null
+                        },
+                        "Computer": {
+                            "column": "computers_id",
+                            "target": "glpi_computers",
+                            "empty_value": null
+                        },
+                        "Monitor": {
+                            "column": "monitors_id",
+                            "target": "glpi_monitors",
+                            "empty_value": null
+                        },
+                        "NetworkEquipment": {
+                            "column": "networkequipments_id",
+                            "target": "glpi_networkequipments",
+                            "empty_value": null
+                        },
+                        "Peripheral": {
+                            "column": "peripherals_id",
+                            "target": "glpi_peripherals",
+                            "empty_value": null
+                        },
+                        "Phone": {
+                            "column": "phones_id",
+                            "target": "glpi_phones",
+                            "empty_value": null
+                        },
+                        "Printer": {
+                            "column": "printers_id",
+                            "target": "glpi_printers",
+                            "empty_value": null
+                        },
+                        "Software": {
+                            "column": "softwares_id",
+                            "target": "glpi_softwares",
+                            "empty_value": null
+                        },
+                        "SoftwareLicense": {
+                            "column": "softwarelicenses_id",
+                            "target": "glpi_softwarelicenses",
+                            "empty_value": null
+                        },
+                        "Certificate": {
+                            "column": "certificates_id",
+                            "target": "glpi_certificates",
+                            "empty_value": null
+                        },
+                        "Line": {
+                            "column": "lines_id",
+                            "target": "glpi_lines",
+                            "empty_value": null
+                        },
+                        "Cluster": {
+                            "column": "clusters_id",
+                            "target": "glpi_clusters",
+                            "empty_value": null
+                        },
+                        "Appliance": {
+                            "column": "appliances_id",
+                            "target": "glpi_appliances",
+                            "empty_value": null
+                        },
+                        "Item_DeviceMotherboard": {
+                            "column": "items_devicemotherboards_id",
+                            "target": "glpi_items_devicemotherboards",
+                            "empty_value": null
+                        },
+                        "Item_DeviceFirmware": {
+                            "column": "items_devicefirmwares_id",
+                            "target": "glpi_items_devicefirmwares",
+                            "empty_value": null
+                        },
+                        "Item_DeviceProcessor": {
+                            "column": "items_deviceprocessors_id",
+                            "target": "glpi_items_deviceprocessors",
+                            "empty_value": null
+                        },
+                        "Item_DeviceMemory": {
+                            "column": "items_devicememories_id",
+                            "target": "glpi_items_devicememories",
+                            "empty_value": null
+                        },
+                        "Item_DeviceHardDrive": {
+                            "column": "items_deviceharddrives_id",
+                            "target": "glpi_items_deviceharddrives",
+                            "empty_value": null
+                        },
+                        "Item_DeviceNetworkCard": {
+                            "column": "items_devicenetworkcards_id",
+                            "target": "glpi_items_devicenetworkcards",
+                            "empty_value": null
+                        },
+                        "Item_DeviceDrive": {
+                            "column": "items_devicedrives_id",
+                            "target": "glpi_items_devicedrives",
+                            "empty_value": null
+                        },
+                        "Item_DeviceBattery": {
+                            "column": "items_devicebatteries_id",
+                            "target": "glpi_items_devicebatteries",
+                            "empty_value": null
+                        },
+                        "Item_DeviceGraphicCard": {
+                            "column": "items_devicegraphiccards_id",
+                            "target": "glpi_items_devicegraphiccards",
+                            "empty_value": null
+                        },
+                        "Item_DeviceSoundCard": {
+                            "column": "items_devicesoundcards_id",
+                            "target": "glpi_items_devicesoundcards",
+                            "empty_value": null
+                        },
+                        "Item_DeviceControl": {
+                            "column": "items_devicecontrols_id",
+                            "target": "glpi_items_devicecontrols",
+                            "empty_value": null
+                        },
+                        "Item_DevicePci": {
+                            "column": "items_devicepcis_id",
+                            "target": "glpi_items_devicepcis",
+                            "empty_value": null
+                        },
+                        "Item_DeviceCase": {
+                            "column": "items_devicecases_id",
+                            "target": "glpi_items_devicecases",
+                            "empty_value": null
+                        },
+                        "Item_DevicePowerSupply": {
+                            "column": "items_devicepowersupplies_id",
+                            "target": "glpi_items_devicepowersupplies",
+                            "empty_value": null
+                        },
+                        "Item_DeviceGeneric": {
+                            "column": "items_devicegenerics_id",
+                            "target": "glpi_items_devicegenerics",
+                            "empty_value": null
+                        },
+                        "Item_DeviceSimcard": {
+                            "column": "items_devicesimcards_id",
+                            "target": "glpi_items_devicesimcards",
+                            "empty_value": null
+                        },
+                        "Item_DeviceSensor": {
+                            "column": "items_devicesensors_id",
+                            "target": "glpi_items_devicesensors",
+                            "empty_value": null
+                        }
+                    }
+                }
+            }
+        },
+        "glpi_crontasks": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_displaypreferences": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_documents_items": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": {
+                "items_id": {
+                    "discriminator": "itemtype",
+                    "selections": {
+                        "Budget": {
+                            "column": "budgets_id",
+                            "target": "glpi_budgets",
+                            "empty_value": null
+                        },
+                        "CartridgeItem": {
+                            "column": "cartridgeitems_id",
+                            "target": "glpi_cartridgeitems",
+                            "empty_value": null
+                        },
+                        "Change": {
+                            "column": "changes_id",
+                            "target": "glpi_changes",
+                            "empty_value": null
+                        },
+                        "ConsumableItem": {
+                            "column": "consumableitems_id",
+                            "target": "glpi_consumableitems",
+                            "empty_value": null
+                        },
+                        "Contact": {
+                            "column": "contacts_id",
+                            "target": "glpi_contacts",
+                            "empty_value": null
+                        },
+                        "Contract": {
+                            "column": "contracts_id",
+                            "target": "glpi_contracts",
+                            "empty_value": null
+                        },
+                        "Domain": {
+                            "column": "domains_id",
+                            "target": "glpi_domains",
+                            "empty_value": null
+                        },
+                        "Document": {
+                            "column": "linked_documents_id",
+                            "target": "glpi_documents",
+                            "empty_value": null
+                        },
+                        "Entity": {
+                            "column": "subject_entities_id",
+                            "target": "glpi_entities",
+                            "empty_value": null
+                        },
+                        "KnowbaseItem": {
+                            "column": "knowbaseitems_id",
+                            "target": "glpi_knowbaseitems",
+                            "empty_value": null
+                        },
+                        "Problem": {
+                            "column": "problems_id",
+                            "target": "glpi_problems",
+                            "empty_value": null
+                        },
+                        "Project": {
+                            "column": "projects_id",
+                            "target": "glpi_projects",
+                            "empty_value": null
+                        },
+                        "ProjectTask": {
+                            "column": "projecttasks_id",
+                            "target": "glpi_projecttasks",
+                            "empty_value": null
+                        },
+                        "Reminder": {
+                            "column": "reminders_id",
+                            "target": "glpi_reminders",
+                            "empty_value": null
+                        },
+                        "Supplier": {
+                            "column": "suppliers_id",
+                            "target": "glpi_suppliers",
+                            "empty_value": null
+                        },
+                        "Ticket": {
+                            "column": "tickets_id",
+                            "target": "glpi_tickets",
+                            "empty_value": null
+                        },
+                        "User": {
+                            "column": "subject_users_id",
+                            "target": "glpi_users",
+                            "empty_value": null
+                        },
+                        "ITILFollowup": {
+                            "column": "itilfollowups_id",
+                            "target": "glpi_itilfollowups",
+                            "empty_value": null
+                        },
+                        "ITILSolution": {
+                            "column": "itilsolutions_id",
+                            "target": "glpi_itilsolutions",
+                            "empty_value": null
+                        },
+                        "ChangeTask": {
+                            "column": "changetasks_id",
+                            "target": "glpi_changetasks",
+                            "empty_value": null
+                        },
+                        "ProblemTask": {
+                            "column": "problemtasks_id",
+                            "target": "glpi_problemtasks",
+                            "empty_value": null
+                        },
+                        "TicketTask": {
+                            "column": "tickettasks_id",
+                            "target": "glpi_tickettasks",
+                            "empty_value": null
+                        },
+                        "Computer": {
+                            "column": "computers_id",
+                            "target": "glpi_computers",
+                            "empty_value": null
+                        },
+                        "Monitor": {
+                            "column": "monitors_id",
+                            "target": "glpi_monitors",
+                            "empty_value": null
+                        },
+                        "NetworkEquipment": {
+                            "column": "networkequipments_id",
+                            "target": "glpi_networkequipments",
+                            "empty_value": null
+                        },
+                        "Peripheral": {
+                            "column": "peripherals_id",
+                            "target": "glpi_peripherals",
+                            "empty_value": null
+                        },
+                        "Phone": {
+                            "column": "phones_id",
+                            "target": "glpi_phones",
+                            "empty_value": null
+                        },
+                        "Printer": {
+                            "column": "printers_id",
+                            "target": "glpi_printers",
+                            "empty_value": null
+                        },
+                        "Software": {
+                            "column": "softwares_id",
+                            "target": "glpi_softwares",
+                            "empty_value": null
+                        },
+                        "SoftwareLicense": {
+                            "column": "softwarelicenses_id",
+                            "target": "glpi_softwarelicenses",
+                            "empty_value": null
+                        },
+                        "Certificate": {
+                            "column": "certificates_id",
+                            "target": "glpi_certificates",
+                            "empty_value": null
+                        },
+                        "Line": {
+                            "column": "lines_id",
+                            "target": "glpi_lines",
+                            "empty_value": null
+                        },
+                        "Cluster": {
+                            "column": "clusters_id",
+                            "target": "glpi_clusters",
+                            "empty_value": null
+                        },
+                        "Appliance": {
+                            "column": "appliances_id",
+                            "target": "glpi_appliances",
+                            "empty_value": null
+                        }
+                    }
+                }
+            }
+        },
+        "glpi_domains_items": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": {
+                "items_id": {
+                    "discriminator": "itemtype",
+                    "selections": {
+                        "Computer": {
+                            "column": "computers_id",
+                            "target": "glpi_computers",
+                            "empty_value": null
+                        },
+                        "Monitor": {
+                            "column": "monitors_id",
+                            "target": "glpi_monitors",
+                            "empty_value": null
+                        },
+                        "NetworkEquipment": {
+                            "column": "networkequipments_id",
+                            "target": "glpi_networkequipments",
+                            "empty_value": null
+                        },
+                        "Peripheral": {
+                            "column": "peripherals_id",
+                            "target": "glpi_peripherals",
+                            "empty_value": null
+                        },
+                        "Phone": {
+                            "column": "phones_id",
+                            "target": "glpi_phones",
+                            "empty_value": null
+                        },
+                        "Printer": {
+                            "column": "printers_id",
+                            "target": "glpi_printers",
+                            "empty_value": null
+                        },
+                        "Software": {
+                            "column": "softwares_id",
+                            "target": "glpi_softwares",
+                            "empty_value": null
+                        },
+                        "Appliance": {
+                            "column": "appliances_id",
+                            "target": "glpi_appliances",
+                            "empty_value": null
+                        },
+                        "Certificate": {
+                            "column": "certificates_id",
+                            "target": "glpi_certificates",
+                            "empty_value": null
+                        }
+                    }
+                }
+            }
+        },
+        "glpi_dropdowntranslations": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_fieldblacklists": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_fieldunicities": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_impactitems": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_impactrelations": {
+            "identity_fields": [
+                "itemtype_source",
+                "itemtype_impacted"
+            ],
+            "typed": []
+        },
+        "glpi_infocoms": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_ipaddresses": {
+            "identity_fields": [
+                "itemtype",
+                "mainitemtype"
+            ],
+            "typed": []
+        },
+        "glpi_items_clusters": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": {
+                "items_id": {
+                    "discriminator": "itemtype",
+                    "selections": {
+                        "Computer": {
+                            "column": "computers_id",
+                            "target": "glpi_computers",
+                            "empty_value": null
+                        },
+                        "NetworkEquipment": {
+                            "column": "networkequipments_id",
+                            "target": "glpi_networkequipments",
+                            "empty_value": null
+                        }
+                    }
+                }
+            }
+        },
+        "glpi_items_devicebatteries": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_items_devicecases": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_items_devicecontrols": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_items_devicedrives": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_items_devicefirmwares": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_items_devicegenerics": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_items_devicegraphiccards": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_items_deviceharddrives": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_items_devicememories": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_items_devicemotherboards": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_items_devicenetworkcards": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_items_devicepcis": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_items_devicepowersupplies": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_items_deviceprocessors": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_items_devicesensors": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_items_devicesimcards": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_items_devicesoundcards": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_items_disks": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_items_enclosures": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": {
+                "items_id": {
+                    "discriminator": "itemtype",
+                    "selections": {
+                        "Computer": {
+                            "column": "asset_computers_id",
+                            "target": "glpi_computers",
+                            "empty_value": null
+                        },
+                        "Monitor": {
+                            "column": "asset_monitors_id",
+                            "target": "glpi_monitors",
+                            "empty_value": null
+                        },
+                        "NetworkEquipment": {
+                            "column": "asset_networkequipments_id",
+                            "target": "glpi_networkequipments",
+                            "empty_value": null
+                        },
+                        "Peripheral": {
+                            "column": "asset_peripherals_id",
+                            "target": "glpi_peripherals",
+                            "empty_value": null
+                        },
+                        "Enclosure": {
+                            "column": "asset_enclosures_id",
+                            "target": "glpi_enclosures",
+                            "empty_value": null
+                        },
+                        "PDU": {
+                            "column": "asset_pdus_id",
+                            "target": "glpi_pdus",
+                            "empty_value": null
+                        },
+                        "PassiveDCEquipment": {
+                            "column": "asset_passivedcequipments_id",
+                            "target": "glpi_passivedcequipments",
+                            "empty_value": null
+                        }
+                    }
+                }
+            }
+        },
+        "glpi_items_kanbans": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_items_operatingsystems": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_items_problems": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": {
+                "items_id": {
+                    "discriminator": "itemtype",
+                    "selections": {
+                        "DCRoom": {
+                            "column": "dcrooms_id",
+                            "target": "glpi_dcrooms",
+                            "empty_value": null
+                        },
+                        "Rack": {
+                            "column": "racks_id",
+                            "target": "glpi_racks",
+                            "empty_value": null
+                        },
+                        "Enclosure": {
+                            "column": "enclosures_id",
+                            "target": "glpi_enclosures",
+                            "empty_value": null
+                        },
+                        "PDU": {
+                            "column": "pdus_id",
+                            "target": "glpi_pdus",
+                            "empty_value": null
+                        },
+                        "Domain": {
+                            "column": "domains_id",
+                            "target": "glpi_domains",
+                            "empty_value": null
+                        },
+                        "DomainRecord": {
+                            "column": "domainrecords_id",
+                            "target": "glpi_domainrecords",
+                            "empty_value": null
+                        },
+                        "Item_DeviceSimcard": {
+                            "column": "items_devicesimcards_id",
+                            "target": "glpi_items_devicesimcards",
+                            "empty_value": null
+                        },
+                        "PassiveDCEquipment": {
+                            "column": "passivedcequipments_id",
+                            "target": "glpi_passivedcequipments",
+                            "empty_value": null
+                        },
+                        "Computer": {
+                            "column": "computers_id",
+                            "target": "glpi_computers",
+                            "empty_value": null
+                        },
+                        "Monitor": {
+                            "column": "monitors_id",
+                            "target": "glpi_monitors",
+                            "empty_value": null
+                        },
+                        "NetworkEquipment": {
+                            "column": "networkequipments_id",
+                            "target": "glpi_networkequipments",
+                            "empty_value": null
+                        },
+                        "Peripheral": {
+                            "column": "peripherals_id",
+                            "target": "glpi_peripherals",
+                            "empty_value": null
+                        },
+                        "Phone": {
+                            "column": "phones_id",
+                            "target": "glpi_phones",
+                            "empty_value": null
+                        },
+                        "Printer": {
+                            "column": "printers_id",
+                            "target": "glpi_printers",
+                            "empty_value": null
+                        },
+                        "Software": {
+                            "column": "softwares_id",
+                            "target": "glpi_softwares",
+                            "empty_value": null
+                        },
+                        "SoftwareLicense": {
+                            "column": "softwarelicenses_id",
+                            "target": "glpi_softwarelicenses",
+                            "empty_value": null
+                        },
+                        "Certificate": {
+                            "column": "certificates_id",
+                            "target": "glpi_certificates",
+                            "empty_value": null
+                        },
+                        "Line": {
+                            "column": "lines_id",
+                            "target": "glpi_lines",
+                            "empty_value": null
+                        },
+                        "Cluster": {
+                            "column": "clusters_id",
+                            "target": "glpi_clusters",
+                            "empty_value": null
+                        },
+                        "Appliance": {
+                            "column": "appliances_id",
+                            "target": "glpi_appliances",
+                            "empty_value": null
+                        }
+                    }
+                }
+            }
+        },
+        "glpi_items_projects": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": {
+                "items_id": {
+                    "discriminator": "itemtype",
+                    "selections": {
+                        "DCRoom": {
+                            "column": "dcrooms_id",
+                            "target": "glpi_dcrooms",
+                            "empty_value": null
+                        },
+                        "Rack": {
+                            "column": "racks_id",
+                            "target": "glpi_racks",
+                            "empty_value": null
+                        },
+                        "Enclosure": {
+                            "column": "enclosures_id",
+                            "target": "glpi_enclosures",
+                            "empty_value": null
+                        },
+                        "PDU": {
+                            "column": "pdus_id",
+                            "target": "glpi_pdus",
+                            "empty_value": null
+                        },
+                        "Domain": {
+                            "column": "domains_id",
+                            "target": "glpi_domains",
+                            "empty_value": null
+                        },
+                        "Project": {
+                            "column": "subject_projects_id",
+                            "target": "glpi_projects",
+                            "empty_value": null
+                        },
+                        "Computer": {
+                            "column": "computers_id",
+                            "target": "glpi_computers",
+                            "empty_value": null
+                        },
+                        "Monitor": {
+                            "column": "monitors_id",
+                            "target": "glpi_monitors",
+                            "empty_value": null
+                        },
+                        "NetworkEquipment": {
+                            "column": "networkequipments_id",
+                            "target": "glpi_networkequipments",
+                            "empty_value": null
+                        },
+                        "Peripheral": {
+                            "column": "peripherals_id",
+                            "target": "glpi_peripherals",
+                            "empty_value": null
+                        },
+                        "Phone": {
+                            "column": "phones_id",
+                            "target": "glpi_phones",
+                            "empty_value": null
+                        },
+                        "Printer": {
+                            "column": "printers_id",
+                            "target": "glpi_printers",
+                            "empty_value": null
+                        },
+                        "Software": {
+                            "column": "softwares_id",
+                            "target": "glpi_softwares",
+                            "empty_value": null
+                        },
+                        "SoftwareLicense": {
+                            "column": "softwarelicenses_id",
+                            "target": "glpi_softwarelicenses",
+                            "empty_value": null
+                        },
+                        "Certificate": {
+                            "column": "certificates_id",
+                            "target": "glpi_certificates",
+                            "empty_value": null
+                        },
+                        "Line": {
+                            "column": "lines_id",
+                            "target": "glpi_lines",
+                            "empty_value": null
+                        },
+                        "Cluster": {
+                            "column": "clusters_id",
+                            "target": "glpi_clusters",
+                            "empty_value": null
+                        },
+                        "Appliance": {
+                            "column": "appliances_id",
+                            "target": "glpi_appliances",
+                            "empty_value": null
+                        },
+                        "Item_DeviceMotherboard": {
+                            "column": "items_devicemotherboards_id",
+                            "target": "glpi_items_devicemotherboards",
+                            "empty_value": null
+                        },
+                        "Item_DeviceFirmware": {
+                            "column": "items_devicefirmwares_id",
+                            "target": "glpi_items_devicefirmwares",
+                            "empty_value": null
+                        },
+                        "Item_DeviceProcessor": {
+                            "column": "items_deviceprocessors_id",
+                            "target": "glpi_items_deviceprocessors",
+                            "empty_value": null
+                        },
+                        "Item_DeviceMemory": {
+                            "column": "items_devicememories_id",
+                            "target": "glpi_items_devicememories",
+                            "empty_value": null
+                        },
+                        "Item_DeviceHardDrive": {
+                            "column": "items_deviceharddrives_id",
+                            "target": "glpi_items_deviceharddrives",
+                            "empty_value": null
+                        },
+                        "Item_DeviceNetworkCard": {
+                            "column": "items_devicenetworkcards_id",
+                            "target": "glpi_items_devicenetworkcards",
+                            "empty_value": null
+                        },
+                        "Item_DeviceDrive": {
+                            "column": "items_devicedrives_id",
+                            "target": "glpi_items_devicedrives",
+                            "empty_value": null
+                        },
+                        "Item_DeviceBattery": {
+                            "column": "items_devicebatteries_id",
+                            "target": "glpi_items_devicebatteries",
+                            "empty_value": null
+                        },
+                        "Item_DeviceGraphicCard": {
+                            "column": "items_devicegraphiccards_id",
+                            "target": "glpi_items_devicegraphiccards",
+                            "empty_value": null
+                        },
+                        "Item_DeviceSoundCard": {
+                            "column": "items_devicesoundcards_id",
+                            "target": "glpi_items_devicesoundcards",
+                            "empty_value": null
+                        },
+                        "Item_DeviceControl": {
+                            "column": "items_devicecontrols_id",
+                            "target": "glpi_items_devicecontrols",
+                            "empty_value": null
+                        },
+                        "Item_DevicePci": {
+                            "column": "items_devicepcis_id",
+                            "target": "glpi_items_devicepcis",
+                            "empty_value": null
+                        },
+                        "Item_DeviceCase": {
+                            "column": "items_devicecases_id",
+                            "target": "glpi_items_devicecases",
+                            "empty_value": null
+                        },
+                        "Item_DevicePowerSupply": {
+                            "column": "items_devicepowersupplies_id",
+                            "target": "glpi_items_devicepowersupplies",
+                            "empty_value": null
+                        },
+                        "Item_DeviceGeneric": {
+                            "column": "items_devicegenerics_id",
+                            "target": "glpi_items_devicegenerics",
+                            "empty_value": null
+                        },
+                        "Item_DeviceSimcard": {
+                            "column": "items_devicesimcards_id",
+                            "target": "glpi_items_devicesimcards",
+                            "empty_value": null
+                        },
+                        "Item_DeviceSensor": {
+                            "column": "items_devicesensors_id",
+                            "target": "glpi_items_devicesensors",
+                            "empty_value": null
+                        }
+                    }
+                }
+            }
+        },
+        "glpi_items_racks": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": {
+                "items_id": {
+                    "discriminator": "itemtype",
+                    "selections": {
+                        "Computer": {
+                            "column": "asset_computers_id",
+                            "target": "glpi_computers",
+                            "empty_value": null
+                        },
+                        "Monitor": {
+                            "column": "asset_monitors_id",
+                            "target": "glpi_monitors",
+                            "empty_value": null
+                        },
+                        "NetworkEquipment": {
+                            "column": "asset_networkequipments_id",
+                            "target": "glpi_networkequipments",
+                            "empty_value": null
+                        },
+                        "Peripheral": {
+                            "column": "asset_peripherals_id",
+                            "target": "glpi_peripherals",
+                            "empty_value": null
+                        },
+                        "Enclosure": {
+                            "column": "asset_enclosures_id",
+                            "target": "glpi_enclosures",
+                            "empty_value": null
+                        },
+                        "PDU": {
+                            "column": "asset_pdus_id",
+                            "target": "glpi_pdus",
+                            "empty_value": null
+                        },
+                        "PassiveDCEquipment": {
+                            "column": "asset_passivedcequipments_id",
+                            "target": "glpi_passivedcequipments",
+                            "empty_value": null
+                        }
+                    }
+                }
+            }
+        },
+        "glpi_items_softwarelicenses": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_items_softwareversions": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_items_tickets": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": {
+                "items_id": {
+                    "discriminator": "itemtype",
+                    "selections": {
+                        "DCRoom": {
+                            "column": "dcrooms_id",
+                            "target": "glpi_dcrooms",
+                            "empty_value": null
+                        },
+                        "Rack": {
+                            "column": "racks_id",
+                            "target": "glpi_racks",
+                            "empty_value": null
+                        },
+                        "Enclosure": {
+                            "column": "enclosures_id",
+                            "target": "glpi_enclosures",
+                            "empty_value": null
+                        },
+                        "PDU": {
+                            "column": "pdus_id",
+                            "target": "glpi_pdus",
+                            "empty_value": null
+                        },
+                        "Domain": {
+                            "column": "domains_id",
+                            "target": "glpi_domains",
+                            "empty_value": null
+                        },
+                        "DomainRecord": {
+                            "column": "domainrecords_id",
+                            "target": "glpi_domainrecords",
+                            "empty_value": null
+                        },
+                        "Item_DeviceSimcard": {
+                            "column": "items_devicesimcards_id",
+                            "target": "glpi_items_devicesimcards",
+                            "empty_value": null
+                        },
+                        "PassiveDCEquipment": {
+                            "column": "passivedcequipments_id",
+                            "target": "glpi_passivedcequipments",
+                            "empty_value": null
+                        },
+                        "Computer": {
+                            "column": "computers_id",
+                            "target": "glpi_computers",
+                            "empty_value": null
+                        },
+                        "Monitor": {
+                            "column": "monitors_id",
+                            "target": "glpi_monitors",
+                            "empty_value": null
+                        },
+                        "NetworkEquipment": {
+                            "column": "networkequipments_id",
+                            "target": "glpi_networkequipments",
+                            "empty_value": null
+                        },
+                        "Peripheral": {
+                            "column": "peripherals_id",
+                            "target": "glpi_peripherals",
+                            "empty_value": null
+                        },
+                        "Phone": {
+                            "column": "phones_id",
+                            "target": "glpi_phones",
+                            "empty_value": null
+                        },
+                        "Printer": {
+                            "column": "printers_id",
+                            "target": "glpi_printers",
+                            "empty_value": null
+                        },
+                        "Software": {
+                            "column": "softwares_id",
+                            "target": "glpi_softwares",
+                            "empty_value": null
+                        },
+                        "SoftwareLicense": {
+                            "column": "softwarelicenses_id",
+                            "target": "glpi_softwarelicenses",
+                            "empty_value": null
+                        },
+                        "Certificate": {
+                            "column": "certificates_id",
+                            "target": "glpi_certificates",
+                            "empty_value": null
+                        },
+                        "Line": {
+                            "column": "lines_id",
+                            "target": "glpi_lines",
+                            "empty_value": null
+                        },
+                        "Cluster": {
+                            "column": "clusters_id",
+                            "target": "glpi_clusters",
+                            "empty_value": null
+                        },
+                        "Appliance": {
+                            "column": "appliances_id",
+                            "target": "glpi_appliances",
+                            "empty_value": null
+                        }
+                    }
+                }
+            }
+        },
+        "glpi_itilfollowups": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": {
+                "items_id": {
+                    "discriminator": "itemtype",
+                    "selections": {
+                        "Ticket": {
+                            "column": "tickets_id",
+                            "target": "glpi_tickets",
+                            "empty_value": null
+                        },
+                        "Problem": {
+                            "column": "problems_id",
+                            "target": "glpi_problems",
+                            "empty_value": null
+                        },
+                        "Change": {
+                            "column": "changes_id",
+                            "target": "glpi_changes",
+                            "empty_value": null
+                        }
+                    }
+                }
+            }
+        },
+        "glpi_itils_projects": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": {
+                "items_id": {
+                    "discriminator": "itemtype",
+                    "selections": {
+                        "Ticket": {
+                            "column": "tickets_id",
+                            "target": "glpi_tickets",
+                            "empty_value": null
+                        },
+                        "Problem": {
+                            "column": "problems_id",
+                            "target": "glpi_problems",
+                            "empty_value": null
+                        },
+                        "Change": {
+                            "column": "changes_id",
+                            "target": "glpi_changes",
+                            "empty_value": null
+                        }
+                    }
+                }
+            }
+        },
+        "glpi_itilsolutions": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": {
+                "items_id": {
+                    "discriminator": "itemtype",
+                    "selections": {
+                        "Ticket": {
+                            "column": "tickets_id",
+                            "target": "glpi_tickets",
+                            "empty_value": null
+                        },
+                        "Problem": {
+                            "column": "problems_id",
+                            "target": "glpi_problems",
+                            "empty_value": null
+                        },
+                        "Change": {
+                            "column": "changes_id",
+                            "target": "glpi_changes",
+                            "empty_value": null
+                        }
+                    }
+                }
+            }
+        },
+        "glpi_knowbaseitems_items": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_links_itemtypes": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_logs": {
+            "identity_fields": [
+                "itemtype",
+                "itemtype_link"
+            ],
+            "typed": []
+        },
+        "glpi_networknames": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_networkports": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_notepads": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_notifications": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_notificationtemplates": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_objectlocks": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": {
+                "items_id": {
+                    "discriminator": "itemtype",
+                    "selections": {
+                        "Budget": {
+                            "column": "subject_budgets_id",
+                            "target": "glpi_budgets",
+                            "empty_value": null
+                        },
+                        "Change": {
+                            "column": "subject_changes_id",
+                            "target": "glpi_changes",
+                            "empty_value": null
+                        },
+                        "Contact": {
+                            "column": "subject_contacts_id",
+                            "target": "glpi_contacts",
+                            "empty_value": null
+                        },
+                        "Contract": {
+                            "column": "subject_contracts_id",
+                            "target": "glpi_contracts",
+                            "empty_value": null
+                        },
+                        "Document": {
+                            "column": "subject_documents_id",
+                            "target": "glpi_documents",
+                            "empty_value": null
+                        },
+                        "CartridgeItem": {
+                            "column": "subject_cartridgeitems_id",
+                            "target": "glpi_cartridgeitems",
+                            "empty_value": null
+                        },
+                        "Computer": {
+                            "column": "subject_computers_id",
+                            "target": "glpi_computers",
+                            "empty_value": null
+                        },
+                        "ConsumableItem": {
+                            "column": "subject_consumableitems_id",
+                            "target": "glpi_consumableitems",
+                            "empty_value": null
+                        },
+                        "Entity": {
+                            "column": "subject_entities_id",
+                            "target": "glpi_entities",
+                            "empty_value": null
+                        },
+                        "Group": {
+                            "column": "subject_groups_id",
+                            "target": "glpi_groups",
+                            "empty_value": null
+                        },
+                        "KnowbaseItem": {
+                            "column": "subject_knowbaseitems_id",
+                            "target": "glpi_knowbaseitems",
+                            "empty_value": null
+                        },
+                        "Line": {
+                            "column": "subject_lines_id",
+                            "target": "glpi_lines",
+                            "empty_value": null
+                        },
+                        "Link": {
+                            "column": "subject_links_id",
+                            "target": "glpi_links",
+                            "empty_value": null
+                        },
+                        "Monitor": {
+                            "column": "subject_monitors_id",
+                            "target": "glpi_monitors",
+                            "empty_value": null
+                        },
+                        "NetworkEquipment": {
+                            "column": "subject_networkequipments_id",
+                            "target": "glpi_networkequipments",
+                            "empty_value": null
+                        },
+                        "NetworkName": {
+                            "column": "subject_networknames_id",
+                            "target": "glpi_networknames",
+                            "empty_value": null
+                        },
+                        "Peripheral": {
+                            "column": "subject_peripherals_id",
+                            "target": "glpi_peripherals",
+                            "empty_value": null
+                        },
+                        "Phone": {
+                            "column": "subject_phones_id",
+                            "target": "glpi_phones",
+                            "empty_value": null
+                        },
+                        "Printer": {
+                            "column": "subject_printers_id",
+                            "target": "glpi_printers",
+                            "empty_value": null
+                        },
+                        "Problem": {
+                            "column": "subject_problems_id",
+                            "target": "glpi_problems",
+                            "empty_value": null
+                        },
+                        "Profile": {
+                            "column": "subject_profiles_id",
+                            "target": "glpi_profiles",
+                            "empty_value": null
+                        },
+                        "Project": {
+                            "column": "subject_projects_id",
+                            "target": "glpi_projects",
+                            "empty_value": null
+                        },
+                        "Reminder": {
+                            "column": "subject_reminders_id",
+                            "target": "glpi_reminders",
+                            "empty_value": null
+                        },
+                        "RSSFeed": {
+                            "column": "subject_rssfeeds_id",
+                            "target": "glpi_rssfeeds",
+                            "empty_value": null
+                        },
+                        "Software": {
+                            "column": "subject_softwares_id",
+                            "target": "glpi_softwares",
+                            "empty_value": null
+                        },
+                        "Supplier": {
+                            "column": "subject_suppliers_id",
+                            "target": "glpi_suppliers",
+                            "empty_value": null
+                        },
+                        "Ticket": {
+                            "column": "subject_tickets_id",
+                            "target": "glpi_tickets",
+                            "empty_value": null
+                        },
+                        "User": {
+                            "column": "subject_users_id",
+                            "target": "glpi_users",
+                            "empty_value": null
+                        },
+                        "SoftwareLicense": {
+                            "column": "subject_softwarelicenses_id",
+                            "target": "glpi_softwarelicenses",
+                            "empty_value": null
+                        },
+                        "Certificate": {
+                            "column": "subject_certificates_id",
+                            "target": "glpi_certificates",
+                            "empty_value": null
+                        }
+                    }
+                }
+            }
+        },
+        "glpi_planningrecalls": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": {
+                "items_id": {
+                    "discriminator": "itemtype",
+                    "selections": {
+                        "PlanningExternalEvent": {
+                            "column": "planningexternalevents_id",
+                            "target": "glpi_planningexternalevents",
+                            "empty_value": null
+                        },
+                        "ProjectTask": {
+                            "column": "projecttasks_id",
+                            "target": "glpi_projecttasks",
+                            "empty_value": null
+                        },
+                        "TicketTask": {
+                            "column": "tickettasks_id",
+                            "target": "glpi_tickettasks",
+                            "empty_value": null
+                        },
+                        "Reminder": {
+                            "column": "reminders_id",
+                            "target": "glpi_reminders",
+                            "empty_value": null
+                        },
+                        "ProblemTask": {
+                            "column": "problemtasks_id",
+                            "target": "glpi_problemtasks",
+                            "empty_value": null
+                        },
+                        "ChangeTask": {
+                            "column": "changetasks_id",
+                            "target": "glpi_changetasks",
+                            "empty_value": null
+                        }
+                    }
+                }
+            }
+        },
+        "glpi_projecttaskteams": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": {
+                "items_id": {
+                    "discriminator": "itemtype",
+                    "selections": {
+                        "User": {
+                            "column": "users_id",
+                            "target": "glpi_users",
+                            "empty_value": null
+                        },
+                        "Group": {
+                            "column": "groups_id",
+                            "target": "glpi_groups",
+                            "empty_value": null
+                        },
+                        "Supplier": {
+                            "column": "suppliers_id",
+                            "target": "glpi_suppliers",
+                            "empty_value": null
+                        },
+                        "Contact": {
+                            "column": "contacts_id",
+                            "target": "glpi_contacts",
+                            "empty_value": null
+                        }
+                    }
+                }
+            }
+        },
+        "glpi_projectteams": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": {
+                "items_id": {
+                    "discriminator": "itemtype",
+                    "selections": {
+                        "User": {
+                            "column": "users_id",
+                            "target": "glpi_users",
+                            "empty_value": null
+                        },
+                        "Group": {
+                            "column": "groups_id",
+                            "target": "glpi_groups",
+                            "empty_value": null
+                        },
+                        "Supplier": {
+                            "column": "suppliers_id",
+                            "target": "glpi_suppliers",
+                            "empty_value": null
+                        },
+                        "Contact": {
+                            "column": "contacts_id",
+                            "target": "glpi_contacts",
+                            "empty_value": null
+                        }
+                    }
+                }
+            }
+        },
+        "glpi_queuedchats": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_queuednotifications": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_registeredids": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_reservationitems": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": {
+                "items_id": {
+                    "discriminator": "itemtype",
+                    "selections": {
+                        "Computer": {
+                            "column": "computers_id",
+                            "target": "glpi_computers",
+                            "empty_value": null
+                        },
+                        "Monitor": {
+                            "column": "monitors_id",
+                            "target": "glpi_monitors",
+                            "empty_value": null
+                        },
+                        "NetworkEquipment": {
+                            "column": "networkequipments_id",
+                            "target": "glpi_networkequipments",
+                            "empty_value": null
+                        },
+                        "Peripheral": {
+                            "column": "peripherals_id",
+                            "target": "glpi_peripherals",
+                            "empty_value": null
+                        },
+                        "Phone": {
+                            "column": "phones_id",
+                            "target": "glpi_phones",
+                            "empty_value": null
+                        },
+                        "Printer": {
+                            "column": "printers_id",
+                            "target": "glpi_printers",
+                            "empty_value": null
+                        },
+                        "Software": {
+                            "column": "softwares_id",
+                            "target": "glpi_softwares",
+                            "empty_value": null
+                        }
+                    }
+                }
+            }
+        },
+        "glpi_savedsearches": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_savedsearches_users": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": []
+        },
+        "glpi_vobjects": {
+            "identity_fields": [
+                "itemtype"
+            ],
+            "typed": {
+                "items_id": {
+                    "discriminator": "itemtype",
+                    "selections": {
+                        "PlanningExternalEvent": {
+                            "column": "planningexternalevents_id",
+                            "target": "glpi_planningexternalevents",
+                            "empty_value": null
+                        },
+                        "ProjectTask": {
+                            "column": "projecttasks_id",
+                            "target": "glpi_projecttasks",
+                            "empty_value": null
+                        },
+                        "TicketTask": {
+                            "column": "tickettasks_id",
+                            "target": "glpi_tickettasks",
+                            "empty_value": null
+                        },
+                        "Reminder": {
+                            "column": "reminders_id",
+                            "target": "glpi_reminders",
+                            "empty_value": null
+                        },
+                        "ProblemTask": {
+                            "column": "problemtasks_id",
+                            "target": "glpi_problemtasks",
+                            "empty_value": null
+                        },
+                        "ChangeTask": {
+                            "column": "changetasks_id",
+                            "target": "glpi_changetasks",
+                            "empty_value": null
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "core_tables": [
+        "glpi_alerts",
+        "glpi_apiclients",
+        "glpi_applianceenvironments",
+        "glpi_appliances",
+        "glpi_appliances_items",
+        "glpi_appliances_items_relations",
+        "glpi_appliancetypes",
+        "glpi_authldapreplicates",
+        "glpi_authldaps",
+        "glpi_authmails",
+        "glpi_autoupdatesystems",
+        "glpi_blacklistedmailcontents",
+        "glpi_blacklists",
+        "glpi_budgets",
+        "glpi_budgettypes",
+        "glpi_businesscriticities",
+        "glpi_calendars",
+        "glpi_calendars_holidays",
+        "glpi_calendarsegments",
+        "glpi_cartridgeitems",
+        "glpi_cartridgeitems_printermodels",
+        "glpi_cartridgeitemtypes",
+        "glpi_cartridges",
+        "glpi_certificates",
+        "glpi_certificates_items",
+        "glpi_certificatetypes",
+        "glpi_changecosts",
+        "glpi_changes",
+        "glpi_changes_groups",
+        "glpi_changes_items",
+        "glpi_changes_problems",
+        "glpi_changes_suppliers",
+        "glpi_changes_tickets",
+        "glpi_changes_users",
+        "glpi_changetasks",
+        "glpi_changetemplatehiddenfields",
+        "glpi_changetemplatemandatoryfields",
+        "glpi_changetemplatepredefinedfields",
+        "glpi_changetemplates",
+        "glpi_changevalidations",
+        "glpi_clusters",
+        "glpi_clustertypes",
+        "glpi_computerantiviruses",
+        "glpi_computermodels",
+        "glpi_computers",
+        "glpi_computers_items",
+        "glpi_computertypes",
+        "glpi_computervirtualmachines",
+        "glpi_configs",
+        "glpi_consumableitems",
+        "glpi_consumableitemtypes",
+        "glpi_consumables",
+        "glpi_contacts",
+        "glpi_contacts_suppliers",
+        "glpi_contacttypes",
+        "glpi_contractcosts",
+        "glpi_contracts",
+        "glpi_contracts_items",
+        "glpi_contracts_suppliers",
+        "glpi_contracttypes",
+        "glpi_crontasklogs",
+        "glpi_crontasks",
+        "glpi_dashboards",
+        "glpi_datacenters",
+        "glpi_dcrooms",
+        "glpi_devicebatteries",
+        "glpi_devicebatterymodels",
+        "glpi_devicebatterytypes",
+        "glpi_devicecasemodels",
+        "glpi_devicecases",
+        "glpi_devicecasetypes",
+        "glpi_devicecontrolmodels",
+        "glpi_devicecontrols",
+        "glpi_devicedrivemodels",
+        "glpi_devicedrives",
+        "glpi_devicefirmwaremodels",
+        "glpi_devicefirmwares",
+        "glpi_devicefirmwaretypes",
+        "glpi_devicegenericmodels",
+        "glpi_devicegenerics",
+        "glpi_devicegenerictypes",
+        "glpi_devicegraphiccardmodels",
+        "glpi_devicegraphiccards",
+        "glpi_deviceharddrivemodels",
+        "glpi_deviceharddrives",
+        "glpi_devicememories",
+        "glpi_devicememorymodels",
+        "glpi_devicememorytypes",
+        "glpi_devicemotherboardmodels",
+        "glpi_devicemotherboards",
+        "glpi_devicenetworkcardmodels",
+        "glpi_devicenetworkcards",
+        "glpi_devicepcimodels",
+        "glpi_devicepcis",
+        "glpi_devicepowersupplies",
+        "glpi_devicepowersupplymodels",
+        "glpi_deviceprocessormodels",
+        "glpi_deviceprocessors",
+        "glpi_devicesensormodels",
+        "glpi_devicesensors",
+        "glpi_devicesensortypes",
+        "glpi_devicesimcards",
+        "glpi_devicesimcardtypes",
+        "glpi_devicesoundcardmodels",
+        "glpi_devicesoundcards",
+        "glpi_displaypreferences",
+        "glpi_documentcategories",
+        "glpi_documents",
+        "glpi_documents_items",
+        "glpi_documenttypes",
+        "glpi_domainrecords",
+        "glpi_domainrecordtypes",
+        "glpi_domainrelations",
+        "glpi_domains",
+        "glpi_domains_items",
+        "glpi_domaintypes",
+        "glpi_dropdowntranslations",
+        "glpi_enclosuremodels",
+        "glpi_enclosures",
+        "glpi_entities",
+        "glpi_entities_knowbaseitems",
+        "glpi_entities_reminders",
+        "glpi_entities_rssfeeds",
+        "glpi_events",
+        "glpi_fieldblacklists",
+        "glpi_fieldunicities",
+        "glpi_filesystems",
+        "glpi_fqdns",
+        "glpi_groups",
+        "glpi_groups_knowbaseitems",
+        "glpi_groups_problems",
+        "glpi_groups_reminders",
+        "glpi_groups_rssfeeds",
+        "glpi_groups_tickets",
+        "glpi_groups_users",
+        "glpi_holidays",
+        "glpi_impactcompounds",
+        "glpi_impactcontexts",
+        "glpi_impactitems",
+        "glpi_impactrelations",
+        "glpi_infocoms",
+        "glpi_interfacetypes",
+        "glpi_ipaddresses",
+        "glpi_ipaddresses_ipnetworks",
+        "glpi_ipnetworks",
+        "glpi_ipnetworks_vlans",
+        "glpi_items_clusters",
+        "glpi_items_devicebatteries",
+        "glpi_items_devicecases",
+        "glpi_items_devicecontrols",
+        "glpi_items_devicedrives",
+        "glpi_items_devicefirmwares",
+        "glpi_items_devicegenerics",
+        "glpi_items_devicegraphiccards",
+        "glpi_items_deviceharddrives",
+        "glpi_items_devicememories",
+        "glpi_items_devicemotherboards",
+        "glpi_items_devicenetworkcards",
+        "glpi_items_devicepcis",
+        "glpi_items_devicepowersupplies",
+        "glpi_items_deviceprocessors",
+        "glpi_items_devicesensors",
+        "glpi_items_devicesimcards",
+        "glpi_items_devicesoundcards",
+        "glpi_items_disks",
+        "glpi_items_enclosures",
+        "glpi_items_kanbans",
+        "glpi_items_operatingsystems",
+        "glpi_items_problems",
+        "glpi_items_projects",
+        "glpi_items_racks",
+        "glpi_items_softwarelicenses",
+        "glpi_items_softwareversions",
+        "glpi_items_tickets",
+        "glpi_itilcategories",
+        "glpi_itilfollowups",
+        "glpi_itilfollowuptemplates",
+        "glpi_itils_projects",
+        "glpi_itilsolutions",
+        "glpi_knowbaseitemcategories",
+        "glpi_knowbaseitems",
+        "glpi_knowbaseitems_comments",
+        "glpi_knowbaseitems_items",
+        "glpi_knowbaseitems_profiles",
+        "glpi_knowbaseitems_revisions",
+        "glpi_knowbaseitems_users",
+        "glpi_knowbaseitemtranslations",
+        "glpi_lineoperators",
+        "glpi_lines",
+        "glpi_linetypes",
+        "glpi_links",
+        "glpi_links_itemtypes",
+        "glpi_locations",
+        "glpi_logs",
+        "glpi_mailcollectors",
+        "glpi_manufacturers",
+        "glpi_monitormodels",
+        "glpi_monitors",
+        "glpi_monitortypes",
+        "glpi_netpoints",
+        "glpi_networkaliases",
+        "glpi_networkequipmentmodels",
+        "glpi_networkequipments",
+        "glpi_networkequipmenttypes",
+        "glpi_networkinterfaces",
+        "glpi_networknames",
+        "glpi_networkportaggregateorigins",
+        "glpi_networkportaggregates",
+        "glpi_networkportaliases",
+        "glpi_networkportdialups",
+        "glpi_networkportethernets",
+        "glpi_networkportfiberchannels",
+        "glpi_networkportlocals",
+        "glpi_networkports",
+        "glpi_networkports_networkports",
+        "glpi_networkports_vlans",
+        "glpi_networkportwifis",
+        "glpi_networks",
+        "glpi_notepads",
+        "glpi_notificationchatconfigs",
+        "glpi_notifications",
+        "glpi_notifications_notificationtemplates",
+        "glpi_notificationtargets",
+        "glpi_notificationtemplates",
+        "glpi_notificationtemplatetranslations",
+        "glpi_notimportedemails",
+        "glpi_objectlocks",
+        "glpi_oidc_config",
+        "glpi_oidc_mapping",
+        "glpi_oidc_users",
+        "glpi_olalevelactions",
+        "glpi_olalevelcriterias",
+        "glpi_olalevels",
+        "glpi_olalevels_tickets",
+        "glpi_olas",
+        "glpi_operatingsystemarchitectures",
+        "glpi_operatingsystemeditions",
+        "glpi_operatingsystemkernels",
+        "glpi_operatingsystemkernelversions",
+        "glpi_operatingsystems",
+        "glpi_operatingsystemservicepacks",
+        "glpi_operatingsystemversions",
+        "glpi_passivedcequipmentmodels",
+        "glpi_passivedcequipments",
+        "glpi_passivedcequipmenttypes",
+        "glpi_pdumodels",
+        "glpi_pdus",
+        "glpi_pdus_plugs",
+        "glpi_pdus_racks",
+        "glpi_pdutypes",
+        "glpi_peripheralmodels",
+        "glpi_peripherals",
+        "glpi_peripheraltypes",
+        "glpi_phonemodels",
+        "glpi_phonepowersupplies",
+        "glpi_phones",
+        "glpi_phonetypes",
+        "glpi_planningeventcategories",
+        "glpi_planningexternaleventguests",
+        "glpi_planningexternalevents",
+        "glpi_planningexternaleventtemplates",
+        "glpi_planningrecalls",
+        "glpi_plugins",
+        "glpi_plugs",
+        "glpi_printermodels",
+        "glpi_printers",
+        "glpi_printertypes",
+        "glpi_problemcosts",
+        "glpi_problems",
+        "glpi_problems_suppliers",
+        "glpi_problems_tickets",
+        "glpi_problems_users",
+        "glpi_problemtasks",
+        "glpi_problemtemplatehiddenfields",
+        "glpi_problemtemplatemandatoryfields",
+        "glpi_problemtemplatepredefinedfields",
+        "glpi_problemtemplates",
+        "glpi_profilerights",
+        "glpi_profiles",
+        "glpi_profiles_reminders",
+        "glpi_profiles_rssfeeds",
+        "glpi_profiles_users",
+        "glpi_projectcosts",
+        "glpi_projects",
+        "glpi_projectstates",
+        "glpi_projecttasks",
+        "glpi_projecttasks_tickets",
+        "glpi_projecttaskteams",
+        "glpi_projecttasktemplates",
+        "glpi_projecttasktypes",
+        "glpi_projectteams",
+        "glpi_projecttypes",
+        "glpi_queuedchats",
+        "glpi_queuednotifications",
+        "glpi_rackmodels",
+        "glpi_racks",
+        "glpi_racktypes",
+        "glpi_registeredids",
+        "glpi_reminders",
+        "glpi_reminders_users",
+        "glpi_remindertranslations",
+        "glpi_requesttypes",
+        "glpi_reservationitems",
+        "glpi_reservations",
+        "glpi_rssfeeds",
+        "glpi_rssfeeds_users",
+        "glpi_ruleactions",
+        "glpi_rulecriterias",
+        "glpi_rulerightparameters",
+        "glpi_rules",
+        "glpi_savedsearches",
+        "glpi_savedsearches_alerts",
+        "glpi_savedsearches_users",
+        "glpi_slalevelactions",
+        "glpi_slalevelcriterias",
+        "glpi_slalevels",
+        "glpi_slalevels_tickets",
+        "glpi_slas",
+        "glpi_slms",
+        "glpi_softwarecategories",
+        "glpi_softwarelicenses",
+        "glpi_softwarelicensetypes",
+        "glpi_softwares",
+        "glpi_softwareversions",
+        "glpi_solutiontemplates",
+        "glpi_solutiontypes",
+        "glpi_specialstatuses",
+        "glpi_ssovariables",
+        "glpi_states",
+        "glpi_suppliers",
+        "glpi_suppliers_tickets",
+        "glpi_suppliertypes",
+        "glpi_taskcategories",
+        "glpi_tasktemplates",
+        "glpi_ticketcosts",
+        "glpi_ticketrecurrents",
+        "glpi_tickets",
+        "glpi_tickets_tickets",
+        "glpi_tickets_users",
+        "glpi_ticketsatisfactions",
+        "glpi_tickettasks",
+        "glpi_tickettemplatehiddenfields",
+        "glpi_tickettemplatemandatoryfields",
+        "glpi_tickettemplatepredefinedfields",
+        "glpi_tickettemplates",
+        "glpi_ticketvalidations",
+        "glpi_transfers",
+        "glpi_usercategories",
+        "glpi_useremails",
+        "glpi_users",
+        "glpi_usertitles",
+        "glpi_virtualmachinestates",
+        "glpi_virtualmachinesystems",
+        "glpi_virtualmachinetypes",
+        "glpi_vlans",
+        "glpi_vobjects",
+        "glpi_wifinetworks"
+    ],
+    "relation_owners": {
+        "glpi_documents_items": {
+            "column": "documents_id",
+            "table": "glpi_documents",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "glpi_contracts_items": {
+            "column": "contracts_id",
+            "table": "glpi_contracts",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "glpi_certificates_items": {
+            "column": "certificates_id",
+            "table": "glpi_certificates",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "glpi_items_projects": {
+            "column": "projects_id",
+            "table": "glpi_projects",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "glpi_items_problems": {
+            "column": "problems_id",
+            "table": "glpi_problems",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "glpi_changes_items": {
+            "column": "changes_id",
+            "table": "glpi_changes",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        }
+    },
+    "impact_kinds": {
+        "Appliance": {
+            "table": "glpi_appliances",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "Cluster": {
+            "table": "glpi_clusters",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "Computer": {
+            "table": "glpi_computers",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "Datacenter": {
+            "table": "glpi_datacenters",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "DCRoom": {
+            "table": "glpi_dcrooms",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "Domain": {
+            "table": "glpi_domains",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "Enclosure": {
+            "table": "glpi_enclosures",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "Monitor": {
+            "table": "glpi_monitors",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "NetworkEquipment": {
+            "table": "glpi_networkequipments",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "PDU": {
+            "table": "glpi_pdus",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "Peripheral": {
+            "table": "glpi_peripherals",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "Phone": {
+            "table": "glpi_phones",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "Printer": {
+            "table": "glpi_printers",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "Rack": {
+            "table": "glpi_racks",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "Software": {
+            "table": "glpi_softwares",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "AuthLDAP": {
+            "table": "glpi_authldaps",
+            "entity_column": null,
+            "recursive_column": null,
+            "always_recursive": false
+        },
+        "CartridgeItem": {
+            "table": "glpi_cartridgeitems",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "Contract": {
+            "table": "glpi_contracts",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "CronTask": {
+            "table": "glpi_crontasks",
+            "entity_column": null,
+            "recursive_column": null,
+            "always_recursive": false
+        },
+        "DeviceSimcard": {
+            "table": "glpi_devicesimcards",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "Entity": {
+            "table": "glpi_entities",
+            "entity_column": "id",
+            "recursive_column": null,
+            "always_recursive": true
+        },
+        "Group": {
+            "table": "glpi_groups",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "ITILCategory": {
+            "table": "glpi_itilcategories",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "Line": {
+            "table": "glpi_lines",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "Location": {
+            "table": "glpi_locations",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "MailCollector": {
+            "table": "glpi_mailcollectors",
+            "entity_column": null,
+            "recursive_column": null,
+            "always_recursive": false
+        },
+        "Notification": {
+            "table": "glpi_notifications",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "Profile": {
+            "table": "glpi_profiles",
+            "entity_column": null,
+            "recursive_column": null,
+            "always_recursive": false
+        },
+        "Project": {
+            "table": "glpi_projects",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "SLM": {
+            "table": "glpi_slms",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "SoftwareLicense": {
+            "table": "glpi_softwarelicenses",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "Supplier": {
+            "table": "glpi_suppliers",
+            "entity_column": "entities_id",
+            "recursive_column": "is_recursive",
+            "always_recursive": false
+        },
+        "User": {
+            "table": "glpi_users",
+            "entity_column": null,
+            "recursive_column": null,
+            "always_recursive": false
+        }
+    }
+}

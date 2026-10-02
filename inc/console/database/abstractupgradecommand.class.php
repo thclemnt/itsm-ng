@@ -41,8 +41,24 @@ abstract class AbstractUpgradeCommand extends AbstractCommand implements ForceNo
                 $output->writeln('Pending history: ' . $version);
             }
             $output->writeln('Existing data is preserved; installation seeds and historical MySQL scripts are never replayed during adoption.');
+            if (isset($plan['canonical_preflight'])) {
+                $output->writeln($plan['canonical_preflight'], OutputInterface::OUTPUT_RAW);
+            }
             foreach ($plan as $section => $details) {
                 if (!is_array($details)) {
+                    continue;
+                }
+                if (($details['kind'] ?? null) === 'data_prerequisite') {
+                    $receipt = $details['receipt'];
+                    $output->writeln('Elective data prerequisite: ' . $details['version']);
+                    $output->writeln($details['description'], OutputInterface::OUTPUT_RAW);
+                    $output->writeln('Frozen source format: ' . $receipt['format'] . '; fingerprint: ' . $receipt['fingerprint']);
+                    $output->writeln('Validated source counts: ' . json_encode($receipt['counts'], JSON_THROW_ON_ERROR));
+                    $output->writeln('Planned inserts: ' . count($details['records']) . '; identity remaps: ' . count($details['updates'])
+                        . '; deferred document rows: ' . count($receipt['deferred_documents']) . '.');
+                    $output->writeln('Keep the historical source plugin inactive and all source/application writers stopped through validation, ledger bootstrap and canonical replay.');
+                    // Source values are data, including text beginning with SQL
+                    // keywords. Never collect them as executable migration SQL.
                     continue;
                 }
                 $statements = [];

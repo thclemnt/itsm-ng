@@ -77,6 +77,89 @@ class Domain extends CommonDropdown
         }
     }
 
+    public function getTabNameForItem(CommonGLPI $item, $withtemplate = 0)
+    {
+        if (!$item instanceof Supplier || $withtemplate || !Session::haveRight('domain', READ)
+            || !$item->can($item->getID(), READ)) {
+            return '';
+        }
+        return !empty($_SESSION['glpishow_count_on_tabs'])
+            ? self::createTabEntry(self::getTypeName(2), self::countForSupplier($item))
+            : self::getTypeName(2);
+    }
+
+    public static function displayTabContentForItem(CommonGLPI $item, $tabnum = 1, $withtemplate = 0)
+    {
+        return $item instanceof Supplier && !$withtemplate ? self::showForSupplier($item) : false;
+    }
+
+    /** Direct commercial ownership is separate from the financial supplier on Infocom. */
+    public static function supplierDomains(Supplier $supplier): array
+    {
+        global $DB;
+
+        if ($supplier->isNewItem() || !Session::haveRight('domain', READ) || !$supplier->can($supplier->getID(), READ)) {
+            return [];
+        }
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            return (new \itsmng\Database\Repository\DomainRepository($em))->forSupplier(
+                (int)$supplier->getID(),
+                getEntitiesRestrictCriteria(self::getTable(), '', '', true)
+            );
+        } finally {
+            $em->close();
+        }
+    }
+
+    public static function countForSupplier(Supplier $supplier): int
+    {
+        global $DB;
+
+        if ($supplier->isNewItem() || !Session::haveRight('domain', READ) || !$supplier->can($supplier->getID(), READ)) {
+            return 0;
+        }
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            return (new \itsmng\Database\Repository\DomainRepository($em))->countForSupplier(
+                (int)$supplier->getID(),
+                getEntitiesRestrictCriteria(self::getTable(), '', '', true)
+            );
+        } finally {
+            $em->close();
+        }
+    }
+
+    public static function showForSupplier(Supplier $supplier): bool
+    {
+        if ($supplier->isNewItem() || !Session::haveRight('domain', READ) || !$supplier->can($supplier->getID(), READ)) {
+            return false;
+        }
+        $rows = self::supplierDomains($supplier);
+        $fields = [__('Name'), Entity::getTypeName(1), __('Group in charge'), __('Technician in charge'), DomainType::getTypeName(1), __('Creation date'), __('Expiration date')];
+        $values = [];
+        $escape = static fn (?string $value): string => htmlspecialchars($value ?? '', ENT_QUOTES, 'UTF-8');
+        Session::initNavigateListItems(self::class, sprintf(__('%1$s = %2$s'), Supplier::getTypeName(1), $supplier->getName()));
+        foreach ($rows as $row) {
+            Session::addToNavigateListItems(self::class, $row['id']);
+            $values[] = [
+                "<a href='" . $escape(self::getFormURLWithID($row['id'])) . "'>" . $escape($row['name']) . '</a>',
+                $escape($row['entity_name']),
+                $escape($row['group_name']),
+                $escape($row['technician_name']),
+                $escape($row['type_name']),
+                $escape(Html::convDateTime($row['date_creation'])),
+                $row['date_expiration'] === null ? __('Does not expire') : $escape(Html::convDateTime($row['date_expiration'])),
+            ];
+        }
+        renderTwigTemplate('table.twig', [
+            'id' => 'tableForSupplierDomains',
+            'fields' => $fields,
+            'values' => $values,
+        ]);
+        return true;
+    }
+
     public function rawSearchOptions()
     {
         $tab = [];
@@ -110,6 +193,23 @@ class Domain extends CommonDropdown
            'linkfield'          => 'users_id_tech',
            'name'               => __('Technician in charge'),
            'datatype'           => 'dropdown'
+        ];
+
+        $tab[] = [
+           'id'                 => '4',
+           'table'              => 'glpi_suppliers',
+           'field'              => 'name',
+           'linkfield'          => 'suppliers_id',
+           'name'               => Supplier::getTypeName(1),
+           'datatype'           => 'dropdown'
+        ];
+
+        $tab[] = [
+           'id'                 => '11',
+           'table'              => $this->getTable(),
+           'field'              => 'is_helpdesk_visible',
+           'name'               => __('Associable to a ticket'),
+           'datatype'           => 'bool'
         ];
 
         $tab[] = [
@@ -341,6 +441,18 @@ class Domain extends CommonDropdown
                        'itemtype' => Group::class,
                        'value' => $this->fields['groups_id_tech'] ?? '',
                        'actions' => getItemActionButtons(['info', 'add'], "Group"),
+                    ],
+                    Supplier::getTypeName(1) => [
+                       'name' => 'suppliers_id',
+                       'type' => 'select',
+                       'itemtype' => Supplier::class,
+                       'value' => $this->fields['suppliers_id'] ?? 0,
+                       'actions' => getItemActionButtons(['info', 'add'], Supplier::class),
+                    ],
+                    __('Associable to a ticket') => [
+                       'name' => 'is_helpdesk_visible',
+                       'type' => 'checkbox',
+                       'value' => $this->fields['is_helpdesk_visible'] ?? true,
                     ],
                     __('Others') => [
                        'name' => 'others',

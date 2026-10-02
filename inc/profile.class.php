@@ -1166,6 +1166,11 @@ class Profile extends CommonDBTM
               'field'     => 'domain'
            ],
            [
+              'itemtype'  => DomainType::class,
+              'label'     => DomainType::getTypeName(Session::getPluralNumber()),
+              'field'     => 'domaintype'
+           ],
+           [
               'itemtype'  => 'Appliance',
               'label'     => Appliance::getTypeName(Session::getPluralNumber()),
               'field'     => 'appliance'
@@ -2584,6 +2589,20 @@ class Profile extends CommonDBTM
            'joinparams'         => [
               'jointype'           => 'child',
               'condition'          => "AND `NEWTABLE`.`name`= 'dropdown'"
+           ]
+        ];
+
+        $tab[] = [
+           'id'                 => '180',
+           'table'              => 'glpi_profilerights',
+           'field'              => 'rights',
+           'name'               => DomainType::getTypeName(Session::getPluralNumber()),
+           'datatype'           => 'right',
+           'rightclass'         => DomainType::class,
+           'rightname'          => 'domaintype',
+           'joinparams'         => [
+              'jointype'           => 'child',
+              'condition'          => "AND `NEWTABLE`.`name`= 'domaintype'"
            ]
         ];
 

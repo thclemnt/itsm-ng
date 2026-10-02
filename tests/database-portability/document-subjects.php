@@ -10,6 +10,8 @@ use itsmng\Database\EntityRegistry;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\MappedStorage;
 use itsmng\Database\Migration\DocumentSubjects;
+use itsmng\Database\Migration\DomainDocuments20261006;
+use itsmng\Database\Migration\Ledger;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ContentRepository;
 use itsmng\Database\Repository\TransferBindingRepository;
@@ -36,6 +38,8 @@ function verify(bool $ok, string $message): void
 verify(str_starts_with($DB->dbdefault, 'itsm_port_'), 'Dedicated fixture required');
 $connection = $DB->getDoctrineConnection();
 $migration = new DocumentSubjects();
+$frozenTargets = (new ReflectionMethod(DocumentSubjects::class, 'targets'))->invoke(null);
+verify(count($frozenTargets) === 33 && !isset($frozenTargets['Domain']), 'Historical document migration retains its frozen thirty-three subjects');
 $migration->apply($connection);
 $DB->clearSchemaCache();
 $_SESSION['glpiextauth'] = 0;
@@ -65,7 +69,7 @@ $expected = $CFG_GLPI['document_types'];
 $actual = array_keys($branches);
 sort($expected);
 sort($actual);
-verify($actual === $expected && count($branches) === 33, 'Every configured document subject has an owning association');
+verify($actual === $expected && count($branches) === 34, 'Every configured document subject has an owning association');
 $DB->beginTransaction();
 try {
     $sameId = 4294968601;
@@ -164,7 +168,10 @@ foreach ([['Document', 'glpi_documents_items', 'documents_id']] as [$type, $tabl
     $parentTable = (new $type())->getTable();
     $parent = $fixtures->create($parentTable);
     $id = $rootId = null;
+    $domainStage = new DomainDocuments20261006();
+    $domainState = Ledger::state($connection, DomainDocuments20261006::VERSION);
     try {
+        $connection->delete('itsmng_migrations', ['version' => DomainDocuments20261006::VERSION]);
         $drop = $platform instanceof PostgreSQLPlatform || $platform instanceof MariaDbPlatform ? ' DROP CONSTRAINT ' : ' DROP CHECK ';
         $connection->executeStatement('ALTER TABLE ' . $table . $drop . $table . '_typed_item_kind');
         $before = $manager->introspectTable($table);
@@ -232,6 +239,8 @@ foreach ([['Document', 'glpi_documents_items', 'documents_id']] as [$type, $tabl
         verify($failed && !$manager->introspectTable($table)->hasColumn('monitors_id'), 'Conflicting canonical/legacy asset refuses before DDL: ' . $type);
         $connection->update($table, ['computers_id' => $computer], ['id' => $id]);
         $migration->apply($connection);
+        verify(!$manager->introspectTable($table)->hasColumn('domains_id'), 'Frozen historical replay does not acquire the later Domain subject');
+        $domainStage->apply($connection);
         $DB->clearSchemaCache();
         $row = $read($table, $id);
         verify($read($table, $rootId)['subject_entities_id'] === 0 && $read($table, $rootId)['items_id'] === 0, 'Upgrade preserves real root subject zero');
@@ -242,6 +251,7 @@ foreach ([['Document', 'glpi_documents_items', 'documents_id']] as [$type, $tabl
         foreach ($migration->apply($connection) as $entry) {
             verify(!$entry['sql'] && !$entry['key_sql'] && !$entry['constraint_sql'], 'Upgrade retry is idempotent: ' . $type);
         }
+        verify($domainStage->plan($connection) === [], 'Appended Domain document stage is idempotent after historical replay');
     } finally {
         if ($rootId !== null) {
             $connection->delete($table, ['id' => $rootId]);
@@ -251,6 +261,11 @@ foreach ([['Document', 'glpi_documents_items', 'documents_id']] as [$type, $tabl
         }
         $connection->delete($parentTable, ['id' => $parent]);
         $connection->delete('glpi_computers', ['id' => $computer]);
+        $domainStage->apply($connection);
+        if ($domainState !== null) {
+            Ledger::save($connection, DomainDocuments20261006::VERSION, $domainState);
+        }
+        $DB->clearSchemaCache();
     }
 }
-echo "PASS: thirty-three document subject FKs, real root, independent roles, native/public writes, queries, transfer, purge and frozen upgrade\n";
+echo "PASS: thirty-four current document subject FKs and frozen thirty-three-subject replay, real root, independent roles, native/public writes, queries, transfer, purge and frozen upgrade\n";

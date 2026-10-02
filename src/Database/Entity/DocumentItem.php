@@ -88,6 +88,12 @@ class DocumentItem implements \itsmng\Database\Mapping\LegacyInput
     #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?Contract $contract = null;
 
+    #[ORM\ManyToOne(targetEntity: Domain::class)]
+    #[ORM\JoinColumn(name: 'domains_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\DiscriminatedBy('itemtype', 'items_id', ['Domain'])]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
+    public ?Domain $domain = null;
+
     #[ORM\ManyToOne(targetEntity: Document::class)]
     #[ORM\JoinColumn(name: 'linked_documents_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[\itsmng\Database\Mapping\DiscriminatedBy('itemtype', 'items_id', ['Document'])]

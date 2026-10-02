@@ -20,7 +20,7 @@ export interface SeedTicketResult {
 
 export type ActorPanelRole = 'requester' | 'observer' | 'assign';
 
-interface ApiSession {
+export interface ApiSession {
   apiUrl: string;
   sessionToken: string;
   userId: number;
@@ -87,7 +87,7 @@ async function parseJsonResponse<T>(response: APIResponse, context: string): Pro
   }
 }
 
-async function initApiSession(request: APIRequestContext): Promise<ApiSession> {
+export async function initApiSession(request: APIRequestContext): Promise<ApiSession> {
   const apiUrl = getApiUrl(request);
   const appToken = getAppToken();
   const credentials = Buffer.from('itsm:itsm').toString('base64');
@@ -116,7 +116,7 @@ async function initApiSession(request: APIRequestContext): Promise<ApiSession> {
   return { apiUrl, sessionToken: data.session_token, userId };
 }
 
-async function closeApiSession(request: APIRequestContext, session: ApiSession): Promise<void> {
+export async function closeApiSession(request: APIRequestContext, session: ApiSession): Promise<void> {
   const response = await request.get(`${session.apiUrl}killSession`, {
     headers: {
       'App-Token': getAppToken(),
@@ -130,7 +130,7 @@ async function closeApiSession(request: APIRequestContext, session: ApiSession):
   }
 }
 
-async function createItem(
+export async function createItem(
   request: APIRequestContext,
   session: ApiSession,
   itemtype: string,
@@ -155,7 +155,7 @@ async function createItem(
   return Number(data.id);
 }
 
-async function getItem<T>(
+export async function getItem<T>(
   request: APIRequestContext,
   session: ApiSession,
   itemtype: string,

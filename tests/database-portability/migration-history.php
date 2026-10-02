@@ -9,6 +9,7 @@ use itsmng\Database\Migration\ApplianceAssets20261005;
 use itsmng\Database\Migration\ApplianceRecipients20261005;
 use itsmng\Database\Migration\Baseline20261001;
 use itsmng\Database\Migration\Booleans20261002;
+use itsmng\Database\Migration\DomainDocuments20261006;
 use itsmng\Database\Migration\History;
 use itsmng\Database\Migration\Ledger;
 use itsmng\Database\Migration\LegacyToOrm;
@@ -28,6 +29,12 @@ if (!is_file($directory . '/config_db.php')) {
 define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
+$started = $phaseStarted = microtime(true);
+$checkpoint = static function (string $phase) use ($started, &$phaseStarted): void {
+    $now = microtime(true);
+    echo $phase . ': phase=' . number_format($now - $phaseStarted, 3, '.', '') . 's, elapsed=' . number_format($now - $started, 3, '.', '') . "s\n";
+    $phaseStarted = $now;
+};
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
     exit(1);
@@ -213,8 +220,27 @@ try {
 }
 verify(Ledger::state($connection, LegacyToOrm::VERSION) === null, 'Invalid data creates no adoption journal');
 $connection->delete('glpi_useremails', ['email' => 'history-orphan@example.invalid']);
+// Legitimate pre-existing core Domain documents also need the frozen data
+// prerequisite, even when no Domains plugin tables or aliases exist at all.
+$connection->insert('glpi_domains', ['id' => 801, 'name' => 'Existing core Domain']);
+$connection->insert('glpi_documents', ['id' => 802, 'name' => 'Original core attachment']);
+$sourceTimezone = $postgres ? $connection->fetchOne('SHOW TIME ZONE') : $connection->fetchOne('SELECT @@SESSION.time_zone');
+$connection->executeStatement($postgres ? "SET TIME ZONE '+02:00'" : "SET time_zone = '+02:00'");
+try {
+    $connection->insert('glpi_documents_items', ['id' => 803, 'documents_id' => 802, 'items_id' => 801, 'itemtype' => 'Domain', 'entities_id' => 0, 'users_id' => 0,
+        'is_recursive' => $postgres ? true : 1, 'timeline_position' => 1, 'date_mod' => '2026-02-03 04:05:06', 'date_creation' => '2026-02-04 05:06:07', 'date' => '2026-02-05 06:07:08'], $postgres ? ['is_recursive' => \Doctrine\DBAL\Types\Types::BOOLEAN] : []);
+    $documentInstantSql = $postgres ? 'SELECT EXTRACT(EPOCH FROM date_mod) FROM glpi_documents_items WHERE id=803' : 'SELECT UNIX_TIMESTAMP(date_mod) FROM glpi_documents_items WHERE id=803';
+    $documentInstant = $connection->fetchOne($documentInstantSql);
+    $documentPreview = $history->plan($connection);
+    verify(($documentPreview['domain_prerequisite']['version'] ?? null) === DomainDocuments20261006::GENERAL_RECEIPT
+        && str_contains($documentPreview['canonical_preflight'], 'Deferred') && Ledger::state($connection, DomainDocuments20261006::GENERAL_RECEIPT) === null
+        && (int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_documents_items WHERE id=803') === 1, 'No-plugin Domain document preview is read-only and honestly defers canonical audits');
+} finally {
+    $postgres ? $connection->fetchOne('SELECT set_config(?, ?, false)', ['TimeZone', $sourceTimezone]) : $connection->executeStatement('SET time_zone = ?', [$sourceTimezone]);
+}
 // Exercise the supported public updater against populated frozen tables, before
 // any current-only association columns exist. It must never replay legacy scripts.
+$checkpoint('Raw baseline/seeds and invalid-data audits');
 $upgradeConfig = sys_get_temp_dir() . '/itsm-history-upgrade-' . bin2hex(random_bytes(6));
 mkdir($upgradeConfig, 0700);
 $class = $postgres ? 'DBpgsql' : 'DBmysql';
@@ -242,8 +268,16 @@ try {
     unlink($upgradeConfig . '/glpicrypt.key');
     rmdir($upgradeConfig);
 }
+$checkpoint('Actual populated db:update');
 $database->clearSchemaCache();
 verify((new SchemaCheck())->differences($connection) === [], 'Populated historical replay converges to the complete required schema');
+$document = $connection->fetchAssociative('SELECT id, documents_id, domains_id, items_id, users_id, is_recursive, timeline_position FROM glpi_documents_items WHERE id=803');
+$documentReceipt = Ledger::state($connection, DomainDocuments20261006::GENERAL_RECEIPT);
+verify((int)$document['id'] === 803 && (int)$document['documents_id'] === 802 && (int)$document['domains_id'] === 801 && (int)$document['items_id'] === 801
+    && $document['users_id'] === null && (bool)$document['is_recursive'] && (int)$document['timeline_position'] === 1
+    && (float)$connection->fetchOne($documentInstantSql) === (float)$documentInstant, 'Actual populated db:update preserves core-only Domain document ownership, full-row semantics and native timestamp instant across sessions');
+verify($documentReceipt['complete'] && $documentReceipt['documents_restored'] && $documentReceipt['timestamp_timezone'] === '+00:00'
+    && !$manager->tablesExist(['glpi_plugin_domains_domains']), 'General document prerequisite and restoration share the ledger without any plugin source');
 verify($connection->fetchOne('SELECT old_value FROM glpi_logs WHERE id = ?', [$auditId]) === $audit, 'Audit data and its original ID survive');
 verify($connection->fetchOne('SELECT password FROM glpi_users WHERE id = 2') === $password, 'Customer account data survives adoption');
 verify($connection->fetchOne('SELECT entities_id FROM glpi_entities WHERE id = 0') === null && $connection->fetchOne('SELECT computermodels_id FROM glpi_computers WHERE id = ?', [$legacyId]) === null, 'Root and optional zero sentinels become real nullable relationships');
@@ -339,7 +373,8 @@ if ($postgres) {
 $large = 4294967301;
 $writer->insert('glpi_logs', ['id' => $large, 'items_id' => $large, 'itemtype' => 'Computer', 'old_value' => 'Post-adoption wide audit']);
 verify((new RecordRepository(Orm::create($database)))->find('glpi_logs', 'id', $large)['items_id'] === $large, 'Post-adoption ORM preserves identifiers above unsigned 32-bit range');
-// Interrupt the actual fresh installation in the final OS subject stage
+$checkpoint('Completed adoption retries and native sequence behavior');
+// Interrupt the actual fresh installation in the OS subject stage
 // after earlier history completion, then prove installation remains retryable.
 if ($postgres) {
     foreach ($manager->listTableNames() as $name) {
@@ -374,4 +409,5 @@ verify((new SchemaCheck())->differences($connection) === [], 'Retried actual fre
 foreach (History::VERSIONS as $version) {
     verify(Ledger::state($connection, $version)['complete'], 'Retried actual install completes every appended history version: ' . $version);
 }
-echo $database->getProvider() . ": frozen baseline/seed replay, conflicting and interrupted DDL, seed rollback, populated adoption, invalid booleans/references/project/appliance/OS subjects before DDL, separate owners, nested duplicate preservation and project roles, dynamic licensed OS assignments, projections, preserved account/audit data, sequence synchronization, appended fresh-install retry and idempotency passed.\n";
+$checkpoint('Actual fresh-install interruption and retry');
+echo $database->getProvider() . ": frozen baseline/seed replay, conflicting and interrupted DDL, seed rollback, populated adoption, invalid booleans/references/project/appliance/OS subjects before DDL, separate owners, nested duplicate preservation and project roles, dynamic licensed OS assignments, Domain documents, projections, preserved account/audit data, sequence synchronization, appended fresh-install retry and idempotency passed.\n";

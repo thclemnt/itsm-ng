@@ -1,0 +1,9 @@
+{
+  "repository": "InfotelGLPI/domains",
+  "version": "2.1.0",
+  "commit": "e628ee87b84a87867365dbc77d06738e9e74a246",
+  "format": "infotel-domains-2.1.0-completed-v1",
+  "layout": "sql/empty-2.0.2.sql plus hook.php completed installation: no inline notepad or residual profiles table",
+  "fixture": "curated export; IDs can be supplied above 32 bits only in an explicitly widened export variant",
+  "fingerprint": "sha256(default PHP json_encode([format,[types,domains,items,configs]], JSON_THROW_ON_ERROR)); each table ordered by id, fixed reader SELECT field order, non-null scalar values stringified (boolean 1/0), NULL distinct from empty; raw historical dates retained"
+}

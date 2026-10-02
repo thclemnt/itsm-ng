@@ -88,7 +88,7 @@ abstract class StagedTypedItemMigration extends TypedItemMigration
                     $connection->executeStatement($statement);
                     $progress && $progress($phase, $statement);
                 }
-                $state['phase'] = $phase;
+                $state = $this->journalPhase($state, $phase);
                 Ledger::save($connection, $this->version(), $state);
             }
             // Recover the original comment even if a retry found the projection
@@ -104,10 +104,22 @@ abstract class StagedTypedItemMigration extends TypedItemMigration
                     $connection->executeStatement($platform->getCommentOnColumnSQL($this->table(), 'items_id', $state['items_comment']));
                 }
             }
-            Ledger::save($connection, $this->version(), ['complete' => true]);
+            $this->complete($connection);
             return $plan;
         };
         return $postgres ? $connection->transactional($apply) : $apply();
+    }
+
+    /** Data-bearing appended stages can commit restored rows with their receipt. */
+    protected function complete(Connection $connection): void
+    {
+        Ledger::save($connection, $this->version(), ['complete' => true]);
+    }
+
+    protected function journalPhase(array $state, string $phase): array
+    {
+        $state['phase'] = $phase;
+        return $state;
     }
 
     private function copySql(): string

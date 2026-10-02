@@ -10,8 +10,17 @@ use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_domains')]
+#[ORM\Index(name: 'domains_suppliers_id', columns: ['suppliers_id'])]
 class Domain
 {
+    #[ORM\ManyToOne(targetEntity: Supplier::class)]
+    #[ORM\JoinColumn(name: 'suppliers_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[ReferencePolicy(ReferenceKind::EmptySelection)]
+    public ?Supplier $suppliers = null;
+
+    #[ORM\Column(name: 'is_helpdesk_visible', type: 'boolean', nullable: false, options: ['default' => true])]
+    public bool $is_helpdesk_visible = true;
+
     #[ORM\ManyToOne(targetEntity: DomainType::class)]
     #[ORM\JoinColumn(name: 'domaintypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]

@@ -48,7 +48,7 @@ foreach ((new BaselineSchema())->build($DB->getDoctrineConnection()->getDatabase
     verify($mappedColumns === $schemaColumns, 'Core object fields include owning and generated columns from metadata: ' . $table->getName());
 }
 verify(EntityRegistry::columnNames('glpi_not_a_core_table') === [], 'Unmapped columns are not inferred');
-verify(array_sum(array_map(count(...), EntityRegistry::booleanColumns())) === 401, 'All audited boolean declarations are retained');
+verify(array_sum(array_map(count(...), EntityRegistry::booleanColumns())) === 402, 'All audited boolean declarations, including Domain helpdesk visibility, are retained');
 verify(EntityRegistry::isBoolean('glpi_users', 'is_active') && EntityRegistry::isBoolean('glpi_oidc_users', 'update'), 'Ordinary and reserved-name boolean columns come from mappings');
 foreach (['is_incident', 'is_request', 'is_problem'] as $column) {
     verify(EntityRegistry::isBoolean('glpi_itilcategories', $column), 'Category boolean declaration belongs to its entity property: ' . $column);
@@ -56,7 +56,7 @@ foreach (['is_incident', 'is_request', 'is_problem'] as $column) {
 foreach (['glpi_savedsearches' => 'do_count', 'glpi_calendarsegments' => 'day', 'glpi_itilfollowups' => 'timeline_position', 'glpi_profilerights' => 'rights'] as $table => $column) {
     verify(!EntityRegistry::isBoolean($table, $column), 'Enums and bitmasks are not inferred as booleans: ' . $table . '.' . $column);
 }
-verify(array_sum(array_map(count(...), ForeignKeys::relations())) === 1049, 'Audited associations include normalized memberships, typed ITIL subjects, reservable assets, consumable recipients, physical placements, planning recalls, calendar objects, alerts, object lock subjects, ticket/change/problem assets thirty-five project subjects and eleven appliance subject/recipient associations');
+verify(array_sum(array_map(count(...), ForeignKeys::relations())) === 1057, 'Audited associations include normalized memberships, typed ITIL subjects, reservable assets, consumable recipients, physical placements, planning recalls, calendar objects, alerts, object lock subjects, ticket/change/problem assets thirty-five project subjects, eleven appliance subject/recipient associations, six operating-system subjects, the distinct direct Domain supplier and Domain document ownership');
 $subjectChecks = (new BaselineSchema())->toSql($DB->getDoctrineConnection()->getDatabasePlatform());
 foreach (['glpi_itilfollowups', 'glpi_itilsolutions', 'glpi_itils_projects'] as $table) {
     verify(count(array_filter($subjectChecks, static fn ($sql) => str_contains($sql, $table . '_subject_kind'))) === 1
@@ -76,6 +76,10 @@ foreach (['optional' => ReferenceKind::EmptySelection, 'ownership' => ReferenceK
     'inherited' => ReferenceKind::Inherited] as $section => $kind) {
     $expected = ReferenceHistory::get($section);
     $actual = EntityRegistry::relationsByPolicy($kind);
+    if ($kind === ReferenceKind::EmptySelection) {
+        verify(($actual['glpi_domains']['suppliers_id'] ?? null) === 'glpi_suppliers', 'New direct supplier policy belongs to the Domain association');
+        unset($actual['glpi_domains']['suppliers_id']);
+    }
     foreach ([$expected, $actual] as $index => $relations) {
         foreach ($relations as &$columns) {
             ksort($columns);

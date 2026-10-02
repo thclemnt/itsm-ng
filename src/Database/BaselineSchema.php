@@ -42,6 +42,7 @@ final class BaselineSchema
         Migration\UnusedProjectTemplateReference::configureTable($schema->getTable('glpi_projects'));
         Migration\ConsumableRecipients::configureTable($schema->getTable('glpi_consumables'));
         $this->extraSql['glpi_consumables'][] = Migration\ConsumableRecipients::checkSql('glpi_consumables');
+        $this->configureMissingPropertyColumns($schema, $platform);
         $this->configureRequiredSubjects($schema, $platform);
         $this->extraSql['glpi_users'][] = Migration\UserAuthenticationSources::checkSql();
         $this->extraSql['glpi_notificationtargets'][] = Migration\NotificationRecipients::checkSql();
@@ -72,6 +73,63 @@ final class BaselineSchema
     {
         $schema = $this->build($platform, $foreignKeys);
         return array_merge($schema->toSql($platform), ...array_values($this->extraSql));
+    }
+
+    /** Current schema inspection uses entity policies; historical replay remains immutable. */
+    private function configureMissingPropertyColumns(Schema $schema, AbstractPlatform $platform): void
+    {
+        $connection = \Doctrine\DBAL\DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
+        $em = new \Doctrine\ORM\EntityManager($connection, Orm::configuration($platform));
+        try {
+            $metadata = $em->getMetadataFactory()->getAllMetadata();
+            $mapped = (new \Doctrine\ORM\Tools\SchemaTool($em))->getSchemaFromMetadata($metadata);
+            $declarations = [];
+            foreach ($metadata as $entity) {
+                $declarations[$entity->getTableName()] = $entity;
+            }
+            foreach ($mapped->getTables() as $declaration) {
+                $table = $schema->getTable($declaration->getName());
+                $entity = $declarations[$declaration->getName()];
+                $subjectColumns = [];
+                foreach ($entity->fieldMappings as $field) {
+                    if (($field->generated ?? null) !== null) {
+                        // Compatibility projections retain their platform-aware
+                        // metadata builders below, including legacy index names.
+                        $subjectColumns[] = trim($field->columnName, '`"');
+                    }
+                }
+                foreach ($entity->associationMappings as $property => $association) {
+                    if ((new \ReflectionProperty($entity->name, $property))->getAttributes(Mapping\DiscriminatedBy::class)) {
+                        foreach ($association->joinColumns as $join) {
+                            $subjectColumns[] = $join->name;
+                        }
+                    }
+                }
+                $added = [];
+                foreach ($declaration->getColumns() as $column) {
+                    if ($table->hasColumn($column->getName()) || in_array($column->getName(), $subjectColumns, true)) {
+                        continue;
+                    }
+                    $options = $column->toArray(true);
+                    unset($options['name'], $options['typeName']);
+                    $options = array_filter($options, static fn ($name) => method_exists($column, 'set' . $name), ARRAY_FILTER_USE_KEY);
+                    $table->addColumn($column->getName(), Type::lookupName($column->getType()), $options);
+                    $added[] = $column->getName();
+                }
+                // Explicit property/table indexes for new fields belong to the
+                // same metadata, rather than a second runtime schema catalogue.
+                foreach ($declaration->getIndexes() as $index) {
+                    $explicit = isset($entity->table['indexes'][$index->getName()]) || isset($entity->table['uniqueConstraints'][$index->getName()]);
+                    if ($explicit && array_intersect($added, $index->getColumns()) && !$table->hasIndex($index->getName())) {
+                        $index->isUnique()
+                            ? $table->addUniqueIndex($index->getColumns(), $index->getName(), $index->getOptions())
+                            : $table->addIndex($index->getColumns(), $index->getName(), $index->getFlags(), $index->getOptions());
+                    }
+                }
+            }
+        } finally {
+            $connection->close();
+        }
     }
 
     /** Current schema inspection uses entity policies; historical replay remains immutable. */

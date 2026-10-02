@@ -230,7 +230,7 @@ $CFG_GLPI["document_types"]               = [
    'Reminder', 'Software', 'Line',
    'SoftwareLicense', 'Supplier', 'Ticket', 'User',
    'Certificate', 'Cluster', 'ITILFollowup', 'ITILSolution',
-   'ChangeTask', 'ProblemTask', 'TicketTask', 'Appliance'
+   'ChangeTask', 'ProblemTask', 'TicketTask', 'Appliance', 'Domain'
 ];
 
 $CFG_GLPI["consumables_types"]            = ['Group', 'User'];
@@ -319,7 +319,7 @@ $CFG_GLPI["dictionnary_types"]            = [
    'OperatingSystemEdition'
 ];
 
-$CFG_GLPI["helpdesk_visible_types"]       = ['Software', 'Appliance'];
+$CFG_GLPI["helpdesk_visible_types"]       = ['Software', 'Appliance', 'Domain'];
 
 $CFG_GLPI["networkport_types"]            = [
    'Computer', 'Monitor', 'NetworkEquipment', 'Peripheral',

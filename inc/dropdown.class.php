@@ -1461,6 +1461,7 @@ class Dropdown
             'itemtypes' => $CFG_GLPI['state_types'], 'default_itemtype' => 0,
             'entity_restrict' => -1, 'onlyglobal' => false, 'checkright' => false,
             'emptylabel' => self::EMPTY_VALUE, 'used' => [], 'display' => true, 'rand' => mt_rand(),
+            'condition' => [],
         ];
         $types = is_array($params['itemtypes']) ? $params['itemtypes'] : $CFG_GLPI['state_types'];
         $values = [];
@@ -1482,6 +1483,13 @@ class Dropdown
                 'checkright' => (int)(bool)$params['checkright'],
                 'emptylabel' => $params['emptylabel'],
             ];
+            $condition = is_callable($params['condition']) ? ($params['condition'])($item) : $params['condition'];
+            if (!is_array($condition)) {
+                throw new InvalidArgumentException('Item selection conditions must be structured criteria');
+            }
+            if ($condition) {
+                $context['condition'] = self::addNewCondition($condition);
+            }
             $requests[$kind] = ['idtable' => $kind] + $context + ['_idor_token' => Session::getNewIDORToken($kind, $context)];
         }
         asort($values);
