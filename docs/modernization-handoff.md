@@ -333,3 +333,119 @@ The current plugin importer is unsafe before/after adoption; until the replaceme
 is validated, legacy import needs a compatible historical application/schema
 before switching to modernized source. Remote CI/release engines/live replica
 validation remain unverified.
+
+## Appliance ownership, imports and predicate repair (2026-10-02)
+
+The application source checkpoint is `324b8109a7`. Eight ApplianceItem subjects
+and three ApplianceItemRelation contexts now own typed associations. Container
+ownership remains separate; multiple nested links to the same context remain
+distinct. The read-only generated compatibility identity, real foreign keys,
+discriminator and required-subject constraints derive from properties at runtime.
+Appended `20261005_appliance_assets` and `20261005_appliance_recipients` freeze
+their historical targets in the existing canonical history. Earlier baseline,
+seeds and adoption snapshots remain unchanged.
+
+ApplianceAssetRepository implements owned composition, counts, reverse lookups
+and context queries. Public add/update, child and parent cloning, all subject
+purges, transfer, permissions, recursive entity/template visibility, notification
+model hooks and binding identities retain their application semantics. Native
+invalid-target/discriminator/duplicate tests and populated four-phase migration
+retry tests run on both providers.
+
+The destructive appliances-plugin importer is replaced by a validated source
+graph and domain import through public lifecycles. It preserves assigned wide
+identifiers, nullable data, booleans, timestamps, profiles and relevant audit
+roles; existing core records are never truncated or matched by content. Complete
+preflight precedes writes, including provider-native unique collation behavior.
+An optional provenance receipt uses the same `itsmng_migrations` ledger and a
+frozen source fingerprint. Exact retries preserve subsequent user edits; changed
+exports refuse and require explicit reconciliation. Database/session changes
+roll back on failure; external hook effects, files and immediately delivered
+notifications cannot be rolled back. Validation disables actual delivery.
+
+This importer requires completed canonical history. It is not a pre-adoption
+converter for constrained legacy plugin identities: those need the matching
+historical application/schema import or a separately designed frozen DBAL remap.
+Retired unmatched plugin audit subjects retain their original kind to prevent
+unrelated core records with the same identifier from acquiring their history.
+
+Two defects were reproduced before repair. Under a MyISAM default, a receipt
+survived an application rollback; Ledger now explicitly creates InnoDB storage
+and refuses existing nontransactional ledgers with reconciliation guidance.
+Missing-ledger creation inside a MySQL application transaction is also refused.
+A same-named `CHECK(1=1)` previously passed staged planning and allowed multiple
+subjects; replay now reinstalls only its frozen owned checks after complete
+preflight, with journaled drop/add recovery and preservation of unrelated checks.
+The dedicated MySQL 8 NOT ENFORCED branch remains unexecuted here.
+
+Bulk DBAL schema inspection replaces per-table identifier-width introspection.
+The full 358-table snapshots match on both providers; measured inspection falls
+from 2,867 queries to five on PostgreSQL and 2,866 to five on MariaDB. Unchanged
+raw-history contracts pass in 141 s and 197 s respectively, within the existing
+300 s limit. Custom/plugin identifiers, comments and retry assertions remain.
+
+Literal boolean predicates now compile to portable SQL/DQL truth expressions,
+including nested AND/OR/NOT. The previously recorded Entity::testChangeEntityParent
+failure is repaired. Field boolean bindings and raw-predicate rejection remain.
+The shared item selector honors caller-declared types and current rights/scope,
+uses scoped tokens and unique controls, escapes plain option labels, rejects stale
+responses and binds one handler after real AJAX tab remounts. Location, Network
+and Domain contexts are selectable through actual appliance forms.
+
+Application validation at this source uses an identical isolated worktree;
+SHA256 comparison covers 2,259 tracked application/test files. Rebuilt assets and
+explicit fixture configuration exercise all **11 browser tests on each provider,
+with zero skips**. Selected PostgreSQL application coverage passes **125/125
+methods, 5,933 assertions**, and MariaDB **171/171 methods, 9,994 assertions**,
+with zero skipped or void methods. These sets retain all previous matched classes
+and add Entity plus the three Appliance classes. The appliance browser case
+exercises wide owning/reverse identities, nested add/delete, read-only pages,
+stale responses, escaped labels and one POST after tab remount.
+
+Fresh integrated installs and full portability runs pass **143/143 discovered
+contracts on PostgreSQL 15.19 and MariaDB 10.11.18**, using PHP 8.2.33. This includes
+the complete frozen baseline/seed/history replay, populated adoption, invalid-data
+diagnostics, interrupted nontransactional DDL and retry/idempotency evidence.
+The runner's contract assertions and 300 s per-contract limit remain unchanged.
+Final read-only schema checks pass on both providers after their full suites;
+all four owned browser/application database schema checks also pass.
+
+Separate broader legacy runs remain failing: PostgreSQL 23/28 methods and MariaDB
+24/28. Three Certificate fixtures reference nonexistent users; a Consumable
+fixture reuses a purged group. PostgreSQL Dropdown::testGetDropdownValue also
+exposes a real numeric-id ILIKE defect. Overlaying the prior dropdown source
+preserves those failures. No assertion or foreign key was relaxed. They must not
+be hidden by the passing selected application sets.
+
+Evidence lives outside the repository in `/workspace/itsm-env/evidence`:
+`appliance-integrated-suite-*.log`, `appliance-integrated-install-*.log`,
+`appliance-integrated-application-validation.md`,
+`appliance-application-commands.txt`, `appliance-browser-suite-*.log`,
+`appliance-legacy-expanded-*.log`, `appliance-check-bulk-history-*.log` and
+`item-selection-legacy[-baseline]-*.log`. Optional installer requirements and
+the standalone lifecycle schema check's tester-plugin warning are preserved in
+the logs, rather than treated as successful optional checks.
+
+Recomputed static inventory: 357 mapped tables, 1,049 enforced references,
+26 discriminated identities, 38 polymorphic candidates and one pending historical
+event identity. There are still 2,892 adapter query sites and 24 native transport
+sites; this batch does not claim all application SQL has moved to ORM.
+
+Post-suite certificate column inspection on both providers again finds nullable
+signed BIGINT, NULL default, the historical relationship comment and the native
+nine-subject generated expression. No columns or index definitions differ; the
+raw table comparator reports only an equivalent provider-named index rename,
+which the existing schema checker already treats as harmless. Exact expected,
+introspected and native projection data is retained in
+`appliance-certificate-column-{pg,mysql}.json`. Schema comparison still explicitly
+excludes expression/trigger/CHECK equivalence; native relationship contracts
+remain necessary.
+
+Next work is already isolated and parallel: unify real CLI/web upgrade entrypoints
+and pending-history readiness around the existing History coordinator; replace
+mapped dropdown query switches with typed repositories and authorized context
+tokens at every actual caller; then design the Domains import before Racks.
+Racks has destructive retries and MyISAM sources; Domains has entity-crossing
+name matches. Source inspection of those plugins is not live upgrade validation.
+Release-engine CI, PostgreSQL 14/18, MariaDB 11.8, MySQL 8.4 and live replica
+validation remain unavailable or unexecuted. The modernization goal remains open.

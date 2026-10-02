@@ -4865,3 +4865,37 @@ providers; all ten browser tests pass each. An extra PostgreSQL Entity run still
 exposes WHERE(1) from boolean literal criteria, which is being repaired in the
 next isolated appliance/import batch. See the durable handoff for exact coverage,
 remaining 2,892 adapter sites and release/replica limits.
+
+## Appliance composition and canonical plugin import (2026-10-02)
+
+Eight appliance subjects and three nested contexts now use owning associations,
+real foreign keys and generated legacy identity projections. Domain repository
+queries preserve every nested binding, permissions, entity/template scope and
+public lifecycle hooks. Parent and relation cloning and all subject purges are
+covered. Two appended frozen migrations use the existing canonical history.
+
+The appliances importer plans the complete source graph before public domain
+writes, preserves stable identifiers and audit/profile roles, and records an
+optional frozen-source receipt in the existing ledger. Exact retries retain
+later user edits; changed exports refuse. Existing core data is never truncated.
+This operates after canonical adoption; constrained legacy plugin identities
+still require a historical import or an explicit pre-adoption DBAL migration.
+
+Literal boolean predicates are portable, repairing the earlier Entity failure.
+Migration receipts require transactional storage, and staged retries reinstall
+their owned CHECK definitions rather than trusting names alone. Bulk DBAL schema
+inspection retains exact historical definitions with fewer introspection queries.
+Shared item selection now honors caller types and current scope, escapes plain
+labels and survives asynchronous tab remounts without duplicate writes.
+
+At application source `324b8109a7`, rebuilt browser suites pass 11 tests per engine
+with zero skips. Expanded selected application suites pass 125 methods/5,933
+assertions on PostgreSQL and 171 methods/9,994 assertions on MariaDB. Separate
+broader legacy exceptions remain visible: invalid Certificate/Consumable fixture
+targets and PostgreSQL numeric-id dropdown search. See the durable handoff for
+full portability results, exact coverage, import boundaries and the next parallel
+upgrade-entrypoint and ORM-dropdown batches. The overall goal remains open.
+
+Coherent fresh-install and full portability validation passes all 143 discovered
+contracts on PostgreSQL 15.19 and MariaDB 10.11.18, including populated adoption
+and phased DDL recovery. No contract assertions or time limits were relaxed.
