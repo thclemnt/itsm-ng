@@ -37,6 +37,11 @@ final class RecordCriteria
         $parts = [];
         foreach ($criteria as $column => $value) {
             if (is_int($column) || in_array($column, ['AND', 'OR', 'NOT'], true)) {
+                if (is_bool($value)) {
+                    $expression = $value ? '1 = 1' : '1 = 0';
+                    $parts[] = ($column === 'NOT' ? 'NOT ' : '') . '(' . $expression . ')';
+                    continue;
+                }
                 if (!is_array($value)) {
                     throw new UnsupportedCriteria('Raw predicates require a mapped query.');
                 }

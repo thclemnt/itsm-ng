@@ -507,7 +507,11 @@ class DBmysqlIterator implements Iterator, Countable
      */
     public function analyseCrit($crit, $bool = "AND")
     {
-
+        if (is_bool($crit)) {
+            // Literal predicates are distinct from field values. PHP string
+            // conversion produces an integer for true and no SQL for false.
+            return $crit ? '1 = 1' : '1 = 0';
+        }
         if (!is_array($crit)) {
             //if ($_SESSION['glpi_use_mode'] == Session::DEBUG_MODE) {
             //  trigger_error("Deprecated usage of SQL in DB/request (criteria)", E_USER_DEPRECATED);
