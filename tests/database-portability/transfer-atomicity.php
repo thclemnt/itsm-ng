@@ -1,0 +1,325 @@
+<?php
+
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+use itsmng\Database\ForeignKeys;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
+
+$directory = $argv[1] ?? '';
+if (!is_file($directory . '/config_db.php')) {
+    exit("Usage: php tests/database-portability/transfer-atomicity.php /path/to/test-config\n");
+}
+define('GLPI_ROOT', dirname(__DIR__, 2));
+define('GLPI_CONFIG_DIR', realpath($directory));
+require GLPI_ROOT . '/inc/includes.php';
+require __DIR__ . '/FixtureRecords.php';
+/** A real unmapped plugin parent exercises the nontransactional storage diagnostic. */
+class PluginTransferAtomicityProbe extends CommonDBTM
+{
+    public static function getTable($classname = null)
+    {
+        return 'glpi_plugin_transfer_atomicity_probe';
+    }
+}
+
+/** An actual model override returning legacy integer zero after lifecycle work. */
+class ZeroUpdateTransferDomain extends Domain
+{
+    public static ?self $attempted = null;
+
+    public static function getTable($classname = null)
+    {
+        return Domain::getTable();
+    }
+
+    public static function getType()
+    {
+        return Domain::getType();
+    }
+
+    public function update(array $input, $history = 1, $options = [])
+    {
+        self::$attempted = $this;
+        verify((new QueuedNotification())->add(['itemtype' => 'Domain', 'items_id' => $this->getID(), 'name' => 'Zero update attempted', 'send_time' => '2030-01-01 00:00:00']) > 0, 'Public override queues actual attempted lifecycle work');
+        $this->fields['entities_id'] = $input['entities_id'];
+        return 0;
+    }
+}
+
+set_exception_handler(static function (Throwable $error): void {
+    fwrite(STDERR, (string)$error . "\n");
+    exit(1);
+});
+$assertions = 0;
+function verify(bool $ok, string $message): void
+{
+    global $assertions;
+    ++$assertions;
+    if (!$ok) {
+        throw new RuntimeException($message);
+    }
+}
+verify(str_starts_with($DB->dbdefault, 'itsm_port_'), 'Dedicated disposable database required');
+$_SESSION['glpiextauth'] = 0;
+verify((new Auth())->login('itsm', 'itsm', true), 'Administrator login');
+verify((new ReflectionMethod(Domain::class, 'validateEntityTransfer'))->getDeclaringClass()->getName() === Domain::class, 'Commercial Domain coherence extension must be integrated');
+$connection = $DB->getDoctrineConnection();
+verify($connection->getTransactionNestingLevel() === 0, 'Contract starts outside a caller transaction');
+$savedSession = $_SESSION;
+$savedConfig = $CFG_GLPI;
+$savedHooks = $PLUGIN_HOOKS;
+$plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+$savedPlugins = $plugins->getValue();
+$plugins->setValue(null, [...$savedPlugins, 'transfer_atomicity_fixture']);
+$fixtures = new FixtureRecords($DB);
+$created = [];
+$prefix = 'Atomic transfer ' . bin2hex(random_bytes(5));
+$record = static function (string $table, array $values = []) use ($fixtures, &$created): int {
+    $id = $fixtures->create($table, $values);
+    $created[] = [$table, $id];
+    return $id;
+};
+$read = static fn (string $table, int $id): ?array => (new RecordRepository(Orm::create($DB)))->find($table, 'id', $id);
+$rows = static fn (string $table, array $criteria): array => (new RecordRepository(Orm::create($DB)))->matching($table, $criteria, 'id ASC');
+$checkpoint = static fn (Transfer $transfer): array => [
+    $transfer->already_transfer, $transfer->needtobe_transfer, $transfer->noneedtobe_transfer,
+    $transfer->options, $transfer->to, $transfer->inittype,
+    $transfer->fields, $transfer->input, $transfer->updates, $transfer->oldvalues,
+];
+$graph = static function (int $commercial, int $financial, int $owner, ?int $nativeIdentifier = null) use ($record, $prefix): array {
+    $identity = $nativeIdentifier === null ? [] : ['id' => $nativeIdentifier];
+    $domain = $record('glpi_domains', ['name' => $prefix, 'entities_id' => $owner, 'suppliers_id' => $commercial] + $identity);
+    $computer = $record('glpi_computers', ['name' => $prefix, 'entities_id' => $owner]);
+    $infocom = $record('glpi_infocoms', ['itemtype' => 'Domain', 'items_id' => $domain, 'suppliers_id' => $financial]);
+    $contract = $record('glpi_contracts', ['name' => $prefix, 'entities_id' => $owner]);
+    $document = $record('glpi_documents', ['name' => $prefix, 'entities_id' => $owner]);
+    $contractLink = $record('glpi_contracts_items', ['contracts_id' => $contract, 'itemtype' => 'Domain', 'items_id' => $domain] + ($nativeIdentifier === null ? [] : ['id' => $nativeIdentifier + 1]));
+    $documentLink = $record('glpi_documents_items', ['documents_id' => $document, 'entities_id' => $owner, 'itemtype' => 'Domain', 'items_id' => $domain] + ($nativeIdentifier === null ? [] : ['id' => $nativeIdentifier + 2]));
+    verify((new Domain())->update(['id' => $domain, 'comment' => 'Audited source']), 'Prepare actual source audit history');
+    return compact('domain', 'computer', 'infocom', 'contract', 'document', 'contractLink', 'documentLink');
+};
+$snapshot = static function (array $graph) use ($read, $rows): array {
+    return [
+        $read('glpi_domains', $graph['domain']), $read('glpi_computers', $graph['computer']),
+        $read('glpi_infocoms', $graph['infocom']), $read('glpi_contracts', $graph['contract']),
+        $read('glpi_documents', $graph['document']), $read('glpi_contracts_items', $graph['contractLink']),
+        $read('glpi_documents_items', $graph['documentLink']),
+        $rows('glpi_logs', ['OR' => [['itemtype' => 'Domain', 'items_id' => $graph['domain']], ['itemtype' => 'Computer', 'items_id' => $graph['computer']]]]),
+        $rows('glpi_queuednotifications', ['itemtype' => 'Domain', 'items_id' => $graph['domain']]),
+    ];
+};
+set_error_handler(static function (int $severity, string $message, string $file, int $line): never {
+    throw new ErrorException($message, 0, $severity, $file, $line);
+}, E_WARNING);
+try {
+    $source = $record('glpi_entities', ['name' => $prefix . ' source', 'entities_id' => 0]);
+    $destination = $record('glpi_entities', ['name' => $prefix . ' destination', 'entities_id' => 0]);
+    $_SESSION['glpiactive_entity'] = $source;
+    $_SESSION['glpiactiveentities'] = [0, $source, $destination];
+    $_SESSION['glpiactiveentities_string'] = implode(',', $_SESSION['glpiactiveentities']);
+    $local = $record('glpi_suppliers', ['name' => $prefix . ' local commercial', 'entities_id' => $source]);
+    $recursive = $record('glpi_suppliers', ['name' => $prefix . ' recursive financial', 'entities_id' => 0, 'is_recursive' => true]);
+    $recursiveCommercial = $record('glpi_suppliers', ['name' => $prefix . ' recursive commercial', 'entities_id' => 0, 'is_recursive' => true]);
+    $CFG_GLPI['use_notifications'] = '1';
+    $CFG_GLPI['notifications_ajax'] = true;
+    $CFG_GLPI['notifications_mailing'] = false;
+    $CFG_GLPI['notifications_chat'] = 0;
+    Notification_NotificationTemplate::getModes();
+    $flags = $CFG_GLPI;
+    $incompatible = $graph($local, $recursive, $source);
+    $before = $snapshot($incompatible);
+    $transfer = new Transfer();
+    $transfer->already_transfer = ['Domain' => [123 => 456]];
+    $transfer->needtobe_transfer = ['Computer' => [321]];
+    $transfer->noneedtobe_transfer = ['Supplier' => [456]];
+    $transfer->options = ['keep_history' => 1];
+    $transfer->to = $source;
+    $transfer->inittype = 'Old state';
+    $state = $checkpoint($transfer);
+    $_SESSION['MESSAGE_AFTER_REDIRECT'] = [INFO => ['Previous feedback']];
+    $_SESSION['glpitransfer_list'] = ['Domain' => [$incompatible['domain']]];
+    verify($transfer->moveItems(['Domain' => [$incompatible['domain']]], $destination, []) === false, 'Commercial supplier refuses an incompatible Domain transfer before auxiliary writes');
+    verify($snapshot($incompatible) === $before, 'Refused Domain preserves owner, financial supplier, binding IDs, documents, contracts, audit and queue');
+    verify($checkpoint($transfer) === $state && $connection->getTransactionNestingLevel() === 0, 'Refusal restores previous Transfer bookkeeping and releases its own transaction');
+    verify($_SESSION['MESSAGE_AFTER_REDIRECT'][INFO] === ['Previous feedback'] && $_SESSION['glpitransfer_list'] === ['Domain' => [$incompatible['domain']]], 'Failed operation preserves previous feedback and selected list');
+    verify($CFG_GLPI === $flags, 'Failed transfer restores prior enable-flag types and ancillary configuration');
+
+    // A coherent candidate permits all early auxiliary work, then its real public
+    // update/hook refuses. Already-transferred siblings must roll back as well.
+    foreach (['update refusal', 'late throw'] as $case) {
+        $valid = $graph($recursiveCommercial, $recursive, $source);
+        $before = $snapshot($valid);
+        $visited = [];
+        $PLUGIN_HOOKS['pre_item_update']['transfer_atomicity_fixture'][Domain::class] = static function (Domain $item) use (&$visited, $case): void {
+            if (isset($item->input['_transfer'])) {
+                $visited[] = $item->getID();
+                Session::addMessageAfterRedirect('Rolled back success', false, INFO);
+                if ($case === 'update refusal') {
+                    Session::addMessageAfterRedirect('Required transfer was refused', false, WARNING);
+                    $item->input = false;
+                }
+            }
+        };
+        $heldModel = null;
+        $PLUGIN_HOOKS['item_update']['transfer_atomicity_fixture'][Domain::class] = static function (Domain $item) use (&$heldModel): void {
+            if (isset($item->input['_transfer'])) {
+                $heldModel = $item;
+                verify((new QueuedNotification())->add(['itemtype' => 'Domain', 'items_id' => $item->getID(), 'name' => 'Transfer late queue', 'send_time' => '2030-01-01 00:00:00']) > 0, 'Real update hook queues a notification inside the operation');
+            }
+        };
+        $PLUGIN_HOOKS['item_transfer']['transfer_atomicity_fixture'] = static function (array $event) use ($case): void {
+            if ($case === 'late throw' && $event['type'] === 'Domain') {
+                throw new RuntimeException('Actual late item_transfer hook refusal');
+            }
+        };
+        $transfer = new Transfer();
+        $state = $checkpoint($transfer);
+        $_SESSION['MESSAGE_AFTER_REDIRECT'] = [INFO => ['Previous feedback']];
+        $connection->beginTransaction();
+        try {
+            $marker = $fixtures->create('glpi_suppliers', ['name' => $prefix . ' caller marker', 'entities_id' => 0]);
+            $callerLevel = $connection->getTransactionNestingLevel();
+            verify($transfer->moveItems(['Computer' => [$valid['computer']], 'Domain' => [$valid['domain']]], $destination, []) === false, 'Actual ' . $case . ' stops the entire selected batch');
+            verify($visited === [$valid['domain']], 'Transfer executes public prepare/hook once without replay');
+            verify($snapshot($valid) === $before && $checkpoint($transfer) === $state, 'Late refusal rolls back earlier items, dependencies, audit, queued rows and bookkeeping');
+            verify($connection->getTransactionNestingLevel() === $callerLevel && $read('glpi_suppliers', $marker) !== null, 'Caller transaction and its prior marker remain intact');
+            verify($_SESSION['MESSAGE_AFTER_REDIRECT'][INFO] === ['Previous feedback'], 'Rolled-back success feedback is discarded');
+            if ($case === 'update refusal') {
+                verify(in_array('Required transfer was refused', $_SESSION['MESSAGE_AFTER_REDIRECT'][WARNING] ?? [], true), 'Useful actual refusal diagnostic is retained');
+            } else {
+                verify($heldModel instanceof Domain && (int)$heldModel->fields['entities_id'] === $source, 'Captured public source model is restored after a late hook exception');
+            }
+            verify($DB->getDoctrineConnection() === $connection && $CFG_GLPI === $flags, 'Late refusal retains supplied writer and exact notification settings');
+        } finally {
+            $connection->rollBack();
+        }
+        unset($PLUGIN_HOOKS['pre_item_update']['transfer_atomicity_fixture'], $PLUGIN_HOOKS['item_update']['transfer_atomicity_fixture'], $PLUGIN_HOOKS['item_transfer']['transfer_atomicity_fixture']);
+
+        // The same public transferItem entry point has its own frame without a batch.
+        $transfer->to = $destination;
+        $transfer->options = ['keep_networklink' => 0, 'keep_device' => 0, 'keep_reservation' => 0, 'keep_history' => 0, 'keep_ticket' => 0, 'keep_infocom' => 0, 'keep_contract' => 0, 'keep_document' => 0];
+        $transfer->noneedtobe_transfer = [];
+        $PLUGIN_HOOKS['pre_item_update']['transfer_atomicity_fixture'][Domain::class] = static function (Domain $item): void {
+            if (isset($item->input['_transfer'])) {
+                $item->input = false;
+            }
+        };
+        verify($transfer->transferItem('Domain', $valid['domain'], $valid['domain']) === false && $connection->getTransactionNestingLevel() === 0, 'Direct transferItem refusal owns and closes its transaction');
+        verify($snapshot($valid) === $before, 'Direct refusal restores early dependency deletes');
+        unset($PLUGIN_HOOKS['pre_item_update']['transfer_atomicity_fixture']);
+    }
+
+    $diskGraph = $graph($recursiveCommercial, $recursive, $source);
+    $disk = $record('glpi_items_disks', ['itemtype' => 'Computer', 'items_id' => $diskGraph['computer'], 'name' => $prefix]);
+    $diskBefore = $read('glpi_items_disks', $disk);
+    $before = $snapshot($diskGraph);
+    $PLUGIN_HOOKS['pre_item_purge']['transfer_atomicity_fixture'][Item_Disk::class] = static function (Item_Disk $item): void {
+        $item->input = false;
+    };
+    verify((new Transfer())->moveItems(['Computer' => [$diskGraph['computer']]], $destination, []) === false, 'Selected public disk cleanup refusal cancels parent transfer');
+    verify($snapshot($diskGraph) === $before && $read('glpi_items_disks', $disk) === $diskBefore, 'Disk refusal restores parent owner/history and preserves the disk');
+    unset($PLUGIN_HOOKS['pre_item_purge']['transfer_atomicity_fixture']);
+
+    $copyFinancial = $record('glpi_suppliers', ['name' => $prefix . ' copied financial', 'entities_id' => $source]);
+    $copyGraph = $graph($recursiveCommercial, $copyFinancial, $source);
+    $outside = $record('glpi_domains', ['name' => $prefix . ' outside', 'entities_id' => $source]);
+    $outsideInfocom = $record('glpi_infocoms', ['itemtype' => 'Domain', 'items_id' => $outside, 'suppliers_id' => $copyFinancial]);
+    $before = $snapshot($copyGraph);
+    $outsideBefore = $read('glpi_infocoms', $outsideInfocom);
+    $suppliersBefore = $rows('glpi_suppliers', ['entities_id' => $destination]);
+    $creates = 0;
+    $PLUGIN_HOOKS['pre_item_add']['transfer_atomicity_fixture'][Supplier::class] = static function (Supplier $item) use (&$creates): void {
+        ++$creates;
+        $item->input = false;
+    };
+    verify((new Transfer())->moveItems(['Domain' => [$copyGraph['domain']]], $destination, ['keep_infocom' => 1, 'keep_supplier' => 1]) === false, 'Required financial Supplier copy refusal cancels transfer');
+    verify($creates === 1, 'Required child add is attempted once through its real lifecycle');
+    verify($snapshot($copyGraph) === $before && $read('glpi_infocoms', $outsideInfocom) === $outsideBefore
+        && $rows('glpi_suppliers', ['entities_id' => $destination]) === $suppliersBefore,
+        'Refused child creation restores its parent and does not retarget outside financial links');
+    unset($PLUGIN_HOOKS['pre_item_add']['transfer_atomicity_fixture']);
+
+    $zeroGraph = $graph($recursiveCommercial, $recursive, $source);
+    $before = $snapshot($zeroGraph);
+    verify((new Transfer())->moveItems([ZeroUpdateTransferDomain::class => [$zeroGraph['domain']]], $destination, []) === false, 'Real public model override integer-zero refusal cancels transfer');
+    verify($snapshot($zeroGraph) === $before && $connection->getTransactionNestingLevel() === 0, 'Integer-zero refusal rolls back actual queued work');
+    verify(ZeroUpdateTransferDomain::$attempted instanceof ZeroUpdateTransferDomain
+        && (int)ZeroUpdateTransferDomain::$attempted->fields['entities_id'] === $source,
+        'Integer-zero refusal restores the actual attempted public model');
+
+    // This parent keeps a distinct recursive financial supplier; no new copy or
+    // clearing semantics are invented for its optional commercial relationship.
+    $success = $graph($recursiveCommercial, $recursive, $source, 42949680009);
+    $transfer = new Transfer();
+    $options = ['keep_infocom' => 1, 'keep_supplier' => 1, 'keep_contract' => 1, 'keep_document' => 1, 'keep_history' => 1];
+    verify($transfer->moveItems(['Domain' => [$success['domain']]], $destination, $options) === true, 'Compatible recursive Supplier permits transfer');
+    verify((int)$read('glpi_domains', $success['domain'])['entities_id'] === $destination
+        && (int)$read('glpi_domains', $success['domain'])['suppliers_id'] === $recursiveCommercial
+        && (int)$read('glpi_infocoms', $success['infocom'])['suppliers_id'] === $recursive, 'Successful transfer preserves separate commercial and financial roles');
+    verify($read('glpi_documents_items', $success['documentLink']) !== null && $read('glpi_contracts_items', $success['contractLink']) !== null, 'Successful in-place transfer preserves individual link identifiers');
+    verify($transfer->noneedtobe_transfer['Contract'] === []
+        && (int)$read('glpi_contracts', $success['contract'])['entities_id'] === $destination
+        && (int)$read('glpi_documents', $success['document'])['entities_id'] === $destination,
+        'Empty exclusions retain every sole local binding and move its original Contract/Document parent');
+    verify((int)$read('glpi_contracts_items', $success['contractLink'])['items_id'] === 42949680009
+        && (int)$read('glpi_documents_items', $success['documentLink'])['items_id'] === 42949680009,
+        'Native 64-bit subject and original binding identifiers retain canonical projections');
+    verify($CFG_GLPI === $flags && $connection->getTransactionNestingLevel() === 0, 'Successful transfer restores temporary settings and commits its own frame');
+    $before = $snapshot($success);
+    verify($transfer->moveItems(['Domain' => [$success['domain']]], $destination, $options) === true, 'No-op transfer to the same owner remains successful');
+    verify($snapshot($success) === $before, 'No-op transfer preserves data and adds no synthetic update history');
+    verify($transfer->moveItems([], $destination, []) === true, 'Empty selected batch is a successful no-op');
+    verify($transfer->moveItems(['Domain' => [PHP_INT_MAX]], $destination, []) === false, 'Missing selected item is a refusal');
+    verify($transfer->moveItems(['Domain' => [$success['domain']]], -1, []) === false && $CFG_GLPI === $flags, 'Invalid destination refuses and restores temporary flags');
+    $primary = $DB;
+    $DB = clone $primary;
+    $DB->slave = true;
+    try {
+        verify((new Transfer())->moveItems(['Domain' => [$success['domain']]], $source, []) === false, 'Read-only supplied adapter cannot select an auxiliary writer');
+        verify($snapshot($success) === $before && $connection->getTransactionNestingLevel() === 0, 'Read-only refusal writes nothing and does not alter caller transaction');
+    } finally {
+        $DB = $primary;
+    }
+    if ($DB->getProvider() === 'mysql') {
+        $schema = $connection->createSchemaManager();
+        $table = new \Doctrine\DBAL\Schema\Table(PluginTransferAtomicityProbe::getTable());
+        $table->addColumn('id', 'bigint');
+        $table->addColumn('entities_id', 'bigint');
+        $table->addColumn('name', 'string', ['length' => 255]);
+        $table->setPrimaryKey(['id']);
+        $table->addOption('engine', 'MyISAM');
+        verify(!$DB->tableExists($table->getName(), false), 'Disposable MyISAM probe table does not already exist');
+        $schema->createTable($table);
+        $DB->clearSchemaCache();
+        try {
+            $connection->insert($table->getName(), ['id' => 1, 'entities_id' => $source, 'name' => $prefix]);
+            $probeBefore = $connection->fetchAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table->getName()) . ' WHERE id = 1');
+            verify((new Transfer())->moveItems([PluginTransferAtomicityProbe::class => [1]], $destination, []) === false, 'Selected MyISAM plugin parent refuses before any mutation');
+            verify($connection->fetchAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table->getName()) . ' WHERE id = 1') === $probeBefore
+                && $connection->getTransactionNestingLevel() === 0, 'Nontransactional diagnostic preserves its parent row without a rollback claim');
+        } finally {
+            $schema->dropTable($table->getName());
+            $DB->clearSchemaCache();
+        }
+    }
+    verify((new ForeignKeys())->audit($connection) === [], 'Transfer lifecycle leaves all enforced associations valid');
+} finally {
+    $PLUGIN_HOOKS = $savedHooks;
+    while ($connection->getTransactionNestingLevel() > 0) {
+        $connection->rollBack();
+    }
+    $CFG_GLPI['use_notifications'] = false;
+    foreach (array_reverse($created) as [$table, $id]) {
+        $class = getItemTypeForTable($table);
+        $model = new $class();
+        if ($model->getFromDB($id)) {
+            verify((bool)$model->delete(['id' => $id, '_no_history' => true, '_disablenotif' => true], true), 'Fixture lifecycle cleanup: ' . $table);
+        }
+    }
+    restore_error_handler();
+    $CFG_GLPI = $savedConfig;
+    $_SESSION = $savedSession;
+    $plugins->setValue(null, $savedPlugins);
+}
+echo $DB->getProvider() . ": $assertions atomic transfer, supplier coherence, public veto, direct entry and caller savepoint assertions passed.\n";

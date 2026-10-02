@@ -1962,6 +1962,16 @@ class CommonDBTM extends CommonGLPI
 
 
     /**
+     * Pure model-owned coherence check before transfer dependencies are changed.
+     * Trusted transfer callers enforce actor authorization at their entry point.
+     * Models can refuse the proposed ownership without mutating prepared input.
+     */
+    public function validateEntityTransfer(int $destination): void
+    {
+    }
+
+
+    /**
      * Forward entity information to linked items
      *
      * @return void
