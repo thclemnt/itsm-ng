@@ -1,5 +1,12 @@
 # PostgreSQL and Doctrine modernization goal
 
+Latest integrated source and evidence:
+[canonical upgrades and owning dropdown choices](modernization-upgrade-dropdown-validation.md).
+Both discovered portability suites pass 147/147 contracts at application source
+`448699cfbb7d4847a73edc36eabf0f3da1042fb3`; the sequential browser rerun is pending.
+The overall goal remains open. The next isolated work covers atomic mapped purges,
+operating-system subject ownership and Domains plugin adoption/application roles.
+
 Continue the PHP application on `th/exp/postgres`; the verified starting commit is
 `897c5c9bd636f65e5a2a596d350ef087635303f9`.
 

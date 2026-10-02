@@ -4,6 +4,12 @@ This branch is a development port, **not a complete or production-ready PostgreS
 
 ## Architecture
 
+See [the latest integrated checkpoint](modernization-upgrade-dropdown-validation.md)
+for exact source, provider versions, test evidence and remaining work. Dated earlier
+validation figures are historical checkpoints. Fresh installs replay all eight
+current canonical versions, including subsequent frozen ownership/flag migrations;
+supported upgrades use the same History coordinator and readiness checks.
+
 - `DBAdapter` contains the existing shared CRUD, metadata-cache and quoting API. `DBmysql` retains its public compatibility name but delegates connection ownership, SQL execution, escaping and prepared statements to DBAL. It no longer calls the native MySQL driver. `DBpgsql` still provides the native PostgreSQL transport pending its migration. Existing generated `class DB extends DBmysql` configurations keep working.
 - Doctrine DBAL 4.4+ is an explicit dependency and this branch requires PHP 8.2+. The installed development version is DBAL 4.5. `getDoctrineConnection()` uses the **same connection** as the legacy API. Session state, transactions and savepoints are shared. New application repositories should use ORM mappings and DQL; DBAL provides platform/schema operations. A query builder does not make arbitrary vendor SQL portable; use platform expressions for differences.
 - `Migration/Baseline20261001.php` declares the frozen 355-table pre-adoption baseline with explicit DBAL Schema/Table APIs. It preserves provider types, defaults, comments, indexes, PostgreSQL expression indexes and timestamp triggers. The former runtime MySQL dump parser is removed. `BaselineSchema` now projects the current required schema for read-only inspection and compatibility checks; it never creates installation tables.

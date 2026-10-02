@@ -1,5 +1,9 @@
 # Mapped persistence and reporting
 
+The latest integrated implementation and validation record is
+[canonical upgrades and owning dropdown choices](modernization-upgrade-dropdown-validation.md).
+Earlier dated counts below describe their own checkpoints, not current completion.
+
 Doctrine ORM 3 is an explicit dependency alongside DBAL 4.4+ (PHP 8.2+). The attributes in
 `src/Database/Entity` now map every column of all 357 current core tables,
 including the dashboard's generated numeric primary key and explicitly assigned IDs elsewhere.
