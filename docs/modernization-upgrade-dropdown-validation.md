@@ -52,8 +52,17 @@ a surviving group. Original assertions and enforced constraints remain enabled.
   there are no changed columns or missing/modified indexes after either full suite.
 - Actual HTTP dropdown validation passed 38 requests on each provider. The first
   concurrent full browser attempt timed out in actor cases and is preserved as a
-  failed attempt. A sequential full browser rerun remains pending; no timeout or
-  assertion has been relaxed and no browser-completion claim is made here.
+  failed attempt. Subsequent sequential full browser runs pass **12/12 tests on
+  each provider, zero skips**, in 3.8 minutes on PostgreSQL and 3.6 minutes on
+  MariaDB. No timeout or assertion changed. Rebuilt assets and identical application
+  source were used. Passing sequential results do not establish the cause of the
+  earlier concurrent timeouts.
+  Both browser database schemas also pass final read-only inspection. Separate
+  controlled DOM probes pass three cases per provider for rendered Project and
+  direct/recursive ProjectTask team choices: literal labels, stale/cleared
+  selections and request capabilities. These use actual rendered forms and ORM
+  rows with controlled AJAX completion, and are distinct from live HTTP/browser
+  application-flow evidence.
 - All 52 changed PHP files passed syntax and repository formatting checks; all
   58 Twig templates passed syntax checks. The runner still discovers contracts
   dynamically and retains its original per-contract time limit.
@@ -66,7 +75,10 @@ Exact commands and logs are outside the repository in `/workspace/itsm-env/evide
 `upgrade-dropdown-final-*-schema-*.log`,
 `upgrade-dropdown-certificate-column-*.json`,
 `upgrade-dropdown-integrated-formatting.log` and
-`upgrade-dropdown-integrated-twig-lint.log`. Browser failed-attempt and rerun logs
+`upgrade-dropdown-integrated-twig-lint.log`. Successful browser logs are
+`upgrade-dropdown-integrated-browser-{pg,mysql}.log`; failed attempts are
+`upgrade-dropdown-integrated-browser-concurrent-attempt-{pg,mysql}.log`.
+Browser failed-attempt and rerun logs
 must remain separate. Runner success summaries were inspected; atoum process
 exit status alone is insufficient evidence.
 
