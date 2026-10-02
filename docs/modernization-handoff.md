@@ -176,3 +176,85 @@ collection path with an ownership- and authorization-aware repository; repair
 category selection and the directly observed legacy application failures, then
 repeat browser and broader provider validation. Keep the 20261001 baseline,
 seed snapshot and adoption history immutable for new domain migrations.
+
+## Ticket domain and populated-upgrade follow-up
+
+Normal authenticated Git fetch and push work in the managed environment with
+network-enabled command execution. The warranty commit has been pushed to
+`th/exp/postgres`; later remote advances must still be fetched and preserved.
+
+Ticket API collections now use `TicketCollectionRepository` and a session-derived
+`TicketVisibility` snapshot. Owning actor, group and validator associations retain
+the existing permission masks, with entity restrictions applied independently.
+EXISTS predicates prevent repeated actor links from multiplying counts or pages.
+Boolean filters, bound text patterns, stable pagination, parent read checks and
+public API response formatting are exercised on both engines. Temporal filters
+use explicit entity-type-based date/time projections rather than passing
+PostgreSQL timestamps to LOWER. Other API collections still use the legacy path;
+unrecognized parent relationships retain their historical fall-through and need
+a separate explicit route/model decision.
+
+Category choices use their mapped owning entity and recursive visibility through
+`TicketCategoryRepository`. The actual AJAX caller intersects requested entities
+with authorized active scope and retains incident/request/helpdesk flags and the
+legacy empty option. Full-order failure evidence showed a rolled-back fixture's
+filesystem ancestor cache `[0]` despite the new child having stored parent `1`.
+The contract now keeps a real warm cache local to its transaction and restores
+the previous cache afterwards. No category scope assertion was removed.
+
+All entity-declared fixed CHAR types own padding semantics, including scalar
+projections. Locale, preferences/reset tokens, rule conjunctions and document
+hashes retain logical values; TEXT whitespace and NULL versus empty remain
+distinct. No historical schema definition changed. Direct attachment selection
+now follows the declared subject association and retains each binding ID;
+forms still load Document models and run their hooks. Relation totals omit
+irrelevant list ordering. PostgreSQL adapter commands return booleans, while
+explicit RETURNING queries retain row sets and affected-row accounting.
+
+Parallel review identified two populated-upgrade gaps beyond fresh installation:
+canonical adoption did not synchronize imported identifiers, and generated-column
+widening could lose comments/nullability through an explicit column declaration.
+The fixes use one metadata-inspected DBAL sequence service without rewinding
+advanced sequences, and preserve generated declarations through interrupted DDL
+replay. Historical definitions and the existing ledger remain authoritative.
+Generated-column comment loss is relevant to the handoff symptom, but does not
+establish the unavailable original log's exact execution path. The original
+current-install certificate mismatch remains unreproduced at the supplied commit.
+
+The legacy dataset explicitly imports ticket IDs 100/101; it now synchronizes
+sequences once before marking import complete. An isolated fresh PostgreSQL
+installation passes **108 application methods / 5,327 assertions**. MariaDB
+passes **154 methods / 9,388 assertions**. Both providers pass **ten browser tests**
+covering observer changes, ticket collections, timeline followups/image uploads,
+tasks and state changes. E2E preparation honors config/var environment paths,
+enables required API/mailing fields and disables actual notification delivery.
+
+Final coherent portability reruns pass **132/132 discovered contracts on both
+PostgreSQL 15.19 and MariaDB 10.11.18**, followed by clean read-only schema
+comparisons. Evidence is in `reviewed-final-suite-{pg,mysql}.log` and
+`reviewed-final-schema-{pg,mysql}.log` under `/workspace/itsm-env/evidence`.
+These runs include frozen history replay, populated adoption, interrupted DDL
+recovery, generated-column declarations, real sequence allocation, public ticket
+collections, category scope, fixed CHAR behavior and temporal filters.
+
+The recomputed inventory is 357 mapped tables, 1,003 enforced references,
+23 discriminated identities, 41 polymorphic candidates and one pending identity;
+2,893 adapter query sites and 24 native PostgreSQL-driver sites remain. The extra
+native site checks command status inside the existing PostgreSQL transport.
+These figures are discovery checkpoints, not domain-conversion completion.
+
+GitHub's registered workflow list does not contain `database_portability.yml`, and an
+authenticated dispatch attempt returned HTTP 404. No remote matrix result is
+claimed. PostgreSQL 14/18, MariaDB 11.8, MySQL 8.4 and live replica routing remain
+unverified here.
+
+The overall goal remains open. Next relationship batch: convert `ItemProject`'s
+35 configured subjects with property-owned associations and a frozen appended
+canonical migration. `projects_id` owns the project; a Project subject needs a
+separate `subject_projects_id`. Trace visible lists and notifications, add
+metadata-derived public cleanup for all subjects (only seven currently clean
+Item_Project explicitly), and test owner/subject/self-link purge separately.
+Preserve existing clone/transfer behavior. Legacy plugin appliance discriminator
+imports need deliberate conversion or pre-DDL diagnostics. Category
+`is_incident`, `is_request` and `is_problem` still need a separate frozen migration
+to real boolean properties; `is_change` already uses boolean mapping.

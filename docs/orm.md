@@ -4820,3 +4820,27 @@ assets. MariaDB legacy checks pass 154 methods/9,388 assertions. PostgreSQL brow
 and broader legacy checks reveal remaining API collection, category selection,
 locale and legacy query/fixture gaps; the port remains experimental. Passing CLI
 contracts must not be described as complete application or remote CI validation.
+
+## Ticket, document and upgrade checkpoint (2026-10-02)
+
+Ticket API collections now query owning actor/group/validation associations with
+a session-derived authorization snapshot; entity scope remains an independent
+restriction. Ticket category choices use owning entities and recursive scope.
+Document attachment reads preserve binding identities and public model hooks.
+Fixed CHAR properties own padding semantics, and temporal filtering derives its
+SQL projection from the mapped field type.
+
+Canonical adoption preserves generated-column comments/nullability across
+interrupted widening and synchronizes PostgreSQL sequences without rewinding
+advanced allocation. Frozen baseline, seed and adoption snapshots remain unchanged.
+Both providers pass all 132 discovered portability contracts and final read-only
+schema checks. PostgreSQL application checks pass 108 methods/5,327 assertions;
+MariaDB passes 154 methods/9,388 assertions. All ten browser tests pass on each
+provider after rebuilding assets. These results supersede the earlier API, CHAR
+and broader PostgreSQL failures recorded above; remote CI, release-version
+matrices and live replica validation remain unverified.
+
+The durable goal remains open: 2,893 adapter query sites, 41 polymorphic candidates
+and one unresolved historical identity still require architectural work. See
+[the handoff](modernization-handoff.md) for exact evidence and the next project-link
+ownership migration, including clone, purge and plugin-import boundaries.
