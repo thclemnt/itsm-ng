@@ -7,9 +7,11 @@ namespace itsmng\Database\Entity;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
+#[ORM\HasLifecycleCallbacks]
 #[ORM\Table(name: 'glpi_appliances_items_relations')]
-class ApplianceItemRelation
+class ApplianceItemRelation implements \itsmng\Database\Mapping\LegacyInput
 {
+    use \itsmng\Database\Mapping\RequiredItemReference;
     #[ORM\ManyToOne(targetEntity: ApplianceItem::class)]
     #[ORM\JoinColumn(name: 'appliances_items_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
     #[\itsmng\Database\Mapping\ApplicationManaged]
@@ -20,9 +22,22 @@ class ApplianceItemRelation
     #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]
     public ?int $id = null;
 
-    #[ORM\Column(name: '`itemtype`', type: 'string', length: 100, nullable: false)]
-    public string $itemtype = '';
+    #[ORM\ManyToOne(targetEntity: Location::class)]
+    #[ORM\JoinColumn(name: 'locations_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\DiscriminatedBy('itemtype', 'items_id', ['Location'])]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
+    public ?Location $location = null;
 
-    #[ORM\Column(name: '`items_id`', type: 'bigint', nullable: false, options: ['default' => '0'])]
-    public int $items_id = 0;
+    #[ORM\ManyToOne(targetEntity: Network::class)]
+    #[ORM\JoinColumn(name: 'networks_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\DiscriminatedBy('itemtype', 'items_id', ['Network'])]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
+    public ?Network $network = null;
+
+    #[ORM\ManyToOne(targetEntity: Domain::class)]
+    #[ORM\JoinColumn(name: 'domains_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\DiscriminatedBy('itemtype', 'items_id', ['Domain'])]
+    #[\itsmng\Database\Mapping\ApplicationManaged]
+    public ?Domain $domain = null;
+
 }

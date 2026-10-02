@@ -5,6 +5,8 @@
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Types\Type;
 use itsmng\Database\Installer;
+use itsmng\Database\Migration\ApplianceAssets20261005;
+use itsmng\Database\Migration\ApplianceRecipients20261005;
 use itsmng\Database\Migration\Baseline20261001;
 use itsmng\Database\Migration\Booleans20261002;
 use itsmng\Database\Migration\History;
@@ -127,6 +129,12 @@ $connection->insert('glpi_projects', ['id' => 201, 'name' => 'Historical project
 $connection->insert('glpi_projects', ['id' => 202, 'name' => 'Historical project subject']);
 $connection->insert('glpi_items_projects', ['id' => 301, 'projects_id' => 201, 'itemtype' => 'Computer', 'items_id' => $legacyId]);
 $connection->insert('glpi_items_projects', ['id' => 302, 'projects_id' => 201, 'itemtype' => 'Project', 'items_id' => 202]);
+$connection->insert('glpi_appliances', ['id' => 401, 'name' => 'Historical appliance']);
+$connection->insert('glpi_appliances_items', ['id' => 402, 'appliances_id' => 401, 'itemtype' => 'Computer', 'items_id' => $legacyId]);
+$connection->insert('glpi_locations', ['id' => 601, 'name' => 'Historical appliance recipient']);
+foreach ([501, 502] as $id) {
+    $connection->insert('glpi_appliances_items_relations', ['id' => $id, 'appliances_items_id' => 402, 'itemtype' => 'Location', 'items_id' => 601]);
+}
 $connection->insert('glpi_logs', ['id' => $auditId, 'itemtype' => 'Computer', 'items_id' => $legacyId, 'user_name' => 'Legacy administrator', 'old_value' => $audit]);
 $password = 'customer-password-hash-must-survive';
 $connection->update('glpi_users', ['password' => $password], ['id' => 2]);
@@ -159,6 +167,26 @@ foreach ([['itemtype' => 'PluginExampleAsset', 'items_id' => $legacyId], ['itemt
         && !$manager->introspectTable('glpi_items_projects')->hasColumn('computers_id'), 'Project preflight occurs before all nontransactional adoption DDL and journal writes');
     $connection->delete('glpi_items_projects', ['id' => 303]);
 }
+// Both new relationship scopes are validated before the old adoption stage
+// can commit identifier widening or any other MySQL DDL.
+foreach ([['glpi_appliances_items', 'appliances_id', 401, 'Computer', $legacyId, ApplianceAssets20261005::VERSION, 'computers_id'],
+    ['glpi_appliances_items_relations', 'appliances_items_id', 402, 'Location', 601, ApplianceRecipients20261005::VERSION, 'locations_id']] as [$table, $ownerColumn, $ownerId, $kind, $targetId, $version, $column]) {
+    foreach ([['itemtype' => 'PluginExampleAsset', 'items_id' => $targetId], ['itemtype' => $kind, 'items_id' => 0], ['itemtype' => $kind, 'items_id' => 1999999999]] as $invalid) {
+        $connection->insert($table, ['id' => 701, $ownerColumn => $ownerId] + $invalid);
+        try {
+            $history->upgrade($connection);
+            throw new LogicException('Invalid appliance relationship accepted before adoption');
+        } catch (RuntimeException $error) {
+            verify(str_contains($error->getMessage(), $table) && (str_contains($error->getMessage(), 'Unsupported typed relationship kinds') || str_contains($error->getMessage(), 'Invalid or unsupported')), 'Appliance diagnostic identifies invalid relationship before adoption');
+        }
+        verify(
+            Ledger::state($connection, LegacyToOrm::VERSION) === null && Ledger::state($connection, ApplianceAssets20261005::VERSION) === null && Ledger::state($connection, ApplianceRecipients20261005::VERSION) === null
+            && Type::lookupName($manager->listTableColumns('glpi_computers')['id']->getType()) === 'integer' && !$manager->introspectTable($table)->hasColumn($column),
+            'Appliance preflight refuses before any adoption DDL or stage journal'
+        );
+        $connection->delete($table, ['id' => 701]);
+    }
+}
 $connection->insert('glpi_useremails', ['users_id' => 1999999999, 'email' => 'history-orphan@example.invalid']);
 try {
     $history->upgrade($connection);
@@ -178,9 +206,18 @@ $link = $connection->fetchAssociative('SELECT computers_id, items_id FROM glpi_c
 verify((int)$link['computers_id'] === $legacyId && (int)$link['items_id'] === $legacyId, 'Typed subject and read-only compatibility identity preserve the legacy link');
 verify($manager->listTableColumns('glpi_certificates_items')['items_id']->getComment() === $schema->getTable('glpi_certificates_items')->getColumn('items_id')->getComment(), 'Historical projection comment survives complete replay');
 $projectLinks = $connection->fetchAllAssociative('SELECT projects_id, itemtype, computers_id, subject_projects_id, items_id FROM glpi_items_projects ORDER BY id');
-verify(count($projectLinks) === 2 && (int)$projectLinks[0]['computers_id'] === $legacyId && (int)$projectLinks[0]['items_id'] === $legacyId
+verify(
+    count($projectLinks) === 2 && (int)$projectLinks[0]['computers_id'] === $legacyId && (int)$projectLinks[0]['items_id'] === $legacyId
     && (int)$projectLinks[1]['subject_projects_id'] === 202 && (int)$projectLinks[1]['items_id'] === 202 && (int)$projectLinks[1]['projects_id'] === 201,
-    'Full populated history appends project subjects without mixing the container and Project target');
+    'Full populated history appends project subjects without mixing the container and Project target'
+);
+$applianceLink = $connection->fetchAssociative('SELECT appliances_id, computers_id, items_id FROM glpi_appliances_items WHERE id = 402');
+verify((int)$applianceLink['appliances_id'] === 401 && (int)$applianceLink['computers_id'] === $legacyId && (int)$applianceLink['items_id'] === $legacyId, 'Populated history preserves separate appliance owner and subject');
+$nestedLinks = $connection->fetchAllAssociative('SELECT id, appliances_items_id, locations_id, items_id FROM glpi_appliances_items_relations ORDER BY id');
+verify(count($nestedLinks) === 2 && array_map(static fn ($row) => (int)$row['id'], $nestedLinks) === [501, 502], 'Populated history preserves duplicate nested relation row IDs');
+foreach ($nestedLinks as $row) {
+    verify((int)$row['appliances_items_id'] === 402 && (int)$row['locations_id'] === 601 && (int)$row['items_id'] === 601, 'Populated history preserves nested owner and recipient');
+}
 if ($postgres) {
     verify(Type::lookupName($manager->listTableColumns('glpi_computers')['is_deleted']->getType()) === 'boolean' && $connection->fetchOne('SELECT is_deleted FROM glpi_computers WHERE id = ?', [$legacyId]) === true, 'Existing integer boolean becomes native boolean without losing its value');
     $nullable = $manager->listTableColumns('glpi_users')['is_ids_visible'];
@@ -251,8 +288,8 @@ if ($postgres) {
 $large = 4294967301;
 $writer->insert('glpi_logs', ['id' => $large, 'items_id' => $large, 'itemtype' => 'Computer', 'old_value' => 'Post-adoption wide audit']);
 verify((new RecordRepository(Orm::create($database)))->find('glpi_logs', 'id', $large)['items_id'] === $large, 'Post-adoption ORM preserves identifiers above unsigned 32-bit range');
-// Interrupt the actual fresh installation after the historical four-version
-// checkpoint, then prove the new installation marker permits its proper retry.
+// Interrupt the actual fresh installation in the final nested appliance stage
+// after earlier history completion, then prove installation remains retryable.
 if ($postgres) {
     foreach ($manager->listTableNames() as $name) {
         $connection->executeStatement('DROP TABLE ' . $platform->quoteIdentifier($name) . ' CASCADE');
@@ -262,20 +299,22 @@ if ($postgres) {
 }
 try {
     $history->install($database, 'en_GB', static function (string $step): void {
-        if ($step === 'ProjectAssets20261003: columns') {
-            throw new RuntimeException('Injected fresh project migration interruption');
+        if ($step === 'ApplianceRecipients20261005: columns') {
+            throw new RuntimeException('Injected fresh appliance recipient migration interruption');
         }
     });
     throw new LogicException('Fresh installation interruption did not execute');
 } catch (RuntimeException $error) {
-    verify($error->getMessage() === 'Injected fresh project migration interruption', 'Actual installer surfaces the appended migration interruption');
+    verify($error->getMessage() === 'Injected fresh appliance recipient migration interruption', 'Actual installer surfaces the appended migration interruption');
 }
 if ($postgres) {
     verify($manager->listTableNames() === [] && !History::isInstalling($connection), 'PostgreSQL actual fresh installation rolls back all phases');
 } else {
-    verify(History::isInstalling($connection) && !Ledger::state($connection, Baseline20261001::VERSION)['installation_complete']
-        && Ledger::state($connection, LegacyToOrm::VERSION)['complete'] && Ledger::state($connection, Booleans20261002::VERSION)['complete'],
-        'MySQL actual fresh installation stays retryable after the former four-version checkpoint');
+    verify(
+        History::isInstalling($connection) && !Ledger::state($connection, Baseline20261001::VERSION)['installation_complete']
+        && Ledger::state($connection, LegacyToOrm::VERSION)['complete'] && Ledger::state($connection, ApplianceAssets20261005::VERSION)['complete'],
+        'MySQL actual fresh installation stays retryable after completed earlier appliance history'
+    );
 }
 $history->install($database, 'en_GB');
 verify(!History::isInstalling($connection) && Ledger::state($connection, Baseline20261001::VERSION)['installation_complete'], 'Retried real installation closes its explicit installation marker');
@@ -283,4 +322,4 @@ verify((new SchemaCheck())->differences($connection) === [], 'Retried actual fre
 foreach (History::VERSIONS as $version) {
     verify(Ledger::state($connection, $version)['complete'], 'Retried actual install completes every appended history version: ' . $version);
 }
-echo $database->getProvider() . ": frozen baseline/seed replay, conflicting and interrupted DDL, seed rollback, populated adoption, invalid booleans/references/project subjects before DDL, separate project roles, projections, preserved account/audit data, sequence synchronization, appended fresh-install retry and idempotency passed.\n";
+echo $database->getProvider() . ": frozen baseline/seed replay, conflicting and interrupted DDL, seed rollback, populated adoption, invalid booleans/references/project/appliance subjects before DDL, separate owners, nested duplicate preservation and project roles, projections, preserved account/audit data, sequence synchronization, appended fresh-install retry and idempotency passed.\n";

@@ -43,6 +43,9 @@ try {
     foreach ($tables as $table) {
         $metadata = Orm::create($DB)->getClassMetadata(EntityRegistry::tables()[$table]);
         $values = $metadata->hasField('itemtype') ? ['itemtype' => 'Computer', 'items_id' => $asset] : [];
+        if ($table === 'glpi_appliances_items_relations') {
+            $values = ['itemtype' => 'Location', 'items_id' => $fixtures->create('glpi_locations')];
+        }
         $containerRelations = ForeignKeys::relations()[$table];
         foreach ($metadata->associationMappings as $property => $mapping) {
             if ($mapping->isToOneOwningSide()
@@ -64,12 +67,12 @@ try {
             $child = $fixtures->create($table, [$column => $parent] + $values);
             $otherValues = $values;
             if (isset($values['items_id'])) {
-                $otherValues['items_id'] = $fixtures->create('glpi_computers', ['name' => 'Unrelated infrastructure asset']);
+                $otherValues['items_id'] = $fixtures->create($table === 'glpi_appliances_items_relations' ? 'glpi_locations' : 'glpi_computers', ['name' => 'Unrelated infrastructure asset']);
             }
             $unrelated = $fixtures->create($table, $otherValues);
             $nested = null;
             if ($table === 'glpi_appliances_items') {
-                $nested = $fixtures->create('glpi_appliances_items_relations', ['appliances_items_id' => $child, 'itemtype' => 'Computer', 'items_id' => $asset]);
+                $nested = $fixtures->create('glpi_appliances_items_relations', ['appliances_items_id' => $child, 'itemtype' => 'Location', 'items_id' => $fixtures->create('glpi_locations')]);
             }
             $type = getItemTypeForTable($parentTable);
             $object = new $type();
