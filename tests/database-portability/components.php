@@ -60,6 +60,10 @@ try {
         $_SESSION['glpiactiveentities'] = [];
         verify($link->getTableGroupRows($device, 'Computer') === [], 'Empty entity scope cannot expose assignments');
         verify(array_column($link->getTableGroupRows($device, ''), 'id') === [$stock], 'Empty asset scope still allows the stock view');
+        $_SESSION['glpishowallentities'] = true;
+        verify($link->getTableGroupRows($device, 'Computer') === [], 'Cached all-entities optimization cannot override explicitly empty component grants');
+        verify(array_column($link->getTableGroupRows($device, ''), 'id') === [$stock], 'Global stock remains available after authoritative empty grant selection');
+        $_SESSION['glpishowallentities'] = false;
         unset($_SESSION['glpiactiveentities']);
         verify(array_column($link->getTableGroupRows($device, 'Computer'), 'id') === [$assigned], 'CLI with no entity selection defaults to root');
         $_SESSION['glpiactiveentities'] = [0];

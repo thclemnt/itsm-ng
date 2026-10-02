@@ -93,6 +93,19 @@ try {
     verify($SQL_TOTAL_REQUEST === 0, 'Core default report bypasses legacy SQL execution');
     verify(str_contains($html, 'Mapped appliance class'), 'A configured additional core asset uses its mapped report classification');
     verify(str_contains($html, 'Visible report OS') && !str_contains($html, 'Hidden report OS'), 'OS report obeys computer entity scope');
+    $_SESSION['glpiactiveentities'] = [];
+    $_SESSION['glpishowallentities'] = true;
+    ob_start();
+    try {
+        Report::showDefaultReport();
+        $emptyHtml = ob_get_contents();
+    } finally {
+        ob_end_clean();
+    }
+    verify(!str_contains($emptyHtml, 'Visible report OS') && !str_contains($emptyHtml, 'Hidden report OS'), 'Actual public reporting cannot expose operating systems while old all-entities flag accompanies empty grants');
+    $_SESSION['glpiactiveentities'] = [$entity];
+    $_SESSION['glpishowallentities'] = false;
+
 
     $switch = fixture('glpi_networkequipments', ['name' => 'Report switch', 'entities_id' => $entity]);
     $ports = [];

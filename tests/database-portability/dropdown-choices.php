@@ -160,6 +160,10 @@ try {
     verify($select('Computer', ['entity_restrict' => [], 'searchText' => $prefix])['count'] === 0, 'Empty caller scope matches nothing');
     $_SESSION['glpiactiveentities'] = [];
     verify($select('Computer', ['searchText' => $prefix])['count'] === 0, 'Empty session scope matches nothing');
+    $_SESSION['glpishowallentities'] = true;
+    verify($select('Computer', ['searchText' => $prefix])['count'] === 0, 'Cached all-entities flag cannot override empty session choice grants');
+    verify($select('Computer', ['entity_restrict' => [0], 'searchText' => $prefix])['count'] === 0, 'Explicit choice context cannot override empty current grants with cached all flag');
+    $_SESSION['glpishowallentities'] = false;
     $_SESSION['glpiactiveentities'] = [0];
 
     $parent = $fixtures->create('glpi_taskcategories', ['name' => $prefix . '-parent', 'completename' => $prefix . '-parent', 'level' => 1]);

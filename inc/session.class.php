@@ -1712,6 +1712,10 @@ class Session
     /** Non-recursive scope: null allows all entities, [] allows none. */
     public static function getActiveEntityScope(): ?array
     {
+        // Profile changes empty the active grants before rebuilding them; the cached all flag may still refer to the old profile.
+        if (array_key_exists('glpiactiveentities', $_SESSION) && !count((array)$_SESSION['glpiactiveentities'])) {
+            return [];
+        }
         if (!empty($_SESSION['glpishowallentities'])) {
             return null;
         }
