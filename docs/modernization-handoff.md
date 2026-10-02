@@ -258,3 +258,78 @@ Preserve existing clone/transfer behavior. Legacy plugin appliance discriminator
 imports need deliberate conversion or pre-DDL diagnostics. Category
 `is_incident`, `is_request` and `is_problem` still need a separate frozen migration
 to real boolean properties; `is_change` already uses boolean mapping.
+
+## Project ownership and category checkpoint (2026-10-02)
+
+The cloud Git environment uses normal authenticated fetch/push; the preceding
+checkpoint is on origin. The integrated source checkpoint is `6636b268ed`, with
+seven coherent commits covering clone ownership, picture cleanup, project subjects,
+nested ticket routes, category booleans and their metadata inventory.
+
+ItemProject now owns all 35 configured subjects. Its `projects_id` container and
+`subject_projects_id` Project subject remain distinct, including self-links.
+Property metadata derives the generated read-only compatibility identity,
+discriminator constraints and runtime scope; appended `20261003_project_assets`
+freezes only its historical upgrade targets. Public lists/counts, installed-device
+labels, notification model hooks, binding IDs, recursive entity/template/rights
+filters, all subject purges, asset transfer, explicit relation clones and parent
+clone exclusions are covered. No 20261001 baseline, seed or adoption snapshot
+changed.
+
+Canonical history now stores an explicit installation-completion marker. A
+completed installation with a later migration pending must use db:migrate; it
+cannot bypass existing-schema installation safeguards. Interrupted fresh replay
+after the former four-version checkpoint remains resumable. Actual CLI preview
+shows every appended data/DDL phase without writing. Populated upgrades preserve
+wide identifiers, independent project roles and generated-column comments.
+
+Normal parent cloning retargets entity-declared subject columns together with
+legacy identity, retaining contract limits, document timeline multiplicity, actor
+attribution, NULL/empty data and audit history. A process-local reproduction of
+the old Clonable trait failed actual Computer cloning with the original canonical
+reference disagreement; the repaired public flow passes on both providers.
+DCRoom purge no longer attempts to unlink a directory for a NULL picture name.
+
+Nested ticket collections resolve direct/inverse owning associations and all 20
+typed ItemTicket subjects. Unqualified User routes include recipient/updater
+roles, paired ticket relations include both declared ends, and unsupported nested
+routes return 400. Parent existence/read checks and ticket/entity visibility stay
+conjunctive; counts and pages never gain actor fanout.
+
+ITILCategory is_incident/is_request/is_problem are property-owned booleans.
+Appended `20261004_category_boolean_flags` validates 0/1/NULL before DDL; PostgreSQL
+uses BOOLEAN, MySQL retains historical signed integer storage with enforcing
+CHECKs. Interrupted replay, unsigned normalization, comments, defaults,
+nullability, conflicting checks and actual category endpoint scope are tested.
+The MySQL 8.4 NOT ENFORCED branch has a dedicated fixture but remains unexecuted
+here; MariaDB 10.11 and PostgreSQL 15 are the actual engines.
+
+Fresh integrated installations and coherent full suites pass **137/137 discovered
+contracts on both providers**, followed by clean final read-only schema checks.
+All ten browser tests pass on each engine. Matched application classes pass
+PostgreSQL 108 methods/5,327 assertions and MariaDB 154 methods/9,388 assertions,
+with no skipped or void methods. Exact commands, class lists, source checkpoint
+and results are in `/workspace/itsm-env/evidence/integrated-validation-commands.txt`
+and `integrated-application-validation.md`; full logs are `integrated-suite-*.log`,
+`integrated-schema-*.log`, `integrated-browser-*.log` and `integrated-legacy-*.log`.
+
+Additional PostgreSQL Entity coverage **fails**: the 113-method run has one
+exception, although the atoum process returned zero. Entity::testChangeEntityParent
+passes `[true]` to the adapter, which renders WHERE(1); RSS administrative
+visibility also supplies this literal. PostgreSQL rejects the integer predicate.
+The failure is preserved in `integrated-legacy-extra-entity-pg.log` and assigned
+to the next isolated batch. Passing matched suites must not erase this finding.
+
+The current static inventory is 357 mapped tables, 1,038 enforced references,
+24 discriminated identities, 40 polymorphic candidates and one pending identity;
+401 booleans derive from entity properties. There are 2,892 adapter sites and 24
+native PostgreSQL-driver sites. Native persistent goals remain unavailable; this
+committed objective and handoff are the durable record. The overall goal remains
+open. Next isolated batch: eight ApplianceItem subjects plus three nested
+Location/Network/Domain recipients, preserving nested duplicates and cloning;
+replace the destructive plugin importer with a planned atomic domain import and
+existing-ledger provenance; fix real boolean predicates and validate Entity/RSS.
+The current plugin importer is unsafe before/after adoption; until the replacement
+is validated, legacy import needs a compatible historical application/schema
+before switching to modernized source. Remote CI/release engines/live replica
+validation remain unverified.

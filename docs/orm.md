@@ -4844,3 +4844,24 @@ The durable goal remains open: 2,893 adapter query sites, 41 polymorphic candida
 and one unresolved historical identity still require architectural work. See
 [the handoff](modernization-handoff.md) for exact evidence and the next project-link
 ownership migration, including clone, purge and plugin-import boundaries.
+
+## Project subjects, nested ticket routes and category flags (2026-10-02)
+
+All 35 project subjects now own typed associations, with a separate Project
+subject role from the containing project. Domain queries preserve binding IDs,
+public model hooks, entity/template/rights scope, notifications and purge/clone
+behavior. Historical target declarations are frozen in an appended canonical
+migration; current entity metadata owns runtime declarations. Parent asset
+cloning also replaces every old subject association when copying typed relations.
+
+Ticket parent collections resolve actual direct/inverse ownership or typed
+ItemTicket subjects; unsupported routes return a client error. Category incident,
+request and problem flags are real boolean properties with a separate frozen
+conversion. Current read-only PostgreSQL schema inspection derives flag types
+from properties rather than another runtime registry.
+
+Full integrated suites pass 137/137 contracts and clean final schemas on both
+providers; all ten browser tests pass each. An extra PostgreSQL Entity run still
+exposes WHERE(1) from boolean literal criteria, which is being repaired in the
+next isolated appliance/import batch. See the durable handoff for exact coverage,
+remaining 2,892 adapter sites and release/replica limits.
