@@ -46,6 +46,7 @@ final class Orm
             \Doctrine\DBAL\Types\Type::addType(Type\FixedStringType::NAME, Type\FixedStringType::class);
         }
         $config = new Configuration();
+        $config->setDefaultRepositoryClassName(Repository\DropdownChoiceRepository::class);
         $config->addCustomStringFunction('REPLACE', Query\Replace::class);
         $config->addCustomStringFunction('YEAR_MONTH', Query\YearMonth::class);
         $config->addCustomStringFunction('TEMPORAL_TEXT', Query\TemporalText::class);

@@ -21,14 +21,15 @@ final class RecordCriteria
     {
     }
 
-    public function withJoinedMetadata(ClassMetadata $metadata, string $alias): self
+    public function withJoinedMetadata(ClassMetadata $metadata, string $alias, ?string $qualifier = null): self
     {
+        $qualifier ??= $metadata->getTableName();
         if (!in_array($alias, $this->query->getAllAliases(), true)
             || $metadata->getTableName() === $this->metadata->getTableName()
-            || isset($this->joinedMetadata[$metadata->getTableName()])) {
+            || isset($this->joinedMetadata[$qualifier])) {
             throw new UnsupportedCriteria('Joined criteria require a unique mapped query alias.');
         }
-        $this->joinedMetadata[$metadata->getTableName()] = [$metadata, $alias];
+        $this->joinedMetadata[$qualifier] = [$metadata, $alias];
         return $this;
     }
 

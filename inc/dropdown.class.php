@@ -184,10 +184,9 @@ class Dropdown
               'on_change'            => $params['on_change'],
               'permit_select_parent' => $params['permit_select_parent'],
               'specific_tags'        => $params['specific_tags'],
-              '_idor_token'          => Session::getNewIDORToken($itemtype, [
-                 'entity_restrict' => $entity_restrict,
-              ]),
         ];
+
+        $p['_idor_token'] = \itsmng\Database\DropdownChoiceContext::token($itemtype, $p);
 
         $output = "<span class='no-wrap input-group'>";
         $output .= Html::jsAjaxDropdown(
@@ -2394,10 +2393,8 @@ class Dropdown
     {
         global $DB, $CFG_GLPI;
 
-        // check if asked itemtype is the one originaly requested by the form
-        // if (!Session::validateIDOR($post)) {
-        //    return;
-        // }
+        // Trusted PHP callers already own their component authorization. The
+        // public AJAX boundary validates the issued kind and complete context.
 
         if (
             isset($post["entity_restrict"])
@@ -2441,9 +2438,7 @@ class Dropdown
             }
         }
 
-        if (!isset($post['permit_select_parent'])) {
-            $post['permit_select_parent'] = false;
-        }
+        $post['permit_select_parent'] = filter_var($post['permit_select_parent'] ?? false, FILTER_VALIDATE_BOOL);
 
         $condition = [];
         if (isset($post['condition']) && !empty($post['condition']) && !is_array($post['condition'])) {
@@ -2503,7 +2498,7 @@ class Dropdown
 
         if ($item instanceof CommonTreeDropdown) {
             if ($one_item >= 0) {
-                $where["$table.id"] = $one_item;
+                $where[] = ["$table.id" => $one_item];
             } else {
                 if (!empty($post['searchText'])) {
                     $search = Search::makeTextSearchValue($post['searchText']);
@@ -2586,54 +2581,6 @@ class Dropdown
                 }
             }
 
-            $addselect = [];
-            $ljoin = [];
-            if (Session::haveTranslations($post['itemtype'], 'completename')) {
-                $addselect[] = "namet.value AS transcompletename";
-                $ljoin['glpi_dropdowntranslations AS namet'] = [
-                   'ON' => [
-                      'namet'  => 'items_id',
-                      $table   => 'id', [
-                         'AND' => [
-                            'namet.itemtype'  => $post['itemtype'],
-                            'namet.language'  => $_SESSION['glpilanguage'],
-                            'namet.field'     => 'completename'
-                         ]
-                      ]
-                   ]
-                ];
-            }
-            if (Session::haveTranslations($post['itemtype'], 'name')) {
-                $addselect[] = "namet2.value AS transname";
-                $ljoin['glpi_dropdowntranslations AS namet2'] = [
-                   'ON' => [
-                      'namet2' => 'items_id',
-                      $table   => 'id', [
-                         'AND' => [
-                            'namet2.itemtype' => $post['itemtype'],
-                            'namet2.language' => $_SESSION['glpilanguage'],
-                            'namet2.field'    => 'name'
-                         ]
-                      ]
-                   ]
-                ];
-            }
-            if (Session::haveTranslations($post['itemtype'], 'comment')) {
-                $addselect[] = "commentt.value AS transcomment";
-                $ljoin['glpi_dropdowntranslations AS commentt'] = [
-                   'ON' => [
-                      'commentt'  => 'items_id',
-                      $table      => 'id', [
-                         'AND' => [
-                            'commentt.itemtype'  => $post['itemtype'],
-                            'commentt.language'  => $_SESSION['glpilanguage'],
-                            'commentt.field'     => 'comment'
-                         ]
-                      ]
-                   ]
-                ];
-            }
-
             if ($start > 0 && $multi) {
                 //we want to load last entry of previous page
                 //(and therefore one more result) to check if
@@ -2642,18 +2589,16 @@ class Dropdown
                 ++$limit;
             }
 
-            $criteria = [
-               'SELECT' => array_merge(["$table.*"], $addselect),
-               'FROM'   => $table,
-               'WHERE'  => $where,
-               'ORDER'  => $order,
-               'START'  => $start,
-               'LIMIT'  => $limit
-            ];
-            if (count($ljoin)) {
-                $criteria['LEFT JOIN'] = $ljoin;
-            }
-            $iterator = $DB->request($criteria);
+            $iterator = self::choiceRows(
+                $DB,
+                $item,
+                $where,
+                $order,
+                self::choiceTranslations($post['itemtype'], true),
+                $post['itemtype'],
+                $limit,
+                $start
+            );
 
             // Empty search text : display first
             if ($post['page'] == 1 && empty($post['searchText'])) {
@@ -2684,7 +2629,7 @@ class Dropdown
                 $prev             = -1;
                 $firstitem_entity = -1;
 
-                while ($data = $iterator->next()) {
+                foreach ($iterator as $data) {
                     $ID    = $data['id'];
                     $level = $data['level'];
 
@@ -2907,9 +2852,6 @@ class Dropdown
                 if (Session::haveTranslations($post['itemtype'], $field)) {
                     $orwhere['namet.value'] = ['LIKE', $search];
                 }
-                if ($post['itemtype'] == "SoftwareLicense") {
-                    $orwhere['glpi_softwares.name'] = ['LIKE', $search];
-                }
 
                 // search also in displaywith columns
                 if ($displaywith && count($post['displaywith'])) {
@@ -2920,257 +2862,131 @@ class Dropdown
 
                 $where[] = ['OR' => $orwhere];
             }
-            $addselect = [];
-            $ljoin = [];
-            if (Session::haveTranslations($post['itemtype'], $field)) {
-                $addselect[] = "namet.value AS transname";
-                $ljoin['glpi_dropdowntranslations AS namet'] = [
-                   'ON' => [
-                      'namet'  => 'items_id',
-                      $table   => 'id', [
-                         'AND' => [
-                            'namet.itemtype'  => $post['itemtype'],
-                            'namet.language'  => $_SESSION['glpilanguage'],
-                            'namet.field'     => $field
-                         ]
-                      ]
-                   ]
-                ];
-            }
-            if (Session::haveTranslations($post['itemtype'], 'comment')) {
-                $addselect[] = "commentt.value AS transcomment";
-                $ljoin['glpi_dropdowntranslations AS commentt'] = [
-                   'ON' => [
-                      'commentt'  => 'items_id',
-                      $table      => 'id', [
-                         'AND' => [
-                            'commentt.itemtype'  => $post['itemtype'],
-                            'commentt.language'  => $_SESSION['glpilanguage'],
-                            'commentt.field'     => 'comment'
-                         ]
-                      ]
-                   ]
-                ];
-            }
+            if ($item instanceof User) {
+                $right = $post['right'] ?? 'all';
 
-            $criteria = [];
-            switch ($post['itemtype']) {
-                case "SoftwareLicense":
-                    $criteria = [
-                       'SELECT' => [
-                          "$table.*",
-                          new \QueryExpression("CONCAT(glpi_softwares.name,' - ',glpi_softwarelicenses.name) AS $field")
-                       ],
-                       'FROM'   => $table,
-                       'LEFT JOIN' => [
-                          'glpi_softwares'  => [
-                             'ON' => [
-                                'glpi_softwarelicenses' => 'softwares_id',
-                                'glpi_softwares'        => 'id'
-                             ]
-                          ]
-                       ]
-                    ];
-                    break;
-
-                case "Profile":
-                    $criteria = [
-                       'SELECT'          => "$table.*",
-                       'DISTINCT'        => true,
-                       'FROM'            => $table,
-                       'LEFT JOIN'       => [
-                          'glpi_profilerights' => [
-                             'ON' => [
-                                'glpi_profilerights' => 'profiles_id',
-                                $table               => 'id'
-                             ]
-                          ]
-                       ]
-                    ];
-                    break;
-
-                case KnowbaseItem::getType():
-                    $criteria = [
-                       'SELECT' => array_merge(["$table.*"], $addselect),
-                       'DISTINCT'        => true,
-                       'FROM'            => $table
-                    ];
-                    if (count($ljoin)) {
-                        $criteria['LEFT JOIN'] = $ljoin;
-                    }
-
-                    $visibility = KnowbaseItem::getVisibilityCriteria();
-                    if (count($visibility['LEFT JOIN'])) {
-                        $criteria['LEFT JOIN'] = array_merge(
-                            (isset($criteria['LEFT JOIN']) ? $criteria['LEFT JOIN'] : []),
-                            $visibility['LEFT JOIN']
-                        );
-                        //Do not use where??
-                        /*if (isset($visibility['WHERE'])) {
-                           $where = $visibility['WHERE'];
-                        }*/
-                    }
-                    break;
-
-                case Project::getType():
-                    $visibility = Project::getVisibilityCriteria();
-                    if (count($visibility['LEFT JOIN'])) {
-                        $ljoin = array_merge($ljoin, $visibility['LEFT JOIN']);
-                        if (isset($visibility['WHERE'])) {
-                            $where[] = $visibility['WHERE'];
-                        }
-                    }
-
-                    $criteria = [
-                       'SELECT' => array_merge(["$table.*"], $addselect),
-                       'FROM'   => $table
-                    ];
-                    if (count($ljoin)) {
-                        $criteria['LEFT JOIN'] = $ljoin;
-                    }
-                    break;
-
-                case User::class:
-                    $right = $post['right'] ?? 'all';
-
-                    $user_search_text = (isset($post['searchText']) ? $post['searchText'] : '');
-                    $user_inactive_deleted = isset($post['inactive_deleted']) ? $post['inactive_deleted'] : 0;
-                    $user_with_no_right = isset($post['with_no_right']) ? $post['with_no_right'] : 0;
-                    $user_used = isset($post['used']) ? $post['used'] : [];
-                    $user_entity_restrict = -1;
-                    if (isset($post['entity_restrict'])) {
-                        $user_entity_restrict = Toolbox::jsonDecode($post['entity_restrict']);
-                    }
-                    if (isset($post['value'])) {
-                        $user_used[] = (int)$post['value'];
-                    }
-
-                    $userCriteria = $condition;
-                    if (!empty($post['restrict_session_scope'])) {
-                        // Users are scoped through profile grants, rather than
-                        // their default entity preference. Keep both scopes.
-                        $userCriteria = ['AND' => [$userCriteria, getEntitiesRestrictCriteria(
-                            'glpi_profiles_users',
-                            '',
-                            (array)($_SESSION['glpiactiveentities'] ?? []),
-                            true
-                        )]];
-                    }
-                    // Use User::getSqlSearchResult for permission-based filtering
-                    $iterator = User::getSqlSearchResult(
-                        false,  // count = false
-                        $right,
-                        $user_entity_restrict,
-                        0,  // value
-                        $user_used,
-                        $user_search_text,
-                        $start,
-                        (int)$post['page_limit'],
-                        $user_inactive_deleted,
-                        $user_with_no_right,
-                        $userCriteria
+                $user_search_text = (isset($post['searchText']) ? $post['searchText'] : '');
+                $user_inactive_deleted = isset($post['inactive_deleted']) ? $post['inactive_deleted'] : 0;
+                $user_with_no_right = isset($post['with_no_right']) ? $post['with_no_right'] : 0;
+                $user_used = isset($post['used']) ? $post['used'] : [];
+                $user_entity_restrict = -1;
+                if (isset($post['entity_restrict'])) {
+                    $user_entity_restrict = is_string($post['entity_restrict']) ? Toolbox::jsonDecode($post['entity_restrict']) : $post['entity_restrict'];
+                }
+                $currentScope = Session::getActiveEntityScope();
+                $userConditions = $condition;
+                if (!empty($post['restrict_session_scope'])) {
+                    // Component-selected users retain both requested and grant scopes.
+                    $userConditions[] = getEntitiesRestrictCriteria(
+                        'glpi_profiles_users',
+                        '',
+                        (array)($_SESSION['glpiactiveentities'] ?? []),
+                        true
                     );
+                }
+                if ($currentScope !== null) {
+                    $requested = is_array($user_entity_restrict) ? array_map('intval', $user_entity_restrict)
+                        : ($user_entity_restrict < 0 ? $currentScope : [(int)$user_entity_restrict]);
+                    $user_entity_restrict = array_values(array_intersect($requested, $currentScope));
+                    if (!$user_entity_restrict) {
+                        $userConditions[] = false;
+                    }
+                }
+                if (isset($post['value'])) {
+                    $user_used[] = (int)$post['value'];
+                }
 
-                    // Display first if no search
-                    if ($post['page'] == 1 && empty($post['searchText'])) {
-                        if (!isset($post['display_emptychoice']) || $post['display_emptychoice']) {
+                // Use User::getSqlSearchResult for permission-based filtering
+                $iterator = User::getSqlSearchResult(
+                    false,  // count = false
+                    $right,
+                    $user_entity_restrict,
+                    0,  // value
+                    $user_used,
+                    $user_search_text,
+                    $start,
+                    (int)$post['page_limit'],
+                    $user_inactive_deleted,
+                    $user_with_no_right,
+                    $userConditions
+                );
+
+                // Display first if no search
+                if ($post['page'] == 1 && empty($post['searchText'])) {
+                    if (!isset($post['display_emptychoice']) || $post['display_emptychoice']) {
+                        $datas[] = [
+                           'id' => 0,
+                           'text' => $post["emptylabel"]
+                        ];
+                    }
+                }
+                if ($post['page'] == 1) {
+                    if (count($toadd)) {
+                        foreach ($toadd as $key => $val) {
                             $datas[] = [
-                               'id' => 0,
-                               'text' => $post["emptylabel"]
+                               'id' => $key,
+                               'text' => stripslashes((string) $val)
                             ];
                         }
                     }
-                    if ($post['page'] == 1) {
-                        if (count($toadd)) {
-                            foreach ($toadd as $key => $val) {
-                                $datas[] = [
-                                   'id' => $key,
-                                   'text' => stripslashes((string) $val)
-                                ];
-                            }
+                }
+
+                // Process iterator results
+                if (count($iterator)) {
+                    while ($data = $iterator->next()) {
+                        $outputval = formatUserName(
+                            $data['id'],
+                            $data['name'],
+                            $data['realname'],
+                            $data['firstname']
+                        );
+
+                        $title = sprintf(__('%1$s - %2$s'), $outputval, $data['name']);
+
+                        if (
+                            $_SESSION["glpiis_ids_visible"]
+                            || (strlen($outputval) == 0)
+                        ) {
+                            $outputval = sprintf(__('%1$s (%2$s)'), $outputval, $data['id']);
                         }
-                    }
 
-                    // Process iterator results
-                    if (count($iterator)) {
-                        while ($data = $iterator->next()) {
-                            $outputval = formatUserName(
-                                $data['id'],
-                                $data['name'],
-                                $data['realname'],
-                                $data['firstname']
-                            );
-
-                            $title = sprintf(__('%1$s - %2$s'), $outputval, $data['name']);
-
-                            if (
-                                $_SESSION["glpiis_ids_visible"]
-                                || (strlen($outputval) == 0)
-                            ) {
-                                $outputval = sprintf(__('%1$s (%2$s)'), $outputval, $data['id']);
-                            }
-
-                            if ($displaywith) {
-                                foreach ($post['displaywith'] as $key) {
-                                    if (isset($data[$key])) {
-                                        $withoutput = $data[$key];
-                                        if (isForeignKeyField($key)) {
-                                            $withoutput = Dropdown::getDropdownName(
-                                                getTableNameForForeignKeyField($key),
-                                                $data[$key]
-                                            );
-                                        }
-                                        if ((strlen((string) $withoutput) > 0) && ($withoutput != '&nbsp;')) {
-                                            $outputval = sprintf(__('%1$s - %2$s'), $outputval, $withoutput);
-                                        }
+                        if ($displaywith) {
+                            foreach ($post['displaywith'] as $key) {
+                                if (isset($data[$key])) {
+                                    $withoutput = self::choiceDisplayValue($table, $key, $data);
+                                    if ((strlen((string) $withoutput) > 0) && ($withoutput != '&nbsp;')) {
+                                        $outputval = sprintf(__('%1$s - %2$s'), $outputval, $withoutput);
                                     }
                                 }
                             }
-
-                            $datas[] = [
-                               'id' => $data['id'],
-                               'text' => $outputval,
-                               'title' => $title
-                            ];
-                            $count++;
                         }
-                    }
 
-                    $ret['results'] = $datas;
-                    $ret['count']   = $count;
-                    return ($json === true) ? json_encode($ret) : $ret;
-
-                default:
-                    $criteria = [
-                       'SELECT' => array_merge(["$table.*"], $addselect),
-                       'FROM'   => $table
-                    ];
-                    if (count($ljoin)) {
-                        $criteria['LEFT JOIN'] = $ljoin;
+                        $datas[] = [
+                           'id' => $data['id'],
+                           'text' => $outputval,
+                           'title' => $title
+                        ];
+                        $count++;
                     }
+                }
+
+                $ret['results'] = $datas;
+                $ret['count']   = $count;
+                return ($json === true) ? json_encode($ret) : $ret;
+
             }
 
-            $criteria = array_merge(
-                $criteria,
-                [
-                  'WHERE'  => $where,
-                  'START'  => $start,
-                  'LIMIT'  => $limit
-                ]
+            $order = $multi ? ["$table.entities_id", "$table.$field"] : ["$table.$field"];
+            $iterator = self::choiceRows(
+                $DB,
+                $item,
+                $where,
+                $order,
+                self::choiceTranslations($post['itemtype'], false, $field),
+                $post['itemtype'],
+                $limit,
+                $start
             );
-
-            if ($multi) {
-                $criteria['ORDERBY'] = ["$table.entities_id", "$table.$field"];
-            } else {
-                $criteria['ORDERBY'] = ["$table.$field"];
-            }
-
-            if ($item instanceof Contact) {
-                $iterator = (new \itsmng\Database\Repository\ContactRepository(\itsmng\Database\Orm::create($DB)))
-                    ->dropdown($where, $multi, $limit, $start);
-            } else {
-                $iterator = $DB->request($criteria);
-            }
 
             // Display first if no search
             if ($post['page'] == 1 && empty($post['searchText'])) {
@@ -3252,13 +3068,7 @@ class Dropdown
                     if ($displaywith) {
                         foreach ($post['displaywith'] as $key) {
                             if (isset($data[$key])) {
-                                $withoutput = $data[$key];
-                                if (isForeignKeyField($key)) {
-                                    $withoutput = Dropdown::getDropdownName(
-                                        getTableNameForForeignKeyField($key),
-                                        $data[$key]
-                                    );
-                                }
+                                $withoutput = self::choiceDisplayValue($table, $key, $data);
                                 if ((strlen((string) $withoutput) > 0) && ($withoutput != '&nbsp;')) {
                                     $outputval = sprintf(__('%1$s - %2$s'), $outputval, $withoutput);
                                 }
@@ -3292,6 +3102,78 @@ class Dropdown
         $ret['pagination']['more']    = ($count >= $post['page_limit']);
 
         return ($json === true) ? json_encode($ret) : $ret;
+    }
+
+    /** An association's property owns its label target, including subject projections. */
+    private static function choiceDisplayValue(string $table, string $column, array $row): mixed
+    {
+        if (isset(\itsmng\Database\EntityRegistry::tables()[$table])) {
+            $target = \itsmng\Database\EntityRegistry::relations()[$table][$column] ?? null;
+            $selection = \itsmng\Database\EntityRegistry::discriminatedReferences($table)[$column] ?? null;
+            if ($selection !== null) {
+                $target = $selection['selections'][$row[$selection['discriminator']]]['target'] ?? null;
+            }
+            return $target === null ? $row[$column] : self::getDropdownName($target, $row[$column]);
+        }
+        // Unmapped custom plugin columns retain their declared legacy convention.
+        return isForeignKeyField($column) ? self::getDropdownName(getTableNameForForeignKeyField($column), $row[$column]) : $row[$column];
+    }
+
+    /** Mapped choices cannot silently fall back to a plugin's SQL contract. */
+    private static function choiceRows(DBAdapter $database, CommonDBTM $model, array $criteria, array $order, array $translations, string $kind, int $limit, int $offset): iterable
+    {
+        $table = $model->getTable();
+        if ($model->isEntityAssign() && !$model->maybePrivate()) {
+            $scope = Session::getActiveEntityScope();
+            if ($scope !== null) {
+                // Caller restrictions are additional filters, never authority to
+                // select another entity. An empty session scope matches nothing.
+                $criteria[] = $scope ? getEntitiesRestrictCriteria(
+                    $table,
+                    '',
+                    $scope,
+                    $model instanceof Entity ? false : $model->maybeRecursive()
+                ) : false;
+            }
+        }
+        if (isset(\itsmng\Database\EntityRegistry::tables()[$table])) {
+            $manager = \itsmng\Database\Orm::create($database);
+            return $manager->getRepository(\itsmng\Database\EntityRegistry::tables()[$table])->choices(
+                $criteria,
+                $order,
+                $translations,
+                $kind,
+                $_SESSION['glpilanguage'],
+                $limit,
+                $offset
+            );
+        }
+        return \itsmng\Database\UnmappedDropdownChoices::read(
+            $database,
+            $table,
+            $criteria,
+            $order,
+            $translations,
+            $kind,
+            $_SESSION['glpilanguage'],
+            $limit,
+            $offset
+        );
+    }
+
+    /** Query-local translated fields retain the widget's scalar response names. */
+    private static function choiceTranslations(string $kind, bool $tree, string $nameField = 'name'): array
+    {
+        $fields = $tree ? ['namet' => ['completename', 'transcompletename'], 'namet2' => ['name', 'transname']]
+            : ['namet' => [$nameField, 'transname']];
+        $fields['commentt'] = ['comment', 'transcomment'];
+        $translations = [];
+        foreach ($fields as $role => [$field, $output]) {
+            if (Session::haveTranslations($kind, $field)) {
+                $translations[$role] = ['field' => $field, 'output' => $output];
+            }
+        }
+        return $translations;
     }
 
     /**

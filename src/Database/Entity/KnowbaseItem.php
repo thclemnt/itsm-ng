@@ -8,7 +8,7 @@ use Doctrine\ORM\Mapping as ORM;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
 
-#[ORM\Entity]
+#[ORM\Entity(repositoryClass: \itsmng\Database\Repository\KnowledgeBaseChoiceRepository::class)]
 #[ORM\Table(name: 'glpi_knowbaseitems')]
 class KnowbaseItem
 {

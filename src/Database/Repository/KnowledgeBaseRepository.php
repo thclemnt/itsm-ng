@@ -147,6 +147,16 @@ final class KnowledgeBaseRepository
             ->setParameter('document', $document, Types::INTEGER)->setMaxResults(1)->getQuery()->getOneOrNullResult() !== null;
     }
 
+    /** Reuse the article audience policy without a multiplying join in choice lists. */
+    public function restrictDropdownChoices(QueryBuilder $query, KnowledgeBaseAccess $access): void
+    {
+        $visible = $this->visible($access)->select('k.id');
+        $query->andWhere('r.id IN (' . $visible->getDQL() . ')');
+        foreach ($visible->getParameters() as $parameter) {
+            $query->setParameter($parameter->getName(), $parameter->getValue(), $parameter->getType());
+        }
+    }
+
     private function visible(KnowledgeBaseAccess $access): QueryBuilder
     {
         $query = $this->em->createQueryBuilder()->from(KnowbaseItem::class, 'k');
