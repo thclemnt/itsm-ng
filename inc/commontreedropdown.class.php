@@ -167,6 +167,7 @@ abstract class CommonTreeDropdown extends CommonDropdown
 
     public function pre_deleteItem()
     {
+        global $DB;
         // Not set in case of massive delete : use parent
         if (isset($this->input['_replace_by']) && $this->input['_replace_by']) {
             $parent = $this->input['_replace_by'];
@@ -180,7 +181,7 @@ abstract class CommonTreeDropdown extends CommonDropdown
         $result = $this->getTreeRows(['id'], [$this->getForeignKeyField() => $this->fields['id']]);
 
         foreach ($result as $data) {
-            $tmp->update(['id' => $data['id'], $this->getForeignKeyField() => $parent]);
+            \itsmng\Database\DeletionUnit::requireSuccess($DB->getDoctrineConnection(), (bool)$tmp->update(['id' => $data['id'], $this->getForeignKeyField() => $parent]));
         }
 
         return true;
@@ -362,13 +363,18 @@ abstract class CommonTreeDropdown extends CommonDropdown
      */
     protected function addSonInParents()
     {
-        global $GLPI_CACHE;
+        global $DB, $GLPI_CACHE;
 
         //add sons cache when needed
         if (Toolbox::useCache()) {
             $ancestors = getAncestorsOf($this->getTable(), $this->getID());
             foreach ($ancestors as $ancestor) {
                 $ckey = 'sons_cache_' . $this->getTable() . '_' . $ancestor;
+                if (\itsmng\Database\DeletionUnit::isActive($DB->getDoctrineConnection())) {
+                    // Never publish a transaction-local hierarchy outside the database.
+                    $GLPI_CACHE->delete($ckey);
+                    continue;
+                }
                 if ($GLPI_CACHE->has($ckey)) {
                     $sons = $GLPI_CACHE->get($ckey);
                     if (!isset($sons[$this->getID()])) {

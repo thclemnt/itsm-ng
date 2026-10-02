@@ -752,7 +752,7 @@ final class DbUtils
         $ckey = 'sons_cache_' . $table . '_' . $IDf;
         $sons = false;
 
-        if (Toolbox::useCache()) {
+        if (Toolbox::useCache() && !\itsmng\Database\DeletionUnit::isActive($DB->getDoctrineConnection())) {
             if ($GLPI_CACHE->has($ckey)) {
                 $sons = $GLPI_CACHE->get($ckey);
                 if ($sons !== null) {
@@ -810,7 +810,11 @@ final class DbUtils
         }
 
         if (Toolbox::useCache()) {
-            $GLPI_CACHE->set($ckey, $sons);
+            if (\itsmng\Database\DeletionUnit::isActive($DB->getDoctrineConnection())) {
+                $GLPI_CACHE->delete($ckey);
+            } else {
+                $GLPI_CACHE->set($ckey, $sons);
+            }
         }
 
         return $sons;
@@ -880,7 +884,7 @@ final class DbUtils
         }
         $ancestors = [];
 
-        if (Toolbox::useCache()) {
+        if (Toolbox::useCache() && !\itsmng\Database\DeletionUnit::isActive($DB->getDoctrineConnection())) {
             if ($GLPI_CACHE->has($ckey)) {
                 $ancestors = $GLPI_CACHE->get($ckey);
                 if ($ancestors !== null) {
@@ -961,7 +965,11 @@ final class DbUtils
         }
 
         if (Toolbox::useCache()) {
-            $GLPI_CACHE->set($ckey, $ancestors);
+            if (\itsmng\Database\DeletionUnit::isActive($DB->getDoctrineConnection())) {
+                $GLPI_CACHE->delete($ckey);
+            } else {
+                $GLPI_CACHE->set($ckey, $ancestors);
+            }
         }
 
         return $ancestors;

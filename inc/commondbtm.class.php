@@ -887,7 +887,7 @@ class CommonDBTM extends CommonGLPI
         foreach ($lifecycle->replacements($this->getTable(), (int)$this->fields['id'], (int)$this->getID(), $this->getType(), $index) as $selection) {
             foreach ($selection['ids'] as $id) {
                 $related = getItemForItemtype(getItemTypeForTable($selection['table']));
-                $related->update([$selection['index'] => $id, $selection['column'] => $selection['physical'] ? $physicalReplacement : $newval, '_disablenotif' => true]);
+                \itsmng\Database\DeletionUnit::requireSuccess($DB->getDoctrineConnection(), (bool)$related->update([$selection['index'] => $id, $selection['column'] => $selection['physical'] ? $physicalReplacement : $newval, '_disablenotif' => true]));
             }
         }
 
@@ -913,7 +913,7 @@ class CommonDBTM extends CommonGLPI
                 }
                 foreach (\itsmng\Database\MappedReads::identifiers($DB, $table, $model->getIndexName(), $criteria) as $id) {
                     $related = getItemForItemtype($model->getType());
-                    $related->update([$model->getIndexName() => $id, $column => $physical ? $physicalReplacement : $newval, '_disablenotif' => true]);
+                    \itsmng\Database\DeletionUnit::requireSuccess($DB->getDoctrineConnection(), (bool)$related->update([$model->getIndexName() => $id, $column => $physical ? $physicalReplacement : $newval, '_disablenotif' => true]));
                 }
             }
         }
@@ -2064,9 +2064,70 @@ class CommonDBTM extends CommonGLPI
         if ($DB->isSlave()) {
             return false;
         }
+        if (!\itsmng\Database\MappedStorage::supports($this->getTable())) {
+            return $this->deleteLifecycle($input, $force, $history) === \itsmng\Database\DeletionOutcome::Deleted;
+        }
+        $state = get_object_vars($this);
+        $session = $_SESSION;
+        $restore = function () use ($state, $session): void {
+            foreach (array_diff(array_keys(get_object_vars($this)), array_keys($state)) as $property) {
+                unset($this->$property);
+            }
+            foreach ($state as $property => $value) {
+                $this->$property = $value;
+            }
+            $feedback = $_SESSION['MESSAGE_AFTER_REDIRECT'] ?? [];
+            $_SESSION = $session;
+            // A refused operation must not announce success, but its explicit
+            // diagnostic feedback remains useful to the authorized caller.
+            foreach ([WARNING, ERROR] as $type) {
+                foreach (array_diff($feedback[$type] ?? [], $session['MESSAGE_AFTER_REDIRECT'][$type] ?? []) as $message) {
+                    $_SESSION['MESSAGE_AFTER_REDIRECT'][$type][] = $message;
+                }
+            }
+        };
+        try {
+            $result = \itsmng\Database\DeletionUnit::run($DB->getDoctrineConnection(), function () use ($DB, $input, $force, $history): \itsmng\Database\DeletionOutcome {
+                $manager = \itsmng\Database\Orm::create($DB);
+                try {
+                    if (!(new \itsmng\Database\Repository\DeletionRepository($manager))->validate($this, $input)) {
+                        return \itsmng\Database\DeletionOutcome::Cancelled;
+                    }
+                } finally {
+                    $manager->clear();
+                }
+                return $this->deleteLifecycle($input, $force, $history, true);
+            });
+        } catch (Throwable $error) {
+            $restore();
+            throw $error;
+        }
+        if ($result->outcome === \itsmng\Database\DeletionOutcome::Cancelled) {
+            $restore();
+        }
+        // SMTP/chat delivery occurs only after this unit physically commits.
+        $result->deliverNotifications();
+        return $result->outcome === \itsmng\Database\DeletionOutcome::Deleted;
+    }
 
-        if (!$this->getFromDB($input[static::getIndexName()])) {
-            return false;
+    /** Structured account detachment distinguishes committed work from cancellation. */
+    public function deletionDecision(): \itsmng\Database\DeletionDecision
+    {
+        return $this->pre_deleteItem()
+            ? \itsmng\Database\DeletionDecision::Proceed
+            : \itsmng\Database\DeletionDecision::Cancelled;
+    }
+
+    private function deleteLifecycle(array $input, $force, $history, bool $loaded = false): \itsmng\Database\DeletionOutcome
+    {
+        global $DB;
+
+        if ($DB->isSlave()) {
+            return \itsmng\Database\DeletionOutcome::Cancelled;
+        }
+
+        if (!$loaded && !$this->getFromDB($input[static::getIndexName()])) {
+            return \itsmng\Database\DeletionOutcome::Cancelled;
         }
 
         // Force purge for templates / may not to be deleted / not dynamic lockable items
@@ -2103,6 +2164,26 @@ class CommonDBTM extends CommonGLPI
             $this->input['_no_history'] = !$history;
         }
 
+        $physicalIdentity = $this->fields['id'];
+        $publicIdentity = $this->getID();
+        $suppliedIdentities = array_intersect_key($input, array_flip(['id', $this->getIndexName()]));
+        $sourceUnchanged = function () use ($physicalIdentity, $publicIdentity, $suppliedIdentities): bool {
+            if (!is_array($this->input)
+                || !isset($this->fields['id'], $this->fields[$this->getIndexName()], $this->input[$this->getIndexName()])
+                || (string)$this->fields['id'] !== (string)$physicalIdentity
+                || (string)$this->getID() !== (string)$publicIdentity) {
+                return false;
+            }
+            foreach ($suppliedIdentities as $column => $identity) {
+                $value = $this->input[$column] ?? null;
+                if ((!is_int($value) && !is_string($value)) || filter_var($value, FILTER_VALIDATE_INT) === false
+                    || (int)$value !== (int)$identity) {
+                    return false;
+                }
+            }
+            return true;
+        };
+
         // Purge
         if ($force) {
             Plugin::doHook("pre_item_purge", $this);
@@ -2112,10 +2193,33 @@ class CommonDBTM extends CommonGLPI
 
         if (!is_array($this->input)) {
             // $input clear by a hook to cancel delete
-            return false;
+            return \itsmng\Database\DeletionOutcome::Cancelled;
         }
 
-        if ($this->pre_deleteItem()) {
+        // Hooks may rewrite a replacement, but cannot introduce an invalid
+        // owning target after the initial preflight and before cleanup.
+        if (\itsmng\Database\MappedStorage::supports($this->getTable())) {
+            if (!$sourceUnchanged()) {
+                return \itsmng\Database\DeletionOutcome::Cancelled;
+            }
+            $manager = \itsmng\Database\Orm::create($DB);
+            try {
+                if (!(new \itsmng\Database\Repository\DeletionRepository($manager))->validateReplacement($this, $this->input)) {
+                    return \itsmng\Database\DeletionOutcome::Cancelled;
+                }
+            } finally {
+                $manager->clear();
+            }
+        }
+
+        $decision = $this->deletionDecision();
+        if (\itsmng\Database\MappedStorage::supports($this->getTable()) && !$sourceUnchanged()) {
+            return \itsmng\Database\DeletionOutcome::Cancelled;
+        }
+        if ($decision === \itsmng\Database\DeletionDecision::ScopedDetachment) {
+            return \itsmng\Database\DeletionOutcome::ScopedDetachment;
+        }
+        if ($decision === \itsmng\Database\DeletionDecision::Proceed) {
             if ($this->deleteFromDB($force)) {
                 if ($force) {
                     $this->addMessageOnPurgeAction();
@@ -2155,10 +2259,10 @@ class CommonDBTM extends CommonGLPI
                     QueuedNotification::forceSendFor($this->getType(), $this->fields['id']);
                 }
 
-                return true;
+                return \itsmng\Database\DeletionOutcome::Deleted;
             }
         }
-        return false;
+        return \itsmng\Database\DeletionOutcome::Cancelled;
     }
 
 

@@ -100,9 +100,20 @@ final class UserRepository
     /** Partial account deletion removes grants only in an authorized entity. */
     public function removeEntityGrants(int $user, int $entity): void
     {
+        $this->detachEntityGrants($user, [$entity]);
+    }
+
+    /** Explicit scoped detachment keeps the global account and inaccessible grants. */
+    public function detachEntityGrants(int $user, array $entities): void
+    {
+        if (!$entities) {
+            return;
+        }
         $this->em->createQueryBuilder()->delete(ProfileUser::class, 'p')
-            ->where('IDENTITY(p.users) = :user AND IDENTITY(p.entities) = :entity')
-            ->setParameter('user', $user, Types::INTEGER)->setParameter('entity', $entity, Types::INTEGER)->getQuery()->execute();
+            ->where('IDENTITY(p.users) = :user AND IDENTITY(p.entities) IN (:entities)')
+            ->setParameter('user', $user, Types::INTEGER)
+            ->setParameter('entities', array_map('intval', $entities), \Doctrine\DBAL\ArrayParameterType::INTEGER)
+            ->getQuery()->execute();
     }
 
     /** Authentication maintenance deliberately bypasses the external-directory update hooks. */

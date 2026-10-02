@@ -313,30 +313,40 @@ class User extends CommonDBTM
 
     public function pre_deleteItem()
     {
+        return $this->decideAccountDeletion() === \itsmng\Database\DeletionDecision::Proceed;
+    }
+
+    public function deletionDecision(): \itsmng\Database\DeletionDecision
+    {
+        // Existing extensions can veto deletion through their original hook.
+        // Its false remains cancellation; typed scoped outcomes are opt-in via
+        // this structured extension point, never inferred from a mutable flag.
+        if ((new ReflectionMethod($this, 'pre_deleteItem'))->getDeclaringClass()->getName() !== self::class) {
+            return parent::deletionDecision();
+        }
+        return $this->decideAccountDeletion();
+    }
+
+    protected function decideAccountDeletion(): \itsmng\Database\DeletionDecision
+    {
         global $DB;
 
-        $entities = $this->getEntities();
-        $view_all = Session::canViewAllEntities();
-        // Have right on all entities ?
-        $all      = true;
-        if (!$view_all) {
-            foreach ($entities as $ent) {
-                if (!Session::haveAccessToEntity($ent)) {
-                    $all = false;
-                }
-            }
+        // The same legacy model can be reused for another account. Its cached
+        // visibility grants must not authorize a writer-side lifecycle decision.
+        $entities = Profile_User::getUserEntities((int)$this->fields['id'], true);
+        if (Session::canViewAllEntities() || !array_filter($entities, static fn ($entity): bool => !Session::haveAccessToEntity($entity))) {
+            return \itsmng\Database\DeletionDecision::Proceed;
         }
-        if ($all) { // Mark as deleted
-            return true;
+        // Existing backend deletion detaches the account in accessible entities.
+        // It returns false because the account itself is retained, not because
+        // this explicit domain operation failed. All grants detach atomically.
+        $accessible = array_values(array_filter($entities, static fn ($entity): bool => Session::haveAccessToEntity($entity)));
+        if (!$accessible) {
+            return \itsmng\Database\DeletionDecision::Cancelled;
         }
-        // only delete profile
-        foreach ($entities as $ent) {
-            if (Session::haveAccessToEntity($ent)) {
-                $all   = false;
-                (new UserRepository(Orm::create($DB)))->removeEntityGrants((int)$this->fields['id'], (int)$ent);
-            }
-            return false;
-        }
+        (new UserRepository(Orm::create($DB)))->detachEntityGrants((int)$this->fields['id'], $accessible);
+        $this->entities = null;
+        return \itsmng\Database\DeletionDecision::ScopedDetachment;
     }
 
 

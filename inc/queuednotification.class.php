@@ -596,6 +596,11 @@ class QueuedNotification extends CommonDBTM
     **/
     public static function forceSendFor($itemtype, $items_id)
     {
+        global $DB;
+
+        if ($DB instanceof DBAdapter && \itsmng\Database\DeletionUnit::deferNotification($DB->getDoctrineConnection(), (string)$itemtype, (int)$items_id)) {
+            return;
+        }
         if (
             !empty($itemtype)
             && !empty($items_id)

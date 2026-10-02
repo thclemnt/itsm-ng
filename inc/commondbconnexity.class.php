@@ -135,7 +135,7 @@ abstract class CommonDBConnexity extends CommonDBTM
             }
             foreach ($ids as $id) {
                 $input[$this->getIndexName()] = $id;
-                $this->delete($input, 1);
+                \itsmng\Database\DeletionUnit::requireSuccess($DB->getDoctrineConnection(), (bool)$this->delete($input, 1));
             }
         }
     }
