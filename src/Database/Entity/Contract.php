@@ -8,10 +8,49 @@ use Doctrine\ORM\Mapping as ORM;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
 
-#[ORM\Entity]
+#[ORM\Entity(repositoryClass: \itsmng\Database\Repository\ContractRepository::class)]
 #[ORM\Table(name: 'glpi_contracts')]
 class Contract
 {
+    /** Contract months clamp to the anniversary day in the target month. */
+    public function endsOn(): ?\DateTimeImmutable
+    {
+        return $this->calendarDeadline($this->duration);
+    }
+
+    public function noticeStartsOn(): ?\DateTimeImmutable
+    {
+        return $this->calendarDeadline($this->duration - $this->notice);
+    }
+
+    /** Renewal periods stay anchored to the original contract anniversary. */
+    public function periodEndsOn(int $period, bool $notice = false): ?\DateTimeImmutable
+    {
+        if ($this->periodicity <= 0 || $period < 0) {
+            return null;
+        }
+        $initial = $this->duration !== 0 ? $this->duration : $this->periodicity;
+        return $this->calendarDeadline($initial + $period * $this->periodicity - ($notice ? $this->notice : 0));
+    }
+
+    public function renewedDeadline(int $renewal, bool $notice = false): ?\DateTimeImmutable
+    {
+        if ($renewal < 0) {
+            throw new \InvalidArgumentException('Contract renewal index must not be negative');
+        }
+        return $this->calendarDeadline(($renewal + 1) * $this->duration - ($notice ? $this->notice : 0));
+    }
+
+    private function calendarDeadline(int $months): ?\DateTimeImmutable
+    {
+        if ($this->begin_date === null) {
+            return null;
+        }
+        $start = \DateTimeImmutable::createFromInterface($this->begin_date)->setTime(0, 0);
+        $month = $start->modify('first day of this month')->modify(sprintf('%+d months', $months));
+        return $month->setDate((int)$month->format('Y'), (int)$month->format('m'), min((int)$start->format('d'), (int)$month->format('t')));
+    }
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]

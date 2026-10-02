@@ -348,11 +348,6 @@ class Contract_Item extends CommonDBRelation
             $used[$data['id']]      = $data['id'];
         }
         if ($canedit && ($withtemplate != 2)) {
-            if (!count($used)) {
-                $usedCondition = [];
-            } else {
-                $usedCondition = ['NOT' => [Contract::getTable() . '.id' => $used]];
-            };
             $form = [
                'action' => Toolbox::getItemTypeFormURL(__CLASS__),
                'buttons' => [
@@ -380,15 +375,7 @@ class Contract_Item extends CommonDBRelation
                         __('Add a contract') => [
                            'type' => 'select',
                            'name' => 'contracts_id',
-                           'values' => getOptionForItems('Contract', array_merge([
-                              'entities_id' => $item->fields['entities_id'],
-                              'OR' => [
-                                 'renewal' => 1,
-                                 new \QueryExpression('DATEDIFF(ADDDATE(' . $DB->quoteName('begin_date') . ', INTERVAL ' . $DB->quoteName('duration') . ' MONTH), CURDATE()) > 0'),
-                                 'begin_date'   => null,
-                              ],
-                              'is_deleted' => 0,
-                           ], $usedCondition)),
+                           'values' => Contract::connectionChoices($item->fields['entities_id'], false, $used, false, false),
                         ]
                      ]
                   ]
@@ -450,12 +437,7 @@ class Contract_Item extends CommonDBRelation
                 ($con->fields["begin_date"] != '')
                 && !empty($con->fields["begin_date"])
             ) {
-                $newValue[] = Infocom::getWarrantyExpir(
-                    $con->fields["begin_date"],
-                    $con->fields["duration"],
-                    0,
-                    true
-                );
+                $newValue[] = Contract::formatDeadline($con->fields, false, true);
             }
             $massive_action_values[] = 'item[' . __CLASS__ . '][' . $assocID . ']';
             $values[] = $newValue;
