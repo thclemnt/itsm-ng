@@ -6,6 +6,7 @@ namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\DBAL\Platforms\MySQLPlatform;
 
 /** Reusable journaled DDL phases; versioned subclasses retain one frozen table and its targets. */
 abstract class StagedTypedItemMigration extends TypedItemMigration
@@ -33,11 +34,28 @@ abstract class StagedTypedItemMigration extends TypedItemMigration
                 . '. Resolve these links before adoption. Legacy appliance plugin import requires a compatible historical application and legacy MySQL schema before switching to modernized source and db:migrate. A canonical ORM importer requires completed migration history and cannot be used to bypass this legacy-data preflight.');
         }
         $entry = parent::plan($connection)[$this->table()];
+        // A matching name does not prove the constraint's expression or MySQL
+        // enforcement. Reinstall only our owned CHECK from its frozen declaration
+        // after the complete data audit, without comparing lossy SQL normalizations.
+        $check = static::checkSql($this->table());
+        $platform = $connection->getDatabasePlatform();
+        $constraints = [];
+        if (!in_array($check, $entry['constraint_sql'], true)) {
+            $constraints[] = 'ALTER TABLE ' . $platform->quoteIdentifier($this->table()) . ' DROP '
+                . ($platform instanceof MySQLPlatform ? 'CHECK ' : 'CONSTRAINT ')
+                . $platform->quoteIdentifier(static::constraintName($this->table()));
+        }
+        $constraints[] = $check . ($platform instanceof MySQLPlatform ? ' ENFORCED' : '');
+        foreach ($entry['constraint_sql'] as $statement) {
+            if ($statement !== $check) {
+                $constraints[] = $statement;
+            }
+        }
         return [$this->table() => [
             'columns' => $entry['sql'],
             'copy' => $entry['copy_legacy'] ? [$this->copySql()] : [],
             'projection' => $entry['key_sql'],
-            'constraints' => $entry['constraint_sql'],
+            'constraints' => $constraints,
         ]];
     }
 
