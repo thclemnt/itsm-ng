@@ -20,26 +20,6 @@ function expandSelect(&$select, $fields = [])
         if (isset($select["condition"]["is_recursive"])) {
             unset($select["condition"]["is_recursive"]);
         }
-        $select["values"] =
-            ($select["display_emptychoice"] ?? true
-                ? [Dropdown::EMPTY_VALUE]
-                : []) +
-            getItemByEntity(
-                $select["itemtype"],
-                $restrict,
-                $select["condition"] ?? [],
-                $select["used"] ?? [],
-            );
-        if (
-            isset($select["value"]) &&
-            !in_array($select["value"], $select["values"])
-        ) {
-            $item = new ($select["itemtype"])();
-            $item->getFromDB($select["value"]);
-            if (isset($item->fields["name"])) {
-                $select["values"][$select["value"]] = $item->fields["name"];
-            }
-        }
         $ajaxData = [
             "itemtype" => $select["itemtype"],
             "display_emptychoice" => $select["display_emptychoice"] ?? 1,
@@ -54,6 +34,19 @@ function expandSelect(&$select, $fields = [])
         if (isset($select["right"])) {
             $ajaxData["right"] = $select["right"];
         }
+        // Initial labels and AJAX choices share the same authorization policy.
+        // The unpaged owning choice API includes valid current values already.
+        $select["values"] =
+            ($select["display_emptychoice"] ?? true
+                ? [Dropdown::EMPTY_VALUE]
+                : []) +
+            getItemByEntity(
+                $select["itemtype"],
+                $restrict,
+                $select["condition"] ?? [],
+                $select["used"] ?? [],
+                $ajaxData,
+            );
         $ajaxData["_idor_token"] = \itsmng\Database\DropdownChoiceContext::token(
             $select["itemtype"],
             $ajaxData,
@@ -164,7 +157,7 @@ function expandForm($form, $fields = [], $template = null)
     return $form;
 }
 
-function getItemByEntity($itemtype, $entity, $conditions = [], $used = [])
+function getItemByEntity($itemtype, $entity, $conditions = [], $used = [], $options = [])
 {
     $cond = $conditions;
     if (isset($conditions["entities_id"])) {
@@ -184,7 +177,7 @@ function getItemByEntity($itemtype, $entity, $conditions = [], $used = [])
             "condition" => $key,
             "entity_restrict" => $entity,
             "used" => $used,
-        ],
+        ] + $options,
         false,
     );
     $options = [];

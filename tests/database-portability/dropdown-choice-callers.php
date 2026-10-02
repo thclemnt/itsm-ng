@@ -36,6 +36,13 @@ function capture(callable $render): string
         ob_end_clean();
     }
 }
+function renderedChoice(array $select, array $fields = []): string
+{
+    expandSelect($select, $fields);
+    return Twig::load(GLPI_ROOT . '/templates', false)->render('macros/inputs/select.twig', [
+        'attributes' => $select + ['name' => 'current_choice', 'id' => 'current_choice'],
+    ]);
+}
 function renderedTokens(string $html): array
 {
     verify((bool)preg_match('/(?:const|var) choiceTokens = (\{[^;]+\});/', $html, $match), 'Rendered team script provides a per-kind policy token map');
@@ -47,6 +54,7 @@ verify((new Auth())->login('itsm', 'itsm', true), 'Login');
 $session = $_SESSION;
 $configuration = $CFG_GLPI;
 $CFG_GLPI['use_notifications'] = false;
+$_SESSION['glpishowallentities'] = false;
 $DB->beginTransaction();
 try {
     $fixtures = new FixtureRecords($DB);
@@ -73,6 +81,41 @@ try {
     $empty = ['itemtype' => 'Computer'];
     expandSelect($empty, ['entities_id' => []]);
     verify(count($empty['values']) === 1 && validChoiceRequest($empty['ajax']['data']), 'Explicit empty scope remains empty in initial and signed AJAX choices');
+
+    // A preselected identifier never authorizes its label independently of choices.
+    $html = renderedChoice(['itemtype' => 'Computer', 'value' => $outside], ['entities_id' => $scope]);
+    verify(!str_contains($html, 'Other entity choice'), 'Current value outside requested scope does not expose its label');
+    $html = renderedChoice(['itemtype' => 'Computer', 'value' => $inside], ['entities_id' => []]);
+    verify(!str_contains($html, 'Scoped choice'), 'Current value cannot bypass an explicit empty scope');
+    $_SESSION['glpiactiveentities'] = [0];
+    $html = renderedChoice(['itemtype' => 'Computer', 'value' => $inside], ['entities_id' => $scope]);
+    verify(!str_contains($html, 'Scoped choice'), 'Current value outside session grants does not expose its label');
+    $_SESSION['glpiactiveentities'] = [0, $scope];
+    $html = renderedChoice(['itemtype' => 'Computer', 'value' => $inside, 'condition' => ['id' => $outside]], ['entities_id' => $scope]);
+    verify(!str_contains($html, 'Scoped choice'), 'Current value excluded by the stored condition remains excluded');
+    $html = renderedChoice(['itemtype' => 'Computer', 'value' => $inside], ['entities_id' => $scope]);
+    verify((bool)preg_match('/<option value="' . $inside . '"[^>]*selected="selected"[^>]*>[^<]*Scoped choice/', $html), 'Authorized current value retains its selected label');
+    $parent = $fixtures->create('glpi_locations', ['name' => 'Choice tree parent', 'completename' => 'Choice tree parent', 'entities_id' => $scope, 'level' => 1]);
+    $location = $fixtures->create('glpi_locations', ['name' => 'Choice tree child', 'completename' => 'Choice tree parent > Choice tree child', 'locations_id' => $parent, 'entities_id' => $scope, 'level' => 2]);
+    $html = renderedChoice(['itemtype' => 'Location', 'value' => $location], ['entities_id' => $scope]);
+    verify((bool)preg_match('/<option value="' . $location . '"[^>]*selected="selected"[^>]*>[^<]*Choice tree child/', $html), 'Authorized tree current value retains the owning API tree label');
+
+    $profile = $fixtures->create('glpi_profiles', ['name' => 'Choice grant', 'interface' => 'central']);
+    $rightId = $fixtures->create('glpi_profilerights', ['profiles_id' => $profile, 'name' => 'ticket', 'rights' => Ticket::OWN]);
+    $user = $fixtures->create('glpi_users', ['name' => 'Choice granted recipient']);
+    $fixtures->create('glpi_profiles_users', ['users_id' => $user, 'profiles_id' => $profile, 'entities_id' => $scope]);
+    $userChoice = ['itemtype' => 'User', 'value' => $user, 'right' => 'own_ticket', 'condition' => ['id' => $user]];
+    $html = renderedChoice($userChoice, ['entities_id' => $scope]);
+    verify(str_contains($html, 'Choice granted recipient') && (bool)preg_match('/<option value="' . $user . '"[^>]*selected="selected"/', $html), 'Current User choice honors its scoped role permission');
+    $html = renderedChoice(array_replace($userChoice, ['condition' => ['id' => 0]]), ['entities_id' => $scope]);
+    verify(!str_contains($html, 'Choice granted recipient'), 'User current value also obeys the owning choice API stored condition');
+    $html = renderedChoice(array_replace($userChoice, ['right' => []]), ['entities_id' => $scope]);
+    verify(!str_contains($html, 'Choice granted recipient'), 'Empty requested User rights remove a preselected label');
+    (new \itsmng\Database\Repository\RecordWriter(\itsmng\Database\Orm::create($DB)))->update('glpi_profilerights', $rightId, ['rights' => 0]);
+    $html = renderedChoice($userChoice, ['entities_id' => $scope]);
+    verify(!str_contains($html, 'Choice granted recipient'), 'Revoked User right removes the current label without a direct-row fallback');
+    $html = renderedChoice($userChoice, ['entities_id' => []]);
+    verify(!str_contains($html, 'Choice granted recipient'), 'Empty User scope removes a preselected account label');
 
     $projectId = $fixtures->create('glpi_projects', ['name' => 'Choice project', 'entities_id' => $scope]);
     $project = new Project();
