@@ -39,29 +39,19 @@ if (strpos($_SERVER['PHP_SELF'], "dropdownTicketCategories.php")) {
     die("Sorry. You can't access this file directly");
 }
 
-$opt = ['entity' => $_POST["entity_restrict"]];
-$condition  = [];
-
-if (Session::getCurrentInterface() == "helpdesk") {
-    $condition['is_helpdeskvisible'] = 1;
-}
-$query = <<<SQL
-SELECT * from glpi_itilcategories
-SQL;
-if ($_POST["type"]) {
-    switch ($_POST['type']) {
-        case Ticket::INCIDENT_TYPE:
-            $query .= ' WHERE is_incident = 1';
-            break;
-
-        case Ticket::DEMAND_TYPE:
-            $query .= ' WHERE is_request = 1';
-            break;
-    }
-}
-
+Session::checkLoginUser();
 global $DB;
-$values = iterator_to_array($DB->query($query));
-$values = array_combine(array_column($values, 'id'), array_column($values, 'completename'));
+$active = array_map('intval', $_SESSION['glpiactiveentities'] ?? []);
+$requested = array_filter((array)($_POST['entity_restrict'] ?? $active), static fn ($id) => filter_var($id, FILTER_VALIDATE_INT) !== false);
+$requested = array_map('intval', $requested);
+$entities = array_values(array_intersect($active, $requested));
+$em = \itsmng\Database\Orm::create($DB);
+try {
+    $values = (new \itsmng\Database\Repository\TicketCategoryRepository($em))->choices(
+        (int)($_POST['type'] ?? 0), $entities, Session::getCurrentInterface() === 'helpdesk'
+    );
+} finally {
+    $em->clear();
+}
 $values[0] = Dropdown::EMPTY_VALUE;
 echo json_encode($values);

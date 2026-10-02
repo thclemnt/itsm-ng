@@ -1226,7 +1226,7 @@ abstract class API extends CommonGLPI
      * - 'is_deleted'       (default: false): show trashbin. Optionnal
      * - 'add_keys_names'   (default: []): insert raw name(s) for given itemtype(s) and fkey(s)
      * @param integer $totalcount output parameter who receive the total count of the query resulat.
-     *                            As this function paginate results (with a mysql LIMIT),
+     *                            As this function paginates results,
      *                            we can have the full range. (default 0)
      *
      * @return array collection of fields
@@ -1264,6 +1264,9 @@ abstract class API extends CommonGLPI
         if (isset($params['range']) > 0) {
             if (preg_match("/^[0-9]+-[0-9]+\$/", (string) $params['range'])) {
                 $range = explode("-", (string) $params['range']);
+                if ((int)$range[1] < (int)$range[0]) {
+                    $this->returnError('range end must be greater than or equal to start');
+                }
                 $params['start']      = $range[0];
                 $params['list_limit'] = $range[1] - $range[0] + 1;
                 $params['range']      = $range;
@@ -1285,22 +1288,8 @@ abstract class API extends CommonGLPI
             $this->returnError("sort param is not a field of $table");
         }
 
-        //specific case for restriction
-        $already_linked_table = [];
-        $join = Search::addDefaultJoin($itemtype, $table, $already_linked_table);
-        $where = Search::addDefaultWhere($itemtype);
-        if ($where == '') {
-            $where = "1=1 ";
-        }
-        if ($item->maybeDeleted()) {
-            $where .= "AND " . $DB->quoteName("$table.is_deleted") . " = " . (int)$params['is_deleted'];
-        }
-
-        // add filter for a parent itemtype
-        if (
-            isset($this->parameters['parent_itemtype'])
-            && isset($this->parameters['parent_id'])
-        ) {
+        $parent_item = null;
+        if (isset($this->parameters['parent_itemtype'], $this->parameters['parent_id'])) {
             // check parent itemtype
             if (
                 !Toolbox::isCommonDBTM($this->parameters['parent_itemtype'])
@@ -1313,9 +1302,6 @@ abstract class API extends CommonGLPI
                 );
             }
 
-            $fk_parent = getForeignKeyFieldForItemType($this->parameters['parent_itemtype']);
-            $fk_child = getForeignKeyFieldForItemType($itemtype);
-
             // check parent rights
             $parent_item = new $this->parameters['parent_itemtype']();
             if (!$parent_item->getFromDB($this->parameters['parent_id'])) {
@@ -1325,106 +1311,137 @@ abstract class API extends CommonGLPI
                 return $this->messageRightError();
             }
 
-            // filter with parents fields
-            if (isset($item->fields[$fk_parent])) {
-                $where .= " AND " . $DB->quoteName("$table.$fk_parent") . " = " . (int)$this->parameters['parent_id'];
-            } elseif (
-                isset($item->fields['itemtype'])
-                    && isset($item->fields['items_id'])
-            ) {
-                $where .= " AND " . $DB->quoteName("$table.itemtype") . " = " . $DB->quoteValue($this->parameters['parent_itemtype']) . "
-                       AND " . $DB->quoteName("$table.items_id") . " = " . (int)$this->parameters['parent_id'];
-            } elseif (isset($parent_item->fields[$fk_child])) {
-                $parentTable = getTableForItemType($this->parameters['parent_itemtype']);
-                $join .= " LEFT JOIN " . $DB->quoteName($parentTable) . " ON " . $DB->quoteName("$parentTable.$fk_child") . " = " . $DB->quoteName("$table.id");
-                $where .= " AND " . $DB->quoteName("$parentTable.id") . " = " . (int)$this->parameters['parent_id'];
-            } elseif (
-                isset($parent_item->fields['itemtype'])
-                    && isset($parent_item->fields['items_id'])
-            ) {
-                $parentTable = getTableForItemType($this->parameters['parent_itemtype']);
-                $join .= " LEFT JOIN " . $DB->quoteName($parentTable) . " ON " . $DB->quoteName("itemtype") . "=" . $DB->quoteValue($itemtype) . " AND " . $DB->quoteName("$parentTable.items_id") . " = " . $DB->quoteName("$table.id");
-                $where .= " AND " . $DB->quoteName("$parentTable.id") . " = " . (int)$this->parameters['parent_id'];
-            }
         }
-
-        // filter by searchText parameter
-        if (is_array($params['searchText'])) {
-            if (array_keys($params['searchText']) == ['all']) {
-                $labelfield = "name";
-                if ($item instanceof CommonDevice) {
-                    $labelfield = "designation";
-                } elseif ($item instanceof Item_Devices) {
-                    $labelfield = "itemtype";
-                }
-                $search_value                      = $params['searchText']['all'];
-                $params['searchText'][$labelfield] = $search_value;
-                if ($DB->fieldExists($table, 'comment')) {
-                    $params['searchText']['comment'] = $search_value;
-                }
-            }
-
-            // make text search
-            foreach ($params['searchText'] as $filter_field => $filter_value) {
-                if (!empty($filter_value)) {
-                    $search_value = Search::makeTextSearch($DB->escape($filter_value));
-                    $where .= " AND (" . $DB->quoteName("$table.$filter_field") . " $search_value)";
-                }
-            }
-        }
-
-        // filter with entity
-        if ($item->getType() == 'Entity') {
-            $where .= " AND (" . getEntitiesRestrictRequest("", $itemtype::getTable()) . ")";
-        } elseif (
-            $item->isEntityAssign()
-            // some CommonDBChild classes may not have entities_id fields and isEntityAssign still return true (like ITILTemplateMandatoryField)
-            && array_key_exists('entities_id', $item->fields)
-        ) {
-            $where .= " AND (" . getEntitiesRestrictRequest(
-                "",
-                $itemtype::getTable(),
-                '',
-                $_SESSION['glpiactiveentities'],
-                $item->maybeRecursive(),
-                true
-            );
-
-            if ($item instanceof SavedSearch) {
-                $where .= " OR " . $itemtype::getTable() . ".is_private = 1";
-            }
-
-            $where .= ")";
-        }
-
-        // Check if we need to add raw names later on
         $add_keys_names = count($params['add_keys_names']) > 0;
+        if ($item instanceof Ticket) {
+            $em = \itsmng\Database\Orm::create($DB);
+            try {
+                $parent = $parent_item === null ? null : [
+                    'table' => $parent_item::getTable(),
+                    'foreign_key' => getForeignKeyFieldForItemType($this->parameters['parent_itemtype']),
+                    'id' => (int)$this->parameters['parent_id'],
+                ];
+                $page = (new \itsmng\Database\Repository\TicketCollectionRepository($em))->page(
+                    \itsmng\Database\Repository\TicketVisibility::fromSession(), $params, $parent
+                );
+                $found = $page['rows'];
+                $totalcount = $page['total'];
+            } catch (\InvalidArgumentException | \itsmng\Database\UnsupportedCriteria $error) {
+                $this->returnError($error->getMessage());
+            } finally {
+                $em->clear();
+            }
+        } else {
+            //specific case for restriction
+            $already_linked_table = [];
+            $join = Search::addDefaultJoin($itemtype, $table, $already_linked_table);
+            $where = Search::addDefaultWhere($itemtype);
+            if ($where == '') {
+                $where = "1=1 ";
+            }
+            if ($item->maybeDeleted()) {
+                $where .= "AND " . $DB->quoteName("$table.is_deleted") . " = " . (int)$params['is_deleted'];
+            }
 
-        // build query
-        $query = "SELECT DISTINCT " . $DB->quoteName("$table.id") . ",  " . $DB->quoteName("$table.*") . "
-                FROM " . $DB->quoteName($table) . "
-                $join
-                WHERE $where
-                ORDER BY " . $DB->quoteName($params['sort']) . " " . $params['order'] . "
-                LIMIT " . (int)$params['start'] . ", " . (int)$params['list_limit'];
-        if ($result = $DB->query($query)) {
-            while ($data = $DB->fetchAssoc($result)) {
-                if ($add_keys_names) {
-                    // Insert raw names into the data row
-                    $data["_keys_names"] = $this->getFriendlyNames(
-                        $data,
-                        $params,
-                        $itemtype
-                    );
+            // add filter for a parent itemtype
+            if (
+                isset($this->parameters['parent_itemtype'])
+                && isset($this->parameters['parent_id'])
+            ) {
+                $fk_parent = getForeignKeyFieldForItemType($this->parameters['parent_itemtype']);
+                $fk_child = getForeignKeyFieldForItemType($itemtype);
+
+                // filter with parents fields
+                if (isset($item->fields[$fk_parent])) {
+                    $where .= " AND " . $DB->quoteName("$table.$fk_parent") . " = " . (int)$this->parameters['parent_id'];
+                } elseif (
+                    isset($item->fields['itemtype'])
+                        && isset($item->fields['items_id'])
+                ) {
+                    $where .= " AND " . $DB->quoteName("$table.itemtype") . " = " . $DB->quoteValue($this->parameters['parent_itemtype']) . "
+                           AND " . $DB->quoteName("$table.items_id") . " = " . (int)$this->parameters['parent_id'];
+                } elseif (isset($parent_item->fields[$fk_child])) {
+                    $parentTable = getTableForItemType($this->parameters['parent_itemtype']);
+                    $join .= " LEFT JOIN " . $DB->quoteName($parentTable) . " ON " . $DB->quoteName("$parentTable.$fk_child") . " = " . $DB->quoteName("$table.id");
+                    $where .= " AND " . $DB->quoteName("$parentTable.id") . " = " . (int)$this->parameters['parent_id'];
+                } elseif (
+                    isset($parent_item->fields['itemtype'])
+                        && isset($parent_item->fields['items_id'])
+                ) {
+                    $parentTable = getTableForItemType($this->parameters['parent_itemtype']);
+                    $join .= " LEFT JOIN " . $DB->quoteName($parentTable) . " ON " . $DB->quoteName("itemtype") . "=" . $DB->quoteValue($itemtype) . " AND " . $DB->quoteName("$parentTable.items_id") . " = " . $DB->quoteName("$table.id");
+                    $where .= " AND " . $DB->quoteName("$parentTable.id") . " = " . (int)$this->parameters['parent_id'];
+                }
+            }
+
+            // filter by searchText parameter
+            if (is_array($params['searchText'])) {
+                if (array_keys($params['searchText']) == ['all']) {
+                    $labelfield = "name";
+                    if ($item instanceof CommonDevice) {
+                        $labelfield = "designation";
+                    } elseif ($item instanceof Item_Devices) {
+                        $labelfield = "itemtype";
+                    }
+                    $search_value                      = $params['searchText']['all'];
+                    $params['searchText'][$labelfield] = $search_value;
+                    if ($DB->fieldExists($table, 'comment')) {
+                        $params['searchText']['comment'] = $search_value;
+                    }
                 }
 
-                $found[] = $data;
+                // make text search
+                foreach ($params['searchText'] as $filter_field => $filter_value) {
+                    if (!empty($filter_value)) {
+                        $search_value = Search::makeTextSearch($DB->escape($filter_value));
+                        $where .= " AND (" . $DB->quoteName("$table.$filter_field") . " $search_value)";
+                    }
+                }
             }
-        }
 
-        // get result full row counts
-        $count_query = "SELECT COUNT(*) FROM {$DB->quoteName($table)} $join WHERE $where";
-        $totalcount = $DB->fetchRow($DB->query($count_query))[0];
+            // filter with entity
+            if ($item->getType() == 'Entity') {
+                $where .= " AND (" . getEntitiesRestrictRequest("", $itemtype::getTable()) . ")";
+            } elseif (
+                $item->isEntityAssign()
+                // some CommonDBChild classes may not have entities_id fields and isEntityAssign still return true (like ITILTemplateMandatoryField)
+                && array_key_exists('entities_id', $item->fields)
+            ) {
+                $where .= " AND (" . getEntitiesRestrictRequest(
+                    "",
+                    $itemtype::getTable(),
+                    '',
+                    $_SESSION['glpiactiveentities'],
+                    $item->maybeRecursive(),
+                    true
+                );
+
+                if ($item instanceof SavedSearch) {
+                    $where .= " OR " . $itemtype::getTable() . ".is_private = 1";
+                }
+
+                $where .= ")";
+            }
+
+            // build query
+            $query = "SELECT DISTINCT " . $DB->quoteName("$table.id") . ",  " . $DB->quoteName("$table.*") . "
+                    FROM " . $DB->quoteName($table) . "
+                    $join
+                    WHERE $where
+                    ORDER BY " . $DB->quoteName($params['sort']) . " " . $params['order'] . "
+                    LIMIT " . (int)$params['start'] . ", " . (int)$params['list_limit'];
+            if ($result = $DB->query($query)) {
+                while ($data = $DB->fetchAssoc($result)) {
+
+                    $found[] = $data;
+                }
+            }
+
+            // get result full row counts
+            $count_query = "SELECT COUNT(*) FROM {$DB->quoteName($table)} $join WHERE $where";
+            $totalcount = $DB->fetchRow($DB->query($count_query))[0];
+
+        }
 
         if ($params['range'][0] > $totalcount) {
             $this->returnError(
@@ -1435,6 +1452,9 @@ abstract class API extends CommonGLPI
         }
 
         foreach ($found as &$fields) {
+            if ($add_keys_names) {
+                $fields['_keys_names'] = $this->getFriendlyNames($fields, $params, $itemtype);
+            }
             // only keep id in field list
             if ($params['only_id']) {
                 $fields = ['id' => $fields['id']];

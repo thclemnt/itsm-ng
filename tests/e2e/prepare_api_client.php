@@ -3,8 +3,8 @@
 declare(strict_types=1);
 
 define('GLPI_ROOT', dirname(__DIR__, 2));
-define('GLPI_CONFIG_DIR', __DIR__ . '/../config');
-define('GLPI_VAR_DIR', __DIR__ . '/../files');
+define('GLPI_CONFIG_DIR', getenv('GLPI_CONFIG_DIR') ?: __DIR__ . '/../config');
+define('GLPI_VAR_DIR', getenv('GLPI_VAR_DIR') ?: __DIR__ . '/../files');
 define(
     'PLUGINS_DIRECTORIES',
     [
@@ -38,6 +38,15 @@ if (!$auth->login('itsm', 'itsm', true)) {
 
 // Prevents output polution from DEBUG mode (this thing is horrible)
 Toolbox::setDebugMode(Session::NORMAL_MODE, false, false, false);
+
+// Actor panels require mailing fields, but browser fixtures must not deliver
+// notifications. Collection seeding also requires credential-based API login.
+Config::setConfigurationValues('core', [
+    'enable_api' => 1,
+    'enable_api_login_credentials' => 1,
+    'notifications_mailing' => 1,
+    'use_notifications' => 0,
+]);
 
 $user = new User();
 if (!$user->getFromDBbyName('itsm')) {
