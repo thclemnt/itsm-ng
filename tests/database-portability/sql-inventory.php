@@ -60,6 +60,7 @@ verify(!array_filter($all, static fn (array $call): bool => $call['path'] === 'i
     && in_array($call['category'], ['legacy_adapter', 'legacy_dynamic', 'direct_driver'], true)), 'Reservable items no longer issue adapter or native-driver SQL');
 verify(!array_filter($all, static fn (array $call): bool => in_array($call['path'], [
     'inc/caldav/traits/caldavuriutiltrait.class.php', 'inc/reminder_user.class.php', 'inc/entity_reminder.class.php', 'inc/alert.class.php',
+    'inc/infocom.class.php',
 ], true) && in_array($call['category'], ['legacy_adapter', 'legacy_dynamic', 'direct_driver'], true)), 'Calendar UID, reminder audience and alert loaders no longer issue adapter or native-driver SQL');
 verify((bool)array_filter($all, static fn (array $call): bool => $call['path'] === 'install/update_0723_078.php' && $call['method'] === 'queryOrDie'), 'Previously omitted historical migration wrappers are discovered');
 echo "SQL inventory: token discovery, false-positive boundaries, source locations and remaining driver/migration evidence passed.\n";

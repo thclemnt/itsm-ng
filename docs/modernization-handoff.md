@@ -124,7 +124,55 @@ they complete.
 
 The overall goal remains open: 2,896 adapter query sites and 23 native-driver sites
 remain at this checkpoint, along with sound polymorphic conversions beyond the
-already enforced relationships. Browser interaction and live replica routing have
-not been verified. Next: replace financial warranty expiration selection with an
+already enforced relationships. Live replica routing has not been verified. Next: replace financial warranty expiration selection with an
 association-backed Infocom repository operation, exercise alert/entity/date and
 lifecycle behavior on both providers, and rerun coherent suites.
+
+## Warranty domain batch and broader application evidence
+
+`InfocomRepository::warrantiesExpiring()` now selects owned financial records and
+joins the exact owning Infocom alert association with DQL. It retains inclusive
+calendar-day boundaries, duration/alert bit semantics and exact entity scope on
+the caller's connection. `Infocom::warrantyExpiresOn()` owns calendar-month
+clamping: January 31 plus one month expires February 28/29, matching database
+selection and notification rendering. Public cron execution retains inherited
+configuration, asset loading, notification events, per-entity accounting and
+public Alert creation. Financial asset purge still runs existing lifecycle hooks.
+There are no remaining direct adapter query sites in `inc/infocom.class.php`.
+
+The discovered full suites passed **129/129 contracts on each provider**. The
+new warranty contract covers positive/zero/lifetime durations, bit flags, exact
+prior alert kind/event, empty/foreign scopes, month ends/leap years, caller
+connection, disabled notification side effects, inherited cron settings,
+repeat-run deduplication, native duplicate rejection and public asset/alert purge.
+No external notification transport was enabled or executed.
+
+Assets rebuilt successfully. HTTP installer/login/core lists and ten report paths
+pass on both providers. MariaDB legacy application checks pass all **154 methods
+and 9,388 assertions** across DB/iterator, CommonDBTM, memberships, users, tickets,
+calendars, contracts, profiles and financial amortization.
+
+The first PostgreSQL browser run passed seven timeline tests but three observer
+checks required the mailing-field setting disabled by fresh seeds. With mailing
+fields enabled and actual notifications disabled, nine of ten browser tests pass.
+The remaining test exposed real API ticket collection failures: MySQL LIMIT syntax
+and integer comparisons against PostgreSQL boolean flags. Ticket creation and
+multiple observers reached persistence; collection retrieval returned no JSON.
+The browser also exposed a non-traversable native query in category selection.
+
+Broader PostgreSQL legacy checks are **not green**: 108 methods ran with four
+failures, 538 errors and ten exceptions. Evidence includes fixed CHAR locale
+padding (`en_GB     `), native command-result versus boolean assertions, exact
+MySQL quoting assertions, aggregate COUNT ordering, mixed-case `itemType` lookup,
+and sequence collisions in old fixtures. These findings require source/fixture
+triage; the passing portability suite does not prove PostgreSQL application
+completion. Cloud logs and HTTP/browser captures are under
+`/workspace/itsm-env/evidence`; they are local evidence, not remote CI.
+
+Recomputed inventory: 357 mapped tables, 1,003 enforced references, 23 discriminated
+identities, 41 polymorphic candidates plus one pending candidate, **2,895 adapter
+query sites and 23 native-driver sites**. Next: replace the actual ticket API
+collection path with an ownership- and authorization-aware repository; repair
+category selection and the directly observed legacy application failures, then
+repeat browser and broader provider validation. Keep the 20261001 baseline,
+seed snapshot and adoption history immutable for new domain migrations.

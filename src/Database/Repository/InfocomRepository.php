@@ -16,6 +16,32 @@ final class InfocomRepository
     {
     }
 
+    /** Inclusive day cutoff and exact prior end-of-warranty events within one entity. */
+    public function warrantiesExpiring(int $entity, int $days, ?\DateTimeImmutable $today = null): array
+    {
+        $date = $today === null ? 'CURRENT_DATE()' : ':today';
+        $query = $this->em->createQueryBuilder()->select('i')->from(Entity\Infocom::class, 'i')
+            ->leftJoin(Entity\Alert::class, 'a', 'WITH', 'a.infocom = i AND a.type = :end')
+            ->where('IDENTITY(i.entities) = :entity AND BIT_AND(i.alert, :mask) > 0')
+            ->andWhere('i.warranty_duration > 0 AND i.warranty_date IS NOT NULL AND a.id IS NULL')
+            ->andWhere("DATE_DIFF(DATE_ADD(i.warranty_date, i.warranty_duration, 'month'), " . $date . ') <= :days')
+            ->setParameter('entity', $entity, Types::BIGINT)
+            ->setParameter('end', \Alert::END, Types::INTEGER)
+            ->setParameter('mask', 1 << \Alert::END, Types::INTEGER)
+            ->setParameter('days', $days, Types::INTEGER)
+            ->orderBy('i.id');
+        if ($today !== null) {
+            $query->setParameter('today', $today, Types::DATE_IMMUTABLE);
+        }
+        $records = new RecordRepository($this->em);
+        $rows = [];
+        foreach ($query->getQuery()->toIterable() as $record) {
+            $rows[] = $records->toRow($record) + ['warrantyexpiration' => $record->warrantyExpiresOn()?->format('Y-m-d')];
+            $this->em->detach($record);
+        }
+        return $rows;
+    }
+
     public function types(array $criteria): array
     {
         $metadata = $this->em->getClassMetadata(Entity\Infocom::class);

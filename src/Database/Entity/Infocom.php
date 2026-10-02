@@ -13,6 +13,17 @@ use itsmng\Database\Mapping\ReferencePolicy;
 #[ORM\UniqueConstraint(name: 'infocoms_unicity', columns: ['itemtype', 'items_id'])]
 class Infocom
 {
+    /** Calendar months clamp the purchase day to the last day of the expiry month. */
+    public function warrantyExpiresOn(): ?\DateTimeImmutable
+    {
+        if ($this->warranty_date === null || $this->warranty_duration <= 0) {
+            return null;
+        }
+        $start = \DateTimeImmutable::createFromInterface($this->warranty_date)->setTime(0, 0);
+        $month = $start->modify('first day of this month')->modify('+' . $this->warranty_duration . ' months');
+        return $month->setDate((int)$month->format('Y'), (int)$month->format('m'), min((int)$start->format('d'), (int)$month->format('t')));
+    }
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]

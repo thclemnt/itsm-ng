@@ -490,44 +490,17 @@ class Infocom extends CommonDBChild
 
         foreach (Entity::getEntitiesToNotify('use_infocoms_alert') as $entity => $value) {
             $before    = Entity::getUsedConfig('send_infocoms_alert_before_delay', $entity);
-            $table = self::getTable();
-            $iterator = $DB->request([
-               'SELECT'    => "$table.*",
-               'FROM'      => $table,
-               'LEFT JOIN'  => [
-                  'glpi_alerts'  => [
-                     'ON' => [
-                        'glpi_alerts'  => 'items_id',
-                        $table         => 'id', [
-                           'AND' => [
-                              'glpi_alerts.itemtype'  => self::getType(),
-                              'glpi_alerts.type'      => Alert::END
-                           ]
-                        ]
-                     ]
-                  ]
-               ],
-               'WHERE'     => [
-                  new \QueryExpression(
-                      '(' . $DB->quoteName('glpi_infocoms.alert') . ' & ' . pow(2, Alert::END) . ') > 0'
-                  ),
-                  "$table.entities_id"       => $entity,
-                  "$table.warranty_duration" => ['>', 0],
-                  'NOT'                      => ["$table.warranty_date" => null],
-                  new \QueryExpression(
-                      'DATEDIFF(ADDDATE(' . $DB->quoteName('glpi_infocoms.warranty_date') . ', INTERVAL (' .
-                      $DB->quoteName('glpi_infocoms.warranty_duration') . ') MONTH), CURDATE() ) <= ' .
-                      $DB->quoteValue($before)
-                  ),
-                  'glpi_alerts.date'         => null
-               ]
-            ]);
-
-            while ($data = $iterator->next()) {
+            $em = \itsmng\Database\Orm::create($DB);
+            try {
+                $rows = (new \itsmng\Database\Repository\InfocomRepository($em))->warrantiesExpiring((int)$entity, (int)$before);
+            } finally {
+                $em->clear();
+            }
+            foreach ($rows as $data) {
                 if ($item_infocom = getItemForItemtype($data["itemtype"])) {
                     if ($item_infocom->getFromDB($data["items_id"])) {
                         $entity   = $data['entities_id'];
-                        $warranty = self::getWarrantyExpir($data["warranty_date"], $data["warranty_duration"]);
+                        $warranty = Html::convDate($data['warrantyexpiration']);
                         //TRANS: %1$s is a type, %2$s is a name (used in croninfocom)
                         $name    = sprintf(
                             __('%1$s - %2$s'),

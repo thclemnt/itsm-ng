@@ -4797,3 +4797,26 @@ twenty-three discriminated identities, forty-one polymorphic candidates and one
 pending candidate. The domain conversion removes five legacy query sites; static
 discovery now finds 2,896 adapter sites and 23 native driver sites. The wider
 relationship and SQL conversion remains active.
+
+## Cloud frozen history and warranty checkpoint (2026-10-02)
+
+Installation now replays the explicit 355-table DBAL baseline, frozen seeds and
+canonical upgrades through the existing ledger. Current entity metadata cannot
+rewrite historical installation definitions. Both provider full suites pass
+129/129, including fresh replay, populated adoption, interruption/retry and
+final schema comparison. See [the durable handoff](modernization-handoff.md) for
+exact environment versions, validation coverage and remaining release blockers.
+
+Warranty expiration now uses the existing Infocom repository and its owning
+Alert association. The Infocom entity calculates calendar-month expiry with
+month-end clamping; notification rendering agrees with database selection.
+Inherited entity configuration, notification/accounting, alert uniqueness and
+asset-purge hooks are exercised on both providers. Infocom has no direct adapter
+query sites. The static inventory now records 2,895 adapter sites and 23 native
+driver sites; polymorphic and application persistence conversion remains active.
+
+HTTP installation/login and report checks pass on both providers after rebuilding
+assets. MariaDB legacy checks pass 154 methods/9,388 assertions. PostgreSQL browser
+and broader legacy checks reveal remaining API collection, category selection,
+locale and legacy query/fixture gaps; the port remains experimental. Passing CLI
+contracts must not be described as complete application or remote CI validation.
