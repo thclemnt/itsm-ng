@@ -131,7 +131,8 @@ class Consumable extends \DbTestCase
         $this->integer($consumable->getOldNumber($cu_id))->isEqualTo(14);
 
         // Test forced back to stock by removal of group (not replaced)
-        $this->boolean($group->delete(['id' => $gid1, true]))->isTrue();
+        $this->boolean($group->delete(['id' => $gid1], true))->isTrue();
+        $this->boolean((new \Group())->getFromDB($gid1))->isFalse();
         $this->integer($consumable->getUnusedNumber($cu_id))->isEqualTo(10);
         $this->integer($consumable->getOldNumber($cu_id))->isEqualTo(10);
         $this->integer(
@@ -146,7 +147,12 @@ class Consumable extends \DbTestCase
         )->isEqualTo(0);
 
         // Test replacement of a group (no back to stock)
-        $this->boolean($group->delete(['id' => $gid2, '_replace_by' => $gid1], true))->isTrue();
+        // The first group was purged above; replacement needs a remaining target.
+        $replacementGroup = new \Group();
+        $replacementId = (int)$replacementGroup->add(['name' => 'Test replacement group']);
+        $this->integer($replacementId)->isGreaterThan(0);
+        $this->boolean($replacementGroup->getFromDB($replacementId))->isTrue();
+        $this->boolean($group->delete(['id' => $gid2, '_replace_by' => $replacementId], true))->isTrue();
         $this->integer($consumable->getUnusedNumber($cu_id))->isEqualTo(10);
         $this->integer($consumable->getOldNumber($cu_id))->isEqualTo(10);
         $this->integer(
@@ -165,7 +171,7 @@ class Consumable extends \DbTestCase
                 [
                     'consumableitems_id' => $cu_id,
                     'itemtype'           => 'Group',
-                    'items_id'           => $gid1,
+                    'items_id'           => $replacementId,
                  ]
             )
         )->isEqualTo(5);
