@@ -49,7 +49,7 @@ abstract class NotificationEventAbstract
      * @param NotificationTemplate $template           Template
      * @param boolean              $notify_me          Whether to notify current user
      *
-     * @return void
+     * @return bool False if an eligible recipient's queue admission was refused.
      */
     public static function raise(
         $event,
@@ -63,6 +63,7 @@ abstract class NotificationEventAbstract
         $emitter = null
     ) {
         global $CFG_GLPI, $DB;
+        $accepted = true;
         if ($CFG_GLPI['notifications_' . $options['mode']]) {
             $entity = $notificationtarget->getEntity();
             if (isset($options['processed'])) {
@@ -156,11 +157,14 @@ abstract class NotificationEventAbstract
                                     $send_data['_groups_id']                = $input['_groups_id_requester'] ?? null;
                                     $send_data['_itilcategories_id']        = $input['itilcategories_id'] ?? null;
 
-                                    if (array_key_exists('chat', $users_infos)) {
-                                        Notification::sendChat($send_data);
-                                    }
-                                    if (array_key_exists('email', $users_infos)) {
-                                        Notification::send($send_data);
+                                    // The registered mode owns dispatch. Browser recipients
+                                    // have users_id, not an email or chat field. Legacy modes
+                                    // returning void remain compatible; send() normalizes
+                                    // documented integer 0 refusal to explicit false.
+                                    // Admission never establishes external delivery.
+                                    if (Notification::send($send_data) === false) {
+                                        $accepted = false;
+                                        continue;
                                     }
                                 } else {
                                     $notificationtarget->getFromDB($target['id']);
@@ -178,6 +182,7 @@ abstract class NotificationEventAbstract
                                 $processed[$users_infos['language']][$key]
                                                                           = $users_infos;
                             } else {
+                                $accepted = false;
                                 $notprocessed[$users_infos['language']][$key]
                                                                              = $users_infos;
                             }
@@ -189,6 +194,7 @@ abstract class NotificationEventAbstract
             unset($processed);
             unset($notprocessed);
         }
+        return $accepted;
     }
 
     /**

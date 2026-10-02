@@ -5060,3 +5060,57 @@ and live replica validation remain separate checkpoints. External plugin/agent i
 not exercised: the core paths verified here import OS labels and write assignments
 only after the parent is persisted. Remaining inventory reconciliation/massive-action
 and legacy SQL/domain conversions continue under the durable modernization goal.
+
+Notification admission is consolidated at the public dispatch boundary.
+`Notification::send()` and the legacy direct `sendChat()` entry point return the
+mode's queue result, normalizing the interface's documented integer `0`
+refusal to false while retaining integer `1` acceptance. The event dispatcher resolves the registered mode once per
+rendered recipient, including browser recipients identified by `users_id`.
+Recipient fields no longer trigger an accidental second chat dispatch. Explicit
+false admission leaves that recipient unprocessed so another eligible overlapping
+notification can try again, while the whole event retains a conservative false
+result if any attempt was refused. Other recipients and modes still run. A missing
+enabled mode/event class or an eligible recipient without a renderable template
+also refuses admission. Existing exceptions propagate to the caller.
+
+The interfaces and overridable parents retain their untyped native signatures.
+Legacy event overrides are refused only on strict false, so an arbitrary integer
+event count is not reinterpreted using the send-mode contract. Registered
+implementations returning void remain compatible unknown outcomes;
+they do not prove insertion into a core queue or delivery. Disabled notifications,
+no eligible notifications/recipients and debug rendering retain their intentional
+no-write behavior. Extra mode hooks, recipient validation, per-mode/language
+suppression and the caller's active writer remain the existing owners of those
+behaviors. Queue admission does not deliver mail, browser or chat transport.
+
+Focused PostgreSQL 15.19 and MariaDB 10.11.18 validation passes the new
+`notification-admission.php` contract: 22 cases and 75 assertions on each provider.
+Real public mailing/browser/chat queues exercise add-hook vetoes, partial
+admission, overlap retry/deduplication, registered integer/void/missing mode,
+disabled/debug and rendering failures. Each channel also crosses the actual
+Contract repository and alert publisher: a later veto observes earlier accepted
+queues and a public audited mutation, then restores the full Contract row, old
+Alert, audit and all queues. Clearing the veto permits retry; stale selection
+never duplicates queues, and caller rollback restores the previous state.
+
+Ten adjacent unchanged portability contracts pass on each provider, including
+the original 104-assertion Contract deadlines contract and final schema checks.
+Eleven application classes pass 38/38 methods and 553 assertions on each provider,
+with zero skipped/void methods. The browser event test now requires exactly one
+queued notification and retains its complete 19-field comparison; its former
+zero-result early return masked the missing dispatch. Corrected expectations
+follow existing ITSM-NG branding, ticket title/content and redirect URL behavior.
+The unchanged mailing queue method separately passes 1/1 with 10 assertions;
+the upstream ignored DNS test remains unexecuted. Disposable application test
+configs disable notification modes initially, as these tests require. Earlier
+checkpoint-configuration and stale-expectation failures remain recorded.
+
+PHP syntax, formatting and whitespace checks pass; fourteen pure actual-method
+assertions remain separate evidence from live database tests. These focused runs
+used isolated checkpoint databases and this source plus its Session/Contract
+dependencies, not a new full migration replay. Full combined portability,
+application/browser and remote CI validation remain separate checkpoints.
+Registered fixture modes establish the extension contract; external plugins and
+delivery transports were not exercised. Attempted queue filesystem logs and
+arbitrary plugin external/separate-connection effects do not roll back with the
+caller's database transaction.

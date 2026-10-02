@@ -614,13 +614,19 @@ class Notification extends CommonDBTM
      *
      * @param array $options Options
      *
-     * @return void
+     * @return bool|int|null False on refusal (including a mode's integer 0),
+     *                       otherwise the mode result; legacy void returns NULL.
     **/
     public static function send($options)
     {
         $classname = Notification_NotificationTemplate::getModeClass($options['mode']);
+        if (!class_exists($classname)) {
+            Toolbox::logWarning('Missing notification class for mode ' . $options['mode'] . ' (' . $classname . ')');
+            return false;
+        }
         $notif = new $classname();
-        $notif->sendNotification($options);
+        $result = $notif->sendNotification($options);
+        return $result === 0 ? false : $result;
     }
 
     /**
@@ -628,12 +634,14 @@ class Notification extends CommonDBTM
      *
      * @param array $options Options
      *
-     * @return void
+     * @return bool|int|null False on refusal (including a mode's integer 0),
+     *                       otherwise the mode result; legacy void returns NULL.
     **/
     public static function sendChat($options)
     {
         $sendRocket = new NotificationChat();
-        $sendRocket->sendNotification($options);
+        $result = $sendRocket->sendNotification($options);
+        return $result === 0 ? false : $result;
     }
 
 

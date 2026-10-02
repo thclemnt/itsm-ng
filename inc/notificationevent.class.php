@@ -110,11 +110,13 @@ class NotificationEvent extends CommonDBTM
      * @param array      $options array   of options used
      * @param string     $label   used for debugEvent() (default '')
      *
-     * @return boolean
+     * @return boolean False on explicit admission refusal; true also covers
+     *                 intentional no-write and legacy void implementations.
     **/
     public static function raiseEvent($event, $item, $options = [], $label = '')
     {
         global $CFG_GLPI;
+        $accepted = true;
 
         //If notifications are enabled in GLPI's configuration
         if ($CFG_GLPI["use_notifications"] && Notification_NotificationTemplate::hasActiveMode()) {
@@ -185,7 +187,7 @@ class NotificationEvent extends CommonDBTM
                 $options['processed'] = &$processed[$data['mode']];
                 $eventclass = Notification_NotificationTemplate::getModeClass($data['mode'], 'event');
                 if (class_exists($eventclass)) {
-                    $eventclass::raise(
+                    $result = $eventclass::raise(
                         $event,
                         $item,
                         $options,
@@ -196,11 +198,15 @@ class NotificationEvent extends CommonDBTM
                         $notify_me,
                         $emitter
                     );
+                    if ($result === false) {
+                        $accepted = false;
+                    }
                 } else {
+                    $accepted = false;
                     Toolbox::logWarning('Missing event class for mode ' . $data['mode'] . ' (' . $eventclass . ')');
-                    $label = Notification_NotificationTemplate::getMode($data['mode'])['label'];
+                    $modeLabel = Notification_NotificationTemplate::getMode($data['mode'])['label'];
                     Session::addMessageAfterRedirect(
-                        sprintf(__('Unable to send notification using %1$s'), $label),
+                        sprintf(__('Unable to send notification using %1$s'), $modeLabel),
                         true,
                         ERROR
                     );
@@ -208,7 +214,7 @@ class NotificationEvent extends CommonDBTM
             }
         }
         $template = null;
-        return true;
+        return $accepted;
     }
 
 
