@@ -37,14 +37,23 @@ final class LegacyToOrm
         $handled['glpi_entities']['entities_id'] = true;
         $handled['glpi_slms']['calendars_id'] = true;
         $manager = $connection->createSchemaManager();
-        $quote = $connection->getDatabasePlatform()->quoteIdentifier(...);
+        $platform = $connection->getDatabasePlatform();
+        $quote = $platform->quoteIdentifier(...);
+        $tables = array_fill_keys(array_map('strtolower', $manager->listTableNames()), true);
+        // The audit needs existence, not full column definitions per table.
+        // Capture names once per call, without retaining them across DDL or DML.
+        $columns = [];
+        $postgres = $platform instanceof PostgreSQLPlatform;
+        foreach ($connection->fetchAllAssociative('SELECT table_name AS table_name, column_name AS column_name FROM information_schema.columns WHERE table_schema = '
+            . ($postgres ? 'ANY(current_schemas(false))' : 'DATABASE()')) as $column) {
+            $columns[strtolower($column['table_name'])][strtolower($column['column_name'])] = true;
+        }
         foreach (IdentifierColumns::history()['relations'] as $table => $relations) {
-            if (!$manager->tablesExist([$table])) {
+            if (!isset($tables[strtolower($table)])) {
                 continue;
             }
-            $columns = $manager->listTableColumns($table);
             foreach ($relations as $column => $target) {
-                if (isset($handled[$table][$column]) || !isset($columns[strtolower($column)])) {
+                if (isset($handled[$table][$column]) || !isset($columns[strtolower($table)][strtolower($column)])) {
                     continue; // Domain helpers audit sentinel conversions and future typed columns.
                 }
                 $count = $connection->fetchOne('SELECT COUNT(*) FROM ' . $quote($table) . ' c LEFT JOIN ' . $quote($target) . ' p ON c.' . $quote($column) . ' = p.id WHERE c.' . $quote($column) . ' IS NOT NULL AND p.id IS NULL');
