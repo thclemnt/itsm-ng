@@ -71,7 +71,7 @@ class PluginDropdownFixtureChoice extends CommonDropdown
         return 'glpi_plugin_dropdown_fixture_choices';
     }
 }
-verify(str_starts_with($DB->dbdefault, 'itsm_port_dropdown_choices'), 'Exclusive dropdown database required');
+verify(str_starts_with($DB->dbdefault, 'itsm_port_'), 'Dedicated portability database required');
 $_SESSION['glpiextauth'] = 0;
 verify((new Auth())->login('itsm', 'itsm', true), 'Login');
 $session = $_SESSION;
