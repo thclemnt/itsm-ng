@@ -31,49 +31,15 @@
  * ---------------------------------------------------------------------
  */
 
-include('../inc/includes.php');
-
-header("Content-Type: text/html; charset=UTF-8");
-Html::header_nocache();
-
-Session::checkCentralAccess();
-
-// Make a select box
-if ($_POST["idtable"] && class_exists($_POST["idtable"])) {
-    if (isset($_POST['entity_restrict'])) {
-        $entity_restrict = $_POST['entity_restrict'];
-    }
-    if (isset($_POST['condition'])) {
-        $condition = $_POST['condition'];
-    }
-
-    $isDevice  = strpos($_POST["idtable"], "Device") === 0;
-    $values = getOptionForItems($_POST['idtable'], ($condition ?? []) + (isset($entity_restrict)
-       ? ['entities_id' => $_POST['entity_restrict']] : []), true, $isDevice);
-
-    if (isset($_POST['used'])) {
-        $_POST['used'] = Toolbox::jsonDecode($_POST['used'], true);
-    }
-    if (isset($_POST['used'][$_POST['idtable']])) {
-        $used = $_POST['used'][$_POST['idtable']];
-        if (isset($used)) {
-            foreach ($used as $usedId) {
-                foreach ($values as $key => $value) {
-                    if (gettype($value) == 'array') {
-                        foreach ($value as $subKey => $subValue) {
-                            if ($usedId == $subKey) {
-                                unset($values[$key][$subKey]);
-                            }
-                        }
-                    } else {
-                        if ($usedId == $key) {
-                            unset($values[$key]);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    echo json_encode($values);
+if (!defined('GLPI_ROOT')) {
+    include('../inc/includes.php');
 }
+
+// Existing callers parse the legacy text response; the typed selector asks
+// explicitly for JSON and carries its session-bound selection capability.
+header('Content-Type: ' . (isset($_POST['_select_itemtypes']) ? 'application/json' : 'text/html') . '; charset=UTF-8');
+Html::header_nocache();
+Session::checkCentralAccess();
+$values = Dropdown::getAllItemsSelection($_POST);
+http_response_code($values === null ? 403 : 200);
+echo json_encode($values ?? [], JSON_THROW_ON_ERROR);

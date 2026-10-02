@@ -1447,115 +1447,216 @@ class Dropdown
      *    - entity_restrict     : restrict entity in searching items (default -1)
      *    - onlyglobal          : don't match item that don't have `is_global` == 1 (false by default)
      *    - checkright          : check to see if we can "view" the itemtype (false by default)
-     *    - showItemSpecificity : given an item, the AJAX file to open if there is special
-     *                            treatment. For instance, select a Item_Device* for CommonDevice
      *    - emptylabel          : Empty choice's label (default self::EMPTY_VALUE)
      *    - used                : array / Already used items ID: not to display in dropdown (default empty)
      *    - display             : true : display directly, false return the html
      *
-     * @return integer randomized value used to generate HTML IDs
+     * @return int|string randomized ID when displayed, or HTML when display is false
     **/
     public static function showSelectItemFromItemtypes(array $options = [])
     {
         global $CFG_GLPI;
 
-        $params = [];
-        $params['itemtype_name']       = 'itemtype';
-        $params['items_id_name']       = 'items_id';
-        $params['itemtypes']           = '';
-        $params['default_itemtype']    = 0;
-        $params['entity_restrict']     = -1;
-        $params['onlyglobal']          = false;
-        $params['checkright']          = false;
-        $params['showItemSpecificity'] = '';
-        $params['emptylabel']          = self::EMPTY_VALUE;
-        $params['used']                = [];
-        $params['display']             = true;
-        $params['rand']                = mt_rand();
-
-        if (is_array($options) && count($options)) {
-            foreach ($options as $key => $val) {
-                $params[$key] = $val;
+        $params = $options + [
+            'itemtype_name' => 'itemtype', 'items_id_name' => 'items_id',
+            'itemtypes' => $CFG_GLPI['state_types'], 'default_itemtype' => 0,
+            'entity_restrict' => -1, 'onlyglobal' => false, 'checkright' => false,
+            'emptylabel' => self::EMPTY_VALUE, 'used' => [], 'display' => true, 'rand' => mt_rand(),
+        ];
+        $types = is_array($params['itemtypes']) ? $params['itemtypes'] : $CFG_GLPI['state_types'];
+        $values = [];
+        $requests = [];
+        foreach ($types as $kind) {
+            $item = getItemForItemtype($kind);
+            if (!$item instanceof CommonDBTM || ($params['checkright'] && !$item->canView())) {
+                continue;
             }
+            $values[$kind] = $item::getTypeName(1);
+            $used = $params['used'][$kind] ?? (array_is_list($params['used']) ? $params['used'] : []);
+            // Bind JSON strings rather than arrays: IDOR's array matching is
+            // intentionally a subset match, unsuitable for an exact scope.
+            $context = [
+                '_select_itemtypes' => 1,
+                'entity_restrict' => json_encode($params['entity_restrict'], JSON_THROW_ON_ERROR),
+                'used' => json_encode(array_values($used), JSON_THROW_ON_ERROR),
+                'onlyglobal' => (int)(bool)$params['onlyglobal'],
+                'checkright' => (int)(bool)$params['checkright'],
+                'emptylabel' => $params['emptylabel'],
+            ];
+            $requests[$kind] = ['idtable' => $kind] + $context + ['_idor_token' => Session::getNewIDORToken($kind, $context)];
         }
-
-
-        $dropdownValues = [Dropdown::EMPTY_VALUE];
-        foreach ($CFG_GLPI["ticket_types"] as $itemtype) {
-            $dropdownValues[$itemtype] = $itemtype::getTypeName(1);
-        }
-        asort($dropdownValues);
-        $entity = Session::getActiveEntity();
+        asort($values);
+        $values = [0 => $params['emptylabel']] + $values;
+        $default = isset($requests[$params['default_itemtype']]) ? $params['default_itemtype'] : 0;
+        $typeId = Html::cleanId('select_itemtype_' . $params['itemtype_name'] . '_' . $params['rand']);
+        $itemId = Html::cleanId('select_item_' . $params['items_id_name'] . '_' . $params['rand']);
+        $jsonFlags = JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT | JSON_THROW_ON_ERROR;
+        $requestsJson = json_encode($requests, $jsonFlags);
+        $itemIdJson = json_encode($itemId, $jsonFlags);
+        $urlJson = json_encode($CFG_GLPI['root_doc'] . '/ajax/dropdownAllItems.php', $jsonFlags);
+        $emptyJson = json_encode($params['emptylabel'], $jsonFlags);
         $inputs = [
-           __('Itemtype') => [
-              'type' => 'select',
-              'id' => 'selectItemTypeForTicketMassiveAction',
-              'name' => $params['itemtype_name'],
-              'values' => $dropdownValues,
-              'col_lg' => 6,
-              'hooks' => [
-                 'change' => <<<JS
-                  const val = this.value;
-                  $('#selectItemForTicketMassiveAction').empty();
-                  if (val != 0) {
-                     $.ajax({
-                        url: '{$CFG_GLPI['root_doc']}/ajax/dropdownAllItems.php',
-                        data: {
-                           itemtype_name: 'devicetype',
-                           items_id_name: 'devices_id',
-                           idtable: val,
-                           entity_restrict: $entity,
-                        },
+            __('Itemtype') => [
+                'type' => 'select', 'id' => $typeId, 'name' => $params['itemtype_name'],
+                'values' => $values, 'value' => $default, 'col_lg' => 6, 'text_only' => true,
+                'hooks' => ['change' => <<<JS
+                    const requests = $requestsJson;
+                    const target = document.getElementById($itemIdJson);
+                    const selectionRequest = String(Number(target.dataset.selectionRequest || 0) + 1);
+                    target.dataset.selectionRequest = selectionRequest;
+                    target.replaceChildren(new Option($emptyJson, '0'));
+                    const request = requests[this.value];
+                    target.disabled = !request;
+                    if (!request) {
+                        return;
+                    }
+                    $.ajax({
+                        url: $urlJson,
+                        data: request,
                         type: 'POST',
-                        success: function(data) {
-                           const jsonDatas = JSON.parse(data);
-                           for (const key in jsonDatas) {
-                             if (typeof jsonDatas[key] === 'object') {
-                                for (const key2 in jsonDatas[key]) {
-                                   $('#selectItemForTicketMassiveAction').append('<option value="' + key2 + '">' + jsonDatas[key][key2] + '</option>');
+                        dataType: 'json',
+                        success: function(values) {
+                            if (target.dataset.selectionRequest !== selectionRequest) {
+                                return;
+                            }
+                            target.replaceChildren();
+                            for (const [id, label] of Object.entries(values)) {
+                                if (label !== null && typeof label === 'object') {
+                                    const group = document.createElement('optgroup');
+                                    group.label = id;
+                                    for (const [childId, childLabel] of Object.entries(label)) {
+                                        group.append(new Option(String(childLabel), String(childId)));
+                                    }
+                                    target.append(group);
+                                } else {
+                                    target.append(new Option(String(label), String(id)));
                                 }
-                             } else {
-                                $('#selectItemForTicketMassiveAction').append('<option value="' + key + '">' + jsonDatas[key] + '</option>');
-                             }
-                           }
+                            }
                         }
-                     });
-                  }
-                  if (val == 0) {
-                     $('#selectItemForTicketMassiveAction').prop('disabled', true);
-                     $('#selectItemForTicketMassiveAction').empty();
-                  } else {
-                     $('#selectItemForTicketMassiveAction').prop('disabled', false);
-                  }
-               JS,
-              ]
-           ],
-           __('Component') => [
-              'type' => 'select',
-              'name' => $params['items_id_name'],
-              'id' => 'selectItemForTicketMassiveAction',
-              'values' => [],
-              'col_lg' => 6,
-              'disabled' => '',
-           ],
+                    });
+                JS],
+            ],
+            __('Item') => [
+                'type' => 'select', 'id' => $itemId, 'name' => $params['items_id_name'],
+                'values' => $default ? (self::getAllItemsSelection($requests[$default]) ?? []) : [0 => $params['emptylabel']],
+                'col_lg' => 6, 'disabled' => !$default, 'text_only' => true,
+            ],
         ];
         ob_start();
         echo "<div class='center row'>";
         foreach ($inputs as $title => $input) {
-            renderTwigTemplate('macros/wrappedInput.twig', [
-               'title' => $title,
-               'input' => $input,
-            ]);
+            renderTwigTemplate('macros/wrappedInput.twig', ['title' => $title, 'input' => $input]);
         }
-        echo "</div>";
+        echo '</div>';
         $out = ob_get_clean();
-
         if ($params['display']) {
             echo $out;
+            return $params['rand'];
         }
         return $out;
     }
 
+    /** Selection data honors the rendered capability and current session scope. */
+    public static function getAllItemsSelection(array $post): ?array
+    {
+        $kind = $post['idtable'] ?? '';
+        if (!is_string($kind)) {
+            return null;
+        }
+        $item = getItemForItemtype($kind);
+        if (!$item instanceof CommonDBTM) {
+            return null;
+        }
+        $signed = isset($post['_select_itemtypes']);
+        if ($signed && !Session::validateIDOR(array_replace($post, ['itemtype' => $kind]))) {
+            return null;
+        }
+        if ((!$signed || !empty($post['checkright'])) && !$item->canView()) {
+            return null;
+        }
+        $scope = $post['entity_restrict'] ?? -1;
+        if (is_string($scope) && str_starts_with($scope, '[')) {
+            try {
+                $scope = json_decode($scope, true, flags: JSON_THROW_ON_ERROR);
+            } catch (JsonException) {
+                return null;
+            }
+        }
+        if ($scope === 'default') {
+            $scope = -1;
+        }
+        if (is_array($scope)) {
+            foreach ($scope as $entity) {
+                if (filter_var($entity, FILTER_VALIDATE_INT) === false || (int)$entity < 0) {
+                    return null;
+                }
+            }
+            $scope = array_map('intval', array_values($scope));
+        } elseif (filter_var($scope, FILTER_VALIDATE_INT) === false || (int)$scope < -1) {
+            return null;
+        } else {
+            $scope = (int)$scope;
+        }
+        $used = $post['used'] ?? [];
+        if (is_string($used)) {
+            try {
+                $used = json_decode($used, true, flags: JSON_THROW_ON_ERROR);
+            } catch (JsonException) {
+                return null;
+            }
+        }
+        if (!is_array($used)) {
+            return null;
+        }
+        $used = $used[$kind] ?? (array_is_list($used) ? $used : []);
+        if (!is_array($used)) {
+            return null;
+        }
+        foreach ($used as $id) {
+            if (filter_var($id, FILTER_VALIDATE_INT) === false || (int)$id < 0) {
+                return null;
+            }
+        }
+        $conditions = [];
+        if ($item->isEntityAssign()) {
+            $conditions[] = getEntitiesRestrictCriteria($item->getTable(), '', '', 'auto');
+            if ($scope !== -1) {
+                $conditions[] = getEntitiesRestrictCriteria($item->getTable(), '', $scope, 'auto');
+            }
+        }
+        if (!empty($post['onlyglobal']) && $item->isField('is_global')) {
+            $conditions[] = ['is_global' => true];
+        }
+        $condition = $post['condition'] ?? [];
+        if (is_string($condition)) {
+            $condition = $_SESSION['glpicondition'][$condition] ?? null;
+        }
+        if (!is_array($condition)) {
+            return null;
+        }
+        if ($condition) {
+            $conditions[] = $condition;
+        }
+        $conditions = array_filter($conditions);
+        $data = self::getDropdownValue([
+            'itemtype' => $kind, 'entity_restrict' => $scope,
+            'restrict_session_scope' => true,
+            // This native select needs the whole permitted candidate set.
+            'page' => 1, 'page_limit' => 0,
+            'condition' => $conditions ? self::addNewCondition(['AND' => $conditions]) : '',
+            'used' => array_values($used), 'display_emptychoice' => true,
+            'emptylabel' => $post['emptylabel'] ?? self::EMPTY_VALUE,
+        ], false);
+        $values = [];
+        foreach ($data['results'] as $value) {
+            if (isset($value['children'])) {
+                $values[$value['text']] = ($values[$value['text']] ?? []) + array_column($value['children'], 'text', 'id');
+            } else {
+                $values[$value['id']] = $value['text'];
+            }
+        }
+        return $values;
+    }
 
     /**
      * Dropdown numbers
@@ -2944,6 +3045,17 @@ class Dropdown
                         $user_used[] = (int)$post['value'];
                     }
 
+                    $userCriteria = $condition;
+                    if (!empty($post['restrict_session_scope'])) {
+                        // Users are scoped through profile grants, rather than
+                        // their default entity preference. Keep both scopes.
+                        $userCriteria = ['AND' => [$userCriteria, getEntitiesRestrictCriteria(
+                            'glpi_profiles_users',
+                            '',
+                            (array)($_SESSION['glpiactiveentities'] ?? []),
+                            true
+                        )]];
+                    }
                     // Use User::getSqlSearchResult for permission-based filtering
                     $iterator = User::getSqlSearchResult(
                         false,  // count = false
@@ -2955,7 +3067,8 @@ class Dropdown
                         $start,
                         (int)$post['page_limit'],
                         $user_inactive_deleted,
-                        $user_with_no_right
+                        $user_with_no_right,
+                        $userCriteria
                     );
 
                     // Display first if no search

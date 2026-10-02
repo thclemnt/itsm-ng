@@ -376,7 +376,8 @@ class Appliance_Item_Relation extends CommonDBRelation
 
             $js = <<<JAVASCRIPT
          $(function() {
-            $(document).on('click', '.add_relation', function() {
+            $(document).off('.itsmApplianceRelations');
+            $(document).on('click.itsmApplianceRelations', '.add_relation', function() {
                var appliances_items_id = $(this).data('appliances-items-id');
 
                $('#add_relation_dialog input[name=appliances_items_id]').val(appliances_items_id);
@@ -390,7 +391,7 @@ class Appliance_Item_Relation extends CommonDBRelation
                });
             });
 
-            $(document).on('click', '.delete_relation', function() {
+            $(document).on('click.itsmApplianceRelations', '.delete_relation', function() {
                var relations_id = $(this).data('relations-id');
 
                $.post('{$form_url}', {

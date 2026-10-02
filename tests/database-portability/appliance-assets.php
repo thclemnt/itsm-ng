@@ -201,6 +201,7 @@ try {
         }
     }
     verify(substr_count($html, 'id=\'add_relation_dialog\'') === 1 && str_contains($html, "'.delete_relation'") && !str_contains($html, 'Undefined array key'), 'Actual owner view renders its CSRF form, one nested add dialog and the existing deletion handler');
+    verify(str_contains($html, "$(document).off('.itsmApplianceRelations')") && substr_count($html, "'click.itsmApplianceRelations'") === 2, 'Actual nested add/delete handlers replace their previous mount through one scoped namespace');
     ob_start();
     Appliance_Item::showForItem($computer);
     $reverseHtml = ob_get_clean();

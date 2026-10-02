@@ -3633,6 +3633,7 @@ class User extends CommonDBTM
      * @param integer         $start            start LIMIT value (default 0)
      * @param integer         $limit            limit LIMIT value (default -1 no limit)
      * @param boolean         $inactive_deleted true to retreive also inactive or deleted users
+     * @param array           $additionalCriteria structured criteria that further narrow eligible grants/users
      *
      * @return \itsmng\Database\RowIterator
      */
@@ -3646,7 +3647,8 @@ class User extends CommonDBTM
         $start = 0,
         $limit = -1,
         $inactive_deleted = 0,
-        $with_no_right = 0
+        $with_no_right = 0,
+        array $additionalCriteria = []
     ) {
         global $DB;
 
@@ -3804,6 +3806,11 @@ class User extends CommonDBTM
                 }
         }
 
+        // Selection callers can narrow the permission graph without replacing
+        // its profile/grant ownership or fetching unrestricted recipients.
+        if ($additionalCriteria) {
+            $WHERE = ['AND' => [$WHERE, $additionalCriteria]];
+        }
         $hasSearch = strlen($search ?? '') > 0;
         $decoded = LegacyValues::decode($search);
         // Binding removes SQL-string escaping; literal backslashes still need
