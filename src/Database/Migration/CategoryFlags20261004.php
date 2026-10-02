@@ -53,10 +53,10 @@ final class CategoryFlags20261004
                     $sql[] = 'ALTER TABLE glpi_itilcategories ALTER COLUMN ' . $field . ' SET DEFAULT TRUE, ALTER COLUMN ' . $field . ' SET NOT NULL';
                 }
             } else {
-                if ($type !== Types::INTEGER || !$column->getNotnull() || !(bool)(int)$default) {
+                if ($type !== Types::INTEGER || $column->getUnsigned() || !$column->getNotnull() || !(bool)(int)$default) {
                     $before = clone $table;
                     $after = clone $before;
-                    $after->getColumn($name)->setType(Type::getType(Types::INTEGER))->setNotnull(true)->setDefault(1);
+                    $after->getColumn($name)->setType(Type::getType(Types::INTEGER))->setUnsigned(false)->setNotnull(true)->setDefault(1);
                     $sql = [...$sql, ...$platform->getAlterTableSQL($manager->createComparator()->compareTables($before, $after))];
                     $table = $after;
                 }

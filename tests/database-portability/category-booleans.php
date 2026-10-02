@@ -62,7 +62,8 @@ try {
     if ($postgres) {
         $connection->executeStatement($platform->getCommentOnColumnSQL('glpi_itilcategories', 'is_incident', $testComment));
     } else {
-        $connection->executeStatement('ALTER TABLE glpi_itilcategories MODIFY COLUMN is_incident SMALLINT NOT NULL DEFAULT 1 ' . $platform->getInlineColumnCommentSQL($testComment));
+        $connection->executeStatement('ALTER TABLE glpi_itilcategories MODIFY COLUMN is_incident SMALLINT UNSIGNED NOT NULL DEFAULT 1 ' . $platform->getInlineColumnCommentSQL($testComment));
+        $connection->executeStatement('ALTER TABLE glpi_itilcategories MODIFY COLUMN is_request INTEGER UNSIGNED NOT NULL DEFAULT 1');
     }
     $connection->update('glpi_itilcategories', ['is_incident' => 0, 'is_request' => 1, 'is_problem' => 2], ['id' => $id]);
     $before = $manager->listTableColumns('glpi_itilcategories');
