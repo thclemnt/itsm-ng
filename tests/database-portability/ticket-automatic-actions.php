@@ -136,7 +136,8 @@ try {
     }
     $write('glpi_entities', $parent, ['autoclose_delay' => 1, 'calendars_id' => $calendar, 'calendar_mode' => 'explicit']);
     $calendarSolved = $publicTicket($child);
-    $futureSolved = $publicTicket($child, ['solvedate' => '2099-01-01 00:00:00']);
+    // Keep future native TIMESTAMP fixtures below MySQL's January 2038 limit.
+    $futureSolved = $publicTicket($child, ['solvedate' => '2037-01-01 00:00:00']);
     $working = new Calendar();
     verify($working->getFromDB($calendar) && $working->hasAWorkingDay(), 'Real working calendar fixture');
     $task = new TicketCronProbe();
@@ -164,7 +165,7 @@ try {
     $write('glpi_entities', $parent, ['notclosed_delay' => 1]);
     $publicTicket($parent, ['status' => $_SESSION['INCOMING']]);
     $publicTicket($child, ['status' => $_SESSION['WAITING']]);
-    $publicTicket($child, ['status' => $_SESSION['INCOMING'], 'date' => '2099-01-01 00:00:00']);
+    $publicTicket($child, ['status' => $_SESSION['INCOMING'], 'date' => '2037-01-01 00:00:00']);
     verify(Ticket::cronAlertNotClosed(new TicketCronProbe()) === 0, 'Notifications-disabled action returns without delivery');
     $CFG_GLPI['use_notifications'] = true;
     foreach (array_keys(Notification_NotificationTemplate::getModes()) as $mode) {

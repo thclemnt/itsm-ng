@@ -35,6 +35,7 @@ for path in contracts:
         result = subprocess.run([args.php, str(path), str(config)], timeout=300)
         if result.returncode:
             failed.append(path.name)
+            print(f"Contract exited with status {result.returncode}", flush=True)
     except subprocess.TimeoutExpired:
         failed.append(path.name)
         print("Contract exceeded 300 seconds", flush=True)

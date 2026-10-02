@@ -39,7 +39,9 @@ try {
     $connection->executeStatement('DELETE FROM glpi_events');
     $CFG_GLPI['event_loglevel'] = 5;
     $_SESSION['glpilist_limit'] = 2;
-    $_SESSION['glpi_currenttime'] = '2040-01-01 10:00:00';
+    // Native MySQL TIMESTAMP and MariaDB before 11.5 stop at January 2038.
+    // Keep this ahead of the database clock within every supported provider's range.
+    $_SESSION['glpi_currenttime'] = '2030-01-01 10:00:00';
     $message = "O'Reilly \\network\\tab 日本語\nSecond line";
     $first = Event::log(99999999, 'devices', 4, 'NULL', $message);
     verify($first > 0, 'Public log insert');
@@ -48,7 +50,7 @@ try {
     $literalNull = Event::log(0, 'system', 4, 'setup', 'NULL');
     verify($records()->find('glpi_events', 'id', $literalNull)['message'] === 'NULL', 'Literal NULL is text');
     verify(Event::log(0, 'system', 6, 'setup', 'Filtered event') === false && $repository()->count() === 2, 'Log level gate');
-    $legacy = (new Event())->add(['type' => 'system', 'date' => '2040-01-01 10:00:00', 'level' => 4, 'message' => Toolbox::addslashes_deep($message)]);
+    $legacy = (new Event())->add(['type' => 'system', 'date' => '2030-01-01 10:00:00', 'level' => 4, 'message' => Toolbox::addslashes_deep($message)]);
     verify($records()->find('glpi_events', 'id', $legacy)['message'] === $message, 'Public legacy add decodes once');
     $savedFileLogging = $CFG_GLPI['use_log_in_files'];
     try {

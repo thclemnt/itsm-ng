@@ -37,7 +37,7 @@ verify(str_contains($command->getDisplay(), 'not compared'), 'Command states pla
 
 $probe = new Table('glpi_schema_check_probe');
 $probe->addColumn('id', 'integer');
-$probe->addColumn('label', 'string', ['length' => 100]);
+$probe->addColumn('label', 'string', ['length' => 100, 'comment' => 'Historical relationship comment']);
 $probe->addColumn('occurred', 'datetimetz', ['notnull' => false] + ($DB->getProvider() === 'mysql' ? ['columnDefinition' => 'TIMESTAMP NULL DEFAULT NULL'] : []));
 $probe->setPrimaryKey(['id']);
 $probe->addIndex(['label'], 'probe_label');
@@ -46,6 +46,16 @@ verify($checker->differences($connection, $expected) === ['Missing table: glpi_s
 $manager->createTable($probe);
 try {
     verify($checker->differences($connection, $expected) === [], 'DBAL declaration round trips');
+    $withoutComment = clone $probe;
+    $withoutComment->getColumn('label')->setComment('');
+    foreach ($platform->getAlterTableSQL($manager->createComparator()->compareTables($probe, $withoutComment)) as $sql) {
+        $connection->executeStatement($sql);
+    }
+    verify(in_array('Changed column: glpi_schema_check_probe.label', $checker->differences($connection, $expected), true), 'Lost historical comments are schema drift');
+    verify($manager->introspectTable($probe->getName())->getColumn('label')->getComment() === '', 'Check leaves comment drift untouched');
+    foreach ($platform->getAlterTableSQL($manager->createComparator()->compareTables($withoutComment, $probe)) as $sql) {
+        $connection->executeStatement($sql);
+    }
     if ($DB->getProvider() === 'mysql') {
         $connection->executeStatement('ALTER TABLE glpi_schema_check_probe MODIFY occurred DATETIME DEFAULT NULL');
         verify(in_array('Expected native TIMESTAMP: glpi_schema_check_probe.occurred', $checker->differences($connection, $expected), true), 'Native timestamp regression is detected despite DBAL type aliasing');
