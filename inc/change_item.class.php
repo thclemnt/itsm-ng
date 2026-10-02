@@ -104,6 +104,13 @@ class Change_Item extends CommonItilObject_Item
         $number = count($types_iterator);
 
         if ($canedit) {
+            $options = array_unique($change->getAllTypesForHelpdesk());
+            $dropdownChoiceTokens = [];
+            foreach (array_keys($options) as $kind) {
+                $dropdownChoiceTokens[$kind] = \itsmng\Database\DropdownChoiceContext::token($kind, []);
+            }
+            $dropdownChoiceTokens = json_encode($dropdownChoiceTokens, JSON_THROW_ON_ERROR);
+
             $form = [
                'action' => Toolbox::getItemTypeFormURL(__CLASS__),
                'buttons' => [
@@ -127,15 +134,21 @@ class Change_Item extends CommonItilObject_Item
                            'type' => 'select',
                            'id' => 'dropdown_itemtype',
                            'name' => 'itemtype',
-                           'values' => [Dropdown::EMPTY_VALUE] + array_unique($change->getAllTypesForHelpdesk()),
+                           'values' => [Dropdown::EMPTY_VALUE] + $options,
                            'col_lg' => 6,
                            'hooks' => [
                               'change' => <<<JS
+                                 const choiceToken = ({$dropdownChoiceTokens})[this.value];
+                                 if (!choiceToken) {
+                                     $('#dropdown_items_id').empty();
+                                     return;
+                                 }
                               $.ajax({
                                     method: "POST",
                                     url: "$CFG_GLPI[root_doc]/ajax/getDropdownValue.php",
                                     data: {
                                        itemtype: this.value,
+                                       _idor_token: choiceToken,
                                        display_emptychoice: 1,
                                     },
                                     success: function(response) {

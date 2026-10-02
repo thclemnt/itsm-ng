@@ -194,6 +194,12 @@ class Domain_Item extends CommonDBRelation
                 $options[$itemtype] = $itemtype::getTypeName(1);
             };
 
+            $dropdownChoiceTokens = [];
+            foreach (array_keys(array_unique($options)) as $kind) {
+                $dropdownChoiceTokens[$kind] = \itsmng\Database\DropdownChoiceContext::token($kind, []);
+            }
+            $dropdownChoiceTokens = json_encode($dropdownChoiceTokens, JSON_THROW_ON_ERROR);
+
             $form = [
                'action' => Toolbox::getItemTypeFormURL("Domain"),
                'buttons' => [
@@ -219,11 +225,17 @@ class Domain_Item extends CommonDBRelation
                               'values' => [Dropdown::EMPTY_VALUE] + array_unique($options),
                               'hooks' => [
                                  'change' => <<<JS
+                                 const choiceToken = ({$dropdownChoiceTokens})[this.value];
+                                 if (!choiceToken) {
+                                     $('#dropdown_items_id').empty();
+                                     return;
+                                 }
                                  $.ajax({
                                        method: "POST",
                                        url: "$CFG_GLPI[root_doc]/ajax/getDropdownValue.php",
                                        data: {
                                           itemtype: this.value,
+                                       _idor_token: choiceToken,
                                           display_emptychoice: 1,
                                        },
                                        success: function(response) {

@@ -219,6 +219,12 @@ class Certificate_Item extends CommonDBRelation
             foreach ($itemtypes as $itemtype) {
                 $options[$itemtype] = $itemtype::getTypeName(1);
             };
+            $dropdownChoiceTokens = [];
+            foreach (array_keys(array_unique($options)) as $kind) {
+                $dropdownChoiceTokens[$kind] = \itsmng\Database\DropdownChoiceContext::token($kind, []);
+            }
+            $dropdownChoiceTokens = json_encode($dropdownChoiceTokens, JSON_THROW_ON_ERROR);
+
             $form = [
                'action' => Toolbox::getItemTypeFormURL(__CLASS__),
                'buttons' => [
@@ -246,11 +252,17 @@ class Certificate_Item extends CommonDBRelation
                            'col_lg' => 6,
                            'hooks' => [
                               'change' => <<<JS
+                                 const choiceToken = ({$dropdownChoiceTokens})[this.value];
+                                 if (!choiceToken) {
+                                     $('#dropdown_items_id').empty();
+                                     return;
+                                 }
                               $.ajax({
                                     method: "POST",
                                     url: "$CFG_GLPI[root_doc]/ajax/getDropdownValue.php",
                                     data: {
                                        itemtype: this.value,
+                                       _idor_token: choiceToken,
                                        display_emptychoice: 1,
                                     },
                                     success: function(response) {

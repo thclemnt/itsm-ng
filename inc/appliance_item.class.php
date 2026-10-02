@@ -153,6 +153,12 @@ class Appliance_Item extends CommonDBRelation
                 $options[$itemtype] = $itemtype::getTypeName(1);
             }
 
+            $dropdownChoiceTokens = [];
+            foreach (array_keys(array_unique($options)) as $kind) {
+                $dropdownChoiceTokens[$kind] = \itsmng\Database\DropdownChoiceContext::token($kind, ['entity_restrict' => array_values($entity_restrict)]);
+            }
+            $dropdownChoiceTokens = json_encode($dropdownChoiceTokens, JSON_THROW_ON_ERROR);
+
             $form = [
                 'action' => Toolbox::getItemTypeFormURL(__CLASS__),
                 'buttons' => [
@@ -192,6 +198,7 @@ class Appliance_Item extends CommonDBRelation
                                     url: "$CFG_GLPI[root_doc]/ajax/getDropdownValue.php",
                                     data: {
                                                     itemtype: selectedType,
+                                       _idor_token: ({$dropdownChoiceTokens})[selectedType],
                                        display_emptychoice: 1,
                                                     entity_restrict: entityRestrict,
                                     },

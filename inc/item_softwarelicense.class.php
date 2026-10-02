@@ -628,6 +628,11 @@ JAVASCRIPT;
                 }
             }
             asort($values);
+            $dropdownChoiceTokens = [];
+            foreach (array_keys($values) as $kind) {
+                $dropdownChoiceTokens[$kind] = \itsmng\Database\DropdownChoiceContext::token($kind, []);
+            }
+            $dropdownChoiceTokens = json_encode($dropdownChoiceTokens, JSON_THROW_ON_ERROR);
             $form = [
                'action' => self::getFormURL(),
                'buttons' => [
@@ -656,11 +661,17 @@ JAVASCRIPT;
                            'col_lg' => 6,
                            'hooks' => [
                               'change' => <<<JS
+                                 const choiceToken = ({$dropdownChoiceTokens})[this.value];
+                                 if (!choiceToken) {
+                                     $('#dropdown_items_id').empty();
+                                     return;
+                                 }
                                  $.ajax({
                                     method: "POST",
                                     url: "$CFG_GLPI[root_doc]/ajax/getDropdownValue.php",
                                     data: {
                                        itemtype: this.value,
+                                       _idor_token: choiceToken,
                                     },
                                     success: function(response) {
                                        const data = response.results;
@@ -692,6 +703,7 @@ JAVASCRIPT;
                                  url: "$CFG_GLPI[root_doc]/ajax/getDropdownValue.php",
                                  data: {
                                     itemtype: $('#dropdown_itemtype').val(),
+                                    _idor_token: ({$dropdownChoiceTokens})[$('#dropdown_itemtype').val()],
                                  },
                                  success: function(response) {
                                     const data = response.results;
