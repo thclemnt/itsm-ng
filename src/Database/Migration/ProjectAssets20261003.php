@@ -23,7 +23,7 @@ final class ProjectAssets20261003 extends TypedItemMigration
             . ' FROM glpi_items_projects WHERE itemtype IS NOT NULL AND itemtype NOT IN (?) LIMIT 5', [array_keys(self::targets())], [\Doctrine\DBAL\ArrayParameterType::STRING]);
         if ($unsupported) {
             throw new \RuntimeException('Unsupported project asset kinds in glpi_items_projects; samples: ' . json_encode($unsupported, JSON_THROW_ON_ERROR)
-                . '. Resolve these links before adoption. Appliance plugin import requires a compatible historical application and legacy MySQL schema before switching to modernized source and db:migrate; the current appliances import CLI is unsafe before and after adoption.');
+                . '. Resolve these links before adoption. Legacy appliance plugin import requires a compatible historical application and legacy MySQL schema before switching to modernized source and db:migrate. The canonical ORM importer requires completed migration history and cannot bypass this legacy-data preflight.');
         }
         $entry = parent::plan($connection)['glpi_items_projects'];
         return ['glpi_items_projects' => [

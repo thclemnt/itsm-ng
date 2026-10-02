@@ -160,7 +160,7 @@ try {
             } catch (RuntimeException $error) {
                 verify(str_contains($error->getMessage(), 'project asset kinds') || str_contains($error->getMessage(), 'Invalid or unsupported'), 'Migration reports the invalid project relationship');
                 if ($invalid['itemtype'] === 'PluginExampleAsset') {
-                    verify(str_contains($error->getMessage(), '503') && str_contains($error->getMessage(), 'current appliances import CLI is unsafe'), 'Plugin diagnostic identifies the row and avoids unsafe current import guidance');
+                    verify(str_contains($error->getMessage(), '503') && str_contains($error->getMessage(), 'canonical ORM importer requires completed migration history'), 'Plugin diagnostic identifies the row and distinguishes historical legacy import from the canonical importer');
                 }
             }
             verify(Ledger::state($connection, ProjectAssets20261003::VERSION) === null && !$manager->introspectTable($table)->hasColumn('computers_id'), 'Invalid preflight changes neither schema nor migration journal');
