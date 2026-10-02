@@ -124,11 +124,43 @@ abstract class NotificationSetting extends CommonDBTM
     {
         global $CFG_GLPI;
 
-        $CFG_GLPI['use_notifications'] = 0;
-        foreach (array_keys($CFG_GLPI) as $key) {
-            if (substr((string) $key, 0, strlen('notifications_')) === 'notifications_') {
-                $CFG_GLPI[$key] = 0;
+        foreach (self::notificationFlagKeys() as $key) {
+            $CFG_GLPI[$key] = 0;
+        }
+    }
+
+    /** Disable transport during one operation, then restore the exact prior flags. */
+    public static function withoutNotifications(callable $operation): mixed
+    {
+        global $CFG_GLPI;
+
+        $flags = [];
+        $keys = self::notificationFlagKeys();
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $CFG_GLPI)) {
+                $flags[$key] = $CFG_GLPI[$key];
             }
         }
+        self::disableAll();
+        try {
+            return $operation();
+        } finally {
+            foreach ($keys as $key) {
+                if (array_key_exists($key, $flags)) {
+                    $CFG_GLPI[$key] = $flags[$key];
+                } else {
+                    unset($CFG_GLPI[$key]);
+                }
+            }
+        }
+    }
+
+    /** getModes owns registration and its existing cache enrichment behavior. */
+    private static function notificationFlagKeys(): array
+    {
+        return array_merge(['use_notifications'], array_map(
+            static fn (string $mode): string => 'notifications_' . $mode,
+            array_keys(Notification_NotificationTemplate::getModes())
+        ));
     }
 }
