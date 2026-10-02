@@ -100,7 +100,7 @@ existing rights checks. Plugin asset counts retain the query-iterator path.
 
 ## Canonical installation and adoption history
 
-Fresh installations replay four frozen phases in order through the existing
+Fresh installations replay the following frozen phases in order through the existing
 `itsmng_migrations` ledger:
 
 1. `20261001_baseline_legacy_2_2`: explicit DBAL declarations for the 355-table
@@ -112,6 +112,25 @@ Fresh installations replay four frozen phases in order through the existing
    identifier widening, all ordered domain conversions and foreign keys.
 4. `20261002_postgres_boolean_flags`: validated adoption of early PostgreSQL
    integer flags; a recorded no-op for MySQL/MariaDB native flag storage.
+5. `20261003_project_assets`: typed owning Project asset subjects.
+6. `20261004_category_boolean_flags`: entity-owned category flag semantics.
+7. `20261005_appliance_assets`: typed owning Appliance asset subjects.
+8. `20261005_appliance_recipients`: typed owning Appliance relation recipients.
+9. `20261006_operating_system_subjects`: typed owning OS assignment subjects,
+   separate from optional OS component dropdowns.
+10. `20261006_domain_document_subjects`: expand frozen document ownership to
+    Domain and restore deferred full-row links without replaying later edits.
+11. `20261006_domain_supplier_helpdesk_rights`: distinct commercial Supplier,
+    helpdesk visibility and dedicated DomainType permissions.
+12. `20261007_identifier_sequence_widths`: independent PostgreSQL SERIAL/IDENTITY
+    storage repair, including installations with completed adoption receipts;
+    MySQL/MariaDB record a native-provider no-op.
+
+The frozen Domains source prerequisite runs before canonical audits under the
+same History lock. It validates transformed historical data in a rollback trial,
+then records atomic adoption/deferred-document receipts in this ledger. It is a
+data prerequisite, not another schema history. See
+[Domain adoption and import boundaries](domain-plugin-import-plan.md).
 
 The dashboard baseline retains the SQL dump's inline unique ID key, which the
 former reader discarded. That key makes the old MySQL AUTO_INCREMENT declaration
@@ -158,6 +177,35 @@ Widening preserves existing indexes and foreign-key definitions, including actua
 FK references from plugin/custom tables. These constrained plugin references are
 widened together with their core targets; unconstrained plugin fields require the
 plugin's own upgrade. No relationship is invented from an ID-like column name.
+
+Sequence storage is inspected independently of its owning column: a BIGINT
+column can still have a 32-bit SERIAL or IDENTITY generator. The appended repair
+uses the immutable identifier scope plus actual foreign-key edges within the
+current application schema, and requires a real PostgreSQL ownership dependency.
+It excludes unowned defaults and unrelated or out-of-schema generators. Schema
+and sequence names are quoted as separate catalog components. Native `ALTER
+SEQUENCE ... AS bigint` expands bounds equal to the old type's defaults and
+preserves custom bounds, start, increment, cache, cycle and allocation state.
+PostgreSQL cannot distinguish an explicitly supplied old default bound from an
+implicit one; both follow its native widening semantics.
+
+Older incomplete adoption journals retain their captured operation prefix and
+next position. Preview derives omitted owned-sequence repairs without writing;
+apply appends only repairs absent from that journal. PostgreSQL commits or rolls
+back the journal append and sequence DDL together. Completed adoption receipts
+are repaired by the appended version, without changing frozen historical JSON.
+
+Ordinary sequence synchronization remains value maintenance without DDL. It
+reads the native signed increment and compares the next candidate with imported
+MAX (ascending) or MIN (descending), using PostgreSQL numeric arithmetic even at
+BIGINT boundaries. An already safe candidate, including unused or reserved
+values, is retained. Otherwise `setval(imported_extremum, true)` advances past
+the imported data with the existing increment. This can shift the progression's
+residue; it does not promise to retain the original arithmetic progression.
+Custom bounds are not expanded: an incompatible import receives PostgreSQL's
+out-of-bound diagnostic. Native CYCLE behavior is preserved, including wrapping.
+Maintenance callers must stop writers and drain other backends with cached
+sequence allocations; this is not a concurrent allocator repair.
 The master uses frozen ID and FK definitions in
 `src/Database/Migration/history/20261001-legacy-to-orm.json` and the frozen internal
 step order in `20261001-stages.json`.

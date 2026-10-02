@@ -103,6 +103,9 @@ final class WideIdentifiers
         }
         $dropForeign = $restoreForeign = $dropGenerated = $restoreGenerated = $alter = $dropChecks = $restoreChecks = [];
         $operation = static fn (string $sql, string $kind = 'sql', string $table = '', string $name = '') => compact('sql', 'kind', 'table', 'name');
+        foreach (self::planOwnedSequences($connection, $scope) as $sql) {
+            $alter[] = $operation($sql);
+        }
         foreach ($foreignKeys as [$table, $foreign]) {
             $generatedNames = array_column($generatedColumns[$table] ?? [], 'column_name');
             $supportingGeneratedIndex = false;
@@ -182,12 +185,6 @@ final class WideIdentifiers
                 if ($after->hasColumn($column)) {
                     $after->getColumn($column)->setType(Type::getType('bigint'));
                 }
-                if ($postgres && $tables[$name]->getColumn($column)->getAutoincrement()) {
-                    $sequence = $connection->fetchOne('SELECT pg_get_serial_sequence(?, ?)', [$name, $column]);
-                    if ($sequence !== null && $sequence !== false) {
-                        $alter[] = $operation('ALTER SEQUENCE ' . $quote($sequence) . ' AS bigint');
-                    }
-                }
             }
             foreach ($storage[$name] ?? [] as $column => $definition) {
                 self::configureStorage($after->getColumn($column), $definition, $postgres);
@@ -197,6 +194,61 @@ final class WideIdentifiers
             }
         }
         return array_merge($dropForeign, $dropChecks, $dropGenerated, $alter, $restoreGenerated, $restoreChecks, $restoreForeign);
+    }
+
+    /** Only actual PostgreSQL sequence ownership gives authority to widen storage. */
+    public static function planOwnedSequences(Connection $connection, array $scope): array
+    {
+        $platform = $connection->getDatabasePlatform();
+        if (!$platform instanceof PostgreSQLPlatform) {
+            return [];
+        }
+        $namespace = $connection->fetchOne('SELECT current_schema()');
+        // Follow real FK edges into custom identifiers, retaining the original
+        // adoption scope without a second manually maintained relationship list.
+        $edges = $connection->fetchAllAssociative("SELECT lt.relname AS local_table, la.attname AS local_column,
+            ft.relname AS foreign_table, fa.attname AS foreign_column
+            FROM pg_constraint c JOIN pg_class lt ON lt.oid = c.conrelid
+            JOIN pg_namespace ln ON ln.oid = lt.relnamespace
+            JOIN pg_class ft ON ft.oid = c.confrelid JOIN pg_namespace fn ON fn.oid = ft.relnamespace
+            CROSS JOIN LATERAL unnest(c.conkey, c.confkey) AS columns(local_number, foreign_number)
+            JOIN pg_attribute la ON la.attrelid = lt.oid AND la.attnum = columns.local_number
+            JOIN pg_attribute fa ON fa.attrelid = ft.oid AND fa.attnum = columns.foreign_number
+            WHERE c.contype = 'f' AND ln.nspname = ? AND fn.nspname = ?", [$namespace, $namespace]);
+        do {
+            $changed = false;
+            foreach ($edges as $edge) {
+                if (in_array($edge['local_column'], $scope[$edge['local_table']] ?? [], true)
+                    || in_array($edge['foreign_column'], $scope[$edge['foreign_table']] ?? [], true)) {
+                    foreach ([[$edge['local_table'], $edge['local_column']], [$edge['foreign_table'], $edge['foreign_column']]] as [$table, $column]) {
+                        if (!in_array($column, $scope[$table] ?? [], true)) {
+                            $scope[$table][] = $column;
+                            $changed = true;
+                        }
+                    }
+                }
+            }
+        } while ($changed);
+        // Inspect independently of column widening, including both SERIAL and
+        // IDENTITY. Formatted regclass strings must not be quoted a second time.
+        $sequences = $connection->fetchAllAssociative("SELECT t.relname AS table_name, a.attname AS column_name,
+            sn.nspname AS sequence_schema, s.relname AS sequence_name
+            FROM pg_sequence q JOIN pg_class s ON s.oid = q.seqrelid
+            JOIN pg_namespace sn ON sn.oid = s.relnamespace
+            JOIN pg_depend d ON d.objid = s.oid AND d.classid = 'pg_class'::regclass
+                AND d.refclassid = 'pg_class'::regclass AND d.deptype IN ('a', 'i')
+            JOIN pg_class t ON t.oid = d.refobjid JOIN pg_namespace tn ON tn.oid = t.relnamespace
+            JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = d.refobjsubid
+            WHERE s.relkind = 'S' AND t.relkind IN ('r', 'p') AND tn.nspname = ?
+                AND q.seqtypid <> 'bigint'::regtype ORDER BY sn.nspname, s.relname", [$namespace]);
+        $quote = $platform->quoteSingleIdentifier(...);
+        $sql = [];
+        foreach ($sequences as $sequence) {
+            if (in_array($sequence['column_name'], $scope[$sequence['table_name']] ?? [], true)) {
+                $sql[] = 'ALTER SEQUENCE ' . $quote($sequence['sequence_schema']) . '.' . $quote($sequence['sequence_name']) . ' AS bigint';
+            }
+        }
+        return $sql;
     }
 
     private static function configureStorage(\Doctrine\DBAL\Schema\Column $column, array $definition, bool $postgres): void

@@ -6,7 +6,7 @@ This branch is a development port, **not a complete or production-ready PostgreS
 
 See [the latest integrated checkpoint](modernization-upgrade-dropdown-validation.md)
 for exact source, provider versions, test evidence and remaining work. Dated earlier
-validation figures are historical checkpoints. Fresh installs replay all eight
+validation figures are historical checkpoints. Fresh installs replay all twelve
 current canonical versions, including subsequent frozen ownership/flag migrations;
 supported upgrades use the same History coordinator and readiness checks.
 
@@ -265,3 +265,28 @@ distinct licensed inventory rows, including deleted history. See
 [OS ownership and validation](orm.md#operating-system-assignment-ownership-2026-10-02)
 for the actual scope and checkpoints; standalone focused success does not establish
 full integrated PostgreSQL support.
+
+
+## Independent identifier sequence repair (2026-10-02)
+
+The appended `20261007_identifier_sequence_widths` phase repairs narrow SERIAL,
+SMALLSERIAL and IDENTITY generators even when their columns are already BIGINT
+and the original adoption receipt is complete. Run the canonical preview/apply
+commands above; application readiness requires its receipt too. Scope comes from
+the frozen identifier history and real same-schema FK edges, with actual sequence
+ownership. It does not adopt unowned defaults or cross-schema plugin generators.
+
+Native widening retains custom allocation parameters and reservations, while
+expanding bounds equal to the previous type defaults. Ordinary synchronization
+performs no DDL: native signed increments select imported MIN/MAX and numeric
+next-candidate comparisons preserve safe allocations. Advancing to the imported
+extremum can shift the progression residue. Custom bounds remain enforced, and
+CYCLE retains PostgreSQL wrapping behavior. Stop writers and drain other backends
+with cached sequence values before maintenance. See
+[the canonical sequence policy](orm.md#canonical-installation-and-adoption-history).
+
+The focused sequence contract passes on PostgreSQL 15.19 (74 assertions) and
+MariaDB 10.11 (12 assertions), followed by the unchanged adoption and schema-check
+contracts on both providers. These use populated disposable checkpoint clones
+and actual canonical apply. Fresh replay, the complete integrated suite, browser,
+remote CI and live replicas are separate validation scopes.

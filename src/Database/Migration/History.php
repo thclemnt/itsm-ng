@@ -12,7 +12,7 @@ use itsmng\Database\SequenceSynchronizer;
 /** Empty-database replay and validated adoption share one canonical history and ledger. */
 final class History
 {
-    public const VERSIONS = [Baseline20261001::VERSION, Seeds20261001::VERSION, LegacyToOrm::VERSION, Booleans20261002::VERSION, ProjectAssets20261003::VERSION, CategoryFlags20261004::VERSION, ApplianceAssets20261005::VERSION, ApplianceRecipients20261005::VERSION, OperatingSystemSubjects20261006::VERSION, DomainDocuments20261006::VERSION, DomainIntegration20261006::VERSION];
+    public const VERSIONS = [Baseline20261001::VERSION, Seeds20261001::VERSION, LegacyToOrm::VERSION, Booleans20261002::VERSION, ProjectAssets20261003::VERSION, CategoryFlags20261004::VERSION, ApplianceAssets20261005::VERSION, ApplianceRecipients20261005::VERSION, OperatingSystemSubjects20261006::VERSION, DomainDocuments20261006::VERSION, DomainIntegration20261006::VERSION, IdentifierSequences20261007::VERSION];
 
     /** Application readiness uses the ledger, without planning or executing DDL. */
     public static function pendingVersions(Connection $connection): array
@@ -37,7 +37,7 @@ final class History
     {
         $pending = self::pendingVersions($connection);
         $booleans = (new Booleans20261002())->plan($connection);
-        return ['complete' => !$pending, 'pending' => $pending, 'legacy' => (new LegacyToOrm())->plan($connection), 'booleans' => $booleans, 'project_assets' => (new ProjectAssets20261003())->plan($connection), 'category_flags' => (new CategoryFlags20261004())->plan($connection), 'appliance_assets' => (new ApplianceAssets20261005())->plan($connection), 'appliance_recipients' => (new ApplianceRecipients20261005())->plan($connection), 'operating_system_subjects' => (new OperatingSystemSubjects20261006())->plan($connection), 'domain_documents' => (new DomainDocuments20261006())->plan($connection), 'domain_integration' => (new DomainIntegration20261006())->plan($connection)];
+        return ['complete' => !$pending, 'pending' => $pending, 'legacy' => (new LegacyToOrm())->plan($connection), 'booleans' => $booleans, 'project_assets' => (new ProjectAssets20261003())->plan($connection), 'category_flags' => (new CategoryFlags20261004())->plan($connection), 'appliance_assets' => (new ApplianceAssets20261005())->plan($connection), 'appliance_recipients' => (new ApplianceRecipients20261005())->plan($connection), 'operating_system_subjects' => (new OperatingSystemSubjects20261006())->plan($connection), 'domain_documents' => (new DomainDocuments20261006())->plan($connection), 'domain_integration' => (new DomainIntegration20261006())->plan($connection), 'identifier_sequences' => (new IdentifierSequences20261007())->plan($connection)];
     }
 
     public static function isInstalling(Connection $connection): bool
@@ -162,6 +162,7 @@ final class History
             (new OperatingSystemSubjects20261006())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('OperatingSystemSubjects20261006: ' . $phase));
             (new DomainDocuments20261006())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('DomainDocuments20261006: ' . $phase));
             (new DomainIntegration20261006())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('DomainIntegration20261006: ' . $phase));
+            (new IdentifierSequences20261007())->apply($connection, $progress);
             $differences = (new SchemaCheck())->differences($connection);
             if ($differences) {
                 throw new \RuntimeException("Migration history did not converge:\n" . implode("\n", $differences));

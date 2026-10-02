@@ -71,6 +71,7 @@ final class LegacyToOrm
             return ['complete' => true, 'identifiers' => [], 'stages' => []];
         }
         if ($state !== null) {
+            $state = $this->appendOwnedSequenceRepairs($connection, $state);
             return ['complete' => false, 'identifiers' => array_slice($state['identifiers'], $state['next']), 'stages' => self::stages()];
         }
         $this->auditRequiredReferences($connection);
@@ -82,6 +83,22 @@ final class LegacyToOrm
             $stages[$name] = (new $class())->plan($connection);
         }
         return ['complete' => false, 'identifiers' => $identifiers, 'stages' => $stages];
+    }
+
+    /** Extend an older journal without replacing its captured prefix or progress. */
+    private function appendOwnedSequenceRepairs(Connection $connection, array $state): array
+    {
+        if (!$connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
+            return $state;
+        }
+        $captured = array_column($state['identifiers'], 'sql');
+        foreach (WideIdentifiers::planOwnedSequences($connection, IdentifierColumns::history()['identifiers']) as $sql) {
+            if (!in_array($sql, $captured, true)) {
+                $state['identifiers'][] = ['sql' => $sql, 'kind' => 'sql', 'table' => '', 'name' => ''];
+                $captured[] = $sql;
+            }
+        }
+        return $state;
     }
 
     public function apply(Connection $connection, ?callable $progress = null): void
@@ -101,6 +118,11 @@ final class LegacyToOrm
             if ($state === null) {
                 $plan = $this->plan($connection);
                 $state = ['complete' => false, 'identifiers' => $plan['identifiers'], 'next' => 0];
+                Ledger::save($connection, self::VERSION, $state);
+            }
+            $extended = $this->appendOwnedSequenceRepairs($connection, $state);
+            if ($extended !== $state) {
+                $state = $extended;
                 Ledger::save($connection, self::VERSION, $state);
             }
             $save = static function () use ($connection, &$state): void {

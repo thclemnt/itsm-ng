@@ -593,3 +593,71 @@ discover and run the complete suites on both providers, and inspect final schema
 before publishing a combined checkpoint. Browser, remote CI, live replicas and
 external inventory agents are not passing claims for this batch. The broader
 modernization objective remains open.
+
+
+## Identifier sequence storage and allocation checkpoint (2026-10-02)
+
+This isolated batch starts at combined OS/atomic-delete commit `7071960385` in
+`th/exp/postgres-sequence-width`. Completed adoption receipts concealed a real
+PostgreSQL defect: an already-BIGINT column could retain an integer SERIAL or
+IDENTITY generator. A controlled probe loaded the exact pre-fix helper from that
+commit and returned zero operations; the new independent ownership planner
+returned one for the same BIGINT/narrow fixture. A controlled run of the new
+contract against the unchanged synchronizer then failed its descending reserved-ID
+assertion. Neither failure was accepted as passing evidence.
+
+Appended `20261007_identifier_sequence_widths` uses the existing canonical History
+and transactional ledger. Frozen identifier scope plus actual same-schema FK
+edges identifies owned SERIAL/SMALLSERIAL/IDENTITY generators; quoted catalog
+components prevent treating periods or quotes as qualification. Native bigint
+widening preserves custom bounds, start, cache, increment, cycle and called/unused
+state, and expands old type-default bounds. Unowned, unrelated and out-of-schema
+generators are excluded. Older incomplete adoption journals retain their captured
+prefix and next index, append only omitted repairs, and expose the same pending
+append in read-only preview. Strict convergence remains enforced.
+
+SequenceSynchronizer now compares native signed next candidates with directional
+MIN/MAX using numeric SQL. It preserves safe reserved values and handles unused
+imported equality and signed BIGINT boundaries without PHP overflow. Advancement
+uses the imported extremum and native increment; residue can change. Custom bounds
+are enforced with a native invalid-data diagnostic. CYCLE retains wrapping, and
+writers/other backends holding cached allocations must be drained for maintenance.
+No ordinary synchronization DDL was added.
+
+Actual validation, sequential providers with isolated `itsm_port_identifier_sequences`
+databases cloned from owned populated OS checkpoints:
+
+- Owned vendor copy, rebuilt optimized autoload and Reflection checks proved all
+  exercised migration/synchronizer classes loaded from this worktree.
+- Real `db:migrate --apply --no-interaction` completed the appended version on
+  both providers before ordinary application bootstrap.
+- `identifier-sequences.php`: PostgreSQL **74 assertions**, MariaDB **12**. The
+  PostgreSQL contract exercises real History failure/retry after DDL, completed
+  old adoption, old incomplete journal append/rollback/resume, quoted namespaces,
+  actual FKs, wide ORM allocation, native/custom bounds, allocation parameters,
+  descending/stepped/unused/boundary values and excluded generators. MariaDB
+  preserves native AUTO_INCREMENT and records an idempotent no-op receipt.
+- Unchanged `legacy-to-orm.php` passed both, retaining populated widening,
+  nontransactional DDL replay, generated declarations, custom/plugin FKs, quoted
+  ascending +1 sequence imports and 64-bit ORM audit assertions.
+- Final `schema-check.php` passed both; focused cleanup also independently checks
+  the full width planner for remaining owned-generator repairs.
+- PHP syntax, whitespace and explicit six-file formatter checks passed; formatter
+  changed zero files. Native widening/synchronization received independent source
+  review, separate from live database evidence.
+
+After the causal old-source failure, two development runs exposed the fixture's
+combined type/increment/default-bound declaration: PostgreSQL retained the prior
+ascending maximum. Establishing descending native defaults in a second statement
+fixed the fixture without weakening its state assertion. The 72-assertion run then
+passed; the final strengthened run passed 74 including a custom-bound refusal.
+Commands, source Reflection, pre-fix probes and final logs are under
+`/workspace/itsm-env/evidence/identifier-sequences-*`; the durable command/evidence
+record is `identifier-sequences-validation.md` there.
+
+Next concrete step: integrate this feature after the Domain history changes,
+preserving their native-name auditor optimization, then discover and run the
+complete contracts on both providers from fresh installs and populated replay,
+with final schema/sequence inspection. This batch does not claim a fresh complete
+replay, full integrated suite, new browser coverage, remote CI or live replicas.
+The broader relationship and domain-persistence modernization remains open.
