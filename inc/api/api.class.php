@@ -1318,11 +1318,12 @@ abstract class API extends CommonGLPI
             try {
                 $parent = $parent_item === null ? null : [
                     'table' => $parent_item::getTable(),
-                    'foreign_key' => getForeignKeyFieldForItemType($this->parameters['parent_itemtype']),
                     'id' => (int)$this->parameters['parent_id'],
                 ];
                 $page = (new \itsmng\Database\Repository\TicketCollectionRepository($em))->page(
-                    \itsmng\Database\Repository\TicketVisibility::fromSession(), $params, $parent
+                    \itsmng\Database\Repository\TicketVisibility::fromSession(),
+                    $params,
+                    $parent
                 );
                 $found = $page['rows'];
                 $totalcount = $page['total'];

@@ -30,7 +30,7 @@ final class TicketCollectionRepository
         $query->where($compiler->where(['entities_id' => $visibility->entities ?: [-1], 'is_deleted' => $deleted]));
         $this->visibility($query, $visibility);
         if ($parent !== null) {
-            $this->parent($query, $compiler, $parent);
+            $this->parent($query, $parent);
         }
         $filters = $params['searchText'] ?? [];
         if (is_array($filters)) {
@@ -121,26 +121,46 @@ final class TicketCollectionRepository
         $query->andWhere($allowed ? '(' . implode(' OR ', $allowed) . ')' : '1 = 0');
     }
 
-    /** The controller has already checked parent existence and read authorization. */
-    private function parent(QueryBuilder $query, RecordCriteria $compiler, array $parent): void
+    /**
+     * The controller checks parent existence and read authorization. A route without
+     * a role qualifier includes every direct owning role declared for that target;
+     * actor membership is a separate relationship and is not implicitly traversed.
+     */
+    private function parent(QueryBuilder $query, array $parent): void
     {
-        $metadata = $this->em->getClassMetadata(Entity\Ticket::class);
-        if (in_array($parent['foreign_key'], EntityRegistry::columnNames($metadata->getTableName()), true)) {
-            $query->andWhere($compiler->where([$parent['foreign_key'] => $parent['id']]));
-            return;
-        }
         $class = EntityRegistry::tables()[$parent['table']] ?? throw new \InvalidArgumentException('Parent collection requires a mapped record.');
         $parentMetadata = $this->em->getClassMetadata($class);
+        $metadata = $this->em->getClassMetadata(Entity\Ticket::class);
+        $owners = [];
+        foreach ($metadata->associationMappings as $field => $mapping) {
+            if ($mapping->isToOneOwningSide() && $mapping->targetEntity === $class) {
+                $owners[] = 'IDENTITY(r.' . $field . ') = :parentId';
+            }
+        }
+        if ($owners) {
+            $query->andWhere('(' . implode(' OR ', $owners) . ')')->setParameter('parentId', $parent['id'], Types::BIGINT);
+            return;
+        }
+        $tickets = [];
         foreach ($parentMetadata->associationMappings as $field => $mapping) {
-            if ($mapping->isToOneOwningSide() && $mapping->targetEntity === Entity\Ticket::class && $mapping->joinColumns[0]->name === 'tickets_id') {
-                $query->andWhere('EXISTS (SELECT parent.id FROM ' . $class . ' parent WHERE parent.' . $field . ' = r AND parent.id = :parentId)')
-                    ->setParameter('parentId', $parent['id'], Types::BIGINT);
+            if ($mapping->isToOneOwningSide() && $mapping->targetEntity === Entity\Ticket::class) {
+                $tickets[] = 'parent.' . $field . ' = r';
+            }
+        }
+        if ($tickets) {
+            $query->andWhere('EXISTS (SELECT parent.id FROM ' . $class . ' parent WHERE parent.id = :parentId AND (' . implode(' OR ', $tickets) . '))')
+                ->setParameter('parentId', $parent['id'], Types::BIGINT);
+            return;
+        }
+        $bindings = $this->em->getClassMetadata(Entity\ItemTicket::class);
+        foreach (EntityRegistry::discriminatedReferences($bindings->getTableName())['items_id']['selections'] as $kind => $selection) {
+            if ($selection['target'] === $parentMetadata->getTableName()) {
+                $association = Entity\ItemTicket::referenceAssociation($kind);
+                $query->andWhere('EXISTS (SELECT binding.id FROM ' . Entity\ItemTicket::class . ' binding WHERE binding.tickets = r AND binding.itemtype = :parentKind AND IDENTITY(binding.' . $association . ') = :parentId)')
+                    ->setParameter('parentId', $parent['id'], Types::BIGINT)->setParameter('parentKind', $kind, Types::STRING);
                 return;
             }
         }
-        if ($parentMetadata->hasField('itemtype') && $parentMetadata->hasField('items_id')) {
-            $query->andWhere('EXISTS (SELECT parent.id FROM ' . $class . ' parent WHERE parent.itemtype = :ticketKind AND parent.items_id = r.id AND parent.id = :parentId)')
-                ->setParameter('ticketKind', 'Ticket', Types::STRING)->setParameter('parentId', $parent['id'], Types::BIGINT);
-        }
+        throw new \InvalidArgumentException('No ticket relationship is defined for parent ' . $parentMetadata->getTableName() . '.');
     }
 }
