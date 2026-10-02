@@ -64,7 +64,7 @@ class Document
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?Ticket $tickets = null;
 
-    #[ORM\Column(name: '`sha1sum`', type: 'string', length: 40, nullable: true, options: ['fixed' => true])]
+    #[ORM\Column(name: '`sha1sum`', type: \itsmng\Database\Type\FixedStringType::NAME, length: 40, nullable: true)]
     public ?string $sha1sum = null;
 
     #[ORM\Column(name: '`is_blacklisted`', type: 'boolean', nullable: false, options: ['default' => false])]

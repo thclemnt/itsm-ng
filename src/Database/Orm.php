@@ -42,9 +42,13 @@ final class Orm
         if (!\Doctrine\DBAL\Types\Type::hasType(Type\ClockTimeType::NAME)) {
             \Doctrine\DBAL\Types\Type::addType(Type\ClockTimeType::NAME, Type\ClockTimeType::class);
         }
+        if (!\Doctrine\DBAL\Types\Type::hasType(Type\FixedStringType::NAME)) {
+            \Doctrine\DBAL\Types\Type::addType(Type\FixedStringType::NAME, Type\FixedStringType::class);
+        }
         $config = new Configuration();
         $config->addCustomStringFunction('REPLACE', Query\Replace::class);
         $config->addCustomStringFunction('YEAR_MONTH', Query\YearMonth::class);
+        $config->addCustomStringFunction('TEMPORAL_TEXT', Query\TemporalText::class);
         $config->addCustomNumericFunction('BIT_COUNT', Query\BitCount::class);
         $config->addCustomNumericFunction('EPOCH_SECONDS', Query\EpochSeconds::class);
         $config->addCustomNumericFunction('CURRENT_EPOCH_SECONDS', Query\CurrentEpochSeconds::class);

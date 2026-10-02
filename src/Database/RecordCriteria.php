@@ -86,6 +86,17 @@ final class RecordCriteria
                 $parts[] = ($operator === '&' ? 'BIT_AND' : 'BIT_OR') . '(' . $expression . ', ' . $this->value($value, Types::INTEGER) . ') <> 0';
             } elseif ($operator === 'LIKE' || $operator === 'NOT LIKE') {
                 $parameter = $this->value($value, Types::STRING);
+                $temporal = match ($type) {
+                    Types::DATE_MUTABLE, Types::DATE_IMMUTABLE => 'date',
+                    Types::DATETIME_MUTABLE, Types::DATETIME_IMMUTABLE, Types::DATETIMETZ_MUTABLE, Types::DATETIMETZ_IMMUTABLE => 'datetime',
+                    default => null,
+                };
+                if ($temporal !== null) {
+                    // A timestamp's native PostgreSQL text includes an offset;
+                    // application filters use calendar text in the connection's
+                    // timezone, matching MySQL's existing second precision.
+                    $expression = 'TEMPORAL_TEXT(' . $expression . ", '" . $temporal . "')";
+                }
                 if (in_array($type, [Types::INTEGER, Types::SMALLINT, Types::BIGINT, Types::FLOAT, Types::DECIMAL], true)) {
                     // PostgreSQL does not implicitly turn IDs/numbers into text for LIKE.
                     // Preserve NULL rather than CONCAT's provider-dependent NULL handling.

@@ -42,6 +42,13 @@ foreach (\itsmng\Database\EntityRegistry::tables() as $table => $class) {
                 $value = json_decode($value, true, flags: JSON_THROW_ON_ERROR);
                 $actual = json_decode($actual, true, flags: JSON_THROW_ON_ERROR);
             }
+            // PostgreSQL exposes CHAR storage padding through native reads.
+            // Entity-declared CHAR fields expose their logical value; the
+            // fixed-strings contract separately verifies physical padding,
+            // entity/scalar hydration and unchanged free-text whitespace.
+            if ($type === \itsmng\Database\Type\FixedStringType::NAME && $value !== null) {
+                $value = rtrim($value, ' ');
+            }
             if ($value !== $actual) {
                 throw new RuntimeException("ORM row differs at $table.$column (" . get_debug_type($value) . ' vs ' . get_debug_type($actual) . ')');
             }

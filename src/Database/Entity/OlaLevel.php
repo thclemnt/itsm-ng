@@ -39,7 +39,7 @@ class OlaLevel
     #[ORM\Column(name: '`is_recursive`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_recursive = false;
 
-    #[ORM\Column(name: '`match`', type: 'string', length: 10, nullable: true, options: ['fixed' => true])]
+    #[ORM\Column(name: '`match`', type: \itsmng\Database\Type\FixedStringType::NAME, length: 10, nullable: true)]
     public ?string $match = null;
 
     #[ORM\Column(name: '`uuid`', type: 'string', length: 255, nullable: true)]

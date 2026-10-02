@@ -54,7 +54,7 @@ class User implements LegacyInput
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?Location $locations = null;
 
-    #[ORM\Column(name: '`language`', type: 'string', length: 10, nullable: true, options: ['fixed' => true])]
+    #[ORM\Column(name: '`language`', type: \itsmng\Database\Type\FixedStringType::NAME, length: 10, nullable: true)]
     public ?string $language = null;
 
     #[ORM\Column(name: '`use_mode`', type: 'integer', nullable: false, options: ['default' => '0'])]
@@ -133,7 +133,7 @@ class User implements LegacyInput
     #[ORM\Column(name: '`names_format`', type: 'integer', nullable: true)]
     public ?int $names_format = null;
 
-    #[ORM\Column(name: '`csv_delimiter`', type: 'string', length: 1, nullable: true, options: ['fixed' => true])]
+    #[ORM\Column(name: '`csv_delimiter`', type: \itsmng\Database\Type\FixedStringType::NAME, length: 1, nullable: true)]
     public ?string $csv_delimiter = null;
 
     #[ORM\Column(name: '`is_ids_visible`', type: 'boolean', nullable: true)]
@@ -145,22 +145,22 @@ class User implements LegacyInput
     #[ORM\Column(name: '`show_jobs_at_login`', type: 'smallint', nullable: true)]
     public ?int $show_jobs_at_login = null;
 
-    #[ORM\Column(name: '`priority_1`', type: 'string', length: 20, nullable: true, options: ['fixed' => true])]
+    #[ORM\Column(name: '`priority_1`', type: \itsmng\Database\Type\FixedStringType::NAME, length: 20, nullable: true)]
     public ?string $priority_1 = null;
 
-    #[ORM\Column(name: '`priority_2`', type: 'string', length: 20, nullable: true, options: ['fixed' => true])]
+    #[ORM\Column(name: '`priority_2`', type: \itsmng\Database\Type\FixedStringType::NAME, length: 20, nullable: true)]
     public ?string $priority_2 = null;
 
-    #[ORM\Column(name: '`priority_3`', type: 'string', length: 20, nullable: true, options: ['fixed' => true])]
+    #[ORM\Column(name: '`priority_3`', type: \itsmng\Database\Type\FixedStringType::NAME, length: 20, nullable: true)]
     public ?string $priority_3 = null;
 
-    #[ORM\Column(name: '`priority_4`', type: 'string', length: 20, nullable: true, options: ['fixed' => true])]
+    #[ORM\Column(name: '`priority_4`', type: \itsmng\Database\Type\FixedStringType::NAME, length: 20, nullable: true)]
     public ?string $priority_4 = null;
 
-    #[ORM\Column(name: '`priority_5`', type: 'string', length: 20, nullable: true, options: ['fixed' => true])]
+    #[ORM\Column(name: '`priority_5`', type: \itsmng\Database\Type\FixedStringType::NAME, length: 20, nullable: true)]
     public ?string $priority_5 = null;
 
-    #[ORM\Column(name: '`priority_6`', type: 'string', length: 20, nullable: true, options: ['fixed' => true])]
+    #[ORM\Column(name: '`priority_6`', type: \itsmng\Database\Type\FixedStringType::NAME, length: 20, nullable: true)]
     public ?string $priority_6 = null;
 
     #[ORM\Column(name: '`followup_private`', type: 'boolean', nullable: true)]
@@ -174,7 +174,7 @@ class User implements LegacyInput
     #[ReferencePolicy(ReferenceKind::EmptySelection)]
     public ?RequestType $default_requesttypes = null;
 
-    #[ORM\Column(name: '`password_forget_token`', type: 'string', length: 40, nullable: true, options: ['fixed' => true])]
+    #[ORM\Column(name: '`password_forget_token`', type: \itsmng\Database\Type\FixedStringType::NAME, length: 40, nullable: true)]
     public ?string $password_forget_token = null;
 
     #[ORM\Column(name: '`password_forget_token_date`', type: 'datetimetz', nullable: true)]
@@ -270,10 +270,10 @@ class User implements LegacyInput
     #[ORM\Column(name: '`task_state`', type: 'integer', nullable: true)]
     public ?int $task_state = null;
 
-    #[ORM\Column(name: '`layout`', type: 'string', length: 20, nullable: true, options: ['fixed' => true])]
+    #[ORM\Column(name: '`layout`', type: \itsmng\Database\Type\FixedStringType::NAME, length: 20, nullable: true)]
     public ?string $layout = null;
 
-    #[ORM\Column(name: '`palette`', type: 'string', length: 20, nullable: true, options: ['fixed' => true])]
+    #[ORM\Column(name: '`palette`', type: \itsmng\Database\Type\FixedStringType::NAME, length: 20, nullable: true)]
     public ?string $palette = null;
 
     #[ORM\Column(name: '`set_default_requester`', type: 'smallint', nullable: true)]

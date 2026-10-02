@@ -34,7 +34,7 @@ class Rule
     #[ORM\Column(name: '`description`', type: 'text', nullable: true)]
     public ?string $description = null;
 
-    #[ORM\Column(name: '`match`', type: 'string', length: 10, nullable: true, options: ['fixed' => true])]
+    #[ORM\Column(name: '`match`', type: \itsmng\Database\Type\FixedStringType::NAME, length: 10, nullable: true)]
     public ?string $match = null;
 
     #[ORM\Column(name: '`is_active`', type: 'boolean', nullable: false, options: ['default' => true])]
