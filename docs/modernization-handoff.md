@@ -7,15 +7,16 @@ Both discovered portability suites pass 147/147 contracts at application source
 tests each with zero skips. Earlier concurrent browser timeouts remain recorded.
 
 Newer integrated application source is
-`a6c4736df281b6d753b3cfb1ca0419af7a07966b`: atomic mapped deletion, six operating-system
+`4ecbd6723f52d9b6dd43737ab329369e9b85976c`: atomic mapped deletion, six operating-system
 subject owners, Domain plugin adoption and document ownership, identifier sequence
 repair, authoritative empty session scope, Contract persistence and notification
 queue admission, owning endpoint authorization before lifecycle writes, Domain
 commercial Supplier coherence, PostgreSQL CLI initialization without mysqli,
-and shared PostgreSQL transaction outcome/handle ownership.
+shared PostgreSQL transaction outcome/handle ownership, and atomic Transfer,
+required ownership forwarding and full-tree import refusal handling.
 Their focused evidence appears below and in the linked batch
 notes. A full combined rerun has not yet run. Offline discovery at this source
-finds 164 contracts; this count is not a passing result.
+finds 167 contracts; this count is not a passing result.
 
 The integrated [owning endpoint repair](connexity-ownership.md) passes separate
 fresh installs, its authorization contract, the unchanged ITIL migration contract,
@@ -46,18 +47,30 @@ It rejects an aborted physical transaction before DBAL loses its rollback frame,
 preserves savepoint recovery and fixes handle ownership after DBAL auto-close.
 Two genuine native calls disappear; 22 remain. The separate, previously failing
 Transfer lifecycle hook probe now passes 396 PostgreSQL / 371 MariaDB assertions
-with the guard integrated. Transfer's broader validation is still running.
+with the guard integrated.
 
 Transfer source review additionally found that full-tree import ignored a refused
 intermediate node and ownership forwarding ignored refused child updates. The
-current batch repairs those actual lifecycle boundaries and validates atomic
-Transfer before freezing source for
-fresh installs, populated/retry history, complete
-portability and broader application/browser validation. PostgreSQL 18.6 and MySQL
+integrated [Transfer batch](transfer-lifecycle.md) repairs those actual lifecycle
+boundaries. Its final isolated source passes 26 selected contracts on each
+provider and fourteen original application classes: 106/106 methods and 3,441
+assertions each, with zero void methods or skips. Final native inspection finds
+twelve completed versions, no pending migrations or schema differences, and
+1,057 actual foreign keys. All 41 frozen application/test files match after main
+integration; main's newer CLI and browser additions are preserved.
+
+Next, freeze the combined source for fresh installations, complete discovered
+portability suites (including populated/retry history), broader application tests,
+rebuilt assets and browser validation. PostgreSQL 18.6 and MySQL
 8.4.11 are provisioned; their application matrix remains pending. Software
 assignment ownership is prepared separately and remains unvalidated. Normal
 authenticated Git fetch and push work; remote advances are checked before integration.
 The overall goal remains open.
+
+Current static inventory is 357 mapped tables, 1,057 enforced references,
+27 discriminated identities, 37 polymorphic candidates and one pending candidate;
+2,852 adapter query sites and 22 native-driver sites remain. These are source
+figures, not proof of complete application persistence conversion.
 
 Further source review found that the mapped writer silently coerces invalid
 boolean scalars and most MySQL/MariaDB boolean columns lack zero/one constraints.
