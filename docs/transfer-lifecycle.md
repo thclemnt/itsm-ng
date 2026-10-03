@@ -35,8 +35,12 @@ The unmapped per-field adapter path likewise propagates a failed write; outside
 an owning transaction it still cannot promise atomicity across several fields.
 
 Transfer restores its previous maps/options/destination/model state after
-failure. A failed source model restores captured fields when its update or a
-later hook throws. Request feedback returns to its checkpoint, retaining new
+failure. An operation-scoped journal captures the actual public model instances
+before selected mutations; it restores their fields/input/pending write state,
+including an earlier successfully updated sibling retained by a plugin hook.
+New/copied model fields preserve their original presence as well as values.
+It is a checkpoint of participating objects, not a second relationship catalog.
+Request feedback returns to its checkpoint, retaining new
 warnings/errors and discarding rolled-back success messages. The web action
 reports `Transfer failed` and retains the selected list on failure; only true
 success clears it and reports `Operation successful`.
@@ -61,7 +65,10 @@ public false/zero/throwing lifecycle outcomes, audit/queued work rollback,
 earlier batch items, direct entry, caller transaction markers, disk purge,
 required financial Supplier creation, incompatible commercial Supplier
 preflight, successful recursive ancestry and no-op behavior, native bindings,
-read-only routing and selected MyISAM refusal. The Domain extension must be
+read-only routing and selected MyISAM refusal. Independent source review also
+added retained-sibling model restoration, explicit recursive false/throw
+outcomes, real-work void overrides, and successful savepoint release followed
+by caller rollback. The Domain extension must be
 integrated before the transfer contract runs; it asserts that prerequisite.
 
 Actual evidence so far is PHP lint and whitespace validation only, plus 75

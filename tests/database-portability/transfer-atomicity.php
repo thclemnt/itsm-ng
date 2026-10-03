@@ -162,6 +162,12 @@ try {
             }
         };
         $heldModel = null;
+        $heldSibling = null;
+        $PLUGIN_HOOKS['item_update']['transfer_atomicity_fixture'][Computer::class] = static function (Computer $item) use (&$heldSibling): void {
+            if (isset($item->input['_transfer'])) {
+                $heldSibling = $item;
+            }
+        };
         $PLUGIN_HOOKS['item_update']['transfer_atomicity_fixture'][Domain::class] = static function (Domain $item) use (&$heldModel): void {
             if (isset($item->input['_transfer'])) {
                 $heldModel = $item;
@@ -183,6 +189,9 @@ try {
             verify($transfer->moveItems(['Computer' => [$valid['computer']], 'Domain' => [$valid['domain']]], $destination, []) === false, 'Actual ' . $case . ' stops the entire selected batch');
             verify($visited === [$valid['domain']], 'Transfer executes public prepare/hook once without replay');
             verify($snapshot($valid) === $before && $checkpoint($transfer) === $state, 'Late refusal rolls back earlier items, dependencies, audit, queued rows and bookkeeping');
+            verify($heldSibling instanceof Computer && (int)$heldSibling->fields['entities_id'] === $source
+                && $heldSibling->updates === [] && $heldSibling->oldvalues === [],
+                'Earlier successfully updated model retained by a real hook is restored after later sibling refusal');
             verify($connection->getTransactionNestingLevel() === $callerLevel && $read('glpi_suppliers', $marker) !== null, 'Caller transaction and its prior marker remain intact');
             verify($_SESSION['MESSAGE_AFTER_REDIRECT'][INFO] === ['Previous feedback'], 'Rolled-back success feedback is discarded');
             if ($case === 'update refusal') {
@@ -247,6 +256,62 @@ try {
     verify(ZeroUpdateTransferDomain::$attempted instanceof ZeroUpdateTransferDomain
         && (int)ZeroUpdateTransferDomain::$attempted->fields['entities_id'] === $source,
         'Integer-zero refusal restores the actual attempted public model');
+
+    foreach (['false', 'throw', 'void'] as $outcome) {
+        $recursiveGraph = $graph($recursiveCommercial, $recursive, $source);
+        $before = $snapshot($recursiveGraph);
+        $recursiveTransfer = new class ($outcome) extends Transfer {
+            public int $recursiveCalls = 0;
+
+            public function __construct(private string $outcome)
+            {
+            }
+
+            public function transferItem($itemtype, $ID, $newID)
+            {
+                if ($itemtype === 'Contract') {
+                    ++$this->recursiveCalls;
+                    if ($this->outcome === 'false') {
+                        return false;
+                    }
+                    if ($this->outcome === 'throw') {
+                        throw new RuntimeException('Recursive public transfer override refused');
+                    }
+                    parent::transferItem($itemtype, $ID, $newID);
+                    return; // Real work through the existing void override contract.
+                }
+                return parent::transferItem($itemtype, $ID, $newID);
+            }
+        };
+        $success = $recursiveTransfer->moveItems(['Computer' => [$recursiveGraph['computer']], 'Domain' => [$recursiveGraph['domain']]], $destination, ['keep_contract' => 1]);
+        verify($recursiveTransfer->recursiveCalls === 1, 'Recursive public transfer override is invoked exactly once');
+        if ($outcome === 'void') {
+            verify($success === true && (int)$read('glpi_contracts', $recursiveGraph['contract'])['entities_id'] === $destination,
+                'Existing void override compatibility retains its real recursive parent mutation');
+        } else {
+            verify($success === false && $snapshot($recursiveGraph) === $before,
+                'Recursive explicit ' . $outcome . ' refusal rolls back earlier parent and sibling work');
+        }
+        verify($connection->getTransactionNestingLevel() === 0 && $CFG_GLPI === $flags, 'Recursive outcome restores operation ownership and flags');
+    }
+
+    $callerGraph = $graph($recursiveCommercial, $recursive, $source);
+    $before = $snapshot($callerGraph);
+    $connection->beginTransaction();
+    try {
+        $marker = $fixtures->create('glpi_suppliers', ['name' => $prefix . ' accepted caller marker', 'entities_id' => 0]);
+        $callerLevel = $connection->getTransactionNestingLevel();
+        verify((new Transfer())->moveItems(['Domain' => [$callerGraph['domain']]], $destination,
+            ['keep_infocom' => 1, 'keep_supplier' => 1, 'keep_contract' => 1, 'keep_document' => 1, 'keep_history' => 1]) === true,
+            'Successful transfer releases its savepoint inside the caller transaction');
+        verify($connection->getTransactionNestingLevel() === $callerLevel && $read('glpi_suppliers', $marker) !== null
+            && (int)$read('glpi_domains', $callerGraph['domain'])['entities_id'] === $destination,
+            'Successful transfer retains caller ownership and exposes its still-uncommitted writes');
+    } finally {
+        $connection->rollBack();
+    }
+    verify($snapshot($callerGraph) === $before && $read('glpi_suppliers', $marker) === null,
+        'Later caller rollback restores the successful transfer and its own marker without a physical commit');
 
     // This parent keeps a distinct recursive financial supplier; no new copy or
     // clearing semantics are invented for its optional commercial relationship.
