@@ -36,9 +36,11 @@ final class NativeBooleanFixture
             $name = BooleanDomainSchema::name($table, $column);
             $check = $catalog['checks'][$table][$name]
                 ?? throw new LogicException('Native boolean CHECK missing before reconstruction: ' . $table . '.' . $name);
-            self::ensure($check['enforced'] === 'YES'
+            self::ensure(
+                $check['enforced'] === 'YES'
                 && BooleanCheckExpression::matches($check['clause'], $column, $nullable, $this->ansiQuotes),
-                'Canonical enforced boolean CHECK required before reconstruction: ' . $table . '.' . $name);
+                'Canonical enforced boolean CHECK required before reconstruction: ' . $table . '.' . $name
+            );
             $this->checks[$name] = $check;
         }
         self::ensure($this->columns !== [], 'Fixture table must own mapped boolean properties');
@@ -47,31 +49,43 @@ final class NativeBooleanFixture
     /** Restore dropped native CHECKs without replaying or altering migration receipts. */
     public function restore(): void
     {
-        self::ensure(Ledger::state($this->connection, BooleanDomains20261008::VERSION) === $this->receipt,
-            'Boolean migration receipt changed before fixture restoration');
+        self::ensure(
+            Ledger::state($this->connection, BooleanDomains20261008::VERSION) === $this->receipt,
+            'Boolean migration receipt changed before fixture restoration'
+        );
         $catalog = BooleanDomainSchema::catalog($this->connection);
-        self::ensure($catalog['mysql'] === $this->mysql && $catalog['ansi_quotes'] === $this->ansiQuotes,
-            'Native fixture interpretation must remain unchanged');
+        self::ensure(
+            $catalog['mysql'] === $this->mysql && $catalog['ansi_quotes'] === $this->ansiQuotes,
+            'Native fixture interpretation must remain unchanged'
+        );
         foreach ($this->columns as $column => $definition) {
-            self::ensure(($catalog['columns'][$this->table][$column] ?? null) === $definition,
-                'Reconstruction changed native boolean column: ' . $this->table . '.' . $column);
+            self::ensure(
+                ($catalog['columns'][$this->table][$column] ?? null) === $definition,
+                'Reconstruction changed native boolean column: ' . $this->table . '.' . $column
+            );
         }
         foreach ($this->checks as $name => $definition) {
             if (!isset($catalog['checks'][$this->table][$name])) {
                 $this->connection->executeStatement('ALTER TABLE ' . $this->connection->quoteIdentifier($this->table)
                     . ' ADD CONSTRAINT ' . $this->connection->quoteIdentifier($name) . ' CHECK (' . $definition['clause'] . ')');
             } else {
-                self::ensure($catalog['checks'][$this->table][$name] === $definition,
-                    'Existing boolean CHECK changed during fixture reconstruction: ' . $this->table . '.' . $name);
+                self::ensure(
+                    $catalog['checks'][$this->table][$name] === $definition,
+                    'Existing boolean CHECK changed during fixture reconstruction: ' . $this->table . '.' . $name
+                );
             }
         }
         $restored = BooleanDomainSchema::catalog($this->connection);
         foreach ($this->checks as $name => $definition) {
-            self::ensure(($restored['checks'][$this->table][$name] ?? null) === $definition,
-                'Fixture did not restore the exact native boolean CHECK: ' . $this->table . '.' . $name);
+            self::ensure(
+                ($restored['checks'][$this->table][$name] ?? null) === $definition,
+                'Fixture did not restore the exact native boolean CHECK: ' . $this->table . '.' . $name
+            );
         }
-        self::ensure(Ledger::state($this->connection, BooleanDomains20261008::VERSION) === $this->receipt,
-            'Reconstruction must preserve the completed boolean migration receipt exactly');
+        self::ensure(
+            Ledger::state($this->connection, BooleanDomains20261008::VERSION) === $this->receipt,
+            'Reconstruction must preserve the completed boolean migration receipt exactly'
+        );
     }
 
     private static function ensure(bool $condition, string $message): void
