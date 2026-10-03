@@ -16,14 +16,14 @@ final class DomainDocuments20261006 extends StagedTypedItemMigration
     public const GENERAL_RECEIPT = '20261006_domain_documents_deferred_v1';
     public const GENERAL_FORMAT = 'infotel-domain-documents-deferred-v1';
 
-    public function plan(Connection $connection): array
+    public function plan(Connection $connection, ?IncomingProjectionReferences $incomingReferences = null): array
     {
         if (!$connection->getDatabasePlatform() instanceof PostgreSQLPlatform
             && strcasecmp((string)$connection->fetchOne("SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'glpi_documents_items'"), 'InnoDB') !== 0) {
             throw new \RuntimeException('Domain document adoption requires transactional InnoDB glpi_documents_items; reconcile its storage before applying history.');
         }
         $this->deferred($connection);
-        return parent::plan($connection);
+        return parent::plan($connection, $incomingReferences);
     }
 
     protected function version(): string

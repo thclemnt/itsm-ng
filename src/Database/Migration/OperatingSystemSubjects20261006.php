@@ -9,9 +9,9 @@ final class OperatingSystemSubjects20261006 extends StagedTypedItemMigration
 {
     public const VERSION = '20261006_operating_system_subjects';
 
-    public function plan(\Doctrine\DBAL\Connection $connection): array
+    public function plan(\Doctrine\DBAL\Connection $connection, ?IncomingProjectionReferences $incomingReferences = null): array
     {
-        $plan = parent::plan($connection);
+        $plan = parent::plan($connection, $incomingReferences);
         if ($plan) {
             $columns = $connection->createSchemaManager()->listTableColumns($this->table());
             (new InventoryUniqueness())->assertUniqueAssignments($connection, isset($columns['items_id']) ? 'items_id' : self::identity());

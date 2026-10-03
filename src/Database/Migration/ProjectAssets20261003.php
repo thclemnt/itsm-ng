@@ -12,7 +12,7 @@ final class ProjectAssets20261003 extends TypedItemMigration
 {
     public const VERSION = '20261003_project_assets';
 
-    public function plan(Connection $connection): array
+    public function plan(Connection $connection, ?IncomingProjectionReferences $incomingReferences = null): array
     {
         if ((Ledger::state($connection, self::VERSION)['complete'] ?? false) === true) {
             return [];
@@ -25,7 +25,7 @@ final class ProjectAssets20261003 extends TypedItemMigration
             throw new \RuntimeException('Unsupported project asset kinds in glpi_items_projects; samples: ' . json_encode($unsupported, JSON_THROW_ON_ERROR)
                 . '. Resolve these links before adoption. Legacy appliance plugin import requires a compatible historical application and legacy MySQL schema before switching to modernized source and db:migrate. The canonical ORM importer requires completed migration history and cannot bypass this legacy-data preflight.');
         }
-        $entry = parent::plan($connection)['glpi_items_projects'];
+        $entry = parent::plan($connection, $incomingReferences)['glpi_items_projects'];
         return ['glpi_items_projects' => [
             'columns' => $entry['sql'],
             'copy' => $entry['copy_legacy'] ? [$this->copySql()] : [],

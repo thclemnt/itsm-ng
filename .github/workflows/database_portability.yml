@@ -88,6 +88,7 @@ jobs:
           if [ '${{ matrix.database.provider }}' = 'mysql' ]; then
             docker exec "${{ job.services.database.id }}" ${{ matrix.database.client }} -uroot -ptest -e "CREATE DATABASE itsm_port_history CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL ON itsm_port_history.* TO 'test'@'%';"
             docker exec "${{ job.services.database.id }}" ${{ matrix.database.client }} -uroot -ptest -e "CREATE DATABASE itsm_port_cache_bootstrap CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL ON itsm_port_cache_bootstrap.* TO 'test'@'%';"
+            docker exec "${{ job.services.database.id }}" ${{ matrix.database.client }} -uroot -ptest -e "CREATE DATABASE itsm_port_projection_references CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL ON itsm_port_projection_references.* TO 'test'@'%';"
           else
             php -r 'require "vendor/autoload.php"; $db = \Doctrine\DBAL\DriverManager::getConnection(["driver" => "pgsql", "host" => "127.0.0.1", "user" => "test", "password" => "test", "dbname" => "itsm_port_ci"]); $db->executeStatement("CREATE DATABASE itsm_port_history"); $db->close();'
             php -r 'require "vendor/autoload.php"; $db = \Doctrine\DBAL\DriverManager::getConnection(["driver" => "pgsql", "host" => "127.0.0.1", "user" => "test", "password" => "test", "dbname" => "itsm_port_ci"]); $db->executeStatement("CREATE DATABASE itsm_port_cache_bootstrap"); $db->close();'

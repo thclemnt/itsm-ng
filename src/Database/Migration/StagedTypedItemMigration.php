@@ -25,7 +25,7 @@ abstract class StagedTypedItemMigration extends TypedItemMigration
         return [$this->table()];
     }
 
-    public function plan(Connection $connection): array
+    public function plan(Connection $connection, ?IncomingProjectionReferences $incomingReferences = null): array
     {
         if ((Ledger::state($connection, $this->version())['complete'] ?? false) === true) {
             return [];
@@ -38,7 +38,7 @@ abstract class StagedTypedItemMigration extends TypedItemMigration
             throw new \RuntimeException('Unsupported typed relationship kinds in ' . $this->table() . '; samples: ' . json_encode($unsupported, JSON_THROW_ON_ERROR)
                 . '. ' . $this->unsupportedKindGuidance());
         }
-        $entry = parent::plan($connection)[$this->table()];
+        $entry = parent::plan($connection, $incomingReferences)[$this->table()];
         // A matching name does not prove the constraint's expression or MySQL
         // enforcement. Reinstall only our owned CHECK from its frozen declaration
         // after the complete data audit, without comparing lossy SQL normalizations.

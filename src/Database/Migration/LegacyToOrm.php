@@ -77,10 +77,14 @@ final class LegacyToOrm
         $this->auditRequiredReferences($connection);
         $identifiers = (new WideIdentifiers())->plan($connection);
         $stages = [];
+        $incomingReferences = new IncomingProjectionReferences($connection);
         // Audit all supported conversions before starting nontransactional MySQL DDL.
         foreach (self::stages() as $name) {
             $class = __NAMESPACE__ . '\\' . $name;
-            $stages[$name] = (new $class())->plan($connection);
+            $stage = new $class();
+            $stages[$name] = $stage instanceof TypedItemMigration
+                ? $stage->plan($connection, $incomingReferences)
+                : $stage->plan($connection);
         }
         return ['complete' => false, 'identifiers' => $identifiers, 'stages' => $stages];
     }

@@ -123,7 +123,7 @@ abstract class TypedItemMigration
         return 'ALTER TABLE ' . $table . ' ADD CONSTRAINT ' . static::constraintName($table) . ' CHECK (' . self::validReferenceSql() . ')';
     }
 
-    public function plan(Connection $connection): array
+    public function plan(Connection $connection, ?IncomingProjectionReferences $incomingReferences = null): array
     {
         $manager = $connection->createSchemaManager();
         $platform = $connection->getDatabasePlatform();
@@ -183,10 +183,8 @@ abstract class TypedItemMigration
             $sql = $platform->getAlterTableSQL($manager->createComparator()->compareTables($before, $after));
             $keySql = [];
             if (!$generated || $this->rebuildsProjection($connection)) {
-                $incoming = $connection->fetchOne($postgres
-                    ? "SELECT COUNT(*) FROM information_schema.constraint_column_usage c JOIN information_schema.table_constraints t ON t.constraint_schema = c.constraint_schema AND t.constraint_name = c.constraint_name WHERE c.table_schema = ? AND c.table_name = ? AND c.column_name = 'items_id' AND t.constraint_type = 'FOREIGN KEY'"
-                    : "SELECT COUNT(*) FROM information_schema.key_column_usage WHERE referenced_table_schema = ? AND referenced_table_name = ? AND referenced_column_name = 'items_id'", [$schema, $table]);
-                if ($incoming) {
+                $incomingReferences ??= new IncomingProjectionReferences($connection);
+                if ($incomingReferences->has($schema, $table)) {
                     throw new \RuntimeException('Incoming typed legacy item foreign key requires an explicit migration');
                 }
                 foreach ($before->getForeignKeys() as $foreign) {
