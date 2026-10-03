@@ -104,6 +104,7 @@ try {
     $connection->rollBack();
     expired($reconnected->assertActive(...), 'Reconnected managed rollback removes its own frame');
     $connection->setAutoCommit(false);
+    $connection->beginTransaction();
     $automatic = $connection->captureManagedTransactionScope();
     $connection->commit();
     $automaticReplacement = $connection->captureManagedTransactionScope();
