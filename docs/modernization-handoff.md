@@ -7,17 +7,25 @@ Both discovered portability suites pass 147/147 contracts at application source
 tests each with zero skips. Earlier concurrent browser timeouts remain recorded.
 
 Newer integrated application source is
-`b3ed706ad69996aca8c3e07f83ede98329696b25`: atomic mapped deletion, six operating-system
+`c5aa316cea410d5ebacb0fb0e1ee012a25595e6f`: atomic mapped deletion, six operating-system
 subject owners, Domain plugin adoption and document ownership, identifier sequence
 repair, authoritative empty session scope, Contract persistence and notification
-queue admission. Their focused evidence appears below and in the linked batch
+queue admission, and owning endpoint authorization before lifecycle writes.
+Their focused evidence appears below and in the linked batch
 notes. A full combined rerun has not yet run. Offline discovery at this source
-finds 161 contracts; this count is not a passing result.
+finds 162 contracts; this count is not a passing result.
 
-Parallel review identified shared relation endpoint authorization/context defects
-and a Transfer path that ignores a refused parent update after child mutations.
-The current batch repairs those boundaries and Domain commercial supplier coherence
-before freezing source for fresh installs, populated/retry history, complete
+The integrated [owning endpoint repair](connexity-ownership.md) passes separate
+fresh installs, its authorization contract, the unchanged ITIL migration contract,
+12 adjacent contracts and schema comparison on both providers. Its original
+application scope passes 48/48 methods and 2,299 assertions each, including 69
+Transfer fixture types and inherited Link ownership. These results belong to that
+isolated batch and do not replace the older full combined checkpoint.
+
+Parallel review also identified a Transfer path that ignores a refused parent
+update after child mutations. The current batch completes Domain commercial
+supplier coherence and atomic Transfer validation before freezing source for
+fresh installs, populated/retry history, complete
 portability and broader application/browser validation. PostgreSQL 18.6 and MySQL
 8.4.11 are provisioned; their application matrix remains pending. Software
 assignment ownership is prepared separately and remains unvalidated. Normal
