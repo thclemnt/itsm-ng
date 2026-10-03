@@ -255,4 +255,50 @@ try {
     $CFG_GLPI['use_notifications'] = $savedNotifications;
     $plugins->setValue(null, $savedPlugins);
 }
+
+// A caller may already have a MariaDB/MySQL consistent snapshot. Cleanup must
+// inspect committed current board identities rather than omit their state.
+$connection = $DB->getDoctrineConnection();
+$otherAdapter = new DB();
+$otherConnection = $otherAdapter->getDoctrineConnection();
+$savedIsolation = $connection->getTransactionIsolation();
+$snapshotProjects = $snapshotBoards = [];
+try {
+    $fixtures = new FixtureRecords($DB);
+    $snapshotProjects[] = $snapshotSource = $fixtures->create('glpi_projects', ['name' => 'Current Kanban cleanup source ' . bin2hex(random_bytes(5))]);
+    $snapshotProjects[] = $snapshotTarget = $fixtures->create('glpi_projects', ['name' => 'Current Kanban cleanup target ' . bin2hex(random_bytes(5))]);
+    if ($connection->getDatabasePlatform() instanceof \Doctrine\DBAL\Platforms\AbstractMySQLPlatform) {
+        $connection->setTransactionIsolation(\Doctrine\DBAL\TransactionIsolationLevel::REPEATABLE_READ);
+    }
+    $connection->beginTransaction();
+    try {
+        $connection->fetchOne('SELECT COUNT(*) FROM glpi_items_kanbans');
+        foreach ([$snapshotSource, $snapshotTarget] as $parent) {
+            $otherConnection->insert('glpi_items_kanbans', ['itemtype' => Project::class, 'items_id' => $parent,
+                'users_id' => Session::getLoginUserID(), 'state' => '{"current":"retained"}']);
+            $snapshotBoards[] = (int)$otherConnection->lastInsertId();
+        }
+        $currentBoards = new \itsmng\Database\Repository\KanbanRepository(Orm::create($DB));
+        $selected = $currentBoards->statesForItem(Project::class, $snapshotSource);
+        verify(array_map('intval', array_column($selected, 'id')) === [$snapshotBoards[0]], 'Current cleanup discovers a board committed after the caller snapshot');
+        verify($currentBoards->hasPrivateStateForOwners(Project::class, $snapshotTarget, [Session::getLoginUserID()]), 'Current destination collision preflight sees a state committed after the caller snapshot');
+        verify(!(new Project())->delete(['id' => $snapshotSource, '_replace_by' => $snapshotTarget], true), 'Actual parent replacement refuses the current collision without accepting a stale empty snapshot');
+        verify(
+            $connection->getTransactionNestingLevel() === 1 && (int)$connection->fetchOne('SELECT 1') === 1
+            && (int)$otherConnection->fetchOne('SELECT COUNT(*) FROM glpi_items_kanbans WHERE id IN (?, ?)', $snapshotBoards) === 2,
+            'Current-read collision leaves both states and the usable caller frame intact'
+        );
+    } finally {
+        $connection->rollBack();
+    }
+} finally {
+    $connection->setTransactionIsolation($savedIsolation);
+    foreach ($snapshotBoards as $id) {
+        $otherConnection->delete('glpi_items_kanbans', ['id' => $id]);
+    }
+    foreach ($snapshotProjects as $id) {
+        $connection->delete('glpi_projects', ['id' => $id]);
+    }
+    $otherConnection->close();
+}
 echo $DB->getProvider() . ": owning relationship cleanup, polymorphic replacement pairs, recursion scopes and virtual asset joins passed.\n";
