@@ -598,7 +598,7 @@ class QueuedNotification extends CommonDBTM
     {
         global $DB;
 
-        if ($DB instanceof DBAdapter && \itsmng\Database\DeletionUnit::deferNotification($DB->getDoctrineConnection(), (string)$itemtype, (int)$items_id)) {
+        if ($DB instanceof DBAdapter && \itsmng\Database\LifecycleNotifications::defer($DB->getDoctrineConnection(), (string)$itemtype, (int)$items_id)) {
             return;
         }
         if (

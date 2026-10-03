@@ -21,11 +21,12 @@ final class DeletionUnit
     {
         self::$units ??= new \WeakMap();
         $frames = self::$units[$connection] ?? [];
-        $frames[] = ['cancelled' => false, 'notifications' => []];
+        $frames[] = ['cancelled' => false];
         self::$units[$connection] = $frames;
         $level = $connection->getTransactionNestingLevel();
         $outcome = DeletionOutcome::Cancelled;
         $notifications = [];
+        $delivery = LifecycleNotifications::begin($connection);
         try {
             $connection->beginTransaction();
             $outcome = $operation();
@@ -39,7 +40,6 @@ final class DeletionUnit
                 $connection->rollBack();
             } else {
                 $connection->commit();
-                $notifications = $frame['notifications'];
             }
         } catch (DeletionCancelled) {
             $outcome = DeletionOutcome::Cancelled;
@@ -61,26 +61,13 @@ final class DeletionUnit
                 if ($outcome === DeletionOutcome::Cancelled) {
                     $frames[$last]['cancelled'] = true;
                 }
-                $frames[$last]['notifications'] += $notifications;
             }
             self::$units[$connection] = $frames;
+            $notifications = $delivery->finish($outcome !== DeletionOutcome::Cancelled);
         }
         // A released savepoint is not a commit. Caller-owned transactions keep
         // their persisted queue rows for cron, including subsequent caller rollback.
         return new DeletionResult($outcome, $level === 0 ? $notifications : []);
-    }
-
-    /** Queue generation remains in hook order; external delivery waits for commit. */
-    public static function deferNotification(Connection $connection, string $type, int $id): bool
-    {
-        $frames = self::$units[$connection] ?? [];
-        if ($frames) {
-            $last = array_key_last($frames);
-            $frames[$last]['notifications'][$type . ':' . $id] = [$type, $id];
-            self::$units[$connection] = $frames;
-            return true;
-        }
-        return $connection->isTransactionActive();
     }
 
     /** Refused child mutations cannot leave a parent purge partially committed. */

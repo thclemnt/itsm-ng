@@ -17,9 +17,24 @@ require __DIR__ . '/FixtureRecords.php';
 /** A real unmapped plugin parent exercises the nontransactional storage diagnostic. */
 class PluginTransferAtomicityProbe extends CommonDBTM
 {
+    protected static $forward_entity_to = [PluginTransferAtomicityChild::class];
+
     public static function getTable($classname = null)
     {
         return 'glpi_plugin_transfer_atomicity_probe';
+    }
+
+    public static function getForeignKeyField($classname = null)
+    {
+        return 'parents_id';
+    }
+}
+
+class PluginTransferAtomicityChild extends CommonDBTM
+{
+    public static function getTable($classname = null)
+    {
+        return 'glpi_plugin_transfer_atomicity_child';
     }
 }
 
@@ -44,6 +59,28 @@ class ZeroUpdateTransferDomain extends Domain
         verify((new QueuedNotification())->add(['itemtype' => 'Domain', 'items_id' => $this->getID(), 'name' => 'Zero update attempted', 'send_time' => '2030-01-01 00:00:00']) > 0, 'Public override queues actual attempted lifecycle work');
         $this->fields['entities_id'] = $input['entities_id'];
         return 0;
+    }
+}
+
+/** Actual queue transport observes committed ownership without external delivery. */
+class PluginTransfer_atomicity_fixtureNotificationEventOwnershipprobe
+{
+    public static array $deliveries = [];
+
+    public static function canCron(): bool
+    {
+        return true;
+    }
+
+    public static function send(array $rows): void
+    {
+        global $DB;
+        foreach ($rows as $row) {
+            $domain = new Domain();
+            verify($domain->getFromDB($row['items_id']), 'Ownership probe resolves its actual committed Domain');
+            self::$deliveries[] = [$DB->getDoctrineConnection()->getTransactionNestingLevel(), (int)$domain->fields['entities_id']];
+            verify((new QueuedNotification())->update(['id' => $row['id'], 'is_deleted' => 1]), 'Ownership probe marks actual delivered queue row');
+        }
     }
 }
 
@@ -125,6 +162,8 @@ try {
     $CFG_GLPI['notifications_ajax'] = true;
     $CFG_GLPI['notifications_mailing'] = false;
     $CFG_GLPI['notifications_chat'] = 0;
+    Notification_NotificationTemplate::registerMode('ownershipprobe', 'Ownership probe', 'transfer_atomicity_fixture');
+    $CFG_GLPI['notifications_ownershipprobe'] = true;
     Notification_NotificationTemplate::getModes();
     $flags = $CFG_GLPI;
     $incompatible = $graph($local, $recursive, $source);
@@ -234,6 +273,147 @@ try {
         verify((int)$leaf[$tree->getForeignKeyField()] === (int)$acceptedAncestors[0]['id'], 'Accepted direct leaf keeps its actual parent identifier');
         $created[] = [$tree->getTable(), (int)$leafId];
     }
+
+    $_SESSION['glpiactiveprofile']['managed_domainrecordtypes'] = [-1];
+    foreach (['standalone', 'owned transfer', 'caller transfer'] as $forwardContext) {
+        $forwardGraph = $graph($recursiveCommercial, $recursive, $source);
+        $domainRecord = $record('glpi_domainrecords', ['name' => $prefix . ' forwarded record', 'domains_id' => $forwardGraph['domain'], 'entities_id' => $source]);
+        $forwardBefore = $snapshot($forwardGraph);
+        $recordBefore = $read('glpi_domainrecords', $domainRecord);
+        $heldForwarded = null;
+        $forwardCalls = 0;
+        PluginTransfer_atomicity_fixtureNotificationEventOwnershipprobe::$deliveries = [];
+        $PLUGIN_HOOKS['item_update']['transfer_atomicity_fixture'][Domain::class] = static function (Domain $item) use ($forwardGraph, &$created): void {
+            if ((int)$item->getID() === $forwardGraph['domain']) {
+                $id = (int)(new QueuedNotification())->add(['itemtype' => 'Domain', 'items_id' => $item->getID(), 'mode' => 'ownershipprobe', 'send_time' => '2026-01-01 00:00:00', 'name' => 'Ownership unit probe']);
+                verify($id > 0, 'Actual parent completion queues work before required child forwarding');
+                $created[] = ['glpi_queuednotifications', $id];
+                QueuedNotification::forceSendFor('Domain', $item->getID());
+                QueuedNotification::forceSendFor('Domain', $item->getID());
+                verify(PluginTransfer_atomicity_fixtureNotificationEventOwnershipprobe::$deliveries === [], 'Repeated force-send stays deferred inside required ownership frame');
+            }
+        };
+        $PLUGIN_HOOKS['pre_item_update']['transfer_atomicity_fixture'][DomainRecord::class] = static function (DomainRecord $item) use (&$heldForwarded, &$forwardCalls, $domainRecord): void {
+            if ((int)$item->getID() === $domainRecord && isset($item->input['_transfer'])) {
+                ++$forwardCalls;
+                $heldForwarded = $item;
+                Session::addMessageAfterRedirect('Required forwarded child refused', false, WARNING);
+                $item->input = false;
+            }
+        };
+        if ($forwardContext === 'caller transfer') {
+            $connection->beginTransaction();
+        }
+        try {
+            $level = $connection->getTransactionNestingLevel();
+            $marker = $level ? $fixtures->create('glpi_suppliers', ['name' => $prefix . ' forwarded caller marker', 'entities_id' => 0]) : null;
+            $_SESSION['MESSAGE_AFTER_REDIRECT'] = [INFO => ['Forwarding previous feedback']];
+            $model = new Domain();
+            $result = $forwardContext === 'standalone'
+                ? $model->update(['id' => $forwardGraph['domain'], 'entities_id' => $destination, 'update' => 'Attempt ownership change'])
+                : (new Transfer())->moveItems(['Computer' => [$forwardGraph['computer']], 'Domain' => [$forwardGraph['domain']]], $destination, ['keep_history' => 1]);
+            verify($result === false && $forwardCalls === 1, 'Required DomainRecord refusal propagates in ' . $forwardContext);
+            verify(PluginTransfer_atomicity_fixtureNotificationEventOwnershipprobe::$deliveries === [], 'Forwarded refusal delivers no rolled-back notification');
+            verify($snapshot($forwardGraph) === $forwardBefore && $read('glpi_domainrecords', $domainRecord) === $recordBefore, 'Forwarded refusal restores actual parent, earlier sibling, child, history and queued rows');
+            verify($heldForwarded instanceof DomainRecord && $heldForwarded->fields === $recordBefore
+                && $heldForwarded->input === [] && $heldForwarded->updates === [] && $heldForwarded->oldvalues === [], 'Actual refused forwarded child restores its loaded model state');
+            verify($_SESSION['MESSAGE_AFTER_REDIRECT'][INFO] === ['Forwarding previous feedback']
+                && in_array('Required forwarded child refused', $_SESSION['MESSAGE_AFTER_REDIRECT'][WARNING] ?? [], true), 'Forwarding rollback discards success feedback and retains useful diagnostics');
+            verify($connection->getTransactionNestingLevel() === $level && ($marker === null || $read('glpi_suppliers', $marker) !== null), 'Forwarded refusal preserves caller frame and prior marker');
+            if ($forwardContext === 'standalone') {
+                verify((int)$model->fields['entities_id'] === $source && (int)$model->input['entities_id'] === $destination
+                    && $model->updates === [] && $model->oldvalues === [], 'Standalone owning parent keeps stored fields and attempted input without pending writes');
+            }
+        } finally {
+            if ($forwardContext === 'caller transfer') {
+                $connection->rollBack();
+            }
+            unset($PLUGIN_HOOKS['pre_item_update']['transfer_atomicity_fixture']);
+        }
+        $connection->beginTransaction();
+        try {
+            $level = $connection->getTransactionNestingLevel();
+            verify((new Domain())->update(['id' => $forwardGraph['domain'], 'entities_id' => $destination]) === true, 'Accepted caller-owned parent update releases only its ownership savepoint');
+            $pending = $rows('glpi_queuednotifications', ['itemtype' => 'Domain', 'items_id' => $forwardGraph['domain']]);
+            verify(count($pending) === 1 && !(bool)$pending[0]['is_deleted']
+                && PluginTransfer_atomicity_fixtureNotificationEventOwnershipprobe::$deliveries === []
+                && $connection->getTransactionNestingLevel() === $level, 'Caller savepoint leaves actual notification unsent and retains caller ownership');
+        } finally {
+            $connection->rollBack();
+        }
+        verify($snapshot($forwardGraph) === $forwardBefore && $read('glpi_domainrecords', $domainRecord) === $recordBefore
+            && PluginTransfer_atomicity_fixtureNotificationEventOwnershipprobe::$deliveries === [], 'Later caller rollback removes accepted ownership writes and pending queue without delivery');
+        verify((new Domain())->update(['id' => $forwardGraph['domain'], 'entities_id' => $destination]) === true
+            && (int)$read('glpi_domainrecords', $domainRecord)['entities_id'] === $destination, 'Accepted standalone Domain ownership forwards its required child');
+        verify(PluginTransfer_atomicity_fixtureNotificationEventOwnershipprobe::$deliveries === [[0, $destination]], 'Deduplicated notification delivery observes physical ownership commit');
+        unset($PLUGIN_HOOKS['item_update']['transfer_atomicity_fixture']);
+    }
+
+    foreach ([false, true] as $acceptNestedOwnership) {
+        $nestedGraph = $graph($recursiveCommercial, $recursive, $source);
+        $nestedRecord = $record('glpi_domainrecords', ['domains_id' => $nestedGraph['domain'], 'entities_id' => $source, 'name' => $prefix . ' nested record']);
+        $nestedGroup = $record('glpi_groups', ['name' => $prefix . ' nested deletion', 'entities_id' => $source]);
+        $group = new Group();
+        verify($group->getFromDB($nestedGroup), 'Nested deletion loads its actual source model');
+        $groupState = \itsmng\Database\LifecycleModelJournal::state($group);
+        PluginTransfer_atomicity_fixtureNotificationEventOwnershipprobe::$deliveries = [];
+        $PLUGIN_HOOKS['item_update']['transfer_atomicity_fixture'][Domain::class] = static function (Domain $item) use ($nestedGraph, $group, $nestedGroup): void {
+            if ((int)$item->getID() === $nestedGraph['domain']) {
+                verify($group->delete(['id' => $nestedGroup, '_no_history' => true], true), 'Actual parent completion performs nested public deletion');
+            }
+        };
+        $PLUGIN_HOOKS['pre_item_purge']['transfer_atomicity_fixture'][Group::class] = static function (Group $item) use ($nestedGroup, $nestedGraph, &$created): void {
+            if ((int)$item->getID() === $nestedGroup) {
+                $id = (int)(new QueuedNotification())->add(['itemtype' => 'Domain', 'items_id' => $nestedGraph['domain'], 'mode' => 'ownershipprobe', 'send_time' => '2026-01-01 00:00:00', 'name' => 'Nested lifecycle probe']);
+                verify($id > 0, 'Nested deletion creates its actual notification');
+                $created[] = ['glpi_queuednotifications', $id];
+                QueuedNotification::forceSendFor('Domain', $nestedGraph['domain']);
+                verify(PluginTransfer_atomicity_fixtureNotificationEventOwnershipprobe::$deliveries === [], 'Nested deletion scope defers notification before ownership outcome');
+            }
+        };
+        if (!$acceptNestedOwnership) {
+            $PLUGIN_HOOKS['pre_item_update']['transfer_atomicity_fixture'][DomainRecord::class] = static function (DomainRecord $item) use ($nestedRecord): void {
+                if ((int)$item->getID() === $nestedRecord) {
+                    $item->input = false;
+                }
+            };
+        }
+        verify((new Domain())->update(['id' => $nestedGraph['domain'], 'entities_id' => $destination]) === $acceptNestedOwnership, 'Nested deletion and owning update propagate the actual final outcome');
+        if ($acceptNestedOwnership) {
+            verify($read('glpi_groups', $nestedGroup) === null
+                && PluginTransfer_atomicity_fixtureNotificationEventOwnershipprobe::$deliveries === [[0, $destination]], 'Nested deletion notification merges into ownership scope and delivers after physical commit');
+        } else {
+            verify($read('glpi_groups', $nestedGroup) !== null
+                && \itsmng\Database\LifecycleModelJournal::state($group) === $groupState
+                && $rows('glpi_queuednotifications', ['itemtype' => 'Domain', 'items_id' => $nestedGraph['domain']]) === []
+                && PluginTransfer_atomicity_fixtureNotificationEventOwnershipprobe::$deliveries === [], 'Outer owning refusal restores nested deletion/model and discards its queued delivery');
+        }
+        unset($PLUGIN_HOOKS['item_update']['transfer_atomicity_fixture'], $PLUGIN_HOOKS['pre_item_purge']['transfer_atomicity_fixture'], $PLUGIN_HOOKS['pre_item_update']['transfer_atomicity_fixture']);
+    }
+
+    $forwardGraph = $graph($recursiveCommercial, $recursive, $source);
+    $laterGraph = $graph($recursiveCommercial, $recursive, $source);
+    $domainRecord = $record('glpi_domainrecords', ['name' => $prefix . ' retained accepted record', 'domains_id' => $forwardGraph['domain'], 'entities_id' => $source]);
+    $recordBefore = $read('glpi_domainrecords', $domainRecord);
+    $forwardBefore = $snapshot($forwardGraph);
+    $laterBefore = $snapshot($laterGraph);
+    $heldForwarded = null;
+    $PLUGIN_HOOKS['item_update']['transfer_atomicity_fixture'][DomainRecord::class] = static function (DomainRecord $item) use (&$heldForwarded, $domainRecord): void {
+        if ((int)$item->getID() === $domainRecord) {
+            $heldForwarded = $item;
+        }
+    };
+    $PLUGIN_HOOKS['pre_item_update']['transfer_atomicity_fixture'][Domain::class] = static function (Domain $item) use ($laterGraph): void {
+        if ((int)$item->getID() === $laterGraph['domain'] && isset($item->input['_transfer'])) {
+            $item->input = false;
+        }
+    };
+    verify((new Transfer())->moveItems(['Domain' => [$forwardGraph['domain'], $laterGraph['domain']]], $destination, ['keep_history' => 1]) === false, 'Later parent refusal rolls back an earlier accepted ownership forwarding unit');
+    verify($snapshot($forwardGraph) === $forwardBefore && $snapshot($laterGraph) === $laterBefore
+        && $read('glpi_domainrecords', $domainRecord) === $recordBefore, 'Later sibling refusal restores earlier forwarded child and both actual parent graphs');
+    verify($heldForwarded instanceof DomainRecord && $heldForwarded->fields === $recordBefore
+        && $heldForwarded->input === [] && $heldForwarded->updates === [] && $heldForwarded->oldvalues === [], 'Transfer observer restores successfully forwarded model retained by a real completion hook');
+    unset($PLUGIN_HOOKS['item_update']['transfer_atomicity_fixture'], $PLUGIN_HOOKS['pre_item_update']['transfer_atomicity_fixture']);
 
     // A coherent candidate permits all early auxiliary work, then its real public
     // update/hook refuses. Already-transferred siblings must roll back as well.
@@ -556,16 +736,47 @@ try {
         $table->addColumn('name', 'string', ['length' => 255]);
         $table->setPrimaryKey(['id']);
         $table->addOption('engine', 'MyISAM');
+        $childTable = new \Doctrine\DBAL\Schema\Table(PluginTransferAtomicityChild::getTable());
+        $childTable->addColumn('id', 'bigint');
+        $childTable->addColumn('parents_id', 'bigint');
+        $childTable->addColumn('entities_id', 'bigint');
+        $childTable->setPrimaryKey(['id']);
+        $childTable->addOption('engine', 'InnoDB');
         verify(!$DB->tableExists($table->getName(), false), 'Disposable MyISAM probe table does not already exist');
+        verify(!$DB->tableExists($childTable->getName(), false), 'Disposable actual forwarding child table does not already exist');
         $schema->createTable($table);
+        $schema->createTable($childTable);
         $DB->clearSchemaCache();
         try {
             $connection->insert($table->getName(), ['id' => 1, 'entities_id' => $source, 'name' => $prefix]);
+            $connection->insert($childTable->getName(), ['id' => 1, 'parents_id' => 1, 'entities_id' => $source]);
             $probeBefore = $connection->fetchAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table->getName()) . ' WHERE id = 1');
             verify((new Transfer())->moveItems([PluginTransferAtomicityProbe::class => [1]], $destination, []) === false, 'Selected MyISAM plugin parent refuses before any mutation');
             verify($connection->fetchAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table->getName()) . ' WHERE id = 1') === $probeBefore
                 && $connection->getTransactionNestingLevel() === 0, 'Nontransactional diagnostic preserves its parent row without a rollback claim');
+            foreach ([$table->getName(), $childTable->getName()] as $nontransactionalTable) {
+                if ($nontransactionalTable === $childTable->getName()) {
+                    $connection->executeStatement('ALTER TABLE ' . $connection->quoteIdentifier($table->getName()) . ' ENGINE=InnoDB');
+                    $connection->executeStatement('ALTER TABLE ' . $connection->quoteIdentifier($childTable->getName()) . ' ENGINE=MyISAM');
+                    $DB->clearSchemaCache();
+                }
+                $probe = new PluginTransferAtomicityProbe();
+                try {
+                    $probe->update(['id' => 1, 'entities_id' => $destination]);
+                    throw new LogicException('Expected native ownership storage diagnostic');
+                } catch (RuntimeException $error) {
+                    verify($error->getMessage() === 'Ownership update requires InnoDB storage for ' . $nontransactionalTable, 'Standalone actual ownership unit preflights its nontransactional parent or registered child');
+                }
+                verify($connection->fetchAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table->getName()) . ' WHERE id = 1') === $probeBefore
+                    && (int)$connection->fetchOne('SELECT entities_id FROM ' . $connection->quoteIdentifier($childTable->getName()) . ' WHERE id = 1') === $source
+                    && (int)$probe->fields['entities_id'] === $source && $connection->getTransactionNestingLevel() === 0, 'Storage refusal preserves native rows, stored parent model and frame before persistence');
+            }
+            $connection->executeStatement('ALTER TABLE ' . $connection->quoteIdentifier($childTable->getName()) . ' ENGINE=InnoDB');
+            $DB->clearSchemaCache();
+            verify((new PluginTransferAtomicityProbe())->update(['id' => 1, 'entities_id' => $destination]) === true
+                && (int)$connection->fetchOne('SELECT entities_id FROM ' . $connection->quoteIdentifier($childTable->getName()) . ' WHERE id = 1') === $destination, 'The same actual registered forwarding models succeed with transactional storage');
         } finally {
+            $schema->dropTable($childTable->getName());
             $schema->dropTable($table->getName());
             $DB->clearSchemaCache();
         }

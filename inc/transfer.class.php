@@ -55,7 +55,7 @@ class Transfer extends CommonDBTM
 
     private ?\itsmng\Domain\TransferCoordinator $transferCoordinator = null;
     /** Actual model instances checkpointed for this operation, not a type registry. */
-    private ?SplObjectStorage $transferModels = null;
+    private ?\itsmng\Database\LifecycleModelJournal $transferModels = null;
     /** Successful creation facts for this operation, used to restore new model instances. */
     private array $createdTransferRecords = [];
 
@@ -282,23 +282,14 @@ class Transfer extends CommonDBTM
         ];
         $session = $_SESSION;
         $this->transferCoordinator = new \itsmng\Domain\TransferCoordinator($DB);
-        $this->transferModels = new SplObjectStorage();
+        $this->transferModels = new \itsmng\Database\LifecycleModelJournal();
         $this->createdTransferRecords = [];
         try {
-            return NotificationSetting::withoutNotifications(
+            return $this->transferModels->observe($DB->getDoctrineConnection(), fn () => NotificationSetting::withoutNotifications(
                 fn () => $this->transferCoordinator->run($operation)
-            );
+            ));
         } catch (Throwable $error) {
-            foreach ($this->transferModels as $model) {
-                $stored = $this->transferModels[$model];
-                foreach (['fields', 'input', 'updates', 'oldvalues'] as $property) {
-                    if (array_key_exists($property, $stored)) {
-                        $model->$property = $stored[$property];
-                    } else {
-                        unset($model->$property);
-                    }
-                }
-            }
+            $this->transferModels->restore();
             [
                 $this->already_transfer, $this->needtobe_transfer, $this->noneedtobe_transfer,
                 $this->options, $this->to, $this->inittype,
@@ -323,17 +314,14 @@ class Transfer extends CommonDBTM
 
     private function checkpointTransferModel(CommonDBTM $model, ?array $state = null): void
     {
-        if ($this->transferModels !== null && !$this->transferModels->contains($model)) {
-            $this->transferModels[$model] = $state ?? $this->transferModelState($model);
-        }
+        $this->transferModels?->remember($model, $state);
     }
 
     private function transferModelState(CommonDBTM $model): array
     {
-        return array_intersect_key(get_object_vars($model), [
-            'fields' => true, 'input' => true, 'updates' => true, 'oldvalues' => true,
-        ]);
+        return \itsmng\Database\LifecycleModelJournal::state($model);
     }
+
 
     /** Match the actual transfer action's physical owning-entity capability. */
     private function preflightTransferModel(CommonDBTM $model, int $destination): void

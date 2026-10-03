@@ -39,6 +39,30 @@ without reloading the object and retains attempted form input for diagnostics.
 The unmapped per-field adapter path likewise propagates a failed write; outside
 an owning transaction it still cannot promise atomicity across several fields.
 
+Actual ownership writes that require configured child forwarding now open a
+model-owned `OwnershipUpdateUnit` after the final effective write-set and
+identity checks, before parent persistence. Parent row/history, completion
+hooks and required child updates share the supplied writer transaction or
+savepoint. Refused/throwing children roll that frame back. The owning parent's
+stored fields and empty pending writes are restored while its attempted input
+remains available for diagnostics. Preparatory hooks before this narrow unit
+remain outside its standalone rollback boundary; an enclosing Transfer frame
+also covers their mutations on the same connection. This does not change every
+ordinary application update's transaction semantics.
+
+The common `LifecycleModelJournal` observes actual public updates/deletes on
+the participating connection as well as Transfer's explicit copy snapshots.
+It restores forwarded children retained by hooks, including a successful
+forwarding unit followed by a later Transfer sibling refusal. The single
+`LifecycleNotifications` delivery barrier now serves both ownership and
+deletion units; failed frames discard pending delivery, successful nested
+frames merge, and only a physical commit permits transport dispatch. Caller
+savepoint releases keep actual queued rows unsent for cron. Later standalone
+caller rollback restores database rows without promising automatic restoration
+of already returned model instances. Known configured MySQL parent/child tables
+receive native InnoDB checks before parent persistence. Arbitrary indirect
+plugin tables and external effects remain outside that storage guarantee.
+
 Full-tree dropdown imports now propagate each refused intermediate node at
 the model's import boundary. A rejected Location ancestor cannot silently turn
 its intended descendant into a root and produce a successful final identifier.
@@ -90,6 +114,10 @@ added retained-sibling model restoration, explicit recursive false/throw
 outcomes, real-work void overrides, and successful savepoint release followed
 by caller rollback. The Domain extension must be
 integrated before the transfer contract runs; it asserts that prerequisite.
+Additional prepared cases cover standalone/owned/caller DomainRecord refusal,
+successful forwarded-child retention followed by later failure, actual queued
+transport timing, nested deletion/ownership delivery merge and cancellation,
+and standalone native nontransactional parent/registered-child diagnostics.
 
 Actual evidence so far is PHP lint, formatter and whitespace validation only
 (15 PHP files including the commercial Supplier prerequisite), plus 75

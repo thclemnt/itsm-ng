@@ -13,8 +13,6 @@ final readonly class DeletionResult
 
     public function deliverNotifications(): void
     {
-        foreach ($this->notifications as [$type, $id]) {
-            \QueuedNotification::forceSendFor($type, $id);
-        }
+        LifecycleNotifications::deliver($this->notifications);
     }
 }

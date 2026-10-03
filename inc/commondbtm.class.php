@@ -1771,6 +1771,7 @@ class CommonDBTM extends CommonGLPI
         }
 
         $storedFields = $this->fields;
+        \itsmng\Database\LifecycleModelJournal::capture($DB->getDoctrineConnection(), $this);
 
         // Store input in the object to be available in all sub-method / hook
         $this->input = $input;
@@ -1895,71 +1896,87 @@ class CommonDBTM extends CommonGLPI
                         return false;
                     }
 
-                    if (count($this->updates)) {
-                        if (
-                            $this->updateInDB(
-                                $this->updates,
-                                ($this->dohistory && $history ? $this->oldvalues
-                                                                            : [])
-                            )
-                        ) {
-                            $this->addMessageOnUpdateAction();
-                            Plugin::doHook("item_update", $this);
-
-                            // As update have suceed, clean the old input value
-                            if (isset($this->input['_update'])) {
-                                $this->clearSavedInput();
+                    if ($this->requiresOwnershipForwarding()) {
+                        return \itsmng\Database\OwnershipUpdateUnit::run($DB, $this, $storedFields, function () use ($DB, $history, $storedFields): bool {
+                            \itsmng\Database\OwnershipUpdateUnit::assertTransactionalStorage($DB, $this->getTable());
+                            foreach (array_merge(static::$forward_entity_to, self::$plugins_forward_entity[$this->getType()] ?? []) as $type) {
+                                \itsmng\Database\OwnershipUpdateUnit::assertTransactionalStorage($DB, $type::getTable());
                             }
-
-                            //Fill forward_entity_to array with itemtypes coming from plugins
-                            if (isset(self::$plugins_forward_entity[$this->getType()])) {
-                                foreach (self::$plugins_forward_entity[$this->getType()] as $itemtype) {
-                                    static::$forward_entity_to[] = $itemtype;
-                                }
-                            }
-                            // forward entity information if needed
-                            if (
-                                count(static::$forward_entity_to)
-                                && (in_array("entities_id", $this->updates)
-                                    || in_array("is_recursive", $this->updates))
-                            ) {
-                                $this->forwardEntityInformations();
-                            }
-
-                            // If itemtype is in infocomtype and if states_id field is filled
-                            // and item not a template
-                            if (
-                                Infocom::canApplyOn($this)
-                                && in_array('states_id', $this->updates)
-                                && ($this->getField('is_template') != NOT_AVAILABLE)
-                            ) {
-                                //Check if we have to automatical fill dates
-                                Infocom::manageDateOnStatusChange($this, false);
-                            }
-                        } else {
-                            // A refused writer is not a completed lifecycle update.
-                            // Keep attempted input for form diagnostics, but retain
-                            // the stored model rather than its unpersisted values.
-                            $this->fields = $storedFields;
-                            $this->updates = [];
-                            $this->oldvalues = [];
-                            return false;
-                        }
+                            return $this->completeLifecycleUpdate($history, $storedFields);
+                        });
                     }
                 }
-                $this->post_updateItem($history);
-
-                if ($this->notificationqueueonaction) {
-                    QueuedNotification::forceSendFor($this->getType(), $this->fields['id']);
-                }
-
-                return true;
+                return $this->completeLifecycleUpdate($history, $storedFields);
             }
         }
 
         return false;
     }
 
+
+
+    private function requiresOwnershipForwarding(): bool
+    {
+        return (count(static::$forward_entity_to) || !empty(self::$plugins_forward_entity[$this->getType()]))
+            && (in_array('entities_id', $this->updates, true) || in_array('is_recursive', $this->updates, true));
+    }
+
+    private function completeLifecycleUpdate($history, array $storedFields): bool
+    {
+        $forwardOwnership = $this->requiresOwnershipForwarding();
+        if (count($this->updates)) {
+            if (
+                $this->updateInDB(
+                    $this->updates,
+                    ($this->dohistory && $history ? $this->oldvalues
+                                                                : [])
+                )
+            ) {
+                $this->addMessageOnUpdateAction();
+                Plugin::doHook("item_update", $this);
+
+                // As update have suceed, clean the old input value
+                if (isset($this->input['_update'])) {
+                    $this->clearSavedInput();
+                }
+
+                //Fill forward_entity_to array with itemtypes coming from plugins
+                if (isset(self::$plugins_forward_entity[$this->getType()])) {
+                    foreach (self::$plugins_forward_entity[$this->getType()] as $itemtype) {
+                        static::$forward_entity_to[] = $itemtype;
+                    }
+                }
+                // forward entity information if needed
+                if ($forwardOwnership && !$this->forwardEntityInformations()) {
+                    return false;
+                }
+
+                // If itemtype is in infocomtype and if states_id field is filled
+                // and item not a template
+                if (
+                    Infocom::canApplyOn($this)
+                    && in_array('states_id', $this->updates)
+                    && ($this->getField('is_template') != NOT_AVAILABLE)
+                ) {
+                    //Check if we have to automatical fill dates
+                    Infocom::manageDateOnStatusChange($this, false);
+                }
+            } else {
+                // A refused writer is not a completed lifecycle update.
+                // Keep attempted input for form diagnostics, but retain
+                // the stored model rather than its unpersisted values.
+                $this->fields = $storedFields;
+                $this->updates = [];
+                $this->oldvalues = [];
+                return false;
+            }
+        }
+        $this->post_updateItem($history);
+        if ($this->notificationqueueonaction) {
+            QueuedNotification::forceSendFor($this->getType(), $this->fields['id']);
+        }
+        return true;
+    }
 
     /**
      * Pure model-owned coherence check before transfer dependencies are changed.
@@ -1974,7 +1991,7 @@ class CommonDBTM extends CommonGLPI
     /**
      * Forward entity information to linked items
      *
-     * @return void
+     * @return boolean true when every required child accepts its update
     **/
     protected function forwardEntityInformations()
     {
@@ -2007,11 +2024,19 @@ class CommonDBTM extends CommonGLPI
 
                 foreach ($item->findIds(['OR' => $OR]) as $id) {
                     $input['id'] = $id;
-                    // No history for such update
-                    $item->update($input, 0);
+                    if (!$item->getFromDB($id)) {
+                        return false;
+                    }
+                    \itsmng\Database\LifecycleModelJournal::capture($GLOBALS['DB']->getDoctrineConnection(), $item);
+                    // No history for such update, but refusal is still required.
+                    $result = $item->update($input, 0);
+                    if ($result !== true && $result !== 1) {
+                        return false;
+                    }
                 }
             }
         }
+        return true;
     }
 
 
@@ -2146,6 +2171,7 @@ class CommonDBTM extends CommonGLPI
         if ($DB->isSlave()) {
             return false;
         }
+        \itsmng\Database\LifecycleModelJournal::capture($DB->getDoctrineConnection(), $this);
         if (!\itsmng\Database\MappedStorage::supports($this->getTable())) {
             return $this->deleteLifecycle($input, $force, $history) === \itsmng\Database\DeletionOutcome::Deleted;
         }
