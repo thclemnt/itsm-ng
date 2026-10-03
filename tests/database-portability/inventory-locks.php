@@ -108,6 +108,10 @@ try {
         $excluded[] = [$table, $create(['is_dynamic' => false] + $values + $locked)];
         $create(['is_deleted' => false] + $values + $locked);
         if ($kind !== 'ComputerVirtualMachine') {
+            if (in_array($kind, ['SoftwareVersion', 'SoftwareLicense'], true)
+                && (new RecordRepository(Orm::create($DB)))->find('glpi_monitors', 'id', $assetId) === null) {
+                $fixtures->create('glpi_monitors', ['id' => $assetId, 'name' => 'Distinct kind with the same source ID']);
+            }
             $excluded[] = [$table, $create(['itemtype' => 'Monitor'] + $values + $locked)];
         }
         verify($ids($kind) === [$expected[$kind]], 'Locked flags and typed source: ' . $kind);

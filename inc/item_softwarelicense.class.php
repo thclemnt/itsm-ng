@@ -47,20 +47,127 @@ class Item_SoftwareLicense extends CommonDBRelation
     public static $itemtype_2 = 'SoftwareLicense';
     public static $items_id_2 = 'softwarelicenses_id';
 
+    public function canCreateItem()
+    {
+        return $this->hasMappedSubject() && parent::canCreateItem();
+    }
+
+    public function canUpdateItem()
+    {
+        return $this->hasMappedSubject() && parent::canUpdateItem();
+    }
+
+    private function hasMappedSubject(): bool
+    {
+        try {
+            \itsmng\Database\Entity\ItemSoftwareLicense::referenceAssociation($this->fields['itemtype'] ?? '');
+            return true;
+        } catch (\InvalidArgumentException) {
+            return false;
+        }
+    }
+
+    /** The allocation command owns persistence and both required aggregates. */
+    protected function executePreparedAdd(callable $operation, array $priorState): mixed
+    {
+        global $DB;
+
+        $checkpoint = $priorState;
+        $checkpoint['input'] = $this->input;
+        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->mutateAllocation(
+            $this,
+            $checkpoint,
+            fn () => parent::executePreparedAdd($operation, $priorState),
+            'add'
+        );
+    }
+
+    protected function executePreparedUpdate(callable $operation, array $storedFields): bool
+    {
+        global $DB;
+
+        $checkpoint = \itsmng\Database\LifecycleModelJournal::state($this);
+        $checkpoint['fields'] = $storedFields;
+        $checkpoint['updates'] = [];
+        $checkpoint['oldvalues'] = [];
+        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->mutateAllocation(
+            $this,
+            $checkpoint,
+            fn () => parent::executePreparedUpdate($operation, $storedFields),
+            'update',
+            function () use ($storedFields): bool {
+                $probe = clone $this;
+                return $probe->finalizeLifecycleUpdate($storedFields) && $probe->fields === $this->fields;
+            }
+        );
+    }
+
+    protected function executePreparedRestore(callable $operation, array $storedFields): bool
+    {
+        global $DB;
+
+        $checkpoint = \itsmng\Database\LifecycleModelJournal::state($this);
+        $checkpoint['fields'] = $storedFields;
+        $checkpoint['updates'] = [];
+        $checkpoint['oldvalues'] = [];
+        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->mutateAllocation(
+            $this,
+            $checkpoint,
+            fn () => parent::executePreparedRestore($operation, $storedFields),
+            'restore'
+        );
+    }
+
+    public function delete(array $input, $force = 0, $history = 1)
+    {
+        global $DB;
+
+        if ($DB->isSlave() || !array_key_exists(static::getIndexName(), $input)
+            || !$this->getFromDB($input[static::getIndexName()])) {
+            return false;
+        }
+        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->mutateAllocation(
+            $this,
+            \itsmng\Database\LifecycleModelJournal::state($this),
+            fn () => parent::delete($input, $force, $history),
+            'delete'
+        );
+    }
+
 
     public function post_addItem()
     {
 
-        SoftwareLicense::updateValidityIndicator($this->fields['softwarelicenses_id']);
+        \itsmng\Domain\SoftwareAssignmentCancelled::requireSuccess(
+            SoftwareLicense::updateValidityIndicator($this->fields['softwarelicenses_id']),
+            'Allocated licence validity update'
+        );
 
         parent::post_addItem();
+    }
+
+
+    public function post_updateItem($history = 1)
+    {
+        if (array_key_exists('softwarelicenses_id', $this->oldvalues)) {
+            foreach (array_unique([$this->oldvalues['softwarelicenses_id'], $this->fields['softwarelicenses_id']]) as $licence) {
+                \itsmng\Domain\SoftwareAssignmentCancelled::requireSuccess(
+                    SoftwareLicense::updateValidityIndicator($licence),
+                    'Reassigned licence validity update'
+                );
+            }
+        }
+        parent::post_updateItem($history);
     }
 
 
     public function post_deleteFromDB()
     {
 
-        SoftwareLicense::updateValidityIndicator($this->fields['softwarelicenses_id']);
+        \itsmng\Domain\SoftwareAssignmentCancelled::requireSuccess(
+            SoftwareLicense::updateValidityIndicator($this->fields['softwarelicenses_id']),
+            'Removed allocation licence validity update'
+        );
 
         parent::post_deleteFromDB();
     }
@@ -1006,45 +1113,8 @@ JAVASCRIPT;
     {
         global $DB;
 
-        $lic = [];
-        $item_license_table = self::getTable(__CLASS__);
-
-        $iterator = $DB->request([
-           'SELECT'       => [
-              'glpi_softwarelicenses.*',
-              'glpi_softwarelicensetypes.name AS type'
-           ],
-           'FROM'         => 'glpi_softwarelicenses',
-           'INNER JOIN'   => [
-              $item_license_table  => [
-                 'FKEY'   => [
-                    $item_license_table     => 'softwarelicenses_id',
-                    'glpi_softwarelicenses' => 'id'
-                 ]
-              ]
-           ],
-           'LEFT JOIN'    => [
-              'glpi_softwarelicensetypes'   => [
-                 'FKEY'   => [
-                    'glpi_softwarelicenses'       => 'softwarelicensetypes_id',
-                    'glpi_softwarelicensetypes'   => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'        => [
-              $item_license_table . '.itemtype'  => $itemtype,
-              $item_license_table . '.items_id'  => $items_id,
-              'OR'                                => [
-                 'glpi_softwarelicenses.softwareversions_id_use' => $softwareversions_id,
-                 'glpi_softwarelicenses.softwareversions_id_buy' => $softwareversions_id
-              ]
-           ]
-        ]);
-
-        while ($data = $iterator->next()) {
-            $lic[$data['id']] = $data;
-        }
-        return $lic;
+        return (new \itsmng\Database\Repository\SoftwareInstallationRepository(\itsmng\Database\Orm::create($DB)))
+            ->licensesForInstallation($itemtype, (int)$items_id, (int)$softwareversions_id);
     }
 
 
@@ -1081,19 +1151,12 @@ JAVASCRIPT;
         global $DB;
 
         Toolbox::deprecated('Use clone');
-        $iterator = $DB->request([
-           'FROM' => 'glpi_items_softwarelicenses',
-           'WHERE' => [
-              'items_id' => $oldid,
-              'itemtype' => $itemtype
-           ]
-        ]);
-
-        while ($data = $iterator->next()) {
+        $rows = (new \itsmng\Database\Repository\SoftwareInstallationRepository(\itsmng\Database\Orm::create($DB)))
+            ->assignmentsForClone(true, $itemtype, (int)$oldid);
+        foreach ($rows as $data) {
             $csl = new self();
             unset($data['id']);
-            $data['items_id'] = $newid;
-            $data['itemtype'] = $itemtype;
+            $data = \itsmng\Database\Entity\ItemSoftwareLicense::withReference($data, $itemtype, (int)$newid);
             $data['_no_history'] = true;
 
             $csl->add($data);

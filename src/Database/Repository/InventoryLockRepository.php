@@ -70,14 +70,17 @@ final class InventoryLockRepository
                 ->andWhere('p.items_id = :source')->andWhere('p.itemtype = :type')
                 ->setParameter('portType', 'NetworkPort', Types::STRING)->setParameter('type', $sourceType, Types::STRING);
         } else {
-            $query->andWhere('r.items_id = :source')->andWhere('r.itemtype = :type')->setParameter('type', $sourceType, Types::STRING);
             if ($class === Entity\ItemSoftwareVersion::class || $class === Entity\ItemSoftwareLicense::class) {
+                $query->andWhere('IDENTITY(r.' . $class::referenceAssociation($sourceType) . ') = :source');
                 $association = $class === Entity\ItemSoftwareVersion::class ? 'softwareversions' : 'softwarelicenses';
                 $query->leftJoin('r.' . $association, 'v')->leftJoin('v.softwares', 's')
                     ->addSelect('v.name AS version', 's.name AS software');
-            } elseif ($class === Entity\ItemDisk::class) {
+            } else {
+                $query->andWhere('r.items_id = :source')->andWhere('r.itemtype = :type')->setParameter('type', $sourceType, Types::STRING);
+            }
+            if ($class === Entity\ItemDisk::class) {
                 $query->addSelect('r.name AS name');
-            } elseif ($class !== Entity\NetworkPort::class) {
+            } elseif (!in_array($class, [Entity\NetworkPort::class, Entity\ItemSoftwareVersion::class, Entity\ItemSoftwareLicense::class], true)) {
                 // The component model identifies its device field. The actual join comes
                 // from the owning Doctrine association, never a guessed target table.
                 $column = $kind::getDeviceForeignKey();

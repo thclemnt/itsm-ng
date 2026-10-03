@@ -1,0 +1,221 @@
+<?php
+
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+namespace itsmng\Database\Repository;
+
+use Doctrine\DBAL\LockMode;
+use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\Query;
+use itsmng\Database\Entity;
+use itsmng\Domain\SoftwareAssignmentCancelled;
+
+/** Owning software aggregates, allocation eligibility and ordered writer locks. */
+final class SoftwareAssignmentRepository
+{
+    public function __construct(private EntityManager $em)
+    {
+    }
+
+    public function installationOwner(int $id): ?array
+    {
+        $rows = $this->em->createQueryBuilder()->select('i.itemtype AS kind, i.items_id AS subject, IDENTITY(i.softwareversions) AS version')
+            ->from(Entity\ItemSoftwareVersion::class, 'i')->where('i.id = :id')
+            ->setParameter('id', $id, Types::BIGINT)->getQuery()->setLockMode(LockMode::PESSIMISTIC_READ)->getScalarResult();
+        return $rows[0] ?? null;
+    }
+
+    public function allocationOwner(int $id): ?array
+    {
+        $rows = $this->em->createQueryBuilder()->select('a.itemtype AS kind, a.items_id AS subject, IDENTITY(a.softwarelicenses) AS license')
+            ->from(Entity\ItemSoftwareLicense::class, 'a')->where('a.id = :id')
+            ->setParameter('id', $id, Types::BIGINT)->getQuery()->setLockMode(LockMode::PESSIMISTIC_READ)->getScalarResult();
+        return $rows[0] ?? null;
+    }
+
+    public function license(int $id, bool $current = true): ?Entity\SoftwareLicense
+    {
+        return $this->em->createQueryBuilder()->select('l')->from(Entity\SoftwareLicense::class, 'l')
+            ->where('l.id = :id')->setParameter('id', $id, Types::BIGINT)->getQuery()
+            ->setHint(Query::HINT_REFRESH, true)->setLockMode($current ? LockMode::PESSIMISTIC_READ : LockMode::NONE)->getOneOrNullResult();
+    }
+
+    public function licenseRecord(int $id): ?array
+    {
+        $license = $this->license($id);
+        return $license === null ? null : (new RecordRepository($this->em))->toRow($license);
+    }
+
+    public function software(int $id, bool $current = true): ?Entity\Software
+    {
+        return $this->em->createQueryBuilder()->select('s')->from(Entity\Software::class, 's')
+            ->where('s.id = :id')->setParameter('id', $id, Types::BIGINT)->getQuery()
+            ->setHint(Query::HINT_REFRESH, true)->setLockMode($current ? LockMode::PESSIMISTIC_READ : LockMode::NONE)->getOneOrNullResult();
+    }
+
+    public function softwareIdsForLicenses(array $licenses, bool $current = false): array
+    {
+        $licenses = self::identifiers($licenses);
+        if (!$licenses) {
+            return [];
+        }
+        $rows = $this->em->createQueryBuilder()->select('l.id AS id, IDENTITY(l.softwares) AS software')
+            ->from(Entity\SoftwareLicense::class, 'l')->where('l.id IN (:ids)')->setParameter('ids', $licenses)
+            ->orderBy('l.id')->getQuery()->setLockMode($current ? LockMode::PESSIMISTIC_READ : LockMode::NONE)->getScalarResult();
+        if (count($rows) !== count($licenses)) {
+            throw new SoftwareAssignmentCancelled('A required owning software licence is missing.');
+        }
+        return self::identifiers(array_column($rows, 'software'));
+    }
+
+    public function subjectContexts(array $subjects, bool $current = false): array
+    {
+        $contexts = [];
+        $metadata = $this->em->getClassMetadata(Entity\ItemSoftwareLicense::class);
+        foreach ($subjects as [$kind, $id]) {
+            $property = Entity\ItemSoftwareLicense::referenceAssociation($kind);
+            $target = $metadata->getAssociationMapping($property)->targetEntity;
+            $subject = $this->em->getClassMetadata($target);
+            $select = ['r.id AS id', 'IDENTITY(r.entities) AS entity'];
+            foreach (['is_recursive', 'is_deleted', 'is_template'] as $flag) {
+                if ($subject->hasField($flag)) {
+                    $select[] = 'r.' . $flag . ' AS ' . $flag;
+                }
+            }
+            $rows = $this->em->createQueryBuilder()->select(...$select)->from($target, 'r')
+                ->where('r.id = :id')->setParameter('id', (int)$id, Types::BIGINT)->getQuery()
+                ->setLockMode($current ? LockMode::PESSIMISTIC_READ : LockMode::NONE)->getScalarResult();
+            if (!$rows) {
+                throw new SoftwareAssignmentCancelled('A required allocation subject disappeared.');
+            }
+            $contexts[$kind . ':' . $id] = $rows[0];
+        }
+        ksort($contexts);
+        return $contexts;
+    }
+
+    public function subjectTables(array $subjects): array
+    {
+        $metadata = $this->em->getClassMetadata(Entity\ItemSoftwareLicense::class);
+        $tables = [];
+        foreach ($subjects as [$kind, $id]) {
+            $property = Entity\ItemSoftwareLicense::referenceAssociation($kind);
+            $target = $metadata->getAssociationMapping($property)->targetEntity;
+            $tables[] = $this->em->getClassMetadata($target)->getTableName();
+        }
+        return array_values(array_unique($tables));
+    }
+
+    /** Lock declared subjects in stable order after their owning aggregates. */
+    public function lockSubjects(array $subjects): void
+    {
+        $owners = [];
+        $metadata = $this->em->getClassMetadata(Entity\ItemSoftwareLicense::class);
+        foreach ($subjects as [$kind, $id]) {
+            if ($id <= 0) {
+                continue;
+            }
+            $property = Entity\ItemSoftwareLicense::referenceAssociation($kind);
+            $entity = $metadata->getAssociationMapping($property)->targetEntity;
+            $owners[$entity][] = (int)$id;
+        }
+        ksort($owners);
+        foreach ($owners as $entity => $ids) {
+            $this->lock($entity, self::identifiers($ids));
+        }
+    }
+
+    public function lockSoftware(array $ids): void
+    {
+        $this->lock(Entity\Software::class, self::identifiers($ids));
+    }
+
+    public function lockLicenses(array $ids): void
+    {
+        $this->lock(Entity\SoftwareLicense::class, self::identifiers($ids));
+    }
+
+    private function lock(string $entity, array $ids): void
+    {
+        if (!$ids) {
+            return;
+        }
+        $query = $this->em->createQueryBuilder()->select('r.id AS id')->from($entity, 'r')
+            ->where('r.id IN (:ids)')->setParameter('ids', $ids)->orderBy('r.id')->getQuery();
+        $query->setLockMode(LockMode::PESSIMISTIC_WRITE);
+        if (count($query->getScalarResult()) !== count($ids)) {
+            throw new SoftwareAssignmentCancelled('A required software aggregate disappeared before mutation.');
+        }
+    }
+
+    public function eligibleAllocationCount(int $license): int
+    {
+        $installations = new SoftwareInstallationRepository($this->em);
+        $count = 0;
+        foreach ($installations->itemTypes(true, $license, currentRead: true) as $kind) {
+            $property = Entity\ItemSoftwareLicense::referenceAssociation($kind);
+            $mapping = $this->em->getClassMetadata(Entity\ItemSoftwareLicense::class)->getAssociationMapping($property);
+            $table = $this->em->getClassMetadata($mapping->targetEntity)->getTableName();
+            // Preserve active allocation count semantics, including duplicate rows,
+            // excluding deleted assignments and deleted/template subjects globally.
+            $count += $installations->count(true, $license, false, $kind, $table, [], currentRead: true);
+        }
+        return $count;
+    }
+
+    public function licensesForSubject(string $kind, int $id, bool $current = true): array
+    {
+        $property = Entity\ItemSoftwareLicense::referenceAssociation($kind);
+        $rows = $this->em->createQueryBuilder()->select('IDENTITY(a.softwarelicenses) AS id')
+            ->from(Entity\ItemSoftwareLicense::class, 'a')->where('IDENTITY(a.' . $property . ') = :id')
+            ->setParameter('id', $id, Types::BIGINT)->orderBy('a.id')->getQuery()
+            ->setLockMode($current ? LockMode::PESSIMISTIC_READ : LockMode::NONE)->getScalarResult();
+        return self::identifiers(array_column($rows, 'id'));
+    }
+
+    public function licensesForSoftware(array $software): array
+    {
+        $software = self::identifiers($software);
+        if (!$software) {
+            return [];
+        }
+        $rows = $this->em->createQueryBuilder()->select('l.id AS id')->from(Entity\SoftwareLicense::class, 'l')
+            ->where('l.softwares IN (:software)')->setParameter('software', $software)->orderBy('l.id')->getQuery()
+            ->setLockMode(LockMode::PESSIMISTIC_READ)->getScalarResult();
+        return self::identifiers(array_column($rows, 'id'));
+    }
+
+    /** Current allocation identities in one stable row-lock order. */
+    public function subjectsForLicenses(array $licenses): array
+    {
+        $licenses = self::identifiers($licenses);
+        if (!$licenses) {
+            return [];
+        }
+        $rows = $this->em->createQueryBuilder()->select('a.id AS id, a.itemtype AS kind, a.items_id AS subject')
+            ->from(Entity\ItemSoftwareLicense::class, 'a')->where('a.softwarelicenses IN (:ids)')
+            ->setParameter('ids', $licenses)->orderBy('a.id')->getQuery()
+            ->setLockMode(LockMode::PESSIMISTIC_READ)->getScalarResult();
+        return array_map(static fn (array $row): array => [$row['kind'], (int)$row['subject']], $rows);
+    }
+
+    public function softwareForVersion(int $version, bool $current = false): int
+    {
+        $rows = $this->em->createQueryBuilder()->select('IDENTITY(v.softwares) AS id')
+            ->from(Entity\SoftwareVersion::class, 'v')->where('v.id = :id')->setParameter('id', $version, Types::BIGINT)
+            ->getQuery()->setLockMode($current ? LockMode::PESSIMISTIC_READ : LockMode::NONE)->getScalarResult();
+        if (!$rows) {
+            throw new SoftwareAssignmentCancelled('A required owning software version is missing.');
+        }
+        return SoftwareAssignmentCancelled::requireIdentifier($rows[0]['id'], 'Owning software version');
+    }
+
+    public static function identifiers(array $ids): array
+    {
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+        $ids = array_values(array_filter($ids, static fn (int $id): bool => $id > 0));
+        sort($ids);
+        return $ids;
+    }
+}

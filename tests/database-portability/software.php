@@ -237,25 +237,81 @@ try {
     $transferInstallations->options = ['keep_software' => 1];
     $transferInstallations->noneedtobe_transfer['SoftwareVersion'] = [900000000 => $installationExcluded];
     $transferInstallations->versions = [$installationSource => $installationTarget, $installationRejected => -1];
-    $SQL_TOTAL_REQUEST = 0;
-    $transferInstallations->transferItemSoftwares('Computer', $otherAsset);
-    verify($SQL_TOTAL_REQUEST === 0, 'Public installation transfer reads and mutations bypass legacy adapter execution');
-    verify($transferInstallations->licenses === [$computerLicense], 'Transfer visits only the selected asset type license assignments');
-    $movedInstallation = $read('glpi_items_softwareversions', $moveInstallation);
-    verify((int)$movedInstallation['softwareversions_id'] === $installationTarget && $movedInstallation['date_install'] === '2023-03-21'
-        && $movedInstallation['is_deleted'] === 1 && $movedInstallation['is_dynamic'] === 1 && $movedInstallation['is_template_item'] === 1, 'Retarget retains installation date and flags');
-    verify((int)$read('glpi_items_softwareversions', $excludeInstallation)['softwareversions_id'] === $installationExcluded
-        && (int)$read('glpi_items_softwareversions', $rejectInstallation)['softwareversions_id'] === $installationRejected, 'Excluded and unsuccessful version copies retain their original installations');
-    verify((int)$read('glpi_items_softwareversions', $monitorInstallation)['softwareversions_id'] === $installationSource, 'Transfer preserves another type with the same numeric asset ID');
-    $transferInstallations->options['keep_software'] = 0;
-    $SQL_TOTAL_REQUEST = 0;
-    $transferInstallations->transferItemSoftwares('Computer', $otherAsset);
-    verify($SQL_TOTAL_REQUEST === 0, 'Public discard deletes through ORM queries');
-    verify($read('glpi_items_softwareversions', $moveInstallation) === null && $read('glpi_items_softwareversions', $rejectInstallation) === null
-        && $read('glpi_items_softwareversions', $excludeInstallation) !== null, 'Discard respects the excluded version set');
-    verify($read('glpi_items_softwarelicenses', $computerLicense) === null && $read('glpi_items_softwarelicenses', $monitorLicense) !== null
-        && $read('glpi_items_softwareversions', $monitorInstallation) !== null, 'Discard removes only the chosen asset type relationships');
-    verify($read('glpi_softwareversions', $installationTarget) !== null && $read('glpi_softwarelicenses', $transferTemplate) !== null, 'Discard preserves version and license targets');
+    $transferLifecycleRows = static fn (string $table): array => (new RecordRepository(Orm::create($DB)))->matching($table, [], 'id ASC');
+    $transferScope = static function () use ($read, $transferLifecycleRows, $moveInstallation, $excludeInstallation, $rejectInstallation, $monitorInstallation, $computerLicense, $monitorLicense, $installationSource, $installationTarget, $installationExcluded, $installationRejected, $transferTemplate): array {
+        return [
+            $read('glpi_items_softwareversions', $moveInstallation), $read('glpi_items_softwareversions', $excludeInstallation),
+            $read('glpi_items_softwareversions', $rejectInstallation), $read('glpi_items_softwareversions', $monitorInstallation),
+            $read('glpi_items_softwarelicenses', $computerLicense), $read('glpi_items_softwarelicenses', $monitorLicense),
+            $read('glpi_softwareversions', $installationSource), $read('glpi_softwareversions', $installationTarget),
+            $read('glpi_softwareversions', $installationExcluded), $read('glpi_softwareversions', $installationRejected),
+            $read('glpi_softwarelicenses', $transferTemplate), $transferLifecycleRows('glpi_logs'), $transferLifecycleRows('glpi_queuednotifications'),
+        ];
+    };
+    $softwareTransferHooks = $PLUGIN_HOOKS;
+    $softwareTransferPluginProperty = new ReflectionProperty(Plugin::class, 'activated_plugins');
+    $softwareTransferPlugins = $softwareTransferPluginProperty->getValue();
+    $softwareTransferPluginProperty->setValue(null, [...$softwareTransferPlugins, 'software_transfer_lifecycle_fixture']);
+    $lifecycleCalls = [];
+    foreach (['pre_item_update', 'item_update', 'pre_item_purge', 'item_purge'] as $event) {
+        foreach ([Item_SoftwareVersion::class, Item_SoftwareLicense::class] as $kind) {
+            $PLUGIN_HOOKS[$event]['software_transfer_lifecycle_fixture'][$kind] = static function (CommonDBTM $item) use ($event, $kind, $moveInstallation, &$lifecycleCalls): void {
+                $lifecycleCalls[$event][$kind][] = (int)$item->getID();
+                if ($event === 'pre_item_update' && $kind === Item_SoftwareVersion::class && (int)$item->getID() === $moveInstallation) {
+                    // The raw fixture deliberately has a cached template flag
+                    // differing from the live subject. Explicit same-owner flag
+                    // synchronization is supported; version-only retarget must
+                    // preserve this supplied cache and the installation's lock.
+                    $item->input['is_template_item'] = $item->fields['is_template_item'];
+                    $item->input['is_deleted_item'] = $item->fields['is_deleted_item'];
+                }
+            };
+        }
+    }
+    try {
+        $beforeRejectedCopy = $transferScope();
+        $level = $DB->getDoctrineConnection()->getTransactionNestingLevel();
+        verify($transferInstallations->transferItemSoftwares('Computer', $otherAsset) === false, 'A required negative copy identity refuses the actual direct installation transfer');
+        verify($transferScope() === $beforeRejectedCopy && $transferInstallations->licenses === [], 'Rejected copy restores earlier installation retarget, complete selected/control scope, history and queue');
+        verify(($lifecycleCalls['pre_item_update'][Item_SoftwareVersion::class] ?? []) === [$moveInstallation]
+            && ($lifecycleCalls['item_update'][Item_SoftwareVersion::class] ?? []) === [$moveInstallation], 'Rejected later copy follows an actual earlier public installation lifecycle');
+        verify($DB->getDoctrineConnection()->getTransactionNestingLevel() === $level, 'Copy refusal retains the caller transaction');
+
+        $transferInstallations->versions[$installationRejected] = $installationRejected;
+        $lifecycleCalls = [];
+        $beforeKeepHistory = $transferLifecycleRows('glpi_logs');
+        verify($transferInstallations->transferItemSoftwares('Computer', $otherAsset) !== false, 'All required positive copy identities allow the actual direct transfer');
+        verify(($lifecycleCalls['pre_item_update'][Item_SoftwareVersion::class] ?? []) === [$moveInstallation]
+            && ($lifecycleCalls['item_update'][Item_SoftwareVersion::class] ?? []) === [$moveInstallation], 'Retarget invokes the actual public installation pre/post update hooks once');
+        verify($transferLifecycleRows('glpi_logs') !== $beforeKeepHistory, 'Accepted public installation retarget records relation history');
+        verify($transferInstallations->licenses === [$computerLicense], 'Transfer visits only the selected asset type license assignments');
+        $movedInstallation = $read('glpi_items_softwareversions', $moveInstallation);
+        verify((int)$movedInstallation['softwareversions_id'] === $installationTarget && $movedInstallation['date_install'] === '2023-03-21'
+            && $movedInstallation['is_deleted'] === 1 && $movedInstallation['is_dynamic'] === 1 && $movedInstallation['is_template_item'] === 1, 'Retarget retains installation date, lock, dynamic state and explicit same-owner cached flags');
+        verify((int)$read('glpi_items_softwareversions', $excludeInstallation)['softwareversions_id'] === $installationExcluded
+            && (int)$read('glpi_items_softwareversions', $rejectInstallation)['softwareversions_id'] === $installationRejected, 'Excluded and accepted same-version copies retain their original installations');
+        verify((int)$read('glpi_items_softwareversions', $monitorInstallation)['softwareversions_id'] === $installationSource, 'Transfer preserves another type with the same numeric asset ID');
+        $transferInstallations->options['keep_software'] = 0;
+        $lifecycleCalls = [];
+        $beforeDiscardHistory = $transferLifecycleRows('glpi_logs');
+        verify($transferInstallations->transferItemSoftwares('Computer', $otherAsset) !== false, 'Actual public discard succeeds');
+        foreach (['pre_item_purge', 'item_purge'] as $event) {
+            $purged = $lifecycleCalls[$event][Item_SoftwareVersion::class] ?? [];
+            sort($purged);
+            $expectedPurged = [$moveInstallation, $rejectInstallation];
+            sort($expectedPurged);
+            verify($purged === $expectedPurged && ($lifecycleCalls[$event][Item_SoftwareLicense::class] ?? []) === [$computerLicense], 'Discard invokes actual public installation/licence ' . $event . ' hooks only for selected links');
+        }
+        verify($transferLifecycleRows('glpi_logs') !== $beforeDiscardHistory, 'Actual public discard records relation removal history');
+        verify($read('glpi_items_softwareversions', $moveInstallation) === null && $read('glpi_items_softwareversions', $rejectInstallation) === null
+            && $read('glpi_items_softwareversions', $excludeInstallation) !== null, 'Discard respects the excluded version set');
+        verify($read('glpi_items_softwarelicenses', $computerLicense) === null && $read('glpi_items_softwarelicenses', $monitorLicense) !== null
+            && $read('glpi_items_softwareversions', $monitorInstallation) !== null, 'Discard removes only the chosen asset type relationships');
+        verify($read('glpi_softwareversions', $installationTarget) !== null && $read('glpi_softwarelicenses', $transferTemplate) !== null, 'Discard preserves version and license targets');
+    } finally {
+        $PLUGIN_HOOKS = $softwareTransferHooks;
+        $softwareTransferPluginProperty->setValue(null, $softwareTransferPlugins);
+    }
 
     // Exercise the real copy callbacks, including literal names and owning targets.
     $copyName = "Transfer O'Reilly \\path 日本語 NULL";

@@ -9,6 +9,8 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Entity;
 use itsmng\Database\RecordCriteria;
+use itsmng\Domain\SoftwareAssignmentCancelled;
+use itsmng\Domain\SoftwareAssignmentService;
 
 /** Software inventory queries; permissions and lifecycle hooks remain with callers. */
 final class SoftwareRepository
@@ -30,22 +32,27 @@ final class SoftwareRepository
         return $rows ? (int)$rows[0]['id'] : null;
     }
 
-    public function versionForTransfer(int $software, string $name): ?int
+    public function versionForTransfer(int $software, ?string $name, bool $currentRead = false): ?int
     {
-        $rows = $this->em->createQueryBuilder()->select('v.id AS id')->from(Entity\SoftwareVersion::class, 'v')
-            ->where('v.softwares = :software AND v.name = :name')
-            ->setParameter('software', $software, Types::INTEGER)->setParameter('name', $name, Types::STRING)
-            ->orderBy('v.id')->setMaxResults(1)->getQuery()->getScalarResult();
+        $query = $this->em->createQueryBuilder()->select('v.id AS id')->from(Entity\SoftwareVersion::class, 'v')
+            ->where('v.softwares = :software')->andWhere($name === null ? 'v.name IS NULL' : 'v.name = :name')
+            ->setParameter('software', $software, Types::INTEGER)
+            ->orderBy('v.id')->setMaxResults(1);
+        if ($name !== null) {
+            $query->setParameter('name', $name, Types::STRING);
+        }
+        $rows = $query->getQuery()->setLockMode($currentRead ? LockMode::PESSIMISTIC_READ : LockMode::NONE)->getScalarResult();
         return $rows ? (int)$rows[0]['id'] : null;
     }
 
     /** Include templates and trashed licenses, matching the internal transfer selection. */
-    public function licenseForTransfer(int $software, string $name, string $serial): ?array
+    public function licenseForTransfer(int $software, string $name, string $serial, bool $currentRead = false): ?array
     {
         $rows = $this->em->createQueryBuilder()->select('l.id AS id', 'l.number AS number')->from(Entity\SoftwareLicense::class, 'l')
             ->where('l.softwares = :software AND l.name = :name AND l.serial = :serial')
             ->setParameter('software', $software, Types::INTEGER)->setParameter('name', $name, Types::STRING)
-            ->setParameter('serial', $serial, Types::STRING)->orderBy('l.id')->setMaxResults(1)->getQuery()->getScalarResult();
+            ->setParameter('serial', $serial, Types::STRING)->orderBy('l.id')->setMaxResults(1)->getQuery()
+            ->setLockMode($currentRead ? LockMode::PESSIMISTIC_READ : LockMode::NONE)->getScalarResult();
         return $rows ? ['id' => (int)$rows[0]['id'], 'number' => (int)$rows[0]['number']] : null;
     }
 
@@ -92,12 +99,13 @@ final class SoftwareRepository
             ->setMaxResults(1)->getQuery()->getScalarResult();
     }
 
-    public function hasInvalidLicense(int $software): bool
+    public function hasInvalidLicense(int $software, bool $currentRead = false): bool
     {
         return (bool)$this->em->createQueryBuilder()->select('l.id')->from(Entity\SoftwareLicense::class, 'l')
             ->where('l.softwares = :software AND l.is_valid = :invalid')
             ->setParameter('software', $software, Types::INTEGER)->setParameter('invalid', false, Types::BOOLEAN)
-            ->setMaxResults(1)->getQuery()->getScalarResult();
+            ->orderBy('l.id')->setMaxResults(1)->getQuery()
+            ->setLockMode($currentRead ? LockMode::PESSIMISTIC_READ : LockMode::NONE)->getScalarResult();
     }
 
     public function versions(int $software, array $excluded = []): array
@@ -230,21 +238,30 @@ final class SoftwareRepository
         if (!$sources) {
             return;
         }
-        $this->em->getConnection()->transactional(function () use ($target, $entity, $sources, $trash, $progress): void {
+        $assignments = SoftwareAssignmentService::forConnection($this->em->getConnection());
+        \itsmng\Domain\SoftwareMutation::assertTransactionalStorage($GLOBALS['DB'], [
+            \Software::getTable(), \SoftwareVersion::getTable(), \SoftwareLicense::getTable(), \Item_SoftwareVersion::getTable(),
+            \Log::getTable(), \QueuedNotification::getTable(),
+        ]);
+        $this->em->getConnection()->transactional(function () use ($target, $entity, $sources, $trash, $progress, $assignments): void {
             $ids = [...$sources, $target];
             $lock = $this->em->createQueryBuilder()->select('s.id AS id')->from(Entity\Software::class, 's')
                 ->where('s.id IN (:ids)')->setParameter('ids', $ids)->orderBy('s.id')->getQuery();
             $lock->setLockMode(LockMode::PESSIMISTIC_WRITE);
-            if (count($lock->getScalarResult()) !== count($ids)) {
+            $locked = $lock->getScalarResult();
+            $assignments->lockSoftwareAssignments($ids);
+            if (count($locked) !== count($ids)) {
                 throw new \RuntimeException('A software selected for merging no longer exists.');
             }
             $records = new RecordRepository($this->em);
-            $versions = $records->matching('glpi_softwareversions', ['softwares_id' => $sources], ['id']);
+            $versionRows = $this->em->createQueryBuilder()->select('v')->from(Entity\SoftwareVersion::class, 'v')
+                ->where('v.softwares IN (:sources)')->setParameter('sources', $sources)->orderBy('v.id')->getQuery()
+                ->setHint(\Doctrine\ORM\Query::HINT_REFRESH, true)->setLockMode(LockMode::PESSIMISTIC_READ)->getResult();
+            $versions = array_map($records->toRow(...), $versionRows);
             $done = 0;
             foreach ($versions as $from) {
-                $matches = $records->matching('glpi_softwareversions', ['softwares_id' => $target, 'name' => $from['name']], ['id'], 1, legacyValues: false);
-                if ($matches) {
-                    $destination = (int)$matches[0]['id'];
+                $destination = $this->versionForTransfer($target, $from['name'], currentRead: true);
+                if ($destination !== null) {
                     $this->moveVersionReferences((int)$from['id'], $destination);
                     $this->em->createQueryBuilder()->delete(Entity\SoftwareVersion::class, 'v')
                         ->where('v.id = :id')->setParameter('id', $from['id'], Types::INTEGER)->getQuery()->execute();
@@ -262,9 +279,17 @@ final class SoftwareRepository
             $this->em->createQueryBuilder()->update(Entity\SoftwareLicense::class, 'l')
                 ->set('l.softwares', ':target')->setParameter('target', $target, Types::INTEGER)
                 ->where('l.softwares IN (:sources)')->setParameter('sources', $sources)->getQuery()->execute();
+            // Licence ownership changed without per-licence hooks. Reconcile
+            // every old/new Software on this same writer before trashing sources.
+            foreach ($locked as $software) {
+                SoftwareAssignmentCancelled::requireSuccess(
+                    $assignments->refreshSoftwareValidity((int)$software['id']),
+                    'Merged Software validity refresh'
+                );
+            }
             foreach ($sources as $source) {
                 if (!$trash($source)) {
-                    throw new \RuntimeException('Unable to trash software after merging.');
+                    throw new SoftwareAssignmentCancelled('Unable to trash software after merging.');
                 }
             }
             if ($progress !== null) {
@@ -307,12 +332,17 @@ final class SoftwareRepository
 
     private function moveInstallations(int $source, int $destination): void
     {
+        $subjects = [];
+        foreach (\itsmng\Database\EntityRegistry::discriminatedReferences('glpi_items_softwareversions')['items_id']['selections'] as $kind => $selection) {
+            $association = Entity\ItemSoftwareVersion::referenceAssociation($kind);
+            $subjects[] = 'IDENTITY(d.' . $association . ') = IDENTITY(i.' . $association . ')';
+        }
         // Snapshot collisions before moving links to respect the installation unique key.
         $duplicates = $this->em->createQueryBuilder()->select('i.id AS id')->from(Entity\ItemSoftwareVersion::class, 'i')
-            ->innerJoin(Entity\ItemSoftwareVersion::class, 'd', 'WITH', 'd.itemtype = i.itemtype AND d.items_id = i.items_id AND d.softwareversions = :destination')
+            ->innerJoin(Entity\ItemSoftwareVersion::class, 'd', 'WITH', '(' . implode(' OR ', $subjects) . ') AND d.softwareversions = :destination')
             ->setParameter('destination', $destination, Types::INTEGER)
             ->where('i.softwareversions = :source')->setParameter('source', $source, Types::INTEGER)
-            ->getQuery()->getScalarResult();
+            ->orderBy('i.id')->getQuery()->setLockMode(LockMode::PESSIMISTIC_READ)->getScalarResult();
         foreach (array_chunk(array_map('intval', array_column($duplicates, 'id')), 1000) as $ids) {
             $this->em->createQueryBuilder()->delete(Entity\ItemSoftwareVersion::class, 'i')
                 ->where('i.id IN (:ids)')->setParameter('ids', $ids)->getQuery()->execute();

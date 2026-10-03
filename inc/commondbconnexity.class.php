@@ -148,6 +148,7 @@ abstract class CommonDBConnexity extends CommonDBTM
         if ($values === false || $original->authorizeLifecycleUpdate($values) === false) {
             return false;
         }
+        $this->retainLifecycleEndpointDecision($original);
         // Post-update hooks must observe the actual write view, including
         // cancelled content and model-derived owner context, with no stale
         // prepared field or history entry left behind.
@@ -166,6 +167,11 @@ abstract class CommonDBConnexity extends CommonDBTM
         }
         $this->input = array_replace($this->input, $values);
         return true;
+    }
+
+    /** Preserve a model-owned pure decision made by the final validation probe. */
+    protected function retainLifecycleEndpointDecision(CommonDBConnexity $probe): void
+    {
     }
 
     /** Read-only endpoint business validation and context binding, without upload preparation. */

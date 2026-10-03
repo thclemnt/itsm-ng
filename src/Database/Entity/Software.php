@@ -12,6 +12,11 @@ use itsmng\Database\Mapping\ReferencePolicy;
 #[ORM\Table(name: 'glpi_softwares')]
 class Software
 {
+    public function allocationScope(): array
+    {
+        return [(int)$this->entities?->id, $this->is_recursive, $this->is_deleted, $this->is_template];
+    }
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]

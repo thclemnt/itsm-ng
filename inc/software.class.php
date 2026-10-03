@@ -41,6 +41,66 @@ class Software extends CommonDBTM
 {
     use Glpi\Features\Clonable;
 
+    protected function executePreparedAdd(callable $operation, array $priorState): mixed
+    {
+        global $DB;
+
+        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->mutateSoftware(
+            $this,
+            $priorState,
+            fn () => parent::executePreparedAdd($operation, $priorState),
+            'add'
+        );
+    }
+
+    protected function executePreparedUpdate(callable $operation, array $storedFields): bool
+    {
+        global $DB;
+
+        $checkpoint = \itsmng\Database\LifecycleModelJournal::state($this);
+        $checkpoint['fields'] = $storedFields;
+        $checkpoint['updates'] = [];
+        $checkpoint['oldvalues'] = [];
+        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->mutateSoftware(
+            $this,
+            $checkpoint,
+            fn () => parent::executePreparedUpdate($operation, $storedFields),
+            'update'
+        );
+    }
+
+    protected function executePreparedRestore(callable $operation, array $storedFields): bool
+    {
+        global $DB;
+
+        $checkpoint = \itsmng\Database\LifecycleModelJournal::state($this);
+        $checkpoint['fields'] = $storedFields;
+        $checkpoint['updates'] = [];
+        $checkpoint['oldvalues'] = [];
+        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->mutateSoftware(
+            $this,
+            $checkpoint,
+            fn () => parent::executePreparedRestore($operation, $storedFields),
+            'restore'
+        );
+    }
+
+    public function delete(array $input, $force = 0, $history = 1)
+    {
+        global $DB;
+
+        if ($DB->isSlave() || !array_key_exists(static::getIndexName(), $input)
+            || !$this->getFromDB($input[static::getIndexName()])) {
+            return false;
+        }
+        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->mutateSoftware(
+            $this,
+            \itsmng\Database\LifecycleModelJournal::state($this),
+            fn () => parent::delete($input, $force, $history),
+            'delete'
+        );
+    }
+
     // From CommonDBTM
     public $dohistory                   = true;
 
@@ -202,24 +262,13 @@ class Software extends CommonDBTM
      *
      * @since 0.85
      *
-     * @return void
+     * @return bool required aggregate refresh accepted
     **/
-    public static function updateValidityIndicator($ID)
+    public static function updateValidityIndicator($ID): bool
     {
         global $DB;
 
-        $soft = new self();
-        if ($soft->getFromDB($ID)) {
-            $valid = 1;
-            $repository = new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB));
-            if ($repository->hasInvalidLicense((int)$ID)) {
-                $valid = 0;
-            }
-            if ($valid != $soft->fields['is_valid']) {
-                $soft->update(['id'       => $ID,
-                                   'is_valid' => $valid]);
-            }
-        }
+        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->refreshSoftwareValidity((int)$ID);
     }
 
 
@@ -1057,13 +1106,24 @@ class Software extends CommonDBTM
             echo "</td></tr></table></div>\n";
         }
 
-        (new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB)))->merge(
-            (int)$ID,
-            (int)$this->getField('entities_id'),
-            array_keys($item),
-            static fn (int $source): bool => (new self())->putInTrash($source, __('Software deleted after merging')),
-            $html ? static fn (int $done, int $total) => Html::changeProgressBarPosition($done, $total) : null
+        $accepted = \itsmng\Domain\SoftwareMutation::run(
+            $DB,
+            $this,
+            \itsmng\Database\LifecycleModelJournal::state($this),
+            function () use ($DB, $ID, $item, $html): bool {
+                (new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB)))->merge(
+                    (int)$ID,
+                    (int)$this->getField('entities_id'),
+                    array_keys($item),
+                    static fn (int $source): bool => (new self())->putInTrash($source, __('Software deleted after merging')),
+                    $html ? static fn (int $done, int $total) => Html::changeProgressBarPosition($done, $total) : null
+                );
+                return true;
+            }
         );
+        if (!$accepted) {
+            return false;
+        }
         if ($html) {
             Html::changeProgressBarPosition(1, 1, __('Task completed.'));
         }

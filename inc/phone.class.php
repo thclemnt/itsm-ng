@@ -42,6 +42,7 @@ if (!defined('GLPI_ROOT')) {
 class Phone extends CommonDBTM
 {
     use Glpi\Features\Clonable;
+    use \itsmng\Domain\SoftwareAllocationSubjectLifecycle;
 
     // From CommonDBTM
     public $dohistory                   = true;

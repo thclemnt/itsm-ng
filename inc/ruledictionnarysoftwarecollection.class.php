@@ -38,6 +38,7 @@ if (!defined('GLPI_ROOT')) {
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\SoftwareDictionaryRepository;
 use itsmng\Database\Repository\SoftwareRepository;
+use itsmng\Domain\SoftwareAssignmentCancelled;
 
 class RuleDictionnarySoftwareCollection extends RuleCollection
 {
@@ -315,7 +316,10 @@ class RuleDictionnarySoftwareCollection extends RuleCollection
                 $new_software_id = $new_softs[$entity][$new_name];
             }
             // Move licenses to new software
-            $this->moveLicenses($ID, $new_software_id);
+            SoftwareAssignmentCancelled::requireSuccess(
+                $this->moveLicenses($ID, $new_software_id),
+                'Dictionary licence ownership move'
+            );
         } else {
             $new_software_id = $ID;
             $res_rule["id"]  = $ID;

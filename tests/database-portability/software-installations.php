@@ -61,10 +61,23 @@ try {
     verify(Item_SoftwareLicense::countForLicense($license, -1) === 12, 'Unrestricted license count still excludes deleted and template assets');
     verify(Item_SoftwareLicense::countForLicense($license, '', 'Computer') === 1, 'Explicit asset type restriction');
     verify(Item_SoftwareLicense::countForSoftware($software) === 12, 'Software count retains multiple license assignments');
-    // A missing polymorphic target cannot increase a count.
-    $fixtures->create('glpi_items_softwareversions', ['softwareversions_id' => $version, 'itemtype' => 'Computer', 'items_id' => 2147483647]);
-    $fixtures->create('glpi_items_softwarelicenses', ['softwarelicenses_id' => $license, 'itemtype' => 'Computer', 'items_id' => 2147483647]);
-    verify(Item_SoftwareVersion::countForVersion($version) === 6 && Item_SoftwareLicense::countForLicense($license) === 6, 'Missing asset targets excluded by the concrete join');
+    // Sound owning relationships reject missing subjects before counts can hide them.
+    foreach (['glpi_items_softwareversions' => ['softwareversions_id' => $version], 'glpi_items_softwarelicenses' => ['softwarelicenses_id' => $license]] as $table => $parent) {
+        $connection = $DB->getDoctrineConnection();
+        $connection->beginTransaction();
+        try {
+            $rejected = false;
+            try {
+                $connection->insert($table, ['itemtype' => 'Computer', 'computers_id' => 2147483647] + $parent);
+            } catch (\Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException) {
+                $rejected = true;
+            }
+            verify($rejected, 'Missing asset target is rejected by its actual FK: ' . $table);
+        } finally {
+            $connection->rollBack();
+        }
+    }
+    verify(Item_SoftwareVersion::countForVersion($version) === 6 && Item_SoftwareLicense::countForLicense($license) === 6, 'Rejected subjects leave valid counts unchanged');
     $_SESSION['glpiactiveentities'] = [$otherEntity];
     verify(Item_SoftwareLicense::countForSoftware($software) === 6, 'Software license count follows active entity changes');
     $installationRepo = new \itsmng\Database\Repository\SoftwareInstallationRepository(Orm::create($DB));

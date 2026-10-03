@@ -1129,10 +1129,13 @@ class CommonDBTM extends CommonGLPI
             ]);
         }
 
-        if (in_array($this->getType(), $CFG_GLPI['software_types'])) {
-            $this->deleteChildrenAndRelationsFromDb([
-               Item_SoftwareVersion::class
-            ]);
+        // Both assignment families declare their owning subjects locally. A
+        // non-Computer purge must run licence validity/history hooks as well.
+        foreach ([Item_SoftwareVersion::class, Item_SoftwareLicense::class] as $assignment) {
+            $subjects = \itsmng\Database\EntityRegistry::discriminatedReferences($assignment::getTable())['items_id']['selections'];
+            if (isset($subjects[$this->getType()])) {
+                $this->deleteChildrenAndRelationsFromDb([$assignment]);
+            }
         }
 
         if (in_array($this->getType(), $CFG_GLPI['kanban_types'])) {
@@ -1271,6 +1274,8 @@ class CommonDBTM extends CommonGLPI
             return false;
         }
 
+        $priorState = \itsmng\Database\LifecycleModelJournal::state($this);
+
         // This means we are not adding a cloned object
         if ($this->assignedIdentifier === null && !isset($input['clone'])) {
             // This means we are asked to clone the object (old way). This will clone the clone method
@@ -1368,65 +1373,83 @@ class CommonDBTM extends CommonGLPI
                 throw new \RuntimeException('An add hook or business rule changed the assigned identity.');
             }
             if ($this->checkUnicity(true, $options)) {
-                if ($this->addToDB() !== false) {
-                    $this->post_addItem();
-                    $this->addMessageOnAddAction();
-
-                    if ($this->dohistory && $history) {
-                        $changes = [
-                           0,
-                           '',
-                           '',
-                        ];
-                        Log::history(
-                            $this->fields["id"],
-                            $this->getType(),
-                            $changes,
-                            0,
-                            Log::HISTORY_CREATE_ITEM
-                        );
-                    }
-
-                    // Auto create infocoms
-                    if (
-                        isset($CFG_GLPI["auto_create_infocoms"]) && $CFG_GLPI["auto_create_infocoms"]
-                        && (!isset($input['clone']) || !$input['clone'])
-                        && Infocom::canApplyOn($this)
-                    ) {
-                        $ic = new Infocom();
-                        if (!$ic->getFromDBforDevice($this->getType(), $this->fields['id'])) {
-                            $ic->add(['itemtype' => $this->getType(),
-                                      'items_id' => $this->fields['id']]);
-                        }
-                    }
-
-                    // If itemtype is in infocomtype and if states_id field is filled
-                    // and item is not a template
-                    if (
-                        Infocom::canApplyOn($this)
-                        && isset($this->input['states_id'])
-                                 && (!isset($this->input['is_template'])
-                                     || !$this->input['is_template'])
-                    ) {
-                        //Check if we have to automatical fill dates
-                        Infocom::manageDateOnStatusChange($this);
-                    }
-                    Plugin::doHook("item_add", $this);
-
-                    // As add have suceed, clean the old input value
-                    if (isset($this->input['_add'])) {
-                        $this->clearSavedInput();
-                    }
-                    if ($this->notificationqueueonaction) {
-                        QueuedNotification::forceSendFor($this->getType(), $this->fields['id']);
-                    }
-                    return $this->fields['id'];
-                }
+                return $this->executePreparedAdd(
+                    fn () => $this->completeLifecycleAdd($input, $history),
+                    $priorState
+                );
             }
         }
 
         return false;
     }
+
+    /** Model-owned prepared persistence; default models retain their lifecycle. */
+    protected function executePreparedAdd(callable $operation, array $priorState): mixed
+    {
+        return $operation();
+    }
+
+    private function completeLifecycleAdd(array $input, $history)
+    {
+        global $CFG_GLPI;
+
+        if ($this->addToDB() !== false) {
+            $this->post_addItem();
+            $this->addMessageOnAddAction();
+
+            if ($this->dohistory && $history) {
+                $changes = [
+                   0,
+                   '',
+                   '',
+                ];
+                Log::history(
+                    $this->fields["id"],
+                    $this->getType(),
+                    $changes,
+                    0,
+                    Log::HISTORY_CREATE_ITEM
+                );
+            }
+
+            // Auto create infocoms
+            if (
+                isset($CFG_GLPI["auto_create_infocoms"]) && $CFG_GLPI["auto_create_infocoms"]
+                && (!isset($input['clone']) || !$input['clone'])
+                && Infocom::canApplyOn($this)
+            ) {
+                $ic = new Infocom();
+                if (!$ic->getFromDBforDevice($this->getType(), $this->fields['id'])) {
+                    $ic->add(['itemtype' => $this->getType(),
+                              'items_id' => $this->fields['id']]);
+                }
+            }
+
+            // If itemtype is in infocomtype and if states_id field is filled
+            // and item is not a template
+            if (
+                Infocom::canApplyOn($this)
+                && isset($this->input['states_id'])
+                         && (!isset($this->input['is_template'])
+                             || !$this->input['is_template'])
+            ) {
+                //Check if we have to automatical fill dates
+                Infocom::manageDateOnStatusChange($this);
+            }
+            Plugin::doHook("item_add", $this);
+
+            // As add have suceed, clean the old input value
+            if (isset($this->input['_add'])) {
+                $this->clearSavedInput();
+            }
+            if ($this->notificationqueueonaction) {
+                QueuedNotification::forceSendFor($this->getType(), $this->fields['id']);
+            }
+            return $this->fields['id'];
+        }
+        return false;
+    }
+
 
     /**
      * Clone the current item multiple times
@@ -1901,23 +1924,40 @@ class CommonDBTM extends CommonGLPI
                         return false;
                     }
 
-                    if ($this->requiresOwnershipForwarding()) {
-                        return \itsmng\Database\OwnershipUpdateUnit::run($DB, $this, $storedFields, function () use ($DB, $history, $storedFields): bool {
-                            \itsmng\Database\OwnershipUpdateUnit::assertTransactionalStorage($DB, $this->getTable());
-                            foreach (array_merge(static::$forward_entity_to, self::$plugins_forward_entity[$this->getType()] ?? []) as $type) {
-                                \itsmng\Database\OwnershipUpdateUnit::assertTransactionalStorage($DB, $type::getTable());
-                            }
-                            return $this->completeLifecycleUpdate($history, $storedFields);
-                        });
-                    }
+
                 }
-                return $this->completeLifecycleUpdate($history, $storedFields);
+                return $this->executePreparedUpdate(
+                    fn () => $this->completeOwnedLifecycleUpdate($history, $storedFields),
+                    $storedFields
+                );
             }
         }
 
         return false;
     }
 
+
+
+    protected function executePreparedUpdate(callable $operation, array $storedFields): bool
+    {
+        return $operation();
+    }
+
+    private function completeOwnedLifecycleUpdate($history, array $storedFields): bool
+    {
+        global $DB;
+
+        if ($this->requiresOwnershipForwarding()) {
+            return \itsmng\Database\OwnershipUpdateUnit::run($DB, $this, $storedFields, function () use ($DB, $history, $storedFields): bool {
+                \itsmng\Database\OwnershipUpdateUnit::assertTransactionalStorage($DB, $this->getTable());
+                foreach (array_merge(static::$forward_entity_to, self::$plugins_forward_entity[$this->getType()] ?? []) as $type) {
+                    \itsmng\Database\OwnershipUpdateUnit::assertTransactionalStorage($DB, $type::getTable());
+                }
+                return $this->completeLifecycleUpdate($history, $storedFields);
+            });
+        }
+        return $this->completeLifecycleUpdate($history, $storedFields);
+    }
 
 
     private function requiresOwnershipForwarding(): bool
@@ -2537,6 +2577,9 @@ class CommonDBTM extends CommonGLPI
             return false;
         }
 
+        $storedFields = $this->fields;
+        \itsmng\Database\LifecycleModelJournal::capture($GLOBALS['DB']->getDoctrineConnection(), $this);
+
         if (isset($input['restore'])) {
             $input['_restore'] = $input['restore'];
             unset($input['restore']);
@@ -2553,6 +2596,16 @@ class CommonDBTM extends CommonGLPI
             return false;
         }
 
+        return $this->executePreparedRestore(fn () => $this->completeLifecycleRestore($history), $storedFields);
+    }
+
+    protected function executePreparedRestore(callable $operation, array $storedFields): bool
+    {
+        return $operation();
+    }
+
+    private function completeLifecycleRestore($history): bool
+    {
         if ($this->restoreInDB()) {
             $this->addMessageOnRestoreAction();
 

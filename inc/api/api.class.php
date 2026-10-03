@@ -696,43 +696,8 @@ abstract class API extends CommonGLPI
             if (!Software::canView()) {
                 $fields['_softwares'] = $this->arrayRightError();
             } else {
-                $soft_iterator = $DB->request([
-                   'SELECT'    => [
-                      'glpi_softwares.softwarecategories_id',
-                      'glpi_softwares.id AS softwares_id',
-                      'glpi_softwareversions.id AS softwareversions_id',
-                      'glpi_items_softwareversions.is_dynamic',
-                      'glpi_softwareversions.states_id',
-                      'glpi_softwares.is_valid'
-                   ],
-                   'FROM'      => 'glpi_items_softwareversions',
-                   'LEFT JOIN' => [
-                      'glpi_softwareversions' => [
-                         'ON' => [
-                            'glpi_items_softwareversions' => 'softwareversions_id',
-                            'glpi_softwareversions'       => 'id'
-                         ]
-                      ],
-                      'glpi_softwares'        => [
-                         'ON' => [
-                            'glpi_softwareversions' => 'softwares_id',
-                            'glpi_softwares'        => 'id'
-                         ]
-                      ]
-                   ],
-                   'WHERE'     => [
-                      'glpi_items_softwareversions.items_id'   => $id,
-                      'glpi_items_softwareversions.itemtype'   => $itemtype,
-                      'glpi_items_softwareversions.is_deleted' => 0
-                   ],
-                   'ORDERBY'   => [
-                      'glpi_softwares.name',
-                      'glpi_softwareversions.name'
-                   ]
-                ]);
-                while ($data = $soft_iterator->next()) {
-                    $fields['_softwares'][] = $data;
-                }
+                $fields['_softwares'] = (new \itsmng\Database\Repository\SoftwareInstallationRepository(\itsmng\Database\Orm::create($DB)))
+                    ->apiForSubject($itemtype, (int)$id);
             }
         }
 

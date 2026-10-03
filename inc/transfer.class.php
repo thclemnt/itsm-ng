@@ -1307,7 +1307,7 @@ class Transfer extends CommonDBTM
 
                     if (in_array($itemtype, $CFG_GLPI['software_types'])) {
                         // License / Software :  keep / delete + clean unused / keep unused
-                        $this->transferItemSoftwares($itemtype, $ID);
+                        TransferCancelled::requireTransfer($this->transferItemSoftwares($itemtype, $ID));
                     }
 
                     Plugin::doHook("item_transfer", ['type'        => $itemtype,
@@ -1656,7 +1656,7 @@ class Transfer extends CommonDBTM
 
         $vers = new SoftwareVersion();
         if ($vers->getFromDB($ID)) {
-            $newsoftID = $this->copySingleSoftware($vers->fields['softwares_id']);
+            $newsoftID = TransferCancelled::requireIdentifier($this->copySingleSoftware($vers->fields['softwares_id']), 'Required version owning Software');
 
             if ($newsoftID == $vers->fields['softwares_id']) {
                 // no need to copy
@@ -1727,105 +1727,55 @@ class Transfer extends CommonDBTM
     **/
     public function transferItemSoftwares($itemtype, $ID)
     {
-        global $DB;
-        $repository = new \itsmng\Database\Repository\SoftwareInstallationRepository(\itsmng\Database\Orm::create($DB));
-        foreach ($repository->installationsForTransfer($itemtype, (int)$ID, $this->noneedtobe_transfer['SoftwareVersion'] ?? []) as $data) {
-            if ($this->options['keep_software']) {
-                $newversID = $this->copySingleVersion($data['softwareversions_id']);
-
-                if (($newversID > 0)
-                      && ($newversID != $data['softwareversions_id'])) {
-                    $repository->retargetInstallation((int)$data['id'], (int)$newversID);
+        return $this->runTransfer(function () use ($itemtype, $ID) {
+            global $DB;
+            (new \itsmng\Domain\SoftwareAssignmentService($DB))->lockTransferSubject($itemtype, (int)$ID);
+            $repository = new \itsmng\Database\Repository\SoftwareInstallationRepository(\itsmng\Database\Orm::create($DB));
+            foreach ($repository->installationsForTransfer($itemtype, (int)$ID, $this->noneedtobe_transfer['SoftwareVersion'] ?? [], currentRead: true) as $data) {
+                $installation = new Item_SoftwareVersion();
+                if ($this->options['keep_software']) {
+                    $version = TransferCancelled::requireIdentifier($this->copySingleVersion($data['softwareversions_id']), 'Required installation version');
+                    if ($version !== (int)$data['softwareversions_id']) {
+                        $this->updateForTransfer($installation, ['id' => $data['id'], 'softwareversions_id' => $version]);
+                    }
+                } else {
+                    $this->deleteForTransfer($installation, ['id' => $data['id']], true);
                 }
-
-            } else { // Do not keep
-                // Delete inst software for item
-                $repository->removeInstallation((int)$data['id']);
             }
-        } // each installed version
-
-        // Affected licenses
-        if ($this->options['keep_software']) {
-            foreach ($repository->licenseAssignmentsForTransfer($itemtype, (int)$ID) as $assignment) {
-                $this->transferAffectedLicense($assignment);
+            foreach ($repository->licenseAssignmentsForTransfer($itemtype, (int)$ID, currentRead: true) as $assignment) {
+                if ($this->options['keep_software']) {
+                    TransferCancelled::requireTransfer($this->transferAffectedLicense($assignment));
+                } else {
+                    $this->deleteForTransfer(new Item_SoftwareLicense(), ['id' => $assignment], true);
+                }
             }
-        } else {
-            $repository->removeLicenseAssignments($itemtype, (int)$ID);
-        }
+            return true;
+        });
     }
 
 
-    /**
-     * Transfer affected licenses to an item
-     *
-     * @param $ID ID of the License
-    **/
+    /** Transfer one independent allocation through its required public lifecycles. */
     public function transferAffectedLicense($ID)
     {
-        global $DB;
-
-        $item_softwarelicense = new Item_SoftwareLicense();
-        $license                  = new SoftwareLicense();
-
-        if ($item_softwarelicense->getFromDB($ID)) {
-            if ($license->getFromDB($item_softwarelicense->getField('softwarelicenses_id'))) {
-
-                //// Update current : decrement number by 1 if valid
-                if ($license->getField('number') > 1) {
-                    $this->updateForTransfer($license, ['id'     => $license->getID(),
-                                           'number' => ($license->getField('number') - 1)]);
-                } elseif ($license->getField('number') == 1) {
-                    // Drop license
-                    $this->deleteForTransfer($license, ['id' => $license->getID()]);
+        return $this->runTransfer(function () use ($ID) {
+            global $DB;
+            (new \itsmng\Domain\SoftwareAssignmentService($DB))->transferAllocation(
+                (int)$ID,
+                (int)$this->to,
+                fn ($id) => $this->copySingleSoftware($id),
+                fn ($id) => $this->copySingleVersion($id),
+                fn (CommonDBTM $model, array $input) => $this->addForTransfer($model, $input),
+                function (CommonDBTM $model, array $input): bool {
+                    $this->updateForTransfer($model, $input);
+                    return true;
+                },
+                function (CommonDBTM $model, array $input, bool $force): bool {
+                    $this->deleteForTransfer($model, $input, $force);
+                    return true;
                 }
-
-                // Create new license : need to transfer softwre and versions before
-                $input     = [];
-                $newsoftID = $this->copySingleSoftware($license->fields['softwares_id']);
-
-                if ($newsoftID > 0) {
-                    //// If license already exists : increment number by one
-                    $repository = new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB));
-                    $destination = $repository->licenseForTransfer((int)$newsoftID, (string)$license->fields['name'], (string)$license->fields['serial']);
-
-                    $newlicID = -1;
-                    //// If exists : increment number by 1
-                    if ($destination !== null) {
-                        $data     = $destination;
-                        $newlicID = $data['id'];
-                        $this->updateForTransfer($license, ['id'     => $data['id'],
-                                                'number' => $data['number'] + 1]);
-
-                    } else {
-                        //// If not exists : create with number = 1
-                        $input = $license->fields;
-                        foreach (['softwareversions_id_buy',
-                                       'softwareversions_id_use'] as $field) {
-                            if ($license->fields[$field] > 0) {
-                                $newversID = $this->copySingleVersion($license->fields[$field]);
-                                if (($newversID > 0)
-                                      && ($newversID != $license->fields[$field])) {
-                                    $input[$field] = $newversID;
-                                }
-                            }
-                        }
-
-                        unset($input['id']);
-                        $input['number']       = 1;
-                        $input['entities_id']  = $this->to;
-                        $input['softwares_id'] = $newsoftID;
-                        $newlicID              = $this->addForTransfer($license, Toolbox::addslashes_deep($input));
-                    }
-
-                    if ($newlicID > 0) {
-                        $input = ['id'                  => $ID,
-                                       'softwarelicenses_id' => $newlicID];
-                        $this->updateForTransfer($item_softwarelicense, $input);
-                    }
-                }
-            }
-        } // getFromDB
-
+            );
+            return true;
+        });
     }
 
 

@@ -270,6 +270,37 @@ try {
         && $connection->fetchOne('SELECT itemtype FROM glpi_items_tickets WHERE id=9010') === 'PluginDomainsDomain'
         && (int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_documents_items WHERE id IN (9016,9017)') === 2, 'Rollback validation preserves source kinds, target records and original document rows');
     $connection->update('glpi_computers', ['locations_id' => 0], ['id' => 9002]);
+    // Each software companion participates in the real ledgerless Domain trial.
+    // A valid source installation must not allow an invalid licence to reach DDL,
+    // and the reverse family must be audited before remap receipts are committed.
+    $connection->insert('glpi_softwares', ['id' => 9030, 'name' => 'Historical assignment Software']);
+    $connection->insert('glpi_softwareversions', ['id' => 9031, 'softwares_id' => 9030]);
+    $connection->insert('glpi_softwarelicenses', ['id' => 9032, 'softwares_id' => 9030, 'number' => -1]);
+    $connection->insert('glpi_items_softwareversions', ['id' => 9033, 'softwareversions_id' => 9031, 'itemtype' => 'Computer', 'items_id' => 9002]);
+    $connection->insert('glpi_items_softwarelicenses', ['id' => 9034, 'softwarelicenses_id' => 9032, 'itemtype' => 'Computer', 'items_id' => 9002]);
+    $originalDocuments = $connection->fetchAllAssociative('SELECT * FROM glpi_documents_items WHERE id IN (9016,9017) ORDER BY id');
+    $originalPlugin = DomainsPluginSnapshot20261006::fingerprint(DomainsPluginSnapshot20261006::read($connection));
+    foreach (['glpi_items_softwareversions' => 9033, 'glpi_items_softwarelicenses' => 9034] as $table => $id) {
+        $connection->update($table, ['itemtype' => 'PluginInventoryAsset'], ['id' => $id]);
+        $invalidSource = $connection->fetchAssociative('SELECT * FROM ' . $table . ' WHERE id = ?', [$id]);
+        refused(fn () => $history->upgrade($connection), $table);
+        verify(
+            !Ledger::assertTransactional($connection)
+            && !$manager->introspectTable('glpi_items_softwareversions')->hasColumn('computers_id')
+            && !$manager->introspectTable('glpi_items_softwarelicenses')->hasColumn('computers_id')
+            && \Doctrine\DBAL\Types\Type::lookupName($manager->listTableColumns('glpi_computers')['id']->getType()) === 'integer',
+            'Invalid software companion refuses before ledger bootstrap, identifier widening or either assignment DDL: ' . $table
+        );
+        verify(
+            $connection->fetchAssociative('SELECT * FROM ' . $table . ' WHERE id = ?', [$id]) === $invalidSource
+            && $connection->fetchAllAssociative('SELECT * FROM glpi_documents_items WHERE id IN (9016,9017) ORDER BY id') === $originalDocuments
+            && DomainsPluginSnapshot20261006::fingerprint(DomainsPluginSnapshot20261006::read($connection)) === $originalPlugin
+            && $connection->fetchOne('SELECT itemtype FROM glpi_items_tickets WHERE id=9010') === 'PluginDomainsDomain'
+            && (int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_domains WHERE id >= 100000') === 0,
+            'Failed software canonical preflight rolls back the complete Domain remap and preserves invalid source data: ' . $table
+        );
+        $connection->update($table, ['itemtype' => 'Computer'], ['id' => $id]);
+    }
     $checkpoint('Invalid-data/scope/native storage audits and rollback-only canonical validation');
     refused(fn () => $history->upgrade($connection, static function (string $step): void {
         if (str_starts_with($step, 'Frozen Domains identity prerequisite committed')) {

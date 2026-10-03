@@ -18,6 +18,8 @@ use itsmng\Database\Migration\LegacyToOrm;
 use itsmng\Database\Migration\ProjectAssets20261003;
 use itsmng\Database\Migration\OperatingSystemSubjects20261006;
 use itsmng\Database\Migration\Seeds20261001;
+use itsmng\Database\Migration\SoftwareInstallationSubjects20261011;
+use itsmng\Database\Migration\SoftwareLicenseSubjects20261011;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\Repository\RecordWriter;
@@ -157,6 +159,13 @@ foreach ([501, 502] as $id) {
 $connection->insert('glpi_operatingsystems', ['id' => 801, 'name' => 'Historical inventory OS']);
 $connection->insert('glpi_items_operatingsystems', ['id' => 802, 'itemtype' => 'Computer', 'items_id' => $legacyId, 'operatingsystems_id' => 801, 'licenseid' => 'Legacy product', 'license_number' => 'Legacy license', 'is_dynamic' => true]);
 $connection->insert('glpi_items_operatingsystems', ['id' => 803, 'itemtype' => 'Computer', 'items_id' => $legacyId, 'is_deleted' => true]);
+$connection->insert('glpi_softwares', ['id' => 901, 'name' => 'Historical assigned software']);
+$connection->insert('glpi_softwareversions', ['id' => 902, 'softwares_id' => 901, 'name' => 'Historical assigned version']);
+$connection->insert('glpi_softwarelicenses', ['id' => 903, 'softwares_id' => 901, 'number' => -1, 'softwareversions_id_use' => 902]);
+$connection->insert('glpi_items_softwareversions', ['id' => 904, 'softwareversions_id' => 902, 'itemtype' => 'Computer', 'items_id' => $legacyId, 'date_install' => '2026-10-02', 'is_dynamic' => 1]);
+foreach ([905, 906] as $id) {
+    $connection->insert('glpi_items_softwarelicenses', ['id' => $id, 'softwarelicenses_id' => 903, 'itemtype' => 'Computer', 'items_id' => $legacyId]);
+}
 $connection->insert('glpi_logs', ['id' => $auditId, 'itemtype' => 'Computer', 'items_id' => $legacyId, 'user_name' => 'Legacy administrator', 'old_value' => $audit]);
 $password = 'customer-password-hash-must-survive';
 $connection->update('glpi_users', ['password' => $password], ['id' => 2]);
@@ -290,6 +299,19 @@ foreach ([['itemtype' => 'PluginInventoryAsset', 'items_id' => $legacyId], ['ite
         && !$manager->introspectTable('glpi_items_operatingsystems')->hasColumn('computers_id'), 'OS preflight occurs before any adoption DDL or stage journal');
     $connection->delete('glpi_items_operatingsystems', ['id' => 804]);
 }
+// A valid installation cannot start DDL while the companion licence graph is invalid.
+$connection->insert('glpi_items_softwarelicenses', ['id' => 907, 'softwarelicenses_id' => 903, 'itemtype' => 'PluginInventoryAsset', 'items_id' => $legacyId]);
+try {
+    $history->upgrade($connection);
+    throw new LogicException('Unsupported software extension accepted');
+} catch (RuntimeException $error) {
+    verify(str_contains($error->getMessage(), 'glpi_items_softwarelicenses') && str_contains($error->getMessage(), 'Plugin::registerClass'), 'Plugin extension diagnostic explains missing canonical mapping');
+}
+verify(Ledger::state($connection, LegacyToOrm::VERSION) === null
+    && Ledger::state($connection, SoftwareInstallationSubjects20261011::VERSION) === null
+    && Ledger::state($connection, SoftwareLicenseSubjects20261011::VERSION) === null
+    && !$manager->introspectTable('glpi_items_softwareversions')->hasColumn('computers_id'), 'Both software families are audited before any adoption or assignment DDL');
+$connection->delete('glpi_items_softwarelicenses', ['id' => 907]);
 $connection->insert('glpi_useremails', ['users_id' => 1999999999, 'email' => 'history-orphan@example.invalid']);
 try {
     $history->upgrade($connection);
@@ -411,6 +433,15 @@ verify($documentReceipt['complete'] && $documentReceipt['documents_restored'] &&
 verify($connection->fetchOne('SELECT old_value FROM glpi_logs WHERE id = ?', [$auditId]) === $audit, 'Audit data and its original ID survive');
 verify($connection->fetchOne('SELECT comment FROM glpi_rulerightparameters WHERE id = 1') === 'A retained later seed edit', 'Populated adoption preserves later seed-row edits');
 verify($connection->fetchOne('SELECT password FROM glpi_users WHERE id = 2') === $password, 'Customer account data survives adoption');
+$installed = $connection->fetchAssociative('SELECT computers_id, items_id, date_install, is_dynamic FROM glpi_items_softwareversions WHERE id = 904');
+verify((int)$installed['computers_id'] === $legacyId && (int)$installed['items_id'] === $legacyId
+    && $installed['date_install'] === '2026-10-02' && (bool)$installed['is_dynamic'], 'Full history preserves owning installation subject, calendar date and dynamic flag');
+$licensed = $connection->fetchAllAssociative('SELECT id, computers_id, items_id, softwarelicenses_id FROM glpi_items_softwarelicenses ORDER BY id');
+verify(array_map(static fn ($row) => (int)$row['id'], $licensed) === [905, 906], 'Full history preserves independent duplicate licence assignments');
+foreach ($licensed as $row) {
+    verify((int)$row['computers_id'] === $legacyId && (int)$row['items_id'] === $legacyId && (int)$row['softwarelicenses_id'] === 903, 'Full history retains licence parent and selected subject');
+}
+
 verify($connection->fetchOne('SELECT entities_id FROM glpi_entities WHERE id = 0') === null && $connection->fetchOne('SELECT computermodels_id FROM glpi_computers WHERE id = ?', [$legacyId]) === null, 'Root and optional zero sentinels become real nullable relationships');
 $link = $connection->fetchAssociative('SELECT computers_id, items_id FROM glpi_certificates_items WHERE id = 101');
 verify((int)$link['computers_id'] === $legacyId && (int)$link['items_id'] === $legacyId, 'Typed subject and read-only compatibility identity preserve the legacy link');

@@ -42,6 +42,7 @@ class Computer extends CommonDBTM
 {
     use Glpi\Features\DCBreadcrumb;
     use Glpi\Features\Clonable;
+    use \itsmng\Domain\SoftwareAllocationSubjectLifecycle;
 
     // From CommonDBTM
     public $dohistory                   = true;

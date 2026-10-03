@@ -8,6 +8,10 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
 use itsmng\Database\Entity;
+use itsmng\Database\LifecycleModelJournal;
+use itsmng\Domain\SoftwareAssignmentCancelled;
+use itsmng\Domain\SoftwareAssignmentService;
+use itsmng\Domain\SoftwareMutation;
 
 /** Dictionary replay selections use the owning software associations. */
 final class SoftwareDictionaryRepository
@@ -101,17 +105,35 @@ final class SoftwareDictionaryRepository
 
     public function moveLicenses(int $source, int $target): bool
     {
-        $ids = array_values(array_unique([$source, $target]));
-        $count = $this->em->createQueryBuilder()->select('COUNT(s.id)')->from(Entity\Software::class, 's')
-            ->where('s.id IN (:ids)')->setParameter('ids', $ids)->getQuery()->getSingleScalarResult();
-        if ((int)$count !== count($ids)) {
+        global $DB;
+
+        try {
+            $service = SoftwareAssignmentService::forConnection($this->em->getConnection());
+        } catch (SoftwareAssignmentCancelled) {
             return false;
         }
-        if ($source !== $target) {
-            $this->em->createQueryBuilder()->update(Entity\SoftwareLicense::class, 'l')
-                ->set('l.softwares', ':target')->setParameter('target', $target, Types::INTEGER)
-                ->where('l.softwares = :source')->setParameter('source', $source, Types::INTEGER)->getQuery()->execute();
+        $software = new \Software();
+        if ($source <= 0 || $target <= 0 || !$software->getFromDB($target)) {
+            return false;
         }
-        return true;
+        return SoftwareMutation::run($DB, $software, LifecycleModelJournal::state($software), function () use ($DB, $source, $target, $service): bool {
+            SoftwareMutation::assertTransactionalStorage($DB, [\Software::getTable(), \SoftwareLicense::getTable()]);
+            $service->lockSoftwareAssignments([$source, $target]);
+            if ($source === $target) {
+                return true;
+            }
+            // Preserve the dictionary's intentional bulk ownership change:
+            // quantities, licence metadata and per-licence hooks stay intact.
+            $this->em->createQueryBuilder()->update(Entity\SoftwareLicense::class, 'l')
+                ->set('l.softwares', ':target')->setParameter('target', $target, Types::BIGINT)
+                ->where('l.softwares = :source')->setParameter('source', $source, Types::BIGINT)->getQuery()->execute();
+            foreach (SoftwareAssignmentRepository::identifiers([$source, $target]) as $id) {
+                SoftwareAssignmentCancelled::requireSuccess(
+                    $service->refreshSoftwareValidity($id),
+                    'Dictionary owning software validity'
+                );
+            }
+            return true;
+        });
     }
 }

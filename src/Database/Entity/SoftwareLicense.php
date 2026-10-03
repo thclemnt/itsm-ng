@@ -45,6 +45,18 @@ class SoftwareLicense
     #[ORM\Column(name: '`number`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $number = 0;
 
+    /** Owning visibility and eligibility captured by a prepared allocation command. */
+    public function allocationScope(): array
+    {
+        return [(int)$this->softwares?->id, (int)$this->entities?->id, $this->is_recursive, $this->is_deleted, $this->is_template];
+    }
+
+    /** Finite over-allocation is permitted and represented by an invalid licence. */
+    public function isValidForAllocationCount(int $count): bool
+    {
+        return $this->number < 0 || $count <= $this->number;
+    }
+
     #[ORM\ManyToOne(targetEntity: SoftwareLicenseType::class)]
     #[ORM\JoinColumn(name: 'softwarelicensetypes_id', referencedColumnName: 'id', nullable: true, onDelete: 'RESTRICT')]
     #[ReferencePolicy(ReferenceKind::EmptySelection)]

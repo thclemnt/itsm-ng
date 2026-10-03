@@ -42,6 +42,66 @@ class SoftwareLicense extends CommonTreeDropdown
 {
     use Glpi\Features\Clonable;
 
+    protected function executePreparedAdd(callable $operation, array $priorState): mixed
+    {
+        global $DB;
+
+        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->mutateLicense(
+            $this,
+            $priorState,
+            fn () => parent::executePreparedAdd($operation, $priorState),
+            'add'
+        );
+    }
+
+    protected function executePreparedUpdate(callable $operation, array $storedFields): bool
+    {
+        global $DB;
+
+        $checkpoint = \itsmng\Database\LifecycleModelJournal::state($this);
+        $checkpoint['fields'] = $storedFields;
+        $checkpoint['updates'] = [];
+        $checkpoint['oldvalues'] = [];
+        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->mutateLicense(
+            $this,
+            $checkpoint,
+            fn () => parent::executePreparedUpdate($operation, $storedFields),
+            'update'
+        );
+    }
+
+    protected function executePreparedRestore(callable $operation, array $storedFields): bool
+    {
+        global $DB;
+
+        $checkpoint = \itsmng\Database\LifecycleModelJournal::state($this);
+        $checkpoint['fields'] = $storedFields;
+        $checkpoint['updates'] = [];
+        $checkpoint['oldvalues'] = [];
+        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->mutateLicense(
+            $this,
+            $checkpoint,
+            fn () => parent::executePreparedRestore($operation, $storedFields),
+            'restore'
+        );
+    }
+
+    public function delete(array $input, $force = 0, $history = 1)
+    {
+        global $DB;
+
+        if ($DB->isSlave() || !array_key_exists(static::getIndexName(), $input)
+            || !$this->getFromDB($input[static::getIndexName()])) {
+            return false;
+        }
+        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->mutateLicense(
+            $this,
+            \itsmng\Database\LifecycleModelJournal::state($this),
+            fn () => parent::delete($input, $force, $history),
+            'delete'
+        );
+    }
+
     /// TODO move to CommonDBChild ?
     // From CommonDBTM
     public $dohistory                   = true;
@@ -64,6 +124,33 @@ class SoftwareLicense extends CommonTreeDropdown
     public static function getTypeName($nb = 0)
     {
         return _n('License', 'Licenses', $nb);
+    }
+
+
+    /** Capacity derivation follows the actual final quantity and owning parent. */
+    protected function finalizeLifecycleUpdate(array $storedFields): bool
+    {
+        if (!parent::finalizeLifecycleUpdate($storedFields)) {
+            return false;
+        }
+        foreach (['number', 'softwares_id', 'is_valid'] as $field) {
+            if (!in_array($field, $this->updates, true)) {
+                $this->fields[$field] = $storedFields[$field];
+                unset($this->oldvalues[$field]);
+            } elseif (($this->fields[$field] === null) === ($storedFields[$field] === null)
+                && $this->fields[$field] == $storedFields[$field]) {
+                $this->updates = array_values(array_diff($this->updates, [$field]));
+                unset($this->oldvalues[$field]);
+            } else {
+                $this->oldvalues[$field] = $storedFields[$field];
+            }
+        }
+        if (array_key_exists('number', $this->input) && !in_array('number', $this->updates, true)) {
+            $this->fields['is_valid'] = $storedFields['is_valid'];
+            $this->updates = array_values(array_diff($this->updates, ['is_valid']));
+            unset($this->oldvalues['is_valid']);
+        }
+        return true;
     }
 
 
@@ -161,19 +248,13 @@ class SoftwareLicense extends CommonTreeDropdown
      *
      * @since 0.85
      *
-     * @return void
+     * @return bool required aggregate refresh accepted
     **/
-    public static function updateValidityIndicator($ID)
+    public static function updateValidityIndicator($ID): bool
     {
+        global $DB;
 
-        $lic = new self();
-        if ($lic->getFromDB($ID)) {
-            $valid = self::computeValidityIndicator($ID, $lic->fields['number']);
-            if ($valid != $lic->fields['is_valid']) {
-                $lic->update(['id'       => $ID,
-                                   'is_valid' => $valid]);
-            }
-        }
+        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->refreshLicenseValidity((int)$ID);
     }
 
 
@@ -212,7 +293,10 @@ class SoftwareLicense extends CommonTreeDropdown
             $override_input['items_id'] = $this->getID();
             $infocoms[0]->clone($override_input);
         }
-        Software::updateValidityIndicator($this->fields["softwares_id"]);
+        \itsmng\Domain\SoftwareAssignmentCancelled::requireSuccess(
+            Software::updateValidityIndicator($this->fields['softwares_id']),
+            'Owning software validity update'
+        );
     }
 
     /**
@@ -221,9 +305,20 @@ class SoftwareLicense extends CommonTreeDropdown
     **/
     public function post_updateItem($history = 1)
     {
-
-        if (in_array("is_valid", $this->updates)) {
-            Software::updateValidityIndicator($this->fields["softwares_id"]);
+        $softwareIds = [];
+        if (in_array('softwares_id', $this->updates, true)
+            && array_key_exists('softwares_id', $this->oldvalues)
+            && (($this->oldvalues['softwares_id'] === null) !== ($this->fields['softwares_id'] === null)
+                || $this->oldvalues['softwares_id'] != $this->fields['softwares_id'])) {
+            $softwareIds = [$this->oldvalues['softwares_id'], $this->fields['softwares_id']];
+        } elseif (in_array('is_valid', $this->updates, true)) {
+            $softwareIds = [$this->fields['softwares_id']];
+        }
+        foreach (array_unique($softwareIds) as $softwareId) {
+            \itsmng\Domain\SoftwareAssignmentCancelled::requireSuccess(
+                Software::updateValidityIndicator($softwareId),
+                'Owning software validity update'
+            );
         }
     }
 
@@ -234,7 +329,10 @@ class SoftwareLicense extends CommonTreeDropdown
     **/
     public function post_deleteFromDB()
     {
-        Software::updateValidityIndicator($this->fields["softwares_id"]);
+        \itsmng\Domain\SoftwareAssignmentCancelled::requireSuccess(
+            Software::updateValidityIndicator($this->fields['softwares_id']),
+            'Owning software validity update'
+        );
     }
 
 
