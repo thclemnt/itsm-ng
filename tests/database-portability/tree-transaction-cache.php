@@ -119,6 +119,7 @@ try {
         $cache->set($arrayKey, [$foreign => $foreign]);
         $cache->set($sonsKey($parent), [$parent => $parent, $foreign => $foreign]);
         verify(getAncestorsOf('glpi_entities', $child) === [0 => 0, $parent => $parent], 'Scalar ancestry follows current edges and root-first order inside the private frame');
+        verify(getAncestorsOf('glpi_entities', $grandchild) === [0 => 0, $parent => $parent, $child => $child], 'The seeded descendant scalar cache is exercised through its actual authoritative path');
         verify(getAncestorsOf('glpi_entities', [$child, $grandchild]) === [0 => 0, $parent => $parent, $child => $child], 'Array ancestry ignores shared and persistent derived paths inside the private frame');
         verify(getSonsOf('glpi_entities', $parent) === [$parent => $parent, $child => $child, $grandchild => $grandchild], 'Descendants follow current owning edges instead of cached foreign siblings');
         verify(getAncestorsOf('glpi_entities', 0) === [], 'Private authoritative root ancestry remains empty');
