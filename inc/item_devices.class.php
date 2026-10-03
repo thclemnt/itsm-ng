@@ -243,19 +243,25 @@ class Item_Devices extends CommonDBRelation
         ];
 
         foreach ($device_types as $device_type) {
-            if (isset($CFG_GLPI['item' . strtolower((string) $device_type) . '_types'])) {
-                $itemtypes = $CFG_GLPI['item' . strtolower((string) $device_type) . '_types'];
-                if ($itemtypes == '*' || in_array($itemtype, $itemtypes)) {
-                    if (method_exists($device_type, 'rawSearchOptionsToAdd')) {
-                        $options = array_merge(
-                            $options,
-                            $device_type::rawSearchOptionsToAdd(
-                                $itemtype,
-                                $main_joinparams
-                            )
-                        );
-                    }
-                }
+            $item_device = method_exists($device_type, 'getItem_DeviceType') ? $device_type::getItem_DeviceType() : null;
+            $reference = is_string($item_device) && is_subclass_of($item_device, self::class)
+                ? (\itsmng\Database\EntityRegistry::discriminatedReferences($item_device::getTable())['items_id'] ?? null)
+                : null;
+            // Mapped owners declare affinity on their properties. Unmapped
+            // plugin/core families retain their existing explicit configuration.
+            $itemtypes = $reference !== null
+                ? $item_device::itemAffinity()
+                : ($CFG_GLPI['item' . strtolower((string) $device_type) . '_types'] ?? []);
+            $concerns_item = $itemtypes === '*' || (is_array($itemtypes)
+                && (in_array('*', $itemtypes, true) || in_array($itemtype, $itemtypes, true)));
+            if ($concerns_item && method_exists($device_type, 'rawSearchOptionsToAdd')) {
+                $options = array_merge(
+                    $options,
+                    $device_type::rawSearchOptionsToAdd(
+                        $itemtype,
+                        $main_joinparams
+                    )
+                );
             }
         }
 
