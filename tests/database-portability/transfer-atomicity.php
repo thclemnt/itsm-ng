@@ -84,6 +84,35 @@ class PluginTransfer_atomicity_fixtureNotificationEventOwnershipprobe
     }
 }
 
+/** A real final lifecycle hook leaves the PostgreSQL transaction aborted. */
+class AbortedCommitTransferDomain extends Domain
+{
+    public static int $caughtFailures = 0;
+
+    public static function getTable($classname = null)
+    {
+        return Domain::getTable();
+    }
+
+    public static function getType()
+    {
+        return Domain::getType();
+    }
+
+    public function post_updateItem($history = 1)
+    {
+        parent::post_updateItem($history);
+        try {
+            $GLOBALS['DB']->getDoctrineConnection()->executeQuery('SELECT 1 / 0');
+            throw new LogicException('Expected PostgreSQL statement failure');
+        } catch (\Doctrine\DBAL\Exception\DriverException $error) {
+            verify($error->getSQLState() === '22012', 'Final actual hook catches native PostgreSQL division by zero');
+            ++self::$caughtFailures;
+        }
+        // Deliberately no later query: commit must check the same physical transaction.
+    }
+}
+
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
     exit(1);
@@ -773,6 +802,35 @@ try {
             $schema->dropTable($childTable->getName());
             $schema->dropTable($table->getName());
             $DB->clearSchemaCache();
+        }
+    }
+    if ($DB->getProvider() === 'pgsql') {
+        foreach (['standalone', 'owned transfer', 'caller transfer'] as $abortedContext) {
+            $abortedGraph = $graph($recursiveCommercial, $recursive, $source);
+            $before = $snapshot($abortedGraph);
+            if ($abortedContext === 'caller transfer') {
+                $connection->beginTransaction();
+            }
+            try {
+                $level = $connection->getTransactionNestingLevel();
+                $marker = $level ? $fixtures->create('glpi_suppliers', ['name' => $prefix . ' aborted caller marker', 'entities_id' => 0]) : null;
+                $caught = AbortedCommitTransferDomain::$caughtFailures;
+                try {
+                    $result = $abortedContext === 'standalone'
+                        ? (new AbortedCommitTransferDomain())->update(['id' => $abortedGraph['domain'], 'entities_id' => $destination])
+                        : (new Transfer())->moveItems(['Computer' => [$abortedGraph['computer']], AbortedCommitTransferDomain::class => [$abortedGraph['domain']]], $destination, ['keep_history' => 1]);
+                } catch (\Doctrine\DBAL\Exception\DriverException $error) {
+                    verify($error->getSQLState() === '25P02', 'Owning persistence reports the actual aborted commit');
+                    $result = false;
+                }
+                verify($result === false && AbortedCommitTransferDomain::$caughtFailures === $caught + 1, 'Caught final PostgreSQL hook error cannot become successful ' . $abortedContext);
+                verify($snapshot($abortedGraph) === $before && $connection->getTransactionNestingLevel() === $level
+                    && (int)$connection->fetchOne('SELECT 1') === 1 && ($marker === null || $read('glpi_suppliers', $marker) !== null), 'Aborted final commit restores rows and retains a usable caller frame and marker');
+            } finally {
+                if ($abortedContext === 'caller transfer') {
+                    $connection->rollBack();
+                }
+            }
         }
     }
     verify((new ForeignKeys())->audit($connection) === [], 'Transfer lifecycle leaves all enforced associations valid');
