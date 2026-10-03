@@ -54,6 +54,9 @@ $transaction = false;
 $savedTimezone = null;
 $savedDefaultEngine = null;
 $savedLogEngine = null;
+$base = 4294972000;
+$identityControl = null;
+verify(!$connection->isTransactionActive() && $connection->getTransactionNestingLevel() === 0, 'Fixture DDL starts outside application transactions');
 try {
     if ($connection->getDatabasePlatform() instanceof Doctrine\DBAL\Platforms\AbstractMySQLPlatform) {
         $savedDefaultEngine = $connection->fetchOne('SELECT @@SESSION.default_storage_engine');
@@ -73,6 +76,37 @@ try {
     verify(!$manager->tablesExist([$external->getName()]), 'Fixture owns external source binding table');
     $manager->createTable($external);
     $createdTables[] = $external->getName();
+    if ($savedDefaultEngine !== null) {
+        // A discarded assigned-ID insert can move the allocator into the pinned
+        // export range even though no core row survives. Use an owned table;
+        // application identity counters are never reset or otherwise repaired.
+        $identityControl = 'itsm_port_domain_identity_control';
+        verify(!$manager->tablesExist([$identityControl]), 'Fixture owns the identity rollback control');
+        $identityTable = new Doctrine\DBAL\Schema\Table($identityControl);
+        $identityTable->addColumn('id', 'bigint', ['autoincrement' => true]);
+        $identityTable->addColumn('name', 'string', ['length' => 255]);
+        $identityTable->setPrimaryKey(['id']);
+        $identityTable->addOption('engine', 'InnoDB');
+        $manager->createTable($identityTable);
+        $createdTables[] = $identityControl;
+        verify($connection->fetchOne('SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$identityControl]) === 'InnoDB', 'Owned rollback control uses actual transactional storage');
+        $connection->beginTransaction();
+        try {
+            $connection->insert($identityControl, ['id' => $base, 'name' => 'Discarded first imported type']);
+        } finally {
+            $connection->rollBack();
+        }
+        verify(!(bool)$connection->fetchOne('SELECT COUNT(*) FROM ' . $identityControl), 'Assigned-ID rollback leaves no control rows');
+        $connection->beginTransaction();
+        try {
+            $connection->insert($identityControl, ['name' => 'Ordinary unrelated fixture']);
+            verify((int)$connection->lastInsertId() === $base + 1, 'Ordinary identity allocation can enter the second pinned export identity after rollback');
+        } finally {
+            $connection->rollBack();
+        }
+        verify(!(bool)$connection->fetchOne('SELECT COUNT(*) FROM ' . $identityControl)
+            && !$connection->isTransactionActive() && $connection->getTransactionNestingLevel() === 0, 'Repeated control rollback removes every row and restores transaction ownership');
+    }
     verify(Ledger::state($connection, DomainPluginImport::RECEIPT) === null, 'No prior current receipt in fixture');
     if ($savedDefaultEngine !== null) {
         $savedLogEngine = $connection->fetchOne("SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='glpi_logs'");
@@ -114,7 +148,6 @@ try {
             verify($entity->entities->id === (int)$publicAsset->getEntityID() && $entity->is_recursive === (bool)$publicAsset->isRecursive(), 'ORM asset ownership matches actual public capabilities: ' . $kind);
         }
     }
-    $base = 4294972000;
     $export = DomainsPlugin210Export::rows(['entity_a' => $entityA, 'entity_b' => $entityB, 'supplier' => $supplier,
         'user' => $user, 'group' => $group, 'assets' => $assets], $base);
     foreach ($export as $table => $rows) {
@@ -123,10 +156,21 @@ try {
         }
     }
     // Existing names, category roles, and another Domain's asset links belong to core users.
-    $coreType = $fixtures->create('glpi_domaintypes', ['entities_id' => $entityA, 'name' => 'Duplicate 日本語']);
-    $coreDomain = $fixtures->create('glpi_domains', ['entities_id' => $entityA, 'domaintypes_id' => $coreType, 'name' => 'same.example 日本語']);
+    // Their explicit fixture identities are disjoint from the pinned export,
+    // independently of allocator advancement from earlier rolled-back imports.
+    $coreType = $base - 10;
+    $coreDomain = $base - 11;
+    $coreLink = $base - 12;
+    foreach (['glpi_domaintypes' => $coreType, 'glpi_domains' => $coreDomain, 'glpi_domains_items' => $coreLink] as $table => $id) {
+        verify(!(bool)$connection->fetchOne('SELECT COUNT(*) FROM ' . $connection->quoteIdentifier($table) . ' WHERE id = ?', [$id]), 'Fixture exclusively owns its unrelated core identity: ' . $table);
+    }
+    verify(!in_array($coreType, array_column($export['glpi_plugin_domains_domaintypes'], 'id'), true)
+        && !in_array($coreDomain, array_column($export['glpi_plugin_domains_domains'], 'id'), true)
+        && !in_array($coreLink, array_column($export['glpi_plugin_domains_domains_items'], 'id'), true), 'Unrelated fixture identities cannot collide with pinned export identities');
+    verify($fixtures->create('glpi_domaintypes', ['id' => $coreType, 'entities_id' => $entityA, 'name' => 'Duplicate 日本語']) === $coreType, 'Unrelated core type retains its explicit fixture identity');
+    verify($fixtures->create('glpi_domains', ['id' => $coreDomain, 'entities_id' => $entityA, 'domaintypes_id' => $coreType, 'name' => 'same.example 日本語']) === $coreDomain, 'Unrelated core domain retains its explicit fixture identity');
     $category = $fixtures->create('glpi_domainrelations', ['name' => 'Category role']);
-    $coreLink = $fixtures->create('glpi_domains_items', ['domains_id' => $coreDomain, 'domainrelations_id' => $category, 'itemtype' => 'Computer', 'items_id' => $assets['Computer']]);
+    verify($fixtures->create('glpi_domains_items', ['id' => $coreLink, 'domains_id' => $coreDomain, 'domainrelations_id' => $category, 'itemtype' => 'Computer', 'items_id' => $assets['Computer']]) === $coreLink, 'Unrelated core link retains its explicit fixture identity');
     $financial = $fixtures->create('glpi_infocoms', ['itemtype' => DomainPluginSource::ITEMTYPE, 'items_id' => $base + 10, 'entities_id' => $entityA,
         'suppliers_id' => $financialSupplier, 'comment' => "Original invoice O'Reilly 日本語"]);
     $note = $fixtures->create('glpi_notepads', ['itemtype' => DomainPluginSource::ITEMTYPE, 'items_id' => $base + 11, 'content' => "Private note C:\\new 日本語"]);
@@ -187,6 +231,20 @@ try {
         return $result;
     };
     $before = $counts();
+    // Separating fixture identities must not weaken real ownership collisions.
+    $level = $connection->getTransactionNestingLevel();
+    $connection->beginTransaction();
+    try {
+        verify($fixtures->create('glpi_domaintypes', ['id' => $base, 'entities_id' => $entityA, 'name' => 'Occupied export identity']) === $base, 'Create a real core collision at the first pinned type identity');
+        $occupied = $connection->fetchAssociative('SELECT * FROM glpi_domaintypes WHERE id = ?', [$base]);
+        $occupiedCounts = $counts();
+        refused(fn () => $importer->import(), 'Domains import ID collision: glpi_domaintypes.' . $base);
+        verify($counts() === $occupiedCounts && $connection->fetchAssociative('SELECT * FROM glpi_domaintypes WHERE id = ?', [$base]) === $occupied
+            && Ledger::state($connection, DomainPluginImport::RECEIPT) === null, 'Real identity collision refuses without modifying core data or writing a receipt');
+    } finally {
+        $connection->rollBack();
+    }
+    verify($counts() === $before && $connection->getTransactionNestingLevel() === $level, 'Owned collision rollback restores data and caller transaction despite allocator advancement');
     $connection->update('glpi_plugin_domains_domaintypes', ['entities_id' => 0, 'is_recursive' => 1], ['id' => $base]);
     $connection->update('glpi_suppliers', ['entities_id' => 0, 'is_recursive' => 1], ['id' => $supplier]);
     verify($importer->plan()->counts['domains'] === 3, 'Recursive root type and registrar are valid in a descendant entity');
@@ -472,4 +530,6 @@ try {
     $PLUGIN_HOOKS = $savedHooks;
     $pluginProperty->setValue(null, $savedPlugins);
 }
+verify($identityControl === null || !$manager->tablesExist([$identityControl]), 'Owned identity rollback control is removed after the contract');
+verify(!$connection->isTransactionActive() && $connection->getTransactionNestingLevel() === 0, 'Contract cleanup leaves no caller transaction');
 echo $DB->getProvider() . ": canonical Domains lifecycle, exact ownership/provenance, supplier/helpdesk/permissions, notifications/policy, audit, atomic rollback, CLI/retry and source diagnostics passed.\n";
