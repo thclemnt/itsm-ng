@@ -18,6 +18,35 @@ final class ProfileUserRepository
     {
     }
 
+    /** Session grants retain profile/entity ownership and merge duplicate recursive grants. */
+    public function sessionProfiles(int $user): array
+    {
+        $query = $this->em->createQueryBuilder()->select(
+            'p.id AS profile_id',
+            'p.name AS profile_name',
+            'e.id AS entity_id',
+            'e.name AS entity_name',
+            'r.is_recursive AS is_recursive'
+        )->from(ProfileUser::class, 'r')->join('r.profiles', 'p')->join('r.entities', 'e')
+            ->where('IDENTITY(r.users) = :user')->setParameter('user', $user, Types::INTEGER);
+        $this->order($query, ['p.name']);
+        $query->addOrderBy('p.id');
+        $this->order($query, ['e.completename'], 'entity_absent');
+        $query->addOrderBy('e.id')->addOrderBy('r.id');
+        $profiles = [];
+        foreach ($query->getQuery()->getScalarResult() as $row) {
+            $profile = (int)$row['profile_id'];
+            $entity = (int)$row['entity_id'];
+            $profiles[$profile]['name'] = $row['profile_name'];
+            $grant = $profiles[$profile]['entities'][$entity] ?? [
+                'id' => $entity, 'name' => $row['entity_name'], 'is_recursive' => 0,
+            ];
+            $grant['is_recursive'] |= (int)$row['is_recursive'];
+            $profiles[$profile]['entities'][$entity] = $grant;
+        }
+        return $profiles;
+    }
+
     public function scopes(int $user, ?int $profile = null, ?string $right = null, int $mask = 0): array
     {
         $query = $this->em->createQueryBuilder()->select('DISTINCT IDENTITY(r.entities) AS entities_id', 'r.is_recursive AS is_recursive')
@@ -77,11 +106,11 @@ final class ProfileUserRepository
     }
 
     /** Retain MySQL's NULL-first name ordering on both providers. */
-    private function order(QueryBuilder $query, array $fields): void
+    private function order(QueryBuilder $query, array $fields, string $prefix = 'absent'): void
     {
         foreach ($fields as $index => $field) {
-            $query->addSelect('CASE WHEN ' . $field . ' IS NULL THEN 0 ELSE 1 END AS HIDDEN absent' . $index)
-                ->addOrderBy('absent' . $index)->addOrderBy($field);
+            $query->addSelect('CASE WHEN ' . $field . ' IS NULL THEN 0 ELSE 1 END AS HIDDEN ' . $prefix . $index)
+                ->addOrderBy($prefix . $index)->addOrderBy($field);
         }
     }
 }

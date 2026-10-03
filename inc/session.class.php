@@ -522,74 +522,14 @@ class Session
 
         $_SESSION['glpiprofiles'] = [];
 
-        if (!$DB->tableExists('glpi_profiles_users')) {
-            //table does not exists in old GLPI versions
+        if (!$DB->getDoctrineConnection()->createSchemaManager()->tablesExist(['glpi_profiles_users'])) {
+            // Older schemas may not have authorization grants yet.
             return;
         }
 
-        $iterator = $DB->request([
-           'SELECT'          => [
-              'glpi_profiles.id',
-              'glpi_profiles.name'
-           ],
-           'DISTINCT'        => true,
-           'FROM'            => 'glpi_profiles_users',
-           'INNER JOIN'      => [
-              'glpi_profiles'   => [
-                 'ON' => [
-                    'glpi_profiles_users'   => 'profiles_id',
-                    'glpi_profiles'         => 'id'
-                 ]
-              ]
-           ],
-           'WHERE'           => [
-              'glpi_profiles_users.users_id'   => $userID
-           ],
-           'ORDERBY'         => 'glpi_profiles.name'
-        ]);
-
-        if (count($iterator)) {
-            while ($data = $iterator->next()) {
-                $key = $data['id'];
-                $_SESSION['glpiprofiles'][$key]['name'] = $data['name'];
-                $entities_iterator = $DB->request([
-                   'SELECT'    => [
-                      'glpi_profiles_users.entities_id AS eID',
-                      'glpi_profiles_users.id AS kID',
-                      'glpi_profiles_users.is_recursive',
-                      'glpi_entities.*'
-                   ],
-                   'FROM'      => 'glpi_profiles_users',
-                   'LEFT JOIN' => [
-                      'glpi_entities'   => [
-                         'ON' => [
-                            'glpi_profiles_users'   => 'entities_id',
-                            'glpi_entities'         => 'id'
-                         ]
-                      ]
-                   ],
-                   'WHERE'     => [
-                      'glpi_profiles_users.profiles_id'   => $key,
-                      'glpi_profiles_users.users_id'      => $userID
-                   ],
-                   'ORDERBY'   => 'glpi_entities.completename'
-                ]);
-
-                while ($data = $entities_iterator->next()) {
-                    // Do not override existing entity if define as recursive
-                    if (
-                        !isset($_SESSION['glpiprofiles'][$key]['entities'][$data['eID']])
-                        || $data['is_recursive']
-                    ) {
-                        $_SESSION['glpiprofiles'][$key]['entities'][$data['eID']] = [
-                           'id'           => $data['eID'],
-                           'name'         => $data['name'],
-                           'is_recursive' => $data['is_recursive']
-                        ];
-                    }
-                }
-            }
-        }
+        $_SESSION['glpiprofiles'] = (new \itsmng\Database\Repository\ProfileUserRepository(
+            \itsmng\Database\Orm::create($DB)
+        ))->sessionProfiles((int)$userID);
     }
 
 

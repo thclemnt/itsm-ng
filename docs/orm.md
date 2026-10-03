@@ -6,6 +6,10 @@ Newer integrated batches and their pending combined validation are tracked in
 [the modernization handoff](modernization-handoff.md).
 Earlier dated counts below describe their own checkpoints, not current completion.
 
+The isolated [session authorization draft](modernization-session-authorization-draft.md)
+prepares the remaining Session grant/group reads; provider and application
+validation are pending and it is not part of an integrated passing milestone.
+
 Doctrine ORM 3 is an explicit dependency alongside DBAL 4.4+ (PHP 8.2+). The attributes in
 `src/Database/Entity` now map every column of all 357 current core tables,
 including the dashboard's generated numeric primary key and explicitly assigned IDs elsewhere.
