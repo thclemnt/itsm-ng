@@ -604,30 +604,11 @@ class Session
 
         $_SESSION["glpigroups"] = [];
 
-        $iterator = $DB->request([
-           'SELECT'    => Group_User::getTable() . '.groups_id',
-           'FROM'      => Group_User::getTable(),
-           'LEFT JOIN' => [
-              Group::getTable() => [
-                 'ON' => [
-                    Group::getTable()       => 'id',
-                    Group_User::getTable()  => 'groups_id'
-                 ]
-              ]
-           ],
-           'WHERE'     => [
-              Group_User::getTable() . '.users_id' => self::getLoginUserID()
-           ] + getEntitiesRestrictCriteria(
-               Group::getTable(),
-               'entities_id',
-               $_SESSION['glpiactiveentities'],
-               true
-           )
-        ]);
-
-        while ($data = $iterator->next()) {
-            $_SESSION["glpigroups"][] = $data["groups_id"];
-        }
+        // Explicit active entities stay authoritative even when the all-entities flag is stale.
+        $scope = getEntitiesRestrictCriteria(Group::getTable(), 'entities_id', $_SESSION['glpiactiveentities'], true);
+        $_SESSION['glpigroups'] = (new \itsmng\Database\Repository\GroupMembershipRepository(
+            \itsmng\Database\Orm::create($DB)
+        ))->sessionGroupIds((int)self::getLoginUserID(), $scope);
     }
 
 

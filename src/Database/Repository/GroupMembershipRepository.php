@@ -27,6 +27,18 @@ final class GroupMembershipRepository
             ->orderBy('group_id')->getQuery()->getScalarResult(), 'group_id'));
     }
 
+    /** Login groups are scoped by the Group owner, not by other users' profile grants. */
+    public function sessionGroupIds(int $user, array $groupScope): array
+    {
+        $query = $this->em->createQueryBuilder()->select('IDENTITY(r.groups) AS group_id')
+            ->from(GroupMembership::class, 'r')->join('r.groups', 'g')
+            ->where('IDENTITY(r.users) = :user')->setParameter('user', $user, Types::INTEGER);
+        $compiler = (new RecordCriteria($query, $this->em->getClassMetadata(GroupMembership::class), false))
+            ->withJoinedMetadata($this->em->getClassMetadata(Group::class), 'g');
+        $query->andWhere($compiler->where($groupScope))->orderBy('r.id');
+        return array_map('intval', array_column($query->getQuery()->getScalarResult(), 'group_id'));
+    }
+
     public function groupsForUser(int $user, array $criteria): array
     {
         $query = $this->em->createQueryBuilder()->select('r', 'g')->from(GroupMembership::class, 'r')->join('r.groups', 'g');
