@@ -25,11 +25,11 @@ class DBpgsql extends DBAdapter
     }
 
     /** The same physical connection is used by DBAL and legacy queries. */
-    public function getDoctrineConnection(): \Doctrine\DBAL\Connection
+    public function getDoctrineConnection(): \itsmng\Database\PostgresConnection
     {
         if ($this->doctrine === null) {
-            $this->doctrine = new \Doctrine\DBAL\Connection(
-                ['dbname' => $this->dbdefault, 'serverVersion' => $this->getVersion()],
+            $this->doctrine = new \itsmng\Database\PostgresConnection(
+                ['dbname' => $this->dbdefault],
                 new \itsmng\Database\NativeDriver($this->getNativeConnection())
             );
             $this->doctrine->setNestTransactionsWithSavepoints(true);
@@ -394,7 +394,7 @@ SQL, [$this->dbschema, $table]);
 
     public function getVersion()
     {
-        return pg_parameter_status($this->dbh, 'server_version');
+        return $this->getDoctrineConnection()->getServerVersion();
     }
 
     public function getInfo()
@@ -410,10 +410,19 @@ SQL, [$this->dbschema, $table]);
 
     public function commit()
     {
-        if (pg_transaction_status($this->dbh) === PGSQL_TRANSACTION_INERROR) {
-            return false;
+        $connection = $this->getDoctrineConnection();
+        try {
+            // The public legacy API can see raw BEGIN outside DBAL's nesting.
+            // Preserve its aborted-transaction refusal before delegation even
+            // when DBAL itself would report NoActiveTransaction.
+            $connection->assertCommittable();
+            $connection->commit();
+        } catch (\Doctrine\DBAL\Exception\DriverException $error) {
+            if ($error->getSQLState() === '25P02') {
+                return false;
+            }
+            throw $error;
         }
-        $this->getDoctrineConnection()->commit();
         return true;
     }
 
@@ -433,13 +442,15 @@ SQL, [$this->dbschema, $table]);
         if (!$this->dbh) {
             return false;
         }
-        $wrapped = $this->doctrine !== null && $this->doctrine->isConnected();
+        $wrapped = $this->doctrine !== null
+            && $this->doctrine->getDriver()->hasTransferredConnection();
         if ($this->doctrine !== null) {
             $this->doctrine->close();
             $this->doctrine = null;
         }
-        // An unconnected DBAL facade has no driver connection destructor to
-        // close the native handle (e.g. after only asking for its platform).
+        // A facade that never transferred this handle has no owning driver
+        // destructor. Conversely, DBAL may already have destroyed its driver
+        // on connection loss; do not close that same handle a second time.
         $result = $wrapped ? true : pg_close($this->dbh);
         $this->dbh = null;
         $this->connected = false;
