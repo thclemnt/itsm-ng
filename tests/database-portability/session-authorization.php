@@ -2,6 +2,7 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Entity\ProfileUser;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\GroupMembershipRepository;
 use itsmng\Database\Repository\ProfileUserRepository;
@@ -93,8 +94,10 @@ try {
     ]);
     $grant('null', 0, false);
     $grant('null', $child, false);
-    $grant('first', $parent, false);
-    $recursiveGrant = $grant('first', $parent, true, true);
+    // Password login retires unbacked rule-owned grants. Keep the intended
+    // recursive authorization manual while exercising the dynamic duplicate.
+    $nonrecursiveDynamicGrant = $grant('first', $parent, false, true);
+    $recursiveGrant = $grant('first', $parent, true);
     $grant('tie', $parent, true);
     $grant('tie', $parent, false, true);
     $grant('tie', $unnamed, false);
@@ -179,6 +182,18 @@ try {
         };
     }
     verify((new Auth())->login($login, 'session secret', true), 'Actual password login with owned grants');
+    $postLoginManager = Orm::create($DB);
+    verify($postLoginManager->getConnection() === $connection, 'Post-login grant checks retain the supplied uncommitted writer');
+    verify($postLoginManager->find(ProfileUser::class, $nonrecursiveDynamicGrant) === null, 'Actual password login retires the unbacked dynamic duplicate');
+    $manualRecursiveGrant = $postLoginManager->find(ProfileUser::class, $recursiveGrant);
+    verify($manualRecursiveGrant instanceof ProfileUser
+        && $manualRecursiveGrant->id === $recursiveGrant
+        && $manualRecursiveGrant->users?->id === $user
+        && $manualRecursiveGrant->profiles?->id === $profiles['first']
+        && $manualRecursiveGrant->entities?->id === $parent
+        && $manualRecursiveGrant->is_recursive === true
+        && $manualRecursiveGrant->is_dynamic === false
+        && $manualRecursiveGrant->is_default_profile === false, 'Actual password login preserves the complete manual recursive grant and its owners');
     verify($_SESSION['glpiactiveprofile']['id'] === $profiles['first'] && $_SESSION['glpiactiveentities'] === [$child => $child], 'Granted preferred profile and recursive default entity retain selection');
     verify(Session::haveRight('computer', READ | CREATE) === (READ | CREATE)
         && Session::haveRight('computer', CREATE | UPDATE) === CREATE
