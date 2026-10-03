@@ -44,6 +44,15 @@ final class ProjectionPlanningFixture extends TypedItemMigration
     {
         return ['Computer' => 'computers'];
     }
+
+    public static function checkSql(string $table): string
+    {
+        // The fixture supplies its scope at construction time; its planning
+        // contract never executes this CHECK or any other adoption statement.
+        return 'ALTER TABLE ' . $table . ' ADD CONSTRAINT ' . static::constraintName($table)
+            . " CHECK (itemtype = 'Computer' AND computers_id IS NOT NULL AND computers_id >= 1)";
+    }
+
 }
 
 verify(str_starts_with($DB->dbdefault, 'itsm_port_'), 'Dedicated disposable database required');
