@@ -165,9 +165,16 @@ class RuleAsset extends DbTestCase
 
         $root_ent_id = getItemByTypeName('Entity', '_test_root_entity', true);
 
+        $location = new \Location();
+        $location_id = $location->add([
+           'name'        => 'RuleAsset assigned location',
+           'entities_id' => $root_ent_id,
+        ]);
+        $this->integer((int)$location_id)->isGreaterThan(0);
+
         // prepare rule
         $this->_createRuleComment(\RuleAsset::ONUPDATE);
-        $this->_createRuleLocation(\RuleAsset::ONUPDATE);
+        $this->_createRuleLocation(\RuleAsset::ONUPDATE, $location_id);
 
         foreach ($CFG_GLPI['asset_types'] as $itemtype) {
             $item     = new $itemtype();
@@ -179,7 +186,9 @@ class RuleAsset extends DbTestCase
                'comment'     => 'mycomment'
             ];
             if ($itemtype == 'SoftwareLicense') {
-                $item_input['softwares_id'] = 1;
+                $software_id = getItemByTypeName('Software', '_test_soft', true);
+                $this->integer((int)$software_id)->isGreaterThan(0);
+                $item_input['softwares_id'] = $software_id;
             }
             $items_id = $item->add($item_input);
             $this->integer((int)$items_id)->isGreaterThan(0);
@@ -189,7 +198,7 @@ class RuleAsset extends DbTestCase
             } else {
                 $this->string((string)$item->getField('comment'))->isEqualTo('mycomment');
             }
-            $this->integer((int)$item->getField('locations_id'))->isGreaterThan(0);
+            $this->integer((int)$item->getField('locations_id'))->isEqualTo((int)$location_id);
         }
     }
 
@@ -230,7 +239,7 @@ class RuleAsset extends DbTestCase
         $this->checkInput($ruleaction, $act_id, $act_input);
     }
 
-    private function _createRuleLocation($condition)
+    private function _createRuleLocation($condition, int $location_id)
     {
         $ruleasset  = new \RuleAsset();
         $rulecrit   = new \RuleCriteria();
@@ -256,7 +265,7 @@ class RuleAsset extends DbTestCase
            'rules_id'    => $ruleid,
            'action_type' => 'assign',
            'field'       => 'locations_id',
-           'value'       => 1
+           'value'       => $location_id
         ]);
         $this->checkInput($ruleaction, $act_id, $act_input);
     }
