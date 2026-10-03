@@ -1,8 +1,10 @@
 # Transfer lifecycle ownership
 
 This batch is prepared in `th/exp/postgres-transfer-lifecycle`, based on
-`b3ed706ad69996aca8c3e07f83ede98329696b25`. Database validation is pending an
-exclusive validation window. The application modernization goal remains open.
+`b3ed706ad69996aca8c3e07f83ede98329696b25`. Focused provider validation has
+started; the actual final-hook PostgreSQL probe is failing until its separate
+shared-connection commit repair is integrated. The application modernization
+goal remains open.
 
 `TransferCoordinator` owns the supplied active writer's transaction or DBAL
 savepoint. A batch includes simulation cleanup, selected items, recursive
@@ -119,17 +121,49 @@ successful forwarded-child retention followed by later failure, actual queued
 transport timing, nested deletion/ownership delivery merge and cancellation,
 and standalone native nontransactional parent/registered-child diagnostics.
 
-Actual evidence so far is PHP lint, formatter and whitespace validation only
+The initial source evidence was PHP lint, formatter and whitespace validation
 (15 PHP files including the commercial Supplier prerequisite), plus 75
 source-only notification scope assertions using the real registration/scope
 helpers with inert base classes and translators. That probe used no application
 bootstrap or database driver. Its script/log are under
 `/workspace/itsm-env/evidence/notification-disable-source-probe.*`.
-These are not provider, installation, HTTP, browser or CI results. Required next
-validation includes all three new contracts, adjacent Domain/import/transfer,
+That initial probe was not provider, installation, HTTP, browser or CI validation.
+The final combined source also passed lint/formatter/whitespace for 37 PHP files.
+Actual focused provider results are recorded below. Required next validation
+includes the shared PostgreSQL commit repair, adjacent Domain/import/transfer,
 software/clone/purge/notification/schema contracts and original Transfer,
 Computer, Domain and notification-setting classes on both providers, followed
 by coherent full suites and real transfer HTTP/browser validation.
+
+On 2026-10-03, new owned PostgreSQL/MariaDB databases were cloned from the
+validated populated Supplier checkpoint with native template/full-dump methods.
+Both actual `db:migrate --apply` checks reported no pending canonical migration.
+At source `6e12f89fae59f14a0af3a2a3b52d7f8b9e9e6baf`, the public writer-refusal
+contract passed on both engines, notification scope passed 75 assertions each,
+and expanded Transfer atomicity passed 362 assertions on PostgreSQL (8.538s)
+and 371 on MariaDB (7.132s). These include actual multilevel tree refusals,
+standalone/owned/caller DomainRecord forwarding, retained models, physical
+notification dispatch, nested deletion scopes, and native MyISAM parent/child
+diagnostics with the same-model InnoDB control. These are focused contracts,
+not fresh installation, full-suite, original application or browser results.
+
+Two earlier failures are retained as evidence: initially absent dynamic
+input/updates/oldvalues exposed unsafe direct Transfer checkpoint reads, repaired
+by using the property-preserving model journal for Transfer itself; whole-CFG
+comparison differed only in metadata-derived `glpitablesitemtype` and
+`glpiitemtypetables` caches populated by fixtures. The corrected Transfer check
+preserves exact notification-setting presence/types/catalog/ancillary values;
+the dedicated notification scope contract retains its whole-CFG assertions.
+
+The added actual final `post_updateItem` probe at source
+`8c2a7202ba25e644fed9886a42b0a709b42e70fb` catches native PostgreSQL division by
+zero (22012) and performs no later query. It exposed a real defect: standalone
+ownership update reported success when stock DBAL committed an aborted physical
+transaction. The contract fails; the separate shared PostgreSQL connection guard
+must refuse that commit while preserving a usable caller frame. Its integration
+and retest remain pending. The existing generic driver is not modified by this
+Transfer batch. Logs, exact source hashes, commands and durations are retained
+under `/workspace/itsm-env/evidence/transfer-lifecycle-*`.
 
 Limits: database rollback covers transactional mutations on the participating
 connection. Core MySQL tables use InnoDB, and known selected non-InnoDB parent
