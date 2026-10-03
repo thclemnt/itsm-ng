@@ -59,7 +59,11 @@ try {
     $data = ['id' => 1, 'payload' => '{"role":"subject"}', $quotedColumn => '[1,null,"quoted"]', 'json_check' => '{"explicit":"unquoted DDL column"}',
         'plain_text' => 'plain non-JSON text', 'literal_fake' => 'another non-JSON value', 'compound_fake' => 'a permissive compound predicate is not JSON ownership',
         'true' => 'constant TRUE does not reference this column', 'false' => 'constant FALSE does not reference this column', 'null' => 'constant NULL does not reference this column'];
-    $connection->insert($name, $data);
+    $quotedData = [];
+    foreach ($data as $field => $value) {
+        $quotedData[$quote($field)] = $value;
+    }
+    $connection->insert($quote($name), $quotedData);
     $expected = new Table($name);
     $expected->addColumn('id', 'integer');
     $expected->setPrimaryKey(['id']);
