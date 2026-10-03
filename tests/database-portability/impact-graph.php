@@ -16,6 +16,7 @@ define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
 require __DIR__ . '/FixtureRecords.php';
+require __DIR__ . '/fixtures/HistoricalBooleanChecks.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
     exit(1);
@@ -139,7 +140,9 @@ $quote = $platform->quoteIdentifier(...);
 $postgres = $platform instanceof \Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 $migration = new \itsmng\Database\Migration\ImpactGraphReferences();
 $created = [];
+$historicalChecks = new HistoricalBooleanChecks($connection, $migration::FLAGS);
 try {
+    $historicalChecks->detach();
     $context = $fixtures->create('glpi_impactcontexts', ['positions' => '{}', 'show_depends' => false, 'show_impact' => true]);
     $created[] = ['glpi_impactcontexts', $context];
     $compound = $fixtures->create('glpi_impactcompounds', ['name' => 'Migrated impact group']);
@@ -190,6 +193,7 @@ try {
             $rowId = $table === 'glpi_impactitems' ? $first : $context;
             $old = $connection->fetchOne('SELECT ' . $quote($column) . ' FROM ' . $quote($table) . ' WHERE id = ?', [$rowId]);
             $connection->update($table, [$column => 2], ['id' => $rowId]);
+            verify((int)$connection->fetchOne('SELECT ' . $quote($column) . ' FROM ' . $quote($table) . ' WHERE id = ?', [$rowId]) === 2, 'Historical flag is genuinely invalid before the migration audit');
             $rejected = false;
             try {
                 $migration->apply($connection);
@@ -214,10 +218,15 @@ try {
     }
     verify($migration->plan($connection) === ['sql' => [], 'counts' => []] && $migration->apply($connection) === [], 'Impact migration retries are idempotent');
 } finally {
-    foreach (array_reverse($created) as [$table, $id]) {
-        $connection->delete($table, ['id' => $id]);
+    try {
+        foreach (array_reverse($created) as [$table, $id]) {
+            $connection->delete($table, ['id' => $id]);
+        }
+        $migration->apply($connection);
+        (new ForeignKeys())->apply($connection);
+    } finally {
+        $historicalChecks->restore();
     }
-    $migration->apply($connection);
-    (new ForeignKeys())->apply($connection);
 }
+verify($historicalChecks->restored(), 'Impact historical fixture restores all native CHECKs and the exact current Boolean receipt');
 echo $DB->getProvider() . ": Impact search, graph queries, ownership cleanup, native flags and migration passed.\n";

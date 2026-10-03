@@ -264,3 +264,36 @@ Category retry, rejection and restoration evidence remains pending root's
 exclusive provider window. Frozen baseline/history files have no diff, and the
 historical SQL literal declarations are retained. Source syntax/style results
 are not populated upgrade/retry or configured-mode application validation.
+
+### Historical fixture follow-up at a736
+
+The combined MariaDB suite at `a736d72e03` exposed current CHECKs preempting
+historical bad-data tests: `impact-graph.php:192` injects native flag2 into
+`glpi_impactitems.is_slave`, and `oidc.php:165` injects flag2 into
+`glpi_oidc_users.update`. These are historical audit inputs, whereas the installed
+schema now correctly refuses them immediately. The source-only fixture follow-up
+retains every prior assertion and adds proof that the invalid scalar is actually
+stored before invoking each old migration's audit.
+
+`HistoricalBooleanChecks` is a test-only snapshot helper. Its scope comes from
+the tested historical migration's existing frozen FLAGS declaration. It requires
+an idle owned disposable connection, a transactional ledger and a completed
+current Boolean receipt. It removes only the scoped MySQL-family CHECKs and that
+receipt outside data transactions; PostgreSQL retains its native conversion
+tests. Finally restores captured native clauses/enforcement and the exact original
+receipt bytes, with whole-CHECK-catalogue and receipt equality assertions. Partial
+setup also reaches restoration. No session/global SQL mode or CHECK-enforcement
+setting is disabled, and no production/frozen definition changes.
+
+Category and Supplier tests already explicitly reconstruct old CHECK/history;
+the main migration-history invalid flags use the raw frozen baseline, and plugin
+source tables have their own export definitions. Those inputs remain distinct
+from current native rejection controls. Separately, the raw Domain adoption
+fixture's unrelated plugin omitted its required `version`; strict MySQL refused
+that row before adoption. It now supplies and verifies its own `1.0.0` version,
+retaining the supported Domains plugin's pinned2.1.0 export unchanged.
+
+Provider execution, configured-mode CHECK round-trip equality, populated Domain
+adoption timing and full-suite convergence remain pending for this test-only
+follow-up. The evolving root suite logs are failure evidence, not a final passing
+checkpoint; unrelated schema/subject and PostgreSQL key failures are separate.

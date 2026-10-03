@@ -16,6 +16,7 @@ define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
 require __DIR__ . '/FixtureRecords.php';
+require __DIR__ . '/fixtures/HistoricalBooleanChecks.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
     exit(1);
@@ -120,7 +121,9 @@ $postgres = $platform instanceof \Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 $migration = new OidcReferences();
 $user = null;
 $legacyIds = [];
+$historicalChecks = new HistoricalBooleanChecks($connection, array_map('array_keys', OidcReferences::FLAGS));
 try {
+    $historicalChecks->detach();
     $connection->executeStatement($platform->getDropForeignKeySQL(ForeignKeys::name('glpi_oidc_users', 'user_id'), 'glpi_oidc_users'));
     $connection->executeStatement($platform->getDropIndexSQL('oidc_users_user', 'glpi_oidc_users'));
     if ($postgres) {
@@ -163,6 +166,7 @@ try {
         verify(str_contains($error->getMessage(), 'Orphaned OIDC'), 'Orphan rejected before DDL');
     }
     $connection->update('glpi_oidc_users', ['user_id' => $user, $quote('update') => 2], ['id' => $legacyIds[0]]);
+    verify((int)$connection->fetchOne('SELECT ' . $quote('update') . ' FROM glpi_oidc_users WHERE id = ?', [$legacyIds[0]]) === 2, 'Historical OIDC flag is genuinely invalid before the migration audit');
     try {
         $migration->apply($connection);
         throw new LogicException('Invalid OIDC boolean accepted');
@@ -198,13 +202,18 @@ try {
         }
     }
 } finally {
-    foreach ($legacyIds as $id) {
-        $connection->delete('glpi_oidc_users', ['id' => $id]);
+    try {
+        foreach ($legacyIds as $id) {
+            $connection->delete('glpi_oidc_users', ['id' => $id]);
+        }
+        if ($user !== null) {
+            $connection->delete('glpi_users', ['id' => $user]);
+        }
+        $migration->apply($connection);
+        (new ForeignKeys())->apply($connection);
+    } finally {
+        $historicalChecks->restore();
     }
-    if ($user !== null) {
-        $connection->delete('glpi_users', ['id' => $user]);
-    }
-    $migration->apply($connection);
-    (new ForeignKeys())->apply($connection);
 }
+verify($historicalChecks->restored(), 'OIDC historical fixture restores all native CHECKs and the exact current Boolean receipt');
 echo $DB->getProvider() . ": OIDC scoped persistence, profile and group sync, user purge and audited migration passed.\n";

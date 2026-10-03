@@ -83,7 +83,8 @@ try {
         $connection->insert('glpi_profilerights', ['profiles_id' => 99, 'name' => $right, 'rights' => $mask]);
     }
     $connection->insert('glpi_plugins', ['id' => 9006, 'directory' => 'domains', 'name' => 'Pinned Domains', 'version' => '2.1.0', 'state' => 4]);
-    $connection->insert('glpi_plugins', ['id' => 9007, 'directory' => 'other', 'name' => 'Other plugin', 'state' => 1]);
+    $connection->insert('glpi_plugins', ['id' => 9007, 'directory' => 'other', 'name' => 'Other plugin', 'version' => '1.0.0', 'state' => 1]);
+    verify($connection->fetchOne('SELECT version FROM glpi_plugins WHERE id = 9007') === '1.0.0', 'Unrelated historical plugin supplies and retains its required version');
     $connection->update('glpi_entities', ['use_domains_alert' => 0, 'send_domains_alert_expired_delay' => 30, 'send_domains_alert_close_expiries_delay' => 45], ['id' => 0]);
     foreach (DomainsPlugin210Export::tables(true) as $table) {
         $manager->createTable($table);
