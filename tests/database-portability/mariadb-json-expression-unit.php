@@ -8,7 +8,7 @@ use itsmng\Database\JsonCheckExpression;
 
 $assertions = 0;
 foreach ([false, true] as $ansi) {
-    foreach (['json_valid(payload)', 'JSON_VALID(`payload`)', '(json_valid(`payload`))', ' ( ( json_valid( payload ) ) ) '] as $clause) {
+    foreach (['json_valid(`payload`)', 'JSON_VALID(`payload`)', '(json_valid(`payload`))', ' ( ( json_valid( `payload` ) ) ) '] as $clause) {
         if (JsonCheckExpression::column($clause, $ansi) !== 'payload') {
             throw new RuntimeException('Exact native identifier grammar refused');
         }
@@ -21,6 +21,13 @@ foreach ([false, true] as $ansi) {
             throw new RuntimeException('Literal, compound or malformed CHECK accepted as a JSON declaration');
         }
         ++$assertions;
+    }
+    foreach (['payload', 'true', 'false', 'null', 'current_date', 'current_time', 'current_timestamp', 'current_user', 'localtime', 'localtimestamp', 'utc_date', 'utc_time', 'utc_timestamp', 'session_user', 'system_user'] as $argument) {
+        if (JsonCheckExpression::column('json_valid(' . $argument . ')', $ansi) !== null
+            || JsonCheckExpression::column('json_valid(`' . $argument . '`)', $ansi) !== $argument) {
+            throw new RuntimeException('Bare argument accepted or actual quoted column name lost');
+        }
+        $assertions += 2;
     }
 }
 foreach (['json_valid("payload")' => 'payload', 'json_valid("pay""load")' => 'pay"load'] as $clause => $expected) {

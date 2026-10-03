@@ -50,20 +50,23 @@ try {
     $baseModes = array_values(array_filter(explode(',', $initialMode), static fn (string $mode): bool => strtoupper(trim($mode)) !== 'ANSI_QUOTES'));
     $connection->executeStatement('SET SESSION sql_mode = ?', [implode(',', $baseModes)]);
     $connection->executeStatement('CREATE TABLE ' . $quote($name) . ' (id INTEGER NOT NULL PRIMARY KEY, payload JSON NULL, '
-        . $quote($quotedColumn) . ' JSON NULL, plain_text LONGTEXT NULL, literal_fake LONGTEXT NULL, compound_fake LONGTEXT NULL, ' . $quote('true') . ' LONGTEXT NULL,'
+        . $quote($quotedColumn) . ' JSON NULL, json_check LONGTEXT NULL CHECK (json_valid(json_check)), plain_text LONGTEXT NULL, literal_fake LONGTEXT NULL, compound_fake LONGTEXT NULL, '
+        . $quote('true') . ' LONGTEXT NULL, ' . $quote('false') . ' LONGTEXT NULL, ' . $quote('null') . ' LONGTEXT NULL,'
         . ' CHECK (json_valid(' . $platform->quoteStringLiteral('"literal_fake"') . ')), '
         . ' CHECK (json_valid(compound_fake) OR 1 = 1), '
-        . ' CHECK (json_valid("true"))) ENGINE=InnoDB');
+        . ' CHECK (json_valid("true")), CHECK (json_valid(TRUE)), CHECK (json_valid(FALSE)), CHECK (json_valid(NULL))) ENGINE=InnoDB');
     $created = true;
-    $data = ['id' => 1, 'payload' => '{"role":"subject"}', $quotedColumn => '[1,null,"quoted"]', 'plain_text' => 'plain non-JSON text', 'literal_fake' => 'another non-JSON value', 'compound_fake' => 'a permissive compound predicate is not JSON ownership', 'true' => 'literal double quotes do not reference this column'];
+    $data = ['id' => 1, 'payload' => '{"role":"subject"}', $quotedColumn => '[1,null,"quoted"]', 'json_check' => '{"explicit":"unquoted DDL column"}',
+        'plain_text' => 'plain non-JSON text', 'literal_fake' => 'another non-JSON value', 'compound_fake' => 'a permissive compound predicate is not JSON ownership',
+        'true' => 'constant TRUE does not reference this column', 'false' => 'constant FALSE does not reference this column', 'null' => 'constant NULL does not reference this column'];
     $connection->insert($name, $data);
     $expected = new Table($name);
     $expected->addColumn('id', 'integer');
     $expected->setPrimaryKey(['id']);
-    foreach (['payload', $quotedColumn] as $field) {
+    foreach (['payload', $quotedColumn, 'json_check'] as $field) {
         $expected->addColumn($field, 'json', ['notnull' => false]);
     }
-    foreach (['plain_text', 'literal_fake', 'compound_fake', 'true'] as $field) {
+    foreach (['plain_text', 'literal_fake', 'compound_fake', 'true', 'false', 'null'] as $field) {
         $expected->addColumn($field, 'text', ['notnull' => false]);
     }
     $before = $connection->fetchAssociative('SELECT * FROM ' . $quote($name) . ' WHERE id = 1');
@@ -72,11 +75,11 @@ try {
         $single = $manager->introspectTable($name);
         $bulk = $manager->introspectSchema()->getTable($name);
         foreach ([$single, $bulk] as $actual) {
-            foreach (['payload', $quotedColumn] as $field) {
+            foreach (['payload', $quotedColumn, 'json_check'] as $field) {
                 verify(Type::lookupName($actual->getColumn($field)->getType()) === 'json', 'Native JSON alias and escaped quoted identifier round trip under both quote modes');
                 verify(!$actual->getColumn($field)->getNotnull() && $actual->getColumn($field)->getDefault() === null, 'JSON NULL/default semantics are preserved');
             }
-            foreach (['plain_text', 'literal_fake', 'compound_fake', 'true'] as $field) {
+            foreach (['plain_text', 'literal_fake', 'compound_fake', 'true', 'false', 'null'] as $field) {
                 verify(Type::lookupName($actual->getColumn($field)->getType()) === 'text', 'Plain LONGTEXT and literal CHECK lookalikes remain text');
             }
             verify($manager->createComparator()->compareTables($expected, $actual)->isEmpty(), 'DBAL comparison preserves the complete fixture column/index schema');

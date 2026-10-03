@@ -4,7 +4,7 @@
 
 namespace itsmng\Database;
 
-/** Only a native JSON_VALID(identifier) declaration identifies a MariaDB JSON alias. */
+/** Only native JSON_VALID(quoted identifier) identifies a MariaDB JSON alias. */
 final class JsonCheckExpression
 {
     public static function column(string $clause, bool $ansiQuotes): ?string
@@ -12,7 +12,10 @@ final class JsonCheckExpression
         if (strlen($clause) > 4096) {
             return null;
         }
-        $identifier = '`(?:[^`]|``)+`|[a-zA-Z_][a-zA-Z_0-9$]*';
+        // Stock DBAL recognizes backtick-quoted catalogue identifiers. Add
+        // only the ANSI quote form; bare arguments may be SQL constants or
+        // no-parentheses built-ins rather than actual column references.
+        $identifier = '`(?:[^`]|``)+`';
         if ($ansiQuotes) {
             $identifier .= '|"(?:[^"]|"")+"';
         }
@@ -21,10 +24,7 @@ final class JsonCheckExpression
             return null;
         }
         $column = $match[2];
-        if ($column[0] === '`' || $column[0] === '"') {
-            $delimiter = $column[0];
-            return str_replace($delimiter . $delimiter, $delimiter, substr($column, 1, -1));
-        }
-        return $column;
+        $delimiter = $column[0];
+        return str_replace($delimiter . $delimiter, $delimiter, substr($column, 1, -1));
     }
 }
