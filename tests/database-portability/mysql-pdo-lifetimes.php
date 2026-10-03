@@ -31,6 +31,70 @@ function closedCommand(callable $operation, string $message): void
         verify(true, $message);
     }
 }
+/** Exercise the actual pinned DBAL disconnect callback, without logging SQL or credentials. */
+final class DisconnectFailureLogger extends \Psr\Log\AbstractLogger
+{
+    public int $disconnects = 0;
+
+    public function __construct(public readonly RuntimeException $failure)
+    {
+    }
+
+    public function log($level, string|\Stringable $message, array $context = []): void
+    {
+        if ((string)$message === 'Disconnecting') {
+            ++$this->disconnects;
+            throw $this->failure;
+        }
+    }
+}
+
+/** Controlled cleanup failure surrounds a real query result, not a fabricated native SQL error. */
+final class CursorFailureMiddleware implements \Doctrine\DBAL\Driver\Middleware
+{
+    public function __construct(private readonly RuntimeException $failure)
+    {
+    }
+
+    public function wrap(\Doctrine\DBAL\Driver $driver): \Doctrine\DBAL\Driver
+    {
+        return new class ($driver, $this->failure) extends \Doctrine\DBAL\Driver\Middleware\AbstractDriverMiddleware {
+            public function __construct(\Doctrine\DBAL\Driver $driver, private readonly RuntimeException $failure)
+            {
+                parent::__construct($driver);
+            }
+
+            public function connect(#[\SensitiveParameter] array $params): \Doctrine\DBAL\Driver\Connection
+            {
+                return new class (parent::connect($params), $this->failure) extends \Doctrine\DBAL\Driver\Middleware\AbstractConnectionMiddleware {
+                    public function __construct(\Doctrine\DBAL\Driver\Connection $connection, private readonly RuntimeException $failure)
+                    {
+                        parent::__construct($connection);
+                    }
+
+                    public function query(string $sql): \Doctrine\DBAL\Driver\Result
+                    {
+                        $result = parent::query($sql);
+                        if ($sql !== 'SELECT 1 AS close_probe') {
+                            return $result;
+                        }
+                        return new class ($result, $this->failure) extends \Doctrine\DBAL\Driver\Middleware\AbstractResultMiddleware {
+                            public function __construct(\Doctrine\DBAL\Driver\Result $result, private readonly RuntimeException $failure)
+                            {
+                                parent::__construct($result);
+                            }
+
+                            public function free(): void
+                            {
+                                throw $this->failure;
+                            }
+                        };
+                    }
+                };
+            }
+        };
+    }
+}
 verify(str_starts_with($DB->dbdefault, 'itsm_port_'), 'Disposable physical lifetime database required');
 if ($DB->getProvider() === 'pgsql') {
     echo "pgsql: MySQL physical command ownership does not apply; original PostgreSQL driver ownership contract remains authoritative.\n";
@@ -46,6 +110,8 @@ $bufferedStatement = null;
 $ordinary = null;
 $ordinaryResult = null;
 $fresh = null;
+$cleanupProbe = null;
+$probeResult = null;
 $lock = 'pdo-owner-' . bin2hex(random_bytes(8));
 $applicationLock = false;
 $primary = null;
@@ -102,9 +168,51 @@ try {
     closedCommand($fresh->execute(...), 'Retained legacy facade refuses execution against a newly supplied DBAL owner');
     verify($writer->fetchOne('SELECT name FROM glpi_suppliers WHERE id=?', [$seed]) === $prefix,
         'Stale commands never mutate data through the closed or replacement writer');
+
+    foreach ([false, true] as $cursorFails) {
+        $disconnectFailure = new RuntimeException('Owned fixture disconnect callback failure');
+        $cursorFailure = new RuntimeException('Owned fixture cursor callback failure');
+        $logger = new DisconnectFailureLogger($disconnectFailure);
+        $configuration = new \Doctrine\DBAL\Configuration();
+        $middlewares = [new \Doctrine\DBAL\Logging\Middleware($logger)];
+        if ($cursorFails) {
+            $middlewares[] = new CursorFailureMiddleware($cursorFailure);
+        }
+        $configuration->setMiddlewares($middlewares);
+        $cleanupProbe = \itsmng\Database\MySQLConnection::create($writer->getParams(), $configuration);
+        $probeResult = $cleanupProbe->executeQuery('SELECT 1 AS close_probe');
+        $probeStatement = $cleanupProbe->prepare('SELECT ? AS close_stmt');
+        $probeStatement->bindValue(1, 'owned retained command');
+        $probePhysical = WeakReference::create($cleanupProbe->getNativeConnection());
+        $caught = null;
+        try {
+            $cleanupProbe->close();
+        } catch (Throwable $error) {
+            $caught = $error;
+        }
+        verify($caught === ($cursorFails ? $cursorFailure : $disconnectFailure),
+            'Actual supplied logging disconnect cannot replace the earlier cursor cleanup failure');
+        verify($logger->disconnects === 1 && !$cleanupProbe->isConnected() && $probePhysical->get() === null,
+            'All actual physical handles close despite cursor/disconnect callback exceptions');
+        closedCommand($probeStatement->executeQuery(...), 'Cleanup exception cannot leave a retained command executable');
+        closedCommand($probeResult->fetchOne(...), 'Cleanup exception cannot leave a retained result executable');
+        $cleanupProbe->close();
+        $probeResult->free();
+        $cleanupProbe = $probeResult = null;
+    }
 } catch (Throwable $error) {
     $primary = $error;
 } finally {
+    try {
+        $cleanupProbe?->close();
+    } catch (Throwable $error) {
+        $cleanup[] = $error;
+    }
+    try {
+        $probeResult?->free();
+    } catch (Throwable $error) {
+        $cleanup[] = $error;
+    }
     try {
         $secondary?->close(); // This fixture owns its exclusive caller, frames and session lock.
     } catch (Throwable $error) {
