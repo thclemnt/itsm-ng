@@ -1,7 +1,16 @@
 # PostgreSQL and Doctrine modernization goal
 
-Latest complete portability checkpoint:
-[combined cache and Kanban validation](modernization-complete-portability.md).
+Latest complete local portability checkpoint:
+[741 PostgreSQL/Doctrine validation](#current-741-complete-local-portability-checkpoint).
+Both providers pass the discovered 180 contracts at frozen source
+`741fb2b1f0cc852404bd55080e4ed7bbb0bf8b7e`, with fresh installs and clean final
+native inspections. The overall modernization goal remains OPEN and no native
+persistent goal is available. See the current checkpoint and remaining work below.
+
+## Earlier b66 portability, application and browser evidence
+
+The historical [combined cache and Kanban validation](modernization-complete-portability.md)
+remains retained.
 Both dynamically discovered suites pass 168/168 contracts at application source
 `b66ec2f474973e779de1043a8a7d308e36531552`: PostgreSQL in 830.445s and MariaDB in
 1,780.542s. Fresh CLI installations also pass without PHP warnings. Final native
@@ -10,7 +19,7 @@ or schema differences, 357 mapped tables, 358 actual tables and 1,057 enforced F
 The known certificate compatibility-column schema check passes in the complete
 suite order. Expected deprecated clone-path notices remain recorded.
 
-Current application-test source is
+At the following historical application checkpoint, source is
 `336ef4fec61341437399471647a6fe6e7992efb7`. Only the Computer iterator fixture and
 its note differ from the portability checkpoint; 1,620 application, installation,
 portability and browser source files are verified byte-identical. The first broader
@@ -28,10 +37,257 @@ After rebuilding assets, both complete browser suites pass 14/14 scenarios at
 13/14 runs exposed an exact-text Transfer result fixture error; the retained
 traces and [correction](transfer-browser-result-validation.md) distinguish this
 from application failure. Final native inspections remain converged on both
-engines. The only changes after b66 are these two test corrections and notes.
+engines. Through 3ac, the changes after b66 were those two test corrections and notes.
+The later failed a736 matrix and completed 741 evidence are recorded below.
 Remember-me login header warnings were observed and a separate Session/token
 repair remains unvalidated. Official PostgreSQL 18.6/MySQL 8.4.11 execution and
 remote CI remain pending. This checkpoint does not complete the modernization goal.
+
+## Current 741: complete local portability checkpoint
+
+Current source is `741fb2b1f0cc852404bd55080e4ed7bbb0bf8b7e`. At the preceding
+`883b23413caf1334cf8396ae154618e14790f7df` checkpoint, all 30 selected PostgreSQL
+contracts pass. MariaDB passes 22 selected contracts before the newly reached
+`operating-system-subjects.php` omitted-discriminator assertion fails; separate
+original Project schema/application runs also fail their empty-input variants.
+These failures remain evidence rather than being discarded after repair.
+
+Root's controlled BEFORE probe runs 21 exact invalid variants across three
+original matrices and two physical tables, plus two accepted canonical controls,
+on each provider. It confirms the converted exception, SQLSTATE and underlying
+native cause. Only the three MariaDB empty-input cases are incorrectly classified:
+required `itemtype` omission produces native 1364/HY000 and a Doctrine NOT NULL
+violation, rather than the test's expected SQLSTATE class 23. PostgreSQL correctly
+reports 23502. All counts, source/configuration, ledger and session modes are
+unchanged afterward; fixtures roll back and both connections finish idle. The
+probe performs no DDL, and consumed sequence/auto-increment allocations are not
+reset. This demonstrates rejection classification, not a whole-contract pass.
+
+The reviewed candidate `e919c69d32feebcd483457a2bd60157f3d350f38` is integrated as
+741. Only three test contracts and their diagnosis document change: they recognize
+this precise omitted discriminator while retaining the expected refusal and every
+other input variant. There is no new schema/history/production change in this
+repair. The complete AFTER contracts pass both providers:
+
+| Contract | PostgreSQL seconds | MariaDB seconds |
+| --- | --- | --- |
+| operating-system-subjects.php | 6.131846 | 11.098159 |
+| project-assets-schema.php | 9.548701 | 46.849147 |
+| project-assets.php | 7.534627 | 9.191131 |
+
+The Project schema contract retains all four migration phases and journal retry.
+At exact 741, MariaDB also passes `saved-searches.php` (2.521047 seconds),
+`service-level-calendars.php` (3.875102), `ticket-assets.php` (9.343183),
+`upgrade-entrypoints.php` (103.243795), and `schema-check.php` (19.651802).
+The complete targeted 741 chain closes successfully: PostgreSQL 4/4 and MariaDB
+8/8 contracts pass. The focused-chain final 741 native inspections pass on both providers: all 13
+canonical migration receipts are complete, with no pending versions or schema
+differences, 357 mapped tables, 358 actual tables and 1,057 foreign keys. These
+scalars and the receipt completion count were independently read from the retained
+JSON outputs without dumping the complete schema. They prove the focused
+checkpoint's convergence, not complete suite or fresh-install behavior.
+
+Across a736 to 741, the only production difference is deterministic release-map
+ordering in `src/Database/Upgrade.php`, introduced at 8f. Shared lifecycle models,
+entity metadata and frozen history remain unchanged; later repairs are bounded
+fixtures or test diagnostics. The previously missing DocumentsItems/SLM CHECKs
+were restored for the focused validation. Preserve the failed a736 inspections
+as historical evidence; a repaired focused database is not proof of new-install
+or full-suite convergence.
+
+The actual 741 fresh PostgreSQL sequence closes with exit zero. Its evidence is
+`/workspace/itsm-env/evidence/boolean-fresh-741fb2b-pg/summary.json`, with the phase
+JSON and logs in that directory. It creates a new owned disposable database only
+after proving absence and native emptiness. CLI installation passes in 29.3879014
+seconds, followed by complete 13-version frozen history/seed and schema checks,
+read-only db:check, original run.php (29.6874 seconds), initial-data.php and
+schema-check.php (3.6584 seconds), a second read-only db:check and final native
+inspection. All phases succeed, no PHP Warning/Fatal is counted in any fresh log,
+and parent raw ledger plus frozen source/metadata hashes remain unchanged.
+
+This is a guarded default-transport CLI installation exercise. The frozen
+InstallCommand recreates its adapter through DBConnection::createConnection,
+which forwards only host, user, password and database. Advanced port/schema/TLS
+configuration ownership remains unresolved; the preparation refuses incompatible
+settings before CREATE. The fresh pass is not custom-endpoint/TLS or browser
+proof.
+
+Fresh MariaDB validation now also closes with exit zero and all ten phases
+successful. Evidence is
+`/workspace/itsm-env/evidence/boolean-fresh-741fb2b-mysql/summary.json` and the
+corresponding phase JSON/logs. CLI installation passes in 99.105600688 seconds,
+original run.php in 28.480531203, initial-data.php in 2.271906808,
+schema-check.php in 18.207968158 and final native inspection in 11.989334347.
+Independent summary/result/native inspection confirms all thirteen migration
+receipts complete, no pending versions or schema differences, 357 mapped tables,
+358 actual tables and 1,057 foreign keys on both fresh providers. Every fresh log
+has zero counted PHP Warning/Fatal; both parent raw ledgers and frozen source
+remain unchanged. Both installation passes retain the default-transport boundary.
+
+The coherent PostgreSQL full suite now closes with exit zero: **180/180 pass in
+809.125887584 seconds** at exact 741. Its original history contract reaches every
+assertion within the unchanged 300-second budget: raw baseline/seeds and invalid
+audits take 15.510 seconds, actual populated db:update 40.002, completed-adoption
+retry/native-sequence behavior 4.914, and actual fresh-install interruption/retry
+64.498; total 124.925 seconds. The post-full PostgreSQL native inspection also
+passes in 1.652182781 seconds, with thirteen completed receipts, no pending versions
+or schema differences, 357 mapped/358 actual tables and 1,057 foreign keys.
+
+The full PostgreSQL log has zero counted PHP Warning/Fatal. It retains three
+Deprecated notices from the legacy clone controls (two "Use clone" and one
+"Called method is deprecated"), an accompanying User-deprecated logger rendition,
+and the expected CalDAV ambiguous-UID negative-case output. This is not a claim
+that all output is quiet. The prior a736 178/179 failure log is archived as
+`boolean-integrated-suite-pg-before-20261003T142630959370Z.log`; it is not replaced
+by the new pass in the historical record.
+
+The coherent MariaDB full suite also closes with exit zero: **180/180 pass in
+1838.794108121 seconds** at exact 741. Its original history phases take 54.509
+seconds for raw baseline/seeds and invalid audits, 129.681 for actual populated
+db:update, 9.869 for adoption retry/native sequences, and 105.359 for actual fresh
+CLI interruption/retry. Total **299.418 seconds remains within the unchanged
+300-second budget**, with a narrow 0.582-second margin. Keep that margin visible;
+this run does not establish an isolated performance improvement. Post-full
+MariaDB native inspection passes in 10.847621667 seconds with thirteen complete
+receipts, pending/schema differences empty, 357 mapped/358 actual tables and
+1,057 foreign keys. MariaDB's log also has zero counted PHP Warning/Fatal and
+retains exactly three Deprecated-prefix clone notices, one accompanying
+User-deprecated logger rendition and one expected CalDAV ambiguity negative
+output. Neither complete run has a nonzero contract result or timeout.
+
+The prior MariaDB a736 151/179 failure log remains archived as
+`boolean-integrated-suite-mysql-before-20261003T144050658210Z.log`. Both full runs
+use the actual discovered list of 180 contracts, and the fresh/native evidence
+belongs to this same frozen source. **741 is now the latest complete local
+portability checkpoint**; b66's 168/168 remains a valid historical checkpoint.
+This is not a production-readiness or broader remote/official-engine claim.
+
+Actual source inventory at 741 reports 357 tables, all 357 mapped and covered by
+ORM lifecycle writes, and 1,122 relationship candidates: 1,057 enforced,
+27 discriminated identities, 37 polymorphic candidates and one pending archival
+identity, `glpi_events.items_id`. The PHP-token SQL inventory reports 2,851 legacy
+adapter calls and 22 direct-driver calls (2,873 total), plus eight adapter
+constructions, 34 internal sites, 28 dynamic candidates and 802 method candidates.
+These static counts are a discovery checkpoint, not proof that every caller has
+been safely retired or every relationship is an enforceable foreign key.
+Event archival snapshot semantics still need a sound model; existing Event ORM
+read/retention/append paths should not be duplicated.
+
+A subsequent root-owned BEFORE v2 probe reproduces a separate exact-kind gap
+in ItemTicket: MariaDB accepts case/trailing-space variants natively while the
+PHP resolver/RecordWriter rejects them; PostgreSQL's noncanonical native controls
+reject with its known CHECK. [The exact discriminator note](exact-discriminator-ownership.md)
+limits that proof to one family and distinguishes the 25-key source inventory,
+owned rollback observations and unimplemented AFTER behavior. The completed
+180/180 suites did not cover this newly observed native case policy.
+
+Remaining work includes advanced CLI endpoint/schema/TLS ownership, prepared
+Session authorization/cookie TIMESTAMP and HTTP integration, Software and
+Processor ownership/domain batches, and exact-kind modeling for the 25 existing
+string discriminator keys. Native future-gap probes and their owned rollback
+semantics are separate from the completed suite; do not invent constrained FKs
+or claim sequence allocations roll back. Official-engine matrix/remote CI, live
+replica routing and TLS proof remain pending. The next step is coherent source
+integration and native/application validation of the next architectural batch,
+with caller authorization, lifecycle effects and frozen history preserved.
+The existing focused passes do not establish a newer complete milestone. The latest
+complete local checkpoint is 741 (180/180 both), superseding b66 without erasing
+its historical evidence. The overall modernization goal remains OPEN; native
+persistent goals remain unavailable. Continue the durable implementation plan
+through the remaining architectural work, retaining failures and unchanged
+budgets for each coherent batch.
+
+## Earlier failed a736 matrix and diagnosed causes
+
+Integrated source is `a736d72e03a41deee9723d39d50d372940ed1335`. These
+completed runs are evidence of the remaining failures, not a new green milestone.
+
+| Validation | PostgreSQL | MariaDB |
+| --- | --- | --- |
+| Complete discovered portability suite | 178/179; 780.832497778 seconds | 151/179; 1086.705168415 seconds |
+| Final native inspection | 13 canonical versions, no pending versions or schema differences | Two missing Boolean CHECKs; inspection fails |
+| Original application selection | 45 classes, 283 methods, 11,338 assertions | 47 classes, 329 methods, 15,399 assertions |
+| Original queue class | One method, 10 assertions; pass | One method, 10 assertions; pass |
+
+Both original application selections and both queue runs have zero void or
+skipped methods. PostgreSQL's queue parser initially rejected singular
+"1 test/1 method" despite the successful native run; the archived output was
+reparsed without rerunning the test. The native PostgreSQL schema has 357 mapped
+tables, 358 actual tables and 1,057 foreign keys. MariaDB's exact missing checks
+are `glpi_documents_items.glpi_documents_items_is_recursive_boolean` and
+`glpi_slms.glpi_slms_use_ticket_calendar_boolean`. No complete MariaDB schema
+convergence is claimed.
+
+PostgreSQL's sole full-suite failure is `upgrade-entrypoints.php`, at its lost-key
+read-only assertion. Isolated and fresh original-helper repeats initially passed
+without reproducing that failure. A later controlled BEFORE probe now reproduces
+it: deleting and reinserting the release alias changes the release map's physical
+key order. All 219 configuration rows and the other six snapshot components are
+strictly unchanged; release names, values and types match, and sorting the release
+map makes the comparison strict-equal. The missing key remains absent and the
+deleted-alias negative control still detects a semantic change. This narrows the
+cause to unordered release-map inspection. The ordering repair and AFTER probe
+were pending at that capture; controlled 8f AFTER probes and the complete 741
+suites now pass. The original full failure is retained.
+
+MariaDB's 28 failed contracts are:
+
+- `alert-subjects.php`, `appliance-assets-schema.php`, `change-problem-assets.php`,
+  `contract-assets.php`, `document-subjects.php`, `domain-documents-schema.php`,
+  `domain-integration-schema.php`, `domain-plugin-adoption.php`,
+  `domain-plugin-import.php`, `fixed-strings.php`, `identifier-sequences.php`,
+  `impact-graph.php`, `infrastructure-assets.php`, `mysql-session-modes.php`,
+  `network-names.php`, `notification-recipients.php`, `object-lock-subjects.php`,
+  `oidc.php`, `operating-system-purge.php`, `operating-system-subjects-schema.php`,
+  `operating-system-subjects.php`, `project-assets-schema.php`, `project-assets.php`,
+  `saved-searches.php`, `schema-check.php`, `service-level-calendars.php`,
+  `ticket-assets.php`, `upgrade-entrypoints.php`.
+
+Native probes identify an assertion-gate mismatch in eight families:
+`alert-subjects`, `appliance-assets-schema`, `change-problem-assets`,
+`contract-assets`, `document-subjects`, `infrastructure-assets`,
+`object-lock-subjects` and `ticket-assets`. Omitting the required discriminator is
+correctly refused with native error 1364 and a Doctrine NOT NULL violation; the
+old test gate accepts only SQLSTATE class 23. The replacement must admit this
+specific required-column diagnostic without accepting arbitrary HY000 failures.
+Other observed failures concern omitted mandatory values in raw fixtures, the
+wide Group identity used as a bounded recipient code, historical nonboolean
+values inserted while current CHECKs remain enforced, and historical fixture
+cleanup that leaves the two current CHECKs missing. These are causal categories,
+not an assertion that each downstream failure has an independently proven cause.
+Source-only repairs were **PENDING native validation** at that capture; their
+current 741 results are recorded above. An owned MariaDB
+recovery helper also refused before any DDL because its type preflight compared
+logical Doctrine BOOLEAN with frozen MariaDB SMALLINT; the corrected helper is
+pending at that capture. That refusal is retained rather than reported as a
+successful run of that helper.
+
+The complete Domain importer passes PostgreSQL in 57.331899 seconds and MariaDB
+in 199.725782554 seconds. A repeat on the same MariaDB database passes in
+211.68482 seconds, without resetting consumed identities and within the unchanged
+300-second limit. Controlled inspection parity and cleanup pass both providers;
+[the inspection note](domain-import-external-inspection.md) keeps those observations
+separate from a claimed full-import speedup. Complete 913 historical replay passes
+PostgreSQL in 125.692 seconds and MariaDB in 292.689 seconds. Earlier strict-seed
+failures, the 7ae 300.0111-second and 9dcd 300.015004-second timeouts, and the 8c
+175/178 full-suite result remain retained.
+
+At the failed a736 checkpoint, the latest complete green evidence was
+**`b66ec2f474973e779de1043a8a7d308e36531552`, 168/168 on both providers**.
+It did not establish that a736 was green. The completed 741 checkpoint above now
+supersedes b66 as the latest complete local result. The later repair
+candidate has pure discovery of 180 contracts, including the meaningful native
+error-classification contract; those are not the 179 contracts executed at a736,
+and discovery does not validate candidate native behavior. Full prepared
+Session/HTTP and Software ownership branches, remote CI, official-engine runs
+and replicas remain outside this checkpoint's proof.
+
+The durable modernization goal is **OPEN**. Native persistent goals are
+unavailable; this handoff and the implementation plan retain the objective.
+Next: validate the ordered release inspection and narrowly classified native
+errors, repair and restore the owned historical fixtures, then rerun the complete
+discovered suite on both providers and inspect the final schema. Keep source
+repair reports pending until those actual runs succeed.
 
 The earlier [canonical upgrade and dropdown checkpoint](modernization-upgrade-dropdown-validation.md)
 passed 147/147 contracts and 12/12 sequential browser tests per provider at
@@ -850,7 +1106,7 @@ One public DBAL middleware factory preserves configured modes and adds
 STRICT_ALL_TABLES on each physical application/installation connection, including
 DBAL reconnect. Read-only schema diagnostics accept supplied strict ALL/TRANS
 sessions and refuse permissive ones without setting modes. A native contract is
-prepared for requiredNULL/invalid/truncation refusal, controlled configured modes,
+prepared for required NULL/invalid/truncation refusal, controlled configured modes,
 read routing and all reconnect/installation paths. No database job has validated
 this draft; [the source record](mysql-session-integrity.md) states its boundaries
 and required broader checks. The combined passing checkpoint remains unchanged.

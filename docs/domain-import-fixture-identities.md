@@ -1,5 +1,33 @@
 # Domain import fixture identities after rollback
 
+Current checkpoint: `741fb2b1f0cc852404bd55080e4ed7bbb0bf8b7e`.
+The latest complete local portability checkpoint is
+`741fb2b1f0cc852404bd55080e4ed7bbb0bf8b7e`: PostgreSQL and MariaDB both pass
+180/180 contracts, fresh installs and final native inspection. The modernization
+goal remains OPEN; official-engine/remote CI, replicas/TLS and prepared next
+batches are separate pending evidence.
+[The handoff](modernization-handoff.md#current-741-complete-local-portability-checkpoint)
+separates these results from the retained a736 full failures and the earlier complete
+green b66 checkpoint. Later passages marked pending describe their earlier
+preparation checkpoint unless superseded by the precise checkpoint results above.
+
+## Later same-database native retry
+
+Root's full Domain import at a736 passes PostgreSQL 57.331899s and MariaDB
+199.725782554s. Repeating the complete contract on the SAME MariaDB database,
+without resetting burned identifiers, passes in 211.68482s under the unchanged
+300-second limit. This exercises the explicit disjoint fixture namespace after
+actual allocator consumption and retains collision refusal/cleanup. The original
+b05 collision and 7ae timeout remain failed evidence. Current complete suites
+finish at a736 with failures: PostgreSQL 178/179 and MariaDB 151/179. Native
+PostgreSQL converges; MariaDB retains two missing Boolean CHECKs. Later fixture
+repairs were pending native validation at that capture; the focused import/repeat
+passes alone did not supersede b66. The later complete 741 checkpoint now does.
+
+
+Historical preparation and diagnosis follow; statements of unexecuted gates
+below describe those earlier snapshots.
+
 Root-owned MariaDB execution at
 `b05dfcf808fa6d49d27016ad21ff399e11bae1a4` failed its first Domain import plan
 with `Domains import ID collision: glpi_domaintypes.4294972001`. The unrelated

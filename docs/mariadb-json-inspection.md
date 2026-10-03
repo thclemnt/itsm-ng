@@ -1,5 +1,36 @@
 # MariaDB JSON inspection under configured SQL modes
 
+Current checkpoint: `741fb2b1f0cc852404bd55080e4ed7bbb0bf8b7e`.
+The latest complete local portability checkpoint is
+`741fb2b1f0cc852404bd55080e4ed7bbb0bf8b7e`: PostgreSQL and MariaDB both pass
+180/180 contracts, fresh installs and final native inspection. The modernization
+goal remains OPEN; official-engine/remote CI, replicas/TLS and prepared next
+batches are separate pending evidence.
+[The handoff](modernization-handoff.md#current-741-complete-local-portability-checkpoint)
+separates these results from the retained a736 full failures and the earlier complete
+green b66 checkpoint. Later passages marked pending describe their earlier
+preparation checkpoint unless superseded by the precise checkpoint results above.
+
+## Later controlled native validation
+
+The native MariaDB fixture passes at 1edcd19 in 4.526s; PostgreSQL's
+manager-isolation control passes at 9d4949. These follow root's quoted-field
+fixture binding repair, whose original failure is retained. Ordinary/ANSI exact
+JSON alias inspection, plain-text lookalikes, invalid JSON rejection and cleanup
+now have focused native evidence. This does not assert Oracle MySQL execution or
+a complete passing matrix. Exact a736 finishes PostgreSQL 178/179 and
+MariaDB 151/179 contracts; final native MariaDB inspection finds two missing
+Boolean CHECKs. These failures and PENDING fixture repairs are recorded in
+[the handoff](modernization-handoff.md). Root's 9dcd history profile records 647 JSON CHECK
+reads totaling 0.113s and 663 session-mode reads totaling 0.062s; neither was
+its dominant catalogue hotspot. No global cache or speculative manager
+replacement is warranted by that profile. The historical prepared-source
+evidence below remains separate.
+
+
+Historical preparation and diagnosis follow; statements of unexecuted gates
+below describe those earlier snapshots.
+
 At source `2e15d498db9acb53592ada475f4e1a3976b9a28e`, the controlled SQL-mode contract passed native strict rejection and reconnect checks but failed schema comparison under ANSI_QUOTES. The root-owned native probe found the same `glpi_users.access_custom_shortcuts` LONGTEXT column, nullable/default NULL, described as DBAL JSON without ANSI_QUOTES and text with ANSI_QUOTES. Its native CHECK changed serialization from backticks to double quotes. The native bytes and session restoration are recorded in `/workspace/itsm-env/evidence/mysql-json-native-diagnosis-2e15.json`. This is a type-alias inspection defect, separate from the Boolean CHECK expression repair.
 
 One public DBAL schema-manager factory now selects a MariaDB manager; all other provider managers remain native. Its protected column-fetch override calls DBAL's implementation unchanged, then takes a call-local native CHECK snapshot scoped to the selected database and actual LONGTEXT table candidates from those rows. Only an exact JSON_VALID(quoted identifier) expression can identify a JSON alias. Escaped identifier delimiters are decoded, double quotes require the actual session's ANSI_QUOTES mode, and literals, compound predicates and malformed expressions refuse. Plain LONGTEXT, unrelated checks and every other column attribute remain intact. No application table/entity catalogue, platform subclasses, SQL rewriting, vendor edits or historical migration changes are introduced.

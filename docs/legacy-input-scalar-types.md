@@ -1,5 +1,37 @@
 # Preserve types while escaping legacy input
 
+Current checkpoint: `741fb2b1f0cc852404bd55080e4ed7bbb0bf8b7e`.
+The latest complete local portability checkpoint is
+`741fb2b1f0cc852404bd55080e4ed7bbb0bf8b7e`: PostgreSQL and MariaDB both pass
+180/180 contracts, fresh installs and final native inspection. The modernization
+goal remains OPEN; official-engine/remote CI, replicas/TLS and prepared next
+batches are separate pending evidence.
+[The handoff](modernization-handoff.md#current-741-complete-local-portability-checkpoint)
+separates these results from the retained a736 full failures and the earlier complete
+green b66 checkpoint. Later passages marked pending describe their earlier
+preparation checkpoint unless superseded by the precise checkpoint results above.
+
+## Later public lifecycle validation
+
+The complete Appliance importer passes at b05 on PostgreSQL 22.830s and MariaDB
+82.489s; notification admission also passes both at b05. The complete Domain
+importer at a736 passes PostgreSQL 57.331899s and MariaDB 199.725782554s, then
+passes a repeat on the SAME MariaDB fixture database in 211.68482s. Original 8c
+lifecycle failures, subsequent overly broad pre-add hook failures, b05 Domain ID
+collision and 7ae 300.0111s timeout all remain retained. At a736 the broader
+original PostgreSQL selection passes 45 classes/283 methods/11,338 assertions in
+284.275600s with zero void/skipped methods. The broader MariaDB selection also
+passes 47 classes, 329 methods and 15,399 assertions in 301.7060797s, with zero
+void/skipped methods. Full a736 portability completes with PostgreSQL 178/179
+in 780.832497778s and MariaDB 151/179 in 1086.705168415s. Native PostgreSQL has 13
+complete versions/no differences; MariaDB reports two missing Boolean CHECKs.
+Candidate repairs are PENDING native validation; scalar preservation is not
+inferred from earlier source-only utility controls.
+
+
+Historical preparation and diagnosis follow; statements of unexecuted gates
+below describe those earlier snapshots.
+
 The full PostgreSQL portability run at
 `8c00b7669b02ba1d74c7d93f37eb7393959b3d91` exposed the same lifecycle failure
 in both historical plugin importers. Appliance import failed creating

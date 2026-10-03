@@ -1,5 +1,35 @@
 # Incoming compatibility projection inspection
 
+Current checkpoint: `741fb2b1f0cc852404bd55080e4ed7bbb0bf8b7e`.
+The latest complete local portability checkpoint is
+`741fb2b1f0cc852404bd55080e4ed7bbb0bf8b7e`: PostgreSQL and MariaDB both pass
+180/180 contracts, fresh installs and final native inspection. The modernization
+goal remains OPEN; official-engine/remote CI, replicas/TLS and prepared next
+batches are separate pending evidence.
+[The handoff](modernization-handoff.md#current-741-complete-local-portability-checkpoint)
+separates these results from the retained a736 full failures and the earlier complete
+green b66 checkpoint. Later passages marked pending describe their earlier
+preparation checkpoint unless superseded by the precise checkpoint results above.
+
+## Later native and replay validation
+
+The current native projection contract passes both providers at 8c (PostgreSQL
+0.917s/MariaDB 16.308s), including the previously ordinary nullable BIGINT
+shape, real generation/constraints/index preservation and retry. Its
+disconnected controls also pass. Complete 913 history passes PostgreSQL
+125.692s/MariaDB 292.689s under unchanged 300-second limit. The controlled
+pre-fix 913 nullable-column installation defect remains recorded, and the
+original frozen declaration is preserved. These scoped passes supersede the
+earlier unrun controls below without claiming a full passing matrix or a
+cross-provider elapsed-time effect. Full a736 portability completes 178/179 on
+PostgreSQL and 151/179 on MariaDB; native PostgreSQL converges and MariaDB has two
+missing Boolean CHECKs. Candidate diagnostic/fixture source repairs and later
+180-contract discovery remain distinct from these executed 179-contract results.
+
+
+Historical preparation and diagnosis follow; statements of unexecuted gates
+below describe those earlier snapshots.
+
 `TypedItemMigration` must refuse to replace an ordinary `items_id` compatibility
 column when a foreign key references it. A generated projection that does not
 need rebuilding retains its existing behavior. Canonical target definitions,

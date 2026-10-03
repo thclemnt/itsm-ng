@@ -1,5 +1,34 @@
 # Session group publication draft — provider validation pending
 
+Current checkpoint: `741fb2b1f0cc852404bd55080e4ed7bbb0bf8b7e`.
+The latest complete local portability checkpoint is
+`741fb2b1f0cc852404bd55080e4ed7bbb0bf8b7e`: PostgreSQL and MariaDB both pass
+180/180 contracts, fresh installs and final native inspection. The modernization
+goal remains OPEN; official-engine/remote CI, replicas/TLS and prepared next
+batches are separate pending evidence.
+[The handoff](modernization-handoff.md#current-741-complete-local-portability-checkpoint)
+separates these results from the retained a736 full failures and the earlier complete
+green b66 checkpoint. Later passages marked pending describe their earlier
+preparation checkpoint unless superseded by the precise checkpoint results above.
+
+## Later bounded group publication validation
+
+The group-only repair is integrated; its actual public contract passes both
+providers at 013f (0.515s each), followed by the complete original application
+selections at that source. Those results supersede the initial unrun preparation
+statement below for this bounded repair only. Full Session authorization/HTTP
+snapshot/token changes remain on their separately prepared fb9 branch and are
+not validated merely by group publication or a736's native application passes.
+The original unordered-group failure and read-connection/scope controls remain.
+Exact a736 original applications pass 283 PostgreSQL and 329 MariaDB methods,
+with zero void/skipped methods, but full portability finishes 178/179 and 151/179
+respectively. That evidence does not execute the prepared Session/token/HTTP
+composition; [the handoff](modernization-handoff.md) records the open gates.
+
+
+Historical preparation and diagnosis follow; statements of unexecuted gates
+below describe those earlier snapshots.
+
 This isolated group-only extraction starts from
 `1edcd19ecc83b18ee890acfcbf0f025d4afba5d5`. It changes only the session group
 read and its existing owning repository, with a dedicated public contract.

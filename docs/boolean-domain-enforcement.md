@@ -1,5 +1,39 @@
 # Boolean domain enforcement: source draft
 
+Current checkpoint: `741fb2b1f0cc852404bd55080e4ed7bbb0bf8b7e`.
+The latest complete local portability checkpoint is
+`741fb2b1f0cc852404bd55080e4ed7bbb0bf8b7e`: PostgreSQL and MariaDB both pass
+180/180 contracts, fresh installs and final native inspection. The modernization
+goal remains OPEN; official-engine/remote CI, replicas/TLS and prepared next
+batches are separate pending evidence.
+[The handoff](modernization-handoff.md#current-741-complete-local-portability-checkpoint)
+separates these results from the retained a736 full failures and the earlier complete
+green b66 checkpoint. Later passages marked pending describe their earlier
+preparation checkpoint unless superseded by the precise checkpoint results above.
+
+## Later integrated validation at a736
+
+The preparation chronology below belongs to earlier source snapshots. Boolean
+enforcement is now integrated into private a736. Root's focused native contract
+passes on PostgreSQL at 9d4949 (9.642s) and MariaDB at 1edcd19 (126.607s);
+Category inspection/retry also passes both (latest MariaDB at 913). These are
+contract-specific results, not a complete current matrix. Full history at 913
+passes PostgreSQL 125.692s/MariaDB 292.689s under the unchanged 300-second
+limit. The earlier strict seed failure and 9dcd history timeout remain retained.
+Configured ANSI catalogue context is explicit, and the separate JSON defect was
+a type-alias inspection mismatch with unchanged NULL default. Eleven User flags
+are nullable storage; only nine belong to inherited Config/SESSION preferences.
+The full a736 matrix completed with failures: PostgreSQL 178/179 in 780.832497778s
+and MariaDB 151/179 in 1086.705168415s. Final PostgreSQL inspection has 13
+complete canonical versions and no differences; MariaDB reports missing Document
+recursion and SLM ticket-calendar CHECKs in the retained final inspection. The
+[handoff](modernization-handoff.md) records the exact failure split and pending
+repairs; this is not a newer full green milestone.
+
+
+Historical preparation and diagnosis follow; statements of unexecuted gates
+below describe those earlier snapshots.
+
 The reviewed source draft was committed as `b10cfaaeac` from
 `e71fc4c8e456cab617798d94d14f6539dfe9431a`, then rebased onto the frozen combined
 `4dbc9f7c2edeafb5e54c65d9c9a5144f9132246c` checkpoint and subsequently
@@ -18,7 +52,9 @@ matrix. The current combined validation checkpoint remains the one in
 ## Existing model and remaining defect
 
 The application already declares 402 boolean fields on their owning Doctrine
-properties. Eleven User preferences deliberately permit NULL for inheritance.
+properties. Eleven User flags permit NULL storage; nine belong to the existing inherited
+Config/SESSION preference policy. Compact mode and access shortcuts have separate
+direct UI semantics.
 PostgreSQL uses native boolean storage. MySQL/MariaDB retain historical integer
 storage (the frozen baseline uses SMALLINT for 397 baseline flags; older adopted
 installations can retain TINYINT). Category flags and Domain helpdesk visibility
@@ -210,8 +246,8 @@ not validate the additional adoption, committed-DDL or preference behavior.
 The isolated follow-up starts at `2e15d498db`. Root's actual MariaDB diagnostic
 found no schema differences under STRICT_ALL_TABLES alone, but under configured
 ANSI_QUOTES the native catalogue serialized all402 flag CHECKs with doublequoted
-identifiers. The previous mode-free parser refused those valid clauses. One
-additional DBAL default difference is separately under investigation; this parser
+identifiers. The previous mode-free parser refused those valid clauses. The
+separate DBAL JSON type-alias difference (with unchanged NULL default) was diagnosed; this parser
 change does not suppress or alter general structural schema comparison.
 
 Current native inspection now snapshots the observed SESSION ANSI_QUOTES state
@@ -231,7 +267,7 @@ accepts the4 Supplier/User clauses recorded in root's actual diagnostic, with
 their corresponding observed mode. These nonconnecting results are source
 evidence only. Native
 mode-schema/migration/app-suite reruns remain pending, including the separately
-identified general default difference. The subsequent source-only Category inspector follow-up below addresses the
+diagnosed JSON type-alias difference. The subsequent source-only Category inspector follow-up below addresses the
 identified incomplete-receipt/ANSI retry inspection boundary.
 
 

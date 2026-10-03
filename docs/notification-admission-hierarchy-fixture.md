@@ -1,5 +1,31 @@
 # Notification admission fixture hierarchy
 
+Current checkpoint: `741fb2b1f0cc852404bd55080e4ed7bbb0bf8b7e`.
+The latest complete local portability checkpoint is
+`741fb2b1f0cc852404bd55080e4ed7bbb0bf8b7e`: PostgreSQL and MariaDB both pass
+180/180 contracts, fresh installs and final native inspection. The modernization
+goal remains OPEN; official-engine/remote CI, replicas/TLS and prepared next
+batches are separate pending evidence.
+[The handoff](modernization-handoff.md#current-741-complete-local-portability-checkpoint)
+separates these results from the retained a736 full failures and the earlier complete
+green b66 checkpoint. Later passages marked pending describe their earlier
+preparation checkpoint unless superseded by the precise checkpoint results above.
+
+## Later actual final fixture execution
+
+The final public-Entity hierarchy contract passes both providers at b05 (3.824s
+PostgreSQL/3.876s MariaDB), retaining the original refusal/retry and cleanup
+assertions. This supersedes the earlier unrun source statement below. The full
+8c 175/178 failure and controlled tie-order probes remain diagnosis evidence,
+not a green matrix. Complete a736 portability finishes PostgreSQL 178/179 and
+MariaDB 151/179; final native PostgreSQL converges and MariaDB reports two missing
+Boolean CHECKs. Original queue tests separately pass ten assertions on each
+provider. Source-only candidate repairs remain PENDING native validation.
+
+
+Historical preparation and diagnosis follow; statements of unexecuted gates
+below describe those earlier snapshots.
+
 At `8c00b7669b02ba1d74c7d93f37eb7393959b3d91`, the complete PostgreSQL run
 finished 175/178 contracts in 751.162168 seconds. Its notification admission
 retry assertion observed accepted=1, attempts=2 and queued=2 rather than the

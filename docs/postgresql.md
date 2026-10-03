@@ -1,15 +1,39 @@
 # PostgreSQL port (experimental)
 
+Current checkpoint: `741fb2b1f0cc852404bd55080e4ed7bbb0bf8b7e`.
+The latest complete local portability checkpoint is
+`741fb2b1f0cc852404bd55080e4ed7bbb0bf8b7e`: PostgreSQL and MariaDB both pass
+180/180 contracts, fresh installs and final native inspection. The modernization
+goal remains OPEN; official-engine/remote CI, replicas/TLS and prepared next
+batches are separate pending evidence.
+[The handoff](modernization-handoff.md#current-741-complete-local-portability-checkpoint)
+separates these results from the retained a736 full failures and the earlier complete
+green b66 checkpoint. Later passages marked pending describe their earlier
+preparation checkpoint unless superseded by the precise checkpoint results above.
+
+The retained a736 validation is recorded in [the durable handoff](modernization-handoff.md).
+The completed portability runs pass 178/179 on PostgreSQL and 151/179 on MariaDB;
+they do not establish a new green milestone. PostgreSQL's native inspection finds
+13 canonical versions with no pending versions or schema differences. MariaDB's
+inspection fails on missing DocumentsItems and SLM Boolean CHECKs. Broader original
+applications, queues, and the Domain importer pass both providers, including a
+same-database MariaDB Domain repeat. At that a736 point the latest complete green portability
+checkpoint was b66, 168/168 on each provider; 741 now supersedes it. Repairs were then pending native validation. The later 741 checkpoint executes
+all 180 discovered contracts successfully on each provider, superseding that
+preparation status while retaining a736's 179 executed-contract evidence. Eleven nullable User flags comprise nine inherited
+preferences and two direct UI settings. These results do not validate unrun
+Session/Software branches, official-engine execution, remote CI or replicas.
+
 This branch is a development port, **not a complete or production-ready PostgreSQL release**. MySQL/MariaDB remain the default. PostgreSQL fresh installation, the shared database API, authentication, basic asset/ticket lifecycle and composite searches are covered by integration tests. The remaining work below is necessary before changing that status.
 
 ## Architecture
 
-See [the latest full integrated checkpoint](modernization-upgrade-dropdown-validation.md)
+See [the latest complete portability checkpoint](modernization-handoff.md#current-741-complete-local-portability-checkpoint)
 for exact source, provider versions, test evidence and remaining work. Dated earlier
-validation figures are historical checkpoints. Newer integrated batches and their
-pending combined validation are recorded in [the handoff](modernization-handoff.md).
-Fresh installs replay all twelve
-current canonical versions, including subsequent frozen ownership/flag migrations;
+validation figures are historical checkpoints. Prepared next batches and their
+pending validation are recorded in [the handoff](modernization-handoff.md).
+At 741, fresh installs replay all thirteen
+canonical versions, including subsequent frozen ownership/flag migrations;
 supported upgrades use the same History coordinator and readiness checks.
 
 - `DBAdapter` contains the existing shared CRUD, metadata-cache and quoting API. `DBmysql` retains its public compatibility name but delegates connection ownership, SQL execution, escaping and prepared statements to DBAL. It no longer calls the native MySQL driver. `DBpgsql` still provides the native PostgreSQL transport pending its migration. Existing generated `class DB extends DBmysql` configurations keep working.

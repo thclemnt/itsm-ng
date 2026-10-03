@@ -1,5 +1,13 @@
 # Native boolean domains in reconstructed migration fixtures
 
+The latest complete local portability checkpoint is
+`741fb2b1f0cc852404bd55080e4ed7bbb0bf8b7e`: PostgreSQL and MariaDB both pass
+180/180 contracts, fresh installs and final native inspection. The modernization
+goal remains OPEN; official-engine/remote CI, replicas/TLS and prepared next
+batches are separate pending evidence.
+See [the handoff](modernization-handoff.md#current-741-complete-local-portability-checkpoint)
+for exact timings, retained failures and remaining work.
+
 The frozen `a736d72e03a41deee9723d39d50d372940ed1335` MariaDB full-suite run reached the final cleanup assertion in `domain-documents-schema.php`, then reported `Missing boolean domain CHECK: glpi_documents_items.glpi_documents_items_is_recursive_boolean` in `schema-check.php` and `identifier-sequences.php`. Later complete-schema guards also failed. These are recorded native results from the parent worker, not results of this source-only follow-up.
 
 Doctrine DBAL table definitions retain the native PostgreSQL boolean type but do not represent the supplementary MySQL/MariaDB boolean CHECKs. Recreating a current table through `BaselineSchema` and adding only its typed-subject CHECK therefore loses the appended boolean domain while retaining the completed `20261008_boolean_domains` receipt. Replaying that completed migration is deliberately a no-op and is not a fixture repair.
@@ -14,6 +22,6 @@ The source audit covered every `dropTable`/`DROP TABLE` site and reviewed column
 
 This batch does not change the separate native rejection SQLSTATE gates, plugin seed fixtures, impact-history invalid-data injection, current schema comparison, runtime metadata, or historical migration definitions.
 
-Validation for this batch is source-only. No bootstrap, native database, application, compiler, dependency, asset or browser jobs were run by its preparer. The parent worker must run document, operating-system and service-level calendar reconstruction/retry contracts on fresh disposable PostgreSQL and MariaDB schemas, inspect exact native domains and receipt preservation, and then execute coherent full suites on both providers. Keep the failing `a736` full-suite evidence; do not report the follow-up as green before those gates pass.
+Preparation checks were source-only and the original preparer ran no native jobs. Root subsequently ran the affected document, operating-system and service-level calendar contracts and their reconstruction/retry controls on both providers. At exact 741, both coherent suites pass 180/180, both fresh installation sequences pass, and both post-full native inspections have thirteen complete receipts and no schema differences. This validates the fixture restoration at that local checkpoint; retain the failed a736 cleanup/schema artifacts. Official-engine, browser, replica and TLS validation remain separate.
 
 The support class lives in `tests/database-portability/fixtures/`, outside the runner's top-level PHP contract discovery; adding it does not invent a passing zero-assert contract or require a new exclusion list.

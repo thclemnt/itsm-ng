@@ -1,9 +1,40 @@
 # MySQL session integrity: source draft
 
+Current checkpoint: `741fb2b1f0cc852404bd55080e4ed7bbb0bf8b7e`.
+The latest complete local portability checkpoint is
+`741fb2b1f0cc852404bd55080e4ed7bbb0bf8b7e`: PostgreSQL and MariaDB both pass
+180/180 contracts, fresh installs and final native inspection. The modernization
+goal remains OPEN; official-engine/remote CI, replicas/TLS and prepared next
+batches are separate pending evidence.
+[The handoff](modernization-handoff.md#current-741-complete-local-portability-checkpoint)
+separates these results from the retained a736 full failures and the earlier complete
+green b66 checkpoint. Later passages marked pending describe their earlier
+preparation checkpoint unless superseded by the precise checkpoint results above.
+
+## Later integrated validation at a736
+
+The source preparation below is historical. Strict physical-session
+initialization is integrated into private a736; root's actual MariaDB mode
+contract passes at 1edcd19 in 20.270s, including native rejection and
+reconnect/configured-mode controls. PostgreSQL's separate unchanged-provider
+control passes at 9d4949. The old required NULL → 0/warning 1048 and configured
+ANSI inspection failures remain recorded; preserving configured modes exposed
+real defects that received bounded repairs. No replica/TLS validation is
+inferred. At exact a736, original applications and ten queue assertions pass
+both providers, but the complete portability runs fail PostgreSQL 178/179 and
+MariaDB 151/179. Final native PostgreSQL schema converges; MariaDB has two missing
+Boolean CHECKs. Strict required-field and historical-fixture repairs remain
+PENDING native execution; [the handoff](modernization-handoff.md) separates these
+results from browser, official-engine and replica gates.
+
+
+Historical preparation and diagnosis follow; statements of unexecuted gates
+below describe those earlier snapshots.
+
 This isolated batch starts at `677bf5e7da`. It has not run against a database,
 been integrated or passed the portability/application matrix. Root's native
 causal probe found that the application's empty SQL mode rejected Supplier flags
-2 and -1 through CHECK, but accepted required NULL as stored 0 with warning1048.
+2 and -1 through CHECK, but accepted required NULL as stored 0 with warning 1048.
 The same native statement under STRICT_TRANS_TABLES refused NULL with error1048.
 The native domain assertion is retained.
 
@@ -44,7 +75,7 @@ unchanged and must pass before integration is treated as validated.
 The prepared mysql-session-modes.php contract uses one owned CREATE/DROP probe
 and existing disposable credentials, refuses an existing probe name and cleans up
 only after its own CREATE succeeds. It never changes GLOBAL modes, and covers
-native flags2/-1/requiredNULL and string truncation, adapter reconnect, direct DBAL
+native flags2/-1/required NULL and string truncation, adapter reconnect, direct DBAL
 reconnect, the supplied read adapter, installation factories and a controlled
 pre-initialization middleware that supplies ANSI/group/date modes on each owned
 physical connection. It also proves externally supplied permissive diagnosis
