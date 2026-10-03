@@ -23,6 +23,7 @@ require GLPI_ROOT . '/inc/includes.php';
 require __DIR__ . '/FixtureRecords.php';
 require __DIR__ . '/fixtures/NativeConstraintRefusal.php';
 require __DIR__ . '/fixtures/ProcessorNativeAdmission.php';
+require __DIR__ . '/fixtures/ProcessorTableChecks.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
     exit(1);
@@ -46,18 +47,23 @@ verify($reference['empty_value'] === 0 && array_keys($reference['selections']) =
 verify((new SchemaCheck())->differences($connection) === [], 'Complete current schema before reconstruction');
 verify((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $tableName) === 0, 'Only reconstruct an empty processor assignment table');
 $current = (new BaselineSchema())->build($platform)->getTable($tableName);
-$metadata = \itsmng\Database\Orm::create($DB)->getClassMetadata(\itsmng\Database\Entity\ItemDeviceProcessor::class);
-$key = (new ReflectionProperty($metadata->name, 'items_id'))->getAttributes(\itsmng\Database\Mapping\DiscriminatorKey::class)[0]->newInstance();
-$currentCheck = $key->subjectCheckSql($platform, $metadata, 'items_id');
 $expected = (new BaselineSchema())->build($platform);
 $comment = "Processor identity O'Reilly 日本語";
 $expected->getTable($tableName)->getColumn('items_id')->setComment($comment);
 $originalState = Ledger::state($connection, $version);
 verify(($originalState['complete'] ?? false) === true, 'Processor append completed before contract');
+$nativeChecks = new ProcessorTableChecks($connection, $tableName);
 $fixtures = new FixtureRecords($DB);
-$computer = $fixtures->create('glpi_computers', ['id' => 4294990001]);
-$device = $fixtures->create('glpi_deviceprocessors', ['id' => 4294990002, 'designation' => 'Historical processor']);
-$rebuild = static function () use ($current, $manager, $connection, $tableName, $version, $comment): void {
+$computer = $device = null;
+$tableTouched = false;
+$consumerOwned = $uniqueOwned = false;
+$primary = null;
+$cleanupErrors = [];
+verify((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_computers WHERE id = 4294990001') === 0
+    && (int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_deviceprocessors WHERE id = 4294990002') === 0, 'Never adopt preexisting fixed-ID processor fixture owners');
+$rebuild = static function () use ($current, $manager, $connection, $tableName, $version, $comment, $nativeChecks, &$tableTouched): void {
+    $tableTouched = true; // Repair partial DROP/CREATE/check setup failures too.
+    $connection->delete(LegacyToOrm::LEDGER, ['version' => $version]);
     $manager->dropTable($tableName);
     $legacy = clone $current;
     foreach ($legacy->getForeignKeys() as $foreign) {
@@ -74,9 +80,9 @@ $rebuild = static function () use ($current, $manager, $connection, $tableName, 
     // Nullable source drift is legitimate only for stock; selected NULL identities remain invalid.
     $legacy->getColumn('items_id')->setColumnDefinition(null)->setNotnull(false)->setDefault(0)->setComment($comment);
     $manager->createTable($legacy);
-    $connection->delete(LegacyToOrm::LEDGER, ['version' => $version]);
+    $nativeChecks->install(false);
 };
-$rejectSql = static function (array $values, bool $foreign = false) use ($connection, $tableName, $device): void {
+$rejectSql = static function (array $values, bool $foreign = false) use ($connection, $tableName, &$device): void {
     $connection->beginTransaction();
     try {
         $connection->insert($tableName, $values + ['deviceprocessors_id' => $device]);
@@ -88,6 +94,8 @@ $rejectSql = static function (array $values, bool $foreign = false) use ($connec
     }
 };
 try {
+    $computer = $fixtures->create('glpi_computers', ['id' => 4294990001]);
+    $device = $fixtures->create('glpi_deviceprocessors', ['id' => 4294990002, 'designation' => 'Historical processor']);
     foreach (['columns', 'stock_normalization', 'copy', 'projection', 'missing_projection', 'constraints'] as $interruption) {
         if (!$postgres && $interruption === 'missing_projection') {
             continue; // MySQL replaces the compatibility column in one ALTER.
@@ -105,9 +113,13 @@ try {
             $consumer = 'port_processor_projection_consumer';
             $unique = 'port_processor_projection_pair';
             verify(!$manager->tablesExist([$consumer]), 'Never adopt a preexisting incoming-reference fixture');
-            $connection->executeStatement('ALTER TABLE ' . $tableName . ' ADD CONSTRAINT ' . $unique . ' UNIQUE (id, items_id)');
-            $connection->executeStatement('CREATE TABLE ' . $consumer . ' (id BIGINT NOT NULL PRIMARY KEY, binding_id BIGINT NOT NULL, subject_id BIGINT NOT NULL, CONSTRAINT port_processor_projection_fk FOREIGN KEY (binding_id, subject_id) REFERENCES ' . $tableName . ' (id, items_id))');
+            $incomingPrimary = null;
+            $incomingCleanup = [];
             try {
+                $connection->executeStatement('ALTER TABLE ' . $tableName . ' ADD CONSTRAINT ' . $unique . ' UNIQUE (id, items_id)');
+                $uniqueOwned = true;
+                $connection->executeStatement('CREATE TABLE ' . $consumer . ' (id BIGINT NOT NULL PRIMARY KEY, binding_id BIGINT NOT NULL, subject_id BIGINT NOT NULL, CONSTRAINT port_processor_projection_fk FOREIGN KEY (binding_id, subject_id) REFERENCES ' . $tableName . ' (id, items_id))');
+                $consumerOwned = true;
                 $connection->insert($consumer, ['id' => 1, 'binding_id' => 4294990101, 'subject_id' => $computer]);
                 $incoming = new \itsmng\Database\Migration\IncomingProjectionReferences($connection);
                 $schemaName = (string)$connection->fetchOne($postgres ? 'SELECT current_schema()' : 'SELECT DATABASE()');
@@ -123,9 +135,32 @@ try {
                 verify($connection->fetchAllAssociative('SELECT * FROM ' . $tableName . ' ORDER BY id') === $beforeIncoming
                     && $connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $beforeIncomingLedger
                     && !$manager->introspectTable($tableName)->hasColumn('computers_id'), 'Incoming-FK refusal preserves every fixture row/receipt and performs no DDL');
+            } catch (Throwable $error) {
+                $incomingPrimary = $error;
             } finally {
-                $manager->dropTable($consumer);
-                $connection->executeStatement('ALTER TABLE ' . $tableName . ' DROP ' . ($postgres ? 'CONSTRAINT ' : 'INDEX ') . $unique);
+                if ($consumerOwned) {
+                    try {
+                        $manager->dropTable($consumer);
+                        $consumerOwned = false;
+                    } catch (Throwable $error) {
+                        $incomingCleanup[] = $error;
+                    }
+                }
+                if ($uniqueOwned && !$consumerOwned) {
+                    try {
+                        $connection->executeStatement('ALTER TABLE ' . $tableName . ' DROP ' . ($postgres ? 'CONSTRAINT ' : 'INDEX ') . $unique);
+                        $uniqueOwned = false;
+                    } catch (Throwable $error) {
+                        $incomingCleanup[] = $error;
+                    }
+                }
+            }
+            array_push($cleanupErrors, ...$incomingCleanup);
+            if ($incomingPrimary !== null) {
+                throw $incomingPrimary;
+            }
+            if ($incomingCleanup) {
+                throw new RuntimeException('Owned incoming-reference fixture cleanup failed.', previous: $incomingCleanup[0]);
             }
             foreach ([
                 ['itemtype' => 'Phone', 'items_id' => $computer],
@@ -239,14 +274,56 @@ try {
     verify(count($migration->plan($connection)[$tableName]['copy']) === 1, 'Canonical-only retry retains stock normalization without recopying the generated identity');
     $migration->apply($connection);
     verify((new SchemaCheck())->differences($connection, $expected) === [], 'Valid canonical-only retry reinstalls the owned CHECK');
+} catch (Throwable $error) {
+    $primary = $error;
 } finally {
-    $manager->dropTable($tableName);
-    $manager->createTable($current);
-    $connection->executeStatement($currentCheck);
-    Ledger::save($connection, $version, $originalState);
-    $connection->delete('glpi_deviceprocessors', ['id' => $device]);
-    $connection->delete('glpi_computers', ['id' => $computer]);
-    $DB->clearSchemaCache();
+    if ($consumerOwned) {
+        try {
+            $manager->dropTable('port_processor_projection_consumer');
+            $consumerOwned = false;
+        } catch (Throwable $error) {
+            $cleanupErrors[] = $error;
+        }
+    }
+    // Native definitions must be restored before its completed receipt.
+    if ($tableTouched && !$consumerOwned) {
+        try {
+            if ($manager->tablesExist([$tableName])) {
+                $manager->dropTable($tableName);
+            }
+            $manager->createTable($current);
+            $nativeChecks->install(true);
+            verify($nativeChecks->restored(), 'All original native processor CHECKs, including BooleanDomains, restore exactly');
+            verify((new SchemaCheck())->differences($connection) === [], 'Structural/native schema restored before completed processor receipt');
+            Ledger::save($connection, $version, $originalState);
+        } catch (Throwable $error) {
+            $cleanupErrors[] = $error;
+        }
+    }
+    foreach (['glpi_deviceprocessors' => $device, 'glpi_computers' => $computer] as $ownerTable => $ownerId) {
+        if ($ownerId !== null) {
+            try {
+                $connection->delete($ownerTable, ['id' => $ownerId]);
+            } catch (Throwable $error) {
+                $cleanupErrors[] = $error;
+            }
+        }
+    }
+    try {
+        $DB->clearSchemaCache();
+    } catch (Throwable $error) {
+        $cleanupErrors[] = $error;
+    }
+}
+if ($primary !== null) {
+    fwrite(STDERR, (string)$primary . "\n"); // Original failure always precedes restoration diagnostics.
+    foreach ($cleanupErrors as $error) {
+        fwrite(STDERR, "Additional owned-fixture cleanup failure: " . (string)$error . "\n");
+    }
+    exit(1);
+}
+if ($cleanupErrors) {
+    throw new RuntimeException('Processor fixture restoration failed.', previous: $cleanupErrors[0]);
 }
 verify((new SchemaCheck())->differences($connection) === [], 'Fixture cleanup restores complete schema');
 // The current metadata builder must enforce the same stock rule as historical adoption.
