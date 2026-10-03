@@ -92,8 +92,10 @@ try {
         $writer->dbhost = $unusableEndpoint;
         [$status] = $command->invoke();
         verify($status === InstallCommand::ERROR_DB_ALREADY_CONTAINS_TABLES, 'Existing-config installation uses supplied writer rather than reconstructed transport');
-        verify($DB === $writer && $writer->getDoctrineConnection() === $connection && $physicalId() === $physicalBefore,
-            'Same adapter and physical connection remain owned and open');
+        verify(
+            $DB === $writer && $writer->getDoctrineConnection() === $connection && $physicalId() === $physicalBefore,
+            'Same adapter and physical connection remain owned and open'
+        );
     }
     $writer->dbhost = $hostBefore;
     $writer->dbpassword = $passwordBefore;
@@ -124,11 +126,15 @@ try {
     $CFG_GLPI = $configBefore;
 }
 verify(file_get_contents(GLPI_CONFIG_DIR . '/config_db.php') === $configurationBefore, 'Configuration serialization is untouched');
-verify(Ledger::states($connection) === $ledgerBefore && $connection->fetchAllAssociative('SELECT * FROM ' . $quote('glpi_configs') . ' ORDER BY ' . $quote('id')) === $configRowsBefore,
-    'All real refusals and abort preserve history and stored release/configuration rows');
+verify(
+    Ledger::states($connection) === $ledgerBefore && $connection->fetchAllAssociative('SELECT * FROM ' . $quote('glpi_configs') . ' ORDER BY ' . $quote('id')) === $configRowsBefore,
+    'All real refusals and abort preserve history and stored release/configuration rows'
+);
 verify($physicalId() === $physicalBefore && $writer->getDoctrineConnection() === $connection
     && !$connection->isTransactionActive() && $connection->getTransactionNestingLevel() === 0, 'Connection ownership and caller idleness retained');
-verify($nativeSessionBefore === null || $connection->fetchAssociative('SELECT @@SESSION.character_set_connection AS charset, @@SESSION.time_zone AS timezone, @@SESSION.sql_mode AS modes') === $nativeSessionBefore,
-    'Configured MySQL charset, timezone and strict-session modes survive all command checks');
+verify(
+    $nativeSessionBefore === null || $connection->fetchAssociative('SELECT @@SESSION.character_set_connection AS charset, @@SESSION.time_zone AS timezone, @@SESSION.sql_mode AS modes') === $nativeSessionBefore,
+    'Configured MySQL charset, timezone and strict-session modes survive all command checks'
+);
 verify((new SchemaCheck())->differences($connection) === [], 'Read-only command checks preserve canonical schema');
 echo $writer->getProvider() . ': ' . $assertions . " configured installation writer ownership assertions passed.\n";
