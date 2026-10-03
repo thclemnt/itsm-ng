@@ -10,3 +10,9 @@ reference policies belong on Doctrine entity properties. `ReferenceHistory`
 reads this file for versioned schema upgrades, their fresh-install compatibility
 steps, and migration fixtures. Runtime CRUD and relationship discovery never
 read this snapshot.
+
+`20261001-seed-inputs.json` is a separate frozen input addendum for the original
+`20261001-seeds.php` records. It supplies the two omitted required TEXT comments
+as explicit empty strings, matching the frozen PostgreSQL defaults and legacy
+MySQL's prior values. It does not amend the original seed or baseline files,
+change DDL, infer defaults for other columns, or replay seeds during adoption.

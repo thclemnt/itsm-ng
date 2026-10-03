@@ -6,6 +6,7 @@ namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\ParameterType;
+use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 
@@ -20,25 +21,51 @@ final class Seeds20261001
         return require __DIR__ . '/history/20261001-seeds.php';
     }
 
+    /** Explicit historical input completion; never infer legacy implicit defaults. */
+    public static function prepare(Schema $schema, array $rows): array
+    {
+        $inputs = json_decode(file_get_contents(__DIR__ . '/history/20261001-seed-inputs.json'), true, 512, JSON_THROW_ON_ERROR);
+        foreach ($inputs as $name => $fields) {
+            if (!isset($rows[$name])) {
+                throw new \RuntimeException('Historical seed input has no source rows: ' . $name);
+            }
+            foreach ($fields as $field => $value) {
+                $schema->getTable($name)->getColumn($field);
+            }
+        }
+        foreach ($rows as $name => &$records) {
+            $table = $schema->getTable($name);
+            foreach ($records as &$record) {
+                $record += $inputs[$name] ?? [];
+                foreach ($record as $field => $value) {
+                    $column = $table->getColumn($field);
+                    if ($column->getNotnull() && $value === null) {
+                        throw new \RuntimeException('Historical seed supplies NULL for required field: ' . $name . '.' . $field);
+                    }
+                    if (Type::lookupName($column->getType()) === Types::BOOLEAN && $value !== null && !in_array($value, [0, 1, '0', '1', false, true], true)) {
+                        throw new \RuntimeException('Invalid historical boolean seed: ' . $name . '.' . $field);
+                    }
+                }
+                foreach ($table->getColumns() as $column) {
+                    if ($column->getNotnull() && !$column->getAutoincrement() && $column->getDefault() === null && !array_key_exists($column->getName(), $record)) {
+                        throw new \RuntimeException('Historical seed omits required field: ' . $name . '.' . $column->getName());
+                    }
+                }
+            }
+            unset($record);
+        }
+        unset($records);
+        return $rows;
+    }
+
     public function apply(Connection $connection, ?callable $translate = null, ?callable $progress = null): void
     {
         if ((Ledger::state($connection, self::VERSION)['complete'] ?? false) === true) {
             return;
         }
         $schema = (new Baseline20261001())->build($connection->getDatabasePlatform());
-        $rows = self::rows($translate);
         // Validate the entire seed plan against its historical schema before writing.
-        foreach ($rows as $name => $records) {
-            $table = $schema->getTable($name);
-            foreach ($records as $record) {
-                foreach ($record as $field => $value) {
-                    $column = $table->getColumn($field);
-                    if (Type::lookupName($column->getType()) === Types::BOOLEAN && $value !== null && !in_array($value, [0, 1, '0', '1', false, true], true)) {
-                        throw new \RuntimeException('Invalid historical boolean seed: ' . $name . '.' . $field);
-                    }
-                }
-            }
-        }
+        $rows = self::prepare($schema, self::rows($translate));
         Ledger::save($connection, self::VERSION, ['complete' => false, 'origin' => 'installed']);
         $connection->transactional(static function () use ($connection, $schema, $rows, $progress): void {
             foreach ($rows as $name => $records) {

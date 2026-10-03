@@ -128,6 +128,15 @@ try {
 }
 verify((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_apiclients') === 0 && !Ledger::state($connection, Seeds20261001::VERSION)['complete'], 'Failed seed DML rolls back with an incomplete completion record');
 (new Seeds20261001())->apply($connection);
+verify((int)$connection->fetchOne("SELECT COUNT(*) FROM glpi_rulerightparameters WHERE comment = ''") === 13
+    && (int)$connection->fetchOne("SELECT COUNT(*) FROM glpi_ssovariables WHERE comment = ''") === 6, 'Strict raw seed replay supplies the nineteen frozen required comment inputs explicitly');
+$seedReceipt = Ledger::state($connection, Seeds20261001::VERSION);
+$connection->update('glpi_rulerightparameters', ['comment' => 'A retained later seed edit'], ['id' => 1]);
+(new Seeds20261001())->apply($connection, progress: static function (): void {
+    throw new RuntimeException('Completed seeds unexpectedly replayed');
+});
+verify($connection->fetchOne('SELECT comment FROM glpi_rulerightparameters WHERE id = 1') === 'A retained later seed edit'
+    && Ledger::state($connection, Seeds20261001::VERSION) === $seedReceipt, 'Completed seed receipt preserves later values without any replay');
 verify((int)$connection->fetchOne('SELECT entities_id FROM glpi_entities WHERE id = 0') === -1, 'Pre-adoption root sentinel is preserved in frozen seed history');
 $legacyId = 2147483640;
 $auditId = 2147483646;
@@ -354,6 +363,7 @@ verify((int)$document['id'] === 803 && (int)$document['documents_id'] === 802 &&
 verify($documentReceipt['complete'] && $documentReceipt['documents_restored'] && $documentReceipt['timestamp_timezone'] === '+00:00'
     && !$manager->tablesExist(['glpi_plugin_domains_domains']), 'General document prerequisite and restoration share the ledger without any plugin source');
 verify($connection->fetchOne('SELECT old_value FROM glpi_logs WHERE id = ?', [$auditId]) === $audit, 'Audit data and its original ID survive');
+verify($connection->fetchOne('SELECT comment FROM glpi_rulerightparameters WHERE id = 1') === 'A retained later seed edit', 'Populated adoption preserves later seed-row edits');
 verify($connection->fetchOne('SELECT password FROM glpi_users WHERE id = 2') === $password, 'Customer account data survives adoption');
 verify($connection->fetchOne('SELECT entities_id FROM glpi_entities WHERE id = 0') === null && $connection->fetchOne('SELECT computermodels_id FROM glpi_computers WHERE id = ?', [$legacyId]) === null, 'Root and optional zero sentinels become real nullable relationships');
 $link = $connection->fetchAssociative('SELECT computers_id, items_id FROM glpi_certificates_items WHERE id = 101');
