@@ -15,6 +15,7 @@ if (!is_file($directory . '/config_db.php')) {
 define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
+require __DIR__ . '/FixtureRecords.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
     exit(1);
@@ -64,14 +65,16 @@ $schema = (string)$connection->fetchOne($postgres ? 'SELECT current_schema()' : 
 $prefix = 'itsm_port_projection_' . bin2hex(random_bytes(5));
 $external = $postgres ? $prefix . '_external' : (getenv('PORT_PROJECTION_REFERENCE_DB') ?: 'itsm_port_projection_references');
 verify(str_starts_with($external, 'itsm_port_') && $external !== $schema, 'External reference namespace is a separate disposable fixture');
-$tables = [$prefix . '_a', $prefix . '_b', $prefix . '_generated'];
+$tables = [$prefix . '_a', $prefix . '_b', $prefix . '_legacy', $prefix . '_generated'];
 $created = [];
 $owned = [];
+$computers = [];
 $primaryError = null;
 $cleanupError = null;
 $externalCreated = false;
 $qualified = static fn (string $namespace, string $table): string => $platform->quoteIdentifier($namespace) . '.' . $platform->quoteIdentifier($table);
 $foreignName = $prefix . '_incoming';
+$projectionComment = "Frozen O'Reilly compatibility identity";
 $createChild = static function (string $namespace, string $name, string $parent, string $column) use ($connection, $qualified, $platform, $schema, $foreignName, &$created, &$owned): string {
     $child = $qualified($namespace, $name);
     $connection->executeStatement('CREATE TABLE ' . $child . ' (id BIGINT NOT NULL PRIMARY KEY, parent_id BIGINT NULL, CONSTRAINT '
@@ -101,8 +104,11 @@ try {
         $table->setPrimaryKey(['id']);
         $table->addColumn('itemtype', 'string', ['length' => 100]);
         $table->addColumn('computers_id', 'bigint', ['notnull' => false]);
-        $options = ['notnull' => false];
+        $options = ['notnull' => false, 'comment' => $projectionComment];
         if ($index === 2) {
+            $options['notnull'] = true;
+            $options['default'] = 0;
+        } elseif ($index === 3) {
             $options['columnDefinition'] = "BIGINT GENERATED ALWAYS AS (CASE itemtype WHEN 'Computer' THEN computers_id ELSE NULL END) STORED";
         }
         $table->addColumn('items_id', 'bigint', $options);
@@ -152,10 +158,10 @@ try {
     array_pop($created);
     verify($migration->plan($connection) === $baseline, 'Removing a second-table FK refreshes standalone planning');
 
-    $generatedMigration = new ProjectionPlanningFixture([$tables[2]]);
+    $generatedMigration = new ProjectionPlanningFixture([$tables[3]]);
     $generatedBefore = $generatedMigration->plan($connection);
-    verify($generatedBefore[$tables[2]]['key_sql'] === [], 'An installed generated projection does not require replacement');
-    $outside = $createChild($external, $prefix . '_generated_child', $tables[2], 'items_id');
+    verify($generatedBefore[$tables[3]]['key_sql'] === [], 'An installed generated projection does not require replacement');
+    $outside = $createChild($external, $prefix . '_generated_child', $tables[3], 'items_id');
     verify($generatedMigration->plan($connection) === $generatedBefore, 'An incoming FK does not forbid a projection that will not be rebuilt');
 
     // A wrong existing canonical FK must still fail before any DDL; no adoption
@@ -170,6 +176,64 @@ try {
         $wrongRefused = $error->getMessage() === 'Existing typed item reference FK has a different definition: ' . $wrong;
     }
     verify($wrongRefused, 'Existing wrong canonical targets retain their explicit diagnostic');
+
+    $fixtures = new FixtureRecords($DB);
+    foreach (['first', 'second'] as $label) {
+        $computers[] = $fixtures->create('glpi_computers', ['name' => $prefix . ' ' . $label, 'entities_id' => 0]);
+    }
+    $generatedColumn = static fn (string $name): bool => (bool)$connection->fetchOne($postgres
+        ? "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = 'items_id' AND is_generated = 'ALWAYS'"
+        : "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = 'items_id' AND extra LIKE '%GENERATED%'", [$schema, $name]);
+    $indexDefinitions = static function (string $name) use ($connection): array {
+        $definitions = [];
+        foreach ($connection->createSchemaManager()->listTableIndexes($name) as $index) {
+            $definitions[$index->getName()] = ['columns' => $index->getColumns(), 'unique' => $index->isUnique(), 'primary' => $index->isPrimary(), 'flags' => $index->getFlags(), 'options' => $index->getOptions()];
+        }
+        ksort($definitions);
+        return $definitions;
+    };
+    foreach ([$tables[1], $tables[2]] as $name) {
+        $column = $connection->createSchemaManager()->listTableColumns($name)['items_id'];
+        $indexesBefore = $indexDefinitions($name);
+        verify($column->getComment() === $projectionComment, 'The ordinary compatibility column has an actual escaped native comment');
+        verify($connection->fetchOne('SELECT data_type FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = ?', [$schema, $name, 'items_id']) === 'bigint'
+            && !$generatedColumn($name), 'The challenged native column is an ordinary BIGINT: ' . $name);
+        verify(
+            $name === $tables[1] ? !$column->getNotnull() && $column->getDefault() === null : $column->getNotnull() && (string)$column->getDefault() === '0',
+            'Both same-shaped nullable and frozen NOT NULL DEFAULT 0 legacy states are exercised'
+        );
+        $connection->insert($name, ['id' => 1, 'itemtype' => 'Computer', 'computers_id' => $computers[0], 'items_id' => $computers[0]]);
+        $subjectMigration = new ProjectionPlanningFixture([$name]);
+        $entry = $subjectMigration->plan($connection)[$name];
+        verify($entry['copy_legacy'] && $entry['key_sql'] !== [], 'Every ordinary BIGINT receives an actual generated projection installation');
+        foreach ($entry['key_sql'] as $statement) {
+            $connection->executeStatement($statement);
+        }
+        verify($generatedColumn($name), 'Native metadata confirms the planned projection is installed');
+        verify($connection->createSchemaManager()->listTableColumns($name)['items_id']->getComment() === $projectionComment, 'Projection installation preserves the exact native column comment');
+        verify($indexDefinitions($name) === $indexesBefore, 'Projection installation preserves every native index definition');
+        $row = $connection->fetchAssociative('SELECT itemtype, computers_id, items_id FROM ' . $name . ' WHERE id = 1');
+        verify($row['itemtype'] === 'Computer' && (int)$row['computers_id'] === $computers[0] && (int)$row['items_id'] === $computers[0], 'Projection installation preserves the populated subject link');
+        $replanned = $subjectMigration->plan($connection)[$name];
+        verify(!$replanned['copy_legacy'] && $replanned['key_sql'] === [], 'A native installed projection is not copied or rebuilt on retry');
+        verify((new ProjectionPlanningFixture([$name]))->plan($connection) === $subjectMigration->plan($connection), 'A fresh planner and the same long-lived planner agree after native DDL');
+        $connection->update($name, ['computers_id' => $computers[1]], ['id' => 1]);
+        verify((int)$connection->fetchOne('SELECT items_id FROM ' . $name . ' WHERE id = 1') === $computers[1], 'Changing the canonical owner actually computes the compatibility projection');
+        $writeRefused = false;
+        try {
+            $connection->update($name, ['items_id' => $computers[0]], ['id' => 1]);
+        } catch (\Doctrine\DBAL\Exception) {
+            $writeRefused = true;
+        }
+        verify($writeRefused && (int)$connection->fetchOne('SELECT items_id FROM ' . $name . ' WHERE id = 1') === $computers[1], 'The installed projection rejects direct writes without changing its computed value');
+        $duplicateRefused = false;
+        try {
+            $connection->insert($name, ['id' => 2, 'itemtype' => 'Computer', 'computers_id' => $computers[1]]);
+        } catch (\Doctrine\DBAL\Exception) {
+            $duplicateRefused = true;
+        }
+        verify($duplicateRefused && (int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $name) === 1, 'The original unique projection index remains effective');
+    }
 } catch (Throwable $error) {
     $primaryError = $error;
 } finally {
@@ -179,6 +243,14 @@ try {
         } catch (Throwable $error) {
             $cleanupError ??= $error;
             fwrite(STDERR, 'Fixture cleanup failed for ' . $table . ': ' . (string)$error . "\n");
+        }
+    }
+    foreach (array_reverse($computers) as $id) {
+        try {
+            $connection->delete('glpi_computers', ['id' => $id]);
+        } catch (Throwable $error) {
+            $cleanupError ??= $error;
+            fwrite(STDERR, 'Owned Computer fixture cleanup failed: ' . (string)$error . "\n");
         }
     }
     if ($externalCreated) {
@@ -201,5 +273,8 @@ foreach ($owned as [$namespace, $name]) {
         !(bool)$connection->fetchOne('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = ? AND table_name = ?', [$namespace, $name]),
         'Every individually owned fixture table is removed: ' . $namespace . '.' . $name
     );
+}
+foreach ($computers as $id) {
+    verify(!(bool)$connection->fetchOne('SELECT COUNT(*) FROM glpi_computers WHERE id = ?', [$id]), 'Every owned Computer fixture is removed');
 }
 echo $DB->getProvider() . ": $assertions incoming projection planning assertions passed.\n";

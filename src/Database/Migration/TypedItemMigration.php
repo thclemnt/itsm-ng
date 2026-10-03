@@ -223,10 +223,11 @@ abstract class TypedItemMigration
                         $platform->getAlterTableSQL($manager->createComparator()->compareTables($without, $withKey))
                     )
                     : $platform->getAlterTableSQL($manager->createComparator()->compareTables($after, $withKey));
-                if (!$postgres && $generated && $this->expandsTargets() && $this->rebuildsProjection($connection)) {
-                    // DBAL does not introspect generated expressions, so an
-                    // unchanged BIGINT declaration can compare equal despite
-                    // this appended migration's expanded frozen expression.
+                if (!$postgres && $hasKey && ($keySql === [] || ($generated && $this->expandsTargets() && $this->rebuildsProjection($connection)))) {
+                    // DBAL excludes generation expressions from column comparison.
+                    // The native catalogue above determines whether to install or
+                    // rebuild this frozen projection even when its BIGINT shape
+                    // compares equal, including ordinary nullable legacy columns.
                     $keySql = ['ALTER TABLE ' . $platform->quoteIdentifier($table)
                         . ' MODIFY COLUMN ' . $platform->quoteIdentifier('items_id') . ' ' . $declaration];
                 }
