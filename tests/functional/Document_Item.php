@@ -51,6 +51,7 @@ class Document_Item extends DbTestCase
     {
         $input = [];
         $ditem = $this->newTestedInstance;
+        $bindings = countElementsInTable(\Document_Item::getTable());
 
         $this->exception(
             function () use ($input) {
@@ -59,32 +60,37 @@ class Document_Item extends DbTestCase
         )->message->contains('Item type is mandatory');
 
         $input['itemtype'] = '';
+        $this->boolean($this->testedInstance->add($input))->isFalse();
         $this->exception(
             function () use ($input) {
-                $this->boolean($this->testedInstance->add($input))->isFalse();
+                $this->testedInstance->prepareInputForAdd($input);
             }
         )->message->contains('Item type is mandatory');
 
         $input['itemtype'] = 'NotAClass';
+        $this->boolean($this->testedInstance->add($input))->isFalse();
         $this->exception(
             function () use ($input) {
-                $this->boolean($this->testedInstance->add($input))->isFalse();
+                $this->testedInstance->prepareInputForAdd($input);
             }
         )->message->contains('No class found for type NotAClass');
 
         $input['itemtype'] = 'Computer';
+        $this->boolean($this->testedInstance->add($input))->isFalse();
         $this->exception(
             function () use ($input) {
-                $this->boolean($this->testedInstance->add($input))->isFalse();
+                $this->testedInstance->prepareInputForAdd($input);
             }
         )->message->contains('Item ID is mandatory');
 
         $input['items_id'] = 0;
+        $this->boolean($this->testedInstance->add($input))->isFalse();
         $this->exception(
             function () use ($input) {
-                $this->boolean($this->testedInstance->add($input))->isFalse();
+                $this->testedInstance->prepareInputForAdd($input);
             }
         )->message->contains('Item ID is mandatory');
+        $this->integer(countElementsInTable(\Document_Item::getTable()))->isIdenticalTo($bindings);
 
         $cid = getItemByTypeName('Computer', '_test_pc01', true);
         $input['items_id'] = $cid;
