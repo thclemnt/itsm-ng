@@ -7,13 +7,14 @@ Both discovered portability suites pass 147/147 contracts at application source
 tests each with zero skips. Earlier concurrent browser timeouts remain recorded.
 
 Newer integrated application source is
-`c5aa316cea410d5ebacb0fb0e1ee012a25595e6f`: atomic mapped deletion, six operating-system
+`fc58f1a1abdebaaee9e7920ac898c0c11199e5a8`: atomic mapped deletion, six operating-system
 subject owners, Domain plugin adoption and document ownership, identifier sequence
 repair, authoritative empty session scope, Contract persistence and notification
-queue admission, and owning endpoint authorization before lifecycle writes.
+queue admission, owning endpoint authorization before lifecycle writes, Domain
+commercial Supplier coherence, and PostgreSQL CLI initialization without mysqli.
 Their focused evidence appears below and in the linked batch
 notes. A full combined rerun has not yet run. Offline discovery at this source
-finds 162 contracts; this count is not a passing result.
+finds 163 contracts; this count is not a passing result.
 
 The integrated [owning endpoint repair](connexity-ownership.md) passes separate
 fresh installs, its authorization contract, the unchanged ITIL migration contract,
@@ -23,14 +24,40 @@ Transfer fixture types and inherited Link ownership. These results belong to tha
 isolated batch and do not replace the older full combined checkpoint.
 
 Parallel review also identified a Transfer path that ignores a refused parent
-update after child mutations. The current batch completes Domain commercial
-supplier coherence and atomic Transfer validation before freezing source for
+update after child mutations. The integrated
+[commercial Supplier repair](domain-commercial-supplier-ownership.md) passes its
+focused contract, twelve adjacent contracts, 36 original application methods and
+1,209 assertions on each provider. Native inspection passes on both populated and
+fresh databases. The first MariaDB historical-adoption attempt exceeded the
+unchanged 300-second limit; its actual interrupted journal resumed in 23.198s,
+and a separate fresh complete contract passed in 234.233s. These are separate
+results; the earlier timeout remains recorded.
+
+The CLI correction reproduces the original initialization failure using an
+actual PostgreSQL-only PHP process and passes five isolated capability scenarios.
+Those use a nonconnecting adapter spy; a live PostgreSQL-only installation has
+not been verified. The upcoming application matrix uses PHP with both drivers.
+
+Transfer source review additionally found that full-tree import ignored a refused
+intermediate node and ownership forwarding ignored refused child updates. The
+current batch repairs those actual lifecycle boundaries and validates atomic
+Transfer before freezing source for
 fresh installs, populated/retry history, complete
 portability and broader application/browser validation. PostgreSQL 18.6 and MySQL
 8.4.11 are provisioned; their application matrix remains pending. Software
 assignment ownership is prepared separately and remains unvalidated. Normal
 authenticated Git fetch works; remote advances are checked before integration.
 The overall goal remains open.
+
+Further source review found that the mapped writer silently coerces invalid
+boolean scalars and most MySQL/MariaDB boolean columns lack zero/one constraints.
+Entity-local boolean declarations already exist; they must remain authoritative.
+A separate unvalidated worktree is preparing strict metadata-derived input
+validation, an append-only frozen boolean-domain migration and read-only native
+enforcement checks. Older history, nullable preferences and existing Category/
+Domain constraints must remain intact. Software ownership and native PostgreSQL
+transport retirement remain separate open batches; the latter needs supported
+result-type metadata rather than another application driver wrapper.
 
 Continue the PHP application on `th/exp/postgres`; the verified starting commit is
 `897c5c9bd636f65e5a2a596d350ef087635303f9`.
