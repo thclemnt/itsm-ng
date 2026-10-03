@@ -57,7 +57,7 @@ class BooleanLateUserFixture extends User
 
     public function pre_updateInDB()
     {
-        $this->fields['compact_mode_ui'] = 2;
+        $this->fields['is_ids_visible'] = 2;
     }
 }
 
@@ -102,7 +102,6 @@ verify((new SchemaCheck())->differences($connection) === [], 'Current complete s
 // Actual representative mapped rows, including nullable inherited preferences
 // and flags whose older supplying migrations are independent of the baseline.
 $savedSession = $_SESSION;
-$savedPreference = $CFG_GLPI['compact_mode_ui'];
 $savedConfig = $CFG_GLPI;
 $connection->beginTransaction();
 try {
@@ -171,31 +170,38 @@ try {
             $user = new User();
             verify($user->update(['id' => $id, 'compact_mode_ui' => 2]) === false, 'Public User refuses before preparation');
             verify($_SESSION['glpicompact_mode_ui'] === 'unchanged-session-preference', 'Rejected preference cannot mutate SESSION');
-            $CFG_GLPI['compact_mode_ui'] = 0;
-            $writer->update($table, $id, ['compact_mode_ui' => false]);
-            $_SESSION['glpicompact_mode_ui'] = 0;
+            // ID visibility is a real inherited Config/User preference used
+            // by Config forms and public User item listings. Compact/access
+            // flags retain storage checks but do not use this SESSION policy.
+            $_SESSION['glpiis_ids_visible'] = 'unchanged-inherited-preference';
+            verify($user->update(['id' => $id, 'is_ids_visible' => 2]) === false, 'Actual inherited preference refuses before preparation');
+            verify($_SESSION['glpiis_ids_visible'] === 'unchanged-inherited-preference', 'Early inherited preference refusal cannot publish SESSION');
+            $CFG_GLPI['is_ids_visible'] = 0;
+            $writer->update($table, $id, ['is_ids_visible' => false]);
+            $_SESSION['glpiis_ids_visible'] = 0;
             $lateUser = new BooleanLateUserFixture();
-            verify($lateUser->update(['id' => $id, 'compact_mode_ui' => '1', '_no_message' => 1]) === false, 'Late User invalid flag refuses after valid preparation');
-            verify((int)$_SESSION['glpicompact_mode_ui'] === 0 && (int)$connection->fetchOne('SELECT compact_mode_ui FROM glpi_users WHERE id = ?', [$id]) === 0, 'Late refused preference leaves stored and session state unchanged');
-            $CFG_GLPI['compact_mode_ui'] = 1;
-            $writer->update($table, $id, ['compact_mode_ui' => false]);
-            verify($user->update(['id' => $id, 'compact_mode_ui' => 'NULL', '_no_message' => 1]), 'Legacy inherited preference sentinel remains supported');
-            verify($connection->fetchOne('SELECT compact_mode_ui FROM glpi_users WHERE id = ?', [$id]) === null, 'Public false-to-inherited-NULL transition stores genuine NULL');
-            verify((int)$_SESSION['glpicompact_mode_ui'] === 1, 'Current-user SESSION receives the configured effective inherited boolean');
-            $_SESSION['glpicompact_mode_ui'] = 0;
-            verify($user->update(['id' => $id, 'compact_mode_ui' => null, '_no_message' => 1]) && (int)$_SESSION['glpicompact_mode_ui'] === 1, 'Accepted no-change inheritance refresh uses actual stored NULL');
-            $CFG_GLPI['compact_mode_ui'] = 1;
-            verify($user->update(['id' => $id, 'compact_mode_ui' => '0', '_no_message' => 1]), 'Public inherited NULL-to-false transition accepted');
-            verify($connection->fetchOne('SELECT compact_mode_ui FROM glpi_users WHERE id = ?', [$id]) !== null && (int)$connection->fetchOne('SELECT compact_mode_ui FROM glpi_users WHERE id = ?', [$id]) === 0, 'NULL differs from explicit false in lifecycle planning');
-            $CFG_GLPI['compact_mode_ui'] = 0;
-            verify($user->update(['id' => $id, 'compact_mode_ui' => '1', '_no_message' => 1]), 'Public true preference accepted');
-            verify((int)$connection->fetchOne('SELECT compact_mode_ui FROM glpi_users WHERE id = ?', [$id]) === 1, 'Public callback retains zero/one representation');
+            verify($lateUser->update(['id' => $id, 'is_ids_visible' => '1', '_no_message' => 1]) === false, 'Late User invalid flag refuses after valid preparation');
+            verify((int)$_SESSION['glpiis_ids_visible'] === 0 && (int)$connection->fetchOne('SELECT is_ids_visible FROM glpi_users WHERE id = ?', [$id]) === 0, 'Late refused preference leaves stored and session state unchanged');
+            $CFG_GLPI['is_ids_visible'] = 1;
+            $writer->update($table, $id, ['is_ids_visible' => false]);
+            verify($user->update(['id' => $id, 'is_ids_visible' => 'NULL', '_no_message' => 1]), 'Legacy inherited preference sentinel remains supported');
+            verify($connection->fetchOne('SELECT is_ids_visible FROM glpi_users WHERE id = ?', [$id]) === null, 'Public false-to-inherited-NULL transition stores genuine NULL');
+            verify((int)$_SESSION['glpiis_ids_visible'] === 1, 'Current-user SESSION receives the configured effective inherited boolean');
+            $_SESSION['glpiis_ids_visible'] = 0;
+            verify($user->update(['id' => $id, 'is_ids_visible' => null, '_no_message' => 1]) && (int)$_SESSION['glpiis_ids_visible'] === 1, 'Accepted no-change inheritance refresh uses actual stored NULL');
+            $CFG_GLPI['is_ids_visible'] = 1;
+            verify($user->update(['id' => $id, 'is_ids_visible' => '0', '_no_message' => 1]), 'Public inherited NULL-to-false transition accepted');
+            verify($connection->fetchOne('SELECT is_ids_visible FROM glpi_users WHERE id = ?', [$id]) !== null && (int)$connection->fetchOne('SELECT is_ids_visible FROM glpi_users WHERE id = ?', [$id]) === 0, 'NULL differs from explicit false in lifecycle planning');
+            $CFG_GLPI['is_ids_visible'] = 0;
+            verify($user->update(['id' => $id, 'is_ids_visible' => '1', '_no_message' => 1]), 'Public true preference accepted');
+            verify((int)$connection->fetchOne('SELECT is_ids_visible FROM glpi_users WHERE id = ?', [$id]) === 1, 'Public callback retains zero/one representation');
         }
     }
     // Every nullable User flag retains absent/NULL/false storage semantics.
     // Only the actual declared preference policy controls SESSION publication.
     $nullablePreferences = array_keys(array_filter(EntityRegistry::booleanFields('glpi_users')));
     verify(count($nullablePreferences) === 11, 'Exercise all eleven entity-declared nullable User flags');
+    verify(count(array_intersect($nullablePreferences, $CFG_GLPI['user_pref_field'])) === 9, 'Exercise all nine actual inherited boolean publication policies');
     $preferenceUser = $fixtures->create('glpi_users', ['name' => 'All nullable preferences ' . bin2hex(random_bytes(6))]);
     $_SESSION['glpiID'] = $preferenceUser;
     $user = new User();
@@ -223,7 +229,6 @@ try {
 } finally {
     $connection->rollBack();
     $_SESSION = $savedSession;
-    $CFG_GLPI['compact_mode_ui'] = $savedPreference;
     $CFG_GLPI = $savedConfig;
 }
 

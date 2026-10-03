@@ -43,10 +43,11 @@ arbitrary strings and compound values are refused without coercion.
 CommonDBTM normalizes mapped flags before model preparation, so rejected User
 preferences cannot already change SESSION. Public callbacks/audit history retain
 zero/one values; native ORM assignment uses booleans. Metadata-scoped lifecycle
-comparison distinguishes inherited NULL from explicit false. User-owned
+comparison distinguishes supplied NULL from explicit false. User-owned
 post-success preference handling reloads actual stored values through the
 existing ORM-backed User read and effective preference policy. It refreshes only
-supplied nullable boolean keys, including accepted no-change updates. A late
+supplied nullable boolean keys in the existing inherited preference policy,
+including accepted no-change updates. A late
 refusal cannot already change these SESSION preferences. Absent keys and
 nonboolean/language/use_mode preference ordering retain their existing behavior.
 The final base update boundary checks only fields selected for actual persistence
@@ -184,11 +185,18 @@ single-table drift, invalid-data, public-input and nullable assertions remain.
 All eleven property-declared nullable User flags now receive public
 absent/NULL/false/true storage controls. SESSION expectations follow the actual
 `user_pref_field` policy instead of silently adding preference declarations in
-the fixture. Source inspection identified that this list currently excludes
-`compact_mode_ui` and `access_shortcuts`, while the preceding unchanged compact
-mode assertions expect inherited SESSION publication. That discrepancy needs a
-separate policy repair or diagnosis before a passing claim; this test-only
-follow-up changes neither production nor those original assertions.
+the fixture. Exactly nine nullable flags belong to that inherited policy.
+`compact_mode_ui` is read by `Html::useCompactMode()` from the current User and
+its separate `itsm_compact_mode` cache; `access_shortcuts` is read directly from
+the User by Ajax/hotkey/ITIL UI callers. Neither field is a Config-inherited
+SESSION preference. The earlier contract incorrectly inferred inheritance from
+nullability and expected `glpicompact_mode_ui` publication. Its same early/late
+refusal, false-to-NULL, accepted no-change refresh and NULL-to-false semantics
+now use the actually inherited `is_ids_visible` preference. Config's preference
+form and User item listings consume that Config/SESSION policy. Compact/access
+native and public NULL/zero/one storage assertions remain, and all eleven storage
+transitions plus all nine inherited publication controls remain covered.
+Production and the configured preference policy are unchanged.
 
 The new controls have not executed against a provider. PHP syntax, scoped
 formatter and whitespace checks are source checks only. Run both contracts on
