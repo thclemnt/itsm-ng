@@ -5,6 +5,7 @@
 namespace itsmng\Database\Repository;
 
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
+use Doctrine\DBAL\LockMode;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Entity\ItemKanban;
@@ -31,17 +32,25 @@ final class KanbanRepository
     /** Exact board identity; shared and private state have distinct owners. */
     public function statesForItem(string $type, int $item): array
     {
-        return $this->em->createQueryBuilder()->select('s.id AS id', 'IDENTITY(s.owner) AS owner')
+        $query = $this->em->createQueryBuilder()->select('s.id AS id', 'IDENTITY(s.owner) AS owner')
             ->from(ItemKanban::class, 's')->where('s.itemtype = :type AND s.items_id = :item')
             ->setParameter('type', $type, Types::STRING)->setParameter('item', $item, Types::BIGINT)
-            ->orderBy('s.id')->getQuery()->getScalarResult();
+            ->orderBy('s.id')->getQuery();
+        if ($this->em->getConnection()->isTransactionActive()) {
+            $query->setLockMode(LockMode::PESSIMISTIC_WRITE);
+        }
+        return $query->getScalarResult();
     }
 
     public function stateIdentity(int $id): ?array
     {
-        $rows = $this->em->createQueryBuilder()->select('s.itemtype AS kind', 's.items_id AS item', 'IDENTITY(s.owner) AS owner')
+        $query = $this->em->createQueryBuilder()->select('s.itemtype AS kind', 's.items_id AS item', 'IDENTITY(s.owner) AS owner')
             ->from(ItemKanban::class, 's')->where('s.id = :id')->setParameter('id', $id, Types::BIGINT)
-            ->getQuery()->getScalarResult();
+            ->getQuery();
+        if ($this->em->getConnection()->isTransactionActive()) {
+            $query->setLockMode(LockMode::PESSIMISTIC_WRITE);
+        }
+        $rows = $query->getScalarResult();
         return $rows[0] ?? null;
     }
 
@@ -51,10 +60,14 @@ final class KanbanRepository
         if (!$owners) {
             return false;
         }
-        return $this->em->createQueryBuilder()->select('s.id AS id')->from(ItemKanban::class, 's')
+        $query = $this->em->createQueryBuilder()->select('s.id AS id')->from(ItemKanban::class, 's')
             ->where('s.itemtype = :type AND s.items_id = :item AND IDENTITY(s.owner) IN (:owners)')
             ->setParameter('type', $type, Types::STRING)->setParameter('item', $item, Types::BIGINT)
-            ->setParameter('owners', $owners)->setMaxResults(1)->getQuery()->getScalarResult() !== [];
+            ->setParameter('owners', $owners)->orderBy('s.id')->setMaxResults(1)->getQuery();
+        if ($this->em->getConnection()->isTransactionActive()) {
+            $query->setLockMode(LockMode::PESSIMISTIC_WRITE);
+        }
+        return $query->getScalarResult() !== [];
     }
 
     /** The database enforces one state per board/owner, including the shared owner. */
