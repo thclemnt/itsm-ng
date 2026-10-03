@@ -35,8 +35,8 @@ abstract class AbstractUpgradeCommand extends AbstractCommand implements ForceNo
     {
         $upgrade = new Upgrade($this->db);
         $output->writeln('Canonical database history');
-        $plan = $upgrade->plan();
         if (!$apply) {
+            $plan = $upgrade->plan();
             foreach ($plan['pending'] as $version) {
                 $output->writeln('Pending history: ' . $version);
             }

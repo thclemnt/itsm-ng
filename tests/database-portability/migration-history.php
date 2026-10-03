@@ -299,27 +299,6 @@ try {
 }
 verify(Ledger::state($connection, LegacyToOrm::VERSION) === null, 'Invalid data creates no adoption journal');
 $connection->delete('glpi_useremails', ['email' => 'history-orphan@example.invalid']);
-// Legitimate pre-existing core Domain documents also need the frozen data
-// prerequisite, even when no Domains plugin tables or aliases exist at all.
-$connection->insert('glpi_domains', ['id' => 801, 'name' => 'Existing core Domain']);
-$connection->insert('glpi_documents', ['id' => 802, 'name' => 'Original core attachment']);
-$sourceTimezone = $postgres ? $connection->fetchOne('SHOW TIME ZONE') : $connection->fetchOne('SELECT @@SESSION.time_zone');
-$connection->executeStatement($postgres ? "SET TIME ZONE '+02:00'" : "SET time_zone = '+02:00'");
-try {
-    $connection->insert('glpi_documents_items', ['id' => 803, 'documents_id' => 802, 'items_id' => 801, 'itemtype' => 'Domain', 'entities_id' => 0, 'users_id' => 0,
-        'is_recursive' => $postgres ? true : 1, 'timeline_position' => 1, 'date_mod' => '2026-02-03 04:05:06', 'date_creation' => '2026-02-04 05:06:07', 'date' => '2026-02-05 06:07:08'], $postgres ? ['is_recursive' => \Doctrine\DBAL\Types\Types::BOOLEAN] : []);
-    $documentInstantSql = $postgres ? 'SELECT EXTRACT(EPOCH FROM date_mod) FROM glpi_documents_items WHERE id=803' : 'SELECT UNIX_TIMESTAMP(date_mod) FROM glpi_documents_items WHERE id=803';
-    $documentInstant = $connection->fetchOne($documentInstantSql);
-    $documentPreview = $history->plan($connection);
-    verify(($documentPreview['domain_prerequisite']['version'] ?? null) === DomainDocuments20261006::GENERAL_RECEIPT
-        && str_contains($documentPreview['canonical_preflight'], 'Deferred') && Ledger::state($connection, DomainDocuments20261006::GENERAL_RECEIPT) === null
-        && (int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_documents_items WHERE id=803') === 1, 'No-plugin Domain document preview is read-only and honestly defers canonical audits');
-} finally {
-    $postgres ? $connection->fetchOne('SELECT set_config(?, ?, false)', ['TimeZone', $sourceTimezone]) : $connection->executeStatement('SET time_zone = ?', [$sourceTimezone]);
-}
-// Exercise the supported public updater against populated frozen tables, before
-// any current-only association columns exist. It must never replay legacy scripts.
-$checkpoint('Raw baseline/seeds and invalid-data audits');
 $upgradeConfig = sys_get_temp_dir() . '/itsm-history-upgrade-' . bin2hex(random_bytes(6));
 mkdir($upgradeConfig, 0700);
 $class = $postgres ? 'DBpgsql' : 'DBmysql';
@@ -334,15 +313,82 @@ $key = (new \itsmng\Database\Upgrade($DB))->expectedSecurityKeyPath();
 verify($key !== null && is_file($key), 'The configured parent installation has its original encryption key');
 copy($key, $upgradeConfig . '/glpicrypt.key');
 chmod($upgradeConfig . '/glpicrypt.key', 0600);
-try {
-    $manager->dropTable(LegacyToOrm::LEDGER);
-    verify(Ledger::states($connection) === [] && Type::lookupName($manager->listTableColumns('glpi_computers')['id']->getType()) === 'integer', 'Actual populated updater starts from raw tables with no ledger and legacy identifier widths');
-    $process = proc_open([PHP_BINARY, GLPI_ROOT . '/bin/console', '--config-dir=' . $upgradeConfig, '--no-interaction', 'db:update'], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['redirect', 1]], $pipes, GLPI_ROOT);
-    verify(is_resource($process), 'Populated historical CLI updater starts');
+$cli = static function (array $arguments) use ($upgradeConfig): array {
+    $process = proc_open([PHP_BINARY, GLPI_ROOT . '/bin/console', '--config-dir=' . $upgradeConfig, '--no-interaction', ...$arguments], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['redirect', 1]], $pipes, GLPI_ROOT);
+    verify(is_resource($process), 'Historical CLI updater starts');
     fclose($pipes[0]);
     $output = stream_get_contents($pipes[1]);
     fclose($pipes[1]);
-    $status = proc_close($process);
+    return [proc_close($process), $output];
+};
+try {
+    $manager->dropTable(LegacyToOrm::LEDGER);
+    verify(Ledger::states($connection) === [] && Type::lookupName($manager->listTableColumns('glpi_computers')['id']->getType()) === 'integer', 'Actual populated updater starts from raw tables with no ledger and legacy identifier widths');
+    $beforeCliSchema = $manager->introspectSchema();
+    $beforeCliCatalog = BooleanDomainSchema::catalog($connection);
+    $beforeCliRows = [];
+    foreach (['glpi_computers', 'glpi_appliances_items', 'glpi_configs', 'glpi_users', 'glpi_logs'] as $table) {
+        $beforeCliRows[$table] = $connection->fetchAllAssociative('SELECT * FROM ' . $connection->getDatabasePlatform()->quoteIdentifier($table) . ' ORDER BY id');
+    }
+    $beforeCliComputer = $connection->fetchAssociative('SELECT * FROM glpi_computers WHERE id = ?', [$legacyId]);
+    $beforeCliBinding = $connection->fetchAssociative('SELECT * FROM glpi_appliances_items WHERE id = 402');
+    // Exercise apply's own locked preflight, without a discarded CLI preview.
+    // Reuse the populated raw graph; no second installation or budget change.
+    foreach (['invalid boolean', 'missing target', 'wrong kind'] as $refusal) {
+        try {
+            if ($refusal === 'invalid boolean') {
+                $connection->update('glpi_computers', ['is_deleted' => 2], ['id' => $legacyId]);
+                $arguments = ['db:update'];
+                $diagnostic = 'glpi_computers.is_deleted';
+            } else {
+                $connection->update('glpi_appliances_items', $refusal === 'missing target'
+                    ? ['items_id' => 1999999999] : ['itemtype' => 'PluginCLIAsset'], ['id' => 402]);
+                $arguments = ['db:migrate', '--apply'];
+                $diagnostic = 'glpi_appliances_items';
+            }
+            $invalid = $connection->fetchAssociative('SELECT * FROM ' . ($refusal === 'invalid boolean' ? 'glpi_computers WHERE id = ' . $legacyId : 'glpi_appliances_items WHERE id = 402'));
+            [$status, $output] = $cli($arguments);
+            verify($status !== 0 && str_contains($output, $diagnostic), 'Actual raw CLI apply refuses ' . $refusal . ' with its owning-field diagnostic: ' . $output);
+            verify(!$manager->tablesExist([LegacyToOrm::LEDGER]) && Ledger::states($connection) === [], 'Refused raw CLI ' . $refusal . ' bootstraps no ledger');
+            verify($manager->createComparator()->compareSchemas($beforeCliSchema, $manager->introspectSchema())->isEmpty()
+                && BooleanDomainSchema::catalog($connection) === $beforeCliCatalog, 'Refused raw CLI ' . $refusal . ' commits no schema/check changes');
+            verify($connection->fetchAssociative('SELECT * FROM ' . ($refusal === 'invalid boolean' ? 'glpi_computers WHERE id = ' . $legacyId : 'glpi_appliances_items WHERE id = 402')) === $invalid, 'Refused raw CLI retains the invalid source row for correction');
+        } finally {
+            $connection->update('glpi_computers', ['is_deleted' => $beforeCliComputer['is_deleted']], ['id' => $legacyId]);
+            $connection->update('glpi_appliances_items', ['itemtype' => $beforeCliBinding['itemtype'], 'items_id' => $beforeCliBinding['items_id']], ['id' => 402]);
+        }
+        foreach ($beforeCliRows as $table => $rows) {
+            verify($connection->fetchAllAssociative('SELECT * FROM ' . $connection->getDatabasePlatform()->quoteIdentifier($table) . ' ORDER BY id') === $rows, 'Rejected CLI apply preserves release, credentials, audit and populated owner/binding rows: ' . $table);
+        }
+    }
+    // Legitimate pre-existing core Domain documents also need the frozen data
+    // prerequisite, even when no Domains plugin tables or aliases exist at all.
+    $connection->insert('glpi_domains', ['id' => 801, 'name' => 'Existing core Domain']);
+    $connection->insert('glpi_documents', ['id' => 802, 'name' => 'Original core attachment']);
+    $sourceTimezone = $postgres ? $connection->fetchOne('SHOW TIME ZONE') : $connection->fetchOne('SELECT @@SESSION.time_zone');
+    $connection->executeStatement($postgres ? "SET TIME ZONE '+02:00'" : "SET time_zone = '+02:00'");
+    try {
+        $connection->insert('glpi_documents_items', ['id' => 803, 'documents_id' => 802, 'items_id' => 801, 'itemtype' => 'Domain', 'entities_id' => 0, 'users_id' => 0,
+            'is_recursive' => $postgres ? true : 1, 'timeline_position' => 1, 'date_mod' => '2026-02-03 04:05:06', 'date_creation' => '2026-02-04 05:06:07', 'date' => '2026-02-05 06:07:08'], $postgres ? ['is_recursive' => \Doctrine\DBAL\Types\Types::BOOLEAN] : []);
+        $documentInstantSql = $postgres ? 'SELECT EXTRACT(EPOCH FROM date_mod) FROM glpi_documents_items WHERE id=803' : 'SELECT UNIX_TIMESTAMP(date_mod) FROM glpi_documents_items WHERE id=803';
+        $documentInstant = $connection->fetchOne($documentInstantSql);
+        $documentPreview = $history->plan($connection);
+        verify(($documentPreview['domain_prerequisite']['version'] ?? null) === DomainDocuments20261006::GENERAL_RECEIPT
+            && str_contains($documentPreview['canonical_preflight'], 'Deferred') && Ledger::state($connection, DomainDocuments20261006::GENERAL_RECEIPT) === null
+            && (int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_documents_items WHERE id=803') === 1, 'No-plugin Domain document preview is read-only and honestly defers canonical audits');
+    } finally {
+        $postgres ? $connection->fetchOne('SELECT set_config(?, ?, false)', ['TimeZone', $sourceTimezone]) : $connection->executeStatement('SET time_zone = ?', [$sourceTimezone]);
+    }
+    // Exercise the supported public updater against populated frozen tables, before
+    // any current-only association columns exist. It must never replay legacy scripts.
+    $checkpoint('Raw baseline/seeds and invalid-data audits');
+    $beforePreviewRows = $connection->fetchAllAssociative('SELECT * FROM glpi_documents_items ORDER BY id');
+    [$status, $output] = $cli(['db:update', '--dry-run']);
+    verify($status === 0 && str_contains($output, 'Deferred canonical audits') && str_contains($output, 'No changes.'), 'Actual raw CLI preview retains its read-only deferred canonical plan output: ' . $output);
+    verify(!$manager->tablesExist([LegacyToOrm::LEDGER]) && Ledger::states($connection) === []
+        && $connection->fetchAllAssociative('SELECT * FROM glpi_documents_items ORDER BY id') === $beforePreviewRows
+        && BooleanDomainSchema::catalog($connection) === $beforeCliCatalog, 'CLI preview preserves raw source rows, schema/check definitions and absent ledger');
+    [$status, $output] = $cli(['db:update']);
     verify($status === 0 && str_contains($output, 'Canonical database history complete'), 'Actual db:update adopts populated frozen history without requiring later columns: ' . $output);
 } finally {
     unlink($upgradeConfig . '/config_db.php');
