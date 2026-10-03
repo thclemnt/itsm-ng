@@ -90,12 +90,12 @@ class Appliance_Item_Relation extends CommonDBRelation
 
     public function prepareInputForAdd($input)
     {
-        return $this->prepareInput($input);
+        return $this->validateLifecycleEndpoints($input);
     }
 
     public function prepareInputForUpdate($input)
     {
-        return $this->prepareInput($input);
+        return $this->validateLifecycleEndpoints($input);
     }
 
     /** Replacing a cloned subject also replaces the copied owning association. */
@@ -170,27 +170,8 @@ class Appliance_Item_Relation extends CommonDBRelation
      *
      * @return array
      */
-    private function prepareInput($input)
+    protected function validateLifecycleEndpoints(array $input): array|false
     {
-        $selections = \itsmng\Database\EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'];
-        $columns = array_column($selections, 'column');
-        if ($this->isNewItem() || array_intersect(array_keys($input), ['itemtype', 'items_id', ...$columns])) {
-            if (!$this->isNewItem()) {
-                $input += ['itemtype' => $this->fields['itemtype']];
-                $selected = $selections[$input['itemtype']]['column'] ?? null;
-                if ($selected !== null && !array_key_exists($selected, $input) && !array_key_exists('items_id', $input)) {
-                    $input['items_id'] = $this->fields['items_id'];
-                }
-            }
-            try {
-                $input = (new \itsmng\Database\Entity\ApplianceItemRelation())->normalizeInput($input);
-                $column = $selections[$input['itemtype']]['column'];
-                $input['items_id'] = $input[$column];
-            } catch (\InvalidArgumentException) {
-                Session::addMessageAfterRedirect(__('An item is required'), true, ERROR);
-                return false;
-            }
-        }
         $error_detected = [];
 
         //check for requirements

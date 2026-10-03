@@ -727,13 +727,15 @@ class Item_OperatingSystem extends CommonDBRelation
     }
 
     /** Derive the selected subject and entity cache from its actual persisted owner. */
-    private function prepareSubjectInput($input, bool $updating = false)
+    protected function validateLifecycleEndpoints(array $input): array|false
+    {
+        return $this->prepareSubjectInput($input, true);
+    }
+
+    private function prepareSubjectInput(array $input, bool $updating): array|false
     {
         global $DB;
 
-        if (!is_array($input)) {
-            return false;
-        }
         $selections = \itsmng\Database\EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'];
         $kind = array_key_exists('itemtype', $input) ? $input['itemtype'] : ($updating ? ($this->fields['itemtype'] ?? null) : null);
         if (!is_string($kind) || !isset($selections[$kind])) {
@@ -779,13 +781,13 @@ class Item_OperatingSystem extends CommonDBRelation
 
     public function prepareInputForAdd($input)
     {
-        $input = $this->prepareSubjectInput($input);
+        $input = $this->prepareSubjectInput($input, false);
         return $input === false ? false : parent::prepareInputForAdd($input);
     }
 
     public function prepareInputForUpdate($input)
     {
-        $input = $this->prepareSubjectInput($input, true);
+        $input = $this->validateLifecycleEndpoints($input);
         // Canonical subject changes must also reach existing parent-right and
         // history checks through their derived legacy identity.
         return $input === false ? false : parent::prepareInputForUpdate($input);

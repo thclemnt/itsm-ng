@@ -462,7 +462,8 @@ abstract class CommonDBChild extends CommonDBConnexity
 
         // True if item changed
         if (
-            !$this->checkAttachedItemChangesAllowed($input, [static::$itemtype,
+            !\itsmng\Database\ConnexityInput::endpoints($this)
+            && !$this->checkAttachedItemChangesAllowed($input, [static::$itemtype,
                                                                    static::$items_id])
         ) {
             return false;

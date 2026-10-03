@@ -762,7 +762,8 @@ abstract class CommonDBRelation extends CommonDBConnexity
 
         // True if item changed
         if (
-            !$this->checkAttachedItemChangesAllowed($input, [static::$itemtype_1,
+            !\itsmng\Database\ConnexityInput::endpoints($this)
+            && !$this->checkAttachedItemChangesAllowed($input, [static::$itemtype_1,
                                                                    static::$items_id_1,
                                                                    static::$itemtype_2,
                                                                    static::$items_id_2])

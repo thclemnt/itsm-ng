@@ -1313,7 +1313,10 @@ class CommonDBTM extends CommonGLPI
                 unset($this->input['add']);
             }
 
-            $this->input = $this->prepareInputForAdd($this->input);
+            $this->input = $this->normalizeLifecycleInput($this->input);
+            if ($this->input !== false) {
+                $this->input = $this->prepareInputForAdd($this->input);
+            }
         }
 
         if ($this->input && is_array($this->input)) {
@@ -1329,6 +1332,10 @@ class CommonDBTM extends CommonGLPI
 
         //Process business rules for assets
         $this->assetBusinessRules(\RuleAsset::ONADD);
+
+        if ($this->input && is_array($this->input)) {
+            $this->input = $this->normalizeLifecycleInput($this->input);
+        }
 
         if ($this->input && is_array($this->input)) {
             $this->fields = [];
@@ -1761,6 +1768,8 @@ class CommonDBTM extends CommonGLPI
             return false;
         }
 
+        $storedFields = $this->fields;
+
         // Store input in the object to be available in all sub-method / hook
         $this->input = $input;
 
@@ -1778,7 +1787,13 @@ class CommonDBTM extends CommonGLPI
         // Plugin hook - $this->input can be altered
         Plugin::doHook("pre_item_update", $this);
         if ($this->input && is_array($this->input)) {
-            $this->input = $this->prepareInputForUpdate($this->input);
+            $this->input = $this->normalizeLifecycleInput($this->input);
+            if ($this->input !== false) {
+                $this->input = $this->authorizeLifecycleUpdate($this->input);
+            }
+            if ($this->input !== false) {
+                $this->input = $this->prepareInputForUpdate($this->input);
+            }
 
             if (isset($this->input['update'])) {
                 $this->input['_update'] = $this->input['update'];
@@ -1789,6 +1804,13 @@ class CommonDBTM extends CommonGLPI
 
         //Process business rules for assets
         $this->assetBusinessRules(\RuleAsset::ONUPDATE);
+
+        if ($this->input && is_array($this->input)) {
+            $this->input = $this->normalizeLifecycleInput($this->input);
+            if ($this->input !== false) {
+                $this->input = $this->authorizeLifecycleUpdate($this->input);
+            }
+        }
 
         // Valid input for update
         if ($this->checkUnicity(false, $options)) {
@@ -1861,6 +1883,15 @@ class CommonDBTM extends CommonGLPI
                         }
                     }
                     $this->pre_updateInDB();
+
+                    if (!$this->hasLifecycleOperationIdentity($storedFields)
+                        || !$this->finalizeLifecycleUpdate($storedFields)
+                        || !$this->hasLifecycleOperationIdentity($storedFields)) {
+                        $this->fields = $storedFields;
+                        $this->updates = [];
+                        $this->oldvalues = [];
+                        return false;
+                    }
 
                     if (count($this->updates)) {
                         if (
@@ -2023,6 +2054,37 @@ class CommonDBTM extends CommonGLPI
     public function prepareInputForUpdate($input)
     {
         return $input;
+    }
+
+    /** Shared lifecycle boundary runs even when a model overrides its preparation. */
+    protected function normalizeLifecycleInput(array $input): array|false
+    {
+        return $input;
+    }
+
+    protected function authorizeLifecycleUpdate(array $input): array|false
+    {
+        return $input;
+    }
+
+    /** Recheck the values that will actually be stored after the last model callback. */
+    protected function finalizeLifecycleUpdate(array $storedFields): bool
+    {
+        return true;
+    }
+
+    /** Public lookup keys and the physical writer ID must identify the loaded operation. */
+    private function hasLifecycleOperationIdentity(array $storedFields): bool
+    {
+        foreach (array_unique(['id', static::getIndexName()]) as $column) {
+            if (array_key_exists($column, $storedFields)
+                && (!array_key_exists($column, $this->fields)
+                    || ($this->fields[$column] === null) !== ($storedFields[$column] === null)
+                    || $this->fields[$column] != $storedFields[$column])) {
+                return false;
+            }
+        }
+        return true;
     }
 
 
@@ -3240,6 +3302,10 @@ class CommonDBTM extends CommonGLPI
             }
 
             if (is_array($input)) {
+                $input = $this->normalizeLifecycleInput($input);
+                if ($input === false) {
+                    return false;
+                }
                 $input = $this->addNeededInfoToInput($input);
                 // Copy input field to allow getEntityID() to work
                 // from entites_id field or from parent item ref

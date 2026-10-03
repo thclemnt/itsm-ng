@@ -109,7 +109,22 @@ class Transfer extends DbTestCase
            'definition_time' => 'hour',
            'number_time'     => 4,
            'begin_date'      => '2020-01-01',
+           'url'            => 'file://' . realpath(__DIR__ . '/../fixtures/rssfeed.xml'),
+           'itemtype'       => 'Computer',
         ];
+
+        $addParent = function (string $parentType, string $itemtype) use ($fields_values): int {
+            $parent = new $parentType();
+            $parentInput = [];
+            foreach ($fields_values as $field => $value) {
+                if ($parent->isField($field)) {
+                    $parentInput[$field] = $value;
+                }
+            }
+            $parentId = $parent->add($parentInput);
+            $this->integer((int)$parentId)->isGreaterThan(0, "Cannot add required $parentType for $itemtype");
+            return (int)$parentId;
+        };
 
         $count = 0;
         foreach ($itemtypeslist as $itemtype) {
@@ -136,6 +151,34 @@ class Transfer extends DbTestCase
                     $input['locations_id'] = $location_id;
                 }
 
+                if ($obj instanceof \CommonDBRelation) {
+                    // Fixed relation endpoints are required owners, rather
+                    // than optional scalar defaults in this transfer fixture.
+                    foreach ([[$obj::$itemtype_1, $obj::$items_id_1], [$obj::$itemtype_2, $obj::$items_id_2]] as [$parentType, $parentColumn]) {
+                        if (!class_exists($parentType) || isset($input[$parentColumn])) {
+                            continue;
+                        }
+                        $input[$parentColumn] = $addParent($parentType, $itemtype);
+                    }
+                }
+
+                $entityClass = \itsmng\Database\EntityRegistry::tables()[$obj::getTable()] ?? null;
+                if ($entityClass !== null) {
+                    $orm = \itsmng\Database\Orm::create($GLOBALS['DB']);
+                    foreach ($orm->getClassMetadata($entityClass)->associationMappings as $association) {
+                        if (!$association->isToOneOwningSide()) {
+                            continue;
+                        }
+                        foreach ($association->joinColumns as $join) {
+                            if ($join->nullable || array_key_exists($join->name, $input)) {
+                                continue;
+                            }
+                            $parentType = \getItemTypeForTable($orm->getClassMetadata($association->targetEntity)->getTableName());
+                            $input[$join->name] = $addParent($parentType, $itemtype);
+                        }
+                    }
+                }
+
                 $id = $obj->add($input);
                 $this->integer((int)$id)->isGreaterThan(0, "Cannot add $itemtype");
                 $this->boolean($obj->getFromDB($id))->isTrue();
@@ -155,11 +198,23 @@ class Transfer extends DbTestCase
                     $obj,
                     [$id]
                 );
-                $transfer->moveItems([$itemtype => [$id]], $dentity, [$id]);
+                $owner = $obj;
+                if (!$obj->isField('entities_id') && $obj instanceof \CommonDBChild) {
+                    $action = 'MassiveAction' . \MassiveAction::CLASS_ACTION_SEPARATOR . 'add_transfer_list';
+                    $this->array($obj->getSpecificMassiveActions())->notHasKey($action);
+                    $owner = $obj->getItem();
+                    $this->array($owner->getSpecificMassiveActions())->hasKey($action);
+                }
+                $ownerId = $owner->getID();
+                $transfer->moveItems([$owner->getType() => [$ownerId]], $dentity, [$ownerId]);
                 unset($_SESSION['glpitransfer_list']);
 
                 $this->boolean($obj->getFromDB($id))->isTrue();
-                $this->integer((int)$obj->fields['entities_id'])->isidenticalTo($dentity, "Transfer has failed on $itemtype");
+                $entity = $obj->isField('entities_id') ? $obj->fields['entities_id'] : $obj->getEntityID();
+                $this->integer((int)$entity)->isidenticalTo($dentity, "Transfer has failed on $itemtype");
+                if ($owner !== $obj) {
+                    $this->integer((int)$obj->getItem()->getID())->isIdenticalTo((int)$ownerId);
+                }
 
                 ++$count;
             }
@@ -170,6 +225,34 @@ class Transfer extends DbTestCase
                 $count
             )
         );
+    }
+
+    public function testChildWithInheritedEntityOwnership()
+    {
+        $this->login();
+        $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $destination = (int)getItemByTypeName('Entity', '_test_child_2', true);
+        $link = new \Link();
+        $linkId = $link->add(['name' => 'Inherited transfer owner', 'entities_id' => $source]);
+        $this->integer((int)$linkId)->isGreaterThan(0);
+        $child = new \Link_Itemtype();
+        $childId = $child->add(['links_id' => $linkId, 'itemtype' => 'Computer']);
+        $this->integer((int)$childId)->isGreaterThan(0);
+        $this->boolean($child->getFromDB($childId))->isTrue();
+        $this->boolean($child->isEntityAssign())->isTrue();
+        $this->boolean($child->isField('entities_id'))->isFalse();
+        $action = 'MassiveAction' . \MassiveAction::CLASS_ACTION_SEPARATOR . 'add_transfer_list';
+        $this->array($child->getSpecificMassiveActions())->notHasKey($action);
+        $owner = $child->getItem();
+        $this->integer((int)$owner->getID())->isIdenticalTo((int)$linkId);
+        $this->array($owner->getSpecificMassiveActions())->hasKey($action);
+        (new \Transfer())->moveItems([$owner->getType() => [$owner->getID()]], $destination, [$owner->getID()]);
+        unset($_SESSION['glpitransfer_list']);
+        $this->boolean($child->getFromDB($childId))->isTrue();
+        $this->integer((int)$child->fields['links_id'])->isIdenticalTo((int)$linkId);
+        $this->integer((int)$child->getEntityID())->isIdenticalTo($destination);
+        $this->boolean($link->getFromDB($linkId))->isTrue();
+        $this->integer((int)$link->fields['entities_id'])->isIdenticalTo($destination);
     }
 
     public function testDomainTransfer()

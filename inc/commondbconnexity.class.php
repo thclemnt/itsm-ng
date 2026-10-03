@@ -90,6 +90,86 @@ abstract class CommonDBConnexity extends CommonDBTM
     /// Disable auto forwarding information about entities ?
     public static $disableAutoEntityForwarding   = false;
 
+    final protected function normalizeLifecycleInput(array $input): array|false
+    {
+        try {
+            return \itsmng\Database\ConnexityInput::normalize($this, $input);
+        } catch (\InvalidArgumentException) {
+            return false;
+        }
+    }
+
+    final protected function authorizeLifecycleUpdate(array $input): array|false
+    {
+        if (\itsmng\Database\ConnexityInput::endpoints($this)
+            && !$this->checkAttachedItemChangesAllowed($input, \itsmng\Database\ConnexityInput::fields($this))) {
+            return false;
+        }
+        return $input;
+    }
+
+    final protected function finalizeLifecycleUpdate(array $storedFields): bool
+    {
+        if (!\itsmng\Database\ConnexityInput::endpoints($this)) {
+            return true;
+        }
+        $original = clone $this;
+        $original->fields = $storedFields;
+        // Resolve only actual pending writes before merging their derived
+        // projection. A callback can cancel a prepared write or supply a new
+        // owning column without retaining the old read-only generated identity.
+        $writes = array_intersect_key($this->fields, array_fill_keys($this->updates, true));
+        foreach (\itsmng\Database\ConnexityInput::endpoints($this) as $identity => $endpoint) {
+            $kind = $writes[$endpoint['discriminator']] ?? $storedFields[$endpoint['discriminator']];
+            $column = is_string($kind) || is_int($kind) ? ($endpoint['selections'][$kind]['column'] ?? null) : null;
+            if ($column !== null && array_key_exists($column, $writes)) {
+                // This projection cannot be written independently of its owner.
+                unset($writes[$identity]);
+            }
+        }
+        $writes = $original->normalizeLifecycleInput($writes);
+        if ($writes === false) {
+            return false;
+        }
+        $values = array_replace($storedFields, $writes);
+        if ($original->authorizeLifecycleUpdate($values) === false) {
+            return false;
+        }
+        $effective = $values;
+        $values = $original->validateLifecycleEndpoints(array_replace($this->input, $effective));
+        if ($values === false) {
+            return false;
+        }
+        $values = $original->normalizeLifecycleInput($values);
+        if ($values === false || $original->authorizeLifecycleUpdate($values) === false) {
+            return false;
+        }
+        // Post-update hooks must observe the actual write view, including
+        // cancelled content and model-derived owner context, with no stale
+        // prepared field or history entry left behind.
+        $persisted = array_intersect_key($values, $storedFields);
+        $this->fields = $persisted;
+        $this->updates = [];
+        $this->oldvalues = [];
+        foreach ($persisted as $column => $value) {
+            if ($column !== static::getIndexName()
+                && (($value === null) !== ($storedFields[$column] === null) || $value != $storedFields[$column])) {
+                $this->updates[] = $column;
+                if (!in_array($column, $this->history_blacklist)) {
+                    $this->oldvalues[$column] = $storedFields[$column];
+                }
+            }
+        }
+        $this->input = array_replace($this->input, $values);
+        return true;
+    }
+
+    /** Read-only endpoint business validation and context binding, without upload preparation. */
+    protected function validateLifecycleEndpoints(array $input): array|false
+    {
+        return $input;
+    }
+
 
     /**
      * Return the SQL request to get all the connexities corresponding to $itemtype[$items_id]

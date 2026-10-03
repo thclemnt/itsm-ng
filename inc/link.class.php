@@ -130,9 +130,10 @@ class Link extends CommonDBTM
     public function getEmpty()
     {
 
-        parent::getEmpty();
+        $empty = parent::getEmpty();
         //Keep the same behavior as in previous versions
         $this->fields['open_window'] = 1;
+        return $empty;
     }
 
 

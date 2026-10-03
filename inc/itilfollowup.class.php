@@ -487,8 +487,8 @@ class ITILFollowup extends CommonDBChild
             return false;
         }
         $input = $this->normalizeRichTextUploads($input);
-        $input["_job"] = new $this->fields['itemtype']();
-        if (!$input["_job"]->getFromDB($this->fields["items_id"])) {
+        $input = $this->validateLifecycleEndpoints($input);
+        if ($input === false) {
             return false;
         }
 
@@ -498,6 +498,17 @@ class ITILFollowup extends CommonDBChild
             && isset($input['content']) && ($input['content'] != $this->fields['content'])
         ) {
             $input["users_id_editor"] = $uid;
+        }
+
+        return $input;
+    }
+
+    protected function validateLifecycleEndpoints(array $input): array|false
+    {
+        $kind = $input['itemtype'] ?? $this->fields['itemtype'];
+        $input["_job"] = new $kind();
+        if (!$input["_job"]->getFromDB($input['items_id'] ?? $this->fields["items_id"])) {
+            return false;
         }
 
         return $input;
