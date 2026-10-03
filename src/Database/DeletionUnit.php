@@ -19,6 +19,7 @@ final class DeletionUnit
 
     public static function run(Connection $connection, callable $operation): DeletionResult
     {
+        TransactionOwnership::assertManaged($connection);
         self::$units ??= new \WeakMap();
         $frames = self::$units[$connection] ?? [];
         $frames[] = ['cancelled' => false];

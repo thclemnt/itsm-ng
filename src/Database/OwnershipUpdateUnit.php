@@ -21,6 +21,7 @@ final class OwnershipUpdateUnit
 
     public static function run(\DBAdapter $database, \CommonDBTM $model, array $storedFields, callable $operation): bool
     {
+        $database->assertManagedTransaction();
         $connection = $database->getDoctrineConnection();
         $level = $connection->getTransactionNestingLevel();
         $journal = new LifecycleModelJournal();

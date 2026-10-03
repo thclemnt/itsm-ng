@@ -23,7 +23,7 @@ final class InstallationConnection
         } else {
             [$host, $port] = array_pad(explode(':', $endpoint, 2), 2, null);
         }
-        $parameters = ['driver' => 'mysqli', 'charset' => 'utf8mb4', 'host' => $host, 'user' => $user, 'password' => $password];
+        $parameters = ['driver' => 'pdo_mysql', 'charset' => 'utf8mb4', 'host' => $host, 'user' => $user, 'password' => $password];
         if ($port !== null && $port !== '') {
             $parameters[(int)$port > 0 ? 'port' : 'unix_socket'] = (int)$port > 0 ? (int)$port : $port;
         }

@@ -87,7 +87,8 @@
     },
     "suggest": {
         "ext-ldap": "Used to provide LDAP authentication and synchronization",
-        "ext-mysqli": "Required for MySQL/MariaDB databases",
+        "ext-pdo_mysql": "Required for MySQL/MariaDB databases",
+        "ext-mysqli": "Used by legacy plugin and tooling integrations",
         "ext-pdo_pgsql": "Required for PostgreSQL databases",
         "ext-sodium": "Used to provide strong encryption for sensitive data in database"
     },

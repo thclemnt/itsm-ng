@@ -272,6 +272,12 @@ class Transfer extends CommonDBTM
     private function runTransfer(callable $operation)
     {
         global $DB;
+        try {
+            $DB->assertManagedTransaction();
+        } catch (\itsmng\Database\TransactionOwnershipMismatch $error) {
+            Session::addMessageAfterRedirect(__('Finish the current transaction before transferring items.'), false, ERROR);
+            return false;
+        }
         if ($this->transferCoordinator !== null) {
             return $operation();
         }

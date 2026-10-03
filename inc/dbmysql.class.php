@@ -845,8 +845,8 @@ class DBmysql extends DBAdapter
     {
         $parts = explode(':', $this->connectedHost ?? (string)$this->dbhost, 2);
         $params = [
-            'driver' => 'mysqli', 'charset' => $this->dbenc ?? 'utf8',
-            'driverOptions' => [MYSQLI_OPT_INT_AND_FLOAT_NATIVE => true], 'host' => $parts[0], 'dbname' => $this->dbdefault,
+            'driver' => 'pdo_mysql', 'charset' => $this->dbenc ?? 'utf8',
+            'host' => $parts[0], 'dbname' => $this->dbdefault,
             'user' => $this->dbuser, 'password' => rawurldecode((string)$this->dbpassword),
         ];
         if (isset($parts[1])) {
@@ -854,6 +854,7 @@ class DBmysql extends DBAdapter
         }
         if ($this->dbssl) {
             $params += [
+                'ssl' => true, 'ssl_verify_server_cert' => $this->dbsslverifyservercert,
                 'ssl_key' => $this->dbsslkey ?? '', 'ssl_cert' => $this->dbsslcert ?? '',
                 'ssl_ca' => $this->dbsslca ?? '', 'ssl_capath' => $this->dbsslcapath ?? '',
                 'ssl_cipher' => $this->dbsslcacipher ?? '',

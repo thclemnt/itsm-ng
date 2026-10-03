@@ -39,7 +39,6 @@ use Glpi\System\Requirement\ExtensionClass;
 use Glpi\System\Requirement\ExtensionFunction;
 use Glpi\System\Requirement\LogsWriteAccess;
 use Glpi\System\Requirement\MemoryLimit;
-use Glpi\System\Requirement\MysqliMysqlnd;
 use Glpi\System\Requirement\PhpVersion;
 use Glpi\System\Requirement\ProtectedWebAccess;
 use Glpi\System\Requirement\SeLinux;
@@ -76,7 +75,7 @@ class RequirementsManager
         if ($db instanceof \DBpgsql) {
             $requirements[] = new Extension('pdo_pgsql');
         } elseif ($db !== null || !extension_loaded('pdo_pgsql')) {
-            $requirements[] = new MysqliMysqlnd();
+            $requirements[] = new Extension('pdo_mysql');
         }
         $requirements[] = new Extension('ctype');
         $requirements[] = new Extension('fileinfo');

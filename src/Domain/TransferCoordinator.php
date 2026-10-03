@@ -20,6 +20,7 @@ final class TransferCoordinator
         if ($DB !== $this->database || $this->database->isSlave()) {
             throw new TransferCancelled('Transfer requires the supplied active writer connection');
         }
+        $this->database->assertManagedTransaction();
         $connection = $this->database->getDoctrineConnection();
         $level = $connection->getTransactionNestingLevel();
         try {

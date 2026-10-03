@@ -18,7 +18,99 @@ final class MySQLConnection implements Middleware
 {
     public static function create(#[\SensitiveParameter] array $parameters, ?Configuration $configuration = null): Connection
     {
-        return DriverManager::getConnection($parameters, self::configuration($configuration));
+        return DriverManager::getConnection(self::parameters($parameters), self::configuration($configuration));
+    }
+
+    /** Validate the transport policy before a lazy driver can connect. */
+    public static function parameters(#[\SensitiveParameter] array $parameters): array
+    {
+        if (($parameters['driver'] ?? 'pdo_mysql') !== 'pdo_mysql' || isset($parameters['driverClass'])
+            || (isset($parameters['wrapperClass']) && $parameters['wrapperClass'] !== MySQLManagedConnection::class)) {
+            throw new \InvalidArgumentException('MySQL ownership requires the canonical PDO driver and DBAL owner.');
+        }
+        if (($parameters['persistent'] ?? false) !== false) {
+            throw new \InvalidArgumentException('MySQL ownership requires a distinct nonpersistent physical connection.');
+        }
+        $parameters['driver'] = 'pdo_mysql';
+        $parameters['wrapperClass'] = MySQLManagedConnection::class;
+        $parameters['persistent'] = false;
+        $ssl = $parameters['ssl'] ?? false;
+        $verify = $parameters['ssl_verify_server_cert'] ?? true;
+        if (!is_bool($ssl) || !is_bool($verify)) {
+            throw new \InvalidArgumentException('MySQL TLS and certificate verification options must be boolean.');
+        }
+        $options = $parameters['driverOptions'] ?? [];
+        if (!is_array($options)) {
+            throw new \InvalidArgumentException('MySQL PDO driver options must be an array.');
+        }
+        $required = [
+            \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+            \PDO::ATTR_EMULATE_PREPARES => false,
+            \PDO::ATTR_STRINGIFY_FETCHES => false,
+            \PDO::ATTR_PERSISTENT => false,
+        ];
+        $allowed = [...array_keys($required), \PDO::ATTR_TIMEOUT];
+        $tls = [
+            'ssl_key' => 'PDO::MYSQL_ATTR_SSL_KEY',
+            'ssl_cert' => 'PDO::MYSQL_ATTR_SSL_CERT',
+            'ssl_ca' => 'PDO::MYSQL_ATTR_SSL_CA',
+            'ssl_capath' => 'PDO::MYSQL_ATTR_SSL_CAPATH',
+            'ssl_cipher' => 'PDO::MYSQL_ATTR_SSL_CIPHER',
+        ];
+        foreach ($parameters as $name => $value) {
+            if (str_starts_with((string)$name, 'ssl_') && $name !== 'ssl_verify_server_cert' && !array_key_exists($name, $tls)) {
+                throw new \InvalidArgumentException('Unknown MySQL TLS option.');
+            }
+        }
+        foreach ($tls as $name => $constant) {
+            $value = $parameters[$name] ?? null;
+            if ($value !== null && !is_string($value)) {
+                throw new \InvalidArgumentException('MySQL TLS material and cipher options must be strings or null.');
+            }
+            if (!$ssl && $value !== null && $value !== '') {
+                throw new \InvalidArgumentException('MySQL TLS material requires explicit TLS enablement.');
+            }
+            if (defined($constant)) {
+                $allowed[] = constant($constant);
+            }
+            if ($ssl && $value !== null && $value !== '') {
+                if (!defined($constant)) {
+                    throw new \InvalidArgumentException('Configured MySQL TLS option requires pdo_mysql support.');
+                }
+                $required[constant($constant)] = $value;
+            }
+        }
+        $verifyConstant = 'PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT';
+        if (defined($verifyConstant)) {
+            $allowed[] = constant($verifyConstant);
+        }
+        if ($ssl) {
+            if (!defined($verifyConstant)) {
+                throw new \InvalidArgumentException('MySQL TLS certificate verification requires pdo_mysql support.');
+            }
+            $required[constant($verifyConstant)] = $verify;
+        }
+        foreach ($options as $name => $value) {
+            if (!is_int($name) || !in_array($name, $allowed, true)) {
+                throw new \InvalidArgumentException('Unsupported MySQL PDO option; transport policy must be explicit.');
+            }
+            if ($ssl && $name !== \PDO::ATTR_TIMEOUT && !array_key_exists($name, $required)) {
+                throw new \InvalidArgumentException('MySQL TLS options must use the explicit named material policy.');
+            }
+            if (array_key_exists($name, $required) && $value !== $required[$name]) {
+                throw new \InvalidArgumentException('MySQL PDO option contradicts the canonical connection policy.');
+            }
+            if ($name === \PDO::ATTR_TIMEOUT && (!is_int($value) || $value < 0)) {
+                throw new \InvalidArgumentException('MySQL PDO timeout must be a nonnegative integer.');
+            }
+            if (!$ssl && !in_array($name, [...array_keys($required), \PDO::ATTR_TIMEOUT], true)) {
+                throw new \InvalidArgumentException('MySQL PDO TLS options require explicit TLS enablement.');
+            }
+        }
+        $parameters['ssl'] = $ssl;
+        $parameters['ssl_verify_server_cert'] = $verify;
+        $parameters['driverOptions'] = array_replace($options, $required);
+        return $parameters;
     }
 
     /** Preserve supplied logging/control middleware and use the same native inspection policy. */
@@ -59,6 +151,17 @@ final class MySQLConnection implements Middleware
             public function connect(#[\SensitiveParameter] array $params): DriverConnection
             {
                 $connection = parent::connect($params);
+                if ($params['ssl'] ?? false) {
+                    $tls = $connection->query("SHOW SESSION STATUS LIKE 'Ssl_cipher'");
+                    try {
+                        $row = $tls->fetchNumeric();
+                        if (!is_array($row) || !is_string($row[1] ?? null) || $row[1] === '') {
+                            throw new \Doctrine\DBAL\Exception('Required MySQL TLS did not establish an encrypted session.');
+                        }
+                    } finally {
+                        $tls->free();
+                    }
+                }
                 $result = $connection->query('SELECT @@SESSION.sql_mode');
                 $configured = (string)$result->fetchOne();
                 $result->free();

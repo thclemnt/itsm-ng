@@ -59,10 +59,12 @@ abstract class DBAdapter
      */
     public $dbssl              = false;
 
+    /** Verify the MySQL TLS certificate and hostname; passed explicitly to the owner. */
+    public $dbsslverifyservercert = true;
+
     /**
      * The path name to the key file (used in case of SSL connection).
      *
-     * @see mysqli::ssl_set()
      * @var string|null
      */
     public $dbsslkey           = null;
@@ -70,7 +72,6 @@ abstract class DBAdapter
     /**
      * The path name to the certificate file (used in case of SSL connection).
      *
-     * @see mysqli::ssl_set()
      * @var string|null
      */
     public $dbsslcert          = null;
@@ -78,7 +79,6 @@ abstract class DBAdapter
     /**
      * The path name to the certificate authority file (used in case of SSL connection).
      *
-     * @see mysqli::ssl_set()
      * @var string|null
      */
     public $dbsslca            = null;
@@ -87,7 +87,6 @@ abstract class DBAdapter
      * The pathname to a directory that contains trusted SSL CA certificates in PEM format
      * (used in case of SSL connection).
      *
-     * @see mysqli::ssl_set()
      * @var string|null
      */
     public $dbsslcapath        = null;
@@ -95,7 +94,6 @@ abstract class DBAdapter
     /**
      * A list of allowable ciphers to use for SSL encryption (used in case of SSL connection).
      *
-     * @see mysqli::ssl_set()
      * @var string|null
      */
     public $dbsslcacipher      = null;
@@ -165,6 +163,12 @@ abstract class DBAdapter
     public function getDoctrineConnection(): \Doctrine\DBAL\Connection
     {
         return $this->doctrine ?? throw new \RuntimeException('Database connection is not open.');
+    }
+
+    /** Domain frame admission is distinct from the legacy logical nesting predicate. */
+    public function assertManagedTransaction(): void
+    {
+        \itsmng\Database\TransactionOwnership::assertManaged($this->getDoctrineConnection());
     }
 
     public function expressions(): \itsmng\Database\Expressions

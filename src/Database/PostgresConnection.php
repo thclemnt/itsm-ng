@@ -15,8 +15,10 @@ use itsmng\Database\Driver\Postgres\Result as PostgresResult;
 use itsmng\Database\Driver\Postgres\OwnedStatement;
 
 /** Shared PostgreSQL transaction outcomes for ORM, DBAL and the legacy adapter. */
-final class PostgresConnection extends Connection
+final class PostgresConnection extends Connection implements ManagedTransactionConnection
 {
+    use PdoTransactionOwnership;
+
     private string $timezone = 'UTC';
     private ?\WeakReference $initialized = null;
     private ?\WeakMap $statements = null;
