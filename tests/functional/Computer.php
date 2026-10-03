@@ -371,7 +371,10 @@ class Computer extends DbTestCase
         $names = [];
         foreach (['first', 'second'] as $suffix) {
             $name = $this->getUniqueString() . ' ' . $suffix;
-            $id = (new \Computer())->add(\Toolbox::addslashes_deep(['name' => $name]));
+            $id = (new \Computer())->add(\Toolbox::addslashes_deep([
+                'entities_id' => 0,
+                'name' => $name,
+            ]));
             $this->integer((int)$id)->isGreaterThan(0);
             $names[(int)$id] = $name;
         }
