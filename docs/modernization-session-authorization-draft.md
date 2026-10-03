@@ -132,3 +132,9 @@ refusals preserve actual permission decisions, the complete prior session, PHP
 session identity, real generated CSRF/IDOR tokens and the existing hook trace.
 These controls are source-only and unexecuted; they do not establish HTTP/IP
 admission or live replica behavior.
+
+The [personal-token admission follow-up](personal-token-admission.md) prepares a
+separate inherited account/scope correction plus real provisioning/refusal/context
+contracts and an empty sibling legacy-grant-table control. It preserves actual
+initialization hooks and explicitly bounds reversible session/language restoration
+versus plugin side effects. This follow-up remains unexecuted on both providers.

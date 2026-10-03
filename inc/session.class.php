@@ -106,14 +106,7 @@ class Session
                 isset($auth->user->fields['id'])
                 && $auth->user->getFromDB($auth->user->fields['id'])
             ) {
-                if (
-                    !$auth->user->fields['is_deleted']
-                    && ($auth->user->fields['is_active']
-                        && (($auth->user->fields['begin_date'] < $_SESSION["glpi_currenttime"])
-                            || is_null($auth->user->fields['begin_date']))
-                        && (($auth->user->fields['end_date'] > $_SESSION["glpi_currenttime"])
-                            || is_null($auth->user->fields['end_date'])))
-                ) {
+                if (self::accountIsAdmitted($auth->user, $_SESSION['glpi_currenttime'])) {
                     $_SESSION["glpiID"]              = $auth->user->fields['id'];
                     $_SESSION["glpifriendlyname"]    = $auth->user->getFriendlyName();
                     $_SESSION["glpiname"]            = $auth->user->fields['name'];
@@ -1673,20 +1666,72 @@ class Session
         $user = new User();
 
         // Try to load from token
-        if (!$user->getFromDBByToken($token, $token_type)) {
+        if ($token === '' || !$user->getFromDBByToken($token, $token_type)
+            || !self::accountIsAdmitted($user, date('Y-m-d H:i:s'))) {
             return false;
         }
 
         $auth = new Auth();
         $auth->auth_succeded = true;
         $auth->user = $user;
-        Session::init($auth);
-
-        if (!is_null($entities_id) && !is_null($is_recursive)) {
-            self::loadEntity($entities_id, $is_recursive);
+        // Initialization hooks may legitimately provision missing profile grants.
+        // Run the actual lifecycle, then publish only an accepted result. Restore
+        // reversible session/language context on refusal; plugin side effects
+        // outside that context are not a transaction we can undo.
+        $previous = [
+            'values' => $_SESSION ?? [], 'id' => session_id(), 'status' => session_status(),
+            'translation_defined' => array_key_exists('TRANSLATE', $GLOBALS),
+            'translation' => $GLOBALS['TRANSLATE'] ?? null,
+            'locale' => class_exists('Locale') ? \Locale::getDefault() : null,
+        ];
+        $accepted = false;
+        try {
+            self::init($auth);
+            if (!$auth->auth_succeded || !self::getCurrentInterface()) {
+                return false;
+            }
+            if ($entities_id !== null && $is_recursive !== null
+                && !self::changeActiveEntities($entities_id, $is_recursive)) {
+                return false;
+            }
+            $accepted = true;
+            return $user;
+        } finally {
+            if (!$accepted) {
+                if (session_id() !== $previous['id'] || session_status() !== $previous['status']) {
+                    if (session_status() === PHP_SESSION_ACTIVE) {
+                        session_abort();
+                    }
+                    session_id($previous['id']);
+                    // init() may have written a cleared old session while
+                    // regenerating its ID. Reopen even a previously closed
+                    // session so its original stored data can be restored.
+                    if ($previous['status'] === PHP_SESSION_ACTIVE || $previous['id'] !== '') {
+                        self::start();
+                    }
+                }
+                $_SESSION = $previous['values'];
+                if ($previous['status'] === PHP_SESSION_NONE && session_status() === PHP_SESSION_ACTIVE) {
+                    session_write_close();
+                }
+                if ($previous['translation_defined']) {
+                    $GLOBALS['TRANSLATE'] = $previous['translation'];
+                } else {
+                    unset($GLOBALS['TRANSLATE']);
+                }
+                if ($previous['locale'] !== null) {
+                    \Locale::setDefault($previous['locale']);
+                }
+            }
         }
+    }
 
-        return $user;
+    /** The same strict account/date policy serves password and personal-token initialization. */
+    private static function accountIsAdmitted(User $user, string $now): bool
+    {
+        return !$user->fields['is_deleted'] && $user->fields['is_active']
+            && ($user->fields['begin_date'] === null || $user->fields['begin_date'] < $now)
+            && ($user->fields['end_date'] === null || $user->fields['end_date'] > $now);
     }
 
     /**
