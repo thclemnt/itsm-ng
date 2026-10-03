@@ -76,6 +76,8 @@ $name = 'itsm_port_sql_mode_' . bin2hex(random_bytes(5));
 $table = $platform->quoteIdentifier($DB->dbdefault) . '.' . $platform->quoteIdentifier($name);
 $connections = [];
 $adapters = [];
+$created = false;
+verify(!$writer->createSchemaManager()->tablesExist([$name]), 'Probe name must not already identify an existing table');
 $globalModes = (string)$writer->fetchOne('SELECT @@GLOBAL.sql_mode');
 $mode = static fn (Connection $connection): string => (string)$connection->fetchOne('SELECT @@SESSION.sql_mode');
 $strict = static function (Connection $connection) use ($mode): void {
@@ -100,6 +102,7 @@ $controlled = static function (string $modes, bool $initialize = true) use ($wri
 };
 try {
     $writer->executeStatement("CREATE TABLE $table (id INTEGER PRIMARY KEY, flag TINYINT NOT NULL, label VARCHAR(3) NOT NULL, CHECK (flag IS NOT NULL AND flag IN (0, 1))) ENGINE=InnoDB");
+    $created = true;
     $writer->insert($table, ['id' => 1, 'flag' => 1, 'label' => 'ok']);
     $strict($writer);
     $reject($writer);
@@ -173,7 +176,9 @@ try {
     foreach ($adapters as $adapter) {
         $adapter->close();
     }
-    $writer->executeStatement("DROP TABLE IF EXISTS $table");
+    if ($created) {
+        $writer->executeStatement("DROP TABLE $table");
+    }
 }
 verify((string)$writer->fetchOne('SELECT @@GLOBAL.sql_mode') === $globalModes, 'The contract never changes shared server modes');
 verify((new SchemaCheck())->differences($writer) === [], 'Canonical schema remains unchanged');

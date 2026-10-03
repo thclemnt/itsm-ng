@@ -42,7 +42,8 @@ timestamp/timezone, search/grouping and historical seed/adoption contracts remai
 unchanged and must pass before integration is treated as validated.
 
 The prepared mysql-session-modes.php contract uses one owned CREATE/DROP probe
-and existing disposable credentials, never changes GLOBAL modes, and covers
+and existing disposable credentials, refuses an existing probe name and cleans up
+only after its own CREATE succeeds. It never changes GLOBAL modes, and covers
 native flags2/-1/requiredNULL and string truncation, adapter reconnect, direct DBAL
 reconnect, the supplied read adapter, installation factories and a controlled
 pre-initialization middleware that supplies ANSI/group/date modes on each owned
