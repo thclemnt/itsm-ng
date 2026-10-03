@@ -125,12 +125,31 @@ try {
         verify($operation() === false, $message);
         verify([$read('glpi_domains', $id), $read('glpi_infocoms', $financial), $counts()] === $before, 'Refusal preserves Domain, financial supplier, history and notifications: ' . $message);
     };
-    foreach ([$outside => 'Sibling', $nonrecursiveAncestor => 'Nonrecursive ancestor', $descendant => 'Descendant'] as $supplier => $label) {
+    $missingSupplier = 9223372036854770000;
+    verify($read('glpi_suppliers', $missingSupplier) === null, 'Missing positive Supplier target is actually absent');
+    foreach ([$outside => 'Sibling', $nonrecursiveAncestor => 'Nonrecursive ancestor', $descendant => 'Descendant', $missingSupplier => 'Missing target'] as $supplier => $label) {
         $before = $counts();
-        verify((new Domain())->add(['name' => $prefix . ' refused ' . $label, 'entities_id' => $owner, 'suppliers_id' => $supplier, 'is_recursive' => true]) === false, 'Public add refuses ' . $label . ' commercial ownership');
+        $creation = new Domain();
+        $emptyFields = $creation->fields;
+        verify($creation->add(['name' => $prefix . ' refused ' . $label, 'entities_id' => $owner, 'suppliers_id' => $supplier, 'is_recursive' => true]) === false, 'Public add refuses ' . $label . ' commercial ownership');
+        verify($creation->fields === $emptyFields, 'Refused add preserves the actual model: ' . $label);
         verify($counts() === $before, 'Refused add changes no Domain/history/notification rows');
-        $refused(static fn (): bool => (new Domain())->update(['id' => $id, 'suppliers_id' => $supplier, 'comment' => 'Must not persist']), 'Public update refuses ' . $label);
+        $updating = new Domain();
+        verify($updating->getFromDB($id), 'Load actual Domain update model');
+        $oldFields = $updating->fields;
+        $refused(static fn (): bool => $updating->update(['id' => $id, 'suppliers_id' => $supplier, 'comment' => 'Must not persist']), 'Public update refuses ' . $label);
+        verify($updating->fields === $oldFields, 'Refused update preserves the loaded model: ' . $label);
+        $apiModel = null;
+        $apiFields = null;
+        $apiHooks = 0;
+        $PLUGIN_HOOKS['pre_item_update']['commercial_supplier_fixture'][Domain::class] = static function (Domain $item) use (&$apiModel, &$apiFields, &$apiHooks): void {
+            $apiModel = $item;
+            $apiFields = $item->fields;
+            ++$apiHooks;
+        };
         $refused(static fn (): bool => $api->refusedUpdate(['id' => $id, 'suppliers_id' => $supplier, 'comment' => 'Must not persist']), 'Actual REST update refuses ' . $label);
+        unset($PLUGIN_HOOKS['pre_item_update']['commercial_supplier_fixture']);
+        verify($apiHooks === 1 && $apiModel instanceof Domain && $apiModel->fields === $apiFields, 'Actual REST refusal preserves its retained model and runs the lifecycle hook once: ' . $label);
     }
     verify($domain->getFromDB($id), 'Load Domain for pure transfer coherence preflight');
     $before = [$read('glpi_domains', $id), $read('glpi_infocoms', $financial), $counts()];
