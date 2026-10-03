@@ -45,6 +45,9 @@ $legacyConnection = $legacy->getDoctrineConnection();
 verify($legacyConnection->createSchemaManager()->listTableNames() === [], 'Refuse a legacy fixture containing existing tables');
 $writer = $installed->getDoctrineConnection();
 $depth = $writer->getTransactionNestingLevel();
+// Connecting the auxiliary adapter may refresh the application's clock when
+// it configures the database timezone. Inspect grant initialization separately.
+$inspectionSession = $_SESSION;
 set_error_handler(static function (int $severity, string $message, string $file, int $line): bool {
     if (error_reporting() & $severity) {
         throw new ErrorException($message, 0, $severity, $file, $line);
@@ -52,10 +55,13 @@ set_error_handler(static function (int $severity, string $message, string $file,
     return false;
 });
 try {
+    $expectedSetupSession = $savedSession;
+    $expectedSetupSession['glpi_currenttime'] = $inspectionSession['glpi_currenttime'];
+    verify($inspectionSession === $expectedSetupSession, 'Auxiliary connection setup changes no session state except its clock');
     $DB = $legacy;
     Session::initEntityProfiles((int)$savedSession['glpiID']);
     verify($_SESSION['glpiprofiles'] === [], 'Actual absent-grant-table path clears the prior current-schema snapshot');
-    $expected = $savedSession;
+    $expected = $inspectionSession;
     $expected['glpiprofiles'] = [];
     verify($_SESSION === $expected, 'Read-only snapshot initialization changes no other session/profile/entity/token state');
     Session::initEntityProfiles((int)$savedSession['glpiID']);
@@ -64,6 +70,9 @@ try {
     $DB = $installed;
     Session::initEntityProfiles((int)$savedSession['glpiID']);
     verify($_SESSION['glpiprofiles'] === $savedSession['glpiprofiles'], 'Returning to the same installed adapter refreshes its real grants without a global negative cache');
+    verify($_SESSION === $inspectionSession, 'Installed grant refresh preserves all other session state');
+    Session::initEntityProfiles((int)$savedSession['glpiID']);
+    verify($_SESSION === $inspectionSession, 'Repeated installed grant refresh preserves the whole session');
     verify($writer === $installed->getDoctrineConnection() && $writer->getTransactionNestingLevel() === $depth, 'Read-only legacy inspection preserves the original supplied writer and its transaction depth');
 } finally {
     $DB = $installed;
