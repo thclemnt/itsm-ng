@@ -74,4 +74,37 @@ foreach (["Check constraint 'another_selection' is violated.", 'Query mentions '
 }
 $unrelated = new DriverException(new StatementError('An unrelated native failure', 'HY000', 3819), new Query('SELECT ?', [$checkMessage], []));
 verify(!NativeConstraintRefusal::matchesSelectedCheck($unrelated, $ownedCheck), 'A matching CHECK message in query parameters is insufficient');
+
+// PDO supplies the real diagnostic vector independently of its rendered prefix.
+$makePdo = static function (string $class, string $text, int $code, string $state, ?array $information = null): DriverException {
+    $native = new PDOException("SQLSTATE[$state]: General error: $code $text");
+    $native->errorInfo = $information ?? [$state, $code, $text];
+    return new $class(new \Doctrine\DBAL\Driver\PDO\Exception($native->getMessage(), $state, $code, $native), null);
+};
+$pdoMissing = $makePdo(NotNullConstraintViolationException::class, $message, 1364, 'HY000');
+verify(NativeConstraintRefusal::matches($pdoMissing, 'itemtype'), 'Exact converted PDO omitted-column vector recognized despite native rendered prefix');
+verify(!NativeConstraintRefusal::matches($pdoMissing, 'users_id'), 'PDO native omitted-column vector remains selected by exact required field');
+verify(!NativeConstraintRefusal::matches($makePdo(DriverException::class, $message, 1364, 'HY000'), 'itemtype'), 'PDO omitted-column vector cannot bypass converted constraint class');
+$pdoCheck = $makePdo(DriverException::class, $checkMessage, 3819, 'HY000');
+verify(NativeConstraintRefusal::matchesSelectedCheck($pdoCheck, $ownedCheck), 'Exact typed DBAL PDO/native PDO owned-CHECK vector recognized');
+verify(!NativeConstraintRefusal::matchesSelectedCheck($pdoCheck, 'another_selection'), 'PDO CHECK remains selected by exact owned constraint');
+verify(!NativeConstraintRefusal::matchesSelectedCheck($pdoCheck, null), 'Unselected PDO CHECK remains refused');
+foreach ([
+    ['HY001', 3819, $checkMessage],
+    ['HY000', 4025, $checkMessage],
+    ['HY000', 3819, "Check constraint 'another_selection' is violated."],
+    ['HY000', 3819, 'Query mentions ' . $checkMessage],
+    ['HY000', 3819, $checkMessage . ' Extra text'],
+    ['HY000', 3819],
+    ['HY000', 3819, $checkMessage, 'unexpected'],
+] as $information) {
+    verify(!NativeConstraintRefusal::matchesSelectedCheck($makePdo(DriverException::class, $checkMessage, 3819, 'HY000', $information), $ownedCheck),
+        'Malformed/mismatched/unowned PDO errorInfo cannot impersonate selected CHECK refusal');
+}
+$withoutNative = new DriverException(new \Doctrine\DBAL\Driver\PDO\Exception($checkMessage, 'HY000', 3819), null);
+verify(!NativeConstraintRefusal::matchesSelectedCheck($withoutNative, $ownedCheck), 'Typed PDO driver alone cannot fabricate the absent native cause');
+foreach ([NotNullConstraintViolationException::class, ForeignKeyConstraintViolationException::class, UniqueConstraintViolationException::class] as $class) {
+    verify(!NativeConstraintRefusal::matchesSelectedCheck($makePdo($class, $checkMessage, 3819, 'HY000'), $ownedCheck),
+        'PDO CHECK vector retains exact converted-class requirement');
+}
 echo "Native constraint refusal classification passed.\n";
