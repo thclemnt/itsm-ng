@@ -61,3 +61,16 @@ profile, cloning and purge assertions remain intact.
 Native importer execution, original application/Toolbox suites and complete
 portability suites on both providers are still required for this change. The
 running suite uses the earlier source and cannot validate this repair.
+
+The first root-owned PostgreSQL importer reruns after integration reached the
+later ordinary allocation controls, then failed newly added pre-add assertions:
+ordinary Appliance and DomainType inputs do not carry an assigned import ID.
+Those failures expose an overly broad fixture-hook lifetime, rather than prove
+either complete importer contract passes. The updated contracts reset their
+typed hook observations immediately before successful CLI import and require
+exact identity coverage at both pre-add and add hooks. Appliance removes both
+import hook types before its ordinary insertion. Domains removes its typed
+pre-add assertions and retains only the generic creation recorder for ordinary
+inserts and subsequent no-op retry checks. The identity-rewrite refusal hook
+and restoration, interruption controls and all existing lifecycle checks remain.
+This follow-up is source-only pending complete native reruns on both providers.

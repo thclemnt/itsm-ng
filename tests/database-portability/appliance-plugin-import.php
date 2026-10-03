@@ -260,20 +260,24 @@ try {
     $pluginProperty->setValue(null, [...$savedPlugins, 'orm_import_fixture']);
     $created = [];
     $profileUpdates = 0;
-    $applianceInputHook = static function ($item) use ($applianceIds): void {
+    $normalizedAppliances = $addedAppliances = [];
+    $applianceInputHook = static function ($item) use ($applianceIds, &$normalizedAppliances): void {
         verify(
-            is_int($item->input['id']) && $item->input['is_recursive'] === true && $item->input['is_deleted'] === false,
+            is_int($item->input['id']) && in_array($item->input['id'], $applianceIds, true)
+            && $item->input['is_recursive'] === true && $item->input['is_deleted'] === false,
             'Importer pre-add hook receives the normalized wide ID and true/false flags without text coercion'
         );
         verify($item->input['is_helpdesk_visible'] === ($item->input['id'] !== $applianceIds[0]), 'Importer pre-add hook retains both visibility states');
+        $normalizedAppliances[] = $item->input['id'];
     };
     $PLUGIN_HOOKS['pre_item_add']['orm_import_fixture'][Appliance::class] = $applianceInputHook;
     foreach ([ApplianceType::class, ApplianceEnvironment::class, Appliance::class, Appliance_Item::class, Appliance_Item_Relation::class] as $model) {
-        $PLUGIN_HOOKS['item_add']['orm_import_fixture'][$model] = static function ($item) use (&$created): void {
+        $PLUGIN_HOOKS['item_add']['orm_import_fixture'][$model] = static function ($item) use (&$created, &$addedAppliances): void {
             verify(!array_key_exists('clone', $item->input), 'Imported creation is never disguised as a clone');
             verify($GLOBALS['CFG_GLPI']['auto_create_infocoms'] === false, 'Source financial ownership is retained without automatic duplicate creation');
             if ($item instanceof Appliance) {
                 verify($item->input['is_deleted'] === 0 && $item->input['is_recursive'] === 1, 'Actual add hook retains the lifecycle zero/one flag representation');
+                $addedAppliances[] = $item->getID();
             }
             $created[] = [$item->getType(), $item->getID()];
         };
@@ -333,8 +337,10 @@ try {
 
     $created = [];
     $profileUpdates = 0;
+    $normalizedAppliances = $addedAppliances = [];
     verify($command->execute(['--no-interaction' => true]) === 0, 'Actual CLI completes the canonical import: ' . $command->getDisplay());
     verify(count($created) === 16 && $profileUpdates === 1, 'Every created aggregate record executes add hooks once; profile update hooks execute once; actual ' . count($created) . '/' . $profileUpdates);
+    verify($normalizedAppliances === $applianceIds && $addedAppliances === $applianceIds, 'Successful import reaches both typed lifecycle hooks once for every appliance, including false flags');
     verify($CFG_GLPI['auto_create_infocoms'] === true, 'Successful import restores source Infocom configuration');
     $em = Orm::create($DB);
     $records = new RecordRepository($em);
@@ -373,6 +379,7 @@ try {
     rejected(fn () => $importer->import(), 'differs from its completed import receipt');
     verify($counts() === $after, 'Changed source cannot silently overwrite owned application records');
     unset($PLUGIN_HOOKS['item_add']['orm_import_fixture']);
+    unset($PLUGIN_HOOKS['pre_item_add']['orm_import_fixture'][Appliance::class]);
     $next = (new Appliance())->add(['name' => 'After assigned import', 'entities_id' => $entity]);
     verify($next > max($applianceIds), 'Actual application insert uses synchronized sequence allocation after wide assigned IDs');
     verify($records->countMatching('glpi_infocoms', ['itemtype' => 'Appliance', 'items_id' => $next]) === 1, 'Restored automatic financial creation applies to subsequent ordinary application inserts');

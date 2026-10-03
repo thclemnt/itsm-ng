@@ -325,25 +325,32 @@ try {
     $connection->update('glpi_logs', ['itemtype_link' => DomainPluginSource::TYPE], ['id' => $history]);
     $pluginProperty->setValue(null, [...$savedPlugins, 'domain_import_fixture']);
     $created = [];
+    $expectedInputIds = $normalizedDomains = $addedDomains = [];
     foreach ([DomainType::class => $export['glpi_plugin_domains_domaintypes'], Domain::class => $export['glpi_plugin_domains_domains']] as $model => $rows) {
         $sourceFlags = [];
         foreach ($rows as $row) {
             $sourceFlags[$row['id']] = array_intersect_key($row, array_fill_keys(['is_recursive', 'is_deleted', 'is_helpdesk_visible'], true));
         }
-        $PLUGIN_HOOKS['pre_item_add']['domain_import_fixture'][$model] = static function ($item) use ($sourceFlags): void {
-            verify(is_int($item->input['id']), 'Domains pre-add hook retains the normalized native wide identifier');
+        $expectedInputIds[$model] = array_column($rows, 'id');
+        $PLUGIN_HOOKS['pre_item_add']['domain_import_fixture'][$model] = static function ($item) use ($sourceFlags, $model, &$normalizedDomains): void {
+            verify(is_int($item->input['id']) && array_key_exists($item->input['id'], $sourceFlags), 'Domains pre-add hook retains the normalized native wide identifier');
             foreach ($sourceFlags[$item->input['id']] as $column => $value) {
                 verify($item->input[$column] === (bool)$value, 'Domains pre-add hook retains normalized true/false source flags: ' . $column);
             }
+            $normalizedDomains[$model][] = $item->input['id'];
         };
     }
+    $creationHook = static function ($item) use (&$created): void {
+        verify(!array_key_exists('clone', $item->input), 'Assigned-ID import runs the real lifecycle without clone bypass');
+        $created[] = [$item->getType(), $item->getID()];
+    };
     foreach ([DomainType::class, Domain::class, Domain_Item::class] as $model) {
-        $PLUGIN_HOOKS['item_add']['domain_import_fixture'][$model] = static function ($item) use (&$created): void {
-            verify(!array_key_exists('clone', $item->input), 'Assigned-ID import runs the real lifecycle without clone bypass');
+        $PLUGIN_HOOKS['item_add']['domain_import_fixture'][$model] = static function ($item) use ($creationHook, &$addedDomains): void {
             if ($item instanceof DomainType || $item instanceof Domain) {
                 verify(in_array($item->input['is_recursive'], [0, 1], true), 'Domains actual add hook retains the lifecycle zero/one recursion representation');
+                $addedDomains[$item->getType()][] = $item->getID();
             }
-            $created[] = [$item->getType(), $item->getID()];
+            $creationHook($item);
         };
     }
     $sessionBefore = $_SESSION;
@@ -357,8 +364,10 @@ try {
         verify($_SESSION === $sessionBefore && $CFG_GLPI['auto_create_infocoms'] === true, 'Session/config restored at ' . $phase);
         $created = [];
     }
+    $normalizedDomains = $addedDomains = [];
     verify($command->execute(['--no-interaction' => true]) === 0 && str_contains($command->getDisplay(), 'Domains import completed'), 'Actual CLI lifecycle import');
     verify(count($created) === 12, 'All type/domain/link public creation hooks run exactly once');
+    verify($normalizedDomains === $expectedInputIds && $addedDomains === $expectedInputIds, 'Successful Domains import reaches both typed lifecycle hooks once for every type and domain, including false flags');
     $repository = new RecordRepository(Orm::create($DB));
     $domain = $repository->find('glpi_domains', 'id', $base + 10);
     verify($domain['suppliers_id'] === $supplier && $domain['users_id_tech'] === $user && $domain['groups_id_tech'] === $group, 'Direct supplier/technical ownership preserved');
@@ -402,6 +411,12 @@ try {
         'Inactive historical plugin registration and provenance remain unchanged'
     );
     verify($connection->fetchAssociative('SELECT * FROM glpi_plugins WHERE id=?', [$unrelatedPlugin]) === $originalUnrelatedPlugin, 'Unrelated active plugin registration remains unchanged');
+    // Subsequent ordinary adds allocate their IDs inside the model. Keep the
+    // generic creation recorder for retry checks, without import input assertions.
+    foreach ([DomainType::class, Domain::class] as $model) {
+        unset($PLUGIN_HOOKS['pre_item_add']['domain_import_fixture'][$model]);
+        $PLUGIN_HOOKS['item_add']['domain_import_fixture'][$model] = $creationHook;
+    }
     $nextType = (new DomainType())->add(['name' => 'Next public type', 'entities_id' => $entityA]);
     $nextDomain = (new Domain())->add(['name' => 'Next public domain', 'entities_id' => $entityA, 'domaintypes_id' => $nextType]);
     $nextLink = (new Domain_Item())->add(['domains_id' => $nextDomain, 'itemtype' => 'Computer', 'items_id' => $assets['Computer']]);
