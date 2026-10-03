@@ -66,6 +66,10 @@ $rejected = static function (callable $operation, string $exception, ?string $me
     }
 };
 $savedSession = $_SESSION;
+$savedHooks = $PLUGIN_HOOKS;
+$plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+$savedPlugins = $plugins->getValue();
+$plugins->setValue(null, [...$savedPlugins, 'kanban_purge_fixture']);
 set_error_handler(static function (int $severity, string $message, string $file, int $line) {
     if (!(error_reporting() & $severity)) {
         return false;
@@ -128,12 +132,44 @@ try {
     verify((new User())->delete(['id' => $other, '_replace_by' => $user], true), 'User replacement purges private Kanban state');
     verify($repo()->load('Project', 0, $other) === [] && $repo()->load('Project', $project, 0) === $state, 'Purged owner never promotes state to shared');
     verify($repo()->load('Project', 0, $user) === ['personal' => 'retained'], 'Existing replacement user state remains intact');
+    $otherProject = $fixtures->create('glpi_projects', ['name' => 'Retained Kanban project']);
+    verify(Item_Kanban::saveStateForItem('Project', $otherProject, ['other' => 'shared']), 'Another Project owns a separate shared board');
+    $snapshot = static function () use ($connection): array {
+        $graph = [];
+        foreach (['glpi_projects', 'glpi_items_kanbans', 'glpi_logs', 'glpi_queuednotifications'] as $table) {
+            $graph[$table] = $connection->fetchAllAssociative('SELECT * FROM ' . $connection->getDatabasePlatform()->quoteIdentifier($table) . ' ORDER BY id');
+        }
+        return $graph;
+    };
+    $beforePurge = $snapshot();
+    verify(!(new Item_Kanban())->update(['id' => $record['id'], 'items_id' => 0]) && $snapshot() === $beforePurge, 'Shared board cannot be retargeted to an aggregate through a missing required User endpoint');
+    $boardPurges = 0;
+    $PLUGIN_HOOKS['pre_item_purge']['kanban_purge_fixture'][Item_Kanban::class] = static function ($item) use ($record, &$boardPurges): void {
+        if ((int)$item->getID() === (int)$record['id']) {
+            ++$boardPurges;
+            $item->input = false;
+        }
+    };
+    verify(!(new Project())->delete(['id' => $project], true), 'Refused public board purge cancels its Project purge');
+    verify($boardPurges === 1 && $snapshot() === $beforePurge && $connection->getTransactionNestingLevel() === 1, 'Board veto restores Project, shared and private boards, history and caller transaction');
+    $boardPurges = 0;
+    $PLUGIN_HOOKS['pre_item_purge']['kanban_purge_fixture'][Item_Kanban::class] = static function ($item) use ($record, &$boardPurges): void {
+        if ((int)$item->getID() === (int)$record['id']) {
+            ++$boardPurges;
+        }
+    };
     verify((new Project())->delete(['id' => $project], true), 'Project lifecycle purges shared board');
-    verify($read($record['id']) === null, 'Board state removed with project');
+    verify($boardPurges === 1 && $read($record['id']) === null, 'Board state removed once through its public purge lifecycle with project');
+    verify($repo()->load('Project', $otherProject, 0) === ['other' => 'shared']
+        && $repo()->load('Project', 0, $user) === ['personal' => 'retained']
+        && (int)$connection->fetchOne('SELECT id FROM glpi_projects WHERE id = ?', [$otherProject]) === $otherProject, 'Project purge preserves other Projects, their shared boards and the current user private aggregate');
+    unset($PLUGIN_HOOKS['pre_item_purge']['kanban_purge_fixture']);
     verify((new ForeignKeys())->audit($connection) === [], 'Ownership lifecycle leaves no orphans');
 } finally {
     $DB->rollBack();
     $_SESSION = $savedSession;
+    $PLUGIN_HOOKS = $savedHooks;
+    $plugins->setValue(null, $savedPlugins);
     restore_error_handler();
 }
 

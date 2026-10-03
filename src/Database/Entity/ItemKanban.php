@@ -22,7 +22,7 @@ class ItemKanban
     public string $itemtype = '';
 
     #[ORM\Column(name: '`items_id`', type: 'bigint', nullable: true)]
-    #[\itsmng\Database\Mapping\PolymorphicReference(Project::class, "itemtype")]
+    #[\itsmng\Database\Mapping\PolymorphicReference(Project::class, "itemtype", managed: true)]
     public ?int $items_id = null;
 
     #[ORM\ManyToOne(targetEntity: User::class)]

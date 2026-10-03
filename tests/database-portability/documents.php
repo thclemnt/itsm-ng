@@ -37,6 +37,10 @@ set_error_handler(static function (int $severity, string $message, string $file,
     throw new ErrorException($message, 0, $severity, $file, $line);
 }, E_WARNING);
 $savedSession = $_SESSION;
+$savedHooks = $PLUGIN_HOOKS;
+$plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+$savedPlugins = $plugins->getValue();
+$plugins->setValue(null, [...$savedPlugins, 'document_purge_fixture']);
 $DB->beginTransaction();
 try {
     $entityId = (int)$connection->fetchOne('SELECT COALESCE(MAX(id), 0) + 100 FROM glpi_entities');
@@ -145,7 +149,23 @@ try {
     verify($kb->hasDocument($faqDoc, $publicFaq), 'Public recursive-root FAQ exposes only its attached document');
     verify(!$kb->hasDocument($orphan, $publicFaq), 'Public FAQ grant cannot expose an unbound document');
     $doc->getFromDB($document);
-    $replacement = $fixtures->create('glpi_tickets', ['name' => 'Replacement document ticket']);
+    $outsideReplacement = $fixtures->create('glpi_tickets', ['name' => 'Outside replacement document ticket', 'entities_id' => 0]);
+    $snapshot = static function () use ($connection): array {
+        $graph = [];
+        foreach (['glpi_tickets', 'glpi_documents', 'glpi_documents_items', 'glpi_itilfollowups', 'glpi_tickettasks', 'glpi_itilsolutions', 'glpi_logs', 'glpi_queuednotifications'] as $table) {
+            $graph[$table] = $connection->fetchAllAssociative('SELECT * FROM ' . $connection->getDatabasePlatform()->quoteIdentifier($table) . ' ORDER BY id');
+        }
+        return $graph;
+    };
+    $beforeReplacement = $snapshot();
+    $purgeHooks = 0;
+    $PLUGIN_HOOKS['pre_item_purge']['document_purge_fixture'][Ticket::class] = static function () use (&$purgeHooks): void {
+        ++$purgeHooks;
+    };
+    verify(!(new Ticket())->delete(['id' => $ticket, '_replace_by' => $outsideReplacement], true), 'Cross-entity Ticket replacement is refused before cleanup');
+    verify($purgeHooks === 0 && $snapshot() === $beforeReplacement, 'Refused replacement leaves origin, attachments, private children, history and queue unchanged without running purge hooks');
+    unset($PLUGIN_HOOKS['pre_item_purge']['document_purge_fixture']);
+    $replacement = $fixtures->create('glpi_tickets', ['name' => 'Replacement document ticket', 'entities_id' => $entity]);
     verify((new Ticket())->delete(['id' => $ticket, '_replace_by' => $replacement], true), 'Ticket replacement maintains optional document origin');
     verify($doc->getFromDB($document) && $doc->fields['tickets_id'] === $replacement, 'Document origin reassigned');
     verify((new Ticket())->delete(['id' => $replacement], true), 'Ticket purge keeps its document');
@@ -155,6 +175,8 @@ try {
 } finally {
     $DB->rollBack();
     $_SESSION = $savedSession;
+    $PLUGIN_HOOKS = $savedHooks;
+    $plugins->setValue(null, $savedPlugins);
     restore_error_handler();
 }
 $platform = $connection->getDatabasePlatform();
