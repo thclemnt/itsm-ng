@@ -34,7 +34,8 @@ incoming references on multiple tables, same-object planning after adding and
 removing a foreign key, unrelated referenced columns, an already generated
 projection, and the existing wrong-canonical-target diagnostic. PostgreSQL also
 checks colliding CHECK/FK names. It executes planned projection DDL only for its
-owned fixture tables, and never runs the adoption migration or ledger writes.
+owned fixture tables, and never runs the application-wide adoption migration
+or ledger writes.
 
 A separate controlled MariaDB probe at source
 `9134e6ef2e78f1d23bb29211c592438269ed4179` exposed a pre-existing projection
@@ -60,7 +61,13 @@ baseline-like NOT NULL/default-zero shape with populated valid Computer links.
 It verifies actual native generation, preserved escaped comments and every
 native index definition, computed values after changing the canonical subject,
 refusal of direct projection writes and duplicates, and same-object/fresh-object
-retry. These new controls are prepared source; they have not yet run.
+retry. A separate no-argument fixture migration exercises actual base
+`apply()` from canonical NULL and a valid legacy nullable BIGINT identity. Its
+separately named transitional CHECK admits the input state; the real parent
+installs its own final canonical CHECK and FK after copying and projection DDL.
+The contract checks NULL refusal under that final CHECK, populated-link
+preservation, same/fresh apply retries, and unchanged canonical receipts. These
+new controls are prepared source; they have not yet run.
 
 
 For MySQL, provision a separate disposable database with permissions to create

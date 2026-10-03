@@ -6,6 +6,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Table;
 use itsmng\Database\Migration\IncomingProjectionReferences;
+use itsmng\Database\Migration\LegacyToOrm;
 use itsmng\Database\Migration\TypedItemMigration;
 
 $directory = $argv[1] ?? '';
@@ -54,6 +55,22 @@ final class ProjectionPlanningFixture extends TypedItemMigration
             . " CHECK (itemtype = 'Computer' AND computers_id IS NOT NULL AND computers_id >= 1)";
     }
 
+}
+
+/** A no-argument frozen fixture lets the real parent own its final CHECK. */
+final class ProjectionCopyPlanningFixture extends TypedItemMigration
+{
+    public const TABLE = 'itsm_port_projection_copy_fixture';
+
+    protected function tables(): array
+    {
+        return [self::TABLE];
+    }
+
+    protected static function targets(): array
+    {
+        return ['Computer' => 'computers'];
+    }
 }
 
 verify(str_starts_with($DB->dbdefault, 'itsm_port_'), 'Dedicated disposable database required');
@@ -164,8 +181,8 @@ try {
     $outside = $createChild($external, $prefix . '_generated_child', $tables[3], 'items_id');
     verify($generatedMigration->plan($connection) === $generatedBefore, 'An incoming FK does not forbid a projection that will not be rebuilt');
 
-    // A wrong existing canonical FK must still fail before any DDL; no adoption
-    // SQL is executed by this contract.
+    // A wrong existing canonical FK must still fail before its planned DDL.
+    // Other controls below execute adoption SQL only on owned fixture tables.
     $wrong = 'fk_' . substr($tables[0], 5) . '_computers_id';
     $connection->executeStatement('ALTER TABLE ' . $qualified($schema, $tables[0]) . ' ADD CONSTRAINT ' . $platform->quoteIdentifier($wrong)
         . ' FOREIGN KEY (computers_id) REFERENCES ' . $qualified($schema, 'glpi_monitors') . ' (id)');
@@ -234,6 +251,57 @@ try {
         }
         verify($duplicateRefused && (int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $name) === 1, 'The original unique projection index remains effective');
     }
+
+    $copyTable = ProjectionCopyPlanningFixture::TABLE;
+    verify(!$connection->createSchemaManager()->tablesExist([$copyTable]), 'The copy fixture must not replace an existing table');
+    $table = new Table($copyTable);
+    $table->addColumn('id', 'bigint');
+    $table->setPrimaryKey(['id']);
+    $table->addColumn('itemtype', 'string', ['length' => 100]);
+    $table->addColumn('computers_id', 'bigint', ['notnull' => false]);
+    $table->addColumn('items_id', 'bigint', ['notnull' => false, 'comment' => $projectionComment]);
+    $table->addUniqueIndex(['items_id'], $copyTable . '_identity');
+    foreach ($platform->getCreateTableSQL($table) as $position => $statement) {
+        $connection->executeStatement($statement);
+        if ($position === 0) {
+            $created[] = $qualified($schema, $copyTable);
+            $owned[$qualified($schema, $copyTable)] = [$schema, $copyTable];
+        }
+    }
+    // This separately named transitional fixture CHECK admits canonical NULL
+    // before copying. It is not the final CHECK owned by the real migration.
+    $connection->executeStatement('ALTER TABLE ' . $platform->quoteIdentifier($copyTable) . ' ADD CONSTRAINT '
+        . $platform->quoteIdentifier($copyTable . '_transitional')
+        . " CHECK (itemtype = 'Computer' AND (computers_id IS NULL OR computers_id >= 1))");
+    $connection->insert($copyTable, ['id' => 1, 'itemtype' => 'Computer', 'computers_id' => null, 'items_id' => $computers[0]]);
+    $beforeCopy = $connection->fetchAssociative('SELECT * FROM ' . $copyTable . ' WHERE id = 1');
+    verify($beforeCopy['computers_id'] === null && (int)$beforeCopy['items_id'] === $computers[0] && !$generatedColumn($copyTable), 'The copy control starts with an ordinary nullable BIGINT legacy identity and canonical NULL');
+    $ledgerBefore = $connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
+    $copyMigration = new ProjectionCopyPlanningFixture();
+    $copyPlan = $copyMigration->plan($connection);
+    verify($copyPlan[$copyTable]['copy_legacy'] && $copyPlan[$copyTable]['key_sql'] !== [], 'The populated legacy shape requires real copy and projection phases');
+    verify($copyMigration->apply($connection) === $copyPlan, 'Actual base apply executes the captured owned-table migration plan');
+    $copied = $connection->fetchAssociative('SELECT * FROM ' . $copyTable . ' WHERE id = 1');
+    verify((int)$copied['computers_id'] === $computers[0] && (int)$copied['items_id'] === $computers[0] && $copied['itemtype'] === 'Computer'
+        && $generatedColumn($copyTable), 'Actual apply copies the legacy ID before installing the generated projection');
+    $copyForeignName = 'fk_' . substr($copyTable, 5) . '_computers_id';
+    $foreign = $connection->createSchemaManager()->introspectTable($copyTable)->getForeignKey($copyForeignName);
+    verify($foreign->getLocalColumns() === ['computers_id'] && $foreign->getForeignTableName() === 'glpi_computers' && $foreign->getForeignColumns() === ['id'], 'Actual apply installs the canonical owner FK after copying its valid target');
+    $checkPresent = $connection->fetchOne('SELECT COUNT(*) FROM information_schema.table_constraints WHERE constraint_schema = ? AND table_name = ? AND constraint_name = ? AND constraint_type = ?', [$schema, $copyTable, $copyTable . '_typed_item_kind', 'CHECK']);
+    verify((bool)$checkPresent, 'The real parent installs its own canonical CHECK separately from the transitional fixture CHECK');
+    $nullRefused = false;
+    try {
+        $connection->update($copyTable, ['computers_id' => null], ['id' => 1]);
+    } catch (\Doctrine\DBAL\Exception) {
+        $nullRefused = true;
+    }
+    verify($nullRefused && $connection->fetchAssociative('SELECT * FROM ' . $copyTable . ' WHERE id = 1') === $copied, 'The final canonical CHECK refuses a NULL owner and retains the copied link');
+    $copyMigration->apply($connection);
+    (new ProjectionCopyPlanningFixture())->apply($connection);
+    $copyRetry = $copyMigration->plan($connection)[$copyTable];
+    verify(!$copyRetry['copy_legacy'] && $copyRetry['sql'] === [] && $copyRetry['key_sql'] === [] && $copyRetry['constraint_sql'] === [], 'Same-object and fresh-object apply retries converge without repeated DDL or copying');
+    verify($connection->fetchAssociative('SELECT * FROM ' . $copyTable . ' WHERE id = 1') === $copied, 'Apply retries preserve the populated copied link');
+    verify($connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $ledgerBefore, 'Owned base migration controls do not change canonical migration receipts');
 } catch (Throwable $error) {
     $primaryError = $error;
 } finally {
