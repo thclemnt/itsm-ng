@@ -171,6 +171,14 @@ abstract class DBAdapter
         \itsmng\Database\TransactionOwnership::assertManaged($this->getDoctrineConnection());
     }
 
+    /** Capture only after the caller has begun its own managed DBAL layer. */
+    public function captureManagedTransactionScope(): \itsmng\Database\ManagedTransactionScope
+    {
+        $connection = $this->getDoctrineConnection();
+        \itsmng\Database\TransactionOwnership::assertManaged($connection);
+        return $connection->captureManagedTransactionScope();
+    }
+
     public function expressions(): \itsmng\Database\Expressions
     {
         return new \itsmng\Database\Expressions($this->getDoctrineConnection()->getDatabasePlatform());

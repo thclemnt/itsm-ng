@@ -107,6 +107,7 @@ final class PostgresConnection extends Connection implements ManagedTransactionC
 
     public function close(): void
     {
+        $this->resetManagedFrames();
         if ($this->statements !== null) {
             foreach ($this->statements as $statement => $_) {
                 $statement->close();
@@ -139,7 +140,27 @@ final class PostgresConnection extends Connection implements ManagedTransactionC
         if ($this->isTransactionActive()) {
             $this->assertCommittable();
         }
-        parent::commit();
+        try {
+            parent::commit();
+        } finally {
+            $this->reconcileManagedFrames();
+        }
+    }
+
+    public function beginTransaction(): void
+    {
+        $this->assertManagedTransaction();
+        parent::beginTransaction();
+        $this->recordManagedFrame();
+    }
+
+    public function rollBack(): void
+    {
+        try {
+            parent::rollBack();
+        } finally {
+            $this->reconcileManagedFrames();
+        }
     }
 
     /** Inspect the current physical transaction, including legacy raw BEGIN. */

@@ -8,4 +8,6 @@ namespace itsmng\Database;
 interface ManagedTransactionConnection
 {
     public function assertManagedTransaction(): void;
+
+    public function captureManagedTransactionScope(): ManagedTransactionScope;
 }
