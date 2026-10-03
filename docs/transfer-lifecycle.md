@@ -19,6 +19,11 @@ policy. Domain's separate commercial supplier extension reuses its owning
 association rule: a local or recursive ancestor Supplier must be coherent with
 the proposed Domain owner. It neither copies nor clears that commercial role.
 The existing financial `Infocom.suppliers` transfer behavior remains separate.
+Selected models must own a physical `entities_id`, matching the existing UI
+action's capability boundary. A child such as Link_Itemtype inherits its parent
+Link's effective scope; direct child transfer now refuses before simulation or
+auxiliary work instead of returning a no-change success. Existing owning-Link
+transfer remains supported and its child's effective scope follows it normally.
 
 Required public updates/deletes, creations/imports and existing selected raw
 mutations now propagate their actual outcomes. Explicit public CRUD success is
@@ -40,6 +45,13 @@ before selected mutations; it restores their fields/input/pending write state,
 including an earlier successfully updated sibling retained by a plugin hook.
 New/copied model fields preserve their original presence as well as values.
 It is a checkpoint of participating objects, not a second relationship catalog.
+Loaded auxiliary sources are captured before legacy copy preparation clears an
+identifier or fields. Actual successful creation results identify fresh rows
+within the operation; newly loaded instances of those rows restore their
+unloaded state on failure, while a reused source-copy instance restores its
+loaded original source. The checkpoint is limited to the four core lifecycle
+arrays and their property presence. It is shallow and does not restore opaque
+plugin/private derived caches or unrelated models created indirectly by hooks.
 Request feedback returns to its checkpoint, retaining new
 warnings/errors and discarding rolled-back success messages. The web action
 reports `Transfer failed` and retains the selected list on failure; only true
@@ -71,7 +83,8 @@ outcomes, real-work void overrides, and successful savepoint release followed
 by caller rollback. The Domain extension must be
 integrated before the transfer contract runs; it asserts that prerequisite.
 
-Actual evidence so far is PHP lint and whitespace validation only, plus 75
+Actual evidence so far is PHP lint, formatter and whitespace validation only
+(15 PHP files including the commercial Supplier prerequisite), plus 75
 source-only notification scope assertions using the real registration/scope
 helpers with inert base classes and translators. That probe used no application
 bootstrap or database driver. Its script/log are under

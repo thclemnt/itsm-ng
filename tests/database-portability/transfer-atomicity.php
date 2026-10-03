@@ -189,9 +189,11 @@ try {
             verify($transfer->moveItems(['Computer' => [$valid['computer']], 'Domain' => [$valid['domain']]], $destination, []) === false, 'Actual ' . $case . ' stops the entire selected batch');
             verify($visited === [$valid['domain']], 'Transfer executes public prepare/hook once without replay');
             verify($snapshot($valid) === $before && $checkpoint($transfer) === $state, 'Late refusal rolls back earlier items, dependencies, audit, queued rows and bookkeeping');
-            verify($heldSibling instanceof Computer && (int)$heldSibling->fields['entities_id'] === $source
+            verify(
+                $heldSibling instanceof Computer && (int)$heldSibling->fields['entities_id'] === $source
                 && $heldSibling->updates === [] && $heldSibling->oldvalues === [],
-                'Earlier successfully updated model retained by a real hook is restored after later sibling refusal');
+                'Earlier successfully updated model retained by a real hook is restored after later sibling refusal'
+            );
             verify($connection->getTransactionNestingLevel() === $callerLevel && $read('glpi_suppliers', $marker) !== null, 'Caller transaction and its prior marker remain intact');
             verify($_SESSION['MESSAGE_AFTER_REDIRECT'][INFO] === ['Previous feedback'], 'Rolled-back success feedback is discarded');
             if ($case === 'update refusal') {
@@ -238,24 +240,75 @@ try {
     $outsideBefore = $read('glpi_infocoms', $outsideInfocom);
     $suppliersBefore = $rows('glpi_suppliers', ['entities_id' => $destination]);
     $creates = 0;
-    $PLUGIN_HOOKS['pre_item_add']['transfer_atomicity_fixture'][Supplier::class] = static function (Supplier $item) use (&$creates): void {
+    $heldCopyAttempt = null;
+    $PLUGIN_HOOKS['pre_item_add']['transfer_atomicity_fixture'][Supplier::class] = static function (Supplier $item) use (&$creates, &$heldCopyAttempt): void {
         ++$creates;
+        $heldCopyAttempt = $item;
         $item->input = false;
     };
     verify((new Transfer())->moveItems(['Domain' => [$copyGraph['domain']]], $destination, ['keep_infocom' => 1, 'keep_supplier' => 1]) === false, 'Required financial Supplier copy refusal cancels transfer');
     verify($creates === 1, 'Required child add is attempted once through its real lifecycle');
-    verify($snapshot($copyGraph) === $before && $read('glpi_infocoms', $outsideInfocom) === $outsideBefore
+    verify(
+        $snapshot($copyGraph) === $before && $read('glpi_infocoms', $outsideInfocom) === $outsideBefore
         && $rows('glpi_suppliers', ['entities_id' => $destination]) === $suppliersBefore,
-        'Refused child creation restores its parent and does not retarget outside financial links');
+        'Refused child creation restores its parent and does not retarget outside financial links'
+    );
+    verify(
+        $heldCopyAttempt instanceof Supplier && (int)$heldCopyAttempt->fields['id'] === $copyFinancial
+        && (int)$heldCopyAttempt->fields['entities_id'] === $source && $heldCopyAttempt->input === []
+        && $heldCopyAttempt->updates === [] && $heldCopyAttempt->oldvalues === [],
+        'Refused copied-add model restores its loaded source before legacy field clearing'
+    );
     unset($PLUGIN_HOOKS['pre_item_add']['transfer_atomicity_fixture']);
+
+    $heldAddedCopy = null;
+    $heldLoadedCopy = null;
+    $newCopy = null;
+    $sourceCopyFields = $read('glpi_suppliers', $copyFinancial);
+    $PLUGIN_HOOKS['item_add']['transfer_atomicity_fixture'][Supplier::class] = static function (Supplier $item) use (&$heldAddedCopy, &$newCopy): void {
+        $heldAddedCopy = $item;
+        $newCopy = (int)$item->getID();
+    };
+    $PLUGIN_HOOKS['pre_item_update']['transfer_atomicity_fixture'][Supplier::class] = static function (Supplier $item) use (&$heldLoadedCopy, &$newCopy): void {
+        if (isset($item->input['_transfer']) && (int)$item->getID() === $newCopy) {
+            $heldLoadedCopy = $item;
+        }
+    };
+    $PLUGIN_HOOKS['pre_item_update']['transfer_atomicity_fixture'][Domain::class] = static function (Domain $item): void {
+        if (isset($item->input['_transfer'])) {
+            $item->input = false;
+        }
+    };
+    verify(
+        (new Transfer())->moveItems(['Domain' => [$copyGraph['domain']]], $destination, ['keep_infocom' => 1, 'keep_supplier' => 1]) === false,
+        'Successful financial Supplier copy is rolled back after a later actual Domain refusal'
+    );
+    verify(
+        is_int($newCopy) && $newCopy > 0 && $read('glpi_suppliers', $newCopy) === null
+        && $snapshot($copyGraph) === $before && $read('glpi_infocoms', $outsideInfocom) === $outsideBefore,
+        'Late refusal removes the created copy and restores both financial relationships'
+    );
+    verify(
+        $heldAddedCopy instanceof Supplier && $heldAddedCopy->fields === $sourceCopyFields
+        && $heldAddedCopy->input === [] && $heldAddedCopy->updates === [] && $heldAddedCopy->oldvalues === [],
+        'Successful copied-add hook instance restores original loaded source fields and pending state'
+    );
+    verify(
+        $heldLoadedCopy instanceof Supplier && $heldLoadedCopy->fields === [] && $heldLoadedCopy->input === []
+        && $heldLoadedCopy->updates === [] && $heldLoadedCopy->oldvalues === [],
+        'New recursive copy model restores its original unloaded state instead of retaining a phantom row identifier'
+    );
+    unset($PLUGIN_HOOKS['item_add']['transfer_atomicity_fixture'], $PLUGIN_HOOKS['pre_item_update']['transfer_atomicity_fixture']);
 
     $zeroGraph = $graph($recursiveCommercial, $recursive, $source);
     $before = $snapshot($zeroGraph);
     verify((new Transfer())->moveItems([ZeroUpdateTransferDomain::class => [$zeroGraph['domain']]], $destination, []) === false, 'Real public model override integer-zero refusal cancels transfer');
     verify($snapshot($zeroGraph) === $before && $connection->getTransactionNestingLevel() === 0, 'Integer-zero refusal rolls back actual queued work');
-    verify(ZeroUpdateTransferDomain::$attempted instanceof ZeroUpdateTransferDomain
+    verify(
+        ZeroUpdateTransferDomain::$attempted instanceof ZeroUpdateTransferDomain
         && (int)ZeroUpdateTransferDomain::$attempted->fields['entities_id'] === $source,
-        'Integer-zero refusal restores the actual attempted public model');
+        'Integer-zero refusal restores the actual attempted public model'
+    );
 
     foreach (['false', 'throw', 'void'] as $outcome) {
         $recursiveGraph = $graph($recursiveCommercial, $recursive, $source);
@@ -286,11 +339,15 @@ try {
         $success = $recursiveTransfer->moveItems(['Computer' => [$recursiveGraph['computer']], 'Domain' => [$recursiveGraph['domain']]], $destination, ['keep_contract' => 1]);
         verify($recursiveTransfer->recursiveCalls === 1, 'Recursive public transfer override is invoked exactly once');
         if ($outcome === 'void') {
-            verify($success === true && (int)$read('glpi_contracts', $recursiveGraph['contract'])['entities_id'] === $destination,
-                'Existing void override compatibility retains its real recursive parent mutation');
+            verify(
+                $success === true && (int)$read('glpi_contracts', $recursiveGraph['contract'])['entities_id'] === $destination,
+                'Existing void override compatibility retains its real recursive parent mutation'
+            );
         } else {
-            verify($success === false && $snapshot($recursiveGraph) === $before,
-                'Recursive explicit ' . $outcome . ' refusal rolls back earlier parent and sibling work');
+            verify(
+                $success === false && $snapshot($recursiveGraph) === $before,
+                'Recursive explicit ' . $outcome . ' refusal rolls back earlier parent and sibling work'
+            );
         }
         verify($connection->getTransactionNestingLevel() === 0 && $CFG_GLPI === $flags, 'Recursive outcome restores operation ownership and flags');
     }
@@ -301,17 +358,26 @@ try {
     try {
         $marker = $fixtures->create('glpi_suppliers', ['name' => $prefix . ' accepted caller marker', 'entities_id' => 0]);
         $callerLevel = $connection->getTransactionNestingLevel();
-        verify((new Transfer())->moveItems(['Domain' => [$callerGraph['domain']]], $destination,
-            ['keep_infocom' => 1, 'keep_supplier' => 1, 'keep_contract' => 1, 'keep_document' => 1, 'keep_history' => 1]) === true,
-            'Successful transfer releases its savepoint inside the caller transaction');
-        verify($connection->getTransactionNestingLevel() === $callerLevel && $read('glpi_suppliers', $marker) !== null
+        verify(
+            (new Transfer())->moveItems(
+                ['Domain' => [$callerGraph['domain']]],
+                $destination,
+                ['keep_infocom' => 1, 'keep_supplier' => 1, 'keep_contract' => 1, 'keep_document' => 1, 'keep_history' => 1]
+            ) === true,
+            'Successful transfer releases its savepoint inside the caller transaction'
+        );
+        verify(
+            $connection->getTransactionNestingLevel() === $callerLevel && $read('glpi_suppliers', $marker) !== null
             && (int)$read('glpi_domains', $callerGraph['domain'])['entities_id'] === $destination,
-            'Successful transfer retains caller ownership and exposes its still-uncommitted writes');
+            'Successful transfer retains caller ownership and exposes its still-uncommitted writes'
+        );
     } finally {
         $connection->rollBack();
     }
-    verify($snapshot($callerGraph) === $before && $read('glpi_suppliers', $marker) === null,
-        'Later caller rollback restores the successful transfer and its own marker without a physical commit');
+    verify(
+        $snapshot($callerGraph) === $before && $read('glpi_suppliers', $marker) === null,
+        'Later caller rollback restores the successful transfer and its own marker without a physical commit'
+    );
 
     // This parent keeps a distinct recursive financial supplier; no new copy or
     // clearing semantics are invented for its optional commercial relationship.
@@ -323,13 +389,17 @@ try {
         && (int)$read('glpi_domains', $success['domain'])['suppliers_id'] === $recursiveCommercial
         && (int)$read('glpi_infocoms', $success['infocom'])['suppliers_id'] === $recursive, 'Successful transfer preserves separate commercial and financial roles');
     verify($read('glpi_documents_items', $success['documentLink']) !== null && $read('glpi_contracts_items', $success['contractLink']) !== null, 'Successful in-place transfer preserves individual link identifiers');
-    verify($transfer->noneedtobe_transfer['Contract'] === []
+    verify(
+        $transfer->noneedtobe_transfer['Contract'] === []
         && (int)$read('glpi_contracts', $success['contract'])['entities_id'] === $destination
         && (int)$read('glpi_documents', $success['document'])['entities_id'] === $destination,
-        'Empty exclusions retain every sole local binding and move its original Contract/Document parent');
-    verify((int)$read('glpi_contracts_items', $success['contractLink'])['items_id'] === 42949680009
+        'Empty exclusions retain every sole local binding and move its original Contract/Document parent'
+    );
+    verify(
+        (int)$read('glpi_contracts_items', $success['contractLink'])['items_id'] === 42949680009
         && (int)$read('glpi_documents_items', $success['documentLink'])['items_id'] === 42949680009,
-        'Native 64-bit subject and original binding identifiers retain canonical projections');
+        'Native 64-bit subject and original binding identifiers retain canonical projections'
+    );
     verify($CFG_GLPI === $flags && $connection->getTransactionNestingLevel() === 0, 'Successful transfer restores temporary settings and commits its own frame');
     $before = $snapshot($success);
     verify($transfer->moveItems(['Domain' => [$success['domain']]], $destination, $options) === true, 'No-op transfer to the same owner remains successful');
@@ -346,6 +416,48 @@ try {
     } finally {
         $DB = $primary;
     }
+    $owningLink = $record('glpi_links', ['name' => $prefix . ' physical owner', 'entities_id' => $source]);
+    $inheritedLink = $record('glpi_links_itemtypes', ['links_id' => $owningLink, 'itemtype' => 'Computer']);
+    $inherited = new Link_Itemtype();
+    verify(
+        $inherited->getFromDB($inheritedLink) && $inherited->isEntityAssign()
+        && !$inherited->isField('entities_id') && $inherited->getEntityID() === $source,
+        'Actual child derives entity scope from its owning Link without a physical owner column'
+    );
+    verify(
+        !array_key_exists('MassiveAction:add_transfer_list', $inherited->getSpecificMassiveActions()),
+        'Inherited-only entity scope does not expose a direct UI transfer action'
+    );
+    $linkBefore = $read('glpi_links', $owningLink);
+    $childBefore = $read('glpi_links_itemtypes', $inheritedLink);
+    $linkHistory = $rows('glpi_logs', ['itemtype' => 'Link', 'items_id' => $owningLink]);
+    $_SESSION['glpitransfer_list'] = ['Link_Itemtype' => [$inheritedLink]];
+    verify(
+        (new Transfer())->moveItems(['Link_Itemtype' => [$inheritedLink]], $destination, []) === false,
+        'Inherited-only child directly supplied to the batch is refused before simulation writes'
+    );
+    $unsupported = new Transfer();
+    $unsupported->to = $destination;
+    verify(
+        $unsupported->transferItem('Link_Itemtype', $inheritedLink, $inheritedLink) === false,
+        'Direct transferItem also refuses unsupported inherited-only ownership'
+    );
+    verify(
+        $read('glpi_links', $owningLink) === $linkBefore && $read('glpi_links_itemtypes', $inheritedLink) === $childBefore
+        && $rows('glpi_logs', ['itemtype' => 'Link', 'items_id' => $owningLink]) === $linkHistory
+        && $_SESSION['glpitransfer_list'] === ['Link_Itemtype' => [$inheritedLink]],
+        'Unsupported transfer leaves actual owner, link identity, history and selected list unchanged'
+    );
+    verify(
+        (new Transfer())->moveItems(['Link' => [$owningLink]], $destination, ['keep_history' => 1]) === true,
+        'Existing supported owning-Link transfer remains available'
+    );
+    $inherited = new Link_Itemtype();
+    verify(
+        $inherited->getFromDB($inheritedLink) && $inherited->getEntityID() === $destination
+        && $read('glpi_links_itemtypes', $inheritedLink) === $childBefore,
+        'Child effective scope follows its transferred parent without inventing a child owner column'
+    );
     if ($DB->getProvider() === 'mysql') {
         $schema = $connection->createSchemaManager();
         $table = new \Doctrine\DBAL\Schema\Table(PluginTransferAtomicityProbe::getTable());

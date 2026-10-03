@@ -56,6 +56,8 @@ class Transfer extends CommonDBTM
     private ?\itsmng\Domain\TransferCoordinator $transferCoordinator = null;
     /** Actual model instances checkpointed for this operation, not a type registry. */
     private ?SplObjectStorage $transferModels = null;
+    /** Successful creation facts for this operation, used to restore new model instances. */
+    private array $createdTransferRecords = [];
 
     public static $rightname = 'transfer';
 
@@ -207,8 +209,7 @@ class Transfer extends CommonDBTM
                     if (!$item || !$item->getFromDB($id)) {
                         throw new TransferCancelled('Selected transfer item does not exist');
                     }
-                    $this->transferCoordinator->assertTransactionalStorage($item->getTable());
-                    $item->validateEntityTransfer($to);
+                    $this->preflightTransferModel($item, $to);
                 }
             }
 
@@ -282,6 +283,7 @@ class Transfer extends CommonDBTM
         $session = $_SESSION;
         $this->transferCoordinator = new \itsmng\Domain\TransferCoordinator($DB);
         $this->transferModels = new SplObjectStorage();
+        $this->createdTransferRecords = [];
         try {
             return NotificationSetting::withoutNotifications(
                 fn () => $this->transferCoordinator->run($operation)
@@ -315,16 +317,32 @@ class Transfer extends CommonDBTM
         } finally {
             $this->transferCoordinator = null;
             $this->transferModels = null;
+            $this->createdTransferRecords = [];
         }
     }
 
-    private function checkpointTransferModel(CommonDBTM $model): void
+    private function checkpointTransferModel(CommonDBTM $model, ?array $state = null): void
     {
         if ($this->transferModels !== null && !$this->transferModels->contains($model)) {
-            $this->transferModels[$model] = array_intersect_key(get_object_vars($model), [
-                'fields' => true, 'input' => true, 'updates' => true, 'oldvalues' => true,
-            ]);
+            $this->transferModels[$model] = $state ?? $this->transferModelState($model);
         }
+    }
+
+    private function transferModelState(CommonDBTM $model): array
+    {
+        return array_intersect_key(get_object_vars($model), [
+            'fields' => true, 'input' => true, 'updates' => true, 'oldvalues' => true,
+        ]);
+    }
+
+    /** Match the actual transfer action's physical owning-entity capability. */
+    private function preflightTransferModel(CommonDBTM $model, int $destination): void
+    {
+        if (!$model->isField('entities_id')) {
+            throw new TransferCancelled('Transfer item has no owning entity: ' . $model->getType());
+        }
+        $this->transferCoordinator->assertTransactionalStorage($model->getTable());
+        $model->validateEntityTransfer($destination);
     }
 
     private function updateForTransfer(CommonDBTM $model, ...$arguments): void
@@ -342,7 +360,11 @@ class Transfer extends CommonDBTM
     private function addForTransfer(CommonDBTM $model, ...$arguments): int
     {
         $this->checkpointTransferModel($model);
-        return TransferCancelled::requireIdentifier($model->add(...$arguments), $model->getType() . ' add');
+        $id = TransferCancelled::requireIdentifier($model->add(...$arguments), $model->getType() . ' add');
+        if ($this->transferModels !== null) {
+            $this->createdTransferRecords[$model->getTable()][$id] = true;
+        }
+        return $id;
     }
 
     private function importForTransfer(CommonDBTM $model, ...$arguments): int
@@ -1167,6 +1189,7 @@ class Transfer extends CommonDBTM
         if (!($item = getItemForItemtype($itemtype))) {
             throw new TransferCancelled('Transfer item type does not exist');
         }
+        $unloadedState = $this->transferModelState($item);
 
         // Is already transfer ?
         if (!isset($this->already_transfer[$itemtype][$ID])) {
@@ -1175,9 +1198,11 @@ class Transfer extends CommonDBTM
                 if ($this->to < 0 || !(new Entity())->getFromDB($this->to)) {
                     throw new TransferCancelled('Transfer destination does not exist');
                 }
-                $this->checkpointTransferModel($item);
-                $this->transferCoordinator->assertTransactionalStorage($item->getTable());
-                $item->validateEntityTransfer((int)$this->to);
+                $this->checkpointTransferModel(
+                    $item,
+                    isset($this->createdTransferRecords[$item->getTable()][$newID]) ? $unloadedState : null
+                );
+                $this->preflightTransferModel($item, (int)$this->to);
 
                 $storedFields = $item->fields;
                 try {
@@ -1508,6 +1533,7 @@ class Transfer extends CommonDBTM
                                 // Not found -> transfer copy
                                 if ($newcarttypeID < 0) {
                                     // 1 - create new item
+                                    $this->checkpointTransferModel($carttype);
                                     unset($carttype->fields['id']);
                                     $input                = $carttype->fields;
                                     $input['entities_id'] = $this->to;
@@ -1608,6 +1634,7 @@ class Transfer extends CommonDBTM
 
                 } else {
                     // create new item (don't check if move possible => clean needed)
+                    $this->checkpointTransferModel($soft);
                     unset($soft->fields['id']);
                     $input                = $soft->fields;
                     $input['entities_id'] = $this->to;
@@ -1657,6 +1684,7 @@ class Transfer extends CommonDBTM
 
                 } else {
                     // create new item (don't check if move possible => clean needed)
+                    $this->checkpointTransferModel($vers);
                     unset($vers->fields['id']);
                     $input                 = $vers->fields;
                     $vers->fields = [];
@@ -1917,6 +1945,7 @@ class Transfer extends CommonDBTM
                     if ($newcontractID !== null) {
                         $this->addToAlreadyTransfer('Contract', $item_ID, $newcontractID);
                     } else {
+                        $this->checkpointTransferModel($contract);
                         unset($contract->fields['id']);
                         $input = $contract->fields;
                         $input['entities_id'] = $this->to;
@@ -1991,6 +2020,7 @@ class Transfer extends CommonDBTM
                     if ($newdocID !== null) {
                         $this->addToAlreadyTransfer('Document', $item_ID, $newdocID);
                     } else {
+                        $this->checkpointTransferModel($document);
                         unset($document->fields['id']);
                         $input = $document->fields;
                         unset($document->fields);
@@ -2136,6 +2166,7 @@ class Transfer extends CommonDBTM
                                 // Not found -> transfer copy
                                 if ($newID < 0) {
                                     // 1 - create new item
+                                    $this->checkpointTransferModel($link_item);
                                     unset($link_item->fields['id']);
                                     $input                = $link_item->fields;
                                     $input['entities_id'] = $this->to;
@@ -2400,6 +2431,7 @@ class Transfer extends CommonDBTM
                     }
                     if ($newID < 0) {
                         // 1 - create new item
+                        $this->checkpointTransferModel($supplier);
                         unset($supplier->fields['id']);
                         $input                 = $supplier->fields;
                         $input['entities_id']  = $this->to;
@@ -2651,6 +2683,7 @@ class Transfer extends CommonDBTM
                         $input['items_id']     = $newID;
                         $input['suppliers_id'] = $suppliers_id;
                         unset($input['id']);
+                        $this->checkpointTransferModel($ic);
                         unset($ic->fields);
                         $this->addForTransfer($ic, Toolbox::addslashes_deep($input));
 
@@ -2760,6 +2793,7 @@ class Transfer extends CommonDBTM
                 // Not found -> transfer copy
                 if ($newID < 0) {
                     // 1 - create new item
+                    $this->checkpointTransferModel($ent);
                     unset($ent->fields['id']);
                     $input                = $ent->fields;
                     $input['entities_id'] = $this->to;
@@ -2868,6 +2902,7 @@ class Transfer extends CommonDBTM
                         // not found : copy contract
                         if ($newcontactID < 0) {
                             // 1 - create new item
+                            $this->checkpointTransferModel($contact);
                             unset($contact->fields['id']);
                             $input                = $contact->fields;
                             $input['entities_id'] = $this->to;
@@ -3119,6 +3154,7 @@ class Transfer extends CommonDBTM
                                     // not found : copy contract
                                     if ($newdeviceID < 0) {
                                         // 1 - create new item
+                                        $this->checkpointTransferModel($device);
                                         unset($device->fields['id']);
                                         $input                = $device->fields;
                                         // Fix for fields with NULL in DB
@@ -3226,6 +3262,7 @@ class Transfer extends CommonDBTM
                             $data['items_id'] = $newID;
                             $data['netpoints_id']
                                               = $this->transferDropdownNetpoint($data['netpoints_id']);
+                            $this->checkpointTransferModel($np);
                             unset($np->fields);
                             $this->addForTransfer($np, Toolbox::addslashes_deep($data));
                         }
@@ -3241,6 +3278,7 @@ class Transfer extends CommonDBTM
                             $data['items_id'] = $newID;
                             $data['netpoints_id']
                                               = $this->transferDropdownNetpoint($data['netpoints_id']);
+                            $this->checkpointTransferModel($np);
                             unset($np->fields);
                             $this->addForTransfer($np, Toolbox::addslashes_deep($data));
                         }
