@@ -79,7 +79,18 @@ try {
     $connection->insert($name, ['id' => ++$id, 'label' => 'DBAL stream', 'flag' => 9, 'payload' => $stream, 'measure' => 1.25],
         ['id' => Types::BIGINT, 'payload' => Types::BLOB, 'measure' => Types::FLOAT]);
     $row = $connection->fetchAssociative('SELECT * FROM ' . $name . ' WHERE id=?', [$id]);
-    verify(binaryValue($row['payload']) === "stream\0payload\xff" && $row['measure'] === 1.25, 'Real DBAL LOB stream and native floating value survive the physical PDO driver');
+    verify(binaryValue($row['payload']) === "stream\0payload\xff"
+        && \Doctrine\DBAL\Types\Type::getType(Types::FLOAT)->convertToPHPValue($row['measure'], $connection->getDatabasePlatform()) === 1.25,
+        'Real DBAL LOB stream and mapped FloatType value survive the physical PDO driver');
+    if ($DB->getProvider() === 'mysql') {
+        verify($row['measure'] === 1.25, 'Actual MySQL PDO retains its native floating representation');
+    }
+    $legacyFloat = $DB->query('SELECT measure FROM ' . $name . ' WHERE id=' . $id);
+    try {
+        verify($DB->fetchAssoc($legacyFloat) === ['measure' => 1.25], 'Actual legacy floating projection preserves the typed application value on both providers');
+    } finally {
+        $DB->freeResult($legacyFloat);
+    }
     $result = $DB->query('SELECT 1 AS duplicate, 2 AS duplicate UNION ALL SELECT 3, 4');
     try {
         verify($DB->fetchRow($result) === [1, 2] && $DB->fetchAssoc($result) === ['duplicate' => 4], 'Actual legacy result preserves native numbers and duplicate names');
