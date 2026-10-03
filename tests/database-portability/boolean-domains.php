@@ -105,6 +105,9 @@ $savedSession = $_SESSION;
 $savedConfig = $CFG_GLPI;
 $connection->beginTransaction();
 try {
+    // These owned current-user fixtures use internal authentication context.
+    // Restore the whole original SESSION with their data frame below.
+    $_SESSION['glpiextauth'] = 0;
     $fixtures = new FixtureRecords($DB);
     $membership = $fixtures->create('glpi_profiles_users', ['is_recursive' => true, 'is_dynamic' => false]);
     $beforeMembership = $connection->fetchAssociative('SELECT * FROM glpi_profiles_users WHERE id = ?', [$membership]);
