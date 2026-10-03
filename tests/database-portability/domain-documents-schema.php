@@ -19,7 +19,7 @@ define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
 require __DIR__ . '/FixtureRecords.php';
-require __DIR__ . '/NativeBooleanFixture.php';
+require __DIR__ . '/fixtures/NativeBooleanFixture.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
     exit(1);

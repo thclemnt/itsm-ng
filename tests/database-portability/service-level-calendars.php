@@ -16,6 +16,7 @@ define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
 require __DIR__ . '/FixtureRecords.php';
+require __DIR__ . '/fixtures/NativeBooleanFixture.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
     exit(1);
@@ -143,6 +144,7 @@ try {
 }
 $platform = $connection->getDatabasePlatform();
 $migration = new ServiceLevelCalendars();
+$nativeBooleans = new NativeBooleanFixture($connection, 'glpi_slms');
 $legacyIds = [];
 $agreementIds = [];
 $calendar = null;
@@ -230,5 +232,8 @@ try {
     }
     $migration->apply($connection);
     (new ForeignKeys())->apply($connection);
+    // The historical phase intentionally removed this column and its native
+    // domain. Restore the captured current domain only after canonical repair.
+    $nativeBooleans->restore();
 }
 echo $DB->getProvider() . ": normalized service-level calendars, inherited policies, constrained lifecycle and migration passed.\n";
