@@ -5,10 +5,12 @@
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Types\Type;
 use itsmng\Database\Installer;
+use itsmng\Database\BooleanDomainSchema;
 use itsmng\Database\Migration\ApplianceAssets20261005;
 use itsmng\Database\Migration\ApplianceRecipients20261005;
 use itsmng\Database\Migration\Baseline20261001;
 use itsmng\Database\Migration\Booleans20261002;
+use itsmng\Database\Migration\BooleanDomains20261008;
 use itsmng\Database\Migration\DomainDocuments20261006;
 use itsmng\Database\Migration\History;
 use itsmng\Database\Migration\Ledger;
@@ -150,6 +152,74 @@ $connection->insert('glpi_logs', ['id' => $auditId, 'itemtype' => 'Computer', 'i
 $password = 'customer-password-hash-must-survive';
 $connection->update('glpi_users', ['password' => $password], ['id' => 2]);
 
+// Raw populated adoption has no ledger at all, not twelve completed receipts.
+// Reuse this frozen baseline instead of running another installation contract.
+$rawReceipts = $connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
+$rawLedger = $manager->introspectTable(LegacyToOrm::LEDGER);
+$rawSuppliers = range(1701, 1707);
+try {
+    $manager->dropTable(LegacyToOrm::LEDGER);
+    if ($postgres) {
+        foreach (['glpi_computers' => 'is_deleted', 'glpi_suppliers' => 'is_recursive'] as $table => $column) {
+            $connection->executeStatement('ALTER TABLE ' . $table . ' ALTER COLUMN ' . $column . ' DROP DEFAULT, ALTER COLUMN ' . $column
+                . ' TYPE SMALLINT USING CASE WHEN ' . $column . ' THEN 1 ELSE 0 END, ALTER COLUMN ' . $column . ' SET DEFAULT 0');
+        }
+    }
+    foreach ($rawSuppliers as $id) {
+        $connection->insert('glpi_suppliers', ['id' => $id, 'name' => 'Raw ledgerless boolean ' . $id, 'is_recursive' => $id % 2 ? 2 : -1]);
+    }
+    $connection->update('glpi_computers', ['is_deleted' => 2], ['id' => $legacyId]);
+    $beforeRawCatalog = BooleanDomainSchema::catalog($connection);
+    $beforeRawTables = $manager->listTableNames();
+    $beforeRawRows = $connection->fetchAllAssociative('SELECT * FROM glpi_suppliers ORDER BY id');
+    $beforeRawComputer = $connection->fetchAssociative('SELECT * FROM glpi_computers WHERE id = ?', [$legacyId]);
+    try {
+        (new BooleanDomains20261008())->plan($connection, true);
+        throw new LogicException('Raw multi-table invalid flags were accepted');
+    } catch (RuntimeException $error) {
+        $lines = explode("\n", $error->getMessage());
+        foreach (['glpi_computers.is_deleted' => [$legacyId], 'glpi_suppliers.is_recursive' => $rawSuppliers] as $property => $ids) {
+            $matching = array_values(array_filter($lines, static fn (string $line): bool => str_starts_with($line, 'Invalid boolean data: ' . $property . ' ')));
+            verify(count($matching) === 1 && str_contains($matching[0], '(' . count($ids) . ' rows)'), 'Raw preflight aggregates the exact invalid count for ' . $property);
+            $samples = json_decode(explode('; samples: ', $matching[0], 2)[1], true, flags: JSON_THROW_ON_ERROR);
+            verify(array_map(static fn (array $row): int => (int)$row['id'], $samples) === array_slice($ids, 0, 5), 'Raw diagnostics bound and order sample identities for ' . $property);
+        }
+    }
+    try {
+        $history->upgrade($connection);
+        throw new LogicException('Ledgerless populated bad flags were adopted');
+    } catch (RuntimeException $error) {
+        verify(str_contains($error->getMessage(), 'glpi_computers.is_deleted'), 'Actual canonical adoption diagnoses the raw invalid owning property');
+    }
+    verify(!$manager->tablesExist([LegacyToOrm::LEDGER]) && Ledger::states($connection) === [], 'Invalid raw adoption does not bootstrap even an empty ledger');
+    verify(
+        BooleanDomainSchema::catalog($connection) === $beforeRawCatalog && $manager->listTableNames() === $beforeRawTables
+        && $connection->fetchAllAssociative('SELECT * FROM glpi_suppliers ORDER BY id') === $beforeRawRows
+        && $connection->fetchAssociative('SELECT * FROM glpi_computers WHERE id = ?', [$legacyId]) === $beforeRawComputer,
+        'Ledgerless refusal preserves all inspected raw schema and populated rows before DDL'
+    );
+    verify(Type::lookupName($manager->listTableColumns('glpi_computers')['id']->getType()) === 'integer'
+        && !$manager->introspectTable('glpi_items_projects')->hasColumn('computers_id'), 'Raw refusal precedes identifier widening and subject-column adoption');
+} finally {
+    $connection->update('glpi_computers', ['is_deleted' => 0], ['id' => $legacyId]);
+    foreach ($rawSuppliers as $id) {
+        $connection->delete('glpi_suppliers', ['id' => $id]);
+    }
+    if ($postgres) {
+        foreach (['glpi_computers' => 'is_deleted', 'glpi_suppliers' => 'is_recursive'] as $table => $column) {
+            $connection->executeStatement('ALTER TABLE ' . $table . ' ALTER COLUMN ' . $column . ' DROP DEFAULT, ALTER COLUMN ' . $column
+                . ' TYPE BOOLEAN USING (' . $column . ' = 1), ALTER COLUMN ' . $column . ' SET DEFAULT FALSE');
+        }
+    }
+    if (!$manager->tablesExist([LegacyToOrm::LEDGER])) {
+        $manager->createTable($rawLedger);
+        foreach ($rawReceipts as $row) {
+            $connection->insert(LegacyToOrm::LEDGER, $row);
+        }
+    }
+}
+verify($connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $rawReceipts, 'Raw refusal fixture restores the prior seed/baseline receipts exactly');
+
 // Early PostgreSQL installations used smallint flags. Invalid values refuse first.
 if ($postgres) {
     $connection->executeStatement('ALTER TABLE glpi_computers ALTER COLUMN is_deleted DROP DEFAULT, ALTER COLUMN is_deleted TYPE SMALLINT USING (CASE WHEN is_deleted THEN 1 ELSE 0 END), ALTER COLUMN is_deleted SET DEFAULT 0');
@@ -256,6 +326,8 @@ verify($key !== null && is_file($key), 'The configured parent installation has i
 copy($key, $upgradeConfig . '/glpicrypt.key');
 chmod($upgradeConfig . '/glpicrypt.key', 0600);
 try {
+    $manager->dropTable(LegacyToOrm::LEDGER);
+    verify(Ledger::states($connection) === [] && Type::lookupName($manager->listTableColumns('glpi_computers')['id']->getType()) === 'integer', 'Actual populated updater starts from raw tables with no ledger and legacy identifier widths');
     $process = proc_open([PHP_BINARY, GLPI_ROOT . '/bin/console', '--config-dir=' . $upgradeConfig, '--no-interaction', 'db:update'], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['redirect', 1]], $pipes, GLPI_ROOT);
     verify(is_resource($process), 'Populated historical CLI updater starts');
     fclose($pipes[0]);
@@ -270,6 +342,9 @@ try {
 }
 $checkpoint('Actual populated db:update');
 $database->clearSchemaCache();
+foreach ([Baseline20261001::VERSION, Seeds20261001::VERSION] as $adoptedVersion) {
+    verify(Ledger::state($connection, $adoptedVersion) === ['complete' => true, 'origin' => 'adopted', 'data' => 'preserved'], 'Actual ledgerless updater records inherited history without replaying seeds: ' . $adoptedVersion);
+}
 verify((new SchemaCheck())->differences($connection) === [], 'Populated historical replay converges to the complete required schema');
 $document = $connection->fetchAssociative('SELECT id, documents_id, domains_id, items_id, users_id, is_recursive, timeline_position FROM glpi_documents_items WHERE id=803');
 $documentReceipt = Ledger::state($connection, DomainDocuments20261006::GENERAL_RECEIPT);

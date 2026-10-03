@@ -156,3 +156,43 @@ application checks, the dynamically discovered full portability suite on both
 providers, and final native schema inspection. Existing historical suite fixtures
 must retain their assertions and explicitly model their intended history rather
 than bypass the new constraints.
+
+## Additional adoption and retry controls (source only)
+
+The follow-up based on `a0f91db45c` extends the existing contracts instead of
+repeating a second frozen installation. `migration-history.php` now temporarily
+removes the actual ledger table from its populated raw baseline, introduces
+integer flags with invalid values in Computer and Supplier rows, and requires
+combined per-property counts with ordered samples bounded to five. Both direct
+Boolean preflight and actual History adoption must refuse without creating even
+an empty ledger, changing the inspected schema/data or widening identifiers.
+The fixture restores its prior raw state and receipts before all original
+invalid-relationship controls. The existing populated public `db:update` then
+starts with no ledger at all and must adopt the valid graph while preserving
+the original account, audit, identifier, sentinel and subject-link assertions.
+This is distinct from appending to twelve completed receipts.
+
+`boolean-domains.php` additionally removes three CHECKs on different tables,
+interrupts after the first committed MySQL-family DDL group, and interrupts
+again after the final remaining DDL but before completion. Replanning must omit
+already-correct groups; repeated actual History/stage execution must preserve
+native definitions, every inspected row and serialized receipts. PostgreSQL
+uses native booleans, so its separate completion failure proves outer-history
+rollback and retry without pretending a CHECK DDL callback ran. All original
+single-table drift, invalid-data, public-input and nullable assertions remain.
+
+All eleven property-declared nullable User flags now receive public
+absent/NULL/false/true storage controls. SESSION expectations follow the actual
+`user_pref_field` policy instead of silently adding preference declarations in
+the fixture. Source inspection identified that this list currently excludes
+`compact_mode_ui` and `access_shortcuts`, while the preceding unchanged compact
+mode assertions expect inherited SESSION publication. That discrepancy needs a
+separate policy repair or diagnosis before a passing claim; this test-only
+follow-up changes neither production nor those original assertions.
+
+The new controls have not executed against a provider. PHP syntax, scoped
+formatter and whitespace checks are source checks only. Run both contracts on
+owned PostgreSQL and MySQL/MariaDB fixtures under the unchanged 300-second
+contract limit, inspect restored schema/receipts and retained diagnostics, then
+run the full coherent history/application suites. Prior pure/offline results do
+not validate the additional adoption, committed-DDL or preference behavior.

@@ -103,6 +103,7 @@ verify((new SchemaCheck())->differences($connection) === [], 'Current complete s
 // and flags whose older supplying migrations are independent of the baseline.
 $savedSession = $_SESSION;
 $savedPreference = $CFG_GLPI['compact_mode_ui'];
+$savedConfig = $CFG_GLPI;
 $connection->beginTransaction();
 try {
     $fixtures = new FixtureRecords($DB);
@@ -191,10 +192,39 @@ try {
             verify((int)$connection->fetchOne('SELECT compact_mode_ui FROM glpi_users WHERE id = ?', [$id]) === 1, 'Public callback retains zero/one representation');
         }
     }
+    // Every nullable User flag retains absent/NULL/false storage semantics.
+    // Only the actual declared preference policy controls SESSION publication.
+    $nullablePreferences = array_keys(array_filter(EntityRegistry::booleanFields('glpi_users')));
+    verify(count($nullablePreferences) === 11, 'Exercise all eleven entity-declared nullable User flags');
+    $preferenceUser = $fixtures->create('glpi_users', ['name' => 'All nullable preferences ' . bin2hex(random_bytes(6))]);
+    $_SESSION['glpiID'] = $preferenceUser;
+    $user = new User();
+    foreach ($nullablePreferences as $preference) {
+        $CFG_GLPI[$preference] = 1;
+        $sessionKey = 'glpi' . $preference;
+        $publishesPreference = in_array($preference, $CFG_GLPI['user_pref_field'], true);
+        $_SESSION[$sessionKey] = 'not-published';
+        verify($user->update(['id' => $preferenceUser, $preference => false, '_no_message' => 1]), 'Public explicit false preference accepted: ' . $preference);
+        verify((int)$connection->fetchOne('SELECT ' . $quote($preference) . ' FROM glpi_users WHERE id = ?', [$preferenceUser]) === 0
+            && ($publishesPreference ? (int)$_SESSION[$sessionKey] === 0 : $_SESSION[$sessionKey] === 'not-published'), 'Explicit false retains actual storage and SESSION policy: ' . $preference);
+        $_SESSION[$sessionKey] = 'not-submitted';
+        verify($user->update(['id' => $preferenceUser, 'comment' => 'Absent preference ' . $preference, '_no_message' => 1]), 'Unrelated public User update accepted');
+        verify($connection->fetchOne('SELECT ' . $quote($preference) . ' FROM glpi_users WHERE id = ?', [$preferenceUser]) !== null
+            && (int)$connection->fetchOne('SELECT ' . $quote($preference) . ' FROM glpi_users WHERE id = ?', [$preferenceUser]) === 0
+            && $_SESSION[$sessionKey] === 'not-submitted', 'Absent preference preserves storage and leaves its SESSION key untouched: ' . $preference);
+        verify($user->update(['id' => $preferenceUser, $preference => null, '_no_message' => 1]), 'Public nullable inheritance accepted: ' . $preference);
+        verify($connection->fetchOne('SELECT ' . $quote($preference) . ' FROM glpi_users WHERE id = ?', [$preferenceUser]) === null
+            && ($publishesPreference ? (int)$_SESSION[$sessionKey] === 1 : $_SESSION[$sessionKey] === 'not-submitted'), 'Explicit NULL stores inheritance and uses only the declared SESSION preference policy: ' . $preference);
+        $CFG_GLPI[$preference] = 0;
+        verify($user->update(['id' => $preferenceUser, $preference => true, '_no_message' => 1])
+            && (int)$connection->fetchOne('SELECT ' . $quote($preference) . ' FROM glpi_users WHERE id = ?', [$preferenceUser]) === 1
+            && ($publishesPreference ? (int)$_SESSION[$sessionKey] === 1 : $_SESSION[$sessionKey] === 'not-submitted'), 'Explicit true retains the actual storage and SESSION preference policy: ' . $preference);
+    }
 } finally {
     $connection->rollBack();
     $_SESSION = $savedSession;
     $CFG_GLPI['compact_mode_ui'] = $savedPreference;
+    $CFG_GLPI = $savedConfig;
 }
 
 // Emulate an explicitly older history in this exclusive fixture. Current schema
@@ -317,4 +347,89 @@ try {
     Ledger::save($connection, $version, $receipt);
 }
 verify((new SchemaCheck())->differences($connection) === [], 'Historical fixture restores the full current schema');
+
+// Exercise more than one committed DDL group without another full baseline.
+// These are appended-history controls; raw ledgerless adoption is exercised by
+// migration-history.php against its already-populated frozen baseline.
+$retryStates = Ledger::states($connection);
+$retryCatalog = BooleanDomainSchema::catalog($connection);
+$retryRows = [];
+$retryChecks = [['glpi_suppliers', 'is_recursive', false], ['glpi_users', 'compact_mode_ui', true], ['glpi_profiles_users', 'is_recursive', false]];
+foreach ($retryChecks as [$retryTable]) {
+    $retryRows[$retryTable] = $connection->fetchAllAssociative('SELECT * FROM ' . $quote($retryTable) . ' ORDER BY id');
+}
+try {
+    $connection->delete(LegacyToOrm::LEDGER, ['version' => $version]);
+    if ($mysql) {
+        foreach ($retryChecks as [$retryTable, $retryColumn]) {
+            $connection->executeStatement('ALTER TABLE ' . $quote($retryTable) . ($platform instanceof MySQLPlatform ? ' DROP CHECK ' : ' DROP CONSTRAINT ')
+                . $quote(BooleanDomainSchema::name($retryTable, $retryColumn)));
+        }
+        verify(count($stage->plan($connection)['sql']) === 3, 'Three distinct tables have pending CHECK DDL');
+        $committed = [];
+        try {
+            $stage->apply($connection, static function (string $sql) use (&$committed): void {
+                $committed[] = $sql;
+                throw new RuntimeException('Injected first-table committed interruption');
+            });
+            throw new LogicException('First committed-table interruption did not execute');
+        } catch (RuntimeException $error) {
+            verify($error->getMessage() === 'Injected first-table committed interruption' && count($committed) === 1
+                && Ledger::state($connection, $version) === ['complete' => false], 'First actual table DDL commits with only an incomplete append receipt');
+        }
+        $remaining = $stage->plan($connection)['sql'];
+        verify(count($remaining) === 2 && !in_array($committed[0], $remaining, true), 'Retry skips the already-correct table and retains both untouched groups');
+        $replayed = [];
+        try {
+            $stage->apply($connection, static function (string $sql) use (&$replayed, $remaining): void {
+                $replayed[] = $sql;
+                if (count($replayed) === count($remaining)) {
+                    throw new RuntimeException('Injected final-DDL completion interruption');
+                }
+            });
+            throw new LogicException('Final-DDL interruption did not execute');
+        } catch (RuntimeException $error) {
+            verify($error->getMessage() === 'Injected final-DDL completion interruption' && $replayed === $remaining
+                && Ledger::state($connection, $version) === ['complete' => false], 'Every remaining table DDL commits before completion is recorded');
+        }
+        verify($stage->plan($connection)['sql'] === [], 'Final-DDL retry needs no CHECK rewrite');
+    } else {
+        // Native PostgreSQL booleans require no CHECK DDL. Failure after stage
+        // application but before the outer history completes rolls back receipt.
+        try {
+            (new History())->upgrade($connection, onComplete: static fn () => throw new RuntimeException('Injected PostgreSQL completion interruption'));
+            throw new LogicException('PostgreSQL completion interruption did not execute');
+        } catch (RuntimeException $error) {
+            verify($error->getMessage() === 'Injected PostgreSQL completion interruption'
+                && Ledger::state($connection, $version) === null, 'PostgreSQL outer history rollback leaves the native no-DDL append retryable');
+        }
+    }
+    foreach ($retryStates as $oldVersion => $state) {
+        if ($oldVersion !== $version) {
+            verify(Ledger::state($connection, $oldVersion) === $state, 'Interruption never changes an earlier history receipt: ' . $oldVersion);
+        }
+    }
+    (new History())->upgrade($connection);
+    verify(BooleanDomainSchema::catalog($connection) === $retryCatalog && Ledger::state($connection, $version)['complete'], 'Actual History retry converges on the exact native boolean schema');
+    $completedLedger = $connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
+    (new History())->upgrade($connection);
+    $stage->apply($connection);
+    verify(BooleanDomainSchema::catalog($connection) === $retryCatalog
+        && $connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $completedLedger, 'Repeated completed History and stage replay change neither native CHECKs nor serialized receipts');
+    foreach ($retryRows as $retryTable => $rows) {
+        verify($connection->fetchAllAssociative('SELECT * FROM ' . $quote($retryTable) . ' ORDER BY id') === $rows, 'Interrupted and repeated CHECK adoption preserves every row: ' . $retryTable);
+    }
+} finally {
+    if ($mysql) {
+        foreach ($retryChecks as [$retryTable, $retryColumn, $nullable]) {
+            $check = BooleanDomainSchema::name($retryTable, $retryColumn);
+            if (!isset(BooleanDomainSchema::catalog($connection)['checks'][$retryTable][$check])) {
+                $connection->executeStatement('ALTER TABLE ' . $quote($retryTable) . ' ADD CONSTRAINT ' . $quote($check)
+                    . ' CHECK (' . BooleanDomainSchema::expression($platform, $retryColumn, $nullable) . ')');
+            }
+        }
+    }
+    Ledger::save($connection, $version, $retryStates[$version]);
+}
+verify((new SchemaCheck())->differences($connection) === [], 'Multi-table retry fixture restores the complete current schema');
 echo $DB->getProvider() . ': boolean domains, public/ORM inputs, historical adoption, pre-DDL diagnostics and retry: ' . $assertions . " assertions passed.\n";
