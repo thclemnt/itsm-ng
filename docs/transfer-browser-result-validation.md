@@ -1,10 +1,10 @@
 # Transfer browser result assertion
 
-Source-only correction based on the failed PostgreSQL complete browser run at
+Correction based on the failed PostgreSQL complete browser run at
 `336ef4fec61341437399471647a6fe6e7992efb7`. That run passed 13 of 14 scenarios;
 Transfer stopped at its first refusal-message assertion. Later data-preservation,
-list, API edit and successful retry assertions were not reached. This change has
-not run in a browser or against either database.
+list, API edit and successful retry assertions were not reached. MariaDB's first
+complete run failed the same assertion after passing thirteen scenarios.
 
 The retained trace establishes that the POST completed with HTTP 200 at
 268917.885 ms, the new document fired load at 269344.371 ms, and networkidle fired
@@ -30,10 +30,16 @@ single failure is rethrown directly so the normal reporter preserves the
 original Playwright assertion and source location; multiple failures remain
 aggregated. Presence tracking also preserves a thrown falsy value.
 
-Source review and whitespace checks are the current validation. Root must run
-the actual Transfer scenario on both providers, inspect all preservation/retry
-assertions and cleanup, then the relevant complete browser matrix. The prior
-failure evidence remains unchanged. External sanitized trace evidence:
+Root integrated this correction at `3ac825b1e31de09057c41f2424797b1fb7ca9103`.
+TypeScript compilation passes. The actual focused Transfer flow passes on both
+engines in 30.4s, with the existing 60-second limit and zero retries. Both complete
+rebuilt browser suites then pass fourteen scenarios each, with zero skips or
+retries: 267.931s on PostgreSQL and 268.749s on MariaDB. All data/list/API/retry
+assertions and owned cleanup execute. Final native inspection finds twelve
+complete migrations, no pending versions/differences and 1,057 FKs on each engine.
+These results do not certify the separately observed remember-me header warning,
+prepared Session/token changes, official release-engine matrix or remote CI.
+The prior failure evidence remains unchanged. External sanitized trace evidence:
 `transfer-browser-refusal-trace-source-review.md`,
 `transfer-browser-refusal-trace-sanitized.json`, and
 `transfer-browser-result-source-336.md` under `/workspace/itsm-env/evidence`.
