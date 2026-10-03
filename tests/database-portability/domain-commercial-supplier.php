@@ -78,7 +78,8 @@ try {
     $_SESSION['glpiparententities'] = [0];
     $_SESSION['glpishowallentities'] = false;
     // Selection uses Domain authority; unrelated Supplier CRUD rights are not added.
-    $_SESSION['glpiactiveprofile']['supplier'] = 0;
+    $_SESSION['glpiactiveprofile'][Supplier::$rightname] = 0;
+    verify(!Supplier::canView() && !Supplier::canUpdate(), 'Actual Supplier READ and UPDATE rights are absent');
     $input = ['name' => $prefix . ' domain', 'entities_id' => $owner, 'suppliers_id' => $same];
     verify((new Domain())->can(-1, CREATE, $input), 'Actual Domain create authority without Supplier CRUD');
     $foreignInput = $input;
@@ -245,7 +246,7 @@ try {
     }
     unset($PLUGIN_HOOKS['post_prepareadd']['commercial_supplier_fixture']);
     verify($rejected && $counts() === $before, 'Post-prepare supplier mutation is rejected without Domain/history side effects');
-    $_SESSION['glpiactiveprofile']['supplier'] = $session['glpiactiveprofile']['supplier'];
+    $_SESSION['glpiactiveprofile'][Supplier::$rightname] = $session['glpiactiveprofile'][Supplier::$rightname];
     verify((new Supplier())->can($same, PURGE), 'Restore authorized Supplier purge actor');
     verify((new Supplier())->delete(['id' => $same], true), 'Actual Supplier purge clears optional commercial association');
     verify($read('glpi_domains', $id)['suppliers_id'] === null && $read('glpi_domains', $clone)['suppliers_id'] === null
