@@ -9,6 +9,7 @@ use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
+use itsmng\Database\BooleanCheckExpression;
 
 /** Frozen category flags; current entity metadata cannot rewrite this upgrade. */
 final class CategoryFlags20261004
@@ -28,6 +29,23 @@ final class CategoryFlags20261004
         $table = $manager->introspectTable('glpi_itilcategories');
         $columns = $manager->listTableColumns('glpi_itilcategories');
         $sql = [];
+        $checks = [];
+        $ansiQuotes = false;
+        if (!$postgres) {
+            // One bounded native snapshot for the historical table. MariaDB
+            // formats clauses in the current mode and allows duplicate names
+            // on different tables, so both interpretation and owner matter.
+            $ansiQuotes = in_array('ANSI_QUOTES', explode(',', (string)$connection->fetchOne('SELECT @@SESSION.sql_mode')), true);
+            $enforced = $platform instanceof MySQLPlatform ? 'tc.ENFORCED' : "'YES'";
+            $query = 'SELECT tc.CONSTRAINT_NAME AS name, cc.CHECK_CLAUSE AS clause, ' . $enforced . ' AS enforced '
+                . 'FROM information_schema.TABLE_CONSTRAINTS tc JOIN information_schema.CHECK_CONSTRAINTS cc '
+                . 'ON cc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME '
+                . ($platform instanceof MySQLPlatform ? '' : 'AND cc.TABLE_NAME = tc.TABLE_NAME ')
+                . "WHERE tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_NAME = 'glpi_itilcategories' AND tc.CONSTRAINT_TYPE = 'CHECK'";
+            foreach ($connection->fetchAllAssociative($query) as $check) {
+                $checks[$check['name']] = $check;
+            }
+        }
         foreach (self::COLUMNS as $name) {
             $column = $columns[$name] ?? throw new \RuntimeException('Missing category flag: glpi_itilcategories.' . $name);
             $type = Type::lookupName($column->getType());
@@ -63,18 +81,15 @@ final class CategoryFlags20261004
                 // Retain historical integer storage while enforcing the flag's
                 // domain. A retry inspects each constraint after committed DDL.
                 $constraint = 'glpi_itilcategories_' . $name . '_boolean';
-                $exists = $connection->fetchOne("SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = 'glpi_itilcategories' AND CONSTRAINT_NAME = ? AND CONSTRAINT_TYPE = 'CHECK'", [$constraint]);
-                if ($exists) {
-                    $clause = $connection->fetchOne("SELECT CHECK_CLAUSE FROM information_schema.CHECK_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND CONSTRAINT_NAME = ?", [$constraint]);
-                    $normalized = strtolower(preg_replace('/[\s`()]+/', '', (string)$clause));
-                    if ($normalized !== $name . 'isnotnulland' . $name . 'in0,1') {
+                if (isset($checks[$constraint])) {
+                    $check = $checks[$constraint];
+                    if (!BooleanCheckExpression::matches($check['clause'], $name, false, $ansiQuotes)) {
                         throw new \RuntimeException('Conflicting category flag constraint: ' . $constraint);
                     }
                     if ($platform instanceof MySQLPlatform) {
-                        $enforced = $connection->fetchOne("SELECT ENFORCED FROM information_schema.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = 'glpi_itilcategories' AND CONSTRAINT_NAME = ? AND CONSTRAINT_TYPE = 'CHECK'", [$constraint]);
-                        if ($enforced === 'NO') {
+                        if ($check['enforced'] === 'NO') {
                             $sql[] = 'ALTER TABLE glpi_itilcategories ALTER CHECK ' . $platform->quoteIdentifier($constraint) . ' ENFORCED';
-                        } elseif ($enforced !== 'YES') {
+                        } elseif ($check['enforced'] !== 'YES') {
                             throw new \RuntimeException('Cannot establish category flag enforcement: ' . $constraint);
                         }
                     }

@@ -231,6 +231,36 @@ accepts the4 Supplier/User clauses recorded in root's actual diagnostic, with
 their corresponding observed mode. These nonconnecting results are source
 evidence only. Native
 mode-schema/migration/app-suite reruns remain pending, including the separately
-identified general default difference. Historical CategoryFlags' old parser
-still needs explicit incomplete-receipt/ANSI retry investigation; this scoped
-follow-up does not silently change that earlier migration.
+identified general default difference. The subsequent source-only Category inspector follow-up below addresses the
+identified incomplete-receipt/ANSI retry inspection boundary.
+
+
+### Category historical retry inspection follow-up (source-only)
+
+CategoryFlags20261004 retains its original three frozen columns, type/default/
+nullability conversion SQL, CHECK declarations, receipt and apply behavior. Only
+its read-only existing-CHECK inspection changes: one current SESSION quotation
+context and one bounded native snapshot owned by glpi_itilcategories replace
+per-column catalogue reads and parenthesis stripping. MariaDB joins include
+CHECK_CONSTRAINTS.TABLE_NAME, so same-named checks on another table cannot supply
+a clause. The shared exact parser handles ANSI identifiers while refusing a
+permissive expression with the same stripped tokens. PostgreSQL inspection and
+all frozen historical definitions remain unchanged.
+
+The original category-booleans.php assertions remain. A prepared native phase
+captures valid CHECKs, values, receipt and mode outside a data transaction, marks
+only the Category receipt incomplete, previews existing ANSI CHECKs without
+mutating them, resumes and proves idempotency. It then replaces one captured
+CHECK with `(is_incident IS NOT NULL AND is_incident) IN (0,1)`: this actual native
+lookalike admits2, yet both preview/apply must refuse after valid data is restored,
+without changing the incomplete receipt or CHECK. Finally restores exact original
+values, CHECK, mode and receipt. No constraints or assertions are suppressed.
+The separately committed User fixture now declares its internal auth SESSION
+context inside its existing saved-session/data frame; production auth policy and
+rights are untouched.
+
+Pure parser controls now pass92 assertions (all original72 retained). Native
+Category retry, rejection and restoration evidence remains pending root's
+exclusive provider window. Frozen baseline/history files have no diff, and the
+historical SQL literal declarations are retained. Source syntax/style results
+are not populated upgrade/retry or configured-mode application validation.

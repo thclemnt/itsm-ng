@@ -75,6 +75,8 @@ verify(BooleanCheckExpression::matches('"fl""ag" IS NOT NULL AND "fl""ag" IN (0,
 foreach (["'flag' IS NOT NULL AND 'flag' IN (0,1)", '"other" IS NOT NULL AND "flag" IN (0,1)', '"flag" IN (0,1)', '"flag" IS NOT NULL AND "flag" IN (0,1) OR "other" IS NULL', '"flag" IS NOT NULL AND ("flag" IN (0,1) OR "other" IS NULL)', '"flag" IS NOT NULL AND "flag" IN (0,1,2)', '"flag" IS NOT NULL AND "flag" IN (0,1) /* comment */', 'coalesce("flag",0) IN (0,1)', '"flag" IS NOT NULL AND "flag" IN (0,1) AND "other" IS NOT NULL'] as $clause) {
     verify(!BooleanCheckExpression::matches($clause, 'flag', false, true), 'ANSI context does not admit literals, predicates or permissive precedence');
 }
+verify(!BooleanCheckExpression::matches('(flag IS NOT NULL AND flag) IN (0,1)', 'flag', false), 'Parenthesis stripping cannot turn a different AST into the generated CHECK');
+verify(!BooleanCheckExpression::matches('("flag" IS NOT NULL AND "flag") IN (0,1)', 'flag', false, true), 'ANSI quoting retains exact precedence of a permissive historical lookalike');
 foreach ([['5.6.0', false, false], ['8.0.15', false, false], ['8.0.16', false, true], ['8.4.0', false, true], ['10.2.0-MariaDB', true, false], ['10.2.1-MariaDB', true, false], ['10.2.21-MariaDB', true, false], ['10.2.22-MariaDB', true, true], ['5.5.5-10.11.16-MariaDB', true, true]] as [$version, $maria, $expected]) {
     verify(CheckConstraintSupport::supportsVersion($version, $maria) === $expected, 'Engine minimum means enforced CHECK support');
 }
