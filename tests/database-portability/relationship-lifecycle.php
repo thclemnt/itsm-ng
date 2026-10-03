@@ -29,6 +29,13 @@ function verify(bool $ok, string $message): void
 verify(str_starts_with($DB->dbdefault, 'itsm_port_'), 'Dedicated database required');
 $_SESSION['glpiextauth'] = 0;
 verify((new Auth())->login('itsm', 'itsm', true), 'Login');
+$savedSession = $_SESSION;
+$savedHooks = $PLUGIN_HOOKS;
+$savedNotifications = $CFG_GLPI['use_notifications'];
+$CFG_GLPI['use_notifications'] = false;
+$plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+$savedPlugins = $plugins->getValue();
+$plugins->setValue(null, [...$savedPlugins, 'relationship_replacement_fixture']);
 $DB->beginTransaction();
 try {
     $fixtures = new FixtureRecords($DB);
@@ -47,15 +54,112 @@ try {
     }
     $projectKanban = $fixtures->create('glpi_items_kanbans', ['itemtype' => 'Project', 'items_id' => $project, 'users_id' => Session::getLoginUserID()]);
     $taskKanban = $fixtures->create('glpi_items_kanbans', ['itemtype' => 'ProjectTask', 'items_id' => $project, 'users_id' => Session::getLoginUserID()]);
-    $selections = iterator_to_array($repo()->replacements('glpi_projects', $project, $project, 'Project', $index), false);
-    $kanbanSelection = array_values(array_filter($selections, static fn (array $selection): bool => $selection['table'] === 'glpi_items_kanbans'));
-    verify(count($kanbanSelection) === 1 && $kanbanSelection[0]['column'] === 'items_id' && array_map('intval', $kanbanSelection[0]['ids']) === [$projectKanban] && !$kanbanSelection[0]['physical'], 'Polymorphic replacement selects one ID/type pair, never the discriminator column');
-    $model = new Project();
-    verify($model->getFromDB($project), 'Load project');
-    $model->input = ['_replace_by' => $replacement];
+    verify(array_filter(
+        iterator_to_array($repo()->replacements('glpi_projects', $project, $project, 'Project', $index), false),
+        static fn (array $selection): bool => $selection['table'] === 'glpi_items_kanbans'
+    ) === [], 'Parent-managed Kanban state is excluded from automatic replacement');
+
+    // Keep generic polymorphic replacement coverage on a genuinely automatic
+    // reference. Kanban's managed replacement is tested through public purge below.
+    $computer = $fixtures->create('glpi_computers', ['name' => $prefix]);
+    $replacementComputer = $fixtures->create('glpi_computers', ['name' => $prefix . ' replacement']);
+    if ($read('glpi_monitors', $computer) === null) {
+        $fixtures->create('glpi_monitors', ['id' => $computer, 'name' => $prefix]);
+    }
+    $software = $fixtures->create('glpi_softwares', ['name' => $prefix]);
+    $version = $fixtures->create('glpi_softwareversions', ['softwares_id' => $software]);
+    $computerInstallation = $fixtures->create('glpi_items_softwareversions', ['itemtype' => 'Computer', 'items_id' => $computer, 'softwareversions_id' => $version]);
+    $monitorInstallation = $fixtures->create('glpi_items_softwareversions', ['itemtype' => 'Monitor', 'items_id' => $computer, 'softwareversions_id' => $version]);
+    $selections = iterator_to_array($repo()->replacements('glpi_computers', $computer, $computer, 'Computer', $index), false);
+    $installationSelection = array_values(array_filter($selections, static fn (array $selection): bool => $selection['table'] === 'glpi_items_softwareversions'));
+    verify(count($installationSelection) === 1 && $installationSelection[0]['column'] === 'items_id'
+        && array_map('intval', $installationSelection[0]['ids']) === [$computerInstallation] && !$installationSelection[0]['physical'], 'Polymorphic replacement selects one ID/type pair, never the discriminator column');
+    $model = new Computer();
+    verify($model->getFromDB($computer), 'Load computer');
+    $model->input = ['_replace_by' => $replacementComputer];
     $model->cleanRelationData();
-    verify((int)$read('glpi_items_kanbans', $projectKanban)['items_id'] === $replacement && $read('glpi_items_kanbans', $projectKanban)['itemtype'] === 'Project', 'Public generic replacement preserves the discriminator');
-    verify((int)$read('glpi_items_kanbans', $taskKanban)['items_id'] === $project && $read('glpi_items_kanbans', $taskKanban)['itemtype'] === 'ProjectTask', 'Same numeric ID of another type is untouched');
+    verify((int)$read('glpi_items_softwareversions', $computerInstallation)['items_id'] === $replacementComputer
+        && $read('glpi_items_softwareversions', $computerInstallation)['itemtype'] === 'Computer', 'Public generic replacement preserves the discriminator');
+    verify((int)$read('glpi_items_softwareversions', $monitorInstallation)['items_id'] === $computer
+        && $read('glpi_items_softwareversions', $monitorInstallation)['itemtype'] === 'Monitor', 'Same numeric ID of another type is untouched');
+
+    $connection = $DB->getDoctrineConnection();
+    $privateState = json_encode(['columns' => ["O'Reilly \\ 日本語"], 'visible' => false], JSON_THROW_ON_ERROR);
+    $connection->update('glpi_items_kanbans', ['state' => $privateState, 'date_creation' => '2026-09-29 10:00:00'], ['id' => $projectKanban]);
+    $privateBefore = $read('glpi_items_kanbans', $projectKanban);
+    $sharedKanban = $fixtures->create('glpi_items_kanbans', ['itemtype' => 'Project', 'items_id' => $project, 'state' => '{"source":"shared"}']);
+    $replacementShared = $fixtures->create('glpi_items_kanbans', ['itemtype' => 'Project', 'items_id' => $replacement, 'state' => '{"destination":"shared"}']);
+    $neighbor = $fixtures->create('glpi_projects', ['name' => $prefix . ' neighbor']);
+    $neighborKanban = $fixtures->create('glpi_items_kanbans', ['itemtype' => 'Project', 'items_id' => $neighbor, 'state' => '{"neighbor":true}']);
+    $unchangedBoards = array_map(static fn (int $id): array => $read('glpi_items_kanbans', $id), [$taskKanban, $replacementShared, $neighborKanban]);
+    $snapshot = static function () use ($connection): array {
+        $result = [];
+        foreach (['glpi_projects', 'glpi_projecttasks', 'glpi_items_kanbans', 'glpi_logs', 'glpi_queuednotifications'] as $table) {
+            $result[$table] = $connection->fetchAllAssociative('SELECT * FROM ' . $connection->getDatabasePlatform()->quoteIdentifier($table) . ' ORDER BY id');
+        }
+        return $result;
+    };
+    $boardUpdates = $boardPurges = 0;
+    $PLUGIN_HOOKS['pre_item_update']['relationship_replacement_fixture'][Item_Kanban::class] = static function ($board) use (&$boardUpdates): void {
+        ++$boardUpdates;
+    };
+    $PLUGIN_HOOKS['pre_item_purge']['relationship_replacement_fixture'][Item_Kanban::class] = static function ($board) use (&$boardPurges): void {
+        ++$boardPurges;
+    };
+    $collision = $fixtures->create('glpi_items_kanbans', ['itemtype' => 'Project', 'items_id' => $replacement, 'users_id' => Session::getLoginUserID(), 'state' => '{"existing":"private"}']);
+    $before = $snapshot();
+    verify(!(new Project())->delete(['id' => $project, '_replace_by' => $replacement], true), 'Existing destination owner state refuses public replacement instead of overwriting either board');
+    verify($snapshot() === $before && $boardUpdates === 0 && $boardPurges === 0 && $connection->getTransactionNestingLevel() === 1, 'Collision preflight leaves the complete native graph unchanged before board mutation and retains caller ownership');
+    $connection->delete('glpi_items_kanbans', ['id' => $collision]);
+
+    foreach (['retarget', 'cancel-retarget', 'purge'] as $veto) {
+        $boardUpdates = $boardPurges = 0;
+        $PLUGIN_HOOKS['pre_item_update']['relationship_replacement_fixture'][Item_Kanban::class] = static function ($board) use (&$boardUpdates, $veto): void {
+            ++$boardUpdates;
+            if ($veto === 'retarget') {
+                $board->input = false;
+            } elseif ($veto === 'cancel-retarget') {
+                unset($board->input['items_id']);
+            }
+        };
+        $PLUGIN_HOOKS['pre_item_purge']['relationship_replacement_fixture'][Item_Kanban::class] = static function ($board) use (&$boardPurges, $veto): void {
+            ++$boardPurges;
+            if ($veto === 'purge') {
+                $board->input = false;
+            }
+        };
+        $before = $snapshot();
+        verify(!(new Project())->delete(['id' => $project, '_replace_by' => $replacement], true), 'Required public board ' . $veto . ' veto refuses Project replacement');
+        verify($snapshot() === $before && $boardUpdates === 1 && $boardPurges === ($veto === 'purge' ? 1 : 0)
+            && $connection->getTransactionNestingLevel() === 1 && (int)$connection->fetchOne('SELECT 1') === 1, 'Veto rolls back earlier retarget, Project/task/board history and queue while retaining a usable caller frame');
+    }
+    $boardUpdates = $boardPurges = 0;
+    $PLUGIN_HOOKS['pre_item_update']['relationship_replacement_fixture'][Item_Kanban::class] = static function ($board) use (&$boardUpdates): void {
+        ++$boardUpdates;
+    };
+    $PLUGIN_HOOKS['pre_item_purge']['relationship_replacement_fixture'][Item_Kanban::class] = static function ($board) use (&$boardPurges): void {
+        ++$boardPurges;
+    };
+    $before = $snapshot();
+    $connection->beginTransaction();
+    try {
+        verify((new Project())->delete(['id' => $project, '_replace_by' => $replacement], true), 'Public positive Project replacement preserves its private board and purges shared residual state');
+        $moved = $read('glpi_items_kanbans', $projectKanban);
+        verify($read('glpi_projects', $project) === null && $read('glpi_projects', $replacement) !== null
+            && (int)$moved['items_id'] === $replacement && $moved['itemtype'] === 'Project'
+            && $moved['id'] === $privateBefore['id'] && $moved['users_id'] === $privateBefore['users_id']
+            && $moved['state'] === $privateBefore['state'] && $moved['date_creation'] === $privateBefore['date_creation'], 'Public replacement retains private identity, payload, real User, discriminator and creation date');
+        verify(
+            $read('glpi_items_kanbans', $sharedKanban) === null && $boardUpdates === 1 && $boardPurges === 1
+            && array_map(static fn (int $id): array => $read('glpi_items_kanbans', $id), [$taskKanban, $replacementShared, $neighborKanban]) === $unchangedBoards,
+            'Public cleanup runs each required lifecycle once and preserves another type with the same ID, destination shared state and neighboring Project'
+        );
+        verify($connection->getTransactionNestingLevel() === 2 && (new ForeignKeys())->audit($connection) === [], 'Accepted replacement releases only its own frame and leaves no orphaned reference');
+    } finally {
+        $connection->rollBack();
+    }
+    verify($snapshot() === $before && $connection->getTransactionNestingLevel() === 1, 'Later caller rollback restores the complete accepted replacement graph');
+    unset($PLUGIN_HOOKS['pre_item_update']['relationship_replacement_fixture'], $PLUGIN_HOOKS['pre_item_purge']['relationship_replacement_fixture']);
 
     $mail = $fixtures->create('glpi_authmails', ['name' => $prefix]);
     if ($read('glpi_authldaps', $mail) === null) {
@@ -146,5 +250,9 @@ try {
     verify($read('glpi_calendarsegments', $segment) !== null, 'Recursion checks never mutate model-managed children');
 } finally {
     $DB->rollBack();
+    $_SESSION = $savedSession;
+    $PLUGIN_HOOKS = $savedHooks;
+    $CFG_GLPI['use_notifications'] = $savedNotifications;
+    $plugins->setValue(null, $savedPlugins);
 }
 echo $DB->getProvider() . ": owning relationship cleanup, polymorphic replacement pairs, recursion scopes and virtual asset joins passed.\n";

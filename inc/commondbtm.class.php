@@ -1136,9 +1136,7 @@ class CommonDBTM extends CommonGLPI
         }
 
         if (in_array($this->getType(), $CFG_GLPI['kanban_types'])) {
-            $this->deleteChildrenAndRelationsFromDb([
-               Item_Kanban::class
-            ]);
+            (new Item_Kanban())->cleanForParent($this);
         }
 
         if (in_array($this->getType(), $CFG_GLPI['domain_types'])) {

@@ -39,6 +39,43 @@ class Item_Kanban extends CommonDBRelation
     public static $items_id_2 = 'users_id';
     public static $checkItem_1_Rights = self::DONT_CHECK_ITEM_RIGHTS;
 
+    /** Parent-owned cleanup preserves valid private replacement states. */
+    public function cleanForParent(CommonDBTM $parent): void
+    {
+        global $DB;
+
+        $connection = $DB->getDoctrineConnection();
+        $repository = new \itsmng\Database\Repository\KanbanRepository(\itsmng\Database\Orm::create($DB));
+        $states = $repository->statesForItem($parent->getType(), (int)$parent->getID());
+        $replacement = (int)($parent->input['_replace_by'] ?? 0);
+        if ($replacement > 0) {
+            $owners = array_values(array_unique(array_filter(array_column($states, 'owner'), static fn ($owner): bool => $owner !== null)));
+            if ($repository->hasPrivateStateForOwners($parent->getType(), $replacement, $owners)) {
+                Session::addMessageAfterRedirect(__('Cannot replace this item: a private Kanban state already exists at the replacement.'), false, ERROR);
+                throw new \itsmng\Database\DeletionCancelled('Replacement already owns private Kanban state.');
+            }
+        }
+        foreach ($states as $state) {
+            $board = new self();
+            if ($replacement > 0 && $state['owner'] !== null) {
+                // Keep the public User endpoint/retarget guards. A shared NULL
+                // owner is not a valid required User for a generic retarget.
+                \itsmng\Database\DeletionUnit::requireSuccess($connection, (bool)$board->update([
+                    'id' => $state['id'], 'items_id' => $replacement, '_disablenotif' => true,
+                ]));
+                $persisted = $repository->stateIdentity((int)$state['id']);
+                \itsmng\Database\DeletionUnit::requireSuccess($connection, $persisted !== null
+                    && $persisted['kind'] === $parent->getType() && (int)$persisted['item'] === $replacement
+                    && (int)$persisted['owner'] === (int)$state['owner']);
+            } else {
+                \itsmng\Database\DeletionUnit::requireSuccess($connection, (bool)$board->delete([
+                    'id' => $state['id'], '_no_history' => true, '_disablenotif' => true,
+                ], true));
+                \itsmng\Database\DeletionUnit::requireSuccess($connection, $repository->stateIdentity((int)$state['id']) === null);
+            }
+        }
+    }
+
     /**
      * Save the state of a Kanban's columns for a specific item for the current user or globally.
      * @since 9.5.0

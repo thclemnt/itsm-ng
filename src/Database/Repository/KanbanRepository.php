@@ -28,6 +28,35 @@ final class KanbanRepository
         return json_decode((string)$record->state, true);
     }
 
+    /** Exact board identity; shared and private state have distinct owners. */
+    public function statesForItem(string $type, int $item): array
+    {
+        return $this->em->createQueryBuilder()->select('s.id AS id', 'IDENTITY(s.owner) AS owner')
+            ->from(ItemKanban::class, 's')->where('s.itemtype = :type AND s.items_id = :item')
+            ->setParameter('type', $type, Types::STRING)->setParameter('item', $item, Types::BIGINT)
+            ->orderBy('s.id')->getQuery()->getScalarResult();
+    }
+
+    public function stateIdentity(int $id): ?array
+    {
+        $rows = $this->em->createQueryBuilder()->select('s.itemtype AS kind', 's.items_id AS item', 'IDENTITY(s.owner) AS owner')
+            ->from(ItemKanban::class, 's')->where('s.id = :id')->setParameter('id', $id, Types::BIGINT)
+            ->getQuery()->getScalarResult();
+        return $rows[0] ?? null;
+    }
+
+    /** Replacement must not overwrite an owner's already configured state. */
+    public function hasPrivateStateForOwners(string $type, int $item, array $owners): bool
+    {
+        if (!$owners) {
+            return false;
+        }
+        return $this->em->createQueryBuilder()->select('s.id AS id')->from(ItemKanban::class, 's')
+            ->where('s.itemtype = :type AND s.items_id = :item AND IDENTITY(s.owner) IN (:owners)')
+            ->setParameter('type', $type, Types::STRING)->setParameter('item', $item, Types::BIGINT)
+            ->setParameter('owners', $owners)->setMaxResults(1)->getQuery()->getScalarResult() !== [];
+    }
+
     /** The database enforces one state per board/owner, including the shared owner. */
     public function save(string $type, int $item, int $user, array $state, \DateTimeImmutable $modified): void
     {
