@@ -842,3 +842,15 @@ original malformed Supplier assertions now live in an explicit historical
 fixture alongside separate current native/public rejection. These fixtures remain
 unexecuted. Resource clearance precedes provider validation; this draft does not
 update the combined passing checkpoint or complete the goal.
+
+### MySQL strict session source follow-up (not provider-validated)
+
+The isolated `677bf5e7da` follow-up removes the obsolete empty SQL-mode path.
+One public DBAL middleware factory preserves configured modes and adds
+STRICT_ALL_TABLES on each physical application/installation connection, including
+DBAL reconnect. Read-only schema diagnostics accept supplied strict ALL/TRANS
+sessions and refuse permissive ones without setting modes. A native contract is
+prepared for requiredNULL/invalid/truncation refusal, controlled configured modes,
+read routing and all reconnect/installation paths. No database job has validated
+this draft; [the source record](mysql-session-integrity.md) states its boundaries
+and required broader checks. The combined passing checkpoint remains unchanged.

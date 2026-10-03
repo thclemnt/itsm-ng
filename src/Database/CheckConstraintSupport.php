@@ -41,6 +41,7 @@ final class CheckConstraintSupport
         if (!self::supportsVersion($version, $maria)) {
             throw new \RuntimeException('Enforced CHECK constraints with native inspection require MySQL 8.0.16 or later, or MariaDB 10.2.22 or later; found ' . $version . '. Upgrade the database engine before installation or migration.');
         }
+        MySQLConnection::assertStrict($connection);
         if ($maria && (int)$connection->fetchOne('SELECT @@SESSION.check_constraint_checks') !== 1) {
             throw new \RuntimeException('MariaDB check_constraint_checks is disabled for this connection. Enable CHECK enforcement before installation, migration or schema validation.');
         }

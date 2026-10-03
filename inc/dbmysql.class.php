@@ -107,13 +107,10 @@ class DBmysql extends DBAdapter
         $this->lastErrno = 0;
         $this->error = 0;
         try {
-            $this->doctrine = \Doctrine\DBAL\DriverManager::getConnection($this->connectionParameters());
+            $this->doctrine = \itsmng\Database\MySQLConnection::create($this->connectionParameters());
             $this->doctrine->getServerVersion();
             if (!isset($this->dbenc) || $this->dbenc === 'utf8') {
                 $this->doctrine->executeStatement("SET NAMES 'utf8' COLLATE 'utf8_unicode_ci'");
-            }
-            if (GLPI_FORCE_EMPTY_SQL_MODE) {
-                $this->doctrine->executeStatement("SET SESSION sql_mode = ''");
             }
             $this->connected = true;
             $this->setTimezone($this->guessTimezone());
@@ -871,7 +868,7 @@ class DBmysql extends DBAdapter
      */
     private function getTimezoneNames(): array
     {
-        $connection = \Doctrine\DBAL\DriverManager::getConnection($this->connectionParameters());
+        $connection = \itsmng\Database\MySQLConnection::create($this->connectionParameters());
         try {
             return $connection->fetchFirstColumn('SELECT Name FROM mysql.time_zone_name ORDER BY Name');
         } finally {

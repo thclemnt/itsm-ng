@@ -5,12 +5,17 @@
 namespace itsmng\Database;
 
 use Doctrine\DBAL\Connection;
-use Doctrine\DBAL\DriverManager;
 
 /** Database provisioning and catalogue access happen before an ORM schema exists. */
 final class InstallationConnection
 {
     public static function mysqlServer(string $endpoint, string $user, string $password): Connection
+    {
+        return MySQLConnection::create(self::mysqlParameters($endpoint, $user, $password));
+    }
+
+    /** Parameter extraction does not create an unused server connection. */
+    private static function mysqlParameters(string $endpoint, string $user, #[\SensitiveParameter] string $password): array
     {
         if (preg_match('/^\[([^\]]+)\](?::(.+))?$/D', $endpoint, $parts)) {
             $host = $parts[1];
@@ -22,7 +27,7 @@ final class InstallationConnection
         if ($port !== null && $port !== '') {
             $parameters[(int)$port > 0 ? 'port' : 'unix_socket'] = (int)$port > 0 ? (int)$port : $port;
         }
-        return DriverManager::getConnection($parameters);
+        return $parameters;
     }
 
     /** Existing databases do not require the install role to have CREATE privileges. */
@@ -44,9 +49,9 @@ final class InstallationConnection
         if ($name === '') {
             throw new \InvalidArgumentException('Database name cannot be empty');
         }
-        $parameters = self::mysqlServer($endpoint, $user, $password)->getParams();
+        $parameters = self::mysqlParameters($endpoint, $user, $password);
         $parameters['dbname'] = $name;
-        return DriverManager::getConnection($parameters);
+        return MySQLConnection::create($parameters);
     }
 
     /** Visible server databases and their table dates, before application mappings exist. */

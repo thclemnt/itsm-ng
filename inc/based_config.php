@@ -116,8 +116,6 @@ include_once(GLPI_ROOT . "/inc/autoload.function.php");
        'GLPI_AJAX_DASHBOARD'         => '1',
        'GLPI_CALDAV_IMPORT_STATE'    => 0, // external events created from a caldav client will take this state by default (0 = Planning::INFO)
        'GLPI_DEMO_MODE'              => '0',
-       // TODO GLPI_FORCE_EMPTY_SQL_MODE need to be set to 0 after review of all sql queries
-       'GLPI_FORCE_EMPTY_SQL_MODE'   => '1', // for compatibility with mysql 5.7
     ];
 
     if (defined('TU_USER')) {
