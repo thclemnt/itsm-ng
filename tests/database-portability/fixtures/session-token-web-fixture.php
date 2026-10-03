@@ -170,6 +170,19 @@ if ($action === 'seed') {
     $result = ['configured' => true];
 } elseif ($action === 'observe') {
     $result = $state['observed'];
+} elseif ($action === 'cookie-snapshot') {
+    $row = $records->find('glpi_users', 'id', $state['users']['remember']);
+    if (!$row || $row['name'] !== $state['names']['remember']) {
+        throw new RuntimeException('Owned remembered account required for credential snapshot');
+    }
+    // Keep credential bytes solely in the existing 0600 private manifest.
+    // Browser assertions receive comparison booleans, never hash/plaintext.
+    $state['cookieSnapshot'] = [
+        'hash' => $row['cookie_token'], 'date' => $row['cookie_token_date'],
+        'history' => $records->countMatching('glpi_logs', ['itemtype' => User::class, 'items_id' => $row['id']]),
+    ];
+    $save();
+    $result = ['captured' => true];
 } elseif ($action === 'cookie-check') {
     $value = $input['cookie'] ?? '';
     // Browser storage holds setcookie()'s URL-encoded wire value; PHP decodes
@@ -179,7 +192,12 @@ if ($action === 'seed') {
     $result = ['matches' => is_array($cookie) && count($cookie) === 2 && (int)$cookie[0] === $row['id']
         && is_string($cookie[1]) && is_string($row['cookie_token']) && Auth::checkPassword($cookie[1], $row['cookie_token']),
         'dated' => $row['cookie_token_date'] !== null,
-        'dateMatches' => array_key_exists('expectedDate', $input) && $row['cookie_token_date'] === $input['expectedDate']];
+        'dateMatches' => array_key_exists('expectedDate', $input) && $row['cookie_token_date'] === $input['expectedDate'],
+        'unchanged' => isset($state['cookieSnapshot']) && $row['cookie_token'] === $state['cookieSnapshot']['hash']
+            && $row['cookie_token_date'] === $state['cookieSnapshot']['date'],
+        'historyUnchanged' => isset($state['cookieSnapshot']) && $records->countMatching('glpi_logs', [
+            'itemtype' => User::class, 'items_id' => $row['id'],
+        ]) === $state['cookieSnapshot']['history']];
 } elseif ($action === 'clean') {
     // Domain records must already have been purged through the real admin API.
     foreach ($state['owned'] as $type => $ids) {

@@ -16,6 +16,36 @@ define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
 require __DIR__ . '/FixtureRecords.php';
+
+/** Exercise the real final User callback without replacing its preparation. */
+class CookieBooleanUserFixture extends User
+{
+    public string $flagWrite = 'selected';
+
+    public static function getTable($classname = null)
+    {
+        return User::getTable();
+    }
+
+    public static function getType()
+    {
+        return User::class;
+    }
+
+    public function pre_updateInDB()
+    {
+        parent::pre_updateInDB();
+        $this->fields['is_ids_visible'] = 2;
+        if ($this->flagWrite === 'selected') {
+            if (!in_array('is_ids_visible', $this->updates, true)) {
+                $this->updates[] = 'is_ids_visible';
+            }
+        } else {
+            $this->updates = array_values(array_diff($this->updates, ['is_ids_visible']));
+        }
+    }
+}
+
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
     exit(1);
@@ -219,6 +249,104 @@ try {
     verify($vetoCalls === 1 && $_COOKIE === $beforeCookies && $updates === []
         && $read()['cookie_token'] === $before['cookie_token']
         && $read()['cookie_token_date'] === $before['cookie_token_date'], 'Actual remembered-login producer emits no replacement cookie or unpersisted token after the public veto');
+
+    // Compose token production with the current User's inherited Boolean
+    // preference. Error messages are intentional refusal effects; compare the
+    // authentication/preference/cookie state rather than all SESSION keys.
+    $compositionSession = $_SESSION;
+    $compositionConfig = $CFG_GLPI;
+    $compositionHooks = $PLUGIN_HOOKS;
+    $compositionCookies = $_COOKIE;
+    try {
+        verify(Session::getLoginUserID() === $userId, 'Boolean/token composition uses the actually authenticated current account');
+        $CFG_GLPI['is_ids_visible'] = 1;
+        $writer()->update('glpi_users', $userId, ['is_ids_visible' => null]);
+        $_SESSION['glpiis_ids_visible'] = 1;
+        $context = static fn (): array => array_intersect_key($_SESSION, array_flip([
+            'glpiID', 'glpiextauth', 'glpiactiveprofile', 'glpiactive_entity', 'glpiactiveentities',
+            'glpigroups', 'glpilanguage', 'glpiis_ids_visible', 'valid_id', '_glpi_csrf_token',
+            'csrf_token_time', 'glpicsrftokens', 'glpiidortokens',
+        ]));
+        $compositionMode = 'early';
+        $preCalls = 0;
+        $pre = static function (User $item) use ($userId, &$compositionMode, &$preCalls): void {
+            if ($item->getID() === $userId && array_key_exists('cookie_token', $item->input)) {
+                ++$preCalls;
+                if ($compositionMode !== 'unselected') {
+                    $item->input['is_ids_visible'] = $compositionMode === 'early' ? 2 : 0;
+                }
+            }
+        };
+        $accepted = static function (User $item) use ($userId, &$updates): void {
+            if ($item->getID() === $userId && in_array('cookie_token', $item->updates, true)) {
+                $updates[] = $item->fields['cookie_token'];
+            }
+        };
+        foreach ([User::class, CookieBooleanUserFixture::class] as $class) {
+            // Plugin dispatch uses the concrete PHP class, not getType().
+            $PLUGIN_HOOKS['pre_item_update']['cookie_token_fixture'][$class] = $pre;
+            $PLUGIN_HOOKS['item_update']['cookie_token_fixture'][$class] = $accepted;
+        }
+        foreach (['early', 'selected'] as $compositionMode) {
+            $subject = $compositionMode === 'early' ? new User() : new CookieBooleanUserFixture();
+            verify($subject->getFromDB($userId), 'Load the actual account for composed Boolean refusal');
+            $before = $read();
+            $beforeHistory = $history();
+            $beforeContext = $context();
+            $updates = [];
+            $preCalls = 0;
+            verify($subject->getAuthToken('cookie_token', true) === false, 'Invalid ' . $compositionMode . ' Boolean refuses the actual token producer');
+            verify($preCalls === 1 && $read() === $before && $history() === $beforeHistory && $updates === [], 'Composed refusal preserves full stored account/history and runs no accepted hook');
+            verify($context() === $beforeContext && $_COOKIE === $compositionCookies, 'Composed refusal preserves actual authentication, inherited preference and cookie context');
+        }
+        foreach (['cancelled', 'unselected'] as $compositionMode) {
+            $subject = new CookieBooleanUserFixture();
+            $subject->flagWrite = $compositionMode;
+            verify($subject->getFromDB($userId), 'Load the actual account for a nonpersisted Boolean callback control');
+            $beforeHash = $read()['cookie_token'];
+            $updates = [];
+            $preCalls = 0;
+            $rotated($subject->getAuthToken('cookie_token', true), $beforeHash, 'Token rotation with an invalid ' . $compositionMode . ' Boolean callback value');
+            verify($preCalls === 1 && $read()['is_ids_visible'] === null && $subject->fields['is_ids_visible'] === null
+                && ($compositionMode === 'unselected' || $subject->input['is_ids_visible'] === null)
+                && (int)$_SESSION['glpiis_ids_visible'] === 1 && $_COOKIE === $compositionCookies, 'Only selected writes matter: inherited flag and effective preference survive accepted token rotation');
+        }
+        unset($PLUGIN_HOOKS['pre_item_update']['cookie_token_fixture']);
+
+        // Acceptance is inside the supplied caller transaction, not a commit.
+        // Verify storage with fresh scalar/public reads after owned rollback;
+        // accepted plugin observations are deliberately not rolled back here.
+        $priorSecret = 'savepoint previous cookie';
+        $priorHash = Auth::getPasswordHash($priorSecret);
+        $writer()->update('glpi_users', $userId, ['cookie_token' => $priorHash,
+            'cookie_token_date' => new DateTimeImmutable($_SESSION['glpi_currenttime'])]);
+        $before = $read();
+        $beforeHistory = $history();
+        $callerDepth = $connection->getTransactionNestingLevel();
+        $connection->beginTransaction();
+        try {
+            $subject = new User();
+            verify($subject->getFromDB($userId), 'Load an existing credential inside the owned caller savepoint');
+            $updates = [];
+            $issued = $subject->getAuthToken('cookie_token', true);
+            $rotated($issued, $priorHash, 'Accepted rotation inside an owned caller savepoint');
+            verify($connection->getTransactionNestingLevel() === $callerDepth + 1, 'Token producer does not commit or release the owned caller savepoint');
+        } finally {
+            while ($connection->getTransactionNestingLevel() > $callerDepth) {
+                $connection->rollBack();
+            }
+        }
+        $storedHash = (new UserRepository(Orm::create($DB)))->tokenValue($userId, 'cookie_token');
+        $reloaded = new User();
+        verify($connection->getTransactionNestingLevel() === $callerDepth && $read() === $before && $history() === $beforeHistory, 'Owned rollback restores the actual account and history without committing outer work');
+        verify($reloaded->getFromDB($userId) && $reloaded->fields['cookie_token'] === $priorHash && $storedHash === $priorHash
+            && Auth::checkPassword($priorSecret, $storedHash) && !Auth::checkPassword($issued, $storedHash), 'Fresh supplied-writer and public reads restore the prior credential and invalidate the rolled-back issued credential');
+    } finally {
+        $_SESSION = $compositionSession;
+        $CFG_GLPI = $compositionConfig;
+        $PLUGIN_HOOKS = $compositionHooks;
+        $_COOKIE = $compositionCookies;
+    }
     verify($connection->getTransactionNestingLevel() === $depth + 1, 'Token persistence retains the provided caller transaction');
 } finally {
     restore_error_handler();

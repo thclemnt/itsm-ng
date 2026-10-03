@@ -71,7 +71,7 @@ All 114 protected baseline/history/connection/Group source files are unchanged.
 Frozen historical definitions, migrations, seeds, Boolean enforcement and schema
 inspection retain their base bytes. The portability runner discovers 182
 contracts, including the four new Session/token contracts, with its original
-300-second per-contract limit. The new HTTP spec declares five scenarios and
+300-second per-contract limit. The initial HTTP spec declared five scenarios and
 preserves the existing 60-second browser limit and retry configuration.
 
 The runtime owner must run `session-authorization.php`,
@@ -79,7 +79,7 @@ The runtime owner must run `session-authorization.php`,
 `cookie-tokens.php` on both providers, plus the relevant original
 Session/Auth/User/Profile/Group applications and actual controller paths. Provision
 an empty owned `itsm_port_*_session_legacy` sibling with grants; it must differ
-from the installed database. Then run all five HTTP scenarios on each provider
+from the installed database. Rediscover and run every current HTTP scenario on each provider
 with zero skips, matching CLI/server configuration and private variable directory,
 authorized REST client and the guarded fixture router. Inspect warning/error logs
 and prove actual API graph cleanup plus CLI settings/plugin/manifest restoration.
@@ -90,3 +90,35 @@ Fresh/populated/idempotent installation and complete portability/application
 suites remain required on the eventual final source, along with final native
 schema inspection and remote CI. No additional stage or schema change is introduced
 here. The broader rejuvenation goal remains open.
+
+## Token and strict Boolean composition controls
+
+A source-only test follow-up based on `fb9f286226` adds actual token-producer
+controls for early invalid inherited Boolean input and a selected invalid final
+User callback. It preserves the User callback by calling its parent and explicitly
+registers fixture hooks for the concrete test class. Refusal must preserve the
+stored account, credential/date/history, authentication context, effective current
+user preference and cookies. Deliberate Boolean error messages remain allowed.
+Cancelled and unselected invalid callback values must instead permit token rotation
+while retaining actual stored NULL and its configured effective preference.
+
+An accepted rotation inside an owned caller savepoint is then rolled back. Fresh
+public and supplied-writer scalar reads must restore the old credential and reject
+the issued credential. This does not promise rollback of plugin observations,
+session/authentication, cookie delivery or external effects, and the producer must
+not commit caller work.
+
+Separate parameterized HTTP scenarios for NULL and expired cookie dates veto
+rotation on the actual cookie-only login route. They require an anonymous API
+session denial, delivered cookie deletion, exactly one actual public veto,
+unchanged credential/date/history and no PHP warning output or page error. Native
+credential snapshots stay solely in the existing guarded private manifest; only
+comparison booleans are returned. Existing password-login veto and successful
+expiry-rotation assertions remain unchanged.
+
+These controls have not executed on either provider or in a browser. Compose this
+test-only follow-up with the current root string-only Toolbox implementation;
+do not replace root production files with the older fb9 tree. Run normal browser
+discovery rather than assuming the earlier five-scenario checkpoint, retain all
+existing limits/retries/assertions, and inspect server warning/error logs during
+the final provider/HTTP window.

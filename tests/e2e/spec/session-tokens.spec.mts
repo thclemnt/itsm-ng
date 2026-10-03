@@ -261,3 +261,65 @@ test('expired and undated remembered credentials fail the actual cookie-only rou
     if (admin) await closeApiSession(request, admin);
   }
 });
+
+for (const [boundary, date] of [['undated', null], ['expired', '2000-01-01 00:00:00']] as const) {
+  test(`${boundary} cookie-only admission denies a refused rotation and deletes the delivered cookie`, async ({ page, context, browser, request }) => {
+    let admin: ApiSession | undefined;
+    let onlyCookie: BrowserContext | undefined;
+    try {
+      admin = await initApiSession(request);
+      await loginOwned(page, 'remember', true);
+      const remembered = (await cookie(context, seed.rememberName))!;
+      const changed = await request.put(`${admin.apiUrl}User/${seed.users.remember}`, {
+        headers: { 'App-Token': process.env.PLAYWRIGHT_APP_TOKEN!, 'Session-Token': admin.sessionToken },
+        data: { input: { id: seed.users.remember, cookie_token_date: date } },
+      });
+      expect(changed.ok(), 'Actual administrator API persists the owned date boundary before cookie-only admission.').toBe(true);
+      const before = await fixture<{ matches: boolean; dateMatches: boolean }>('cookie-check', {
+        guard: seed.guard, cookie: remembered.value, expectedDate: date,
+      });
+      expect(before.matches && before.dateMatches, 'The delivered old credential matches the stored hash with the exact requested date boundary.').toBe(true);
+      expect((await fixture<{ captured: boolean }>('cookie-snapshot', { guard: seed.guard })).captured).toBe(true);
+      const vetoes = (await fixture<Observation>('observe', { guard: seed.guard })).cookieVeto;
+      await mode({ vetoCookie: true });
+      onlyCookie = await browser.newContext({ baseURL });
+      // This context receives no password admission, PHP session, REST token,
+      // or administrator cookie; only the originally delivered credential.
+      await onlyCookie.addCookies([remembered]);
+      const next = await onlyCookie.newPage();
+      const scriptErrors: string[] = [];
+      next.on('pageerror', () => scriptErrors.push('pageerror'));
+      const response = await next.goto('/index.php');
+      expect(response?.status(), 'Cookie-only refusal must return an application response without a server error.').toBeLessThan(500);
+      await next.waitForLoadState('networkidle');
+      await expect(next.getByText('Invalid cookie data', { exact: false })).toBeVisible();
+      await expect(next.locator('#login_name')).toBeVisible();
+      expect(scriptErrors.length === 0 && !/\b(?:Warning|Deprecated|Notice|Fatal error)\b/.test(await next.content()),
+        'The actual refused-cookie response must contain no script error or PHP warning output.').toBe(true);
+      expect(!await cookie(onlyCookie, seed.rememberName), 'Actual cookie-only refusal delivers deletion of the remembered browser cookie.').toBe(true);
+      const anonymous = await cookie(onlyCookie, seed.cookieName);
+      expect(Boolean(anonymous), 'The refusal retains an actual anonymous PHP session cookie.').toBe(true);
+      const denied = await onlyCookie.request.get('/apirest.php/getFullSession', {
+        headers: { 'App-Token': process.env.PLAYWRIGHT_APP_TOKEN!, 'Session-Token': anonymous!.value },
+      });
+      expect(denied.status(), 'The refused cookie-only context must not obtain an authenticated API session.').toBe(401);
+      const after = await fixture<{ matches: boolean; dateMatches: boolean; unchanged: boolean; historyUnchanged: boolean }>('cookie-check', {
+        guard: seed.guard, cookie: remembered.value, expectedDate: date,
+      });
+      expect(after.matches && after.dateMatches && after.unchanged && after.historyUnchanged,
+        'Refused rotation preserves the exact previous credential/date and history, despite deleting its browser delivery.').toBe(true);
+      expect((await fixture<Observation>('observe', { guard: seed.guard })).cookieVeto === vetoes + 1,
+        'The actual public User rotation veto executes exactly once in cookie-only admission.').toBe(true);
+    } finally {
+      try {
+        await mode({ vetoCookie: false });
+      } finally {
+        try {
+          if (onlyCookie) await onlyCookie.close();
+        } finally {
+          if (admin) await closeApiSession(request, admin);
+        }
+      }
+    }
+  });
+}
