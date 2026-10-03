@@ -32,7 +32,7 @@ $_SESSION['_glpi_csrf_token'] = Session::getNewCSRFToken();
 $connection = $DB->getDoctrineConnection();
 // Database fixture rollbacks do not roll back filesystem caches. Earlier
 // contracts can reuse an ID with stale ancestors after resetting sequences.
-// Keep a real cache for warm-cache/invalidation checks, scoped to this fixture.
+// Keep a real cache scoped to this fixture; transaction-private reads must not publish.
 $savedCache = $GLPI_CACHE;
 $GLPI_CACHE = new \Glpi\Cache\SimpleCache(new \Laminas\Cache\Storage\Adapter\Memory(), GLPI_CACHE_DIR, false);
 $DB->beginTransaction();
@@ -55,7 +55,8 @@ try {
         verify(array_values(array_map('intval', getAncestorsOf($table, $leaf))) === [$root, $child], 'Ancestor traversal ' . $table . ' expected ' . json_encode([$root, $child]) . ' actual ' . json_encode(getAncestorsOf($table, $leaf)));
         $sons = getSonsOf($table, $root);
         verify(isset($sons[$root], $sons[$child], $sons[$leaf]) && count($sons) === 3, 'Descendant traversal');
-        verify($GLPI_CACHE->has('sons_cache_' . $table . '_' . $root) && getSonsOf($table, $root) === $sons, 'Warm descendant cache');
+        verify($connection->isTransactionActive() && !$GLPI_CACHE->has('sons_cache_' . $table . '_' . $root)
+            && getSonsOf($table, $root) === $sons && !$GLPI_CACHE->has('sons_cache_' . $table . '_' . $root), 'Private descendant reads repeat the authoritative tree without publishing');
         verify($model->update(['id' => $root, 'name' => "Renamed O'Reilly " . $type]), 'Rename root');
         verify($model->getFromDB($leaf) && str_starts_with($model->fields['completename'], "Renamed O'Reilly " . $type . ' > '), 'Rename propagates complete names');
         verify($model->update(['id' => $child, $column => $other]), 'Move subtree');
@@ -100,6 +101,103 @@ try {
 } finally {
     $DB->rollBack();
     $GLPI_CACHE = $savedCache;
+}
+
+// Cache admission belongs to a genuinely idle supplied connection, even with an
+// isolated backend. These committed NULL-root graphs have no native ancestors.
+verify(!$connection->isTransactionActive() && Toolbox::useCache(), 'Committed cache probe starts on the idle supplied connection');
+$treeTables = array_keys(ReferenceHistory::get('optional', 'TREE_PARENTS'));
+$committedRows = static function () use ($connection, $treeTables): array {
+    $rows = [];
+    foreach ([...$treeTables, 'glpi_logs'] as $table) {
+        $rows[$table] = $connection->fetchAllAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table) . ' ORDER BY id');
+    }
+    return $rows;
+};
+$beforeCommitted = $committedRows();
+$savedSession = $_SESSION;
+$GLPI_CACHE = new \Glpi\Cache\SimpleCache(new \Laminas\Cache\Storage\Adapter\Memory(), GLPI_CACHE_DIR, false);
+$owned = [];
+$primary = null;
+$cleanupErrors = [];
+$prefix = 'Committed tree ' . bin2hex(random_bytes(8));
+try {
+    foreach (ReferenceHistory::get('optional', 'TREE_PARENTS') as $table => $relations) {
+        $column = array_key_first($relations);
+        $type = getItemTypeForTable($table);
+        $model = getItemForItemtype($type);
+        // Assigned public creation avoids reusing either native rows or orphaned
+        // native item history. No existing tree cache or history needs restoration.
+        $first = 1000 + max((int)$connection->fetchOne('SELECT COALESCE(MAX(id), 0) FROM ' . $connection->quoteIdentifier($table)),
+            (int)$connection->fetchOne('SELECT COALESCE(MAX(items_id), 0) FROM glpi_logs WHERE itemtype = ?', [$type]));
+        [$root, $other, $child, $leaf] = range($first, $first + 3);
+        foreach ([$root => null, $other => null, $child => $root, $leaf => $child] as $id => $parent) {
+            $name = $prefix . ' ' . $type . ' ' . $id;
+            verify(!$connection->fetchOne('SELECT COUNT(*) FROM ' . $connection->quoteIdentifier($table) . ' WHERE id = ?', [$id])
+                && !$connection->fetchOne('SELECT COUNT(*) FROM glpi_logs WHERE itemtype = ? AND items_id = ?', [$type, $id]), 'Committed identity owns no native row or history: ' . $table);
+            $owned[] = ['table' => $table, 'type' => $type, 'id' => $id, 'names' => [$name]];
+            verify($model->addWithAssignedIdentifier($id, ['name' => $name, $column => $parent, 'entities_id' => 0]) === $id,
+                'Committed public tree creation: ' . $table);
+        }
+        verify(!$connection->isTransactionActive() && $model->getFromDB($root) && $model->fields[$column] === null, 'Committed public roots remain NULL on the idle connection: ' . $table);
+        $sons = getSonsOf($table, $root);
+        verify(isset($sons[$root], $sons[$child], $sons[$leaf]) && count($sons) === 3, 'Committed descendant traversal: ' . $table);
+        verify($GLPI_CACHE->has('sons_cache_' . $table . '_' . $root) && getSonsOf($table, $root) === $sons, 'Warm descendant cache');
+        $ancestors = getAncestorsOf($table, $leaf);
+        verify(array_values(array_map('intval', $ancestors)) === [$root, $child]
+            && $GLPI_CACHE->has('ancestors_cache_' . $table . '_' . $leaf) && getAncestorsOf($table, $leaf) === $ancestors, 'Warm committed scalar ancestor cache: ' . $table);
+        $renamed = $prefix . ' renamed ' . $type;
+        $owned[count($owned) - 4]['names'][] = $renamed;
+        verify($model->update(['id' => $root, 'name' => $renamed]), 'Committed public rename: ' . $table);
+        verify(!$connection->isTransactionActive() && $model->getFromDB($leaf)
+            && str_starts_with($model->fields['completename'], $renamed . ' > ') && getSonsOf($table, $root) === $sons, 'Committed rename propagates names and retains descendant membership: ' . $table);
+        verify($model->update(['id' => $child, $column => $other]), 'Committed public subtree move: ' . $table);
+        verify(!$connection->isTransactionActive()
+            && (int)$connection->fetchOne('SELECT ' . $connection->quoteIdentifier($column) . ' FROM ' . $connection->quoteIdentifier($table) . ' WHERE id = ?', [$child]) === $other
+            && !$GLPI_CACHE->has('sons_cache_' . $table . '_' . $root)
+            && !$GLPI_CACHE->has('ancestors_cache_' . $table . '_' . $leaf), 'Committed move invalidates warmed owning scalar keys: ' . $table);
+        verify(array_values(array_map('intval', getAncestorsOf($table, $leaf))) === [$other, $child], 'Committed move refreshes scalar ancestor cache: ' . $table);
+        verify(getSonsOf($table, $root) === [$root => $root]
+            && isset(getSonsOf($table, $other)[$child], getSonsOf($table, $other)[$leaf]), 'Committed move refreshes old and new descendant caches: ' . $table);
+        verify($GLPI_CACHE->has('sons_cache_' . $table . '_' . $root)
+            && $GLPI_CACHE->has('sons_cache_' . $table . '_' . $other)
+            && $GLPI_CACHE->has('ancestors_cache_' . $table . '_' . $leaf), 'Idle cache warming resumes after committed move: ' . $table);
+    }
+} catch (Throwable $error) {
+    $primary = $error;
+} finally {
+    foreach (array_reverse($owned) as $record) {
+        try {
+            $row = $connection->fetchAssociative('SELECT * FROM ' . $connection->quoteIdentifier($record['table']) . ' WHERE id = ?', [$record['id']]);
+            if ($row !== false) {
+                verify(in_array($row['name'], $record['names'], true), 'Cleanup owns the exact committed tree row');
+                verify(getItemForItemtype($record['type'])->delete(['id' => $record['id']], true), 'Reverse leaf-order public committed cleanup');
+            }
+            // Some tree models disable item history but their public move hook
+            // still logs parent changes. Remove only these owned item log IDs.
+            foreach ($connection->fetchAllAssociative('SELECT * FROM glpi_logs WHERE itemtype = ? AND items_id = ?', [$record['type'], $record['id']]) as $log) {
+                $connection->delete('glpi_logs', ['id' => $log['id'], 'itemtype' => $record['type'], 'items_id' => $record['id']]);
+            }
+        } catch (Throwable $error) {
+            $cleanupErrors[] = $error;
+        }
+    }
+    try {
+        verify(!$connection->isTransactionActive() && $committedRows() === $beforeCommitted, 'Committed probe preserves full native tree rows, derived fields and history');
+    } catch (Throwable $error) {
+        $cleanupErrors[] = $error;
+    }
+    $GLPI_CACHE = $savedCache;
+    $_SESSION = $savedSession;
+}
+if ($primary !== null) {
+    if ($cleanupErrors !== []) {
+        fwrite(STDERR, 'Additional committed tree cleanup failures: ' . count($cleanupErrors) . "\n");
+    }
+    throw $primary;
+}
+if ($cleanupErrors !== []) {
+    throw new RuntimeException('Committed tree cleanup failed: ' . implode('; ', array_map(static fn (Throwable $error): string => $error->getMessage(), $cleanupErrors)), previous: $cleanupErrors[0]);
 }
 
 $platform = $connection->getDatabasePlatform();
