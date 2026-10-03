@@ -36,6 +36,10 @@ final class BooleanDomainSchema
                 . 'WHERE columns.table_schema = ANY(current_schemas(false)) AND EXISTS (SELECT 1 FROM pg_catalog.pg_class c '
                 . 'JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE c.relname = columns.table_name '
                 . 'AND n.nspname = columns.table_schema AND pg_catalog.pg_table_is_visible(c.oid))';
+        // MariaDB formats CHECK_CLAUSE using the current session's identifier
+        // quoting, regardless of the mode when the CHECK was originally created.
+        // Snapshot that actual interpretation; never change modes to inspect it.
+        $ansiQuotes = $mysql && in_array('ANSI_QUOTES', explode(',', (string)$connection->fetchOne('SELECT @@SESSION.sql_mode')), true);
         $columns = [];
         foreach ($connection->fetchAllAssociative($query) as $column) {
             $columns[$column['table_name']][$column['column_name']] = $column;
@@ -64,7 +68,7 @@ final class BooleanDomainSchema
             ksort($tableChecks);
         }
         unset($tableChecks);
-        return ['mysql' => $mysql, 'columns' => $columns, 'checks' => $checks];
+        return ['mysql' => $mysql, 'ansi_quotes' => $ansiQuotes, 'columns' => $columns, 'checks' => $checks];
     }
 
     /** @return list<string> Read-only logical checks alongside DBAL structural comparison. */
@@ -95,7 +99,7 @@ final class BooleanDomainSchema
                 $check = $catalog['checks'][$table][$name] ?? null;
                 if ($check === null) {
                     $differences[] = 'Missing boolean domain CHECK: ' . $table . '.' . $name;
-                } elseif (!BooleanCheckExpression::matches($check['clause'], $column, $nullable)) {
+                } elseif (!BooleanCheckExpression::matches($check['clause'], $column, $nullable, $catalog['ansi_quotes'])) {
                     $differences[] = 'Changed boolean domain CHECK: ' . $table . '.' . $name;
                 } elseif ($check['enforced'] !== 'YES') {
                     $differences[] = 'Unenforced boolean domain CHECK: ' . $table . '.' . $name;

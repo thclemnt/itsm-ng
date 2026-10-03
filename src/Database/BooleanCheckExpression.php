@@ -9,11 +9,11 @@ final class BooleanCheckExpression
 {
     private int $position = 0;
 
-    private function __construct(private array $tokens)
+    private function __construct(private array $tokens, private bool $ansiQuotes)
     {
     }
 
-    public static function matches(string $clause, string $column, bool $nullable): bool
+    public static function matches(string $clause, string $column, bool $nullable, bool $ansiQuotes = false): bool
     {
         // Native catalogues may add parentheses/identifier quoting. Neither
         // permits another predicate, function, comparison, comment or literal.
@@ -21,9 +21,10 @@ final class BooleanCheckExpression
             return false;
         }
         $tokens = [];
+        $identifier = self::identifierPattern($ansiQuotes);
         $offset = 0;
         while ($offset < strlen($clause)) {
-            if (!preg_match('/\G\s*(`(?:[^`]|``)+`|[a-zA-Z_][a-zA-Z_0-9]*|[01]|[(),])\s*/A', $clause, $match, 0, $offset)) {
+            if (!preg_match('/\G\s*(' . $identifier . '|[01]|[(),])\s*/A', $clause, $match, 0, $offset)) {
                 return false;
             }
             $tokens[] = strtolower($match[1]);
@@ -33,7 +34,7 @@ final class BooleanCheckExpression
             }
         }
         try {
-            $parser = new self($tokens);
+            $parser = new self($tokens, $ansiQuotes);
             $actual = $parser->expression();
             if ($parser->position !== count($tokens)) {
                 return false;
@@ -43,6 +44,12 @@ final class BooleanCheckExpression
         }
         $column = strtolower($column);
         return $actual === [$nullable ? 'or' : 'and', [$nullable ? 'null' : 'not_null', $column], ['in', $column]];
+    }
+
+    /** Double quotes identify columns only in the observed native catalogue mode. */
+    private static function identifierPattern(bool $ansiQuotes): string
+    {
+        return '(?:`(?:[^`]|``)+`|[a-zA-Z_][a-zA-Z_0-9]*' . ($ansiQuotes ? '|"(?:[^"]|"")+"' : '') . ')';
     }
 
     private function expression(): array
@@ -71,10 +78,10 @@ final class BooleanCheckExpression
             return $value;
         }
         $column = $this->tokens[$this->position++] ?? throw new \UnexpectedValueException();
-        if (!preg_match('/^(?:`(?:[^`]|``)+`|[a-z_][a-z_0-9]*)$/D', $column)) {
+        if (!preg_match('/^' . self::identifierPattern($this->ansiQuotes) . '$/D', $column)) {
             throw new \UnexpectedValueException();
         }
-        if ($column[0] === '`') {
+        if ($column[0] === '`' || ($this->ansiQuotes && $column[0] === '"')) {
             $quote = $column[0];
             $column = str_replace($quote . $quote, $quote, substr($column, 1, -1));
         }

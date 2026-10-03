@@ -204,3 +204,33 @@ owned PostgreSQL and MySQL/MariaDB fixtures under the unchanged 300-second
 contract limit, inspect restored schema/receipts and retained diagnostics, then
 run the full coherent history/application suites. Prior pure/offline results do
 not validate the additional adoption, committed-DDL or preference behavior.
+
+### Explicit native CHECK quotation follow-up (source-only)
+
+The isolated follow-up starts at `2e15d498db`. Root's actual MariaDB diagnostic
+found no schema differences under STRICT_ALL_TABLES alone, but under configured
+ANSI_QUOTES the native catalogue serialized all402 flag CHECKs with doublequoted
+identifiers. The previous mode-free parser refused those valid clauses. One
+additional DBAL default difference is separately under investigation; this parser
+change does not suppress or alter general structural schema comparison.
+
+Current native inspection now snapshots the observed SESSION ANSI_QUOTES state
+without changing it. Both current schema diagnostics and the appended domain
+migration pass that context to the bounded expression parser. The optional
+context defaults false: doublequoted string lookalikes remain rejected without
+explicit identifier context. Singlequoted literals remain rejected in either
+mode, and exact AST/precedence, column matching, nullability and token/length
+limits are unchanged. The snapshot reflects the mode that formats the native
+catalogue now; it makes no assumption about the mode when the CHECK was created.
+Frozen definitions and prior SQL are unchanged.
+
+The pure contract retains its original72 assertions and adds18 quotation,
+nullability, escaping and permissive-precedence controls, passing90 assertions.
+All4 changed PHP files pass syntax/style checks. An offline parser check also
+accepts the4 Supplier/User clauses recorded in root's actual diagnostic, with
+their corresponding observed mode. These nonconnecting results are source
+evidence only. Native
+mode-schema/migration/app-suite reruns remain pending, including the separately
+identified general default difference. Historical CategoryFlags' old parser
+still needs explicit incomplete-receipt/ANSI retry investigation; this scoped
+follow-up does not silently change that earlier migration.

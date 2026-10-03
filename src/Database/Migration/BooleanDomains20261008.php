@@ -76,7 +76,7 @@ final class BooleanDomains20261008
                     $expression = $field . ($definition['nullable'] ? ' IS NULL OR ' : ' IS NOT NULL AND ') . $field . ' IN (0, 1)';
                     $add[] = 'ADD CONSTRAINT ' . $quote($name) . ' CHECK (' . $expression . ')'
                         . ($platform instanceof MySQLPlatform ? ' ENFORCED' : '');
-                } elseif (!BooleanCheckExpression::matches($check['clause'], $column, $definition['nullable'])) {
+                } elseif (!BooleanCheckExpression::matches($check['clause'], $column, $definition['nullable'], $catalog['ansi_quotes'])) {
                     $problems[] = 'Conflicting boolean CHECK: ' . $table . '.' . $name;
                 } elseif ($check['enforced'] === 'NO' && $platform instanceof MySQLPlatform) {
                     $add[] = 'ALTER CHECK ' . $quote($name) . ' ENFORCED';
