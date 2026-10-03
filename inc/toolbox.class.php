@@ -993,23 +993,23 @@ class Toolbox
 
 
     /**
-     * Strip slash  for variable & array
+     * Strip string escapes without changing typed values in nested input arrays.
      *
-     * @param array|string $value  item to stripslashes
+     * @param mixed $value input to decode
      *
-     * @return array|string stripslashes item
+     * @return mixed input with decoded strings and preserved scalar types
     **/
     public static function stripslashes_deep($value)
     {
-
-        $value = ((array) $value === $value)
-                    ? array_map([__CLASS__, 'stripslashes_deep'], $value)
-                    : (is_null($value)
-                          ? null : (is_resource($value) || is_object($value)
-                                      ? $value : stripslashes($value)));
-
-        return $value;
+        if (is_array($value)) {
+            return array_map([__CLASS__, 'stripslashes_deep'], $value);
+        }
+        if (!is_string($value)) {
+            return $value;
+        }
+        return stripslashes($value);
     }
+
 
     /** Converts an array of parameters into a query string to be appended to a URL.
      *

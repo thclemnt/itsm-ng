@@ -33,6 +33,7 @@ try {
     $typed = [false, true, null, 0, 1, 5000000100, PHP_INT_MAX, 0.0, 1.25, $object, $resource];
     foreach ($typed as $value) {
         $verify(Toolbox::addslashes_deep($value) === $value, 'Non-string scalar, object and resource identity is preserved');
+        $verify(Toolbox::stripslashes_deep($value) === $value, 'Decoding preserves non-string scalar, object and resource identity');
     }
     $verify($DB->strings === [], 'Non-string inputs never reach the text escaper');
     foreach ([
@@ -69,6 +70,21 @@ try {
         $rejectedEmpty = true;
     }
     $verify($rejectedEmpty, 'Empty strings remain invalid boolean values');
+    foreach (["O\\'Reilly" => "O'Reilly", 'C:\\new' => 'C:new', 'C:\\\\new' => 'C:\new', '\\0' => "\0", '\\n' => 'n', '\\%' => '%', '0' => '0', '1' => '1', '' => ''] as $input => $decoded) {
+        $verify(Toolbox::stripslashes_deep((string)$input) === $decoded, 'Decoding retains the existing PHP stripslashes string semantics');
+    }
+    $roundTrip = ['flag' => false, 'enabled' => true, 'id' => 5000000100, 7 => ['price' => 1.25, 'optional' => null, 'text' => "O'Reilly", 'path' => 'C:\new'], 'object' => $object, 'resource' => $resource];
+    // A controlled conventional escape result exercises the real inverse, rather
+    // than assuming all backend-specific SQL escaping has identical semantics.
+    $DB = new class () {
+        public function escape(string $value): string
+        {
+            return addslashes($value);
+        }
+    };
+    $verify(Toolbox::stripslashes_deep(Toolbox::addslashes_deep($roundTrip)) === $roundTrip, 'Nested escaping and decoding round-trip exact primitive types, strings, keys and identities');
+    $verify(Toolbox::addslashes_deep(Toolbox::stripslashes_deep($roundTrip))['flag'] === false, 'The auth synchronization decode-then-escape path retains a native false flag');
+    $verify(itsmng\Database\BooleanValue::normalize(Toolbox::stripslashes_deep(false), false, 'glpi_users.is_active') === false, 'Decoded native false retains strict boolean admission');
 } finally {
     fclose($resource);
     if ($hadDatabase) {

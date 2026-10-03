@@ -17,7 +17,7 @@ correctly refused that empty string and returned false before persistence.
 A disconnected call of the actual utility confirmed this exact coercion and
 `BooleanValue` diagnostic without opening a database connection.
 
-Escaping now applies only to string leaves. Arrays retain their keys and recurse;
+Escaping and its inverse now apply only to string leaves. Arrays retain their keys and recurse;
 booleans, integers, floats, NULL, objects and resources retain their types and
 identity. The same HTML quote-entity substitution and adapter text escaping
 remain in place for strings, including empty strings and numeric strings.
@@ -30,13 +30,28 @@ copying and API criteria. Dedicated string callers include HTML and statistical
 labels, LDAP DNs, revision content, serialized profile item types and CLI
 configuration arguments. Existing Toolbox tests exercise escaped text, without
 requiring booleans or numbers to be converted into strings. The adjacent XSS
-utility already preserves non-string types. `stripslashes_deep()` retains a
-similar older coercion and needs its own caller/behavior audit; this change does
-not modify it.
+utility already preserves non-string types. The paired `stripslashes_deep()`
+had the same scalar coercion. Its callers include Auth's explicit
+decode-then-escape synchronization, user/Software/Ticket rule processing,
+IDOR validation, tab URLs, LDAP filters/parameters, notification recipients,
+JSON recovery and validator labels. It now strips escapes only from strings,
+with the same PHP `stripslashes()` behavior for those strings.
+
+Type-sensitive consumer inspection found that assigned-ID creation validates
+through `FILTER_VALIDATE_INT` before strict identity comparison in
+`CommonDBTM::add()`. Rule criteria perform explicit text normalization in
+`RuleCriteria::match()`; Ticket post-rule actor cleanup uses loose comparison.
+`Session::validateIDOR()` already compares supplied and decoded scalar values
+loosely; this change leaves that authorization algorithm unchanged. Native
+integers and numeric strings remain distinct through the utilities. Consumers
+that previously relied on the utilities implicitly casting integers to strings
+must own any required conversion. Original rule, auth, Session, clone and Toolbox
+suites are required to check those concrete callers.
 
 Preparation validation: four PHP syntax/style checks, a clean diff check, and
-40 disconnected assertions covering nested array keys, both boolean states,
-wide integers, floats, NULL, object/resource identity, exact text delegation,
+63 disconnected assertions covering nested array keys, both boolean states,
+wide integers, floats, NULL, object/resource identity, nested primitive
+round-trips, inverse string semantics, exact text delegation,
 quote entities, UTF-8/control characters, and continued empty-string boolean
 refusal. The native Appliance and Domains contracts now inspect true/false and
 wide-ID input at their actual pre-add hooks, then the zero/one representation at
