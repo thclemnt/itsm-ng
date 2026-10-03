@@ -32,8 +32,34 @@ complete strengthened document/Kanban contracts and final schema/native checks
 pass on both providers. Project, Document, Document_Item and Ticket pass 71/71
 original application methods and 4,304 assertions each, with no void methods or
 skips. Main's four application/test files are byte-identical after integration.
-Fresh installations and full combined reruns of the repaired source remain
-pending; focused results do not replace a complete passing suite.
+The subsequent complete PostgreSQL run at `f3db6577c7324e04305c2a8cbbfbb4960ddf7c38`
+passed 165/167 contracts in 813.106s. The document, Kanban and schema-check
+contracts passed in the actual full-suite order; `dropdown-lifecycle.php` and
+`relationship-lifecycle.php` failed. No complete MariaDB run was made at that
+source. Fresh installs passed on both engines but emitted pre-schema configuration
+lookup warnings. These failures remain distinct from the earlier combined run.
+
+The [Kanban replacement correction](kanban-parent-replacement.md) reproduces real
+private Project board loss through public parent deletion on both providers at
+`f3db6577`. Parent-owned cleanup now preserves private state through required
+public updates, refuses destination collisions, and verifies current owning
+identities under the parent transaction. Shared states still receive public
+cleanup. Both engines pass the strengthened relationship/Kanban/dropdown
+contracts, including two-connection caller snapshot checks, at isolated source
+`06ac55711ebe885a2f62aaafa58821a250f77644`. The four original application classes
+again pass 71/71 methods and 4,304 assertions each with zero void methods/skips.
+Final native/schema checks find twelve completed migrations, no pending versions
+or differences, and 1,057 FKs; all fourteen final logs contain zero PHP warnings.
+
+The [cache bootstrap correction](cache-bootstrap.md) checks configuration-table
+existence in the cache owner before inspecting its columns. Both providers
+reproduce the old warning and pass 37 strict bootstrap assertions against a
+separate empty database, including same-adapter discovery after table creation
+and propagation of genuine configured-read errors. The dropdown usage contract
+now exercises genuine unmanaged references separately from managed Project
+children. These changes are integrated for a new combined fresh-install,
+complete portability/application and browser matrix; those combined results
+remain pending. Focused results do not replace a complete passing suite.
 
 The integrated [owning endpoint repair](connexity-ownership.md) passes separate
 fresh installs, its authorization contract, the unchanged ITIL migration contract,
