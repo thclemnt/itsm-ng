@@ -245,7 +245,8 @@ try {
             'deviceprocessors_id' => $device, 'itemtype' => 'Computer', 'computers_id' => $computer, 'items_id' => $computer
         ]), $tableName, 'INSERT');
         ProcessorNativeAdmission::rejectGenerated($connection, static fn () => $connection->executeStatement(
-            'UPDATE ' . $tableName . ' SET items_id=? WHERE id=?', [$computer, 4294990101]
+            'UPDATE ' . $tableName . ' SET items_id=? WHERE id=?',
+            [$computer, 4294990101]
         ), $tableName, 'UPDATE');
         verify($migration->plan($connection) === [] && $migration->apply($connection) === [], 'Completed append is a no-op');
         verify((new SchemaCheck())->differences($connection, $expected) === [], 'Populated optional adoption converges to current metadata');

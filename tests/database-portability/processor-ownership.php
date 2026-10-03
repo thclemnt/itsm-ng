@@ -117,19 +117,28 @@ try {
     verify(in_array('Item_DeviceProcessor', Glpi\Api\API::getHatoasClasses('Computer'), true)
         && !in_array('Item_DeviceProcessor', Glpi\Api\API::getHatoasClasses('Phone'), true), 'API discovery shares the actual component affinity and cannot advertise Phone processors');
 
-    $processorOptions = static fn (array $options): array => array_values(array_filter($options,
+    $processorOptions = static fn (array $options): array => array_values(array_filter(
+        $options,
         static fn (array $option): bool => in_array($option['table'] ?? '', ['glpi_deviceprocessors', 'glpi_items_deviceprocessors'], true)
     ));
     $computerProcessorOptions = $processorOptions((new Computer())->rawSearchOptions());
-    verify(array_column($computerProcessorOptions, 'field') === ['designation', 'nbcores', 'nbthreads', 'frequency'],
-        'Actual Computer search options retain all four processor fields from metadata-owned affinity');
-    verify($computerProcessorOptions[0]['joinparams']['beforejoin']['joinparams']['specific_itemtype'] === 'Computer'
+    verify(
+        array_column($computerProcessorOptions, 'field') === ['designation', 'nbcores', 'nbthreads', 'frequency'],
+        'Actual Computer search options retain all four processor fields from metadata-owned affinity'
+    );
+    verify(
+        $computerProcessorOptions[0]['joinparams']['beforejoin']['joinparams']['specific_itemtype'] === 'Computer'
         && $computerProcessorOptions[1]['joinparams']['specific_itemtype'] === 'Computer',
-        'Actual processor search joins retain their Computer-specific compatibility projection');
-    verify($processorOptions(Item_Devices::rawSearchOptionsToAdd('Phone')) === [],
-        'Actual device search-option caller excludes Processor fields for an unsupported Phone subject');
-    verify(in_array('glpi_devicepcis', array_column(Item_Devices::rawSearchOptionsToAdd('Phone'), 'table'), true),
-        'Unmapped core wildcard affinity remains available in actual device search options');
+        'Actual processor search joins retain their Computer-specific compatibility projection'
+    );
+    verify(
+        $processorOptions(Item_Devices::rawSearchOptionsToAdd('Phone')) === [],
+        'Actual device search-option caller excludes Processor fields for an unsupported Phone subject'
+    );
+    verify(
+        in_array('glpi_devicepcis', array_column(Item_Devices::rawSearchOptionsToAdd('Phone'), 'table'), true),
+        'Unmapped core wildcard affinity remains available in actual device search options'
+    );
 
     // The abstract Item_Devices clone family must rebind each concrete child.
     $computer = new Computer();

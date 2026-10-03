@@ -500,10 +500,12 @@ verify(count(History::VERSIONS) === 17
 $processorLinks = $connection->fetchAllAssociative('SELECT * FROM glpi_items_deviceprocessors WHERE id IN (1902,1903,1904,1905) ORDER BY id');
 verify(count($processorLinks) === 4, 'Full populated replay retains both duplicate processor assignments and both stock records');
 foreach (array_slice($processorLinks, 0, 2) as $row) {
-    verify((int)$row['computers_id'] === $legacyId && (int)$row['items_id'] === $legacyId
+    verify(
+        (int)$row['computers_id'] === $legacyId && (int)$row['items_id'] === $legacyId
         && (int)$row['deviceprocessors_id'] === 1901 && $row['serial'] === "Historical CPU O'Reilly"
         && $row['nbthreads'] === null && (int)$row['frequency'] === 3200,
-        'Populated Processor17 retains real owner, definition, duplicate IDs and nullable inventory payload');
+        'Populated Processor17 retains real owner, definition, duplicate IDs and nullable inventory payload'
+    );
 }
 verify(!Type::getType('boolean')->convertToPHPValue($processorLinks[0]['is_deleted'], $platform)
     && Type::getType('boolean')->convertToPHPValue($processorLinks[1]['is_deleted'], $platform), 'Processor duplicate deletion history retains real boolean conversion');
