@@ -272,7 +272,15 @@ try {
         verify(Ledger::state($connection, $version)['complete'] && (new SchemaCheck())->differences($connection) === [], 'Older completed history actually adopts appended boolean domains');
         $connection->delete(LegacyToOrm::LEDGER, ['version' => $version]);
         $connection->executeStatement($drop);
-        $connection->executeStatement('ALTER TABLE ' . $quote($table) . ' ADD CONSTRAINT ' . $quote($name) . ' CHECK (is_recursive IS NOT NULL AND (is_recursive IN (0,1) OR id > 0))');
+        $connection->executeStatement('ALTER TABLE ' . $quote($table) . ' ADD CONSTRAINT ' . $quote($name) . ' CHECK (is_recursive IS NOT NULL AND (is_recursive IN (0,1) OR is_recursive = 2))');
+        try {
+            $connection->executeStatement('UPDATE glpi_suppliers SET is_recursive = 2 WHERE id = ?', [$id]);
+            verify((int)$connection->fetchOne('SELECT is_recursive FROM glpi_suppliers WHERE id = ?', [$id]) === 2, 'Legal historical lookalike really admits an invalid native flag');
+        } finally {
+            // Valid data ensures the following preview rejects CHECK semantics,
+            // rather than masking that defect with an invalid-data diagnostic.
+            $connection->executeStatement('UPDATE glpi_suppliers SET is_recursive = 1 WHERE id = ?', [$id]);
+        }
         verify(in_array('Changed boolean domain CHECK: ' . $table . '.' . $name, (new SchemaCheck())->differences($connection), true), 'Read-only schema checking rejects a permissive lookalike with the right name');
         try {
             $stage->plan($connection);
