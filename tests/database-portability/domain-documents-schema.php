@@ -19,6 +19,7 @@ define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
 require __DIR__ . '/FixtureRecords.php';
+require __DIR__ . '/NativeBooleanFixture.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
     exit(1);
@@ -98,6 +99,7 @@ verify((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $table) === 0, 'Neve
 verify(Ledger::state($connection, $migration::GENERAL_RECEIPT) === null, 'Never overwrite an existing deferred receipt');
 $required = (new \itsmng\Database\BaselineSchema())->build($platform)->getTable($table);
 $savedStage = Ledger::state($connection, $migration::VERSION);
+$nativeBooleans = new NativeBooleanFixture($connection, $table);
 $domain = $fixtures->create('glpi_domains', ['id' => 4294976101]);
 $document = $fixtures->create('glpi_documents', ['id' => 4294976102]);
 $computer = $fixtures->create('glpi_computers', ['id' => 4294976103]);
@@ -120,6 +122,7 @@ try {
         $old->dropColumn('domains_id');
         DocumentSubjects::configureTable($old);
         $manager->createTable($old);
+        $nativeBooleans->restore();
         $connection->executeStatement(DocumentSubjects::checkSql($table));
         $connection->insert($table, ['id' => 4294976202, 'documents_id' => $document, 'itemtype' => 'Computer', 'computers_id' => $computer, 'timeline_position' => 1]);
         $connection->delete('itsmng_migrations', ['version' => $migration::VERSION]);
@@ -228,6 +231,7 @@ try {
         }
         $unsafe->addOption('engine', 'MyISAM');
         $manager->createTable($unsafe);
+        $nativeBooleans->restore();
         foreach ($payload as $row) {
             unset($row['items_id']);
             $connection->insert($table, $row);
@@ -253,6 +257,7 @@ try {
         $connection->executeStatement('DROP FUNCTION IF EXISTS itsm_domain_document_restore_probe()');
     }
     $manager->createTable($required);
+    $nativeBooleans->restore();
     $connection->executeStatement($migration::checkSql($table));
     Ledger::save($connection, $migration::VERSION, $savedStage);
     $connection->delete('itsmng_migrations', ['version' => $migration::GENERAL_RECEIPT]);

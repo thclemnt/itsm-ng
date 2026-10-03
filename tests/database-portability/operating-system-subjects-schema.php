@@ -19,6 +19,7 @@ define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
 require __DIR__ . '/FixtureRecords.php';
+require __DIR__ . '/NativeBooleanFixture.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
     exit(1);
@@ -44,11 +45,12 @@ $required = (new \itsmng\Database\BaselineSchema())->build($platform)->getTable(
 $expectedWithHistoricalComment = (new \itsmng\Database\BaselineSchema())->build($platform);
 $expectedWithHistoricalComment->getTable($tableName)->getColumn('items_id')->setComment("OS identity O'Reilly 日本語");
 $originalState = Ledger::state($connection, $version);
+$nativeBooleans = new NativeBooleanFixture($connection, $tableName);
 verify($originalState['complete'], 'Appended OS ownership stage completed');
 $fixtures = new FixtureRecords($DB);
 $computer = $fixtures->create('glpi_computers', ['id' => 4294972001]);
 $os = $fixtures->create('glpi_operatingsystems', ['name' => 'Preserved historical OS']);
-$rebuild = static function () use ($required, $manager, $tableName, $subjects, $connection, $version): void {
+$rebuild = static function () use ($required, $manager, $tableName, $subjects, $connection, $version, $nativeBooleans): void {
     $manager->dropTable($tableName);
     $legacy = clone $required;
     foreach ($subjects as $selection) {
@@ -67,6 +69,7 @@ $rebuild = static function () use ($required, $manager, $tableName, $subjects, $
     $legacy->getColumn('items_id')->setColumnDefinition(null)->setNotnull(true)->setDefault(0)->setComment("OS identity O'Reilly 日本語");
     $legacy->getColumn('itemtype')->setNotnull(false); // Actual nullable legacy drift must be diagnosed before DDL.
     $manager->createTable($legacy);
+    $nativeBooleans->restore();
     $connection->delete(LegacyToOrm::LEDGER, ['version' => $version]);
 };
 try {
@@ -154,6 +157,7 @@ try {
 } finally {
     $manager->dropTable($tableName);
     $manager->createTable($required);
+    $nativeBooleans->restore();
     $connection->executeStatement(OperatingSystemSubjects20261006::checkSql($tableName));
     Ledger::save($connection, $version, $originalState);
     $connection->delete('glpi_computers', ['id' => $computer]);
