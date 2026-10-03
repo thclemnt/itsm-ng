@@ -27,13 +27,19 @@ $savedSession = $_SESSION;
 verify(!empty($_SESSION['glpiprofiles']), 'Existing current-schema grant snapshot is nonempty');
 $name = getenv('PORT_SESSION_LEGACY_DB') ?: 'itsm_port_session_legacy';
 verify(str_starts_with($name, 'itsm_port_') && str_ends_with($name, '_session_legacy') && $name !== $installed->dbdefault, 'Missing-table control requires a separate disposable empty database');
-$legacy = DBConnection::createConnection(
-    $installed->getProvider(),
-    is_array($installed->dbhost) ? reset($installed->dbhost) : $installed->dbhost,
-    $installed->dbuser,
-    rawurldecode($installed->dbpassword),
-    $name
-);
+$legacy = (new ReflectionClass(DBConnection::getAdapterClass($installed->getProvider())))->newInstanceWithoutConstructor();
+$legacy->dbhost = is_array($installed->dbhost) ? reset($installed->dbhost) : $installed->dbhost;
+$legacy->dbuser = $installed->dbuser;
+$legacy->dbpassword = $installed->dbpassword;
+$legacy->dbdefault = $name;
+// The auxiliary adapter owns a separate physical handle. Preserve explicit
+// PostgreSQL endpoint settings instead of falling back to its default port/SSL.
+foreach (['dbport', 'dbsslmode'] as $property) {
+    if (property_exists($installed, $property) && property_exists($legacy, $property)) {
+        $legacy->$property = $installed->$property;
+    }
+}
+$legacy->connect();
 verify($legacy->connected, 'Provision the empty legacy-session database and grant the test role access');
 $legacyConnection = $legacy->getDoctrineConnection();
 verify($legacyConnection->createSchemaManager()->listTableNames() === [], 'Refuse a legacy fixture containing existing tables');
