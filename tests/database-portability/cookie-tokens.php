@@ -150,11 +150,17 @@ try {
             && (new UserRepository($manager))->tokenValue($userId, 'cookie_token') === $previousHash,
             'Scalar credential read uses the supplied writer and ignores an actually loaded but unflushed ORM identity'
         );
-        verify((new UserRepository($manager))->cookieCredential($userId)?->matchesRequested($previousHash, $validCookieDate) === true,
-            'One fresh owning-cookie projection reads its stored hash and timestamp together despite both unflushed managed properties');
-        verify((new UserRepository($manager))->cookieCredential($userId)?->matchesRequested($previousHash,
-            $validCookieDate->setTimezone(new DateTimeZone('Pacific/Auckland'))) === true,
-            'Mapped datetimetz outcome matches the same requested instant in another timezone');
+        verify(
+            (new UserRepository($manager))->cookieCredential($userId)?->matchesRequested($previousHash, $validCookieDate) === true,
+            'One fresh owning-cookie projection reads its stored hash and timestamp together despite both unflushed managed properties'
+        );
+        verify(
+            (new UserRepository($manager))->cookieCredential($userId)?->matchesRequested(
+                $previousHash,
+                $validCookieDate->setTimezone(new DateTimeZone('Pacific/Auckland'))
+            ) === true,
+            'Mapped datetimetz outcome matches the same requested instant in another timezone'
+        );
     } finally {
         $manager->close();
     }
@@ -262,8 +268,11 @@ try {
     $dateHooks = $PLUGIN_HOOKS;
     $dateCookies = $_COOKIE;
     $dateSession = $_SESSION;
-    $dateHistory = static fn (): array => (new RecordRepository(Orm::create($DB)))->matching('glpi_logs',
-        ['itemtype' => 'User', 'items_id' => $userId], ['id' => 'ASC']);
+    $dateHistory = static fn (): array => (new RecordRepository(Orm::create($DB)))->matching(
+        'glpi_logs',
+        ['itemtype' => 'User', 'items_id' => $userId],
+        ['id ASC']
+    );
     try {
         foreach (['direct', 'remembered_login'] as $producer) {
             foreach (['unchanged', 'restored_valid', 'strip_null', 'strip_expired', 'post_null', 'post_expired'] as $mutation) {
@@ -316,8 +325,10 @@ try {
                             }]);
                         }
                         $afterHook = $read();
-                        verify($beforeHook['cookie_token'] === $requestedHash && $afterHook['cookie_token'] === $requestedHash,
-                            'Accepted date-only hook retains the generated persisted hash');
+                        verify(
+                            $beforeHook['cookie_token'] === $requestedHash && $afterHook['cookie_token'] === $requestedHash,
+                            'Accepted date-only hook retains the generated persisted hash'
+                        );
                         $postChangedDate = $beforeHook['cookie_token_date'] !== $afterHook['cookie_token_date'];
                         $pending = false;
                     };
@@ -335,10 +346,14 @@ try {
                     }
                     $stored = $read();
                     $acceptedHistory = $dateHistory();
-                    verify($preCalls === 1 && $postCalls === 1 && !$pending && $stored['cookie_token'] === $requestedHash,
-                        'Selected rotation completes once and remains persisted after its date-only lifecycle');
-                    verify($stored['realname'] === $acceptedName && count($acceptedHistory) > count($historyBefore),
-                        'Accepted accompanying edit and its real audit entry survive even if cookie issuance is refused');
+                    verify(
+                        $preCalls === 1 && $postCalls === 1 && !$pending && $stored['cookie_token'] === $requestedHash,
+                        'Selected rotation completes once and remains persisted after its date-only lifecycle'
+                    );
+                    verify(
+                        $stored['realname'] === $acceptedName && count($acceptedHistory) > count($historyBefore),
+                        'Accepted accompanying edit and its real audit entry survive even if cookie issuance is refused'
+                    );
                     unset($PLUGIN_HOOKS['pre_item_update']['cookie_token_fixture'][User::class],
                         $PLUGIN_HOOKS['item_update']['cookie_token_fixture'][User::class]);
                     if (in_array($mutation, ['unchanged', 'restored_valid'], true)) {
@@ -352,10 +367,12 @@ try {
                         verify($read() === $stored && $dateHistory() === $acceptedHistory, 'Real consumer reuses the complete valid credential without writes or audit changes');
                     } else {
                         verify($token === false && !isset($_COOKIE[$cookieName]), 'Invalid accepted date outcome returns/emits no newly generated raw cookie');
-                        verify($stored['cookie_token_date'] !== $issuedAt
+                        verify(
+                            $stored['cookie_token_date'] !== $issuedAt
                             && (str_starts_with($mutation, 'strip_') ? $stored['cookie_token_date'] === $seed['cookie_token_date']
                                 : ($mutation === 'post_null' ? $stored['cookie_token_date'] === null : $postChangedDate)),
-                            'Credential refusal preserves the accepted NULL/expired date mutation rather than undoing the hook');
+                            'Credential refusal preserves the accepted NULL/expired date mutation rather than undoing the hook'
+                        );
                         verify($read() === $stored && $dateHistory() === $acceptedHistory, 'Refusal leaves the complete accepted row and audit history intact');
                     }
                 } catch (Throwable $error) {
