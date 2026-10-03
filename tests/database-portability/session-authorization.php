@@ -217,6 +217,36 @@ try {
     $api->request($client, 'profile', ['profiles_id' => $profiles['last']]);
     verify($_SESSION['glpiactiveprofile']['id'] === $profiles['last']
         && array_column($api->request($client, 'entities')['myentities'], 'id') === [$parent], 'API switches only to the selected profile ownership');
+    verify(Session::changeActiveEntities($parent, false)
+        && $_SESSION['glpiactiveentities'] === [$parent => $parent]
+        && $_SESSION['glpigroups'] === [$groups['parent_direct'], $groups['parent_recursive']], 'A nonrecursive grant retains its direct public scope and eligible groups');
+    $refusedSession = $_SESSION;
+    $refusedEvents = $events;
+    foreach ([[$child, false], [$child, true], [$parent, true]] as [$entity, $recursive]) {
+        verify(Session::changeActiveEntities($entity, $recursive) === false
+            && $_SESSION === $refusedSession && $events === $refusedEvents, 'A nonrecursive grant cannot select a descendant or recursive view, and refusal preserves session/hooks');
+    }
+    try {
+        $api->request($client, 'entity', ['entities_id' => $child, 'is_recursive' => false]);
+        throw new LogicException('API accepted descendant of a nonrecursive grant');
+    } catch (SessionAuthorizationResponse $error) {
+        verify($error->getCode() === 400 && $_SESSION === $refusedSession && $events === $refusedEvents, 'Actual API refuses inherited nonrecursive descendant access without publishing a new scope');
+    }
+    $api->request($client, 'profile', ['profiles_id' => $profiles['null']]);
+    verify($api->request($client, 'entity', ['entities_id' => $child, 'is_recursive' => false]) === true
+        && $_SESSION['glpiactiveentities'] === [$child => $child], 'An explicit child grant remains usable beside a nonrecursive root grant');
+    $refusedSession = $_SESSION;
+    $refusedEvents = $events;
+    verify(Session::changeActiveEntities($sibling, false) === false
+        && Session::changeActiveEntities($child, true) === false
+        && $_SESSION === $refusedSession && $events === $refusedEvents, 'Nonrecursive root and direct child grants do not grant sibling or child-tree access');
+    $api->request($client, 'profile', ['profiles_id' => $profiles['first']]);
+    verify($api->request($client, 'entity', ['entities_id' => $child, 'is_recursive' => true]) === true
+        && $_SESSION['glpiactiveentities'] === [$child => $child], 'A recursive ancestor grant permits a descendant recursive view');
+    verify(Session::changeActiveEntities($parent, true)
+        && isset($_SESSION['glpiactiveentities'][$parent], $_SESSION['glpiactiveentities'][$child], $_SESSION['glpiactiveentities'][$sibling])
+        && !isset($_SESSION['glpiactiveentities'][$foreign])
+        && end($events)['hook'] === 'change_entity', 'A recursive direct grant retains its complete subtree and accepted change hook');
     $writer()->update('glpi_users', $user, ['profiles_id' => $profiles['unavailable']]);
     verify((new Auth())->login($login, 'session secret', true) && $_SESSION['glpiactiveprofile']['id'] === $profiles['null'], 'Ungrantable default profile falls back to the NULL-first granted profile');
 

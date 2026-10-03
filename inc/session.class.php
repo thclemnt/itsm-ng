@@ -383,11 +383,13 @@ class Session
                 $ancestors = getAncestorsOf("glpi_entities", $ID);
                 $ok        = false;
                 foreach ($_SESSION['glpiactiveprofile']['entities'] as $val) {
-                    if (($val['id'] == $ID) || in_array($val['id'], $ancestors)) {
-                        // Not recursive or recursive and root entity is recursive
-                        if (!$is_recursive || $val['is_recursive']) {
-                            $ok = true;
-                        }
+                    $direct = $val['id'] == $ID;
+                    // A direct grant permits its entity alone. Descendants or
+                    // a recursive view require a recursive grant of that scope.
+                    if (($direct && !$is_recursive)
+                        || ($val['is_recursive'] && ($direct || in_array($val['id'], $ancestors)))) {
+                        $ok = true;
+                        break;
                     }
                 }
                 if (!$ok) {

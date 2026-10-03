@@ -86,8 +86,10 @@ are required before reporting this application batch complete. No previous
 milestone's passing count establishes these results.
 
 Integration order is deliberate: validate and integrate the BooleanDomains
-enforcement batch before these Session persistence changes. Scalar ORM hydration
-folds `ProfileUser::is_recursive` as its entity-declared boolean; historical
+enforcement batch before these Session persistence changes. Aliased ORM scalar
+results do not themselves perform PHP boolean conversion: PostgreSQL's DBAL
+driver supplies native booleans, MySQL supplies stored zero/one flags, and the
+repository explicitly casts and folds `ProfileUser::is_recursive`. Historical
 MySQL-family integer storage could otherwise admit malformed values such as 2.
 The authoritative native boolean constraints and canonical readiness/adoption
 preflight own that rejection. No separate grant-flag registry or Session-specific
@@ -95,8 +97,27 @@ coercion workaround is added. This Session contract preserves its valid 0/1 gran
 folding controls; it has no malformed historical-2 fixture. Historical invalid
 flag coverage belongs to the preceding boolean-domain contract.
 
-Independent source review found no production blocker. Its positive root-group,
-root API switch and invalid app-token suggestions are now prepared controls;
+Independent source review identified an inherited authorization defect in
+`Session::changeActiveEntities()`: selecting a descendant with a nonrecursive
+request incorrectly admitted any granted ancestor, even a nonrecursive grant.
+The owning Session boundary now admits a direct nonrecursive selection or a
+selection covered by a recursive direct/ancestor grant. Root ID zero remains a
+real direct grant. Refusal occurs before scope/group publication and change hooks.
+This correction predates the new repository behavior; it is a separate source
+fix, not a regression attributed to ORM conversion.
+
+The same boundary serves `front/central.php` and `front/helpdesk.public.php`,
+Session profile/default-entity selection, REST and XML-RPC's inherited API
+entity-switch endpoint, and Toolbox deep-link selection. Prepared public Session
+and actual API-method controls now refuse child/tree access under nonrecursive
+grants while preserving the complete prior session and hook trace; they retain
+direct parent/root/child and recursive ancestor/subtree success. These new
+controls remain unexecuted. Method-level app/session-token checks still do not
+establish full HTTP/IP admission, active permission-mask isolation, rejected
+personal-token account behavior, or live reader-connection routing.
+
+The earlier repository review's positive root-group,
+root API switch and invalid app-token suggestions are also prepared controls;
 these remain unexecuted. App-token admission uses the existing method fixture
 client map and unchanged private checkAppToken; initApi IP/client-discovery and
 HTTP dispatch require subsequent live HTTP validation. No token gate is bypassed
