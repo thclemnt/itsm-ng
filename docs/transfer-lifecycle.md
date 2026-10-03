@@ -1,10 +1,12 @@
 # Transfer lifecycle ownership
 
 This batch is prepared in `th/exp/postgres-transfer-lifecycle`, based on
-`b3ed706ad69996aca8c3e07f83ede98329696b25`. Focused provider validation has
-started; the actual final-hook PostgreSQL probe is failing until its separate
-shared-connection commit repair is integrated. The application modernization
-goal remains open.
+`b3ed706ad69996aca8c3e07f83ede98329696b25`. Selected provider contracts and
+original application tests pass at final application source
+`0289c0229de45522524eef95bb5af4f18c68acb6`, with the separately validated
+PostgreSQL transaction repair integrated. Combined full-suite and browser
+validation of this batch remains pending. The application modernization goal
+remains open.
 
 `TransferCoordinator` owns the supplied active writer's transaction or DBAL
 savepoint. A batch includes simulation cleanup, selected items, recursive
@@ -128,12 +130,11 @@ helpers with inert base classes and translators. That probe used no application
 bootstrap or database driver. Its script/log are under
 `/workspace/itsm-env/evidence/notification-disable-source-probe.*`.
 That initial probe was not provider, installation, HTTP, browser or CI validation.
-The final combined source also passed lint/formatter/whitespace for 37 PHP files.
-Actual focused provider results are recorded below. Required next validation
-includes the shared PostgreSQL commit repair, adjacent Domain/import/transfer,
-software/clone/purge/notification/schema contracts and original Transfer,
-Computer, Domain and notification-setting classes on both providers, followed
-by coherent full suites and real transfer HTTP/browser validation.
+The final combined source also passed lint/formatter/whitespace for 41 PHP files.
+All frozen PHP hashes were verified again after live validation with zero
+mismatches. Actual provider results are recorded below. Required next validation
+is the coherent combined full suite and real Transfer HTTP/browser flow, with
+official MySQL and release PostgreSQL engines and remote CI reported separately.
 
 On 2026-10-03, new owned PostgreSQL/MariaDB databases were cloned from the
 validated populated Supplier checkpoint with native template/full-dump methods.
@@ -159,11 +160,61 @@ The added actual final `post_updateItem` probe at source
 `8c2a7202ba25e644fed9886a42b0a709b42e70fb` catches native PostgreSQL division by
 zero (22012) and performs no later query. It exposed a real defect: standalone
 ownership update reported success when stock DBAL committed an aborted physical
-transaction. The contract fails; the separate shared PostgreSQL connection guard
-must refuse that commit while preserving a usable caller frame. Its integration
-and retest remain pending. The existing generic driver is not modified by this
-Transfer batch. Logs, exact source hashes, commands and durations are retained
-under `/workspace/itsm-env/evidence/transfer-lifecycle-*`.
+transaction. This red checkpoint is preserved. The separate shared PostgreSQL
+repair `8a1affab3727d99e97737f40da34ef64aa2d44f1`, integrated here as
+`0289c0229de45522524eef95bb5af4f18c68acb6`, probes the same physical connection
+before DBAL can report a commit of an aborted transaction. The unchanged final
+hook tests now pass for standalone ownership updates, owned Transfer and caller
+savepoints, including usable caller frames after refused commit. That repair
+was independently validated at its own source before integration. Logs, exact
+source hashes, commands and durations are retained under
+`/workspace/itsm-env/evidence/transfer-lifecycle-*`.
+
+On 2026-10-03, final application source `0289c0229d` passed 26 distinct selected
+contracts on each owned populated provider database: three focused Transfer/
+writer/notification contracts, eighteen adjacent deletion/relationship/transfer/
+software/Domain/import/adoption/OS/notification/schema contracts, and five
+shared adapter/ORM contracts. Transfer atomicity passed 396 assertions on
+PostgreSQL (9.791s) and 371 on MariaDB (8.842s); the notification flag scope
+passed 75 assertions each. The shared adapter contract passed 1,548 assertions
+each; ORM/native parity covered 357 tables, 610 seeded rows and 6,706 field
+values. ORM writes covered all 357 tables, 331 table updates and 27 nullable
+defaults. All contracts retained the 300-second deadline. Current Domain import
+took 62.040s/263.703s (PostgreSQL/MariaDB); populated adoption, including receipt,
+interruption/retry and final convergence, took 81.275s/252.740s.
+
+The original application suite passed on both engines: fourteen classes,
+106/106 methods, 3,441 assertions, zero void methods and zero skipped methods,
+with no failures, errors, exceptions or uncompleted methods. Runtime was 69.578s
+on PostgreSQL and 69.721s on MariaDB. These were the actual Transfer, Computer,
+Domain, Location, notification setting instance/Ajax/mailing, CommonDBTM,
+Document, Supplier, Infocom, Item_Disk, Item_OperatingSystem and Dropdown tests.
+The original Transfer fixture exercised 69 item types. The owned application
+fixture explicitly persisted disabled notification modes before each provider
+run; individual notification tests enable their own modes. No application
+fixture was changed during final validation.
+
+Post-application schema contracts passed again on both providers. Independent
+native inspection found twelve canonical versions with no pending history,
+357 mapped tables, 358 actual tables including the ledger, 1,057 foreign keys
+and no schema differences. Actual generated compatibility projections retained
+their declared bigint storage, nullability and comments. PostgreSQL had 354
+owned sequences in the frozen identifier scope, all bigint, with no remaining
+width operations. Platform-specific expressions are recorded verbatim; these
+results do not claim that the DBAL schema comparator compares expression text.
+
+Exact commands, source/log hashes and elapsed times are recorded in
+`/workspace/itsm-env/evidence/transfer-lifecycle-validation-times.jsonl`;
+the 41-file source freeze is
+`/workspace/itsm-env/evidence/transfer-native-integrated-source.json`.
+The earlier main checkpoint `448699cfbb7d4847a73edc36eabf0f3da1042fb3` passed
+147/147 discovered contracts and sequential 12/12 browser cases on each of
+PostgreSQL/MariaDB. Those full and browser results precede this lifecycle batch;
+the selected-source results above do not replace a full combined replay.
+The next concrete step is to integrate the validated feature commits, rediscover
+the complete contract list, run the combined installation/upgrade/application
+matrix, rebuild assets and run the prepared Transfer browser flow. Official
+release-engine and remote-CI results remain separate evidence boundaries.
 
 Limits: database rollback covers transactional mutations on the participating
 connection. Core MySQL tables use InnoDB, and known selected non-InnoDB parent
