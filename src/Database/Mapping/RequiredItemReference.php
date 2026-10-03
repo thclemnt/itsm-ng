@@ -15,7 +15,7 @@ trait RequiredItemReference
     public string $itemtype = '';
 
     #[ORM\Column(name: '`items_id`', type: 'bigint', nullable: true, insertable: false, updatable: false, generated: 'ALWAYS')]
-    #[DiscriminatorKey]
+    #[DiscriminatorKey(exactDiscriminator: true)]
     public ?int $items_id = null;
 
 }

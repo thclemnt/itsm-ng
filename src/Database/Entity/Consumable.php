@@ -53,7 +53,7 @@ class Consumable implements \itsmng\Database\Mapping\LegacyInput
     public ?Group $recipientGroup = null;
 
     #[ORM\Column(name: '`items_id`', type: 'bigint', nullable: true, insertable: false, updatable: false, generated: 'ALWAYS')]
-    #[\itsmng\Database\Mapping\DiscriminatorKey(emptyValue: 0)]
+    #[\itsmng\Database\Mapping\DiscriminatorKey(emptyValue: 0, exactDiscriminator: true, emptyRequiredNullProperties: ['date_out'])]
     public int $items_id = 0;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]

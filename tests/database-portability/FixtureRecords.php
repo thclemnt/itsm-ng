@@ -7,8 +7,11 @@ use itsmng\Database\Migration\ReferenceHistory;
 /** Valid dependency graphs for FK tests; never catch fixture failures as rejection proof. */
 final class FixtureRecords
 {
-    public function __construct(private DBAdapter $database)
+    private ?Closure $created;
+
+    public function __construct(private DBAdapter $database, ?callable $created = null)
     {
+        $this->created = $created === null ? null : Closure::fromCallable($created);
     }
 
     /** Ordinary ownership accepts the root; discriminator subjects need a positive parent. */
@@ -111,6 +114,8 @@ final class FixtureRecords
                 }
             }
         }
-        return (new \itsmng\Database\Repository\RecordWriter($em))->insert($table, $values);
+        $id = (new \itsmng\Database\Repository\RecordWriter($em))->insert($table, $values);
+        $this->created && ($this->created)($table, $id);
+        return $id;
     }
 }

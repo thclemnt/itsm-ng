@@ -42,8 +42,6 @@ final class BaselineSchema
         Migration\NetworkPortAggregateOrigins::configureSchema($schema);
         Migration\PlanningEventGuests::configureSchema($schema);
         Migration\UnusedProjectTemplateReference::configureTable($schema->getTable('glpi_projects'));
-        Migration\ConsumableRecipients::configureTable($schema->getTable('glpi_consumables'));
-        $this->extraSql['glpi_consumables'][] = Migration\ConsumableRecipients::checkSql('glpi_consumables');
         $this->configureMissingPropertyColumns($schema, $platform);
         $this->configureRequiredSubjects($schema, $platform);
         $this->extraSql['glpi_users'][] = Migration\UserAuthenticationSources::checkSql();
@@ -185,11 +183,11 @@ final class BaselineSchema
                     }
                     foreach ((new \ReflectionProperty($metadata->name, $property))->getAttributes(Mapping\DiscriminatorKey::class) as $attribute) {
                         $key = $attribute->newInstance();
-                        if ($key->fallbackProperty !== null || $key->emptyValue !== null) {
+                        if ($key->fallbackProperty !== null) {
                             continue;
                         }
-                        $key->configureRequiredTable($schema->getTable($metadata->getTableName()), $platform, $metadata, $property);
-                        $this->extraSql[$metadata->getTableName()][] = $key->requiredCheckSql($platform, $metadata, $property);
+                        $key->configureSubjectTable($schema->getTable($metadata->getTableName()), $platform, $metadata, $property);
+                        $this->extraSql[$metadata->getTableName()][] = $key->subjectCheckSql($platform, $metadata, $property);
                     }
                 }
             }

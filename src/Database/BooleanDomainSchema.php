@@ -45,25 +45,7 @@ final class BooleanDomainSchema
         foreach ($connection->fetchAllAssociative($query) as $column) {
             $columns[$column['table_name']][$column['column_name']] = $column;
         }
-        $checks = [];
-        if ($mysql) {
-            if ($connection->getDatabasePlatform() instanceof MariaDBPlatform) {
-                // MariaDB owns each CHECK's table in this native catalogue.
-                // Enforcement is session-wide and was asserted above.
-                $query = "SELECT cc.TABLE_NAME AS table_name, cc.CONSTRAINT_NAME AS constraint_name, cc.CHECK_CLAUSE AS clause, 'YES' AS enforced "
-                    . 'FROM information_schema.CHECK_CONSTRAINTS cc WHERE cc.CONSTRAINT_SCHEMA = DATABASE()';
-            } else {
-                $enforced = $connection->getDatabasePlatform() instanceof MySQLPlatform ? 'tc.ENFORCED' : "'YES'";
-                $query = 'SELECT tc.TABLE_NAME AS table_name, tc.CONSTRAINT_NAME AS constraint_name, cc.CHECK_CLAUSE AS clause, ' . $enforced . ' AS enforced '
-                    . 'FROM information_schema.TABLE_CONSTRAINTS tc JOIN information_schema.CHECK_CONSTRAINTS cc '
-                    . 'ON cc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME '
-                    . ($connection->getDatabasePlatform() instanceof MySQLPlatform ? '' : 'AND cc.TABLE_NAME = tc.TABLE_NAME ')
-                    . "WHERE tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.CONSTRAINT_TYPE = 'CHECK'";
-            }
-            foreach ($connection->fetchAllAssociative($query) as $check) {
-                $checks[$check['table_name']][$check['constraint_name']] = $check;
-            }
-        }
+        $checks = self::readChecks($connection);
         // Catalogue row order is not a schema property. Stable maps make
         // read-only comparisons and retry snapshots independent of DDL order.
         ksort($columns);
@@ -77,6 +59,48 @@ final class BooleanDomainSchema
         }
         unset($tableChecks);
         return ['mysql' => $mysql, 'ansi_quotes' => $ansiQuotes, 'columns' => $columns, 'checks' => $checks];
+    }
+
+    /** Fresh physical CHECK inspection; never reuse this across DDL or callbacks. */
+    public static function checks(Connection $connection, string $table): array
+    {
+        CheckConstraintSupport::assertSupported($connection);
+        return self::readChecks($connection, $table);
+    }
+
+    /** The full catalogue and selected-table reader share native ownership SQL. */
+    private static function readChecks(Connection $connection, ?string $table = null): array
+    {
+        $checks = [];
+        if ($connection->getDatabasePlatform() instanceof AbstractMySQLPlatform) {
+            if ($connection->getDatabasePlatform() instanceof MariaDBPlatform) {
+                // MariaDB owns each CHECK's table in this native catalogue.
+                // Enforcement is session-wide and was asserted above.
+                $query = "SELECT cc.TABLE_NAME AS table_name, cc.CONSTRAINT_NAME AS constraint_name, cc.CHECK_CLAUSE AS clause, 'YES' AS enforced "
+                    . 'FROM information_schema.CHECK_CONSTRAINTS cc WHERE cc.CONSTRAINT_SCHEMA = DATABASE()';
+            } else {
+                $enforced = $connection->getDatabasePlatform() instanceof MySQLPlatform ? 'tc.ENFORCED' : "'YES'";
+                $query = 'SELECT tc.TABLE_NAME AS table_name, tc.CONSTRAINT_NAME AS constraint_name, cc.CHECK_CLAUSE AS clause, ' . $enforced . ' AS enforced '
+                    . 'FROM information_schema.TABLE_CONSTRAINTS tc JOIN information_schema.CHECK_CONSTRAINTS cc '
+                    . 'ON cc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME '
+                    . ($connection->getDatabasePlatform() instanceof MySQLPlatform ? '' : 'AND cc.TABLE_NAME = tc.TABLE_NAME ')
+                    . "WHERE tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.CONSTRAINT_TYPE = 'CHECK'";
+            }
+            $parameters = [];
+            if ($table !== null) {
+                $query .= ' AND ' . ($connection->getDatabasePlatform() instanceof MariaDBPlatform ? 'cc' : 'tc') . '.TABLE_NAME = ?';
+                $parameters[] = $table;
+            }
+            foreach ($connection->fetchAllAssociative($query, $parameters) as $check) {
+                $checks[$check['table_name']][$check['constraint_name']] = $check;
+            }
+        }
+        ksort($checks);
+        foreach ($checks as &$tableChecks) {
+            ksort($tableChecks);
+        }
+        unset($tableChecks);
+        return $checks;
     }
 
     /** @return list<string> Read-only logical checks alongside DBAL structural comparison. */

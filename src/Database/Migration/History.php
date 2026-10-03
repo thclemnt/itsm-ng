@@ -12,7 +12,7 @@ use itsmng\Database\SequenceSynchronizer;
 /** Empty-database replay and validated adoption share one canonical history and ledger. */
 final class History
 {
-    public const VERSIONS = [Baseline20261001::VERSION, Seeds20261001::VERSION, LegacyToOrm::VERSION, Booleans20261002::VERSION, ProjectAssets20261003::VERSION, CategoryFlags20261004::VERSION, ApplianceAssets20261005::VERSION, ApplianceRecipients20261005::VERSION, OperatingSystemSubjects20261006::VERSION, DomainDocuments20261006::VERSION, DomainIntegration20261006::VERSION, IdentifierSequences20261007::VERSION, BooleanDomains20261008::VERSION];
+    public const VERSIONS = [Baseline20261001::VERSION, Seeds20261001::VERSION, LegacyToOrm::VERSION, Booleans20261002::VERSION, ProjectAssets20261003::VERSION, CategoryFlags20261004::VERSION, ApplianceAssets20261005::VERSION, ApplianceRecipients20261005::VERSION, OperatingSystemSubjects20261006::VERSION, DomainDocuments20261006::VERSION, DomainIntegration20261006::VERSION, IdentifierSequences20261007::VERSION, BooleanDomains20261008::VERSION, ExactDiscriminators20261010::VERSION];
 
     /** Application readiness uses the ledger, without planning or executing DDL. */
     public static function pendingVersions(Connection $connection): array
@@ -38,7 +38,7 @@ final class History
     {
         $pending = self::pendingVersions($connection);
         $booleans = (new Booleans20261002())->plan($connection);
-        return ['complete' => !$pending, 'pending' => $pending, 'legacy' => (new LegacyToOrm())->plan($connection), 'booleans' => $booleans, 'project_assets' => (new ProjectAssets20261003())->plan($connection), 'category_flags' => (new CategoryFlags20261004())->plan($connection), 'appliance_assets' => (new ApplianceAssets20261005())->plan($connection), 'appliance_recipients' => (new ApplianceRecipients20261005())->plan($connection), 'operating_system_subjects' => (new OperatingSystemSubjects20261006())->plan($connection), 'domain_documents' => (new DomainDocuments20261006())->plan($connection), 'domain_integration' => (new DomainIntegration20261006())->plan($connection), 'identifier_sequences' => (new IdentifierSequences20261007())->plan($connection), 'boolean_domains' => (new BooleanDomains20261008())->plan($connection, true)];
+        return ['complete' => !$pending, 'pending' => $pending, 'legacy' => (new LegacyToOrm())->plan($connection), 'booleans' => $booleans, 'project_assets' => (new ProjectAssets20261003())->plan($connection), 'category_flags' => (new CategoryFlags20261004())->plan($connection), 'appliance_assets' => (new ApplianceAssets20261005())->plan($connection), 'appliance_recipients' => (new ApplianceRecipients20261005())->plan($connection), 'operating_system_subjects' => (new OperatingSystemSubjects20261006())->plan($connection), 'domain_documents' => (new DomainDocuments20261006())->plan($connection), 'domain_integration' => (new DomainIntegration20261006())->plan($connection), 'identifier_sequences' => (new IdentifierSequences20261007())->plan($connection), 'boolean_domains' => (new BooleanDomains20261008())->plan($connection, true), 'exact_subject_discriminators' => (new ExactDiscriminators20261010())->plan($connection, true)];
     }
 
     public static function isInstalling(Connection $connection): bool
@@ -144,6 +144,9 @@ final class History
                 throw new \RuntimeException('Resume the unfinished installation before applying upgrades.');
             }
             (new DomainsPluginAdoption20261006())->apply($connection, fn () => $this->canonicalPlan($connection), $progress);
+            // All stored subject spellings are audited before any canonical DDL,
+            // including partial legacy ownership, after the validated source trial.
+            (new ExactDiscriminators20261010())->plan($connection, true);
             // Reject newly constrained subject links before broader
             // historical audits; every preflight still completes before any DDL.
             (new ApplianceAssets20261005())->plan($connection);
@@ -169,6 +172,7 @@ final class History
             (new DomainIntegration20261006())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('DomainIntegration20261006: ' . $phase));
             (new IdentifierSequences20261007())->apply($connection, $progress);
             (new BooleanDomains20261008())->apply($connection, $progress);
+            (new ExactDiscriminators20261010())->apply($connection, $progress);
             $differences = (new SchemaCheck())->differences($connection);
             if ($differences) {
                 throw new \RuntimeException("Migration history did not converge:\n" . implode("\n", $differences));

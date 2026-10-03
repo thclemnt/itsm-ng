@@ -5,6 +5,7 @@
 namespace itsmng\Database\Mapping;
 
 use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\DBAL\Schema\Table;
 
@@ -12,7 +13,7 @@ use Doctrine\DBAL\Schema\Table;
 #[\Attribute(\Attribute::TARGET_PROPERTY)]
 final readonly class DiscriminatorKey
 {
-    public function __construct(public ?string $fallbackProperty = null, public ?int $emptyValue = null)
+    public function __construct(public ?string $fallbackProperty = null, public ?int $emptyValue = null, public bool $exactDiscriminator = false, public array $emptyRequiredNullProperties = [])
     {
     }
 
@@ -29,7 +30,7 @@ final readonly class DiscriminatorKey
                         $selection = 'COALESCE(' . $selection . ', ' . $binding->emptyValue . ')';
                     }
                     $kinds = array_map(static fn ($value) => is_int($value) ? (string)$value : $platform->quoteStringLiteral($value), $binding->values);
-                    $cases[] = 'WHEN ' . $platform->quoteIdentifier($metadata->getColumnName($binding->discriminator)) . ' IN (' . implode(', ', $kinds) . ') THEN '
+                    $cases[] = 'WHEN ' . $this->discriminatorSql($platform, $metadata, $binding->discriminator) . ' IN (' . implode(', ', $kinds) . ') THEN '
                         . $selection;
                 }
             }
@@ -41,10 +42,10 @@ final readonly class DiscriminatorKey
             . ($this->fallbackProperty === null ? ($this->emptyValue === null ? 'NULL' : (string)$this->emptyValue) : $platform->quoteIdentifier($metadata->getColumnName($this->fallbackProperty))) . ' END) STORED';
     }
 
-    /** Add a required subject's current owning columns without consulting upgrade snapshots. */
-    public function configureRequiredTable(Table $table, AbstractPlatform $platform, ClassMetadata $metadata, string $property): void
+    /** Current owning schema derives from the key property, including optional stock. */
+    public function configureSubjectTable(Table $table, AbstractPlatform $platform, ClassMetadata $metadata, string $property): void
     {
-        $bindings = $this->requiredBindings($metadata, $property);
+        $bindings = $this->subjectBindings($metadata, $property);
         foreach ($bindings as $name => $binding) {
             $join = $metadata->associationMappings[$name]->joinColumns[0];
             if (!$table->hasColumn($join->name)) {
@@ -59,24 +60,25 @@ final readonly class DiscriminatorKey
                 ->setDefault($discriminator->options['default'] ?? null);
         }
         $column = $table->getColumn($metadata->getColumnName($property));
+        $comment = (string)$column->getComment();
         $declaration = $this->declaration($platform, $metadata, $property);
         // DBAL's custom column definition bypasses its inline comment generation.
-        if ($platform->supportsInlineColumnComments() && $column->getComment() !== '') {
-            $declaration .= ' ' . $platform->getInlineColumnCommentSQL($column->getComment());
+        if ($platform->supportsInlineColumnComments() && $comment !== '') {
+            $declaration .= ' ' . $platform->getInlineColumnCommentSQL($comment);
         }
         $column->setNotnull(false)->setDefault(null)->setColumnDefinition($declaration);
     }
 
-    public function requiredCheckSql(AbstractPlatform $platform, ClassMetadata $metadata, string $property): string
+    public function subjectCheckSql(AbstractPlatform $platform, ClassMetadata $metadata, string $property): string
     {
-        $bindings = $this->requiredBindings($metadata, $property);
+        $bindings = $this->subjectBindings($metadata, $property);
         $columns = [];
         foreach ($bindings as $name => $binding) {
             $columns[$name] = $platform->quoteIdentifier($metadata->associationMappings[$name]->joinColumns[0]->name);
         }
         $branches = [];
         foreach ($bindings as $name => $binding) {
-            $discriminator = $platform->quoteIdentifier($metadata->getColumnName($binding->discriminator));
+            $discriminator = $this->discriminatorSql($platform, $metadata, $binding->discriminator);
             $kinds = array_map($platform->quoteStringLiteral(...), $binding->values);
             $branch = [$discriminator . ' IS NOT NULL', $discriminator . ' IN (' . implode(', ', $kinds) . ')', $columns[$name] . ' IS NOT NULL', $columns[$name] . ' >= ' . $binding->minimumId];
             foreach ($columns as $otherName => $column) {
@@ -86,17 +88,57 @@ final readonly class DiscriminatorKey
             }
             $branches[] = '(' . implode(' AND ', $branch) . ')';
         }
+        if ($this->emptyValue !== null) {
+            $first = reset($bindings);
+            $empty = [$platform->quoteIdentifier($metadata->getColumnName($first->discriminator)) . ' IS NULL'];
+            foreach ($columns as $column) {
+                $empty[] = $column . ' IS NULL';
+            }
+            foreach ($this->emptyRequiredNullProperties as $emptyProperty) {
+                $empty[] = $platform->quoteIdentifier($metadata->getColumnName($emptyProperty)) . ' IS NULL';
+            }
+            $branches[] = '(' . implode(' AND ', $empty) . ')';
+        }
         $attributes = (new \ReflectionClass($metadata->name))->getAttributes(RequiredSubjectConstraint::class);
         $suffix = $attributes ? $attributes[0]->newInstance()->suffix : 'typed_item_kind';
         return 'ALTER TABLE ' . $platform->quoteIdentifier($metadata->getTableName()) . ' ADD CONSTRAINT '
             . $platform->quoteIdentifier($metadata->getTableName() . '_' . $suffix) . ' CHECK (' . implode(' OR ', $branches) . ')';
     }
 
-    /** This helper intentionally rejects optional/fallback identities and numeric discriminators. */
-    private function requiredBindings(ClassMetadata $metadata, string $property): array
+    /** Existing required-only callers retain their explicit admission contract. */
+    public function configureRequiredTable(Table $table, AbstractPlatform $platform, ClassMetadata $metadata, string $property): void
     {
-        if ($this->fallbackProperty !== null || $this->emptyValue !== null) {
+        if ($this->emptyValue !== null) {
             throw new \LogicException('Required subject schema cannot use an optional identity');
+        }
+        $this->configureSubjectTable($table, $platform, $metadata, $property);
+    }
+
+    public function requiredCheckSql(AbstractPlatform $platform, ClassMetadata $metadata, string $property): string
+    {
+        if ($this->emptyValue !== null) {
+            throw new \LogicException('Required subject schema cannot use an optional identity');
+        }
+        return $this->subjectCheckSql($platform, $metadata, $property);
+    }
+
+    /** Exact kinds are a property policy; MySQL text collations may fold case or spaces. */
+    private function discriminatorSql(AbstractPlatform $platform, ClassMetadata $metadata, string $property): string
+    {
+        $column = $platform->quoteIdentifier($metadata->getColumnName($property));
+        return $this->exactDiscriminator && $platform instanceof AbstractMySQLPlatform ? 'CAST(' . $column . ' AS BINARY)' : $column;
+    }
+
+    /** Fallback/numeric identities retain their separately owned semantics. */
+    private function subjectBindings(ClassMetadata $metadata, string $property): array
+    {
+        if ($this->fallbackProperty !== null || ($this->emptyRequiredNullProperties && $this->emptyValue === null)) {
+            throw new \LogicException('Subject schema requires declared owning branches and a coherent empty identity');
+        }
+        foreach ($this->emptyRequiredNullProperties as $emptyProperty) {
+            if (!is_string($emptyProperty) || !$metadata->hasField($emptyProperty) || !$metadata->getFieldMapping($emptyProperty)->nullable) {
+                throw new \LogicException('Empty subject state requires declared nullable scalar properties');
+            }
         }
         $bindings = [];
         foreach ($metadata->associationMappings as $name => $association) {

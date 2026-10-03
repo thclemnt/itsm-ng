@@ -21,7 +21,7 @@ class ItemOperatingSystem implements \itsmng\Database\Mapping\LegacyInput
     public ?int $id = null;
 
     #[ORM\Column(name: '`items_id`', type: 'bigint', nullable: true, insertable: false, updatable: false, generated: 'ALWAYS')]
-    #[\itsmng\Database\Mapping\DiscriminatorKey]
+    #[\itsmng\Database\Mapping\DiscriminatorKey(exactDiscriminator: true)]
     public ?int $items_id = null;
 
     #[ORM\Column(name: '`itemtype`', type: 'string', length: 255, nullable: false)]
