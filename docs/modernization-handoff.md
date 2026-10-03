@@ -15,8 +15,25 @@ commercial Supplier coherence, PostgreSQL CLI initialization without mysqli,
 shared PostgreSQL transaction outcome/handle ownership, and atomic Transfer,
 required ownership forwarding and full-tree import refusal handling.
 Their focused evidence appears below and in the linked batch
-notes. A full combined rerun has not yet run. Offline discovery at this source
-finds 167 contracts; this count is not a passing result.
+notes. The first complete combined PostgreSQL run at
+`4dbc9f7c2edeafb5e54c65d9c9a5144f9132246c` passed 165/167 contracts in
+824.383s: `documents.php` and `kanban.php` failed. The schema-check contract passed
+in the actual full-suite order. No complete MariaDB run was made at that source;
+the earlier 147/147 checkpoint remains the last green combined result.
+
+The [purge ownership corrections](purge-ownership-corrections.md) reproduce both
+failures on both providers. Project's existing public board cleanup now owns the
+application-managed reference. Ticket origin tests use an authorized same-entity
+replacement and explicitly prove that cross-entity refusal leaves the complete
+graph unchanged before hooks. The original Document binding tests separately
+assert early typed-input refusal and retain their exact preparation diagnostics.
+At isolated application source `23c8d5ac879aafcdd84e4af376df539a0472ba6e`, the
+complete strengthened document/Kanban contracts and final schema/native checks
+pass on both providers. Project, Document, Document_Item and Ticket pass 71/71
+original application methods and 4,304 assertions each, with no void methods or
+skips. Main's four application/test files are byte-identical after integration.
+Fresh installations and full combined reruns of the repaired source remain
+pending; focused results do not replace a complete passing suite.
 
 The integrated [owning endpoint repair](connexity-ownership.md) passes separate
 fresh installs, its authorization contract, the unchanged ITIL migration contract,
@@ -59,7 +76,7 @@ twelve completed versions, no pending migrations or schema differences, and
 1,057 actual foreign keys. All 41 frozen application/test files match after main
 integration; main's newer CLI and browser additions are preserved.
 
-Next, freeze the combined source for fresh installations, complete discovered
+Next, freeze the repaired combined source for new isolated fresh installations, complete discovered
 portability suites (including populated/retry history), broader application tests,
 rebuilt assets and browser validation. PostgreSQL 18.6 and MySQL
 8.4.11 are provisioned; their application matrix remains pending. Software
