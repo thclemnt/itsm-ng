@@ -32,7 +32,8 @@ final class DomainPluginImport
                 throw new \RuntimeException('Domains import requires completed canonical history; run db:migrate. Pending: ' . $version);
             }
         }
-        $differences = (new SchemaCheck())->differences($connection);
+        $inspection = (new SchemaCheck())->inspect($connection);
+        $differences = $inspection->differences;
         if ($differences) {
             throw new \RuntimeException('Domains import requires the canonical core schema: ' . implode('; ', array_slice($differences, 0, 5)));
         }
@@ -51,7 +52,7 @@ final class DomainPluginImport
                     }
                 }
                 $this->assertKnownIdentitySpellings($em);
-                $this->unknownExternalBindings();
+                $this->unknownExternalBindings($inspection->actualSchema);
                 $this->newBindings($em, $receipt);
                 return new DomainImportPlan($fingerprint, $receipt['counts'], alreadyImported: true, sourcePlugin: $sourcePlugin);
             }
@@ -69,7 +70,7 @@ final class DomainPluginImport
             }
             $incoming = $validation->graph($records);
             $this->assertKnownIdentitySpellings($em);
-            $this->unknownExternalBindings();
+            $this->unknownExternalBindings($inspection->actualSchema);
             [$rights, $policies] = (new DomainImportPolicy($em))->plan($snapshot);
             $bindings = (new DomainIdentityAdoption($em))->plan($incoming);
             $validation->bindings($records, $bindings);
@@ -293,11 +294,11 @@ final class DomainPluginImport
     }
 
     /** Unmodeled external plugin rows are diagnosed, never treated as generic polymorphic owners. */
-    private function unknownExternalBindings(): void
+    private function unknownExternalBindings(\Doctrine\DBAL\Schema\Schema $schema): void
     {
         $connection = $this->database->getDoctrineConnection();
         $mapped = EntityRegistry::tables();
-        foreach ($connection->createSchemaManager()->listTables() as $table) {
+        foreach ($schema->getTables() as $table) {
             if (isset($mapped[$table->getName()]) || in_array($table->getName(), ['glpi_plugin_domains_domains', 'glpi_plugin_domains_domaintypes', 'glpi_plugin_domains_domains_items', 'glpi_plugin_domains_configs', 'itsmng_migrations'], true)) {
                 continue;
             }

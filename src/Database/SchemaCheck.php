@@ -20,6 +20,12 @@ final class SchemaCheck
      */
     public function differences(Connection $connection, ?Schema $expected = null): array
     {
+        return $this->inspect($connection, $expected)->differences;
+    }
+
+    /** Inspect current native definitions once without retaining a schema cache. */
+    public function inspect(Connection $connection, ?Schema $expected = null): SchemaInspection
+    {
         $expected ??= (new BaselineSchema())->build($connection->getDatabasePlatform());
         $manager = $connection->createSchemaManager();
         $actual = $manager->introspectSchema();
@@ -71,6 +77,6 @@ final class SchemaCheck
                 $differences[] = 'Unexpected or changed foreign key: ' . $name . '.' . $key->getName();
             }
         }
-        return [...$differences, ...BooleanDomainSchema::differences($connection, $expected)];
+        return new SchemaInspection($actual, [...$differences, ...BooleanDomainSchema::differences($connection, $expected)]);
     }
 }
