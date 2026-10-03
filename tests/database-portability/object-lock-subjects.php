@@ -45,14 +45,15 @@ $table = 'glpi_objectlocks';
 $read = static fn (string $table, int $id): ?array => (new RecordRepository(Orm::create($DB)))->find($table, 'id', $id);
 $branches = EntityRegistry::discriminatedReferences($table)['items_id']['selections'];
 verify(array_diff($CFG_GLPI['lock_lockable_objects'], array_keys($branches)) === [] && count($branches) === 30, 'Every configured core lockable object has an owning subject');
-$reject = static function (callable $operation, string $message, ?string $omittedRequiredColumn = null) use ($connection): void {
+$reject = static function (callable $operation, string $message, ?string $omittedRequiredColumn = null, ?string $expectedCheck = null) use ($connection): void {
     $connection->beginTransaction();
     try {
         $failed = false;
         try {
             $operation();
         } catch (DriverException $error) {
-            $failed = NativeConstraintRefusal::matches($error, $omittedRequiredColumn);
+            $failed = NativeConstraintRefusal::matches($error, $omittedRequiredColumn)
+                || NativeConstraintRefusal::matchesSelectedCheck($error, $expectedCheck);
         }
         verify($failed, $message);
     } finally {
@@ -78,7 +79,7 @@ try {
     }
     foreach ([[], ['itemtype' => 'UnknownPlugin'], ['itemtype' => 'User'], ['itemtype' => 'User', 'subject_computers_id' => $sameId],
         ['itemtype' => 'Entity', 'subject_entities_id' => 0], ['itemtype' => 'User', 'subject_users_id' => $sameId, 'subject_computers_id' => $sameId]] as $invalid) {
-        $reject(static fn () => $connection->insert($table, $invalid + ['users_id' => $owner]), 'Native null/unknown/missing/wrong/zero/multiple selection rejected', !array_key_exists('itemtype', $invalid) ? 'itemtype' : null);
+        $reject(static fn () => $connection->insert($table, $invalid + ['users_id' => $owner]), 'Native null/unknown/missing/wrong/zero/multiple selection rejected', !array_key_exists('itemtype', $invalid) ? 'itemtype' : null, 'glpi_objectlocks_typed_item_kind');
     }
     $oldConfiguration = $CFG_GLPI;
     try {

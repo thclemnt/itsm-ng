@@ -4,10 +4,22 @@
 
 use Doctrine\DBAL\Exception\DriverException;
 use Doctrine\DBAL\Exception\NotNullConstraintViolationException;
+use Doctrine\DBAL\Driver\Mysqli\Exception\StatementError;
 
 /** Recognize the constraint refusal expected by a particular invalid input. */
 final class NativeConstraintRefusal
 {
+    /** Official MySQL uses generic HY000 for this precise, selected CHECK cause. */
+    public static function matchesSelectedCheck(DriverException $error, ?string $expectedConstraint): bool
+    {
+        return $expectedConstraint !== null && $expectedConstraint !== ''
+            && $error::class === DriverException::class
+            && $error->getCode() === 3819
+            && $error->getSQLState() === 'HY000'
+            && $error->getPrevious() instanceof StatementError
+            && $error->getPrevious()?->getMessage() === "Check constraint '$expectedConstraint' is violated.";
+    }
+
     public static function matches(DriverException $error, ?string $omittedRequiredColumn = null): bool
     {
         if (in_array($error->getSQLState(), ['23502', '23503', '23514', '23505', '23001', '23000'], true)) {

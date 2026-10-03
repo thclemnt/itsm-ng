@@ -20,6 +20,7 @@ if (!is_file($directory . '/config_db.php')) {
 define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
+require __DIR__ . '/fixtures/NativeConstraintRefusal.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
     exit(1);
@@ -38,14 +39,15 @@ verify((new SchemaCheck())->differences($connection) === [], 'Current core conve
 verify(Ledger::state($connection, DomainIntegration20261006::VERSION)['complete'], 'Canonical installation/adoption replays Domain stage');
 verify(EntityRegistry::relations()['glpi_domains']['suppliers_id'] === 'glpi_suppliers'
     && EntityRegistry::isBoolean('glpi_domains', 'is_helpdesk_visible'), 'Supplier ownership and flag belong to Domain properties');
-$reject = static function (callable $operation, string $message) use ($connection): void {
+$reject = static function (callable $operation, string $message, ?string $expectedCheck = null) use ($connection): void {
     $connection->beginTransaction();
     try {
         $rejected = false;
         try {
             $operation();
         } catch (DriverException $error) {
-            $rejected = in_array($error->getSQLState(), ['23502', '23503', '23514', '22003', '22023', '22P02', '42804', '23000'], true);
+            $rejected = in_array($error->getSQLState(), ['23502', '23503', '23514', '22003', '22023', '22P02', '42804', '23000'], true)
+                || NativeConstraintRefusal::matchesSelectedCheck($error, $expectedCheck);
         }
         verify($rejected, $message);
     } finally {
@@ -53,7 +55,7 @@ $reject = static function (callable $operation, string $message) use ($connectio
     }
 };
 $reject(static fn () => $connection->insert('glpi_domains', ['name' => 'Invalid direct vendor', 'suppliers_id' => 9223372036854770000]), 'Native writes reject missing commercial vendor');
-$reject(static fn () => $connection->executeStatement('INSERT INTO glpi_domains (name, is_helpdesk_visible) VALUES (?, 2)', ['Invalid visibility']), 'Native writes reject enum values for real flag');
+$reject(static fn () => $connection->executeStatement('INSERT INTO glpi_domains (name, is_helpdesk_visible) VALUES (?, 2)', ['Invalid visibility']), 'Native writes reject enum values for real flag', 'glpi_domains_is_helpdesk_visible_boolean');
 
 // A small isolated historical fixture tests nontransactional DDL without
 // rebuilding or altering the installed core used by the full suite.
@@ -146,8 +148,9 @@ try {
         $rejected = false;
         try {
             $fixture->executeStatement('UPDATE glpi_domains SET is_helpdesk_visible = 2 WHERE id = 91');
-        } catch (DriverException) {
-            $rejected = true;
+        } catch (DriverException $error) {
+            $rejected = in_array($error->getSQLState(), ['23514', '22003', '22023', '22P02', '42804', '23000'], true)
+                || NativeConstraintRefusal::matchesSelectedCheck($error, 'glpi_domains_is_helpdesk_visible_boolean');
         }
         verify($rejected, 'Retry replaces permissive CHECK with actual native enforcement');
     } finally {

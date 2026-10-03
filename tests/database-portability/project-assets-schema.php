@@ -53,14 +53,15 @@ verify($actual === $expected && count($branches) === 35, 'Every configured proje
 verify(count($manager->listTableForeignKeys($table)) === 36, 'Container and all thirty-five subjects have real foreign keys');
 verify($branches['Project']['column'] === 'subject_projects_id' && Record\ItemProject::referenceAssociation('Project') === 'subjectProject', 'Project subject has a distinct column and property from its container');
 $fixtures = new FixtureRecords($DB);
-$reject = static function (callable $operation, string $message, ?string $omittedRequiredColumn = null) use ($connection): void {
+$reject = static function (callable $operation, string $message, ?string $omittedRequiredColumn = null, ?string $expectedCheck = null) use ($connection): void {
     $connection->beginTransaction();
     try {
         $rejected = false;
         try {
             $operation();
         } catch (DriverException $error) {
-            $rejected = NativeConstraintRefusal::matches($error, $omittedRequiredColumn);
+            $rejected = NativeConstraintRefusal::matches($error, $omittedRequiredColumn)
+                || NativeConstraintRefusal::matchesSelectedCheck($error, $expectedCheck);
         }
         verify($rejected, $message);
     } finally {
@@ -96,7 +97,7 @@ try {
         $em->flush();
     }
     foreach ([[], ['itemtype' => null], ['itemtype' => 'PluginExampleAsset'], ['itemtype' => 'Computer'], ['itemtype' => 'Computer', 'computers_id' => 0], ['itemtype' => 'Computer', 'monitors_id' => $sameId], ['itemtype' => 'Computer', 'computers_id' => $sameId, 'monitors_id' => $sameId]] as $invalid) {
-        $reject(static fn () => $connection->insert($table, $invalid + ['projects_id' => $owner]), 'Missing, unknown, zero, wrong and multiple subject selections are rejected', !array_key_exists('itemtype', $invalid) ? 'itemtype' : null);
+        $reject(static fn () => $connection->insert($table, $invalid + ['projects_id' => $owner]), 'Missing, unknown, zero, wrong and multiple subject selections are rejected', !array_key_exists('itemtype', $invalid) ? 'itemtype' : null, 'glpi_items_projects_typed_item_kind');
     }
     verify((new ForeignKeys())->audit($connection) === [], 'Owning graph operations leave no orphans');
 } finally {

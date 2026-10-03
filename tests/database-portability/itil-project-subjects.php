@@ -21,6 +21,7 @@ if (!is_file($directory . '/config_db.php')) {
 define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
+require __DIR__ . '/fixtures/NativeConstraintRefusal.php';
 require __DIR__ . '/FixtureRecords.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
@@ -47,14 +48,15 @@ $CFG_GLPI['use_notifications'] = false;
 $fixtures = new FixtureRecords($DB);
 $storage = new MappedStorage($DB);
 $read = static fn ($id) => (new RecordRepository(Orm::create($DB)))->find('glpi_itils_projects', 'id', $id);
-$reject = static function (callable $operation, string $message) use ($connection): void {
+$reject = static function (callable $operation, string $message, ?string $expectedCheck = null) use ($connection): void {
     $connection->beginTransaction();
     try {
         $failed = false;
         try {
             $operation();
         } catch (DriverException $error) {
-            $failed = in_array($error->getSQLState(), ['23503', '23514', '23505', '23001', '23000'], true);
+            $failed = in_array($error->getSQLState(), ['23503', '23514', '23505', '23001', '23000'], true)
+                || NativeConstraintRefusal::matchesSelectedCheck($error, $expectedCheck);
         }
         verify($failed, $message);
     } finally {
@@ -85,7 +87,7 @@ try {
         verify(array_column((new ITILTaskRepository(Orm::create($DB)))->parentTasks($kind . 'Task', $sameId), 'id') === [$task], 'Project planning task query follows parent association');
     }
     foreach ([['itemtype' => 'Unknown'], ['itemtype' => 'Ticket'], ['itemtype' => 'Ticket', 'tickets_id' => 0], ['itemtype' => 'Ticket', 'problems_id' => $sameId], ['itemtype' => 'Ticket', 'tickets_id' => $sameId, 'problems_id' => $sameId]] as $invalid) {
-        $reject(fn () => $connection->insert('glpi_itils_projects', $invalid + ['projects_id' => $otherProject]), 'Database rejects invalid subject branches');
+        $reject(fn () => $connection->insert('glpi_itils_projects', $invalid + ['projects_id' => $otherProject]), 'Database rejects invalid subject branches', 'glpi_itils_projects_subject_kind');
     }
     $storage->update('glpi_itils_projects', $links['Ticket'], ['projects_id' => $otherProject]);
     verify((int)$read($links['Ticket'])['tickets_id'] === $sameId, 'Partial link update preserves subject');

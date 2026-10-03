@@ -51,7 +51,7 @@ sort($actual);
 sort($expected);
 verify($actual === $expected && count($branches) === 35, 'Every configured project subject has an owning association');
 verify((new SchemaCheck())->differences($connection) === [], 'Canonical history installed the required schema');
-$reject = static function (callable $operation, string $message, ?string $omittedRequiredColumn = null) use ($connection): void {
+$reject = static function (callable $operation, string $message, ?string $omittedRequiredColumn = null, ?string $expectedCheck = null) use ($connection): void {
     $connection->beginTransaction();
     try {
         $failed = false;
@@ -68,7 +68,8 @@ $reject = static function (callable $operation, string $message, ?string $omitte
             if (!$cause instanceof DriverException) {
                 throw $error;
             }
-            $failed = NativeConstraintRefusal::matches($cause, $omittedRequiredColumn);
+            $failed = NativeConstraintRefusal::matches($cause, $omittedRequiredColumn)
+                || NativeConstraintRefusal::matchesSelectedCheck($cause, $expectedCheck);
         }
         verify($failed, $message);
     } finally {
@@ -154,7 +155,7 @@ try {
     verify(Item_Project::countForMainItem($rootProject) === 35 && Item_Project::countForItem($countedComputer) === 1, 'Public counts select distinct owner and subject directions');
     verify((new RecordRepository(Orm::create($DB)))->countMatching('glpi_logs', ['itemtype' => 'Project', 'items_id' => $owner, 'linked_action' => Log::HISTORY_ADD_RELATION]) === 35, 'Public association creation retains owner audit history');
     foreach ([[], ['itemtype' => null], ['itemtype' => 'UnknownPlugin'], ['itemtype' => 'Computer'], ['itemtype' => 'Computer', 'computers_id' => 0], ['itemtype' => 'Computer', 'monitors_id' => $sameId], ['itemtype' => 'Computer', 'computers_id' => $sameId, 'monitors_id' => $sameId]] as $invalid) {
-        $reject(static fn () => $connection->insert('glpi_items_projects', $invalid + ['projects_id' => $other]), 'Missing, unknown, zero, mismatched or multiple discriminator selection is rejected', !array_key_exists('itemtype', $invalid) ? 'itemtype' : null);
+        $reject(static fn () => $connection->insert('glpi_items_projects', $invalid + ['projects_id' => $other]), 'Missing, unknown, zero, mismatched or multiple discriminator selection is rejected', !array_key_exists('itemtype', $invalid) ? 'itemtype' : null, 'glpi_items_projects_typed_item_kind');
     }
     $reject(static fn () => $connection->insert('glpi_items_projects', ['projects_id' => 999999999, 'itemtype' => 'Computer', 'computers_id' => $sameId]), 'Nonexistent project owner is rejected');
     foreach ([['itemtype' => 'UnknownPlugin', 'items_id' => $sameId], ['itemtype' => 'Computer', 'items_id' => 0], ['itemtype' => 'Computer', 'items_id' => $sameId, 'monitors_id' => $sameId]] as $invalid) {
@@ -213,8 +214,8 @@ try {
     $canonicalId = $canonical->add(['projects_id' => $other, 'itemtype' => 'Computer', 'computers_id' => $sameId]);
     verify($canonicalId > 0 && $canonical->fields['items_id'] === $sameId, 'Public canonical input projects the selected subject without requiring legacy input');
     $reject(static fn () => $connection->update('glpi_items_projects', ['projects_id' => $owner], ['id' => $canonicalId]), 'Duplicate owner/subject update is rejected');
-    $reject(static fn () => $connection->update('glpi_items_projects', ['itemtype' => 'Monitor'], ['id' => $canonicalId]), 'Discriminator-only update cannot change the owning subject kind');
-    $reject(static fn () => $connection->update('glpi_items_projects', ['computers_id' => null], ['id' => $canonicalId]), 'A required owning subject cannot be cleared by update');
+    $reject(static fn () => $connection->update('glpi_items_projects', ['itemtype' => 'Monitor'], ['id' => $canonicalId]), 'Discriminator-only update cannot change the owning subject kind', null, 'glpi_items_projects_typed_item_kind');
+    $reject(static fn () => $connection->update('glpi_items_projects', ['computers_id' => null], ['id' => $canonicalId]), 'A required owning subject cannot be cleared by update', null, 'glpi_items_projects_typed_item_kind');
     $reject(static fn () => $connection->update('glpi_items_projects', ['computers_id' => $sameId + 999], ['id' => $canonicalId]), 'Update to a nonexistent owning subject is rejected');
     verify($canonical->delete(['id' => $canonicalId], true), 'Public canonical relation deletion runs its lifecycle');
     $link = new Item_Project();

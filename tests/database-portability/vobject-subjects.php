@@ -24,6 +24,7 @@ if (!is_file($directory . '/config_db.php')) {
 define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
+require __DIR__ . '/fixtures/NativeConstraintRefusal.php';
 require __DIR__ . '/FixtureRecords.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
@@ -58,14 +59,15 @@ $calendarData = static function (string $uid, string $summary): string {
         'SUMMARY' => $summary, 'X-ORM-TEST' => "owner's preserved extension"]);
     return $calendar->serialize();
 };
-$reject = static function (callable $operation, string $message) use ($connection): void {
+$reject = static function (callable $operation, string $message, ?string $expectedCheck = null) use ($connection): void {
     $connection->beginTransaction();
     try {
         $failed = false;
         try {
             $operation();
         } catch (DriverException $error) {
-            $failed = in_array($error->getSQLState(), ['23502', '23503', '23514', '23505', '23001', '23000'], true);
+            $failed = in_array($error->getSQLState(), ['23502', '23503', '23514', '23505', '23001', '23000'], true)
+                || NativeConstraintRefusal::matchesSelectedCheck($error, $expectedCheck);
         }
         verify($failed, $message);
     } finally {
@@ -106,7 +108,7 @@ try {
     foreach ([['itemtype' => null, 'projecttasks_id' => $sameId], ['itemtype' => 'UnknownPlugin', 'projecttasks_id' => $sameId],
         ['itemtype' => 'ProjectTask'], ['itemtype' => 'ProjectTask', 'reminders_id' => $sameId],
         ['itemtype' => 'ProjectTask', 'projecttasks_id' => 0], ['itemtype' => 'ProjectTask', 'projecttasks_id' => $sameId, 'reminders_id' => $sameId]] as $invalid) {
-        $reject(fn () => $connection->insert($table, $invalid), 'Native CHECK requires one matching positive calendar subject');
+        $reject(fn () => $connection->insert($table, $invalid), 'Native CHECK requires one matching positive calendar subject', 'glpi_vobjects_typed_item_kind');
     }
     $storage = new MappedStorage($DB);
     $otherTask = $fixtures->create('glpi_projecttasks');

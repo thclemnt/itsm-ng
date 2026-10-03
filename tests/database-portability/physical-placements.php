@@ -22,6 +22,7 @@ if (!is_file($directory . '/config_db.php')) {
 define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
+require __DIR__ . '/fixtures/NativeConstraintRefusal.php';
 require __DIR__ . '/FixtureRecords.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
@@ -47,14 +48,15 @@ $CFG_GLPI['use_notifications'] = false;
 $fixtures = new FixtureRecords($DB);
 $storage = new MappedStorage($DB);
 $read = static fn (string $table, int $id): ?array => (new RecordRepository(Orm::create($DB)))->find($table, 'id', $id);
-$reject = static function (callable $operation, string $message) use ($connection): void {
+$reject = static function (callable $operation, string $message, ?string $expectedCheck = null) use ($connection): void {
     $connection->beginTransaction();
     try {
         $failed = false;
         try {
             $operation();
         } catch (DriverException $error) {
-            $failed = in_array($error->getSQLState(), ['23502', '23503', '23514', '23505', '23001', '23000'], true);
+            $failed = in_array($error->getSQLState(), ['23502', '23503', '23514', '23505', '23001', '23000'], true)
+                || NativeConstraintRefusal::matchesSelectedCheck($error, $expectedCheck);
         }
         verify($failed, $message);
     } finally {
@@ -101,7 +103,7 @@ try {
             ['itemtype' => 'Computer'], ['itemtype' => 'Computer', 'asset_monitors_id' => $sameId],
             ['itemtype' => 'Computer', 'asset_computers_id' => 0],
             ['itemtype' => 'Computer', 'asset_computers_id' => $sameId, 'asset_monitors_id' => $sameId]] as $invalid) {
-            $reject(fn () => $connection->insert($table, [$parentColumn => $parent, 'position' => 40] + $invalid), 'Required placement kind and exactly-one branch');
+            $reject(fn () => $connection->insert($table, [$parentColumn => $parent, 'position' => 40] + $invalid), 'Required placement kind and exactly-one branch', $table . '_typed_item_kind');
         }
         $extraMonitor = $fixtures->create('glpi_monitors', ['name' => 'Retarget placement monitor']);
         $changes = $storage->update($table, $links[$table]['Computer'], ['itemtype' => 'Monitor', 'items_id' => $extraMonitor]);

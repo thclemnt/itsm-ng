@@ -20,6 +20,7 @@ if (!is_file($directory . '/config_db.php')) {
 define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
+require __DIR__ . '/fixtures/NativeConstraintRefusal.php';
 require __DIR__ . '/FixtureRecords.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
@@ -49,7 +50,7 @@ $assets = EntityRegistry::discriminatedReferences('glpi_appliances_items')['item
 $contexts = EntityRegistry::discriminatedReferences('glpi_appliances_items_relations')['items_id']['selections'];
 verify(array_keys($assets) === Appliance::getTypes(true) && array_keys($contexts) === Appliance_Item_Relation::getTypes(true), 'Configured appliance subjects and nested context are declared on owning properties');
 verify((new SchemaCheck())->differences($connection) === [], 'Complete canonical history installed the current schema');
-$reject = static function (callable $operation, string $message) use ($connection): void {
+$reject = static function (callable $operation, string $message, ?string $expectedCheck = null) use ($connection): void {
     $connection->beginTransaction();
     try {
         $failed = false;
@@ -64,7 +65,8 @@ $reject = static function (callable $operation, string $message) use ($connectio
             if (!$cause instanceof DriverException) {
                 throw $error;
             }
-            $failed = in_array($cause->getSQLState(), ['23502', '23503', '23514', '23505', '23001', '23000'], true);
+            $failed = in_array($cause->getSQLState(), ['23502', '23503', '23514', '23505', '23001', '23000'], true)
+                || NativeConstraintRefusal::matchesSelectedCheck($cause, $expectedCheck);
         }
         verify($failed, $message);
     } finally {
@@ -156,8 +158,8 @@ try {
     foreach ([['itemtype' => 'Computer', 'items_id' => $sameId], ['itemtype' => 'Location', 'items_id' => 0], ['itemtype' => 'Location', 'locations_id' => $sameId, 'domains_id' => $sameId]] as $invalid) {
         verify(!(new Appliance_Item_Relation())->add($invalid + ['appliances_items_id' => $links['Computer']]), 'Invalid public nested input is rejected before persistence');
     }
-    $reject(static fn () => $connection->update('glpi_appliances_items', ['itemtype' => 'Monitor'], ['id' => $links['Computer']]), 'Discriminator-only asset update is rejected');
-    $reject(static fn () => $connection->update('glpi_appliances_items_relations', ['itemtype' => 'Domain'], ['id' => $nested['Computer']['Location']]), 'Discriminator-only nested update is rejected');
+    $reject(static fn () => $connection->update('glpi_appliances_items', ['itemtype' => 'Monitor'], ['id' => $links['Computer']]), 'Discriminator-only asset update is rejected', 'glpi_appliances_items_typed_item_kind');
+    $reject(static fn () => $connection->update('glpi_appliances_items_relations', ['itemtype' => 'Domain'], ['id' => $nested['Computer']['Location']]), 'Discriminator-only nested update is rejected', 'glpi_appliances_items_relations_typed_item_kind');
     $reject(static fn () => $connection->insert('glpi_appliances_items', ['appliances_id' => 999999999, 'itemtype' => 'Computer', 'computers_id' => $sameId]), 'Missing appliance owner is rejected');
     $reject(static fn () => $connection->insert('glpi_appliances_items_relations', ['appliances_items_id' => 999999999, 'itemtype' => 'Location', 'locations_id' => $sameId]), 'Missing nested owner is rejected');
     $em = Orm::create($DB);

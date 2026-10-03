@@ -19,6 +19,7 @@ if (!is_file($directory . '/config_db.php')) {
 define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
+require __DIR__ . '/fixtures/NativeConstraintRefusal.php';
 require __DIR__ . '/FixtureRecords.php';
 function verify(bool $ok, string $message): void
 {
@@ -94,17 +95,18 @@ try {
     verify($row['groups_id'] === null && $row['profiles_id'] === null && $row['recipient_code'] === Notification::AUTHOR, 'Kind transition clears previous associations');
     $code = $storage->insert('glpi_notificationtargets', ['notifications_id' => $notification, 'type' => 999, 'items_id' => '8', 'recipient_code' => 8]);
     verify($connection->fetchOne('SELECT items_id FROM glpi_notificationtargets WHERE id = ?', [$code]) == 8, 'Numeric legacy/canonical payload agreement');
-    foreach ([['type' => 3, 'groups_id' => 2147483647, 'profiles_id' => null, 'recipient_code' => null],
-        ['type' => 2, 'groups_id' => null, 'profiles_id' => 2147483647, 'recipient_code' => null],
-        ['type' => 3, 'groups_id' => null, 'profiles_id' => null, 'recipient_code' => null],
-        ['type' => 3, 'groups_id' => $group, 'profiles_id' => $profile, 'recipient_code' => null],
-        ['type' => 1, 'groups_id' => $group, 'profiles_id' => null, 'recipient_code' => 8],
-        ['type' => 1, 'groups_id' => null, 'profiles_id' => null, 'recipient_code' => null]] as $invalid) {
+    foreach ([[null, ['type' => 3, 'groups_id' => 2147483647, 'profiles_id' => null, 'recipient_code' => null]],
+        [null, ['type' => 2, 'groups_id' => null, 'profiles_id' => 2147483647, 'recipient_code' => null]],
+        [NotificationRecipients::CHECK, ['type' => 3, 'groups_id' => null, 'profiles_id' => null, 'recipient_code' => null]],
+        [NotificationRecipients::CHECK, ['type' => 3, 'groups_id' => $group, 'profiles_id' => $profile, 'recipient_code' => null]],
+        [NotificationRecipients::CHECK, ['type' => 1, 'groups_id' => $group, 'profiles_id' => null, 'recipient_code' => 8]],
+        [NotificationRecipients::CHECK, ['type' => 1, 'groups_id' => null, 'profiles_id' => null, 'recipient_code' => null]]] as [$expectedCheck, $invalid]) {
         try {
             $connection->transactional(fn () => $connection->update('glpi_notificationtargets', $invalid, ['id' => $native->id]));
             throw new LogicException('Invalid recipient was stored: ' . json_encode($invalid));
         } catch (DriverException $error) {
-            verify(in_array($error->getSQLState(), ['23503', '23514', '428C9', '23000', 'HY000'], true), 'Database constraint rejection: ' . $error->getMessage());
+            verify(in_array($error->getSQLState(), ['23503', '23514', '23000'], true)
+                || NativeConstraintRefusal::matchesSelectedCheck($error, $expectedCheck), 'Database constraint rejection: ' . $error->getMessage());
         }
     }
     try {

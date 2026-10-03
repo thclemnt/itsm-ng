@@ -19,6 +19,7 @@ if (!is_file($directory . '/config_db.php')) {
 define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
+require __DIR__ . '/fixtures/NativeConstraintRefusal.php';
 require __DIR__ . '/FixtureRecords.php';
 function verify(bool $ok, string $message): void
 {
@@ -113,16 +114,17 @@ try {
         } catch (InvalidArgumentException) {
         }
     }
-    foreach ([['authtype' => Auth::LDAP, 'authldaps_id' => 2147483647, 'authmails_id' => null, 'auth_source_code' => null],
-        ['authtype' => Auth::MAIL, 'authmails_id' => 2147483647, 'authldaps_id' => null, 'auth_source_code' => null],
-        ['authtype' => Auth::MAIL, 'authmails_id' => null, 'authldaps_id' => $ldap, 'auth_source_code' => null],
-        ['authtype' => Auth::LDAP, 'authldaps_id' => 0, 'authmails_id' => null, 'auth_source_code' => null],
-        ['authtype' => Auth::DB_GLPI, 'authldaps_id' => null, 'authmails_id' => null, 'auth_source_code' => null]] as $invalid) {
+    foreach ([[null, ['authtype' => Auth::LDAP, 'authldaps_id' => 2147483647, 'authmails_id' => null, 'auth_source_code' => null]],
+        [null, ['authtype' => Auth::MAIL, 'authmails_id' => 2147483647, 'authldaps_id' => null, 'auth_source_code' => null]],
+        [UserAuthenticationSources::CHECK, ['authtype' => Auth::MAIL, 'authmails_id' => null, 'authldaps_id' => $ldap, 'auth_source_code' => null]],
+        [UserAuthenticationSources::CHECK, ['authtype' => Auth::LDAP, 'authldaps_id' => 0, 'authmails_id' => null, 'auth_source_code' => null]],
+        [UserAuthenticationSources::CHECK, ['authtype' => Auth::DB_GLPI, 'authldaps_id' => null, 'authmails_id' => null, 'auth_source_code' => null]]] as [$expectedCheck, $invalid]) {
         try {
             $connection->transactional(fn () => $connection->update('glpi_users', $invalid, ['id' => $id]));
             throw new LogicException('Database accepted invalid authentication branch');
         } catch (DriverException $error) {
-            verify(in_array($error->getSQLState(), ['23503', '23514', '23000', 'HY000'], true), 'FK/CHECK constraint rejects invalid branch');
+            verify(in_array($error->getSQLState(), ['23503', '23514', '23000'], true)
+                || NativeConstraintRefusal::matchesSelectedCheck($error, $expectedCheck), 'FK/CHECK constraint rejects invalid branch');
         }
     }
     $fixtures->create('glpi_users', ['name' => 'unique-empty-source', 'authtype' => Auth::LDAP, 'auths_id' => 0]);

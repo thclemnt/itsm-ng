@@ -20,6 +20,7 @@ define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
 require __DIR__ . '/FixtureRecords.php';
+require __DIR__ . '/fixtures/NativeConstraintRefusal.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
     exit(1);
@@ -107,7 +108,8 @@ foreach ([['glpi_appliances_items', 'appliances_id', 'glpi_appliances', new Appl
             try {
                 $connection->insert($table, $values);
             } catch (DriverException $error) {
-                $rejected = in_array($error->getSQLState(), ['23514', '23000'], true);
+                $rejected = in_array($error->getSQLState(), ['23514', '23000'], true)
+                    || NativeConstraintRefusal::matchesSelectedCheck($error, $name);
             }
             verify($rejected, 'Native writes with multiple owning selections reject after repair');
         } finally {

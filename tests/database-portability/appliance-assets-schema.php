@@ -47,14 +47,15 @@ $stages = [
 ];
 verify((new SchemaCheck())->differences($connection) === [], 'Fresh appliance schema converges');
 $fixtures = new FixtureRecords($DB);
-$reject = static function (callable $operation, string $message, ?string $omittedRequiredColumn = null) use ($connection): void {
+$reject = static function (callable $operation, string $message, ?string $omittedRequiredColumn = null, ?string $expectedCheck = null) use ($connection): void {
     $connection->beginTransaction();
     try {
         $rejected = false;
         try {
             $operation();
         } catch (DriverException $error) {
-            $rejected = NativeConstraintRefusal::matches($error, $omittedRequiredColumn);
+            $rejected = NativeConstraintRefusal::matches($error, $omittedRequiredColumn)
+                || NativeConstraintRefusal::matchesSelectedCheck($error, $expectedCheck);
         }
         verify($rejected, $message);
     } finally {
@@ -110,7 +111,7 @@ try {
         $columns = array_column($branches, 'column');
         $firstKind = array_key_first($branches);
         foreach ([[], ['itemtype' => null], ['itemtype' => 'PluginExampleAsset'], ['itemtype' => $firstKind], ['itemtype' => $firstKind, $columns[0] => 0], ['itemtype' => $firstKind, $columns[1] => $sameId], ['itemtype' => $firstKind, $columns[0] => $sameId, $columns[1] => $sameId]] as $invalid) {
-            $reject(static fn () => $connection->insert($table, $invalid + [$ownerColumn => $owner]), 'Missing, zero, unknown, wrong and multiple selections are rejected: ' . $table, !array_key_exists('itemtype', $invalid) ? 'itemtype' : null);
+            $reject(static fn () => $connection->insert($table, $invalid + [$ownerColumn => $owner]), 'Missing, zero, unknown, wrong and multiple selections are rejected: ' . $table, !array_key_exists('itemtype', $invalid) ? 'itemtype' : null, $table . '_typed_item_kind');
         }
     }
     verify((new ForeignKeys())->audit($connection) === [], 'Native appliance graphs leave no orphans');

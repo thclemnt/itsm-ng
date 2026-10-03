@@ -18,6 +18,7 @@ if (!is_file($directory . '/config_db.php')) {
 define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
+require __DIR__ . '/fixtures/NativeConstraintRefusal.php';
 require __DIR__ . '/FixtureRecords.php';
 require __DIR__ . '/fixtures/NativeBooleanFixture.php';
 set_exception_handler(static function (Throwable $error): void {
@@ -42,14 +43,15 @@ $migration = new DomainDocuments20261006();
 $table = 'glpi_documents_items';
 verify(Ledger::state($connection, $migration::VERSION)['complete'] ?? false, 'Canonical history includes the appended document stage');
 verify((new SchemaCheck())->differences($connection) === [], 'Starting core schema converges');
-$reject = static function (callable $operation, string $message) use ($connection): void {
+$reject = static function (callable $operation, string $message, ?string $expectedCheck = null) use ($connection): void {
     $connection->beginTransaction();
     try {
         $rejected = false;
         try {
             $operation();
         } catch (DriverException $error) {
-            $rejected = in_array($error->getSQLState(), ['23502', '23503', '23514', '23505', '23001', '23000'], true);
+            $rejected = in_array($error->getSQLState(), ['23502', '23503', '23514', '23505', '23001', '23000'], true)
+                || NativeConstraintRefusal::matchesSelectedCheck($error, $expectedCheck);
         }
         verify($rejected, $message);
     } finally {
@@ -75,10 +77,10 @@ try {
     $base = ['documents_id' => $document, 'itemtype' => 'Domain', 'domains_id' => $domain];
     $reject(static fn () => $connection->insert($table, $base), 'Duplicate document/domain/timeline binding is rejected');
     $reject(static fn () => $connection->insert($table, array_replace($base, ['domains_id' => 999999999])), 'Missing Domain target is rejected');
-    $reject(static fn () => $connection->insert($table, array_replace($base, ['domains_id' => 0])), 'Zero Domain subject is rejected');
-    $reject(static fn () => $connection->insert($table, array_replace($base, ['domains_id' => null])), 'Missing owning selection is rejected');
-    $reject(static fn () => $connection->insert($table, array_replace($base, ['itemtype' => 'Computer'])), 'Discriminator mismatch is rejected');
-    $reject(static fn () => $connection->insert($table, $base + ['subject_entities_id' => 0]), 'Multiple owning subjects are rejected');
+    $reject(static fn () => $connection->insert($table, array_replace($base, ['domains_id' => 0])), 'Zero Domain subject is rejected', 'glpi_documents_items_typed_item_kind');
+    $reject(static fn () => $connection->insert($table, array_replace($base, ['domains_id' => null])), 'Missing owning selection is rejected', 'glpi_documents_items_typed_item_kind');
+    $reject(static fn () => $connection->insert($table, array_replace($base, ['itemtype' => 'Computer'])), 'Discriminator mismatch is rejected', 'glpi_documents_items_typed_item_kind');
+    $reject(static fn () => $connection->insert($table, $base + ['subject_entities_id' => 0]), 'Multiple owning subjects are rejected', 'glpi_documents_items_typed_item_kind');
     $reject(static fn () => $connection->insert($table, array_replace($base, ['documents_id' => 999999999])), 'Missing containing document is rejected');
     $reject(static fn () => $connection->delete('glpi_domains', ['id' => $domain]), 'Domain deletion is restrictive');
     $reject(static fn () => $connection->delete('glpi_documents', ['id' => $document]), 'Document deletion is restrictive');

@@ -45,14 +45,15 @@ $table = 'glpi_alerts';
 $read = static fn (string $table, int $id): ?array => (new RecordRepository(Orm::create($DB)))->find($table, 'id', $id);
 $branches = EntityRegistry::discriminatedReferences($table)['items_id']['selections'];
 verify(count($branches) === 10, 'Every audited core alert producer has an owning subject');
-$reject = static function (callable $operation, string $message, ?string $omittedRequiredColumn = null) use ($connection): void {
+$reject = static function (callable $operation, string $message, ?string $omittedRequiredColumn = null, ?string $expectedCheck = null) use ($connection): void {
     $connection->beginTransaction();
     try {
         $failed = false;
         try {
             $operation();
         } catch (DriverException $error) {
-            $failed = NativeConstraintRefusal::matches($error, $omittedRequiredColumn);
+            $failed = NativeConstraintRefusal::matches($error, $omittedRequiredColumn)
+                || NativeConstraintRefusal::matchesSelectedCheck($error, $expectedCheck);
         }
         verify($failed, $message);
     } finally {
@@ -81,7 +82,7 @@ try {
     }
     foreach ([[], ['itemtype' => 'UnknownPlugin'], ['itemtype' => 'User'], ['itemtype' => 'User', 'contracts_id' => $sameId],
         ['itemtype' => 'Contract', 'contracts_id' => 0], ['itemtype' => 'User', 'users_id' => $sameId, 'contracts_id' => $sameId]] as $invalid) {
-        $reject(static fn () => $connection->insert($table, $invalid + ['type' => Alert::NOTICE]), 'Native null/unknown/missing/wrong/zero/multiple selection rejected', !array_key_exists('itemtype', $invalid) ? 'itemtype' : null);
+        $reject(static fn () => $connection->insert($table, $invalid + ['type' => Alert::NOTICE]), 'Native null/unknown/missing/wrong/zero/multiple selection rejected', !array_key_exists('itemtype', $invalid) ? 'itemtype' : null, $table . '_typed_item_kind');
     }
     $_SESSION['glpi_use_mode'] = Session::DEBUG_MODE;
     $CFG_GLPI['debug_sql'] = true;
