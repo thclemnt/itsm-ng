@@ -789,8 +789,15 @@ CHECK diagnostics derive from those properties. Source-only validation passes
 72 pure assertions, PHP syntax/style checks and diff whitespace checks. The
 [batch record](boolean-domain-enforcement.md) lists actual callers, historical
 stage boundaries, engine admission and pending provider/application evidence.
-The reviewed draft is source-rebased onto frozen combined `4dbc9f7c2e`, preserving
+The reviewed draft is source-rebased onto frozen combined `f3db6577c7`, after its
+earlier `4dbc9f7c2e` preparation, preserving
 Transfer journals/forwarding/notifications and Supplier lifecycle hooks. The
+f3 managed Kanban metadata, Document_Item refusal diagnostics and native fixes
+are also preserved. Git range comparison confirms both original feature patches
+are unchanged; their original head remains on a backup branch. Source syntax,
+formatting, 72 pure assertions and disconnected schema compilation controls
+were rerun; this is preparation evidence, not a provider pass. The separate
+cache and Session batches are not yet composed. The
 original malformed Supplier assertions now live in an explicit historical
 fixture alongside separate current native/public rejection. These fixtures remain
 unexecuted. Resource clearance precedes provider validation; this draft does not

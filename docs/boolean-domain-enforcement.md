@@ -2,7 +2,15 @@
 
 The reviewed source draft was committed as `b10cfaaeac` from
 `e71fc4c8e456cab617798d94d14f6539dfe9431a`, then rebased onto the frozen combined
-`4dbc9f7c2edeafb5e54c65d9c9a5144f9132246c` checkpoint. It has **not** run against
+`4dbc9f7c2edeafb5e54c65d9c9a5144f9132246c` checkpoint and subsequently
+`f3db6577c7324e04305c2a8cbbfbb4960ddf7c38`. Both feature patches were replayed
+without conflicts or changes (`git range-diff` reports equality), now as
+`6dbaa20241` and `6064e5d5bd`. Original head `e02f577d25` remains on
+`th/exp/postgres-boolean-domains-before-f3-rebase`. The inherited managed Kanban
+metadata, Document_Item preparation/refusal diagnostic controls and
+Transfer/native source controls remain byte-identical to f3. The separate cache
+bootstrap repair and Session authorization branch have not been composed into
+this branch. It has **not** run against
 a database, been integrated, or passed the complete portability/application
 matrix. The current combined validation checkpoint remains the one in
 [the durable modernization record](modernization-handoff.md).
@@ -102,6 +110,17 @@ and MariaDB, and none for PostgreSQL native boolean storage; this also exercised
 omitted metadata nullability as the nonnullable Doctrine default. These are source and
 pure-unit results, not PostgreSQL/MySQL/MariaDB validation.
 
+These source checks were rerun after the f3 rebase: PHP 8.2.33 lint passes for
+all nineteen scoped PHP files, PHP CS Fixer 3.95.27 sequential dry-run reports
+no changes, the 72 pure assertions pass, and the offline baseline/nullability
+and 402/402/0 CHECK generation controls pass without a connection. The formatter's
+initial parallel worker could not bind its local tool socket; its sequential
+retry passed without changing source. New evidence is
+`/workspace/itsm-env/evidence/boolean-domain-f3-pure.log`,
+`boolean-domain-f3-shape-offline.log` and `boolean-domain-f3-source-manifest.json`
+in the same directory. Prior source evidence is retained. No database/bootstrap,
+dependency copy, asset build or HTTP/browser job ran during this preparation.
+
 The prepared `boolean-domains.php` contract has not run. It exercises real
 Supplier/User/Category/SLM/Domain rows through mapped persistence and native DML,
 managed-state preservation on refusal, early public User SESSION behavior,
@@ -124,7 +143,10 @@ remain on the current schema. No ordinary bootstrap readiness bypass is added.
 
 Next validation must use owned disposable databases after the current resource
 hold. Both the rebased implementation and Supplier historical fixture remain
-unexecuted. Execute the prepared
+unexecuted. Validate and integrate this enforcement before the pending Session
+authorization persistence batch: its entity-declared boolean grant hydration
+relies on the canonical zero/one invariant, not a separate Session flag registry.
+Execute the prepared
 producer-receipt drift cases, then extend nullable NULL
 and multi-table invalid-data diagnostics, Oracle MySQL NOT ENFORCED and MariaDB
 disabled-session diagnostics, catalogue visibility/duplicate-name cases, and
