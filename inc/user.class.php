@@ -5123,16 +5123,28 @@ class User extends CommonDBTM
             $hash = Auth::getPasswordHash($token);
         }
 
+        // Capture the requested outcome before public hooks can change input.
+        $issuedAt = $_SESSION['glpi_currenttime'];
+        $cookieIssuedAt = $field === 'cookie_token' ? new DateTimeImmutable($issuedAt) : null;
+
         // save this token in db
         if (!$this->update(['id'        => $this->getID(),
                        $field           => $hash,
-                       $field . "_date" => $_SESSION['glpi_currenttime']])) {
+                       $field . "_date" => $issuedAt])) {
             return false;
         }
         // User preparation can remove protected fields, and public hooks may
         // alter persistence. Verify the stored value on the supplied writer;
         // a mutable model field is not evidence of an accepted credential.
-        if ((new UserRepository(Orm::create($DB)))->tokenValue((int)$this->getID(), $field) !== $hash) {
+        $repository = new UserRepository(Orm::create($DB));
+        if ($cookieIssuedAt !== null) {
+            // The real cookie consumer also requires its timestamp. Preserve
+            // accepted hook mutations/history, but issue no raw credential if
+            // either persisted part differs from the requested outcome.
+            if (!$repository->cookieCredential((int)$this->getID())?->matchesRequested($hash, $cookieIssuedAt)) {
+                return false;
+            }
+        } elseif ($repository->tokenValue((int)$this->getID(), $field) !== $hash) {
             return false;
         }
 

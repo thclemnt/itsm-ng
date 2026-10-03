@@ -6,6 +6,7 @@ namespace itsmng\Database\Repository;
 
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use itsmng\Database\CookieCredential;
 use itsmng\Database\Entity\ProfileUser;
 use itsmng\Database\Entity\User;
 use itsmng\Database\Entity\UserEmail;
@@ -78,6 +79,16 @@ final class UserRepository
             ->where('r.id = :user')->setParameter('user', $user, Types::INTEGER)
             ->setMaxResults(1)->getQuery()->getScalarResult();
         return $rows[0]['token'] ?? null;
+    }
+
+    /** Read both owning properties together, without a managed User snapshot. */
+    public function cookieCredential(int $user): ?CookieCredential
+    {
+        $rows = $this->em->createQueryBuilder()->from(User::class, 'u')
+            ->select('u.cookie_token AS hash, u.cookie_token_date AS issuedAt')
+            ->where('u.id = :user')->setParameter('user', $user, Types::INTEGER)
+            ->setMaxResults(1)->getQuery()->getArrayResult();
+        return $rows === [] ? null : new CookieCredential($rows[0]['hash'], $rows[0]['issuedAt']);
     }
 
     /** Directory imports accept either a login or any of the account's email addresses. */
