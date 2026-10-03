@@ -130,7 +130,9 @@ final class WideIdentifiers
             $generated = $generatedColumns[$name];
             $generatedNames = array_column($generated, 'column_name');
             $indexes = [];
-            foreach ($manager->listTableIndexes($name) as $index) {
+            // Only generated columns require native index drop/restore. DBAL's
+            // Table snapshot can also contain synthetic FK-support indexes.
+            foreach ($generatedNames === [] ? [] : $manager->listTableIndexes($name) as $index) {
                 if (array_intersect($index->getColumns(), $generatedNames)) {
                     if ($index->isPrimary()) {
                         throw new \RuntimeException('Generated primary key requires explicit upgrade handling: ' . $name);
