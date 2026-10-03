@@ -367,17 +367,70 @@ class Computer extends DbTestCase
     {
         global $DB;
 
-        $iter = $DB->request(['SELECT' => 'id',
-                              'FROM'   => 'glpi_computers']);
+        // DbTestCase rolls back these owned records after this method.
+        $names = [];
+        foreach (['first', 'second'] as $suffix) {
+            $name = $this->getUniqueString() . ' ' . $suffix;
+            $id = (new \Computer())->add(\Toolbox::addslashes_deep(['name' => $name]));
+            $this->integer((int)$id)->isGreaterThan(0);
+            $names[(int)$id] = $name;
+        }
+        $iter = $DB->request([
+            'SELECT' => 'id',
+            'FROM' => 'glpi_computers',
+            'WHERE' => ['id' => array_keys($names)],
+            'ORDER' => 'id ASC',
+        ]);
+        $this->integer(count($iter))->isIdenticalTo(2);
+        foreach ($iter as $row) {
+            $this->array($row)->hasSize(1)->hasKey('id');
+        }
         $prev = false;
+        $retrieved = [];
         foreach (\Computer::getFromIter($iter) as $comp) {
             $this->object($comp)->isInstanceOf('Computer');
             $this->array($comp->fields)
                ->hasKey('name')
                ->string['name']->isNotEqualTo($prev);
+            $this->string($comp->fields['name'])->isIdenticalTo($names[(int)$comp->getID()]);
             $prev = $comp->fields['name'];
+            $retrieved[] = (int)$comp->getID();
         }
         $this->boolean((bool)$prev)->isTrue(); // we are retrieve something
+        $this->array($retrieved)->isIdenticalTo(array_keys($names))->hasSize(2);
+
+        // A nullable stored name is legitimate; an ID-only iterator must reload
+        // the other persisted fields without replacing NULL with an empty name.
+        $marker = $this->getUniqueString();
+        $manager = \itsmng\Database\Orm::create($DB);
+        try {
+            $nullableId = (new \itsmng\Database\Repository\RecordWriter($manager))->insert(
+                'glpi_computers',
+                ['entities_id' => 0, 'name' => null, 'serial' => $marker]
+            );
+        } finally {
+            $manager->clear();
+        }
+        $this->integer($nullableId)->isGreaterThan(0);
+        $nullableIter = $DB->request([
+            'SELECT' => 'id',
+            'FROM' => 'glpi_computers',
+            'WHERE' => ['id' => $nullableId],
+        ]);
+        $this->integer(count($nullableIter))->isIdenticalTo(1);
+        foreach ($nullableIter as $row) {
+            $this->array($row)->hasSize(1)->hasKey('id');
+        }
+        $nullableCount = 0;
+        foreach (\Computer::getFromIter($nullableIter) as $comp) {
+            $this->object($comp)->isInstanceOf('Computer');
+            $this->integer((int)$comp->getID())->isIdenticalTo($nullableId);
+            $this->array($comp->fields)->hasKeys(['name', 'serial']);
+            $this->variable($comp->fields['name'])->isNull();
+            $this->string($comp->fields['serial'])->isIdenticalTo($marker);
+            ++$nullableCount;
+        }
+        $this->integer($nullableCount)->isIdenticalTo(1);
     }
 
     public function testGetFromDbByCrit()
