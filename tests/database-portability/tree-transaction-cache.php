@@ -188,7 +188,11 @@ try {
         && !$cache->has($ancestorKey([$idleChild])), 'Array requests neither admit nor publish aggregate ancestry keys after a committed move');
     $remember($ancestorKey([]));
     $remember($ancestorKey([0]));
+    $cache->set($ancestorKey([]), [0 => 0]);
+    $cache->set($ancestorKey([0]), [$idleParent => $idleParent]);
     verify(getAncestorsOf('glpi_entities', []) === [] && getAncestorsOf('glpi_entities', [0]) === [], 'Empty and root-only array ancestry retain their exact empty result');
+    $_SESSION['glpiactiveentities'] = [];
+    verify(!Session::haveAccessToEntity(0, true), 'An actual empty active entity scope cannot gain recursive root access from a poisoned aggregate cache');
 } catch (Throwable $error) {
     $primary = $error;
 } finally {

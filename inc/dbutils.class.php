@@ -891,6 +891,12 @@ final class DbUtils
             $ckey .= $table . '_' . $items_id;
         }
         $ancestors = [];
+        if (is_array($items_id) && $items_id === []) {
+            if (Toolbox::useCache()) {
+                $GLPI_CACHE->delete($ckey);
+            }
+            return [];
+        }
         // Aggregate keys have no owning node whose move can invalidate them.
         $sharedAncestors = !$privateTree && !is_array($items_id);
 
