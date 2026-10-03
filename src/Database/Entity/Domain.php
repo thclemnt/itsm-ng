@@ -9,6 +9,7 @@ use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
+#[ORM\HasLifecycleCallbacks]
 #[ORM\Table(name: 'glpi_domains')]
 #[ORM\Index(name: 'domains_suppliers_id', columns: ['suppliers_id'])]
 class Domain
@@ -69,4 +70,51 @@ class Domain
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_creation = null;
+
+    /** The commercial supplier must be local or a recursive ancestor of this owner. */
+    public function assertCommercialSupplierOwnership(): void
+    {
+        if ($this->suppliers === null) {
+            return;
+        }
+        $owner = $this->entities;
+        $supplierOwner = $this->suppliers->entities;
+        if ($owner === null || $supplierOwner === null) {
+            throw new \InvalidArgumentException('Domain commercial supplier requires valid owner entities.');
+        }
+        $same = static fn (Entity $first, Entity $second): bool => $first === $second
+            || ($first->id !== null && $second->id !== null && $first->id === $second->id);
+        if ($same($owner, $supplierOwner)) {
+            return;
+        }
+        if ($this->suppliers->is_recursive) {
+            $visited = new \SplObjectStorage();
+            $identifiers = [];
+            while ($owner !== null) {
+                if ($visited->contains($owner) || ($owner->id !== null && isset($identifiers[$owner->id]))) {
+                    throw new \InvalidArgumentException('Domain commercial supplier owner hierarchy contains a cycle.');
+                }
+                $visited->attach($owner);
+                if ($owner->id !== null) {
+                    $identifiers[$owner->id] = true;
+                }
+                $owner = $owner->parent;
+                if ($owner !== null && $same($owner, $supplierOwner)) {
+                    return;
+                }
+            }
+        }
+        throw new \InvalidArgumentException('Domain commercial supplier must belong to its owner entity or a recursive ancestor.');
+    }
+
+    #[ORM\PrePersist]
+    #[ORM\PreUpdate]
+    #[ORM\PreFlush]
+    public function validateCommercialSupplierOwnership(\Doctrine\Persistence\Event\LifecycleEventArgs|\Doctrine\ORM\Event\PreFlushEventArgs $event): void
+    {
+        (new \itsmng\Database\Repository\DomainRepository($event->getObjectManager()))
+            ->assertSupplierBoolean($this->suppliers);
+        $this->assertCommercialSupplierOwnership();
+    }
+
 }

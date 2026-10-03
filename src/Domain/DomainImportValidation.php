@@ -187,8 +187,11 @@ final class DomainImportValidation
                 $this->scope($type['entities_id'], $type['is_recursive'], $domain['entities_id'], 'glpi_domains.' . $domain['id'] . '.domaintypes_id');
             }
             if (($domain['suppliers_id'] ?? null) !== null) {
-                $supplier = $this->em->find(\itsmng\Database\Entity\Supplier::class, $domain['suppliers_id']);
-                $this->scope($supplier->entities->id, $supplier->is_recursive, $domain['entities_id'], 'glpi_domains.' . $domain['id'] . '.suppliers_id');
+                try {
+                    (new \itsmng\Database\Repository\DomainRepository($this->em))->assertCommercialSupplierAssignment($domain);
+                } catch (\InvalidArgumentException $error) {
+                    throw new \RuntimeException('Domains import entity scope mismatch: glpi_domains.' . $domain['id'] . '.suppliers_id; ' . $error->getMessage(), 0, $error);
+                }
             }
         }
         $domains = $this->domains($records);

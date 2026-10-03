@@ -14,6 +14,68 @@ final class DomainRepository
     {
     }
 
+    /** Validate the effective public assignment without changing a managed record. */
+    public function assertCommercialSupplierAssignment(array $input, ?int $id = null): void
+    {
+        $metadata = $this->em->getClassMetadata(Entity\Domain::class);
+        foreach (['entities_id', 'suppliers_id'] as $column) {
+            if (array_key_exists($column, $input)) {
+                $input[$column] = \itsmng\Database\LegacyValues::decode($input[$column]);
+            }
+        }
+        $input = \itsmng\Database\ReferenceValues::normalizeLegacy($metadata->getTableName(), $input);
+        if ($id !== null) {
+            $stored = $this->em->find(Entity\Domain::class, $id);
+            if ($stored === null) {
+                throw new \InvalidArgumentException('Domain commercial supplier assignment requires an existing Domain.');
+            }
+            $candidate = clone $stored;
+        } else {
+            $candidate = new Entity\Domain();
+            $ownerDefault = $metadata->getAssociationMapping('entities')->joinColumns[0]->options['default'];
+            $candidate->entities = $this->em->find(Entity\Entity::class, $ownerDefault);
+        }
+        if (array_key_exists('entities_id', $input)) {
+            $candidate->entities = $this->em->find(Entity\Entity::class, self::identifier($input['entities_id'], true));
+        }
+        if ($candidate->entities === null) {
+            throw new \InvalidArgumentException('Domain commercial supplier assignment requires a valid Domain owner.');
+        }
+        if (array_key_exists('suppliers_id', $input)) {
+            $candidate->suppliers = $input['suppliers_id'] === null ? null
+                : $this->em->find(Entity\Supplier::class, self::identifier($input['suppliers_id']));
+            if ($input['suppliers_id'] !== null && $candidate->suppliers === null) {
+                throw new \InvalidArgumentException('Domain commercial supplier does not exist.');
+            }
+        }
+        $this->assertSupplierBoolean($candidate->suppliers);
+        $candidate->assertCommercialSupplierOwnership();
+    }
+
+    /** MySQL BOOLEAN storage must not reinterpret legacy 2 as a recursive grant. */
+    public function assertSupplierBoolean(?Entity\Supplier $supplier): void
+    {
+        if ($supplier === null || $supplier->id === null || $this->em->getUnitOfWork()->isScheduledForInsert($supplier)) {
+            return;
+        }
+        $valid = $this->em->createQueryBuilder()->select('COUNT(s.id)')->from(Entity\Supplier::class, 's')
+            ->where('s.id = :id AND (s.is_recursive = :recursive OR s.is_recursive = :local)')
+            ->setParameter('id', $supplier->id, Types::BIGINT)
+            ->setParameter('recursive', true, Types::BOOLEAN)->setParameter('local', false, Types::BOOLEAN)
+            ->getQuery()->getSingleScalarResult();
+        if ((int)$valid !== 1) {
+            throw new \InvalidArgumentException('Domain commercial supplier has a missing record or invalid recursive flag; repair its zero/one flag before assignment.');
+        }
+    }
+
+    private static function identifier(mixed $value, bool $rootAllowed = false): int
+    {
+        if (is_bool($value) || filter_var($value, FILTER_VALIDATE_INT) === false || (int)$value < ($rootAllowed ? 0 : 1)) {
+            throw new \InvalidArgumentException('Domain commercial supplier assignment requires valid owner and supplier identifiers.');
+        }
+        return (int)$value;
+    }
+
     private function supplierQuery(int $supplier, array $scope): \Doctrine\ORM\QueryBuilder
     {
         $query = $this->em->createQueryBuilder()->from(Entity\Domain::class, 'r')

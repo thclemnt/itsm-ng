@@ -384,8 +384,22 @@ class Domain extends CommonDropdown
         return $ong;
     }
 
-    private function prepareInput($input)
+    private function prepareInput($input, bool $updating = false)
     {
+        global $DB;
+
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            (new \itsmng\Database\Repository\DomainRepository($em))->assertCommercialSupplierAssignment(
+                $input,
+                $updating ? (int)$this->getID() : null
+            );
+        } catch (\InvalidArgumentException $error) {
+            Session::addMessageAfterRedirect($error->getMessage(), ERROR, true);
+            return false;
+        } finally {
+            $em->close();
+        }
         if (isset($input['date_creation']) && empty($input['date_creation'])) {
             $input['date_creation'] = 'NULL';
         }
@@ -396,6 +410,22 @@ class Domain extends CommonDropdown
         return $input;
     }
 
+    /** Pure coherence preflight used before the transfer coordinator changes auxiliaries. */
+    public function validateEntityTransfer(int $destination): void
+    {
+        global $DB;
+
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            (new \itsmng\Database\Repository\DomainRepository($em))->assertCommercialSupplierAssignment(
+                ['entities_id' => $destination],
+                (int)$this->getID()
+            );
+        } finally {
+            $em->close();
+        }
+    }
+
     public function prepareInputForAdd($input)
     {
         return $this->prepareInput($input);
@@ -403,7 +433,7 @@ class Domain extends CommonDropdown
 
     public function prepareInputForUpdate($input)
     {
-        return $this->prepareInput($input);
+        return $this->prepareInput($input, true);
     }
 
     public function showForm($ID, $options = [])
