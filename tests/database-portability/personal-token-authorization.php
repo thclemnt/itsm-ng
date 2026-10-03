@@ -46,6 +46,12 @@ $nesting = $connection->getTransactionNestingLevel();
 $connection->beginTransaction();
 try {
     $CFG_GLPI['use_notifications'] = false;
+    // Account admission uses the application/session wall clock. Keep both
+    // relative boundaries inside the preserved portable native TIMESTAMP range.
+    $admissionClock = new DateTimeImmutable($_SESSION['glpi_currenttime']);
+    $pastAdmission = $admissionClock->modify('-1 day')->format('Y-m-d H:i:s');
+    $futureAdmission = $admissionClock->modify('+1 day')->format('Y-m-d H:i:s');
+    verify($pastAdmission > '1970-01-03 00:00:00' && $futureAdmission < '2038-01-17 00:00:00', 'Fixture session clock permits past/future admission dates within both native TIMESTAMP domains');
     $fixtures = new FixtureRecords($DB);
     $prefix = 'Personal token ' . bin2hex(random_bytes(5));
     $parent = $fixtures->create('glpi_entities', ['name' => $prefix . ' parent']);
@@ -104,7 +110,7 @@ try {
         verify($events === [], 'Invalid token invokes no initialization/change hooks');
     }
     foreach (['inactive' => ['is_active' => false], 'deleted' => ['is_deleted' => true],
-        'future' => ['begin_date' => '2099-01-01 00:00:00'], 'expired' => ['end_date' => '2000-01-01 00:00:00']] as $reason => $changes) {
+        'future' => ['begin_date' => $futureAdmission], 'expired' => ['end_date' => $pastAdmission]] as $reason => $changes) {
         (new RecordWriter(Orm::create($DB)))->update('glpi_users', $users['direct'], $changes);
         $before = $priorContext();
         verify(Session::authWithToken($tokens['direct'], 'personal_token', $foreign, true) === false, $reason . ': matched token does not bypass the owning account/date admission policy');
@@ -191,7 +197,7 @@ try {
     $restored($before, 'Throwing hook');
     unset($PLUGIN_HOOKS['init_session']['personal_token_fixture']);
 
-    (new RecordWriter(Orm::create($DB)))->update('glpi_users', $users['direct'], ['begin_date' => '2000-01-01 00:00:00', 'end_date' => '2099-01-01 00:00:00']);
+    (new RecordWriter(Orm::create($DB)))->update('glpi_users', $users['direct'], ['begin_date' => $pastAdmission, 'end_date' => $futureAdmission]);
     $accepted = Session::authWithToken($tokens['direct'], 'personal_token', $parent, false);
     verify($accepted instanceof User && $accepted->getID() === $users['direct']
         && $_SESSION['glpiactiveentities'] === [$parent => $parent] && $_SESSION['glpigroups'] === [$group]

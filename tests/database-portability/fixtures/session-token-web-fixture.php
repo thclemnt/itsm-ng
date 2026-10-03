@@ -70,6 +70,13 @@ $save = static function () use ($path, &$state): void {
 if ($action === 'seed') {
     $save();
     $connection->transactional(static function () use ($DB, &$state): void {
+        $admissionClock = new DateTimeImmutable($_SESSION['glpi_currenttime']);
+        $pastAdmission = $admissionClock->modify('-1 day');
+        $futureAdmission = $admissionClock->modify('+1 day');
+        if ($pastAdmission->format('Y-m-d H:i:s') <= '1970-01-03 00:00:00'
+            || $futureAdmission->format('Y-m-d H:i:s') >= '2038-01-17 00:00:00') {
+            throw new RuntimeException('Fixture session clock cannot provide portable native TIMESTAMP admission boundaries');
+        }
         $fixtures = new FixtureRecords($DB);
         $create = static function (string $type, array $values) use ($fixtures, &$state): int {
             $id = $fixtures->create($type::getTable(), $values);
@@ -115,8 +122,8 @@ if ($action === 'seed') {
                 'authtype' => Auth::DB_GLPI, 'profiles_id' => $state['profile'], 'entities_id' => $entity,
                 'personal_token' => $state['personalTokens'][$kind], 'cookie_token' => null, 'cookie_token_date' => null,
                 'is_active' => $kind !== 'inactive', 'is_deleted' => $kind === 'deleted',
-                'begin_date' => $kind === 'future' ? new DateTimeImmutable('+10 years') : null,
-                'end_date' => $kind === 'expired' ? new DateTimeImmutable('-10 years') : null,
+                'begin_date' => $kind === 'future' ? $futureAdmission : null,
+                'end_date' => $kind === 'expired' ? $pastAdmission : null,
                 'language' => 'en_GB', 'use_mode' => Session::NORMAL_MODE,
                 'password_last_update' => new DateTimeImmutable(),
             ]);
