@@ -128,16 +128,20 @@ try {
         $model = getItemForItemtype($type);
         // Assigned public creation avoids reusing either native rows or orphaned
         // native item history. No existing tree cache or history needs restoration.
-        $first = 1000 + max((int)$connection->fetchOne('SELECT COALESCE(MAX(id), 0) FROM ' . $connection->quoteIdentifier($table)),
-            (int)$connection->fetchOne('SELECT COALESCE(MAX(items_id), 0) FROM glpi_logs WHERE itemtype = ?', [$type]));
+        $first = 1000 + max(
+            (int)$connection->fetchOne('SELECT COALESCE(MAX(id), 0) FROM ' . $connection->quoteIdentifier($table)),
+            (int)$connection->fetchOne('SELECT COALESCE(MAX(items_id), 0) FROM glpi_logs WHERE itemtype = ?', [$type])
+        );
         [$root, $other, $child, $leaf] = range($first, $first + 3);
         foreach ([$root => null, $other => null, $child => $root, $leaf => $child] as $id => $parent) {
             $name = $prefix . ' ' . $type . ' ' . $id;
             verify(!$connection->fetchOne('SELECT COUNT(*) FROM ' . $connection->quoteIdentifier($table) . ' WHERE id = ?', [$id])
                 && !$connection->fetchOne('SELECT COUNT(*) FROM glpi_logs WHERE itemtype = ? AND items_id = ?', [$type, $id]), 'Committed identity owns no native row or history: ' . $table);
             $owned[] = ['table' => $table, 'type' => $type, 'id' => $id, 'names' => [$name]];
-            verify($model->addWithAssignedIdentifier($id, ['name' => $name, $column => $parent, 'entities_id' => 0]) === $id,
-                'Committed public tree creation: ' . $table);
+            verify(
+                $model->addWithAssignedIdentifier($id, ['name' => $name, $column => $parent, 'entities_id' => 0]) === $id,
+                'Committed public tree creation: ' . $table
+            );
         }
         verify(!$connection->isTransactionActive() && $model->getFromDB($root) && $model->fields[$column] === null, 'Committed public roots remain NULL on the idle connection: ' . $table);
         $sons = getSonsOf($table, $root);
