@@ -968,31 +968,27 @@ class Toolbox
 
 
     /**
-     *  Add slash for variable & array
+     * Escape string leaves without changing typed values in nested input arrays.
      *
-     * @param string|string[] $value value to add slashes
+     * @param mixed $value input to escape
      *
-     * @return string|string[]
+     * @return mixed input with escaped strings and preserved scalar types
     **/
     public static function addslashes_deep($value)
     {
         global $DB;
 
-        $value = ((array) $value === $value)
-                    ? array_map([__CLASS__, 'addslashes_deep'], $value)
-                    : (
-                        is_null($value)
-                         ? null : (is_resource($value) || is_object($value)
-                         ? $value : $DB->escape(
-                             str_replace(
-                                 ['&#039;', '&#39;', '&#x27;', '&apos;', '&quot;'],
-                                 ["'", "'", "'", "'", "\""],
-                                 $value
-                             )
-                         ))
-                    );
-
-        return $value;
+        if (is_array($value)) {
+            return array_map([__CLASS__, 'addslashes_deep'], $value);
+        }
+        if (!is_string($value)) {
+            return $value;
+        }
+        return $DB->escape(str_replace(
+            ['&#039;', '&#39;', '&#x27;', '&apos;', '&quot;'],
+            ["'", "'", "'", "'", "\""],
+            $value
+        ));
     }
 
 

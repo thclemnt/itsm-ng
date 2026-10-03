@@ -325,9 +325,24 @@ try {
     $connection->update('glpi_logs', ['itemtype_link' => DomainPluginSource::TYPE], ['id' => $history]);
     $pluginProperty->setValue(null, [...$savedPlugins, 'domain_import_fixture']);
     $created = [];
+    foreach ([DomainType::class => $export['glpi_plugin_domains_domaintypes'], Domain::class => $export['glpi_plugin_domains_domains']] as $model => $rows) {
+        $sourceFlags = [];
+        foreach ($rows as $row) {
+            $sourceFlags[$row['id']] = array_intersect_key($row, array_fill_keys(['is_recursive', 'is_deleted', 'is_helpdesk_visible'], true));
+        }
+        $PLUGIN_HOOKS['pre_item_add']['domain_import_fixture'][$model] = static function ($item) use ($sourceFlags): void {
+            verify(is_int($item->input['id']), 'Domains pre-add hook retains the normalized native wide identifier');
+            foreach ($sourceFlags[$item->input['id']] as $column => $value) {
+                verify($item->input[$column] === (bool)$value, 'Domains pre-add hook retains normalized true/false source flags: ' . $column);
+            }
+        };
+    }
     foreach ([DomainType::class, Domain::class, Domain_Item::class] as $model) {
         $PLUGIN_HOOKS['item_add']['domain_import_fixture'][$model] = static function ($item) use (&$created): void {
             verify(!array_key_exists('clone', $item->input), 'Assigned-ID import runs the real lifecycle without clone bypass');
+            if ($item instanceof DomainType || $item instanceof Domain) {
+                verify(in_array($item->input['is_recursive'], [0, 1], true), 'Domains actual add hook retains the lifecycle zero/one recursion representation');
+            }
             $created[] = [$item->getType(), $item->getID()];
         };
     }

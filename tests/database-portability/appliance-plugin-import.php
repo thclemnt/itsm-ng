@@ -260,10 +260,21 @@ try {
     $pluginProperty->setValue(null, [...$savedPlugins, 'orm_import_fixture']);
     $created = [];
     $profileUpdates = 0;
+    $applianceInputHook = static function ($item) use ($applianceIds): void {
+        verify(
+            is_int($item->input['id']) && $item->input['is_recursive'] === true && $item->input['is_deleted'] === false,
+            'Importer pre-add hook receives the normalized wide ID and true/false flags without text coercion'
+        );
+        verify($item->input['is_helpdesk_visible'] === ($item->input['id'] !== $applianceIds[0]), 'Importer pre-add hook retains both visibility states');
+    };
+    $PLUGIN_HOOKS['pre_item_add']['orm_import_fixture'][Appliance::class] = $applianceInputHook;
     foreach ([ApplianceType::class, ApplianceEnvironment::class, Appliance::class, Appliance_Item::class, Appliance_Item_Relation::class] as $model) {
         $PLUGIN_HOOKS['item_add']['orm_import_fixture'][$model] = static function ($item) use (&$created): void {
             verify(!array_key_exists('clone', $item->input), 'Imported creation is never disguised as a clone');
             verify($GLOBALS['CFG_GLPI']['auto_create_infocoms'] === false, 'Source financial ownership is retained without automatic duplicate creation');
+            if ($item instanceof Appliance) {
+                verify($item->input['is_deleted'] === 0 && $item->input['is_recursive'] === 1, 'Actual add hook retains the lifecycle zero/one flag representation');
+            }
             $created[] = [$item->getType(), $item->getID()];
         };
     }
@@ -310,7 +321,7 @@ try {
     rejected(fn () => $importer->import(), 'changed the assigned identity');
     verify($counts() === $before, 'Hook identity rewrite refuses before persisting its appliance and rolls back earlier owners');
     verify((new ReflectionProperty(CommonDBTM::class, 'assignedIdentifier'))->getValue($failedCreation) === null, 'Failed assigned-ID creation restores its scoped clone bypass');
-    unset($PLUGIN_HOOKS['pre_item_add']['orm_import_fixture'][Appliance::class]);
+    $PLUGIN_HOOKS['pre_item_add']['orm_import_fixture'][Appliance::class] = $applianceInputHook;
     $created = [];
     $profileUpdates = 0;
     rejected(fn () => $importer->import(static function (string $event, string $table) use ($fixtures, $typeId): void {
