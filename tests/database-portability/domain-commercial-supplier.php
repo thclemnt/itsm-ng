@@ -2,7 +2,12 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use Doctrine\DBAL\Platforms\MySQLPlatform;
+use itsmng\Database\BooleanDomainSchema;
 use itsmng\Database\Entity as Record;
+use itsmng\Database\Migration\BooleanDomains20261008;
+use itsmng\Database\Migration\Ledger;
+use itsmng\Database\Migration\LegacyToOrm;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\SchemaCheck;
@@ -262,14 +267,17 @@ try {
     $em->close();
 
     if ($DB->getProvider() !== 'pgsql') {
-        $malformed = $fixtures->create('glpi_suppliers', ['name' => $prefix . ' malformed', 'entities_id' => 0]);
-        $connection->update('glpi_suppliers', ['is_recursive' => 2], ['id' => $malformed]);
-        $refused(static fn (): bool => (new Domain())->update(['id' => $id, 'suppliers_id' => $malformed]), 'Legacy MySQL flag2 cannot grant recursive supplier ownership');
-        $ormReject(static function ($em) use ($id, $malformed): void {
-            $record = $em->find(Record\Domain::class, $id);
-            $record->suppliers = $em->find(Record\Supplier::class, $malformed);
-            $em->flush();
-        }, 'Native ORM rejects hydrated truthy legacy flag2');
+        $malformed = $fixtures->create('glpi_suppliers', ['name' => $prefix . ' current flag', 'entities_id' => 0]);
+        $beforeSupplier = $read('glpi_suppliers', $malformed);
+        $nativeRejected = false;
+        try {
+            $connection->update('glpi_suppliers', ['is_recursive' => 2], ['id' => $malformed]);
+        } catch (\Doctrine\DBAL\Exception) {
+            $nativeRejected = true;
+        }
+        verify($nativeRejected && $read('glpi_suppliers', $malformed) === $beforeSupplier, 'Current native Supplier schema rejects raw flag2');
+        verify((new Supplier())->update(['id' => $malformed, 'is_recursive' => 2]) === false
+            && $read('glpi_suppliers', $malformed) === $beforeSupplier, 'Current public Supplier rejects malformed flag2 before preparation');
     }
     // A post-prepare extension cannot bypass the persistence backstop.
     $PLUGIN_HOOKS['post_prepareadd']['commercial_supplier_fixture'][Domain::class] = static function (Domain $item) use ($outside): void {
@@ -295,6 +303,65 @@ try {
     $CFG_GLPI = $configuration;
     $PLUGIN_HOOKS = $hooks;
     $plugins->setValue(null, $activePlugins);
+}
+// Retain the original malformed-legacy guard assertions in an explicitly
+// historical Supplier fixture. MySQL CHECK DDL is outside both data frames;
+// dropping a CHECK inside the canonical transaction would commit its rows.
+if ($DB->getProvider() !== 'pgsql') {
+    verify(!$connection->isTransactionActive(), 'Historical CHECK fixture owns an idle disposable connection');
+    $platform = $connection->getDatabasePlatform();
+    $definition = BooleanDomains20261008::definitions()['glpi_suppliers']['is_recursive'];
+    $checkName = $definition['check'];
+    $receipt = Ledger::state($connection, BooleanDomains20261008::VERSION);
+    verify(($receipt['complete'] ?? false) === true, 'Current canonical flag history completed before the historical fixture');
+    $catalog = BooleanDomainSchema::catalog($connection);
+    $check = $catalog['checks']['glpi_suppliers'][$checkName];
+    $historicalSession = $_SESSION;
+    $historicalConfiguration = $CFG_GLPI;
+    try {
+        $connection->executeStatement('ALTER TABLE glpi_suppliers' . ($platform instanceof MySQLPlatform ? ' DROP CHECK ' : ' DROP CONSTRAINT ') . $platform->quoteIdentifier($checkName));
+        $connection->delete(LegacyToOrm::LEDGER, ['version' => BooleanDomains20261008::VERSION]);
+        $connection->beginTransaction();
+        $fixtures = new FixtureRecords($DB);
+        $prefix = 'Historical commercial supplier ' . bin2hex(random_bytes(5));
+        $owner = (int)(new Entity())->add(['name' => $prefix . ' owner', 'entities_id' => 0]);
+        verify($owner > 0, 'Historical malformed fixture has a real positive Domain owner');
+        $same = $fixtures->create('glpi_suppliers', ['name' => $prefix . ' local', 'entities_id' => $owner]);
+        $malformed = $fixtures->create('glpi_suppliers', ['name' => $prefix . ' malformed ancestor', 'entities_id' => 0]);
+        $historicalFinancialSupplier = $fixtures->create('glpi_suppliers', ['name' => $prefix . ' financial', 'entities_id' => $owner]);
+        $_SESSION['glpiactiveentities'] = [$owner];
+        $_SESSION['glpiactiveentities_string'] = (string)$owner;
+        $_SESSION['glpiactive_entity'] = $owner;
+        $_SESSION['glpiparententities'] = [0];
+        $_SESSION['glpishowallentities'] = false;
+        $CFG_GLPI['use_notifications'] = false;
+        $id = (int)(new Domain())->add(['name' => $prefix . ' domain', 'entities_id' => $owner, 'suppliers_id' => $same]);
+        verify($id > 0, 'Historical fixture has a valid public local commercial assignment');
+        $financial = $fixtures->create('glpi_infocoms', ['itemtype' => Domain::class, 'items_id' => $id, 'entities_id' => $owner, 'suppliers_id' => $historicalFinancialSupplier]);
+        $connection->update('glpi_suppliers', ['is_recursive' => 2], ['id' => $malformed]);
+        verify((int)$connection->fetchOne('SELECT is_recursive FROM glpi_suppliers WHERE id = ?', [$malformed]) === 2, 'Historical fixture really stores the malformed scalar before ORM hydration');
+        $before = [$read('glpi_domains', $id), $read('glpi_infocoms', $financial), $counts()];
+        $message = 'Legacy MySQL flag2 cannot grant recursive supplier ownership';
+        verify((new Domain())->update(['id' => $id, 'suppliers_id' => $malformed]) === false, $message);
+        verify([$read('glpi_domains', $id), $read('glpi_infocoms', $financial), $counts()] === $before, 'Refusal preserves Domain, financial supplier, history and notifications: ' . $message);
+        $ormReject(static function ($em) use ($id, $malformed): void {
+            $record = $em->find(Record\Domain::class, $id);
+            $record->suppliers = $em->find(Record\Supplier::class, $malformed);
+            $em->flush();
+        }, 'Native ORM rejects hydrated truthy legacy flag2');
+    } finally {
+        while ($connection->isTransactionActive()) {
+            $connection->rollBack();
+        }
+        if (!isset(BooleanDomainSchema::catalog($connection)['checks']['glpi_suppliers'][$checkName])) {
+            $connection->executeStatement('ALTER TABLE glpi_suppliers ADD CONSTRAINT ' . $platform->quoteIdentifier($checkName) . ' CHECK (' . $check['clause'] . ')'
+                . ($platform instanceof MySQLPlatform ? ' ENFORCED' : ''));
+        }
+        Ledger::save($connection, BooleanDomains20261008::VERSION, $receipt);
+        $_SESSION = $historicalSession;
+        $CFG_GLPI = $historicalConfiguration;
+    }
+    verify(BooleanDomainSchema::catalog($connection) === $catalog && Ledger::state($connection, BooleanDomains20261008::VERSION) === $receipt, 'Historical malformed fixture restores current native schema and receipt exactly');
 }
 verify((new SchemaCheck())->differences($connection) === [], 'Canonical schema after tests');
 echo $DB->getProvider() . ": authoritative commercial supplier scope, public/REST/native ORM, NULL/absence, clone, retarget and purge passed.\n";

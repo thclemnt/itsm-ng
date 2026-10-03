@@ -52,6 +52,18 @@ final class BooleanDomainSchema
                 $checks[$check['table_name']][$check['constraint_name']] = $check;
             }
         }
+        // Catalogue row order is not a schema property. Stable maps make
+        // read-only comparisons and retry snapshots independent of DDL order.
+        ksort($columns);
+        foreach ($columns as &$tableColumns) {
+            ksort($tableColumns);
+        }
+        unset($tableColumns);
+        ksort($checks);
+        foreach ($checks as &$tableChecks) {
+            ksort($tableChecks);
+        }
+        unset($tableChecks);
         return ['mysql' => $mysql, 'columns' => $columns, 'checks' => $checks];
     }
 

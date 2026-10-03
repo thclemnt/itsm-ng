@@ -1,9 +1,10 @@
 # Boolean domain enforcement: source draft
 
-This batch is prepared in isolation from application source
-`e71fc4c8e456cab617798d94d14f6539dfe9431a`. It has **not** run against a database,
-been integrated, or passed the complete portability/application matrix. The
-current combined validation checkpoint remains the one in
+The reviewed source draft was committed as `b10cfaaeac` from
+`e71fc4c8e456cab617798d94d14f6539dfe9431a`, then rebased onto the frozen combined
+`4dbc9f7c2edeafb5e54c65d9c9a5144f9132246c` checkpoint. It has **not** run against
+a database, been integrated, or passed the complete portability/application
+matrix. The current combined validation checkpoint remains the one in
 [the durable modernization record](modernization-handoff.md).
 
 ## Existing model and remaining defect
@@ -90,7 +91,7 @@ fallback or silent expansion of accepted flag values.
 
 ## Source checks and pending evidence
 
-Executed source checks: all 18 changed PHP files pass syntax validation and the
+Executed source checks: all 19 changed PHP files pass syntax validation and the
 repository formatter; `git diff --check` passes. The standalone pure contract
 passes **72 assertions**, covering input domains, NULL/escaping, exact CHECK
 expression grammar, engine minima, historical nullability and stage dependencies.
@@ -105,14 +106,25 @@ The prepared `boolean-domains.php` contract has not run. It exercises real
 Supplier/User/Category/SLM/Domain rows through mapped persistence and native DML,
 managed-state preservation on refusal, early public User SESSION behavior,
 nullable inheritance, explicit historical raw-2 refusal before DDL, committed-DDL
-interruption/retry, canonical replay, completed PostgreSQL converter drift missing completed Domain supplier flags and
-permissive CHECK detection. It restores the current schema after its isolated
+interruption/retry, canonical replay, completed PostgreSQL converter drift,
+missing completed Domain supplier flags and permissive CHECK detection. It restores the current schema after its isolated
 historical mutations.
 
+Source-only rebase retains final CommonDBTM completeLifecycleUpdate, required
+ownership forwarding, model journals, PostgreSQL transaction guards and deferred
+notification delivery. The User preference refresh remains in its post-success
+hook, after accepted storage/forwarding and during accepted no-change updates;
+refusals return before that hook. Supplier commercial scope and ORM flush hooks
+remain unchanged. The original Supplier malformed public/native assertions now
+have an explicit historical phase after canonical fixture rollback: its CHECK
+and receipt changes occur outside data transactions, owned rows roll back, and
+finally restores exact schema and receipt. Current native raw-2 and public-input
+rejection are separate assertions; all other actual public/REST/native flows
+remain on the current schema. No ordinary bootstrap readiness bypass is added.
+
 Next validation must use owned disposable databases after the current resource
-hold. Rebase this batch onto validated Supplier/Transfer source first. Preserve
-the existing Supplier malformed-data assertions in an explicit old-history
-fixture and separately assert rejection by the current native schema. Execute the prepared
+hold. Both the rebased implementation and Supplier historical fixture remain
+unexecuted. Execute the prepared
 producer-receipt drift cases, then extend nullable NULL
 and multi-table invalid-data diagnostics, Oracle MySQL NOT ENFORCED and MariaDB
 disabled-session diagnostics, catalogue visibility/duplicate-name cases, and

@@ -789,5 +789,9 @@ CHECK diagnostics derive from those properties. Source-only validation passes
 72 pure assertions, PHP syntax/style checks and diff whitespace checks. The
 [batch record](boolean-domain-enforcement.md) lists actual callers, historical
 stage boundaries, engine admission and pending provider/application evidence.
-Supplier/Transfer integration and resource clearance precede database validation;
-this draft does not update the combined passing checkpoint or complete the goal.
+The reviewed draft is source-rebased onto frozen combined `4dbc9f7c2e`, preserving
+Transfer journals/forwarding/notifications and Supplier lifecycle hooks. The
+original malformed Supplier assertions now live in an explicit historical
+fixture alongside separate current native/public rejection. These fixtures remain
+unexecuted. Resource clearance precedes provider validation; this draft does not
+update the combined passing checkpoint or complete the goal.
