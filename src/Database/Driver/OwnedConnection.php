@@ -93,13 +93,24 @@ final class OwnedConnection implements Connection
                 $primary ??= $error;
             }
         }
-        foreach ($this->statements as $statement => $_) {
-            $statement->close();
+        try {
+            foreach ($this->statements as $statement => $_) {
+                try {
+                    $statement->close();
+                } catch (\Throwable $error) {
+                    $primary ??= $error;
+                }
+            }
+            // Logging middleware can throw from its real disconnect destructor.
+            try {
+                $this->connection = null;
+            } catch (\Throwable $error) {
+                $primary ??= $error;
+            }
+        } finally {
+            $this->results = new \WeakMap();
+            $this->statements = new \WeakMap();
         }
-        // Release even when a cursor failed to close; retain the real first error.
-        $this->connection = null;
-        $this->results = new \WeakMap();
-        $this->statements = new \WeakMap();
         if ($primary !== null) {
             throw $primary;
         }
