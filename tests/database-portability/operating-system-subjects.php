@@ -19,6 +19,7 @@ define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
 require __DIR__ . '/FixtureRecords.php';
+require __DIR__ . '/fixtures/NativeConstraintRefusal.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
     exit(1);
@@ -44,7 +45,7 @@ verify(array_keys($subjects) === $CFG_GLPI['operatingsystem_types'], 'All six co
 verify((new SchemaCheck())->differences($connection) === [], 'Canonical schema before tests');
 $projection = (new ReflectionProperty(Record\ItemOperatingSystem::class, 'items_id'))->getAttributes(\Doctrine\ORM\Mapping\Column::class)[0]->newInstance();
 verify(!$projection->insertable && !$projection->updatable && $projection->generated === 'ALWAYS', 'Legacy subject identity is a generated read-only projection');
-$reject = static function (callable $operation, string $message) use ($connection): void {
+$reject = static function (callable $operation, string $message, ?string $omittedRequiredColumn = null) use ($connection): void {
     $connection->beginTransaction();
     try {
         $failed = false;
@@ -58,7 +59,7 @@ $reject = static function (callable $operation, string $message) use ($connectio
             if (!$cause instanceof DriverException) {
                 throw $error;
             }
-            $failed = in_array($cause->getSQLState(), ['23502', '23503', '23514', '23505', '23001', '23000'], true);
+            $failed = NativeConstraintRefusal::matches($cause, $omittedRequiredColumn);
         }
         verify($failed, $message);
     } finally {
@@ -142,7 +143,7 @@ try {
         verify(!(new Item_OperatingSystem())->add($invalid), 'Invalid public subjects fail before persistence');
     }
     foreach ([[], ['itemtype' => null], ['itemtype' => 'PluginAsset'], ['itemtype' => 'Computer'], ['itemtype' => 'Computer', 'computers_id' => 0], ['itemtype' => 'Computer', 'monitors_id' => $sameId], ['itemtype' => 'Computer', 'computers_id' => $sameId, 'monitors_id' => $sameId]] as $invalid) {
-        $reject(static fn () => $connection->insert('glpi_items_operatingsystems', $invalid + ['entities_id' => 0]), 'Native missing, zero, wrong, multiple and unknown subjects fail');
+        $reject(static fn () => $connection->insert('glpi_items_operatingsystems', $invalid + ['entities_id' => 0]), 'Native missing, zero, wrong, multiple and unknown subjects fail', !array_key_exists('itemtype', $invalid) ? 'itemtype' : null);
     }
     $reject(static fn () => $connection->update('glpi_items_operatingsystems', ['itemtype' => 'Monitor'], ['id' => $links['Computer']]), 'Discriminator-only update fails');
     $computer = new Computer();

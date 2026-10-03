@@ -20,6 +20,7 @@ define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
 require __DIR__ . '/FixtureRecords.php';
+require __DIR__ . '/fixtures/NativeConstraintRefusal.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
     exit(1);
@@ -50,7 +51,7 @@ sort($actual);
 sort($expected);
 verify($actual === $expected && count($branches) === 35, 'Every configured project subject has an owning association');
 verify((new SchemaCheck())->differences($connection) === [], 'Canonical history installed the required schema');
-$reject = static function (callable $operation, string $message) use ($connection): void {
+$reject = static function (callable $operation, string $message, ?string $omittedRequiredColumn = null) use ($connection): void {
     $connection->beginTransaction();
     try {
         $failed = false;
@@ -67,7 +68,7 @@ $reject = static function (callable $operation, string $message) use ($connectio
             if (!$cause instanceof DriverException) {
                 throw $error;
             }
-            $failed = in_array($cause->getSQLState(), ['23502', '23503', '23514', '23505', '23001', '23000'], true);
+            $failed = NativeConstraintRefusal::matches($cause, $omittedRequiredColumn);
         }
         verify($failed, $message);
     } finally {
@@ -153,7 +154,7 @@ try {
     verify(Item_Project::countForMainItem($rootProject) === 35 && Item_Project::countForItem($countedComputer) === 1, 'Public counts select distinct owner and subject directions');
     verify((new RecordRepository(Orm::create($DB)))->countMatching('glpi_logs', ['itemtype' => 'Project', 'items_id' => $owner, 'linked_action' => Log::HISTORY_ADD_RELATION]) === 35, 'Public association creation retains owner audit history');
     foreach ([[], ['itemtype' => null], ['itemtype' => 'UnknownPlugin'], ['itemtype' => 'Computer'], ['itemtype' => 'Computer', 'computers_id' => 0], ['itemtype' => 'Computer', 'monitors_id' => $sameId], ['itemtype' => 'Computer', 'computers_id' => $sameId, 'monitors_id' => $sameId]] as $invalid) {
-        $reject(static fn () => $connection->insert('glpi_items_projects', $invalid + ['projects_id' => $other]), 'Missing, unknown, zero, mismatched or multiple discriminator selection is rejected');
+        $reject(static fn () => $connection->insert('glpi_items_projects', $invalid + ['projects_id' => $other]), 'Missing, unknown, zero, mismatched or multiple discriminator selection is rejected', !array_key_exists('itemtype', $invalid) ? 'itemtype' : null);
     }
     $reject(static fn () => $connection->insert('glpi_items_projects', ['projects_id' => 999999999, 'itemtype' => 'Computer', 'computers_id' => $sameId]), 'Nonexistent project owner is rejected');
     foreach ([['itemtype' => 'UnknownPlugin', 'items_id' => $sameId], ['itemtype' => 'Computer', 'items_id' => 0], ['itemtype' => 'Computer', 'items_id' => $sameId, 'monitors_id' => $sameId]] as $invalid) {
