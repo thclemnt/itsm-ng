@@ -370,7 +370,8 @@ abstract class CommonTreeDropdown extends CommonDropdown
             $ancestors = getAncestorsOf($this->getTable(), $this->getID());
             foreach ($ancestors as $ancestor) {
                 $ckey = 'sons_cache_' . $this->getTable() . '_' . $ancestor;
-                if (\itsmng\Database\DeletionUnit::isActive($DB->getDoctrineConnection())) {
+                $connection = $DB->getDoctrineConnection();
+                if ($connection->isTransactionActive() || \itsmng\Database\DeletionUnit::isActive($connection)) {
                     // Never publish a transaction-local hierarchy outside the database.
                     $GLPI_CACHE->delete($ckey);
                     continue;

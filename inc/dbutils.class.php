@@ -749,10 +749,13 @@ final class DbUtils
     {
         global $DB, $GLPI_CACHE;
 
+        $connection = $DB->getDoctrineConnection();
+        $privateTree = $connection->isTransactionActive() || \itsmng\Database\DeletionUnit::isActive($connection);
+
         $ckey = 'sons_cache_' . $table . '_' . $IDf;
         $sons = false;
 
-        if (Toolbox::useCache() && !\itsmng\Database\DeletionUnit::isActive($DB->getDoctrineConnection())) {
+        if (Toolbox::useCache() && !$privateTree) {
             if ($GLPI_CACHE->has($ckey)) {
                 $sons = $GLPI_CACHE->get($ckey);
                 if ($sons !== null) {
@@ -766,6 +769,7 @@ final class DbUtils
 
         if (
             $use_cache
+            && !$privateTree
             && ($IDf > 0)
         ) {
             $iterator = $this->getTreeRows($table, ['sons_cache'], ['id' => $IDf]);
@@ -803,6 +807,7 @@ final class DbUtils
             // Store cache data in DB
             if (
                 $use_cache
+                && !$privateTree
                 && ($IDf > 0)
             ) {
                 $this->updateTreeCache($table, (int)$IDf, 'sons_cache', $this->exportArrayToDB($sons));
@@ -810,7 +815,7 @@ final class DbUtils
         }
 
         if (Toolbox::useCache()) {
-            if (\itsmng\Database\DeletionUnit::isActive($DB->getDoctrineConnection())) {
+            if ($privateTree) {
                 $GLPI_CACHE->delete($ckey);
             } else {
                 $GLPI_CACHE->set($ckey, $sons);
@@ -876,6 +881,9 @@ final class DbUtils
     {
         global $DB, $GLPI_CACHE;
 
+        $connection = $DB->getDoctrineConnection();
+        $privateTree = $connection->isTransactionActive() || \itsmng\Database\DeletionUnit::isActive($connection);
+
         $ckey = 'ancestors_cache_';
         if (is_array($items_id)) {
             $ckey .= $table . '_' . md5(implode('|', $items_id));
@@ -883,8 +891,10 @@ final class DbUtils
             $ckey .= $table . '_' . $items_id;
         }
         $ancestors = [];
+        // Aggregate keys have no owning node whose move can invalidate them.
+        $sharedAncestors = !$privateTree && !is_array($items_id);
 
-        if (Toolbox::useCache() && !\itsmng\Database\DeletionUnit::isActive($DB->getDoctrineConnection())) {
+        if (Toolbox::useCache() && $sharedAncestors) {
             if ($GLPI_CACHE->has($ckey)) {
                 $ancestors = $GLPI_CACHE->get($ckey);
                 if ($ancestors !== null) {
@@ -912,7 +922,7 @@ final class DbUtils
                     $parent     = $row[$parentIDfield];
 
                     // Return datas from cache in DB
-                    if (isset($rancestors) && !empty($rancestors)) {
+                    if (!$privateTree && isset($rancestors) && !empty($rancestors)) {
                         $ancestors = array_replace($ancestors, $this->importArrayFromDB($rancestors, true));
                     } else {
                         $loc_id_found = [];
@@ -930,7 +940,9 @@ final class DbUtils
                         }
 
                         // Store cache datas in DB
-                        $this->updateTreeCache($table, (int)$row['id'], 'ancestors_cache', $this->exportArrayToDB($loc_id_found));
+                        if (!$privateTree) {
+                            $this->updateTreeCache($table, (int)$row['id'], 'ancestors_cache', $this->exportArrayToDB($loc_id_found));
+                        }
 
                         $ancestors = array_replace($ancestors, $loc_id_found);
                     }
@@ -965,7 +977,7 @@ final class DbUtils
         }
 
         if (Toolbox::useCache()) {
-            if (\itsmng\Database\DeletionUnit::isActive($DB->getDoctrineConnection())) {
+            if (!$sharedAncestors) {
                 $GLPI_CACHE->delete($ckey);
             } else {
                 $GLPI_CACHE->set($ckey, $ancestors);
