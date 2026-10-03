@@ -47,8 +47,8 @@ final class ProjectionPlanningFixture extends TypedItemMigration
 
     public static function checkSql(string $table): string
     {
-        // The fixture supplies its scope at construction time; its planning
-        // contract never executes this CHECK or any other adoption statement.
+        // Native fixture creation installs this declaration before planning.
+        // the dynamic fixture always presents an existing owned CHECK.
         return 'ALTER TABLE ' . $table . ' ADD CONSTRAINT ' . static::constraintName($table)
             . " CHECK (itemtype = 'Computer' AND computers_id IS NOT NULL AND computers_id >= 1)";
     }
@@ -109,6 +109,7 @@ try {
                 $created[] = $qualified($schema, $name);
             }
         }
+        $connection->executeStatement(ProjectionPlanningFixture::checkSql($name));
     }
     $migration = new ProjectionPlanningFixture([$tables[0], $tables[1]]);
     $baseline = $migration->plan($connection);
