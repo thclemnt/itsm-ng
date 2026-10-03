@@ -26,6 +26,12 @@ final class EntityRegistry
         return self::model()['booleans'];
     }
 
+    /** Nullability belongs to the same mapped properties as the flag's type. */
+    public static function booleanFields(string $table): array
+    {
+        return self::model()['boolean_fields'][$table] ?? [];
+    }
+
     public static function isBoolean(string $table, string $column): bool
     {
         return (self::model()['types'][$table][$column] ?? null) === 'boolean';
@@ -93,7 +99,7 @@ final class EntityRegistry
         $connection = DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
         $em = new EntityManager($connection, Orm::configuration(new MySQLPlatform()));
         $metadata = $em->getMetadataFactory()->getAllMetadata();
-        $tables = $types = $booleans = $relations = $references = $discriminators = $lifecycle = [];
+        $tables = $types = $booleans = $booleanFields = $relations = $references = $discriminators = $lifecycle = [];
         foreach ($metadata as $record) {
             $table = $record->getTableName();
             if (isset($tables[$table])) {
@@ -104,6 +110,7 @@ final class EntityRegistry
                 $types[$table][$mapping->columnName] = $mapping->type;
                 if ($mapping->type === 'boolean') {
                     $booleans[$table][] = $mapping->columnName;
+                    $booleanFields[$table][$mapping->columnName] = (bool)$mapping->nullable;
                 }
             }
             foreach ($record->associationMappings as $property => $association) {
@@ -204,6 +211,6 @@ final class EntityRegistry
         // Only immutable lookup projections survive bootstrap, not the offline unit of work.
         unset($em, $metadata, $record);
         gc_collect_cycles();
-        return self::$model = ['tables' => $tables, 'types' => $types, 'booleans' => $booleans, 'relations' => $relations, 'references' => $references, 'discriminators' => $discriminators, 'lifecycle' => $lifecycle];
+        return self::$model = ['tables' => $tables, 'types' => $types, 'booleans' => $booleans, 'boolean_fields' => $booleanFields, 'relations' => $relations, 'references' => $references, 'discriminators' => $discriminators, 'lifecycle' => $lifecycle];
     }
 }

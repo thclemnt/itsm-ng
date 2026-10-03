@@ -778,3 +778,16 @@ complete contracts on both providers from fresh installs and populated replay,
 with final schema/sequence inspection. This batch does not claim a fresh complete
 replay, full integrated suite, new browser coverage, remote CI or live replicas.
 The broader relationship and domain-persistence modernization remains open.
+
+## Prepared follow-up: boolean domains (not integrated or database-validated)
+
+The isolated boolean-domain batch is based on `e71fc4c8e4`. It preserves all 402
+entity-owned declarations and the eleven nullable User flags, rejects arbitrary
+truthy input before preparation/native ORM assignment, and appends frozen
+zero/one enforcement history without modifying earlier definitions. Current
+CHECK diagnostics derive from those properties. Source-only validation passes
+72 pure assertions, PHP syntax/style checks and diff whitespace checks. The
+[batch record](boolean-domain-enforcement.md) lists actual callers, historical
+stage boundaries, engine admission and pending provider/application evidence.
+Supplier/Transfer integration and resource clearance precede database validation;
+this draft does not update the combined passing checkpoint or complete the goal.

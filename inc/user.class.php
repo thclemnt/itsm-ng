@@ -1032,9 +1032,11 @@ class User extends CommonDBTM
             }
         }
 
+        $booleanFields = \itsmng\Database\EntityRegistry::booleanFields($this->getTable());
         foreach ($CFG_GLPI['user_pref_field'] as $f) {
-            if (isset($input[$f])) {
-                if (Session::getLoginUserID() == $input['id']) {
+            $inheritedBoolean = ($booleanFields[$f] ?? false) && array_key_exists($f, $input) && $input[$f] === null;
+            if (isset($input[$f]) || $inheritedBoolean) {
+                if (!($booleanFields[$f] ?? false) && Session::getLoginUserID() == $input['id']) {
                     if ($_SESSION["glpi$f"] != $input[$f]) {
                         $_SESSION["glpi$f"] = $input[$f];
                         // reinit translations
@@ -1044,7 +1046,7 @@ class User extends CommonDBTM
                         }
                     }
                 }
-                if ($input[$f] == $CFG_GLPI[$f]) {
+                if ($inheritedBoolean || $input[$f] == $CFG_GLPI[$f]) {
                     $input[$f] = "NULL";
                 }
             }
@@ -1064,6 +1066,7 @@ class User extends CommonDBTM
 
     public function post_updateItem($history = 1)
     {
+        $this->refreshSubmittedBooleanPreferences();
         //handle timezone change for current user
         if ($this->fields['id'] == Session::getLoginUserID()) {
             if (null == $this->fields['timezone'] || 'null' === strtolower((string) $this->fields['timezone'])) {
@@ -1091,6 +1094,32 @@ class User extends CommonDBTM
         }
     }
 
+
+
+    /** Refresh submitted inherited flags only after the accepted update's stored view. */
+    private function refreshSubmittedBooleanPreferences(): void
+    {
+        global $CFG_GLPI;
+
+        if ($this->fields['id'] != Session::getLoginUserID() || !is_array($this->input)) {
+            return;
+        }
+        $flags = \itsmng\Database\EntityRegistry::booleanFields($this->getTable());
+        $submitted = array_filter($CFG_GLPI['user_pref_field'], fn ($field) => ($flags[$field] ?? false) && array_key_exists($field, $this->input));
+        if (!$submitted) {
+            return;
+        }
+        // A cancelled callback/no-change update may differ from attempted input.
+        // Reuse the User's ORM read and established effective preference policy.
+        $stored = new self();
+        if (!$stored->getFromDB($this->fields['id'])) {
+            return;
+        }
+        $stored->computePreferences();
+        foreach ($submitted as $field) {
+            $_SESSION['glpi' . $field] = $stored->fields[$field];
+        }
+    }
 
 
     /**

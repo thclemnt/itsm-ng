@@ -13,7 +13,8 @@ final class SchemaCheck
 {
     /**
      * Additional tables and indexes are allowed for plugins and local tuning.
-     * DBAL cannot compare platform-specific expressions, triggers or CHECKs.
+     * Boolean domains have a metadata-derived native CHECK inspector. Other
+     * platform-specific expressions, triggers and CHECKs are not compared by DBAL.
      *
      * @return list<string>
      */
@@ -70,6 +71,6 @@ final class SchemaCheck
                 $differences[] = 'Unexpected or changed foreign key: ' . $name . '.' . $key->getName();
             }
         }
-        return $differences;
+        return [...$differences, ...BooleanDomainSchema::differences($connection, $expected)];
     }
 }

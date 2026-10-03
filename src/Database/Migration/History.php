@@ -12,7 +12,7 @@ use itsmng\Database\SequenceSynchronizer;
 /** Empty-database replay and validated adoption share one canonical history and ledger. */
 final class History
 {
-    public const VERSIONS = [Baseline20261001::VERSION, Seeds20261001::VERSION, LegacyToOrm::VERSION, Booleans20261002::VERSION, ProjectAssets20261003::VERSION, CategoryFlags20261004::VERSION, ApplianceAssets20261005::VERSION, ApplianceRecipients20261005::VERSION, OperatingSystemSubjects20261006::VERSION, DomainDocuments20261006::VERSION, DomainIntegration20261006::VERSION, IdentifierSequences20261007::VERSION];
+    public const VERSIONS = [Baseline20261001::VERSION, Seeds20261001::VERSION, LegacyToOrm::VERSION, Booleans20261002::VERSION, ProjectAssets20261003::VERSION, CategoryFlags20261004::VERSION, ApplianceAssets20261005::VERSION, ApplianceRecipients20261005::VERSION, OperatingSystemSubjects20261006::VERSION, DomainDocuments20261006::VERSION, DomainIntegration20261006::VERSION, IdentifierSequences20261007::VERSION, BooleanDomains20261008::VERSION];
 
     /** Application readiness uses the ledger, without planning or executing DDL. */
     public static function pendingVersions(Connection $connection): array
@@ -24,6 +24,7 @@ final class History
     /** Read-only adoption preview; baseline and seed phases are inherited, not replayed. */
     public function plan(Connection $connection): array
     {
+        \itsmng\Database\CheckConstraintSupport::assertSupported($connection);
         $prerequisite = (new DomainsPluginAdoption20261006())->plan($connection);
         if ($prerequisite) {
             return ['complete' => false, 'pending' => self::pendingVersions($connection), 'domain_prerequisite' => $prerequisite,
@@ -37,7 +38,7 @@ final class History
     {
         $pending = self::pendingVersions($connection);
         $booleans = (new Booleans20261002())->plan($connection);
-        return ['complete' => !$pending, 'pending' => $pending, 'legacy' => (new LegacyToOrm())->plan($connection), 'booleans' => $booleans, 'project_assets' => (new ProjectAssets20261003())->plan($connection), 'category_flags' => (new CategoryFlags20261004())->plan($connection), 'appliance_assets' => (new ApplianceAssets20261005())->plan($connection), 'appliance_recipients' => (new ApplianceRecipients20261005())->plan($connection), 'operating_system_subjects' => (new OperatingSystemSubjects20261006())->plan($connection), 'domain_documents' => (new DomainDocuments20261006())->plan($connection), 'domain_integration' => (new DomainIntegration20261006())->plan($connection), 'identifier_sequences' => (new IdentifierSequences20261007())->plan($connection)];
+        return ['complete' => !$pending, 'pending' => $pending, 'legacy' => (new LegacyToOrm())->plan($connection), 'booleans' => $booleans, 'project_assets' => (new ProjectAssets20261003())->plan($connection), 'category_flags' => (new CategoryFlags20261004())->plan($connection), 'appliance_assets' => (new ApplianceAssets20261005())->plan($connection), 'appliance_recipients' => (new ApplianceRecipients20261005())->plan($connection), 'operating_system_subjects' => (new OperatingSystemSubjects20261006())->plan($connection), 'domain_documents' => (new DomainDocuments20261006())->plan($connection), 'domain_integration' => (new DomainIntegration20261006())->plan($connection), 'identifier_sequences' => (new IdentifierSequences20261007())->plan($connection), 'boolean_domains' => (new BooleanDomains20261008())->plan($connection, true)];
     }
 
     public static function isInstalling(Connection $connection): bool
@@ -62,6 +63,7 @@ final class History
     /** Journal each MySQL table creation; PostgreSQL also retains all-or-nothing DDL. */
     public function baseline(Connection $connection, ?callable $progress = null): void
     {
+        \itsmng\Database\CheckConstraintSupport::assertSupported($connection);
         $apply = static function () use ($connection, $progress): void {
             $state = Ledger::state($connection, Baseline20261001::VERSION);
             if (($state['complete'] ?? false) === true) {
@@ -116,6 +118,7 @@ final class History
     public function install(\DBAdapter $database, string $language, ?callable $progress = null): void
     {
         $connection = $database->getDoctrineConnection();
+        \itsmng\Database\CheckConstraintSupport::assertSupported($connection);
         $this->locked($connection, function () use ($database, $connection, $language, $progress): void {
             $this->baseline($connection, $progress);
             \Session::loadLanguage($language, false);
@@ -134,6 +137,7 @@ final class History
     /** Adopt validated existing data; never replay installation seeds onto it. */
     public function upgrade(Connection $connection, ?callable $progress = null, ?callable $onComplete = null): void
     {
+        \itsmng\Database\CheckConstraintSupport::assertSupported($connection);
         $this->locked($connection, function () use ($connection, $progress, $onComplete): void {
             $baseline = Ledger::state($connection, Baseline20261001::VERSION);
             if (($baseline['origin'] ?? null) === 'installed' && (($baseline['complete'] ?? false) !== true || (Ledger::state($connection, Seeds20261001::VERSION)['complete'] ?? false) !== true)) {
@@ -153,6 +157,7 @@ final class History
             (new CategoryFlags20261004())->plan($connection);
             (new DomainDocuments20261006())->plan($connection);
             (new DomainIntegration20261006())->plan($connection);
+            (new BooleanDomains20261008())->plan($connection, true);
             (new LegacyToOrm())->apply($connection, $progress);
             (new Booleans20261002())->apply($connection);
             (new ProjectAssets20261003())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('ProjectAssets20261003: ' . $phase));
@@ -163,6 +168,7 @@ final class History
             (new DomainDocuments20261006())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('DomainDocuments20261006: ' . $phase));
             (new DomainIntegration20261006())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('DomainIntegration20261006: ' . $phase));
             (new IdentifierSequences20261007())->apply($connection, $progress);
+            (new BooleanDomains20261008())->apply($connection, $progress);
             $differences = (new SchemaCheck())->differences($connection);
             if ($differences) {
                 throw new \RuntimeException("Migration history did not converge:\n" . implode("\n", $differences));

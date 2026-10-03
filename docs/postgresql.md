@@ -294,3 +294,10 @@ MariaDB 10.11 (12 assertions), followed by the unchanged adoption and schema-che
 contracts on both providers. These use populated disposable checkpoint clones
 and actual canonical apply. Fresh replay, the complete integrated suite, browser,
 remote CI and live replicas are separate validation scopes.
+
+A source-only follow-up prepares strict mapped flag input and native integer-flag
+CHECK enforcement through the appended `20261008_boolean_domains` history.
+Its [implementation and pending validation](boolean-domain-enforcement.md)
+distinguish the existing 402 entity declarations from this remaining enforcement
+gap. The draft requires MySQL 8.0.16+/MariaDB 10.2.22+ for enforced CHECK support;
+its pure tests are not a provider or full-suite passing claim.

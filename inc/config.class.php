@@ -2557,7 +2557,8 @@ class Config extends CommonDBTM
         $db_ver = $result[$version];
 
         $ok_message = sprintf(__s('Database version seems correct (%s) - Perfect!'), $version);
-        $ko_message = sprintf(__s('Your database engine version seems too old: %s.'), $version);
+        $ko_message = sprintf(__s('Your database engine version seems too old: %s.'), $version)
+            . ' ' . __('Enforced CHECK constraints require MySQL 8.0.16 or later, or MariaDB 10.2.22 or later.');
 
         if (!$db_ver) {
             $error = 2;
@@ -2651,17 +2652,22 @@ class Config extends CommonDBTM
     **/
     public static function checkDbEngine($raw = null)
     {
-        // MySQL >= 5.6 || MariaDB >= 10
+        // Installation uses enforced CHECK constraints, not merely CHECK syntax.
         if ($raw === null) {
             global $DB;
             $raw = $DB->getVersion();
         }
 
-        /** @var array $found */
-        preg_match('/(\d+(\.)?)+/', (string) $raw, $found);
-        $version = $found[0];
-
-        $db_ver = version_compare($version, '5.6', '>=');
+        $maria = stripos((string)$raw, 'MariaDB') !== false;
+        try {
+            $version = \itsmng\Database\CheckConstraintSupport::version((string)$raw, $maria);
+            $db_ver = \itsmng\Database\CheckConstraintSupport::supportsVersion((string)$raw, $maria);
+        } catch (\RuntimeException) {
+            // Retain the diagnostic's numeric display, never use an ambiguous
+            // version to grant an installation capability.
+            $version = preg_match('/^\d+/', (string)$raw, $found) ? $found[0] : (string)$raw;
+            $db_ver = false;
+        }
         return [$version => $db_ver];
     }
 

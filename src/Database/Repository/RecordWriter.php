@@ -92,6 +92,13 @@ final class RecordWriter
         if ($record instanceof \itsmng\Database\Mapping\LegacyInput) {
             $values = $record->normalizeInput($values);
         }
+        // Reject invalid flags before any managed property is changed. A caller
+        // may retain this unit of work after a rejected assignment.
+        foreach ($metadata->fieldMappings as $mapping) {
+            if ($mapping->type === 'boolean' && array_key_exists($mapping->columnName, $values)) {
+                $values[$mapping->columnName] = \itsmng\Database\BooleanValue::normalize($values[$mapping->columnName], (bool)$mapping->nullable, $metadata->getTableName() . '.' . $mapping->columnName);
+            }
+        }
         $associations = [];
         foreach ($metadata->associationMappings as $field => $mapping) {
             if (!$mapping->isToOneOwningSide()) {
@@ -121,9 +128,12 @@ final class RecordWriter
                 $record->$field = $value === null ? null : ($value instanceof $enum ? $value : $enum::from($value));
                 continue;
             }
+            if ($mapping->type === 'boolean') {
+                $record->$field = $value;
+                continue;
+            }
             if ($value !== null) {
                 $value = match ($mapping->type) {
-                    'boolean' => (bool)(int)$value,
                     'integer', 'smallint', 'bigint' => (int)$value,
                     'float' => (float)$value,
                     'date', 'datetime', 'datetimetz' => $value instanceof \DateTimeInterface ? \DateTime::createFromInterface($value) : new \DateTime((string)$value),

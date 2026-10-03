@@ -452,7 +452,7 @@ class Config extends DbTestCase
            [
               'raw'       => '10.2.14-MariaDB',
               'version'   => '10.2.14',
-              'compat'    => true
+              'compat'    => false // Native CHECK catalogue is available from 10.2.22.
            ], [
               'raw'       => '5.5.10-MariaDB',
               'version'   => '5.5.10',
@@ -460,7 +460,7 @@ class Config extends DbTestCase
            ], [
               'raw'       => '5.6.38-log',
               'version'   => '5.6.38',
-              'compat'    => true
+              'compat'    => false // CHECK syntax without enforcement is insufficient.
            ], [
               'raw'       => '5-5-57',
               'version'   => '5',
@@ -472,6 +472,22 @@ class Config extends DbTestCase
            ], [
               'raw'       => '10-2-35',
               'version'   => '10',
+              'compat'    => false // An ambiguous version cannot establish capabilities.
+           ], [
+              'raw'       => '8.0.15',
+              'version'   => '8.0.15',
+              'compat'    => false
+           ], [
+              'raw'       => '8.0.16',
+              'version'   => '8.0.16',
+              'compat'    => true
+           ], [
+              'raw'       => '10.2.0-MariaDB',
+              'version'   => '10.2.0',
+              'compat'    => false
+           ], [
+              'raw'       => '5.5.5-10.2.22-MariaDB',
+              'version'   => '10.2.22',
               'compat'    => true
            ]
         ];

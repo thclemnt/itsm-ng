@@ -5,6 +5,8 @@
 namespace itsmng\Database;
 
 use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Types\Type;
@@ -174,6 +176,12 @@ final class BaselineSchema
                         if ($column->getDefault() !== null) {
                             $column->setDefault((bool)(int)$column->getDefault());
                         }
+                    }
+                    if ($platform instanceof AbstractMySQLPlatform && $field->type === Types::BOOLEAN) {
+                        $name = BooleanDomainSchema::name($metadata->getTableName(), $field->columnName);
+                        $this->extraSql[$metadata->getTableName()][] = 'ALTER TABLE ' . $platform->quoteIdentifier($metadata->getTableName())
+                            . ' ADD CONSTRAINT ' . $platform->quoteIdentifier($name) . ' CHECK (' . BooleanDomainSchema::expression($platform, $field->columnName, (bool)$field->nullable) . ')'
+                            . ($platform instanceof MySQLPlatform ? ' ENFORCED' : '');
                     }
                     foreach ((new \ReflectionProperty($metadata->name, $property))->getAttributes(Mapping\DiscriminatorKey::class) as $attribute) {
                         $key = $attribute->newInstance();

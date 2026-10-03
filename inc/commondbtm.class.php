@@ -1821,11 +1821,13 @@ class CommonDBTM extends CommonGLPI
                 $this->updates   = [];
                 $this->oldvalues = [];
 
+                $booleanFields = \itsmng\Database\EntityRegistry::booleanFields($this->getTable());
                 foreach (array_keys($this->input) as $key) {
                     if (array_key_exists($key, $this->fields)) {
                         // Prevent history for date statement (for date for example)
                         if (
-                            is_null($this->fields[$key])
+                            !array_key_exists($key, $booleanFields)
+                            && is_null($this->fields[$key])
                             && ($this->input[$key] == 'NULL')
                         ) {
                             $this->fields[$key] = 'NULL';
@@ -1833,7 +1835,12 @@ class CommonDBTM extends CommonGLPI
                         // Compare item
                         $ischanged = true;
                         $searchopt = $this->getSearchOptionByField('field', $key, $this->getTable());
-                        if (isset($searchopt['datatype'])) {
+                        if (array_key_exists($key, $booleanFields)) {
+                            // An inherited NULL preference is distinct from
+                            // explicit false, even under PHP's loose equality.
+                            $ischanged = ($this->fields[$key] === null) !== ($this->input[$key] === null)
+                                || ($this->fields[$key] !== null && (bool)$this->fields[$key] !== (bool)$this->input[$key]);
+                        } elseif (isset($searchopt['datatype'])) {
                             switch ($searchopt['datatype']) {
                                 case 'string':
                                 case 'text':
@@ -2102,7 +2109,12 @@ class CommonDBTM extends CommonGLPI
     /** Shared lifecycle boundary runs even when a model overrides its preparation. */
     protected function normalizeLifecycleInput(array $input): array|false
     {
-        return $input;
+        try {
+            return \itsmng\Database\BooleanValue::normalizeLegacyInput($this->getTable(), $input);
+        } catch (\InvalidArgumentException $error) {
+            Session::addMessageAfterRedirect($error->getMessage(), false, ERROR);
+            return false;
+        }
     }
 
     protected function authorizeLifecycleUpdate(array $input): array|false
@@ -2113,6 +2125,24 @@ class CommonDBTM extends CommonGLPI
     /** Recheck the values that will actually be stored after the last model callback. */
     protected function finalizeLifecycleUpdate(array $storedFields): bool
     {
+        $writes = array_intersect_key($this->fields, array_fill_keys($this->updates, true));
+        try {
+            $writes = \itsmng\Database\BooleanValue::normalizeLegacyInput($this->getTable(), $writes);
+        } catch (\InvalidArgumentException $error) {
+            Session::addMessageAfterRedirect($error->getMessage(), false, ERROR);
+            return false;
+        }
+        foreach ($writes as $column => $value) {
+            $this->fields[$column] = $value;
+        }
+        foreach (\itsmng\Database\EntityRegistry::booleanFields($this->getTable()) as $column => $nullable) {
+            if (!array_key_exists($column, $writes) && array_key_exists($column, $storedFields)) {
+                $this->fields[$column] = $storedFields[$column];
+            }
+            if (is_array($this->input) && array_key_exists($column, $this->input) && array_key_exists($column, $this->fields)) {
+                $this->input[$column] = $this->fields[$column];
+            }
+        }
         return true;
     }
 

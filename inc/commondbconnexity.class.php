@@ -92,6 +92,10 @@ abstract class CommonDBConnexity extends CommonDBTM
 
     final protected function normalizeLifecycleInput(array $input): array|false
     {
+        $input = parent::normalizeLifecycleInput($input);
+        if ($input === false) {
+            return false;
+        }
         try {
             return \itsmng\Database\ConnexityInput::normalize($this, $input);
         } catch (\InvalidArgumentException) {
@@ -111,7 +115,7 @@ abstract class CommonDBConnexity extends CommonDBTM
     final protected function finalizeLifecycleUpdate(array $storedFields): bool
     {
         if (!\itsmng\Database\ConnexityInput::endpoints($this)) {
-            return true;
+            return parent::finalizeLifecycleUpdate($storedFields);
         }
         $original = clone $this;
         $original->fields = $storedFields;
