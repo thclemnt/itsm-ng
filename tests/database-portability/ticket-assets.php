@@ -22,6 +22,7 @@ define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
 require __DIR__ . '/FixtureRecords.php';
+require __DIR__ . '/fixtures/NativeConstraintRefusal.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
     exit(1);
@@ -55,14 +56,14 @@ sort($expectedKinds);
 sort($actualKinds);
 verify($actualKinds === $expectedKinds && count($branches) === 20, 'Every core ticket asset has an owning association');
 verify(TicketAssetRepository::supports('Item_DeviceSimcard') && !TicketAssetRepository::supports('User'), 'Ticket asset support comes from local associations');
-$reject = static function (callable $operation, string $message) use ($connection): void {
+$reject = static function (callable $operation, string $message, ?string $omittedRequiredColumn = null) use ($connection): void {
     $connection->beginTransaction();
     try {
         $failed = false;
         try {
             $operation();
         } catch (DriverException $error) {
-            $failed = in_array($error->getSQLState(), ['23502', '23503', '23514', '23505', '23001', '23000'], true);
+            $failed = NativeConstraintRefusal::matches($error, $omittedRequiredColumn);
         }
         verify($failed, $message);
     } finally {
@@ -87,7 +88,7 @@ try {
     }
     foreach ([[], ['itemtype' => 'UnknownPlugin'], ['itemtype' => 'Computer'], ['itemtype' => 'Computer', 'computers_id' => 0],
         ['itemtype' => 'Computer', 'monitors_id' => $sameId], ['itemtype' => 'Computer', 'computers_id' => $sameId, 'monitors_id' => $sameId]] as $invalid) {
-        $reject(static fn () => $connection->insert($table, $invalid + ['tickets_id' => $ticketId]), 'Native missing/unknown/zero/wrong/multiple selection rejected');
+        $reject(static fn () => $connection->insert($table, $invalid + ['tickets_id' => $ticketId]), 'Native missing/unknown/zero/wrong/multiple selection rejected', !array_key_exists('itemtype', $invalid) ? 'itemtype' : null);
     }
     $retargetTicket = $fixtures->create('glpi_tickets');
     $retarget = $fixtures->create($table, ['tickets_id' => $retargetTicket, 'itemtype' => 'Computer', 'items_id' => $sameId]);

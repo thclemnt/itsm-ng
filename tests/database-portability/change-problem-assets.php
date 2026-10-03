@@ -22,6 +22,7 @@ define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
 require __DIR__ . '/FixtureRecords.php';
+require __DIR__ . '/fixtures/NativeConstraintRefusal.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
     exit(1);
@@ -44,14 +45,14 @@ $CFG_GLPI['use_notifications'] = false;
 $fixtures = new FixtureRecords($DB);
 $storage = new MappedStorage($DB);
 $read = static fn (string $table, int $id): ?array => (new RecordRepository(Orm::create($DB)))->find($table, 'id', $id);
-$reject = static function (callable $operation, string $message) use ($connection): void {
+$reject = static function (callable $operation, string $message, ?string $omittedRequiredColumn = null) use ($connection): void {
     $connection->beginTransaction();
     try {
         $failed = false;
         try {
             $operation();
         } catch (DriverException $error) {
-            $failed = in_array($error->getSQLState(), ['23502', '23503', '23514', '23505', '23001', '23000'], true);
+            $failed = NativeConstraintRefusal::matches($error, $omittedRequiredColumn);
         }
         verify($failed, $message);
     } finally {
@@ -86,7 +87,7 @@ try {
             $reject(static fn () => $connection->insert($table, [$parentColumn => $parent, 'itemtype' => $kind, $selection['column'] => $sameId]), 'Duplicate parent/asset rejected: ' . $type . '/' . $kind);
         }
         foreach ([[], ['itemtype' => null], ['itemtype' => 'UnknownPlugin'], ['itemtype' => 'Computer'], ['itemtype' => 'Computer', 'computers_id' => 0], ['itemtype' => 'Computer', 'monitors_id' => $sameId], ['itemtype' => 'Computer', 'computers_id' => $sameId, 'monitors_id' => $sameId]] as $invalid) {
-            $reject(static fn () => $connection->insert($table, $invalid + [$parentColumn => $parent]), 'Native missing/unknown/zero/wrong/multiple branch rejected: ' . $type);
+            $reject(static fn () => $connection->insert($table, $invalid + [$parentColumn => $parent]), 'Native missing/unknown/zero/wrong/multiple branch rejected: ' . $type, !array_key_exists('itemtype', $invalid) ? 'itemtype' : null);
         }
         $retargetParent = $fixtures->create($parentTable);
         $retarget = $fixtures->create($table, [$parentColumn => $retargetParent, 'itemtype' => 'Computer', 'items_id' => $sameId]);

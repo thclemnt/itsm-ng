@@ -26,6 +26,7 @@ define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
 require __DIR__ . '/FixtureRecords.php';
+require __DIR__ . '/fixtures/NativeConstraintRefusal.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
     exit(1);
@@ -50,14 +51,14 @@ $CFG_GLPI['use_notifications'] = false;
 $fixtures = new FixtureRecords($DB);
 $storage = new MappedStorage($DB);
 $read = static fn (string $table, int $id): ?array => (new RecordRepository(Orm::create($DB)))->find($table, 'id', $id);
-$reject = static function (callable $operation, string $message) use ($connection): void {
+$reject = static function (callable $operation, string $message, ?string $omittedRequiredColumn = null) use ($connection): void {
     $connection->beginTransaction();
     try {
         $failed = false;
         try {
             $operation();
         } catch (DriverException $error) {
-            $failed = in_array($error->getSQLState(), ['23502', '23503', '23514', '23505', '23001', '23000'], true);
+            $failed = NativeConstraintRefusal::matches($error, $omittedRequiredColumn);
         }
         verify($failed, $message);
     } finally {
@@ -119,7 +120,7 @@ try {
             ++$total;
         }
         foreach ([[], ['itemtype' => null], ['itemtype' => 'UnknownPlugin'], ['itemtype' => 'Computer', 'computers_id' => 0], ['itemtype' => 'Computer', 'computers_id' => -1], ['itemtype' => 'Computer', 'networkequipments_id' => $sameId], ['itemtype' => 'Computer', 'computers_id' => $sameId, 'networkequipments_id' => $sameId]] as $invalid) {
-            $reject(static fn () => $connection->insert($table, $invalid + [$parentColumn => $parent]), 'Missing/unknown/negative/wrong/multiple branch rejected');
+            $reject(static fn () => $connection->insert($table, $invalid + [$parentColumn => $parent]), 'Missing/unknown/negative/wrong/multiple branch rejected', !array_key_exists('itemtype', $invalid) ? 'itemtype' : null);
         }
         $otherComputer = $fixtures->create('glpi_computers');
         $retarget = $fixtures->create($table, [$parentColumn => $parent, 'itemtype' => 'Computer', 'items_id' => $otherComputer]);

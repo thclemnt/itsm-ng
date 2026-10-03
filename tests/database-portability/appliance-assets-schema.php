@@ -25,6 +25,7 @@ define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
 require __DIR__ . '/FixtureRecords.php';
+require __DIR__ . '/fixtures/NativeConstraintRefusal.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
     exit(1);
@@ -46,14 +47,14 @@ $stages = [
 ];
 verify((new SchemaCheck())->differences($connection) === [], 'Fresh appliance schema converges');
 $fixtures = new FixtureRecords($DB);
-$reject = static function (callable $operation, string $message) use ($connection): void {
+$reject = static function (callable $operation, string $message, ?string $omittedRequiredColumn = null) use ($connection): void {
     $connection->beginTransaction();
     try {
         $rejected = false;
         try {
             $operation();
         } catch (DriverException $error) {
-            $rejected = in_array($error->getSQLState(), ['23502', '23503', '23514', '23505', '23001', '23000'], true);
+            $rejected = NativeConstraintRefusal::matches($error, $omittedRequiredColumn);
         }
         verify($rejected, $message);
     } finally {
@@ -109,7 +110,7 @@ try {
         $columns = array_column($branches, 'column');
         $firstKind = array_key_first($branches);
         foreach ([[], ['itemtype' => null], ['itemtype' => 'PluginExampleAsset'], ['itemtype' => $firstKind], ['itemtype' => $firstKind, $columns[0] => 0], ['itemtype' => $firstKind, $columns[1] => $sameId], ['itemtype' => $firstKind, $columns[0] => $sameId, $columns[1] => $sameId]] as $invalid) {
-            $reject(static fn () => $connection->insert($table, $invalid + [$ownerColumn => $owner]), 'Missing, zero, unknown, wrong and multiple selections are rejected: ' . $table);
+            $reject(static fn () => $connection->insert($table, $invalid + [$ownerColumn => $owner]), 'Missing, zero, unknown, wrong and multiple selections are rejected: ' . $table, !array_key_exists('itemtype', $invalid) ? 'itemtype' : null);
         }
     }
     verify((new ForeignKeys())->audit($connection) === [], 'Native appliance graphs leave no orphans');

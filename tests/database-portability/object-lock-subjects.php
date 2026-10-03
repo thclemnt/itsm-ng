@@ -21,6 +21,7 @@ define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
 require __DIR__ . '/FixtureRecords.php';
+require __DIR__ . '/fixtures/NativeConstraintRefusal.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
     exit(1);
@@ -44,14 +45,14 @@ $table = 'glpi_objectlocks';
 $read = static fn (string $table, int $id): ?array => (new RecordRepository(Orm::create($DB)))->find($table, 'id', $id);
 $branches = EntityRegistry::discriminatedReferences($table)['items_id']['selections'];
 verify(array_diff($CFG_GLPI['lock_lockable_objects'], array_keys($branches)) === [] && count($branches) === 30, 'Every configured core lockable object has an owning subject');
-$reject = static function (callable $operation, string $message) use ($connection): void {
+$reject = static function (callable $operation, string $message, ?string $omittedRequiredColumn = null) use ($connection): void {
     $connection->beginTransaction();
     try {
         $failed = false;
         try {
             $operation();
         } catch (DriverException $error) {
-            $failed = in_array($error->getSQLState(), ['23502', '23503', '23514', '23505', '23001', '23000'], true);
+            $failed = NativeConstraintRefusal::matches($error, $omittedRequiredColumn);
         }
         verify($failed, $message);
     } finally {
@@ -77,7 +78,7 @@ try {
     }
     foreach ([[], ['itemtype' => 'UnknownPlugin'], ['itemtype' => 'User'], ['itemtype' => 'User', 'subject_computers_id' => $sameId],
         ['itemtype' => 'Entity', 'subject_entities_id' => 0], ['itemtype' => 'User', 'subject_users_id' => $sameId, 'subject_computers_id' => $sameId]] as $invalid) {
-        $reject(static fn () => $connection->insert($table, $invalid + ['users_id' => $owner]), 'Native null/unknown/missing/wrong/zero/multiple selection rejected');
+        $reject(static fn () => $connection->insert($table, $invalid + ['users_id' => $owner]), 'Native null/unknown/missing/wrong/zero/multiple selection rejected', !array_key_exists('itemtype', $invalid) ? 'itemtype' : null);
     }
     $oldConfiguration = $CFG_GLPI;
     try {

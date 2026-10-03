@@ -21,6 +21,7 @@ define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
 require __DIR__ . '/FixtureRecords.php';
+require __DIR__ . '/fixtures/NativeConstraintRefusal.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
     exit(1);
@@ -44,14 +45,14 @@ $table = 'glpi_alerts';
 $read = static fn (string $table, int $id): ?array => (new RecordRepository(Orm::create($DB)))->find($table, 'id', $id);
 $branches = EntityRegistry::discriminatedReferences($table)['items_id']['selections'];
 verify(count($branches) === 10, 'Every audited core alert producer has an owning subject');
-$reject = static function (callable $operation, string $message) use ($connection): void {
+$reject = static function (callable $operation, string $message, ?string $omittedRequiredColumn = null) use ($connection): void {
     $connection->beginTransaction();
     try {
         $failed = false;
         try {
             $operation();
         } catch (DriverException $error) {
-            $failed = in_array($error->getSQLState(), ['23502', '23503', '23514', '23505', '23001', '23000'], true);
+            $failed = NativeConstraintRefusal::matches($error, $omittedRequiredColumn);
         }
         verify($failed, $message);
     } finally {
@@ -80,7 +81,7 @@ try {
     }
     foreach ([[], ['itemtype' => 'UnknownPlugin'], ['itemtype' => 'User'], ['itemtype' => 'User', 'contracts_id' => $sameId],
         ['itemtype' => 'Contract', 'contracts_id' => 0], ['itemtype' => 'User', 'users_id' => $sameId, 'contracts_id' => $sameId]] as $invalid) {
-        $reject(static fn () => $connection->insert($table, $invalid + ['type' => Alert::NOTICE]), 'Native null/unknown/missing/wrong/zero/multiple selection rejected');
+        $reject(static fn () => $connection->insert($table, $invalid + ['type' => Alert::NOTICE]), 'Native null/unknown/missing/wrong/zero/multiple selection rejected', !array_key_exists('itemtype', $invalid) ? 'itemtype' : null);
     }
     $_SESSION['glpi_use_mode'] = Session::DEBUG_MODE;
     $CFG_GLPI['debug_sql'] = true;
