@@ -16,11 +16,19 @@ use Doctrine\DBAL\ParameterType;
 /** MySQL session integrity belongs to every physical connection, including reconnects. */
 final class MySQLConnection implements Middleware
 {
-    public static function create(#[\SensitiveParameter] array $parameters): Connection
+    public static function create(#[\SensitiveParameter] array $parameters, ?Configuration $configuration = null): Connection
     {
-        $configuration = new Configuration();
-        $configuration->setMiddlewares([new self()]);
-        return DriverManager::getConnection($parameters, $configuration);
+        return DriverManager::getConnection($parameters, self::configuration($configuration));
+    }
+
+    /** Preserve supplied logging/control middleware and use the same native inspection policy. */
+    public static function configuration(?Configuration $configuration = null): Configuration
+    {
+        $configuration = $configuration === null ? new Configuration() : clone $configuration;
+        $middlewares = array_values(array_filter($configuration->getMiddlewares(), static fn (Middleware $middleware): bool => !$middleware instanceof self));
+        $configuration->setMiddlewares([...$middlewares, new self()]);
+        $configuration->setSchemaManagerFactory(new MySQLSchemaManagerFactory());
+        return $configuration;
     }
 
     /** Keep the configured modes; strict native writes cannot be an optional setting. */

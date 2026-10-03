@@ -97,7 +97,11 @@ $reject = static function (Connection $connection) use ($table): void {
 };
 $controlled = static function (string $modes, bool $initialize = true) use ($writer): Connection {
     $configuration = new Configuration();
-    $configuration->setMiddlewares($initialize ? [new ControlledMySQLModes($modes), new MySQLConnection()] : [new ControlledMySQLModes($modes)]);
+    $configuration->setMiddlewares([new ControlledMySQLModes($modes)]);
+    if ($initialize) {
+        return MySQLConnection::create($writer->getParams(), $configuration);
+    }
+    $configuration->setSchemaManagerFactory(new \itsmng\Database\MySQLSchemaManagerFactory());
     return DriverManager::getConnection($writer->getParams(), $configuration);
 };
 try {
