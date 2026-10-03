@@ -7,14 +7,15 @@ Both discovered portability suites pass 147/147 contracts at application source
 tests each with zero skips. Earlier concurrent browser timeouts remain recorded.
 
 Newer integrated application source is
-`fc58f1a1abdebaaee9e7920ac898c0c11199e5a8`: atomic mapped deletion, six operating-system
+`a6c4736df281b6d753b3cfb1ca0419af7a07966b`: atomic mapped deletion, six operating-system
 subject owners, Domain plugin adoption and document ownership, identifier sequence
 repair, authoritative empty session scope, Contract persistence and notification
 queue admission, owning endpoint authorization before lifecycle writes, Domain
-commercial Supplier coherence, and PostgreSQL CLI initialization without mysqli.
+commercial Supplier coherence, PostgreSQL CLI initialization without mysqli,
+and shared PostgreSQL transaction outcome/handle ownership.
 Their focused evidence appears below and in the linked batch
 notes. A full combined rerun has not yet run. Offline discovery at this source
-finds 163 contracts; this count is not a passing result.
+finds 164 contracts; this count is not a passing result.
 
 The integrated [owning endpoint repair](connexity-ownership.md) passes separate
 fresh installs, its authorization contract, the unchanged ITIL migration contract,
@@ -38,6 +39,15 @@ actual PostgreSQL-only PHP process and passes five isolated capability scenarios
 Those use a nonconnecting adapter spy; a live PostgreSQL-only installation has
 not been verified. The upcoming application matrix uses PHP with both drivers.
 
+The [PostgreSQL transaction ownership repair](postgresql-transaction-ownership.md)
+passes eleven selected contracts on both providers, including complete raw
+migration-history replay in 127.888s/275.773s and final native schema inspection.
+It rejects an aborted physical transaction before DBAL loses its rollback frame,
+preserves savepoint recovery and fixes handle ownership after DBAL auto-close.
+Two genuine native calls disappear; 22 remain. The separate, previously failing
+Transfer lifecycle hook probe now passes 396 PostgreSQL / 371 MariaDB assertions
+with the guard integrated. Transfer's broader validation is still running.
+
 Transfer source review additionally found that full-tree import ignored a refused
 intermediate node and ownership forwarding ignored refused child updates. The
 current batch repairs those actual lifecycle boundaries and validates atomic
@@ -46,7 +56,7 @@ fresh installs, populated/retry history, complete
 portability and broader application/browser validation. PostgreSQL 18.6 and MySQL
 8.4.11 are provisioned; their application matrix remains pending. Software
 assignment ownership is prepared separately and remains unvalidated. Normal
-authenticated Git fetch works; remote advances are checked before integration.
+authenticated Git fetch and push work; remote advances are checked before integration.
 The overall goal remains open.
 
 Further source review found that the mapped writer silently coerces invalid
