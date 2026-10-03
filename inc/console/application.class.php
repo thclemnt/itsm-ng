@@ -330,7 +330,10 @@ class Application extends BaseApplication
     private function initDb()
     {
 
-        if (!class_exists('DB', false) || !class_exists('mysqli', false)) {
+        if (
+            !class_exists('DB', false)
+            || (is_subclass_of(DB::class, \DBmysql::class) && !class_exists('mysqli', false))
+        ) {
             return;
         }
 
