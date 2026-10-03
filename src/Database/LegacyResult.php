@@ -15,7 +15,7 @@ final class LegacyResult
     public readonly int $field_count;
     public readonly int $num_rows;
 
-    public function __construct(Result $result)
+    public function __construct(Result $result, ?\Closure $normalize = null)
     {
         try {
             $this->field_count = $result->columnCount();
@@ -23,6 +23,9 @@ final class LegacyResult
                 $this->names[] = $result->getColumnName($i);
             }
             $this->rows = $result->fetchAllNumeric();
+            if ($normalize !== null) {
+                $this->rows = array_map($normalize, $this->rows);
+            }
             $this->num_rows = count($this->rows);
         } finally {
             $result->free();

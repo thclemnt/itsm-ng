@@ -88,7 +88,7 @@
     "suggest": {
         "ext-ldap": "Used to provide LDAP authentication and synchronization",
         "ext-mysqli": "Required for MySQL/MariaDB databases",
-        "ext-pgsql": "Required for PostgreSQL databases",
+        "ext-pdo_pgsql": "Required for PostgreSQL databases",
         "ext-sodium": "Used to provide strong encryption for sensitive data in database"
     },
     "config": {

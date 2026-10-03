@@ -51,6 +51,16 @@ function expectInactive(callable $operation, string $message): void
     }
     throw new RuntimeException($message . ': no NoActiveTransaction exception.');
 }
+function expectClosedStatement(callable $operation, string $message): void
+{
+    try {
+        $operation();
+    } catch (LogicException $error) {
+        verify(str_contains($error->getMessage(), 'statement'), $message);
+        return;
+    }
+    throw new RuntimeException($message . ': retained statement was accepted.');
+}
 verify(str_starts_with($DB->dbdefault, 'itsm_port_'), 'Dedicated database required.');
 $connection = $DB->getDoctrineConnection();
 verify($DB->getVersion() === $connection->getServerVersion(), 'Adapter version uses its supplied Doctrine connection.');
@@ -74,7 +84,7 @@ $endpoint = $connection->fetchAssociative('SELECT current_database() AS database
 $table = 'itsm_pg_transaction_outcomes';
 $connection->executeStatement("CREATE TEMPORARY TABLE $table (marker TEXT NOT NULL)");
 $rawActive = false;
-$extra = null;
+$extra = $outagePrepared = null;
 try {
     // Direct DBAL must refuse the successful-looking PostgreSQL aborted COMMIT.
     $connection->beginTransaction();
@@ -163,23 +173,42 @@ try {
         verify($adapter->connect() === true, 'Exclusive configured probe connection opens.');
         return $adapter;
     };
+    $factoryProbe = new class extends DBpgsql {
+        public function __construct()
+        {
+        }
+
+        public function configuredFactory(array $parameters): PostgresConnection
+        {
+            return $this->createDoctrineConnection($parameters);
+        }
+    };
+    $cold = $factoryProbe->configuredFactory($connection->getParams());
+    verify(!$cold->isConnected(), 'Constructing the DBAL owner through its factory retains genuine connection laziness.');
+    expectInactive(fn () => $cold->commit(), 'Inactive direct commit does not probe or connect the cold factory owner.');
+    verify(!$cold->isConnected(), 'No-active precedence leaves the factory owner unconnected.');
+    $cold->close();
+    verify(!$cold->isConnected(), 'Closing a cold factory owner opens no physical connection.');
+
     $extra = $fresh();
-    $cold = $extra->getDoctrineConnection();
-    verify(!$cold->isConnected(), 'Constructing the facade alone retains lazy driver wrapping.');
-    expectInactive(fn () => $cold->commit(), 'Inactive direct commit does not probe or connect the cold facade.');
-    verify(!$cold->isConnected(), 'No-active precedence leaves the facade unconnected.');
-    verify($extra->close() === true && !$extra->connected, 'Cold facade close releases its native handle.');
+    $selected = $extra->getDoctrineConnection();
+    verify($selected->isConnected(), 'A connected adapter owns the selected physical connection directly through DBAL.');
+    verify($extra->close() === true && !$extra->connected && !$selected->isConnected(), 'Adapter close releases its selected DBAL owner.');
     verify($extra->close() === false, 'Repeated closed-adapter close retains its existing result.');
     verify($extra->connect() === true, 'Closed adapter reconnects using its own endpoint.');
     $warm = $extra->getDoctrineConnection();
-    verify($warm !== $cold && $extra->getVersion() === $warm->getServerVersion(), 'Reconnect creates a new facade with vendor-owned version reporting.');
+    verify($warm !== $selected && $extra->getVersion() === $warm->getServerVersion(), 'Reconnect creates a new DBAL owner with vendor-owned version reporting.');
     verify(Orm::create($extra)->getConnection() === $warm && $warm !== $connection, 'ORM retains an explicitly supplied secondary connection without selecting the global writer.');
-    verify($warm->isConnected(), 'Version retrieval wraps the existing selected native handle.');
-    verify($extra->close() === true && !$warm->isConnected(), 'Warm facade close closes its shared driver connection.');
+    verify($warm->isConnected(), 'Version retrieval retains the existing selected physical owner.');
+    verify($extra->close() === true && !$warm->isConnected(), 'Connected owner close closes its shared driver connection.');
     verify($extra->connect() === true, 'Warm-close reconnect restores selected connection/session initialization.');
     $outage = $extra->getDoctrineConnection();
     $outagePid = (int)$outage->fetchOne('SELECT pg_backend_pid()');
     verify($outagePid !== $pid, 'Outage probe owns a separate backend from the application test connection.');
+    $outagePrepared = $extra->prepare('SELECT ?::integer AS marker');
+    $outageMarker = 42;
+    $outagePrepared->bind_param('i', $outageMarker);
+    verify($outagePrepared->execute(), 'Owned outage probe retains an actual prepared compatibility command.');
     $outage->beginTransaction();
     verify((bool)$connection->fetchOne('SELECT pg_terminate_backend(?)', [$outagePid]), 'Terminate only this contract-owned secondary backend.');
     try {
@@ -190,16 +219,20 @@ try {
         verify($error instanceof \Doctrine\DBAL\Exception\ConnectionLost, 'Owned backend termination exercises DBAL automatic close.');
     }
     verify(!$outage->isConnected(), 'DBAL automatically closes its lost physical driver.');
+    expectClosedStatement($outagePrepared->execute(...), 'Automatic loss close invalidates its retained compatibility command.');
+    verify(!$outage->isConnected(), 'Retained command refusal never reconnects the automatically closed owner.');
     verify($extra->close() === true && !$extra->connected, 'Explicit adapter close after automatic DBAL close avoids double-closing its handle.');
     verify($extra->connect() === true, 'Explicit reconnect opens a new physical handle after connection loss.');
     $reconnected = $extra->getDoctrineConnection();
-    verify($reconnected !== $outage && !$reconnected->isConnected()
-        && !$reconnected->getDriver()->hasTransferredConnection(), 'New untransferred handle has new ownership state after prior automatic close.');
-    verify($extra->close() === true, 'New cold handle is still closed after a previous handle transferred ownership.');
+    verify($reconnected !== $outage && $reconnected->isConnected(), 'A new directly owned physical connection has fresh state after prior automatic close.');
+    verify($extra->close() === true && !$reconnected->isConnected(), 'A new physical owner still closes after the prior owner was automatically closed.');
     verify($extra->connect() === true, 'The adapter remains reusable after cold reclose.');
     verify($extra->getDoctrineConnection()->fetchAssociative('SELECT current_database() AS database_name, current_user AS user_name, inet_server_addr()::text AS server_address, inet_server_port() AS server_port') === $endpoint, 'Reconnect retains the configured writer database, user and endpoint.');
     verify((int)$connection->fetchOne('SELECT pg_backend_pid()') === $pid, 'Application connection survives the exclusive outage probe.');
 } finally {
+    if ($outagePrepared !== null) {
+        $outagePrepared->close();
+    }
     if ($extra !== null) {
         $extra->close();
     }

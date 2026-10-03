@@ -10,7 +10,6 @@ use itsmng\Database\PostgresStatement;
 
 class DBpgsql extends DBAdapter
 {
-    private $dbh = null;
     private string $lastError = '';
     private string $sqlState = '';
     private int $affected = 0;
@@ -19,22 +18,16 @@ class DBpgsql extends DBAdapter
     public $dbschema = 'public';
     public $dbsslmode = 'prefer';
 
-    protected function getNativeConnection(): object
-    {
-        return $this->dbh;
-    }
-
-    /** The same physical connection is used by DBAL and legacy queries. */
+    /** The adapter, ORM and legacy SQL use one DBAL-owned physical session. */
     public function getDoctrineConnection(): \itsmng\Database\PostgresConnection
     {
-        if ($this->doctrine === null) {
-            $this->doctrine = new \itsmng\Database\PostgresConnection(
-                ['dbname' => $this->dbdefault],
-                new \itsmng\Database\NativeDriver($this->getNativeConnection())
-            );
-            $this->doctrine->setNestTransactionsWithSavepoints(true);
-        }
-        return $this->doctrine;
+        return $this->doctrine ?? throw new RuntimeException('Database connection is not open.');
+    }
+
+    /** Protected factory seam keeps construction distinct from physical connect. */
+    protected function createDoctrineConnection(array $parameters): \itsmng\Database\PostgresConnection
+    {
+        return \itsmng\Database\PostgresConnection::create($parameters);
     }
 
     public function getProvider(): string
@@ -57,49 +50,43 @@ class DBpgsql extends DBAdapter
 
     public function connect($choice = null)
     {
-        $this->connected = false;
+        $this->close();
         $this->error = 1;
-        $this->lastError = '';
-        if (!extension_loaded('pgsql')) {
-            $this->lastError = 'The pgsql PHP extension is required.';
+        $this->lastError = $this->sqlState = '';
+        if (!extension_loaded('pdo_pgsql')) {
+            $this->lastError = 'The pdo_pgsql PHP extension is required.';
             return false;
-        }
-        if ($this->dbh) {
-            $this->close();
         }
         $host = is_array($this->dbhost) ? $this->dbhost[$choice ?? array_rand($this->dbhost)] : $this->dbhost;
         $port = $this->dbport;
         if (preg_match('/^\[(.+)\]:(\d+)$/', $host, $parts) || preg_match('/^([^:]+):(\d+)$/', $host, $parts)) {
             [, $host, $port] = $parts;
         }
-        $params = [
-            'host' => $host, 'port' => $port, 'user' => $this->dbuser,
+        $timezone = date_default_timezone_get();
+        $parameters = [
+            'host' => $host, 'port' => (int)$port, 'user' => $this->dbuser,
             'password' => rawurldecode($this->dbpassword), 'dbname' => $this->dbdefault,
-            'connect_timeout' => 5, 'application_name' => 'ITSM-NG',
-            'sslmode' => $this->dbssl ? 'verify-full' : $this->dbsslmode,
+            'charset' => 'UTF8', 'connect_timeout' => 5, 'application_name' => 'ITSM-NG',
+            'search_path' => '"' . str_replace('"', '""', $this->dbschema) . '"',
+            'timezone' => $timezone, 'sslmode' => $this->dbssl ? 'verify-full' : $this->dbsslmode,
         ];
         foreach (['sslcert' => $this->dbsslcert, 'sslkey' => $this->dbsslkey, 'sslrootcert' => $this->dbsslca] as $key => $value) {
             if ($value !== null) {
-                $params[$key] = $value;
+                $parameters[$key] = $value;
             }
         }
-        $dsn = [];
-        foreach ($params as $key => $value) {
-            $dsn[] = $key . "='" . str_replace(['\\', "'"], ['\\\\', "\\'"], (string)$value) . "'";
-        }
-        $this->dbh = @pg_connect(implode(' ', $dsn), PGSQL_CONNECT_FORCE_NEW);
-        if (!$this->dbh) {
-            // Do not expose the DSN/password in diagnostics.
+        try {
+            $this->doctrine = $this->createDoctrineConnection($parameters);
+            $this->doctrine->getServerVersion();
+            $this->connected = true;
+            $this->error = 0;
+            $this->setTimezone($this->guessTimezone());
+            return true;
+        } catch (\Doctrine\DBAL\Exception $error) {
             $this->lastError = 'Unable to connect to PostgreSQL. Check host, database, credentials and TLS settings.';
+            $this->close();
             return false;
         }
-        pg_set_client_encoding($this->dbh, 'UTF8');
-        $this->connected = true;
-        $this->error = 0;
-        $this->queryParams("SELECT set_config('search_path', $1, false)", ['"' . str_replace('"', '""', $this->dbschema) . '"']);
-        $this->queryParams("SELECT set_config('standard_conforming_strings', 'on', false)", []);
-        $this->setTimezone($this->guessTimezone());
-        return true;
     }
 
     /** Preserve the pre-escaped legacy API; query() decodes these escapes lexically. */
@@ -110,153 +97,118 @@ class DBpgsql extends DBAdapter
 
     public function query($query)
     {
-        $result = $this->queryParams(LegacySql::postgres($query), []);
-        // The public adapter contract returns true for commands and a result
-        // only for row sets, including INSERT/UPDATE ... RETURNING.
-        if ($result !== false && pg_result_status($result) === PGSQL_COMMAND_OK) {
-            $this->freeResult($result);
-            return true;
-        }
-        return $result;
+        return $this->queryParams(LegacySql::postgres($query), []);
     }
 
-    /** Execute native PostgreSQL SQL with separate values, without legacy escaping. */
+    /** Numbered libpq parameters remain a positional compatibility API. */
     public function queryParams(string $sql, array $values)
     {
-        global $DEBUG_SQL, $SQL_TOTAL_REQUEST, $CFG_GLPI;
         foreach ($values as $value) {
             if (is_string($value) && str_contains($value, "\0")) {
                 throw new InvalidArgumentException('PostgreSQL text parameters cannot contain NUL bytes.');
             }
         }
+        [$sql, $values] = \itsmng\Database\PostgresParameters::bind($sql, $values);
+        return $this->executeResult($sql, fn () => $this->getDoctrineConnection()->executeLegacyQuery($sql, $values));
+    }
+
+    public function executePrepared(\Doctrine\DBAL\Driver\Statement $statement, string $sql, array $values, array $types)
+    {
+        return $this->executeResult($sql, fn () => $this->getDoctrineConnection()->executeLegacyStatement($statement, $sql, $values, $types));
+    }
+
+    private function executeResult(string $sql, callable $execute)
+    {
+        global $DEBUG_SQL, $SQL_TOTAL_REQUEST, $CFG_GLPI;
         $start = microtime(true);
         $this->lastError = $this->sqlState = '';
         $this->affected = 0;
         if (!$this->connected) {
             throw new RuntimeException('PostgreSQL connection is not open.');
         }
-        if (!pg_send_query_params($this->dbh, $sql, $values)) {
-            throw new RuntimeException('Unable to send the PostgreSQL query.');
-        }
-        $result = pg_get_result($this->dbh);
-        if ($result === false) {
-            throw new RuntimeException('PostgreSQL returned no query result.');
-        }
-        $this->sqlState = pg_result_error_field($result, PGSQL_DIAG_SQLSTATE) ?: '';
-        if (in_array(pg_result_status($result), [PGSQL_FATAL_ERROR, PGSQL_BAD_RESPONSE], true)) {
-            $this->lastError = pg_result_error($result);
+        try {
+            $result = $execute();
+            if ($result instanceof \itsmng\Database\LegacyResult) {
+                $this->affected = $result->num_rows;
+                return $result;
+            }
+            $this->affected = (int)$result->rowCount();
+            $result->free();
+            return true;
+        } catch (\Doctrine\DBAL\Exception\DriverException $error) {
+            $this->sqlState = $error->getSQLState() ?? '';
+            $this->lastError = $error->getMessage();
             $this->affected = -1;
-            pg_free_result($result);
-            $result = false;
-        } else {
-            $this->affected = pg_affected_rows($result);
-        }
-        // Drain the asynchronous command before another query can be sent.
-        while ($extra = pg_get_result($this->dbh)) {
-            pg_free_result($extra);
-        }
-        if ($this->execution_time === true) {
-            $this->execution_time = microtime(true) - $start;
-        }
-        if (!empty($CFG_GLPI['debug_sql']) && ($_SESSION['glpi_use_mode'] ?? null) === Session::DEBUG_MODE) {
-            $SQL_TOTAL_REQUEST++;
-            $DEBUG_SQL['queries'][$SQL_TOTAL_REQUEST] = $sql;
-            $DEBUG_SQL['times'][$SQL_TOTAL_REQUEST] = microtime(true) - $start;
-            $DEBUG_SQL['rows'][$SQL_TOTAL_REQUEST] = $this->affected;
-            if (!$result) {
-                $DEBUG_SQL['errors'][$SQL_TOTAL_REQUEST] = $this->lastError;
+            Toolbox::logSqlError("PostgreSQL query error [{$this->sqlState}]: {$this->lastError}\nSQL: $sql");
+            if ($error instanceof \Doctrine\DBAL\Exception\ConnectionLost) {
+                throw $error;
+            }
+            return false;
+        } finally {
+            $elapsed = microtime(true) - $start;
+            if ($this->execution_time === true) {
+                $this->execution_time = $elapsed;
+            }
+            if (!empty($CFG_GLPI['debug_sql']) && ($_SESSION['glpi_use_mode'] ?? null) === Session::DEBUG_MODE) {
+                $SQL_TOTAL_REQUEST++;
+                $DEBUG_SQL['queries'][$SQL_TOTAL_REQUEST] = $sql;
+                $DEBUG_SQL['times'][$SQL_TOTAL_REQUEST] = $elapsed;
+                $DEBUG_SQL['rows'][$SQL_TOTAL_REQUEST] = $this->affected;
+                if ($this->lastError !== '') {
+                    $DEBUG_SQL['errors'][$SQL_TOTAL_REQUEST] = $this->lastError;
+                }
             }
         }
-        if (!$result) {
-            Toolbox::logSqlError("PostgreSQL query error [{$this->sqlState}]: {$this->lastError}\nSQL: $sql");
-        }
-        return $result;
     }
 
     public function prepare($query)
     {
-        return new PostgresStatement($this, LegacySql::postgres($query, true));
+        return new PostgresStatement($this, LegacySql::postgres($query));
     }
 
     public function numrows($result)
     {
-        return $result ? pg_num_rows($result) : 0;
+        return $result ? $result->num_rows : 0;
     }
 
     public function fetchArray($result)
     {
-        $row = $this->fetchRow($result);
-        if ($row === null) {
-            return null;
-        }
-        foreach ($row as $i => $value) {
-            $row[pg_field_name($result, $i)] = $value;
-        }
-        return $row;
+        return $result->fetch_array();
     }
 
     public function fetchRow($result)
     {
-        $row = pg_fetch_row($result);
-        if ($row === false) {
-            return null;
-        }
-        foreach ($row as $i => $value) {
-            if ($value === null) {
-                continue;
-            }
-            $type = pg_field_type($result, $i);
-            if (in_array($type, ['int2', 'int4', 'int8'], true) && filter_var($value, FILTER_VALIDATE_INT) !== false) {
-                $row[$i] = (int)$value;
-            } elseif (in_array($type, ['float4', 'float8'], true)) {
-                $row[$i] = (float)$value;
-            } elseif ($type === 'bool') {
-                // Keep the legacy model contract while storing real SQL booleans.
-                $row[$i] = $value === 't' ? 1 : 0;
-            } elseif ($type === 'timestamptz') {
-                $row[$i] = (new DateTimeImmutable($value))->format('Y-m-d H:i:s');
-            }
-        }
-        return $row;
+        return $result->fetch_row();
     }
 
     public function fetchAssoc($result)
     {
-        $row = $this->fetchRow($result);
-        if ($row === null) {
-            return null;
-        }
-        $assoc = [];
-        foreach ($row as $i => $value) {
-            $assoc[pg_field_name($result, $i)] = $value;
-        }
-        return $assoc;
+        return $result->fetch_assoc();
     }
 
     public function fetchObject($result)
     {
-        $row = $this->fetchAssoc($result);
-        return $row === null ? null : (object)$row;
+        return $result->fetch_object();
     }
 
     public function dataSeek($result, $num)
     {
-        return pg_result_seek($result, $num);
+        return $result->data_seek($num);
     }
 
     public function numFields($result)
     {
-        return pg_num_fields($result);
+        return $result->field_count;
     }
 
     public function fieldName($result, $nb)
     {
-        return pg_field_name($result, $nb);
+        return $result->fieldName($nb);
     }
 
     public function freeResult($result)
     {
-        return pg_free_result($result);
+        return $result->free();
     }
 
     public function affectedRows()
@@ -439,22 +391,11 @@ SQL, [$this->dbschema, $table]);
 
     public function close()
     {
-        if (!$this->dbh) {
-            return false;
-        }
-        $wrapped = $this->doctrine !== null
-            && $this->doctrine->getDriver()->hasTransferredConnection();
-        if ($this->doctrine !== null) {
-            $this->doctrine->close();
-            $this->doctrine = null;
-        }
-        // A facade that never transferred this handle has no owning driver
-        // destructor. Conversely, DBAL may already have destroyed its driver
-        // on connection loss; do not close that same handle a second time.
-        $result = $wrapped ? true : pg_close($this->dbh);
-        $this->dbh = null;
+        $wasConnected = $this->connected;
+        $this->doctrine?->close();
+        $this->doctrine = null;
         $this->connected = false;
-        return $result;
+        return $wasConnected;
     }
 
     public function getLock($name)
@@ -482,9 +423,7 @@ SQL, [$this->dbschema, $table]);
     public function setTimezone($timezone)
     {
         new DateTimeZone($timezone);
-        if (!$this->queryParams("SELECT set_config('TimeZone', $1, false)", [$timezone])) {
-            throw new RuntimeException($this->error());
-        }
+        $this->getDoctrineConnection()->setSessionTimezone($timezone);
         date_default_timezone_set($timezone);
         $_SESSION['glpi_currenttime'] = date('Y-m-d H:i:s');
         return $this;

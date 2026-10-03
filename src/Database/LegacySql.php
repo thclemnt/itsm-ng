@@ -19,7 +19,15 @@ final class LegacySql
         $length = strlen($sql);
         for ($i = 0; $i < $length; $i++) {
             $char = $sql[$i];
-            if ($char === "'" || $char === '`' || $char === '"') {
+            if ($char === '$' && ($i === 0 || !preg_match('/[a-zA-Z0-9_$\x80-\xff]/', $sql[$i - 1]))
+                && preg_match('/\G\$(?:[a-zA-Z_\x80-\xff][a-zA-Z0-9_\x80-\xff]*)?\$/', $sql, $match, 0, $i)) {
+                $end = strpos($sql, $match[0], $i + strlen($match[0]));
+                if ($end === false) {
+                    throw new \InvalidArgumentException('Unterminated SQL dollar-quoted literal.');
+                }
+                $out .= substr($sql, $i, $end + strlen($match[0]) - $i);
+                $i = $end + strlen($match[0]) - 1;
+            } elseif ($char === "'" || $char === '`' || $char === '"') {
                 $delimiter = $char;
                 $value = '';
                 $closed = false;

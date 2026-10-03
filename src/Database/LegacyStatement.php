@@ -37,6 +37,7 @@ final class LegacyStatement
                 $values[$i] = match ($this->types[$i] ?? 's') {
                     'i' => (int)$value,
                     'd' => (float)$value,
+                    'b' => $value,
                     default => (string)$value,
                 };
             }
@@ -51,7 +52,7 @@ final class LegacyStatement
             $type = match ($this->types[$index] ?? 's') {
                 'i' => \Doctrine\DBAL\ParameterType::INTEGER,
                 'd' => \Doctrine\DBAL\Types\Types::FLOAT,
-                'b' => \Doctrine\DBAL\ParameterType::BINARY,
+                'b' => is_resource($value) ? \Doctrine\DBAL\ParameterType::LARGE_OBJECT : \Doctrine\DBAL\ParameterType::BINARY,
                 default => \Doctrine\DBAL\ParameterType::STRING,
             };
             $this->statement->bindValue($index + 1, $value, $value === null ? \Doctrine\DBAL\ParameterType::NULL : $type);

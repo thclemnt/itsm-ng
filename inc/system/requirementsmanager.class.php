@@ -74,8 +74,8 @@ class RequirementsManager
         $requirements[] = new MemoryLimit(64 * 1024 * 1024);
 
         if ($db instanceof \DBpgsql) {
-            $requirements[] = new Extension('pgsql');
-        } elseif ($db !== null || !extension_loaded('pgsql')) {
+            $requirements[] = new Extension('pdo_pgsql');
+        } elseif ($db !== null || !extension_loaded('pdo_pgsql')) {
             $requirements[] = new MysqliMysqlnd();
         }
         $requirements[] = new Extension('ctype');

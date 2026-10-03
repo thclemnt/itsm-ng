@@ -12,9 +12,11 @@ final class PostgresStatement
     private array $values = [];
     private string $types = '';
     private mixed $result = false;
+    private ?\Doctrine\DBAL\Driver\Statement $statement;
 
     public function __construct(private \DBpgsql $db, private string $sql)
     {
+        $this->statement = $db->getDoctrineConnection()->prepareLegacyStatement($sql);
     }
 
     public function bind_param(string $types, mixed &...$values): bool
@@ -35,14 +37,30 @@ final class PostgresStatement
                 $values[$i] = match ($this->types[$i] ?? 's') {
                     'i' => (int)$value,
                     'd' => (float)$value,
+                    'b' => $value,
                     default => (string)$value,
                 };
             }
         }
-        if ($this->result) {
+        if ($this->statement === null) {
+            throw new \LogicException('Prepared statement is closed.');
+        }
+        $types = [];
+        foreach ($values as $index => $value) {
+            if ($value !== null && ($this->types[$index] ?? 's') !== 'b' && is_string($value) && str_contains($value, "\0")) {
+                throw new \InvalidArgumentException('PostgreSQL text parameters cannot contain NUL bytes.');
+            }
+            $types[$index] = match ($this->types[$index] ?? 's') {
+                'i' => \Doctrine\DBAL\ParameterType::INTEGER,
+                'b' => is_resource($value) ? \Doctrine\DBAL\ParameterType::LARGE_OBJECT : \Doctrine\DBAL\ParameterType::BINARY,
+                default => \Doctrine\DBAL\ParameterType::STRING,
+            };
+        }
+        $result = $this->db->executePrepared($this->statement, $this->sql, $values, $types);
+        if ($this->result instanceof LegacyResult) {
             $this->db->freeResult($this->result);
         }
-        $this->result = $this->db->queryParams($this->sql, $values);
+        $this->result = $result;
         $this->error = $this->db->error();
         $this->affected_rows = $this->db->affectedRows();
         return $this->result !== false;
@@ -55,10 +73,14 @@ final class PostgresStatement
 
     public function close(): bool
     {
-        if ($this->result) {
+        if ($this->result instanceof LegacyResult) {
             $this->db->freeResult($this->result);
             $this->result = false;
         }
+        if ($this->statement instanceof Driver\Postgres\OwnedStatement) {
+            $this->statement->close();
+        }
+        $this->statement = null;
         return true;
     }
 }
