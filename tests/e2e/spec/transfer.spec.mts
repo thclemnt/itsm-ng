@@ -96,12 +96,19 @@ async function executeTransfer(page: Page, form: Locator): Promise<void> {
   await page.waitForLoadState('networkidle');
 }
 
+function transferResult(page: Page): Locator {
+  // The controller result also contains its Back link; an exact text locator
+  // for the outcome alone can only match an optional notification toast.
+  return page.locator('div.b.center').filter({ has: page.locator('a[href="central.php"]') });
+}
+
 test('Transfer refuses incompatible commercial ownership, retains its real list and retries without losing financial roles', async ({ page, request }) => {
   test.skip(!config, 'Set PLAYWRIGHT_TRANSFER_CONFIG to a disposable canonical installation for private CLI fixtures.');
   // The shared harness retains its fixed 60-second timeout and zero local retries.
   const guard = await fixture<Guard>('guard');
   let session: ApiSession | undefined;
   let primaryError: unknown;
+  let primaryFailed = false;
   try {
     const seed = await fixture<Seed>('seed', guard);
     const before = await fixture<Snapshot>('read', guard);
@@ -118,7 +125,11 @@ test('Transfer refuses incompatible commercial ownership, retains its real list 
     await page.goto('/front/central.php?active_entity=0&is_recursive=1');
     await addActualTransferList(page, seed);
     await executeTransfer(page, await actualTransferForm(page, seed, false));
-    await expect(page.getByText('Transfer failed', { exact: true }).first()).toBeVisible();
+    const refused = transferResult(page);
+    await expect(refused).toHaveCount(1);
+    await expect(refused).toBeVisible();
+    await expect(refused).toHaveText(/^Transfer failed\s*Back$/);
+    await expect(refused.filter({ hasText: /^Operation successful\s*Back$/ })).toHaveCount(0);
     await expect(page.getByText('Operation successful', { exact: true })).toHaveCount(0);
     expect(await fixture<Snapshot>('read', guard)).toEqual(before);
     // This proves ordinary preflight refusal preserves data. Late-hook DML
@@ -141,7 +152,11 @@ test('Transfer refuses incompatible commercial ownership, retains its real list 
     expect(afterEdit.targets).toEqual(before.targets);
 
     await executeTransfer(page, await actualTransferForm(page, seed, true));
-    await expect(page.getByText('Operation successful', { exact: true }).first()).toBeVisible();
+    const accepted = transferResult(page);
+    await expect(accepted).toHaveCount(1);
+    await expect(accepted).toBeVisible();
+    await expect(accepted).toHaveText(/^Operation successful\s*Back$/);
+    await expect(accepted.filter({ hasText: /^Transfer failed\s*Back$/ })).toHaveCount(0);
     await expect(page.getByText('Transfer failed', { exact: true })).toHaveCount(0);
     const transferred = await fixture<Snapshot>('read', guard);
     expect(Number(transferred.domain.entities_id)).toBe(seed.destination);
@@ -167,13 +182,17 @@ test('Transfer refuses incompatible commercial ownership, retains its real list 
     await expect(page.getByText('No selected element or badly defined operation', { exact: true })).toBeVisible();
   } catch (error) {
     primaryError = error;
+    primaryFailed = true;
   } finally {
     const failures: unknown[] = [];
-    if (primaryError) failures.push(primaryError);
+    if (primaryFailed) failures.push(primaryError);
     if (session) {
       try { await closeApiSession(request, session); } catch (error) { failures.push(error); }
     }
     try { await fixture('clean', guard); } catch (error) { failures.push(error); }
+    // Preserve Playwright's original assertion and source location when owned
+    // cleanup succeeds, while still reporting every failure if cleanup fails.
+    if (failures.length === 1) throw failures[0];
     if (failures.length) throw new AggregateError(failures, 'Transfer browser flow or owned cleanup failed');
   }
 });

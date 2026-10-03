@@ -1,7 +1,7 @@
 # Computer iterator fixture ownership
 
 Prepared separately at base
-`b66ec2f474973e779de1043a8a7d308e36531552`; provider execution is pending.
+`b66ec2f474973e779de1043a8a7d308e36531552`; root validation is recorded below.
 No application persistence behavior changes in this patch.
 
 The original `tests\units\Computer::testGetFromIter()` selects every Computer ID,
@@ -35,8 +35,13 @@ This prevents a partial-ID model or lossy NULL conversion from passing.
 All three records belong to DbTestCase's existing per-method transaction, which
 its `afterTestMethod()` rolls back.
 
-Source checks: PHP 8.2.33 lint, scoped formatter dry run and whitespace checks
-pass. No database, bootstrap, dependency copying, application, assets or browser
-jobs were run. Next, execute this exact original Computer class on both provider
-databases with the parent's existing post-portability state, then retain it in
-the complete broader application matrix. The modernization goal remains open.
+The isolated preparation passed PHP 8.2.33 lint, scoped formatter dry run and
+whitespace checks without live jobs. Root's first PostgreSQL class execution
+then exposed a missing required entity in the public fixture input. Supplying
+`entities_id = 0` explicitly fixed that omission; the failed attempt is retained.
+At `336ef4fec61341437399471647a6fe6e7992efb7`, the corrected original Computer class
+passes seven methods and 350 assertions on each provider in the post-portability
+database state. Broader suites pass 262 methods/10,422 assertions on PostgreSQL
+and 308 methods/14,483 assertions on MariaDB, with zero void methods or skips.
+Actual native probes on both engines independently confirm full-row NULL-name
+reload. Production hydration is unchanged. The modernization goal remains open.

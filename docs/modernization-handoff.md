@@ -1,12 +1,45 @@
 # PostgreSQL and Doctrine modernization goal
 
-Latest full integrated validation:
-[canonical upgrades and owning dropdown choices](modernization-upgrade-dropdown-validation.md).
-Both discovered portability suites pass 147/147 contracts at application source
-`448699cfbb7d4847a73edc36eabf0f3da1042fb3`; sequential browser suites pass 12/12
-tests each with zero skips. Earlier concurrent browser timeouts remain recorded.
+Latest complete portability checkpoint:
+[combined cache and Kanban validation](modernization-complete-portability.md).
+Both dynamically discovered suites pass 168/168 contracts at application source
+`b66ec2f474973e779de1043a8a7d308e36531552`: PostgreSQL in 830.445s and MariaDB in
+1,780.542s. Fresh CLI installations also pass without PHP warnings. Final native
+inspection on both engines finds twelve completed migrations, no pending versions
+or schema differences, 357 mapped tables, 358 actual tables and 1,057 enforced FKs.
+The known certificate compatibility-column schema check passes in the complete
+suite order. Expected deprecated clone-path notices remain recorded.
 
-Newer integrated application source is
+Current application-test source is
+`336ef4fec61341437399471647a6fe6e7992efb7`. Only the Computer iterator fixture and
+its note differ from the portability checkpoint; 1,620 application, installation,
+portability and browser source files are verified byte-identical. The first broader
+application runs completed 262/262 PostgreSQL and 308/308 MariaDB methods with one
+failure each: an iterator test assumed all unrelated Computer names were strings.
+Native read-only probes prove full-row reload preserves legitimate SQL NULL on
+both engines. The corrected Computer class passes 7/7 methods and 350 assertions
+on each engine. Its first PostgreSQL attempt also exposed a missing required
+fixture entity; that exception and its explicit root-entity correction are retained.
+Corrected broader application suites now pass 262 methods/10,422 assertions on
+PostgreSQL and 308 methods/14,483 assertions on MariaDB, with zero void methods
+or skips. Separate original notification-queue tests pass ten assertions each.
+After rebuilding assets, both complete browser suites pass 14/14 scenarios at
+`3ac825b1e31de09057c41f2424797b1fb7ca9103`, with zero skips or retries. Their first
+13/14 runs exposed an exact-text Transfer result fixture error; the retained
+traces and [correction](transfer-browser-result-validation.md) distinguish this
+from application failure. Final native inspections remain converged on both
+engines. The only changes after b66 are these two test corrections and notes.
+Remember-me login header warnings were observed and a separate Session/token
+repair remains unvalidated. Official PostgreSQL 18.6/MySQL 8.4.11 execution and
+remote CI remain pending. This checkpoint does not complete the modernization goal.
+
+The earlier [canonical upgrade and dropdown checkpoint](modernization-upgrade-dropdown-validation.md)
+passed 147/147 contracts and 12/12 sequential browser tests per provider at
+`448699cfbb7d4847a73edc36eabf0f3da1042fb3`. The newer 168/168 result supersedes its
+portability status; its browser result and earlier concurrent timeouts remain
+historical evidence, not validation of the current source.
+
+Earlier integrated application source was
 `4ecbd6723f52d9b6dd43737ab329369e9b85976c`: atomic mapped deletion, six operating-system
 subject owners, Domain plugin adoption and document ownership, identifier sequence
 repair, authoritative empty session scope, Contract persistence and notification
@@ -19,7 +52,8 @@ notes. The first complete combined PostgreSQL run at
 `4dbc9f7c2edeafb5e54c65d9c9a5144f9132246c` passed 165/167 contracts in
 824.383s: `documents.php` and `kanban.php` failed. The schema-check contract passed
 in the actual full-suite order. No complete MariaDB run was made at that source;
-the earlier 147/147 checkpoint remains the last green combined result.
+the 147/147 checkpoint was then the last green combined result; the newer
+168/168 checkpoint above supersedes that portability status.
 
 The [purge ownership corrections](purge-ownership-corrections.md) reproduce both
 failures on both providers. Project's existing public board cleanup now owns the
@@ -57,16 +91,17 @@ reproduce the old warning and pass 37 strict bootstrap assertions against a
 separate empty database, including same-adapter discovery after table creation
 and propagation of genuine configured-read errors. The dropdown usage contract
 now exercises genuine unmanaged references separately from managed Project
-children. These changes are integrated for a new combined fresh-install,
-complete portability/application and browser matrix; those combined results
-remain pending. Focused results do not replace a complete passing suite.
+children. The integrated b66 checkpoint now passes fresh CLI installations and
+complete 168/168 portability suites on both engines. The fixture-corrected broader
+application, notification queue and rebuilt browser runs also pass as recorded
+above; the earlier focused checks remain separate evidence.
 
 The integrated [owning endpoint repair](connexity-ownership.md) passes separate
 fresh installs, its authorization contract, the unchanged ITIL migration contract,
 12 adjacent contracts and schema comparison on both providers. Its original
 application scope passes 48/48 methods and 2,299 assertions each, including 69
 Transfer fixture types and inherited Link ownership. These results belong to that
-isolated batch and do not replace the older full combined checkpoint.
+isolated batch and remain distinct from the newer complete portability checkpoint.
 
 Parallel review also identified a Transfer path that ignores a refused parent
 update after child mutations. The integrated
@@ -102,12 +137,17 @@ twelve completed versions, no pending migrations or schema differences, and
 1,057 actual foreign keys. All 41 frozen application/test files match after main
 integration; main's newer CLI and browser additions are preserved.
 
-Next, freeze the repaired combined source for new isolated fresh installations, complete discovered
-portability suites (including populated/retry history), broader application tests,
-rebuilt assets and browser validation. PostgreSQL 18.6 and MySQL
-8.4.11 are provisioned; their application matrix remains pending. Software
-assignment ownership is prepared separately and remains unvalidated. Normal
-authenticated Git fetch and push work; remote advances are checked before integration.
+Next, validate the isolated Boolean enforcement batch, including the bounded
+identifier-inspection optimization, on fresh and populated databases with actual
+refusal, interrupted DDL and retry evidence. Continue the prepared Session,
+Software and Processor batches, then exercise the provisioned PostgreSQL
+18.6/MySQL 8.4.11 engines on the resulting coherent source. The
+complete b66 portability suites include populated adoption, retry and idempotency
+contracts; do not replace their evidence with fresh-install success alone. Boolean
+enforcement, Session authorization, Software assignments and Processor ownership
+are separate prepared branches with their live combined validation still pending.
+Normal authenticated Git fetch and push work; remote advances are checked before
+integration.
 The overall goal remains open.
 
 Current static inventory is 357 mapped tables, 1,057 enforced references,
