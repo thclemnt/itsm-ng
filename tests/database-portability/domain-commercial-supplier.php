@@ -25,6 +25,13 @@ function verify(bool $ok, string $message): void
         throw new RuntimeException($message);
     }
 }
+final class CommercialSupplierApiResponse extends RuntimeException
+{
+    public function __construct(public readonly array $response, int $status)
+    {
+        parent::__construct(json_encode($response, JSON_THROW_ON_ERROR), $status);
+    }
+}
 final class CommercialSupplierApiProbe extends \Glpi\Api\APIRest
 {
     public function configure(int $client): void
@@ -37,9 +44,21 @@ final class CommercialSupplierApiProbe extends \Glpi\Api\APIRest
     {
         return $this->updateItems(Domain::class, ['input' => [(object)$input]]);
     }
+    public function refusedUpdate(array $input): bool
+    {
+        try {
+            $this->updateDomain($input);
+        } catch (CommercialSupplierApiResponse $response) {
+            verify($response->getCode() === 400 && $response->response[0] === 'ERROR_GLPI_UPDATE', 'REST refuses with the actual update error and HTTP status');
+            verify(count($response->response[1]) === 1 && $response->response[1][0][$input['id']] === false
+                && str_contains($response->response[1][0]['message'], 'commercial supplier'), 'REST refuses this Domain with its commercial ownership diagnostic');
+            return false;
+        }
+        throw new RuntimeException('Expected REST commercial supplier refusal');
+    }
     public function returnResponse($response, $httpcode = 200, $additionalheaders = [])
     {
-        throw new RuntimeException(json_encode($response, JSON_THROW_ON_ERROR), $httpcode);
+        throw new CommercialSupplierApiResponse($response, $httpcode);
     }
 }
 verify(str_starts_with($DB->dbdefault, 'itsm_port_'), 'Disposable database required');
@@ -111,7 +130,7 @@ try {
         verify((new Domain())->add(['name' => $prefix . ' refused ' . $label, 'entities_id' => $owner, 'suppliers_id' => $supplier, 'is_recursive' => true]) === false, 'Public add refuses ' . $label . ' commercial ownership');
         verify($counts() === $before, 'Refused add changes no Domain/history/notification rows');
         $refused(static fn (): bool => (new Domain())->update(['id' => $id, 'suppliers_id' => $supplier, 'comment' => 'Must not persist']), 'Public update refuses ' . $label);
-        $refused(static fn (): bool => $api->updateDomain(['id' => $id, 'suppliers_id' => $supplier, 'comment' => 'Must not persist'])[0][$id], 'Actual REST update refuses ' . $label);
+        $refused(static fn (): bool => $api->refusedUpdate(['id' => $id, 'suppliers_id' => $supplier, 'comment' => 'Must not persist']), 'Actual REST update refuses ' . $label);
     }
     verify($domain->getFromDB($id), 'Load Domain for pure transfer coherence preflight');
     $before = [$read('glpi_domains', $id), $read('glpi_infocoms', $financial), $counts()];

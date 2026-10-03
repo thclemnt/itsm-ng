@@ -392,7 +392,7 @@ class Domain extends CommonDropdown
         try {
             (new \itsmng\Database\Repository\DomainRepository($em))->assertCommercialSupplierAssignment(
                 $input,
-                $updating ? (int)$this->getID() : null
+                $updating && !$this->isNewItem() ? (int)$this->getID() : null
             );
         } catch (\InvalidArgumentException $error) {
             Session::addMessageAfterRedirect($error->getMessage(), ERROR, true);
