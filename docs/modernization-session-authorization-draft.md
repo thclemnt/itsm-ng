@@ -138,3 +138,8 @@ separate inherited account/scope correction plus real provisioning/refusal/conte
 contracts and an empty sibling legacy-grant-table control. It preserves actual
 initialization hooks and explicitly bounds reversible session/language restoration
 versus plugin side effects. This follow-up remains unexecuted on both providers.
+
+The [cookie-token rotation follow-up](cookie-token-rotation.md) prepares the
+separate inherited NULL-date warning repair, required public update outcomes and
+a stored-credential postcondition. Actual hashing, refusal, lower-right policy
+and remember-me login controls are prepared but remain unexecuted.

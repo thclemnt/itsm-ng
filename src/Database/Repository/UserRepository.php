@@ -69,6 +69,17 @@ final class UserRepository
         return $query->setMaxResults(1)->getQuery()->getOneOrNullResult() !== null;
     }
 
+    /** Read credential bytes without entity/model caches or collation equality. */
+    public function tokenValue(int $user, string $column): ?string
+    {
+        $query = $this->em->createQueryBuilder()->from(User::class, 'r');
+        $compiler = new RecordCriteria($query, $this->em->getClassMetadata(User::class), false);
+        $rows = $query->select($compiler->column($column) . ' AS token')
+            ->where('r.id = :user')->setParameter('user', $user, Types::INTEGER)
+            ->setMaxResults(1)->getQuery()->getScalarResult();
+        return $rows[0]['token'] ?? null;
+    }
+
     /** Directory imports accept either a login or any of the account's email addresses. */
     public function authenticationMatch(array $criteria): ?array
     {

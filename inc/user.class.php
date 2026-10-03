@@ -5090,20 +5090,22 @@ class User extends CommonDBTM
      */
     public function getAuthToken($field = 'personal_token', $force_new = false)
     {
-        global $CFG_GLPI;
+        global $CFG_GLPI, $DB;
 
         if ($this->isNewItem()) {
             return false;
         }
 
-        // check date validity for cookie token
+        // Expiry matters only when reusing an existing cookie token. Forced
+        // rotation and an absent token must not parse a nullable timestamp.
         $outdated = false;
-        if ($field === 'cookie_token') {
-            $date_create = new DateTime($this->fields[$field . "_date"]);
-            $date_expir  = $date_create->add(new DateInterval('PT' . $CFG_GLPI["login_remember_time"] . 'S'));
-
-            if ($date_expir < new DateTime()) {
+        if ($field === 'cookie_token' && !$force_new && !empty($this->fields[$field])) {
+            if (empty($this->fields[$field . '_date'])) {
                 $outdated = true;
+            } else {
+                $date_create = new DateTime($this->fields[$field . '_date']);
+                $date_expir = $date_create->add(new DateInterval('PT' . $CFG_GLPI['login_remember_time'] . 'S'));
+                $outdated = $date_expir < new DateTime();
             }
         }
 
@@ -5122,9 +5124,17 @@ class User extends CommonDBTM
         }
 
         // save this token in db
-        $this->update(['id'             => $this->getID(),
+        if (!$this->update(['id'        => $this->getID(),
                        $field           => $hash,
-                       $field . "_date" => $_SESSION['glpi_currenttime']]);
+                       $field . "_date" => $_SESSION['glpi_currenttime']])) {
+            return false;
+        }
+        // User preparation can remove protected fields, and public hooks may
+        // alter persistence. Verify the stored value on the supplied writer;
+        // a mutable model field is not evidence of an accepted credential.
+        if ((new UserRepository(Orm::create($DB)))->tokenValue((int)$this->getID(), $field) !== $hash) {
+            return false;
+        }
 
         return $token;
     }
