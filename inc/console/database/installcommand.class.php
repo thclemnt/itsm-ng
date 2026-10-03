@@ -142,6 +142,7 @@ class InstallCommand extends AbstractConfigureCommand
 
         $default_language = $input->getOption('default-language');
         $force            = $input->getOption('force');
+        $database         = null;
 
         if (
             $this->isDbAlreadyConfigured()
@@ -172,14 +173,19 @@ class InstallCommand extends AbstractConfigureCommand
             $db_user     = $input->getOption('db-user');
             $db_pass     = $input->getOption('db-password');
         } else {
-            // Ask to confirm installation based on existing configuration.
+            // The console owns the configured write connection, including its
+            // provider-specific transport and schema. Do not reconstruct it.
+            if (!$DB instanceof \DBAdapter || !$DB->connected || $DB->isSlave()) {
+                $output->writeln('<error>Installation requires a connected configured write adapter.</error>');
+                return self::ERROR_DB_CONNECTION_FAILED;
+            }
 
+            // Ask to confirm installation based on existing configuration.
             // $DB->dbhost can be array when using round robin feature
             $db_hostport = is_array($DB->dbhost) ? $DB->dbhost[0] : $DB->dbhost;
 
             $db_name = $DB->dbdefault;
             $db_user = $DB->dbuser;
-            $db_pass = rawurldecode((string) $DB->dbpassword); //rawurldecode as in DBmysql::connect()
 
             $run = $this->askForDbConfigConfirmation(
                 $input,
@@ -195,12 +201,12 @@ class InstallCommand extends AbstractConfigureCommand
                 );
                 return 0;
             }
+            $database = $DB;
         }
 
-        $provider = $input->getOption('reconfigure') || !isset($DB)
-            ? $input->getOption('db-type') : $DB->getProvider();
+        $provider = $database === null ? $input->getOption('db-type') : $database->getProvider();
         if ($provider === 'pgsql') {
-            $database = \DBConnection::createConnection('pgsql', $db_hostport, $db_user, $db_pass, $db_name);
+            $database ??= \DBConnection::createConnection('pgsql', $db_hostport, $db_user, $db_pass, $db_name);
             if (!$database->connected) {
                 $output->writeln('<error>' . $database->error() . '</error>');
                 return self::ERROR_DB_CONNECTION_FAILED;
@@ -218,30 +224,33 @@ class InstallCommand extends AbstractConfigureCommand
             return 0;
         }
 
-        $server = \itsmng\Database\InstallationConnection::mysqlServer($db_hostport, $db_user, $db_pass);
-        try {
-            $server->getServerVersion();
-        } catch (\Doctrine\DBAL\Exception $error) {
-            $output->writeln('<error>' . $error->getMessage() . '</error>', OutputInterface::VERBOSITY_QUIET);
-            $server->close();
-            return self::ERROR_DB_CONNECTION_FAILED;
-        }
+        $db_instance = $database;
+        if ($db_instance === null) {
+            $server = \itsmng\Database\InstallationConnection::mysqlServer($db_hostport, $db_user, $db_pass);
+            try {
+                $server->getServerVersion();
+            } catch (\Doctrine\DBAL\Exception $error) {
+                $output->writeln('<error>' . $error->getMessage() . '</error>', OutputInterface::VERBOSITY_QUIET);
+                $server->close();
+                return self::ERROR_DB_CONNECTION_FAILED;
+            }
 
-        $output->writeln(
-            '<comment>' . __('Creating the database...') . '</comment>',
-            OutputInterface::VERBOSITY_VERBOSE
-        );
-        try {
-            \itsmng\Database\InstallationConnection::ensureMysqlDatabase($server, $db_name);
-        } catch (\Doctrine\DBAL\Exception $error) {
-            $output->writeln('<error>' . $error->getMessage() . '</error>', OutputInterface::VERBOSITY_QUIET);
-            return self::ERROR_DB_CREATION_FAILED;
-        } finally {
-            $server->close();
-        }
+            $output->writeln(
+                '<comment>' . __('Creating the database...') . '</comment>',
+                OutputInterface::VERBOSITY_VERBOSE
+            );
+            try {
+                \itsmng\Database\InstallationConnection::ensureMysqlDatabase($server, $db_name);
+            } catch (\Doctrine\DBAL\Exception $error) {
+                $output->writeln('<error>' . $error->getMessage() . '</error>', OutputInterface::VERBOSITY_QUIET);
+                return self::ERROR_DB_CREATION_FAILED;
+            } finally {
+                $server->close();
+            }
 
-        // A provider change cannot reuse the previously loaded DB subclass.
-        $db_instance = \DBConnection::createConnection('mysql', $db_hostport, $db_user, $db_pass, $db_name);
+            // A provider change cannot reuse the previously loaded DB subclass.
+            $db_instance = \DBConnection::createConnection('mysql', $db_hostport, $db_user, $db_pass, $db_name);
+        }
         if (!$db_instance->connected) {
             $output->writeln('<error>' . $db_instance->error() . '</error>', OutputInterface::VERBOSITY_QUIET);
             return self::ERROR_DB_CONNECTION_FAILED;
