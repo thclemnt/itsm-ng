@@ -99,6 +99,8 @@ $plugins = $pluginProperty->getValue();
 $cache = $GLPI_CACHE;
 $GLPI_CACHE = new \Glpi\Cache\SimpleCache(new \Laminas\Cache\Storage\Adapter\Memory(), GLPI_CACHE_DIR, false);
 $fixtures = new FixtureRecords($DB);
+$rootEntityBefore = $connection->fetchAssociative('SELECT * FROM glpi_entities WHERE id = 0');
+verify($rootEntityBefore !== false, 'The notification fixture uses the actual root entity');
 $cases = 0;
 set_error_handler(static function (int $severity, string $message, string $file, int $line): never {
     throw new ErrorException($message, 0, $severity, $file, $line);
@@ -109,7 +111,13 @@ try {
     // Use the real Ticket update event; isolate pre-existing installed rules
     // only inside this disposable transaction, restored by the final rollback.
     $connection->executeStatement('UPDATE glpi_notifications SET is_active = false WHERE itemtype IN (?, ?)', ['Ticket', 'Contract']);
-    $entity = $fixtures->create('glpi_entities', ['name' => 'Admission child', 'entities_id' => 0, 'level' => 1]);
+    // The owning tree lifecycle derives child depth from the actual root. A
+    // hard-coded level can tie its parent and invert notification precedence.
+    $childEntity = new Entity();
+    $entity = $childEntity->add(['name' => 'Admission child', 'entities_id' => 0]);
+    verify(is_int($entity) && $entity > 0, 'Public Entity creation owns the notification hierarchy');
+    $childEntityRow = $connection->fetchAssociative('SELECT entities_id, level FROM glpi_entities WHERE id = ?', [$entity]);
+    verify((int)$childEntityRow['entities_id'] === 0 && (int)$childEntityRow['level'] === (int)$rootEntityBefore['level'] + 1, 'Native child depth follows the root and precedes ancestor notifications');
     $profile = $fixtures->create('glpi_profiles', ['name' => 'Admission recipient', 'interface' => 'central']);
     $group = $fixtures->create('glpi_groups', ['name' => 'Admission group', 'entities_id' => $entity, 'is_notify' => true]);
     $emptyGroup = $fixtures->create('glpi_groups', ['name' => 'Admission empty group', 'entities_id' => $entity, 'is_notify' => true]);
@@ -362,4 +370,6 @@ try {
     $GLPI_CACHE = $cache;
     restore_error_handler();
 }
+verify($connection->fetchAssociative('SELECT * FROM glpi_entities WHERE id = 0') === $rootEntityBefore, 'Caller rollback preserves the complete original root entity');
+verify(!$connection->isTransactionActive() && !(bool)$connection->fetchOne('SELECT COUNT(*) FROM glpi_entities WHERE id = ?', [$entity]), 'Caller rollback removes its publicly created child and restores transaction ownership');
 echo $DB->getProvider() . ': ' . $cases . ' cases, ' . $assertions . " assertions; public notification admission and actual Contract rollback/retry passed; admission is distinct from delivery and attempted filesystem/plugin effects.\n";
