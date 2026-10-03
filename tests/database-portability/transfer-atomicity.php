@@ -119,6 +119,7 @@ $record = static function (string $table, array $values = []) use ($fixtures, &$
 };
 $read = static fn (string $table, int $id): ?array => (new RecordRepository(Orm::create($DB)))->find($table, 'id', $id);
 $rows = static fn (string $table, array $criteria): array => (new RecordRepository(Orm::create($DB)))->matching($table, $criteria, 'id ASC');
+$notificationSettings = static fn (): array => array_filter($GLOBALS['CFG_GLPI'], static fn (string $key): bool => $key === 'use_notifications' || str_starts_with($key, 'notifications_'), ARRAY_FILTER_USE_KEY);
 $checkpoint = static fn (Transfer $transfer): array => [
     $transfer->already_transfer, $transfer->needtobe_transfer, $transfer->noneedtobe_transfer,
     $transfer->options, $transfer->to, $transfer->inittype,
@@ -165,7 +166,7 @@ try {
     Notification_NotificationTemplate::registerMode('ownershipprobe', 'Ownership probe', 'transfer_atomicity_fixture');
     $CFG_GLPI['notifications_ownershipprobe'] = true;
     Notification_NotificationTemplate::getModes();
-    $flags = $CFG_GLPI;
+    $flags = $notificationSettings();
     $incompatible = $graph($local, $recursive, $source);
     $before = $snapshot($incompatible);
     $transfer = new Transfer();
@@ -182,7 +183,7 @@ try {
     verify($snapshot($incompatible) === $before, 'Refused Domain preserves owner, financial supplier, binding IDs, documents, contracts, audit and queue');
     verify($checkpoint($transfer) === $state && $connection->getTransactionNestingLevel() === 0, 'Refusal restores previous Transfer bookkeeping and releases its own transaction');
     verify($_SESSION['MESSAGE_AFTER_REDIRECT'][INFO] === ['Previous feedback'] && $_SESSION['glpitransfer_list'] === ['Domain' => [$incompatible['domain']]], 'Failed operation preserves previous feedback and selected list');
-    verify($CFG_GLPI === $flags, 'Failed transfer restores prior enable-flag types and ancillary configuration');
+    verify($notificationSettings() === $flags, 'Failed transfer restores prior enable-flag types and ancillary configuration');
 
     $locationRootName = $prefix . ' location root';
     $locationLeafName = $prefix . ' location leaf';
@@ -468,7 +469,7 @@ try {
             } else {
                 verify($heldModel instanceof Domain && (int)$heldModel->fields['entities_id'] === $source, 'Captured public source model is restored after a late hook exception');
             }
-            verify($DB->getDoctrineConnection() === $connection && $CFG_GLPI === $flags, 'Late refusal retains supplied writer and exact notification settings');
+            verify($DB->getDoctrineConnection() === $connection && $notificationSettings() === $flags, 'Late refusal retains supplied writer and exact notification settings');
         } finally {
             $connection->rollBack();
         }
@@ -612,7 +613,7 @@ try {
                 'Recursive explicit ' . $outcome . ' refusal rolls back earlier parent and sibling work'
             );
         }
-        verify($connection->getTransactionNestingLevel() === 0 && $CFG_GLPI === $flags, 'Recursive outcome restores operation ownership and flags');
+        verify($connection->getTransactionNestingLevel() === 0 && $notificationSettings() === $flags, 'Recursive outcome restores operation ownership and flags');
     }
 
     $callerGraph = $graph($recursiveCommercial, $recursive, $source);
@@ -663,13 +664,13 @@ try {
         && (int)$read('glpi_documents_items', $success['documentLink'])['items_id'] === 42949680009,
         'Native 64-bit subject and original binding identifiers retain canonical projections'
     );
-    verify($CFG_GLPI === $flags && $connection->getTransactionNestingLevel() === 0, 'Successful transfer restores temporary settings and commits its own frame');
+    verify($notificationSettings() === $flags && $connection->getTransactionNestingLevel() === 0, 'Successful transfer restores temporary settings and commits its own frame');
     $before = $snapshot($success);
     verify($transfer->moveItems(['Domain' => [$success['domain']]], $destination, $options) === true, 'No-op transfer to the same owner remains successful');
     verify($snapshot($success) === $before, 'No-op transfer preserves data and adds no synthetic update history');
     verify($transfer->moveItems([], $destination, []) === true, 'Empty selected batch is a successful no-op');
     verify($transfer->moveItems(['Domain' => [PHP_INT_MAX]], $destination, []) === false, 'Missing selected item is a refusal');
-    verify($transfer->moveItems(['Domain' => [$success['domain']]], -1, []) === false && $CFG_GLPI === $flags, 'Invalid destination refuses and restores temporary flags');
+    verify($transfer->moveItems(['Domain' => [$success['domain']]], -1, []) === false && $notificationSettings() === $flags, 'Invalid destination refuses and restores temporary flags');
     $primary = $DB;
     $DB = clone $primary;
     $DB->slave = true;
