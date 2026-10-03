@@ -113,8 +113,8 @@ and actual API-method controls now refuse child/tree access under nonrecursive
 grants while preserving the complete prior session and hook trace; they retain
 direct parent/root/child and recursive ancestor/subtree success. These new
 controls remain unexecuted. Method-level app/session-token checks still do not
-establish full HTTP/IP admission, active permission-mask isolation, rejected
-personal-token account behavior, or live reader-connection routing.
+establish full HTTP/IP admission, rejected personal-token account behavior, or
+live reader-connection routing.
 
 The earlier repository review's positive root-group,
 root API switch and invalid app-token suggestions are also prepared controls;
@@ -122,3 +122,13 @@ these remain unexecuted. App-token admission uses the existing method fixture
 client map and unchanged private checkAppToken; initApi IP/client-discovery and
 HTTP dispatch require subsequent live HTTP validation. No token gate is bypassed
 by the endpoint probe.
+
+Additional prepared controls populate real ProfileRight rows with distinct
+Computer permission masks. Actual password login and API-method profile switches
+then exercise `Session::haveRight`, `haveRightsAnd` and `haveRightsOr`: any-bit
+intersection, zero/unknown denial, read/create/update isolation and restoration
+when switching back. Ungranted profile, foreign entity and forged app/session-token
+refusals preserve actual permission decisions, the complete prior session, PHP
+session identity, real generated CSRF/IDOR tokens and the existing hook trace.
+These controls are source-only and unexecuted; they do not establish HTTP/IP
+admission or live replica behavior.

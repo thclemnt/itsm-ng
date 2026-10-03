@@ -77,6 +77,9 @@ try {
     foreach (['null' => null, 'first' => $prefix . ' A', 'tie' => $prefix . ' A', 'last' => $literal, 'unavailable' => $prefix . ' unavailable'] as $kind => $name) {
         $profiles[$kind] = $fixtures->create('glpi_profiles', ['name' => $name, 'interface' => 'central']);
     }
+    foreach (['null' => 0, 'first' => READ | CREATE, 'tie' => READ | UPDATE, 'last' => READ] as $kind => $mask) {
+        $fixtures->create('glpi_profilerights', ['profiles_id' => $profiles[$kind], 'name' => 'computer', 'rights' => $mask]);
+    }
     $login = 'session_grants_' . bin2hex(random_bytes(5));
     $user = $fixtures->create('glpi_users', [
         'name' => $login, 'password' => Auth::getPasswordHash('session secret'), 'authtype' => Auth::DB_GLPI,
@@ -177,6 +180,14 @@ try {
     }
     verify((new Auth())->login($login, 'session secret', true), 'Actual password login with owned grants');
     verify($_SESSION['glpiactiveprofile']['id'] === $profiles['first'] && $_SESSION['glpiactiveentities'] === [$child => $child], 'Granted preferred profile and recursive default entity retain selection');
+    verify(Session::haveRight('computer', READ | CREATE) === (READ | CREATE)
+        && Session::haveRight('computer', CREATE | UPDATE) === CREATE
+        && !Session::haveRight('computer', UPDATE | DELETE)
+        && !Session::haveRight('computer', 0) && !Session::haveRight('session-fixture-unknown-right', READ), 'Actual public permission lookup preserves stored masks, any-bit semantics and absent/zero denial after login');
+    verify(Session::haveRightsAnd('computer', [READ, CREATE])
+        && !Session::haveRightsAnd('computer', [READ, UPDATE])
+        && Session::haveRightsOr('computer', [UPDATE, CREATE])
+        && !Session::haveRightsOr('computer', [UPDATE, DELETE]), 'Public composite permission checks consume the selected profile mask');
     verify(array_column($events, 'hook') === ['init_session', 'change_entity', 'change_profile']
         && $events[0]['profiles'] === [] && $events[1]['groups'] === [$groups['parent_recursive'], $groups['child']], 'Hooks run before grant loading and after group publication in their original order');
     $client = $fixtures->create('glpi_apiclients', ['name' => $prefix, 'dolog_method' => 0]);
@@ -184,24 +195,35 @@ try {
     $payload = $api->request($client, 'profiles')['myprofiles'];
     verify(array_column($payload, 'id') === $expectedOrder && $payload[0]['entities'] === array_values($_SESSION['glpiprofiles'][$profiles['null']]['entities']), 'API preserves profile order and unkeyed entity payloads');
     verify($api->request($client, 'entity', ['entities_id' => $child, 'is_recursive' => false]) === true, 'Actual API entity switch uses granted scope');
+    \itsmng\Csrf::generate();
+    Session::getNewIDORToken('Computer');
+    $beforeRefusal = $_SESSION;
+    $beforeRefusalEvents = $events;
+    $beforeSessionId = session_id();
     $before = $_SESSION['glpiactiveprofile']['id'];
+    $beforeRights = $_SESSION['glpiactiveprofile']['computer'];
     try {
         $api->request($client, 'profile', ['profiles_id' => $profiles['unavailable']]);
         throw new LogicException('Unavailable profile accepted');
     } catch (SessionAuthorizationResponse $error) {
-        verify($error->getCode() === 404 && $_SESSION['glpiactiveprofile']['id'] === $before, 'API rejects ungranted profile without changing active rights');
+        verify($error->getCode() === 404 && $_SESSION['glpiactiveprofile']['id'] === $before
+            && $_SESSION['glpiactiveprofile']['computer'] === $beforeRights
+            && Session::haveRight('computer', CREATE) === CREATE, 'API rejects ungranted profile without changing actual active permission decisions');
+        verify($_SESSION === $beforeRefusal && $events === $beforeRefusalEvents && session_id() === $beforeSessionId, 'Rejected profile retains same-session CSRF/IDOR tokens, scope, groups and hook trace');
     }
     try {
         $api->request($client, 'entity', ['entities_id' => $foreign, 'is_recursive' => false]);
         throw new LogicException('Foreign entity accepted');
     } catch (SessionAuthorizationResponse $error) {
         verify($error->getCode() === 400 && $_SESSION['glpiactive_entity'] === $child, 'API rejects foreign entity without changing active scope');
+        verify($_SESSION === $beforeRefusal && $events === $beforeRefusalEvents && session_id() === $beforeSessionId, 'Rejected entity preserves complete same-session authorization and token state');
     }
     try {
         $api->request($client, 'profiles', token: 'forged-session-token');
         throw new LogicException('Forged session accepted');
     } catch (SessionAuthorizationResponse $error) {
         verify($error->getCode() === 401, 'Actual API endpoint still checks the session token');
+        verify($_SESSION === $beforeRefusal && $events === $beforeRefusalEvents && session_id() === $beforeSessionId, 'Rejected session token does not replace authenticated state or consume valid page tokens');
     }
     try {
         $api->request($client, 'profiles', appToken: 'forged-app-token');
@@ -209,12 +231,19 @@ try {
     } catch (SessionAuthorizationResponse $error) {
         verify($error->getCode() === 400 && str_contains($error->getMessage(), 'ERROR_WRONG_APP_TOKEN_PARAMETER')
             && $_SESSION['glpiactiveprofile']['id'] === $before, 'Actual private app-token check rejects a forgery before changing authorization');
+        verify($_SESSION === $beforeRefusal && $events === $beforeRefusalEvents && session_id() === $beforeSessionId, 'Rejected app token preserves complete session and hooks');
     }
     $api->request($client, 'profile', ['profiles_id' => $profiles['null']]);
+    verify(!Session::haveRight('computer', READ | CREATE | UPDATE | DELETE | PURGE), 'Switching to an explicit zero-mask profile drops every prior Computer permission');
     verify($api->request($client, 'entity', ['entities_id' => 0, 'is_recursive' => false]) === true
         && $_SESSION['glpiactive_entity'] === 0 && $_SESSION['glpigroups'] === [$groups['root']], 'Granted root API switch retains root identity and actual group membership');
     verify(in_array(0, array_column($api->request($client, 'entities')['myentities'], 'id'), true), 'API root grant is represented as real ID zero');
+    $api->request($client, 'profile', ['profiles_id' => $profiles['tie']]);
+    verify(Session::haveRight('computer', READ | UPDATE) === (READ | UPDATE)
+        && !Session::haveRight('computer', CREATE), 'A second nonzero profile publishes its own update mask without borrowing create rights');
     $api->request($client, 'profile', ['profiles_id' => $profiles['last']]);
+    verify(Session::haveRight('computer', READ | CREATE) === READ
+        && !Session::haveRight('computer', CREATE | UPDATE), 'Public profile switch loads its own read mask without inheriting prior create/update grants');
     verify($_SESSION['glpiactiveprofile']['id'] === $profiles['last']
         && array_column($api->request($client, 'entities')['myentities'], 'id') === [$parent], 'API switches only to the selected profile ownership');
     verify(Session::changeActiveEntities($parent, false)
@@ -241,6 +270,8 @@ try {
         && Session::changeActiveEntities($child, true) === false
         && $_SESSION === $refusedSession && $events === $refusedEvents, 'Nonrecursive root and direct child grants do not grant sibling or child-tree access');
     $api->request($client, 'profile', ['profiles_id' => $profiles['first']]);
+    verify(Session::haveRight('computer', READ | CREATE) === (READ | CREATE)
+        && !Session::haveRight('computer', UPDATE), 'Switching back restores the original owned permission mask');
     verify($api->request($client, 'entity', ['entities_id' => $child, 'is_recursive' => true]) === true
         && $_SESSION['glpiactiveentities'] === [$child => $child], 'A recursive ancestor grant permits a descendant recursive view');
     verify(Session::changeActiveEntities($parent, true)
