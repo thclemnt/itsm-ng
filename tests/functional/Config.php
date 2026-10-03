@@ -135,7 +135,7 @@ class Config extends DbTestCase
 
         $this->login();
         $this->boolean((bool)\Config::canUpdate())->isTrue();
-        $rows = static fn (string $table, array $criteria): array => (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))->matching($table, $criteria, ['id' => 'ASC']);
+        $rows = static fn (string $table, array $criteria): array => (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))->matching($table, $criteria, ['id ASC']);
         \Config::setConfigurationValues('core', ['is_ids_visible' => 0]);
         $before = $rows('glpi_configs', ['context' => 'core']);
         $setting = $rows('glpi_configs', ['context' => 'core', 'name' => 'is_ids_visible']);
