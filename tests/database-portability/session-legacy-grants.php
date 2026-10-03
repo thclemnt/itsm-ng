@@ -32,9 +32,9 @@ $legacy->dbhost = is_array($installed->dbhost) ? reset($installed->dbhost) : $in
 $legacy->dbuser = $installed->dbuser;
 $legacy->dbpassword = $installed->dbpassword;
 $legacy->dbdefault = $name;
-// The auxiliary adapter owns a separate physical handle. Preserve explicit
-// PostgreSQL endpoint settings instead of falling back to its default port/SSL.
-foreach (['dbport', 'dbsslmode'] as $property) {
+// The auxiliary adapter owns a separate physical handle. Keep the configured
+// endpoint, visible schema and TLS policy for either provider.
+foreach (['dbport', 'dbschema', 'dbsslmode', 'dbssl', 'dbsslkey', 'dbsslcert', 'dbsslca', 'dbsslcapath', 'dbsslcacipher'] as $property) {
     if (property_exists($installed, $property) && property_exists($legacy, $property)) {
         $legacy->$property = $installed->$property;
     }

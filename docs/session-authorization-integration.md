@@ -24,8 +24,12 @@ labels and NULL-first ordering, breaks ties by real identifiers, and folds
 duplicate recursion grants per profile/entity. Root Entity ID0 remains an actual
 grant. Fresh managers retain the supplied adapter's DBAL connection. Missing
 legacy grant tables clear the previous snapshot without creating tables. The
-separate empty-database contract preserves explicit PostgreSQL port/SSL settings
-on its own adapter instead of silently reverting to connection defaults.
+separate empty-database contract preserves explicit PostgreSQL port/schema/SSL-mode
+and both providers' configured TLS verification, key, certificate, CA, CA-path and
+cipher settings on its own adapter instead of reverting to connection defaults.
+The fixture uses an empty, separately provisioned database and makes no schema or
+data writes. Forwarding settings is source evidence; local plaintext execution
+will not prove verified TLS or mutual-TLS negotiation.
 
 Direct entity grants allow their own entity; a descendant or recursive selection
 requires a recursive grant. The already integrated explicit-empty entity scope
