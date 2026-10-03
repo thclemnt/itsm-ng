@@ -3333,6 +3333,8 @@ class Config extends CommonDBTM
         if (
             $DB
             && $DB->connected
+            // Cache defaults are also needed before installation creates configuration.
+            && $DB->tableExists(self::getTable())
             && $DB->fieldExists(self::getTable(), 'context')
         ) {
             $conf = self::getConfigurationValues($context, [$optname]);

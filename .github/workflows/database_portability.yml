@@ -83,12 +83,14 @@ jobs:
           --db-type=${{ matrix.database.provider }}
           --db-host=127.0.0.1 --db-port=${{ matrix.database.port }}
           --db-name=itsm_port_ci --db-user=test --db-password=test --no-interaction
-      - name: Prepare disposable migration history database
+      - name: Prepare disposable migration history and cache bootstrap databases
         run: |
           if [ '${{ matrix.database.provider }}' = 'mysql' ]; then
             docker exec "${{ job.services.database.id }}" ${{ matrix.database.client }} -uroot -ptest -e "CREATE DATABASE itsm_port_history CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL ON itsm_port_history.* TO 'test'@'%';"
+            docker exec "${{ job.services.database.id }}" ${{ matrix.database.client }} -uroot -ptest -e "CREATE DATABASE itsm_port_cache_bootstrap CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL ON itsm_port_cache_bootstrap.* TO 'test'@'%';"
           else
             php -r 'require "vendor/autoload.php"; $db = \Doctrine\DBAL\DriverManager::getConnection(["driver" => "pgsql", "host" => "127.0.0.1", "user" => "test", "password" => "test", "dbname" => "itsm_port_ci"]); $db->executeStatement("CREATE DATABASE itsm_port_history"); $db->close();'
+            php -r 'require "vendor/autoload.php"; $db = \Doctrine\DBAL\DriverManager::getConnection(["driver" => "pgsql", "host" => "127.0.0.1", "user" => "test", "password" => "test", "dbname" => "itsm_port_ci"]); $db->executeStatement("CREATE DATABASE itsm_port_cache_bootstrap"); $db->close();'
           fi
       - name: Test all database portability contracts
         run: python3 tests/database-portability/suite.py tests/config
