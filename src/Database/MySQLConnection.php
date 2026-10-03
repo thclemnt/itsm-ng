@@ -168,7 +168,7 @@ final class MySQLConnection implements Middleware
                 $statement = $connection->prepare('SET SESSION sql_mode = ?');
                 $statement->bindValue(1, MySQLConnection::strictModes($configured), ParameterType::STRING);
                 $statement->execute()->free();
-                return $connection;
+                return new \itsmng\Database\Driver\OwnedConnection($connection);
             }
         };
     }

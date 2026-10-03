@@ -11,6 +11,16 @@ final class MySQLManagedConnection extends Connection implements ManagedTransact
 {
     use PdoTransactionOwnership;
 
+    protected function connect(): \Doctrine\DBAL\Driver\Connection
+    {
+        $connection = parent::connect();
+        if (!$connection instanceof \itsmng\Database\Driver\OwnedConnection) {
+            $this->close();
+            throw new TransactionOwnershipMismatch('MySQL ownership requires the canonical command-owning DBAL transport.');
+        }
+        return $connection;
+    }
+
     public function beginTransaction(): void
     {
         $this->assertManagedTransaction();
@@ -39,6 +49,14 @@ final class MySQLManagedConnection extends Connection implements ManagedTransact
     public function close(): void
     {
         $this->resetManagedFrames();
-        parent::close();
+        try {
+            if ($this->_conn instanceof \itsmng\Database\Driver\OwnedConnection) {
+                $this->_conn->close();
+            }
+        } catch (\Doctrine\DBAL\Driver\Exception $error) {
+            throw $this->convertException($error);
+        } finally {
+            parent::close();
+        }
     }
 }

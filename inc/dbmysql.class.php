@@ -458,9 +458,12 @@ class DBmysql extends DBAdapter
     public function close()
     {
         $wasConnected = $this->connected;
-        $this->doctrine?->close();
-        $this->doctrine = null;
-        $this->connected = false;
+        try {
+            $this->doctrine?->close();
+        } finally {
+            $this->doctrine = null;
+            $this->connected = false;
+        }
         return $wasConnected;
     }
 

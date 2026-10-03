@@ -102,7 +102,9 @@ $controlled = static function (string $modes, bool $initialize = true) use ($wri
         return MySQLConnection::create($writer->getParams(), $configuration);
     }
     $configuration->setSchemaManagerFactory(new \itsmng\Database\MySQLSchemaManagerFactory());
-    return DriverManager::getConnection($writer->getParams(), $configuration);
+    $external = $writer->getParams();
+    unset($external['wrapperClass']); // Deliberately external sessions do not claim managed transport ownership.
+    return DriverManager::getConnection($external, $configuration);
 };
 try {
     $writer->executeStatement("CREATE TABLE $table (id INTEGER PRIMARY KEY, flag TINYINT NOT NULL, label VARCHAR(3) NOT NULL, CHECK (flag IS NOT NULL AND flag IN (0, 1))) ENGINE=InnoDB");

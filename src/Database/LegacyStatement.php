@@ -13,10 +13,12 @@ final class LegacyStatement
     private string $types = '';
     private mixed $result = false;
     private ?\Doctrine\DBAL\Statement $statement;
+    private readonly \Doctrine\DBAL\Connection $owner;
 
     public function __construct(private \DBmysql $db, private string $sql)
     {
-        $this->statement = $db->getDoctrineConnection()->prepare($sql);
+        $this->owner = $db->getDoctrineConnection();
+        $this->statement = $this->owner->prepare($sql);
     }
 
     public function bind_param(string $types, mixed &...$values): bool
@@ -31,6 +33,9 @@ final class LegacyStatement
 
     public function execute(?array $values = null): bool
     {
+        if ($this->db->getDoctrineConnection() !== $this->owner) {
+            throw new \LogicException('Prepared statement belongs to a different supplied DBAL owner.');
+        }
         $values ??= $this->values;
         foreach ($values as $i => $value) {
             if ($value !== null) {
