@@ -146,7 +146,8 @@ try {
         }
     }
     $legacy = (int)$connection->fetchOne('SELECT COALESCE(MAX(id), 0) + 100 FROM glpi_networknames');
-    $connection->insert('glpi_networknames', ['id' => $legacy, 'name' => 'legacy-name']);
+    // An unattached legacy network name has an explicit empty subject discriminator.
+    $connection->insert('glpi_networknames', ['id' => $legacy, 'name' => 'legacy-name', 'itemtype' => '']);
     verify($migration->plan($connection)['sql'] !== [], 'Legacy network name migration has a plan');
     verify((int)$connection->fetchOne('SELECT fqdns_id FROM glpi_networknames WHERE id = ?', [$legacy]) === 0, 'Plan preserves data');
     $connection->update('glpi_networknames', ['fqdns_id' => 2147483647], ['id' => $legacy]);

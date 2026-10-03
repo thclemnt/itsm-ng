@@ -174,7 +174,8 @@ try {
     foreach (['glpi_slas', 'glpi_olas'] as $table) {
         $aid = (int)$connection->fetchOne('SELECT COALESCE(MAX(id), 0) + 100 FROM ' . $table);
         $agreementIds[$table] = $aid;
-        $connection->insert($table, ['id' => $aid, 'slms_id' => $legacyIds[2], 'name' => 'Legacy inherited calendar', 'calendars_id' => -1]);
+        $connection->insert($table, ['id' => $aid, 'slms_id' => $legacyIds[2], 'name' => 'Legacy inherited calendar',
+            'number_time' => 2, 'definition_time' => 'hour', 'calendars_id' => -1]);
     }
     $plan = $migration->plan($connection);
     verify($plan['sql'] !== [] && $plan['ticket_calendars'] >= 1 && $plan['always_open'] >= 1, 'Read-only plan includes policy and schema changes');

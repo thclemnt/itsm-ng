@@ -75,7 +75,16 @@ try {
     $grant('nonrecursive', $private, $parent);
     $grant('inactive', $private, $child);
     $grant('deleted', $private, $child);
-    $group = $fixtures->create('glpi_groups', ['name' => $stamp, 'entities_id' => $child, 'is_notify' => true]);
+    $connection = $DB->getDoctrineConnection();
+    $boundedGroupId = 950000145;
+    $wideGroupId = 4294967993;
+    foreach ([$boundedGroupId, $wideGroupId] as $reservedId) {
+        verify(!$connection->fetchOne('SELECT id FROM glpi_groups WHERE id = ?', [$reservedId]), 'Reserved recipient fixture identity is unused');
+    }
+    // Owning group identities are BIGINT; opaque USER_TYPE role codes remain INTEGER.
+    $boundedGroup = $fixtures->create('glpi_groups', ['id' => $boundedGroupId, 'name' => $stamp . ' code collision', 'entities_id' => $child]);
+    $group = $fixtures->create('glpi_groups', ['id' => $wideGroupId, 'name' => $stamp, 'entities_id' => $child, 'is_notify' => true]);
+    verify($group > 4294967295 && $boundedGroup > 0 && $boundedGroup <= 2147483647, 'Wide owning identity and bounded opaque collision use their declared ranges');
     $muted = $fixtures->create('glpi_groups', ['name' => $stamp . ' muted', 'entities_id' => $child, 'is_notify' => false]);
     foreach (['manager', 'worker', 'foreign', 'nonrecursive'] as $label) {
         foreach ([$group, $muted] as $id) {
@@ -87,16 +96,27 @@ try {
     $outsideNotification = $fixtures->create('glpi_notifications', ['name' => $stamp . ' outside notification', 'entities_id' => $foreign, 'itemtype' => 'Ticket', 'event' => 'new']);
     foreach ([Notification::GROUP_TYPE, Notification::SUPERVISOR_GROUP_TYPE] as $role) {
         foreach ([$notification, $outsideNotification] as $id) {
-            $fixtures->create('glpi_notificationtargets', ['notifications_id' => $id, 'type' => $role, 'items_id' => $group]);
+            $wideTarget = $fixtures->create('glpi_notificationtargets', ['notifications_id' => $id, 'type' => $role, 'items_id' => $group]);
+            $wideRow = $connection->fetchAssociative('SELECT items_id, groups_id, recipient_code FROM glpi_notificationtargets WHERE id = ?', [$wideTarget]);
+            verify((int)$wideRow['items_id'] === $wideGroupId && (int)$wideRow['groups_id'] === $wideGroupId
+                && $wideRow['recipient_code'] === null, 'Wide group target preserves its owning association and compatibility projection');
+            $fixtures->create('glpi_notificationtargets', ['notifications_id' => $id, 'type' => $role, 'items_id' => $boundedGroup]);
         }
     }
-    $fixtures->create('glpi_notificationtargets', ['notifications_id' => $notification, 'type' => Notification::USER_TYPE, 'items_id' => $group]);
+    $opaqueTarget = $fixtures->create('glpi_notificationtargets', ['notifications_id' => $notification, 'type' => Notification::USER_TYPE, 'items_id' => $boundedGroup]);
+    $opaqueRow = $connection->fetchAssociative('SELECT items_id, groups_id, profiles_id, recipient_code FROM glpi_notificationtargets WHERE id = ?', [$opaqueTarget]);
+    verify((int)$opaqueRow['items_id'] === $boundedGroup && (int)$opaqueRow['recipient_code'] === $boundedGroup
+        && $opaqueRow['groups_id'] === null && $opaqueRow['profiles_id'] === null, 'Colliding opaque code does not own the identically numbered group');
     $fixtures->create('glpi_notificationtargets', ['notifications_id' => $notification, 'type' => Notification::GROUP_TYPE, 'items_id' => $muted]);
     $groupObject = new Group();
     verify($groupObject->getFromDB($group), 'Load notification group');
     $notificationScope = getEntitiesRestrictCriteria(Notification::getTable(), '', '', true);
     verify(NotificationTarget::countForGroup($groupObject) === 2, 'Group notification count retains role and entity restrictions');
     verify(array_column($recipientRepo()->notificationsForGroup($group, $notificationScope), 'id') === [$notification, $notification], 'Group notification listing preserves target rows and excludes foreign entities');
+    $boundedGroupObject = new Group();
+    verify($boundedGroupObject->getFromDB($boundedGroup), 'Load bounded collision group');
+    verify(NotificationTarget::countForGroup($boundedGroupObject) === 2, 'Bounded group count excludes a colliding opaque code and foreign entity');
+    verify(array_column($recipientRepo()->notificationsForGroup($boundedGroup, $notificationScope), 'id') === [$notification, $notification], 'Bounded group listing preserves duplicate targets while excluding colliding opaque codes');
     $ids = static function (array $rows): array {
         $ids = array_map('intval', array_column($rows, 'users_id'));
         sort($ids);

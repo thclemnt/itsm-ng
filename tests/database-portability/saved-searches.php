@@ -148,7 +148,7 @@ try {
         }
     }
     $legacy = (int)$connection->fetchOne('SELECT COALESCE(MAX(id), 0) + 100 FROM glpi_savedsearches');
-    $connection->insert('glpi_savedsearches', ['id' => $legacy, 'name' => 'legacy-name']);
+    $connection->insert('glpi_savedsearches', ['id' => $legacy, 'name' => 'legacy-name', 'itemtype' => 'Computer']);
     verify($migration->plan($connection)['sql'] !== [], 'Legacy saved-search owner migration has a plan');
     verify((int)$connection->fetchOne('SELECT users_id FROM glpi_savedsearches WHERE id = ?', [$legacy]) === 0, 'Plan preserves data');
     $connection->update('glpi_savedsearches', ['users_id' => 2147483647], ['id' => $legacy]);
