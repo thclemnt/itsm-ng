@@ -121,7 +121,7 @@ final class Upgrade
             }
         }
         $quote = $connection->getDatabasePlatform()->quoteIdentifier(...);
-        $rows = $connection->fetchAllAssociative('SELECT ' . $quote('name') . ', ' . $quote('value') . ' FROM ' . $quote('glpi_configs') . ' WHERE ' . $quote('context') . ' = ? AND ' . $quote('name') . ' IN (?, ?, ?, ?)', ['core', 'version', 'dbversion', 'itsmversion', 'itsmdbversion']);
+        $rows = $connection->fetchAllAssociative('SELECT ' . $quote('name') . ', ' . $quote('value') . ' FROM ' . $quote('glpi_configs') . ' WHERE ' . $quote('context') . ' = ? AND ' . $quote('name') . ' IN (?, ?, ?, ?) ORDER BY ' . $quote('name'), ['core', 'version', 'dbversion', 'itsmversion', 'itsmdbversion']);
         return array_column($rows, 'value', 'name');
     }
 
