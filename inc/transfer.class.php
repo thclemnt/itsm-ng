@@ -278,11 +278,11 @@ class Transfer extends CommonDBTM
         $state = [
             $this->already_transfer, $this->needtobe_transfer, $this->noneedtobe_transfer,
             $this->options, $this->to, $this->inittype,
-            $this->fields, $this->input, $this->updates, $this->oldvalues,
         ];
         $session = $_SESSION;
         $this->transferCoordinator = new \itsmng\Domain\TransferCoordinator($DB);
         $this->transferModels = new \itsmng\Database\LifecycleModelJournal();
+        $this->transferModels->remember($this);
         $this->createdTransferRecords = [];
         try {
             return $this->transferModels->observe($DB->getDoctrineConnection(), fn () => NotificationSetting::withoutNotifications(
@@ -293,7 +293,6 @@ class Transfer extends CommonDBTM
             [
                 $this->already_transfer, $this->needtobe_transfer, $this->noneedtobe_transfer,
                 $this->options, $this->to, $this->inittype,
-                $this->fields, $this->input, $this->updates, $this->oldvalues,
             ] = $state;
             $feedback = $_SESSION['MESSAGE_AFTER_REDIRECT'] ?? [];
             $_SESSION = $session;

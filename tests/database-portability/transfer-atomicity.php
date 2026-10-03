@@ -122,7 +122,7 @@ $rows = static fn (string $table, array $criteria): array => (new RecordReposito
 $checkpoint = static fn (Transfer $transfer): array => [
     $transfer->already_transfer, $transfer->needtobe_transfer, $transfer->noneedtobe_transfer,
     $transfer->options, $transfer->to, $transfer->inittype,
-    $transfer->fields, $transfer->input, $transfer->updates, $transfer->oldvalues,
+    \itsmng\Database\LifecycleModelJournal::state($transfer),
 ];
 $graph = static function (int $commercial, int $financial, int $owner, ?int $nativeIdentifier = null) use ($record, $prefix): array {
     $identity = $nativeIdentifier === null ? [] : ['id' => $nativeIdentifier];
@@ -315,8 +315,7 @@ try {
             verify($result === false && $forwardCalls === 1, 'Required DomainRecord refusal propagates in ' . $forwardContext);
             verify(PluginTransfer_atomicity_fixtureNotificationEventOwnershipprobe::$deliveries === [], 'Forwarded refusal delivers no rolled-back notification');
             verify($snapshot($forwardGraph) === $forwardBefore && $read('glpi_domainrecords', $domainRecord) === $recordBefore, 'Forwarded refusal restores actual parent, earlier sibling, child, history and queued rows');
-            verify($heldForwarded instanceof DomainRecord && $heldForwarded->fields === $recordBefore
-                && $heldForwarded->input === [] && $heldForwarded->updates === [] && $heldForwarded->oldvalues === [], 'Actual refused forwarded child restores its loaded model state');
+            verify($heldForwarded instanceof DomainRecord && \itsmng\Database\LifecycleModelJournal::state($heldForwarded) === ['fields' => $recordBefore], 'Actual refused forwarded child restores its loaded model state');
             verify($_SESSION['MESSAGE_AFTER_REDIRECT'][INFO] === ['Forwarding previous feedback']
                 && in_array('Required forwarded child refused', $_SESSION['MESSAGE_AFTER_REDIRECT'][WARNING] ?? [], true), 'Forwarding rollback discards success feedback and retains useful diagnostics');
             verify($connection->getTransactionNestingLevel() === $level && ($marker === null || $read('glpi_suppliers', $marker) !== null), 'Forwarded refusal preserves caller frame and prior marker');
@@ -411,8 +410,7 @@ try {
     verify((new Transfer())->moveItems(['Domain' => [$forwardGraph['domain'], $laterGraph['domain']]], $destination, ['keep_history' => 1]) === false, 'Later parent refusal rolls back an earlier accepted ownership forwarding unit');
     verify($snapshot($forwardGraph) === $forwardBefore && $snapshot($laterGraph) === $laterBefore
         && $read('glpi_domainrecords', $domainRecord) === $recordBefore, 'Later sibling refusal restores earlier forwarded child and both actual parent graphs');
-    verify($heldForwarded instanceof DomainRecord && $heldForwarded->fields === $recordBefore
-        && $heldForwarded->input === [] && $heldForwarded->updates === [] && $heldForwarded->oldvalues === [], 'Transfer observer restores successfully forwarded model retained by a real completion hook');
+    verify($heldForwarded instanceof DomainRecord && \itsmng\Database\LifecycleModelJournal::state($heldForwarded) === ['fields' => $recordBefore], 'Transfer observer restores successfully forwarded model retained by a real completion hook');
     unset($PLUGIN_HOOKS['item_update']['transfer_atomicity_fixture'], $PLUGIN_HOOKS['pre_item_update']['transfer_atomicity_fixture']);
 
     // A coherent candidate permits all early auxiliary work, then its real public
@@ -460,8 +458,7 @@ try {
             verify($visited === [$valid['domain']], 'Transfer executes public prepare/hook once without replay');
             verify($snapshot($valid) === $before && $checkpoint($transfer) === $state, 'Late refusal rolls back earlier items, dependencies, audit, queued rows and bookkeeping');
             verify(
-                $heldSibling instanceof Computer && (int)$heldSibling->fields['entities_id'] === $source
-                && $heldSibling->updates === [] && $heldSibling->oldvalues === [],
+                $heldSibling instanceof Computer && \itsmng\Database\LifecycleModelJournal::state($heldSibling) === ['fields' => $before[1]],
                 'Earlier successfully updated model retained by a real hook is restored after later sibling refusal'
             );
             verify($connection->getTransactionNestingLevel() === $callerLevel && $read('glpi_suppliers', $marker) !== null, 'Caller transaction and its prior marker remain intact');
@@ -524,9 +521,7 @@ try {
         'Refused child creation restores its parent and does not retarget outside financial links'
     );
     verify(
-        $heldCopyAttempt instanceof Supplier && (int)$heldCopyAttempt->fields['id'] === $copyFinancial
-        && (int)$heldCopyAttempt->fields['entities_id'] === $source && $heldCopyAttempt->input === []
-        && $heldCopyAttempt->updates === [] && $heldCopyAttempt->oldvalues === [],
+        $heldCopyAttempt instanceof Supplier && \itsmng\Database\LifecycleModelJournal::state($heldCopyAttempt) === ['fields' => $read('glpi_suppliers', $copyFinancial)],
         'Refused copied-add model restores its loaded source before legacy field clearing'
     );
     unset($PLUGIN_HOOKS['pre_item_add']['transfer_atomicity_fixture']);
@@ -559,13 +554,11 @@ try {
         'Late refusal removes the created copy and restores both financial relationships'
     );
     verify(
-        $heldAddedCopy instanceof Supplier && $heldAddedCopy->fields === $sourceCopyFields
-        && $heldAddedCopy->input === [] && $heldAddedCopy->updates === [] && $heldAddedCopy->oldvalues === [],
+        $heldAddedCopy instanceof Supplier && \itsmng\Database\LifecycleModelJournal::state($heldAddedCopy) === ['fields' => $sourceCopyFields],
         'Successful copied-add hook instance restores original loaded source fields and pending state'
     );
     verify(
-        $heldLoadedCopy instanceof Supplier && $heldLoadedCopy->fields === [] && $heldLoadedCopy->input === []
-        && $heldLoadedCopy->updates === [] && $heldLoadedCopy->oldvalues === [],
+        $heldLoadedCopy instanceof Supplier && \itsmng\Database\LifecycleModelJournal::state($heldLoadedCopy) === ['fields' => []],
         'New recursive copy model restores its original unloaded state instead of retaining a phantom row identifier'
     );
     unset($PLUGIN_HOOKS['item_add']['transfer_atomicity_fixture'], $PLUGIN_HOOKS['pre_item_update']['transfer_atomicity_fixture']);
