@@ -131,7 +131,47 @@ class Config extends DbTestCase
 
     public function testPrepareInputForUpdate()
     {
-        // /!\ Config::prepareInputForUpdate() do store data! /!\
+        global $DB;
+
+        $this->login();
+        $this->boolean((bool)\Config::canUpdate())->isTrue();
+        $rows = static fn (string $table, array $criteria): array => (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))->matching($table, $criteria, ['id' => 'ASC']);
+        \Config::setConfigurationValues('core', ['is_ids_visible' => 0]);
+        $before = $rows('glpi_configs', ['context' => 'core']);
+        $setting = $rows('glpi_configs', ['context' => 'core', 'name' => 'is_ids_visible']);
+        $this->array($setting)->hasSize(1);
+        $this->string($setting[0]['value'])->isIdenticalTo('0');
+        $historyCriteria = ['itemtype' => \Config::getType(), 'old_value' => ['LIKE', 'is_ids_visible %']];
+        $historyBefore = $rows('glpi_logs', $historyCriteria);
+
+        // The actual default-values form stores configuration during preparation
+        // and deliberately returns false to stop the outer record update.
+        $config = new \Config();
+        $this->boolean($config->prepareInputForUpdate([
+            'id' => $setting[0]['id'],
+            'is_ids_visible' => 1,
+            'update' => 'Save',
+            '_glpi_csrf_token' => $_SESSION['_glpi_csrf_token'],
+            '_no_history' => 1,
+        ]))->isFalse();
+        $this->array(\Config::getConfigurationValues('core', ['is_ids_visible']))->isIdenticalTo(['is_ids_visible' => '1']);
+
+        $expected = $before;
+        foreach ($expected as &$row) {
+            if ($row['id'] === $setting[0]['id']) {
+                $row['value'] = '1';
+            }
+        }
+        unset($row);
+        // Exact ORM rows also prove that id/update/CSRF/_no_history became no
+        // accidental core settings, and that unrelated configuration is intact.
+        $this->array($rows('glpi_configs', ['context' => 'core']))->isIdenticalTo($expected);
+        $history = array_slice($rows('glpi_logs', $historyCriteria), count($historyBefore));
+        $this->array($history)->hasSize(1);
+        $this->string($history[0]['old_value'])->isIdenticalTo('is_ids_visible 0');
+        $this->string($history[0]['new_value'])->isIdenticalTo('1');
+        $actor = Session::getLoginUserID(false);
+        $this->string($history[0]['user_name'])->isIdenticalTo(sprintf(__('%1$s (%2$s)'), getUserName($actor), $actor));
     }
 
     public function testUnsetUndisclosedFields()
@@ -499,11 +539,12 @@ class Config extends DbTestCase
     public function testCheckDbEngine($raw, $version, $compat)
     {
         global $DB;
-        $DB = new \mock\DB();
-        $this->calling($DB)->getVersion = $raw;
 
-        $result = \Config::checkDbEngine();
+        // The explicit diagnostic input keeps DbTestCase's actual writer and
+        // transaction intact throughout every version-provider invocation.
+        $result = \Config::checkDbEngine($raw);
         $this->array($result)->isIdenticalTo([$version => $compat]);
+        $this->array(\Config::checkDbEngine())->isIdenticalTo(\Config::checkDbEngine($DB->getVersion()));
     }
 
     public function testGetLanguage()
@@ -859,7 +900,9 @@ class Config extends DbTestCase
 
     public function testAutoCreateInfocom()
     {
-        global $CFG_GLPI;
+        global $CFG_GLPI, $DB;
+
+        $this->login();
 
         $infocom_types = $CFG_GLPI["infocom_types"];
         $excluded_types = [
@@ -868,36 +911,74 @@ class Config extends DbTestCase
         ];
         $infocom_types = array_diff($infocom_types, $excluded_types);
 
-        $infocom_auto_create_original = $CFG_GLPI["infocom_auto_create"] ?? 0;
+        $had_auto_create = array_key_exists('auto_create_infocoms', $CFG_GLPI);
+        $auto_create_original = $CFG_GLPI['auto_create_infocoms'] ?? null;
+        $em = \itsmng\Database\Orm::create($DB);
+        $parents = [];
+        $inputFor = function (\CommonDBTM $item, string $name) use ($em, &$createParent): array {
+            $input = [];
+            if ($item->isField($item::getNameField())) {
+                $input[$item::getNameField()] = $name;
+            }
+            if ($item->isField('entities_id')) {
+                $input['entities_id'] = (int)$_SESSION['glpiactive_entity'];
+            }
+            $metadata = $em->getClassMetadata(\itsmng\Database\EntityRegistry::tables()[$item::getTable()]);
+            foreach ($metadata->associationMappings as $mapping) {
+                if (!$mapping->isToOneOwningSide()) {
+                    continue;
+                }
+                foreach ($mapping->joinColumns as $join) {
+                    if (!$join->nullable && !array_key_exists($join->name, $input)) {
+                        $target = $em->getClassMetadata($mapping->targetEntity)->getTableName();
+                        $input[$join->name] = $createParent(getItemTypeForTable($target));
+                    }
+                }
+            }
+            // Item_Devices owns a subject through its actual public role fields.
+            // Use an existing, authorized Computer instead of a fabricated ID.
+            if ($item instanceof \Item_Devices) {
+                $this->array($item::itemAffinity())->contains('Computer');
+                $input[$item::$itemtype_1] = 'Computer';
+                $input[$item::$items_id_1] = $createParent('Computer');
+            }
+            return $input;
+        };
+        $createParent = function (string $type) use (&$parents, $inputFor): int {
+            if (!array_key_exists($type, $parents)) {
+                $parent = new $type();
+                $id = $parent->add($inputFor($parent, 'auto_infocom_parent_' . $type));
+                $this->integer($id)->isGreaterThan(0);
+                $parents[$type] = $id;
+            }
+            return $parents[$type];
+        };
 
-        $infocom = new \Infocom();
-        foreach ($infocom_types as $asset_type) {
-            $CFG_GLPI['auto_create_infocoms'] = 1;
-            $asset = new $asset_type();
-            $asset_id = $asset->add([
-               'name'                  => 'auto_infocom_test',
-               'entities_id'           => 0,
-               'softwares_id'          => 1, // Random ID for testing SoftwareLicense
-               'itemtype'              => 'Computer', // Random item type for testing Item_DeviceSimcard
-               'devicesimcards_id'     => 1, // Random ID for testing Item_DeviceSimcard
-            ]);
-            $CFG_GLPI['auto_create_infocoms'] = $infocom_auto_create_original;
-            // Verify an Infocom object exists for the newly created asset
-            $infocom_exists = $infocom->getFromDBforDevice($asset_type, $asset_id);
-            $this->boolean($infocom_exists)->isTrue();
+        try {
+            $infocom = new \Infocom();
+            foreach ($infocom_types as $asset_type) {
+                // Prepare public parents before either child control. Required
+                // ownership comes from entity mappings, not a fixture catalogue.
+                $CFG_GLPI['auto_create_infocoms'] = 0;
+                $asset = new $asset_type();
+                $input = $inputFor($asset, 'auto_infocom_test');
+                $CFG_GLPI['auto_create_infocoms'] = 1;
+                $asset_id = $asset->add($input);
+                $this->integer($asset_id)->isGreaterThan(0);
+                $this->boolean($infocom->getFromDBforDevice($asset_type, $asset_id))->isTrue();
 
-            $CFG_GLPI['auto_create_infocoms'] = 0;
-            // Verify an Infocom object does not exist for a newly created asset
-            $asset_id2 = $asset->add([
-               'name'                  => 'auto_infocom_test2',
-               'entities_id'           => 0,
-               'softwares_id'          => 1, // Random ID for testing SoftwareLicense
-               'itemtype'              => 'Computer', // Random item type for testing Item_DeviceSimcard
-               'devicesimcards_id'     => 1, // Random ID for testing Item_DeviceSimcard
-            ]);
-            $CFG_GLPI['auto_create_infocoms'] = $infocom_auto_create_original;
-            $infocom_exists = $infocom->getFromDBforDevice($asset_type, $asset_id2);
-            $this->boolean($infocom_exists)->isFalse();
+                $CFG_GLPI['auto_create_infocoms'] = 0;
+                $asset = new $asset_type();
+                $asset_id2 = $asset->add($inputFor($asset, 'auto_infocom_test2'));
+                $this->integer($asset_id2)->isGreaterThan(0);
+                $this->boolean($infocom->getFromDBforDevice($asset_type, $asset_id2))->isFalse();
+            }
+        } finally {
+            if ($had_auto_create) {
+                $CFG_GLPI['auto_create_infocoms'] = $auto_create_original;
+            } else {
+                unset($CFG_GLPI['auto_create_infocoms']);
+            }
         }
     }
 }
