@@ -425,6 +425,10 @@ class Item_Devices extends CommonDBRelation
     {
         global $CFG_GLPI;
 
+        $reference = \itsmng\Database\EntityRegistry::discriminatedReferences(static::getTable())['items_id'] ?? null;
+        if ($reference !== null) {
+            return array_keys($reference['selections']);
+        }
         $conf_param = str_replace('_', '', strtolower(static::class)) . '_types';
         if (isset($CFG_GLPI[$conf_param])) {
             return $CFG_GLPI[$conf_param];
@@ -507,9 +511,9 @@ class Item_Devices extends CommonDBRelation
 
         $itemtypes = $CFG_GLPI['itemdevices_types'];
 
-        $conf_param = str_replace('_', '', strtolower(static::class)) . '_types';
-        if (isset($CFG_GLPI[$conf_param]) && !in_array('*', $CFG_GLPI[$conf_param])) {
-            $itemtypes = array_intersect($itemtypes, $CFG_GLPI[$conf_param]);
+        $affinity = static::class === self::class ? ['*'] : static::itemAffinity();
+        if (!in_array('*', $affinity)) {
+            $itemtypes = array_intersect($itemtypes, $affinity);
         }
 
         return $itemtypes;
@@ -569,7 +573,12 @@ class Item_Devices extends CommonDBRelation
             foreach ($olds as $data) {
                 $link = new $link_type();
                 unset($data['id']);
-                $data['items_id']     = $newid;
+                $entity = \itsmng\Database\EntityRegistry::tables()[$link_type::getTable()] ?? null;
+                if ($entity !== null && is_a($entity, \itsmng\Database\Mapping\LegacyInput::class, true) && method_exists($entity, 'withReference')) {
+                    $data = $entity::withReference($data, $itemtype, (int)$newid);
+                } else {
+                    $data['items_id'] = $newid;
+                }
                 $data['_itemtype']    = $itemtype;
                 $data['_no_history']  = true;
                 $data                 = Toolbox::addslashes_deep($data);

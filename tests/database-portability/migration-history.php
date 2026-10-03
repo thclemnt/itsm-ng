@@ -166,6 +166,14 @@ $connection->insert('glpi_items_softwareversions', ['id' => 904, 'softwareversio
 foreach ([905, 906] as $id) {
     $connection->insert('glpi_items_softwarelicenses', ['id' => $id, 'softwarelicenses_id' => 903, 'itemtype' => 'Computer', 'items_id' => $legacyId]);
 }
+$connection->insert('glpi_deviceprocessors', ['id' => 1901, 'designation' => 'Historical processor definition']);
+foreach ([1902, 1903] as $processorId) {
+    $connection->insert('glpi_items_deviceprocessors', ['id' => $processorId, 'deviceprocessors_id' => 1901,
+        'itemtype' => 'Computer', 'items_id' => $legacyId, 'serial' => "Historical CPU O'Reilly", 'nbthreads' => null,
+        'frequency' => 3200, 'is_deleted' => $processorId === 1903 ? 1 : 0]);
+}
+$connection->insert('glpi_items_deviceprocessors', ['id' => 1904, 'deviceprocessors_id' => 1901, 'itemtype' => '', 'items_id' => 0]);
+$connection->insert('glpi_items_deviceprocessors', ['id' => 1905, 'deviceprocessors_id' => 1901, 'itemtype' => null, 'items_id' => 0]);
 $connection->insert('glpi_logs', ['id' => $auditId, 'itemtype' => 'Computer', 'items_id' => $legacyId, 'user_name' => 'Legacy administrator', 'old_value' => $audit]);
 $password = 'customer-password-hash-must-survive';
 $connection->update('glpi_users', ['password' => $password], ['id' => 2]);
@@ -484,6 +492,24 @@ verify($connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyTo
 verify($connection->fetchOne('SELECT password FROM glpi_users WHERE id = 2') === $password, 'Completed retry does not reapply seed account values');
 foreach (History::VERSIONS as $version) {
     verify(Ledger::state($connection, $version)['complete'], 'Every canonical migration is complete: ' . $version);
+}
+verify(count(History::VERSIONS) === 17
+    && array_slice(History::VERSIONS, -4) === [\itsmng\Database\Migration\ExactDiscriminators20261010::VERSION,
+        SoftwareInstallationSubjects20261011::VERSION, SoftwareLicenseSubjects20261011::VERSION,
+        \itsmng\Database\Migration\ProcessorSubjects20261012::VERSION], 'Exact14, Software15/16 and Processor17 retain one ordered canonical ledger');
+$processorLinks = $connection->fetchAllAssociative('SELECT * FROM glpi_items_deviceprocessors WHERE id IN (1902,1903,1904,1905) ORDER BY id');
+verify(count($processorLinks) === 4, 'Full populated replay retains both duplicate processor assignments and both stock records');
+foreach (array_slice($processorLinks, 0, 2) as $row) {
+    verify((int)$row['computers_id'] === $legacyId && (int)$row['items_id'] === $legacyId
+        && (int)$row['deviceprocessors_id'] === 1901 && $row['serial'] === "Historical CPU O'Reilly"
+        && $row['nbthreads'] === null && (int)$row['frequency'] === 3200,
+        'Populated Processor17 retains real owner, definition, duplicate IDs and nullable inventory payload');
+}
+verify(!Type::getType('boolean')->convertToPHPValue($processorLinks[0]['is_deleted'], $platform)
+    && Type::getType('boolean')->convertToPHPValue($processorLinks[1]['is_deleted'], $platform), 'Processor duplicate deletion history retains real boolean conversion');
+foreach (array_slice($processorLinks, 2) as $row) {
+    verify($row['itemtype'] === null && $row['computers_id'] === null && (int)$row['items_id'] === 0
+        && (int)$row['deviceprocessors_id'] === 1901, 'Full populated replay normalizes legacy blank/null processor stock without inventing an owner');
 }
 $writer = new RecordWriter(Orm::create($database));
 $osLinks = $connection->fetchAllAssociative('SELECT id, computers_id, items_id, operatingsystems_id, operatingsystem_key, architecture_key, licenseid, license_number, is_dynamic, is_deleted FROM glpi_items_operatingsystems ORDER BY id');

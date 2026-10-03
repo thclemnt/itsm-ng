@@ -54,12 +54,13 @@ final class ConnexityInput
             }
             $column = is_string($kind) || is_int($kind) ? ($endpoint['selections'][$kind]['column'] ?? null) : null;
             if (!array_key_exists($identity, $reference) && ($column === null || !array_key_exists($column, $reference))) {
-                $reference[$identity] = $model->fields[$identity] ?? null;
+                $reference[$identity] = $column === null && array_key_exists('empty_value', $endpoint)
+                    ? $endpoint['empty_value'] : ($model->fields[$identity] ?? null);
             }
             $normalized = $record->normalizeInput($reference);
             // The normalizer removes generated fields before ORM persistence;
             // the public lifecycle still needs the resolved endpoint identity.
-            $normalized[$identity] = $column === null ? null : $normalized[$column];
+            $normalized[$identity] = $column === null ? ($endpoint['empty_value'] ?? null) : $normalized[$column];
             $input = array_replace($input, $normalized);
         }
         return $input;

@@ -83,18 +83,17 @@ trait Clonable
                 continue;
             }
 
-            $entity = \itsmng\Database\EntityRegistry::tables()[$classname::getTable()] ?? null;
-            if ($item_field === 'items_id' && $entity !== null && is_a($entity, \itsmng\Database\Mapping\LegacyInput::class, true) && method_exists($entity, 'withReference')) {
-                // clone() copies the source's physical fields. Replace every
-                // subject association together with its legacy identity, while
-                // retaining unrelated NULL fields and ordinary container ends.
-                $override_input = array_replace($override_input, (new $entity())->normalizeInput(
-                    $entity::withReference($override_input, $this->getType(), (int)$this->getID())
-                ));
-            }
-
             foreach ($relation_items as $relation_item) {
-                $relation_item->clone($override_input, $history);
+                $relation_override = $override_input;
+                // Abstract families such as Item_Devices return concrete models;
+                // their owning subject columns belong to each concrete entity.
+                $entity = \itsmng\Database\EntityRegistry::tables()[$relation_item::getTable()] ?? null;
+                if ($item_field === 'items_id' && $entity !== null && is_a($entity, \itsmng\Database\Mapping\LegacyInput::class, true) && method_exists($entity, 'withReference')) {
+                    $relation_override = array_replace($relation_override, (new $entity())->normalizeInput(
+                        $entity::withReference($relation_override, $this->getType(), (int)$this->getID())
+                    ));
+                }
+                $relation_item->clone($relation_override, $history);
             }
         }
     }

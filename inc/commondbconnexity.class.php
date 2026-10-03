@@ -124,7 +124,8 @@ abstract class CommonDBConnexity extends CommonDBTM
         // owning column without retaining the old read-only generated identity.
         $writes = array_intersect_key($this->fields, array_fill_keys($this->updates, true));
         foreach (\itsmng\Database\ConnexityInput::endpoints($this) as $identity => $endpoint) {
-            $kind = $writes[$endpoint['discriminator']] ?? $storedFields[$endpoint['discriminator']];
+            $kind = array_key_exists($endpoint['discriminator'], $writes)
+                ? $writes[$endpoint['discriminator']] : $storedFields[$endpoint['discriminator']];
             $column = is_string($kind) || is_int($kind) ? ($endpoint['selections'][$kind]['column'] ?? null) : null;
             if ($column !== null && array_key_exists($column, $writes)) {
                 // This projection cannot be written independently of its owner.

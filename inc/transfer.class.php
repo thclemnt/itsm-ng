@@ -2969,162 +2969,203 @@ class Transfer extends CommonDBTM
     {
         global $DB;
 
-        // Only same case because no duplication of computers
-        switch ($this->options['keep_device']) {
-            // delete devices
-            case 0:
-                foreach (Item_Devices::getItemAffinities($itemtype) as $type) {
-                    $table = getTableForItemType($type);
-                    TransferCancelled::requireWrite($DB->delete(
-                        $table,
-                        [
-                          'items_id'  => $ID,
-                          'itemtype'  => $itemtype
+        $componentManager = \itsmng\Database\Orm::create($DB);
+        $components = new \itsmng\Database\Repository\ComponentRepository($componentManager);
+        try {
+            // Only same case because no duplication of computers
+            switch ($this->options['keep_device']) {
+                // delete devices
+                case 0:
+                    foreach (Item_Devices::getItemAffinities($itemtype) as $type) {
+                        $table = getTableForItemType($type);
+                        if (isset(\itsmng\Database\EntityRegistry::tables()[$table])) {
+                            foreach ($components->assigned($table, $type::getDeviceForeignKey(), $itemtype, (int)$ID, []) as $row) {
+                                $link = new $type();
+                                TransferCancelled::requireWrite($link->getFromDB($row['id']), 'Load component for transfer purge');
+                                $this->deleteForTransfer($link, ['id' => $row['id']], true);
+                            }
+                            continue;
+                        }
+                        TransferCancelled::requireWrite($DB->delete(
+                            $table,
+                            [
+                              'items_id'  => $ID,
+                              'itemtype'  => $itemtype
                   ]
-                    ), '$DB->delete');
-                }
-
-                // no break
-            default: // Keep devices
-                foreach (Item_Devices::getItemAffinities($itemtype) as $itemdevicetype) {
-                    $itemdevicetable = getTableForItemType($itemdevicetype);
-                    $devicetype      = $itemdevicetype::getDeviceType();
-                    $devicetable     = getTableForItemType($devicetype);
-                    $fk              = getForeignKeyFieldForTable($devicetable);
-
-                    $device          = new $devicetype();
-                    // Get contracts for the item
-                    $criteria = [
-                       'FROM'   => $itemdevicetable,
-                       'WHERE'  => [
-                          'items_id'  => $ID,
-                          'itemtype'  => $itemtype
-                       ]
-                    ];
-                    if (isset($this->noneedtobe_transfer[$devicetype])
-                       && count($this->noneedtobe_transfer[$devicetype])
-                    ) {
-                        $criteria['WHERE']['NOT'] = [$fk => $this->noneedtobe_transfer[$devicetype]];
+                        ), '$DB->delete');
                     }
-                    $iterator = $DB->request($criteria);
 
-                    if (count($iterator)) {
-                        // Foreach get item
-                        while ($data = $iterator->next()) {
-                            $item_ID     = $data[$fk];
-                            $newdeviceID = -1;
+                    // no break
+                default: // Keep devices
+                    foreach (Item_Devices::getItemAffinities($itemtype) as $itemdevicetype) {
+                        $itemdevicetable = getTableForItemType($itemdevicetype);
+                        $devicetype      = $itemdevicetype::getDeviceType();
+                        $devicetable     = getTableForItemType($devicetype);
+                        $fk              = getForeignKeyFieldForTable($devicetable);
 
-                            // is already transfer ?
-                            if (isset($this->already_transfer[$devicetype][$item_ID])) {
-                                $newdeviceID = $this->already_transfer[$devicetype][$item_ID];
+                        $device          = new $devicetype();
+                        // Get contracts for the item
+                        $criteria = [
+                           'FROM'   => $itemdevicetable,
+                           'WHERE'  => [
+                              'items_id'  => $ID,
+                              'itemtype'  => $itemtype
+                           ]
+                        ];
+                        if (isset($this->noneedtobe_transfer[$devicetype])
+                           && count($this->noneedtobe_transfer[$devicetype])
+                        ) {
+                            $criteria['WHERE']['NOT'] = [$fk => $this->noneedtobe_transfer[$devicetype]];
+                        }
+                        $mapped = isset(\itsmng\Database\EntityRegistry::tables()[$itemdevicetable]);
+                        $rows = $mapped ? $components->assigned(
+                            $itemdevicetable,
+                            $fk,
+                            $itemtype,
+                            (int)$ID,
+                            $this->noneedtobe_transfer[$devicetype] ?? []
+                        ) : iterator_to_array($DB->request($criteria));
 
-                            } else {
-                                // No
-                                // Can be transfer without copy ? = all linked items need to be transfer (so not copy)
-                                $canbetransfer = true;
-                                $type_iterator = $DB->request([
-                                   'SELECT'          => 'itemtype',
-                                   'DISTINCT'        => true,
-                                   'FROM'            => $itemdevicetable,
-                                   'WHERE'           => [$fk => $item_ID]
-                                ]);
+                        if ($rows) {
+                            foreach ($rows as $data) {
+                                $item_ID     = $data[$fk];
+                                $newdeviceID = -1;
 
-                                while (($data_type = $type_iterator->next())
-                                         && $canbetransfer) {
-                                    $dtype = $data_type['itemtype'];
-
-                                    if (isset($this->needtobe_transfer[$dtype]) && count($this->needtobe_transfer[$dtype])) {
-                                        // No items to transfer -> exists links
-                                        $dcriteria = [
-                                           'COUNT'  => 'cpt',
-                                           'FROM'   => $itemdevicetable,
-                                           'WHERE'  => [
-                                              $fk         => $item_ID,
-                                              'itemtype'  => $dtype,
-                                              'NOT'       => [
-                                                 'items_id'  => $this->needtobe_transfer[$dtype]
-                                              ]
-                                           ]
-                                        ];
-
-                                        $result = $DB->request($dcriteria)->next();
-
-                                        if ($result['cpt'] > 0) {
-                                            $canbetransfer = false;
-                                        }
-
-                                    } else {
-                                        $canbetransfer = false;
-                                    }
-
-                                }
-
-                                // Yes : transfer
-                                if ($canbetransfer) {
-                                    TransferCancelled::requireTransfer($this->transferItem($devicetype, $item_ID, $item_ID));
-                                    $newdeviceID = $item_ID;
+                                // is already transfer ?
+                                if (isset($this->already_transfer[$devicetype][$item_ID])) {
+                                    $newdeviceID = $this->already_transfer[$devicetype][$item_ID];
 
                                 } else {
-                                    $device->getFromDB($item_ID);
-                                    // No : search device
-                                    $field = "name";
-                                    if (!$DB->fieldExists($devicetable, "name")) {
-                                        $field = "designation";
-                                    }
+                                    // No
+                                    // Can be transfer without copy ? = all linked items need to be transfer (so not copy)
+                                    if ($mapped) {
+                                        $canbetransfer = $components->canMoveDevice(
+                                            $itemdevicetable,
+                                            $fk,
+                                            (int)$item_ID,
+                                            $this->needtobe_transfer
+                                        );
+                                    } else {
+                                        $canbetransfer = true;
+                                        $type_iterator = $DB->request([
+                                           'SELECT'          => 'itemtype',
+                                           'DISTINCT'        => true,
+                                           'FROM'            => $itemdevicetable,
+                                           'WHERE'           => [$fk => $item_ID]
+                                        ]);
 
-                                    $device_iterator = $DB->request([
-                                       'SELECT' => 'id',
-                                       'FROM'   => $devicetable,
-                                       'WHERE'  => [
-                                          'entities_id'  => $this->to,
-                                          $field         => addslashes((string) $device->fields[$field])
-                                       ]
-                                    ]);
+                                        while (($data_type = $type_iterator->next())
+                                                 && $canbetransfer) {
+                                            $dtype = $data_type['itemtype'];
 
-                                    if (count($device_iterator)) {
-                                        $result = $device_iterator->next();
-                                        $newdeviceID = $result['id'];
-                                        $this->addToAlreadyTransfer($devicetype, $item_ID, $newdeviceID);
-                                    }
+                                            if (isset($this->needtobe_transfer[$dtype]) && count($this->needtobe_transfer[$dtype])) {
+                                                // No items to transfer -> exists links
+                                                $dcriteria = [
+                                                   'COUNT'  => 'cpt',
+                                                   'FROM'   => $itemdevicetable,
+                                                   'WHERE'  => [
+                                                      $fk         => $item_ID,
+                                                      'itemtype'  => $dtype,
+                                                      'NOT'       => [
+                                                         'items_id'  => $this->needtobe_transfer[$dtype]
+                                                      ]
+                                                   ]
+                                                ];
 
-                                    // found : use it
-                                    // not found : copy contract
-                                    if ($newdeviceID < 0) {
-                                        // 1 - create new item
-                                        $this->checkpointTransferModel($device);
-                                        unset($device->fields['id']);
-                                        $input                = $device->fields;
-                                        // Fix for fields with NULL in DB
-                                        foreach ($input as $key => $value) {
-                                            if ($value == '') {
-                                                unset($input[$key]);
+                                                $result = $DB->request($dcriteria)->next();
+
+                                                if ($result['cpt'] > 0) {
+                                                    $canbetransfer = false;
+                                                }
+
+                                            } else {
+                                                $canbetransfer = false;
                                             }
+
                                         }
-                                        $input['entities_id'] = $this->to;
-                                        unset($device->fields);
-                                        $newdeviceID = $this->addForTransfer($device, Toolbox::addslashes_deep($input));
-                                        // 2 - transfer as copy
-                                        TransferCancelled::requireTransfer($this->transferItem($devicetype, $item_ID, $newdeviceID));
+
+                                    }
+
+                                    // Yes : transfer
+                                    if ($canbetransfer) {
+                                        TransferCancelled::requireTransfer($this->transferItem($devicetype, $item_ID, $item_ID));
+                                        $newdeviceID = $item_ID;
+
+                                    } else {
+                                        $device->getFromDB($item_ID);
+                                        // No : search device
+                                        $field = "name";
+                                        if (!$DB->fieldExists($devicetable, "name")) {
+                                            $field = "designation";
+                                        }
+
+                                        $device_iterator = $DB->request([
+                                           'SELECT' => 'id',
+                                           'FROM'   => $devicetable,
+                                           'WHERE'  => [
+                                              'entities_id'  => $this->to,
+                                              $field         => addslashes((string) $device->fields[$field])
+                                           ]
+                                        ]);
+
+                                        if (count($device_iterator)) {
+                                            $result = $device_iterator->next();
+                                            $newdeviceID = $result['id'];
+                                            $this->addToAlreadyTransfer($devicetype, $item_ID, $newdeviceID);
+                                        }
+
+                                        // found : use it
+                                        // not found : copy contract
+                                        if ($newdeviceID < 0) {
+                                            // 1 - create new item
+                                            $this->checkpointTransferModel($device);
+                                            unset($device->fields['id']);
+                                            $input                = $device->fields;
+                                            // Fix for fields with NULL in DB
+                                            foreach ($input as $key => $value) {
+                                                if ($value == '') {
+                                                    unset($input[$key]);
+                                                }
+                                            }
+                                            $input['entities_id'] = $this->to;
+                                            unset($device->fields);
+                                            $newdeviceID = $this->addForTransfer($device, Toolbox::addslashes_deep($input));
+                                            // 2 - transfer as copy
+                                            TransferCancelled::requireTransfer($this->transferItem($devicetype, $item_ID, $newdeviceID));
+                                        }
                                     }
                                 }
-                            }
 
-                            // Update links
-                            TransferCancelled::requireWrite($DB->update(
-                                $itemdevicetable,
-                                [
-                                  $fk         => $newdeviceID,
-                                  'items_id'  => $newID
+                                // Update links
+                                if ($mapped) {
+                                    TransferCancelled::requireWrite($components->rebind(
+                                        $itemdevicetable,
+                                        (int)$data['id'],
+                                        $fk,
+                                        (int)$newdeviceID,
+                                        $itemtype,
+                                        (int)$newID
+                                    ), 'Rebind component owning device and asset');
+                                } else {
+                                    TransferCancelled::requireWrite($DB->update(
+                                        $itemdevicetable,
+                                        [
+                                          $fk         => $newdeviceID,
+                                          'items_id'  => $newID
                         ],
-                                [
-                                  'id' => $data['id']
+                                        [
+                                          'id' => $data['id']
                         ]
-                            ), '$DB->update');
-                            TransferCancelled::requireTransfer($this->transferItem($itemdevicetype, $data['id'], $data['id']));
+                                    ), '$DB->update');
+                                }
+                                TransferCancelled::requireTransfer($this->transferItem($itemdevicetype, $data['id'], $data['id']));
+                            }
                         }
                     }
-                }
-                break;
+                    break;
+            }
+        } finally {
+            $componentManager->clear();
         }
     }
 

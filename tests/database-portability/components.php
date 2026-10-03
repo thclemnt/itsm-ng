@@ -73,7 +73,8 @@ try {
         $em = \itsmng\Database\Orm::create($DB);
         verify((new \itsmng\Database\Repository\ComponentRepository($em))->detach($table, 'Monitor', $assetId) === 0, 'Stock detach respects polymorphic type');
         verify((new \itsmng\Database\Repository\ComponentRepository($em))->detach($table, 'Computer', $assetId) === 2, 'Stock detach includes deleted components');
-        verify($link->getFromDB($assigned) && $link->fields['itemtype'] === '' && (int)$link->fields['items_id'] === 0, 'Detached stock preserves required device');
+        $typedStock = isset(\itsmng\Database\EntityRegistry::discriminatedReferences($table)['items_id']['empty_value']);
+        verify($link->getFromDB($assigned) && $link->fields['itemtype'] === ($typedStock ? null : '') && (int)$link->fields['items_id'] === 0, 'Detached stock preserves required device and its entity-declared canonical stock kind');
         verify($device->delete(['id' => $deviceId, '_replace_by' => $replacement], true), 'Replace device under FK enforcement: ' . $table);
         verify($link->getFromDB($assigned) && (int)$link->fields[$column] === $replacement, 'Replacement preserves link');
         verify($link->getFromDB($foreign), 'Replacement preserves foreign asset link');

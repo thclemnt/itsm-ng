@@ -2682,19 +2682,8 @@ abstract class API extends CommonGLPI
             $hclasses[] = "NetworkPort";
         }
         if (in_array($itemtype, $CFG_GLPI["itemdevices_types"])) {
-            //$hclasses[] = "Item_Devices";
-            foreach ($CFG_GLPI['device_types'] as $device_type) {
-                if (
-                    (($device_type == "DeviceMemory")
-                     && !in_array($itemtype, $CFG_GLPI["itemdevicememory_types"]))
-                    || (($device_type == "DevicePowerSupply")
-                        && !in_array($itemtype, $CFG_GLPI["itemdevicepowersupply_types"]))
-                    || (($device_type == "DeviceNetworkCard")
-                        && !in_array($itemtype, $CFG_GLPI["itemdevicenetworkcard_types"]))
-                ) {
-                    continue;
-                }
-                $hclasses[] = "Item_" . $device_type;
+            foreach (Item_Devices::getItemAffinities($itemtype) as $component) {
+                $hclasses[] = $component;
             }
         }
 

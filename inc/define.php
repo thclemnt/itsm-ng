@@ -376,8 +376,6 @@ $CFG_GLPI['itemdevicepci_types']          = ['*'];
 
 $CFG_GLPI['itemdevicesensor_types']       = ['Computer', 'Peripheral'];
 
-$CFG_GLPI['itemdeviceprocessor_types']    = ['Computer'];
-
 $CFG_GLPI['itemdevicesoundcard_types']    = ['Computer'];
 
 $CFG_GLPI['itemdevicegraphiccard_types']  = ['Computer'];

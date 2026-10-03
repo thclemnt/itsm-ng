@@ -70,7 +70,9 @@ trait ItemReference
     /** Copy legacy model fields to a new subject without retaining the source associations. */
     public static function withReference(array $values, string $kind, int $id): array
     {
-        self::referenceAssociation($kind);
+        if (!(static::allowsEmptyReference() && $kind === '' && $id === 0)) {
+            self::referenceAssociation($kind);
+        }
         foreach (self::referenceProperties() as $property) {
             unset($values[$property->getAttributes(ORM\JoinColumn::class)[0]->newInstance()->name]);
         }
@@ -97,7 +99,12 @@ trait ItemReference
 
     protected static function allowsEmptyReference(): bool
     {
-        return false;
+        $attributes = (new \ReflectionProperty(static::class, 'items_id'))->getAttributes(DiscriminatorKey::class);
+        if (!$attributes) {
+            return false;
+        }
+        $key = $attributes[0]->newInstance();
+        return $key->fallbackProperty === null && $key->emptyValue === 0;
     }
 
     /** A selected root ID is distinct from an absent association. */

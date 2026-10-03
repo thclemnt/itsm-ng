@@ -113,6 +113,11 @@ final class EntityRegistry
                     $booleanFields[$table][$mapping->columnName] = (bool)$mapping->nullable;
                 }
             }
+            foreach ($record->fieldMappings as $property => $mapping) {
+                foreach ((new \ReflectionProperty($record->name, $property))->getAttributes(Mapping\DiscriminatorKey::class) as $attribute) {
+                    $discriminators[$table][$mapping->columnName]['empty_value'] = $attribute->newInstance()->emptyValue;
+                }
+            }
             foreach ($record->associationMappings as $property => $association) {
                 if (!$association->isToOneOwningSide()) {
                     continue;
