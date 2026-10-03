@@ -125,6 +125,20 @@ class RuleRight extends Rule
     }
 
 
+    private ?\itsmng\Domain\Authentication\AuthenticationRuleMutations $authenticationMutations = null;
+
+    public function processAuthentication(&$input, &$output, &$params, &$options, \itsmng\Domain\Authentication\AuthenticationRuleMutations $mutations): void
+    {
+        $previous = $this->authenticationMutations;
+        $this->authenticationMutations = $mutations;
+        try {
+            $this->process($input, $output, $params, $options);
+        } finally {
+            $this->authenticationMutations = $previous;
+        }
+    }
+
+
     public function executeActions($output, $params, array $input = [])
     {
         $entity = [];
@@ -132,6 +146,9 @@ class RuleRight extends Rule
         $is_recursive = 0;
         $continue     = true;
         $output_src   = $output;
+        $mutations = $this->authenticationMutations;
+        $assignments = [];
+        $grants = [];
 
         if (count($this->actions)) {
             foreach ($this->actions as $action) {
@@ -152,26 +169,32 @@ class RuleRight extends Rule
 
                             case '_entities_id_default':
                                 $output['entities_id'] = $action->fields["value"];
+                                $assignments['entities_id'] = $action->fields['value'];
                                 break;
 
                             case '_profiles_id_default':
                                 $output['profiles_id'] = $action->fields["value"];
+                                $assignments['profiles_id'] = $action->fields['value'];
                                 break;
 
                             case 'groups_id':
                                 $output['groups_id'] = $action->fields["value"];
+                                $assignments['groups_id'] = $action->fields['value'];
                                 break;
 
                             case 'specific_groups_id':
                                 $output["_ldap_rules"]['groups_id'][] = $action->fields["value"];
+                                $grants['groups_id'][] = $action->fields['value'];
                                 break;
 
                             case "is_active":
                                 $output["is_active"] = $action->fields["value"];
+                                $assignments['is_active'] = $action->fields['value'];
                                 break;
 
                             case 'timezone':
                                 $output['timezone'] = $action->fields['value'];
+                                $assignments['timezone'] = $action->fields['value'];
                                 break;
 
                             case "_ignore_user_import":
@@ -181,6 +204,7 @@ class RuleRight extends Rule
 
                             default:
                                 $output[$action->fields["field"]] = $action->fields["value"];
+                                $assignments[$action->fields['field']] = $action->fields['value'];
                                 break;
                         } // switch (field)
                         break;
@@ -246,17 +270,24 @@ class RuleRight extends Rule
                     foreach ($entity as $entID) {
                         $output["_ldap_rules"]["rules_entities_rights"][] = [$entID, $right,
                                                                                   $is_recursive];
+                        $grants['rules_entities_rights'][] = [$entID, $right, $is_recursive];
                     }
                 } else {
                     foreach ($entity as $entID) {
                         $output["_ldap_rules"]["rules_entities"][] = [$entID, $is_recursive];
+                        $grants['rules_entities'][] = [$entID, $is_recursive];
                     }
                 }
             } elseif ($right != '') {
                 $output["_ldap_rules"]["rules_rights"][] = $right;
+                $grants['rules_rights'][] = $right;
             }
 
+            $mutations?->accepted($assignments, $grants);
             return $output;
+        }
+        if (isset($output_src['_stop_import'])) {
+            $mutations?->stopImport();
         }
         return $output_src;
     }

@@ -809,6 +809,29 @@ class User extends CommonDBTM
     }
 
 
+    /** Complete a verified existing local login through the ordinary public lifecycle. */
+    public function completeAuthentication(\itsmng\Domain\Authentication\AuthenticationCompletion $completion): bool
+    {
+        if ((int)$this->getID() !== $completion->user) {
+            throw new LogicException('Authentication completion belongs to another account.');
+        }
+        if (!$this->getFromDB($completion->user)
+            || (int)$this->fields['authtype'] !== Auth::DB_GLPI
+            || (int)$this->fields['auths_id'] !== 0) {
+            return false;
+        }
+        $input = Toolbox::addslashes_deep($completion->lifecycleInput());
+        if (!$this->update($input)) {
+            return false;
+        }
+        // A public callback may cancel required writes while returning true.
+        // Session admission must use the actual persisted completion, not input.
+        return $this->getFromDB($completion->user)
+            && $this->fields['last_login'] === $completion->at
+            && $this->fields['is_deleted_ldap'] === 0;
+    }
+
+
     public function prepareInputForUpdate($input)
     {
         global $CFG_GLPI;

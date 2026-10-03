@@ -67,6 +67,9 @@ class Auth extends CommonGLPI
     /** @var int Indicates if the user password expired */
     public $password_expired = false;
 
+    /** Only modeled verification producers may own an existing-account completion. */
+    private ?\itsmng\Domain\Authentication\AuthenticationCompletion $authenticationCompletion = null;
+
     /**
      * Indicated if user was found in the directory.
      * @var boolean
@@ -369,6 +372,8 @@ class Auth extends CommonGLPI
     {
         global $CFG_GLPI, $DB;
 
+        $this->authenticationCompletion = null;
+
         $pass_expiration_delay = (int)$CFG_GLPI['password_expiration_delay'];
         $lock_delay            = (int)$CFG_GLPI['password_expiration_lock_delay'];
 
@@ -415,7 +420,10 @@ class Auth extends CommonGLPI
                     $user = new User();
                     $user->update($input);
                 }
-                $this->user->getFromDBByCrit(['id' => $row['id']]);
+                if (!$this->user->getFromDBByCrit(['id' => $row['id']])) {
+                    $this->addToError(__('Incorrect username or password'));
+                    return false;
+                }
                 $this->extauth                  = 0;
                 $this->user_present             = 1;
                 $this->user->fields["authtype"] = self::DB_GLPI;
@@ -425,7 +433,7 @@ class Auth extends CommonGLPI
                 $rules  = new RuleRightCollection();
                 $groups = Group_User::getUserGroups($row['id']);
                 $groups_id = array_column($groups, 'id');
-                $result = $rules->processAllRules(
+                $evaluation = $rules->evaluateAuthentication(
                     $groups_id,
                     Toolbox::stripslashes_deep($this->user->fields),
                     [
@@ -435,9 +443,12 @@ class Auth extends CommonGLPI
                     ]
                 );
 
-                $this->user->fields = $result + [
+                $this->user->fields = $evaluation->context + [
                    '_ruleright_process' => true,
                 ];
+                $this->authenticationCompletion = new \itsmng\Domain\Authentication\AuthenticationCompletion(
+                    (int)$row['id'], $_SESSION['glpi_currenttime'], $evaluation->outcome
+                );
 
                 return true;
             }
@@ -712,6 +723,7 @@ class Auth extends CommonGLPI
     {
         global $DB, $CFG_GLPI;
 
+        $this->authenticationCompletion = null;
         $this->getAuthMethods();
         $this->user_present  = 1;
         $this->auth_succeded = false;
@@ -748,6 +760,15 @@ class Auth extends CommonGLPI
                 $this->user_present                = $this->user->getFromDBbyName(addslashes((string) $login_name));
                 $this->extauth                     = 1;
                 $user_dn                           = false;
+                // Credential provider and stored source are independent. Other
+                // account sources retain their unmodeled synchronization path.
+                if ($this->user_present && in_array($authtype, [self::API, self::COOKIE], true)
+                    && (int)$this->user->fields['authtype'] === self::DB_GLPI
+                    && (int)$this->user->fields['auths_id'] === 0) {
+                    $this->authenticationCompletion = new \itsmng\Domain\Authentication\AuthenticationCompletion(
+                        (int)$this->user->getID(), $_SESSION['glpi_currenttime']
+                    );
+                }
 
                 if (array_key_exists('_useremails', $this->user->fields)) {
                     $email = $this->user->fields['_useremails'];
@@ -811,6 +832,9 @@ class Auth extends CommonGLPI
                             }
                             if ($user_dn) {
                                 $this->user_found = true;
+                                // The actual producer, even a failed/partial retrieval,
+                                // owns its legacy input until its outcome is modeled.
+                                $this->authenticationCompletion = null;
                                 $this->user->fields['auths_id'] = $ldap_method['id'];
                                 $this->user->getFromLDAP(
                                     $ds,
@@ -829,6 +853,7 @@ class Auth extends CommonGLPI
                     && ($authtype == self::EXTERNAL)
                 ) {
                     // Case of using external auth and no LDAP servers, so get data from external auth
+                    $this->authenticationCompletion = null;
                     $this->user->getFromSSO();
                 } else {
                     if ($this->user->fields['authtype'] == self::LDAP) {
@@ -948,7 +973,14 @@ class Auth extends CommonGLPI
                     $this->auth_succeded = false;
                 }
             } else {
-                if ($this->user_present) {
+                if ($this->user_present && $this->authenticationCompletion !== null) {
+                    if (!$this->user->completeAuthentication($this->authenticationCompletion)) {
+                        $this->addToError(__('Unable to update user authentication information'));
+                        $this->auth_succeded = false;
+                    }
+                } elseif ($this->user_present) {
+                    // LDAP/mail/SSO and nonlocal alternate sources retain their
+                    // explicit legacy synchronization input, not a guessed patch.
                     // First stripslashes to avoid double slashes
                     $input = Toolbox::stripslashes_deep($this->user->fields);
                     // Then ensure addslashes

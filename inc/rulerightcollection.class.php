@@ -54,6 +54,38 @@ class RuleRightCollection extends RuleCollection
     public $rules_rights        = [];
 
 
+    private ?\itsmng\Domain\Authentication\AuthenticationRuleMutations $authenticationMutations = null;
+
+    public function evaluateAuthentication(array $groups, array $context, array $parameters): \itsmng\Domain\Authentication\AuthenticationRuleEvaluation
+    {
+        $previous = $this->authenticationMutations;
+        $mutations = new \itsmng\Domain\Authentication\AuthenticationRuleMutations();
+        $this->authenticationMutations = $mutations;
+        try {
+            $output = $this->processAllRules($groups, $context, $parameters);
+            // These control values are produced by the matching engine, not
+            // copied account attributes. Preserve the established hook context.
+            $control = array_intersect_key($output, array_flip(['_no_rule_matches', '_rule_process', '_ruleid']));
+            return new \itsmng\Domain\Authentication\AuthenticationRuleEvaluation($output, $mutations->outcome($control));
+        } finally {
+            $this->authenticationMutations = $previous;
+        }
+    }
+
+    protected function processRule(Rule $rule, &$input, &$output, &$params, &$options): void
+    {
+        if ($this->authenticationMutations === null) {
+            parent::processRule($rule, $input, $output, $params, $options);
+            return;
+        }
+        // Unknown rule implementations must declare their own producer before adoption.
+        if (get_class($rule) !== RuleRight::class) {
+            throw new LogicException('Authentication requires the owning RuleRight action producer.');
+        }
+        $rule->processAuthentication($input, $output, $params, $options, $this->authenticationMutations);
+    }
+
+
     public function getTitle()
     {
         return __('Authorizations assignment rules');

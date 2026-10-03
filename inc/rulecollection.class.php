@@ -1486,7 +1486,7 @@ class RuleCollection extends CommonDBTM
 
                 if ($rule->fields["is_active"]) {
                     $output["_rule_process"] = false;
-                    $rule->process($input, $output, $params, $p);
+                    $this->processRule($rule, $input, $output, $params, $p);
 
                     if ($output["_rule_process"] && $this->stop_on_first_match) {
                         unset($output["_rule_process"]);
@@ -1503,6 +1503,13 @@ class RuleCollection extends CommonDBTM
         }
 
         return Toolbox::addslashes_deep($output);
+    }
+
+
+    /** Owning collections may bind a typed evaluation without changing normal rule dispatch. */
+    protected function processRule(Rule $rule, &$input, &$output, &$params, &$options): void
+    {
+        $rule->process($input, $output, $params, $options);
     }
 
 
