@@ -2123,62 +2123,102 @@ class Ticket extends DbTestCase
 
     protected function computePriorityProvider()
     {
-        return [
+        $cases = [
            [
               'input'    => [
                  'urgency'   => 2,
                  'impact'    => 2
               ],
-              'urgency'  => '2',
-              'impact'   => '2',
-              'priority' => '2'
+              'urgency'  => 2,
+              'impact'   => 2,
+              'priority' => 2
            ], [
               'input'    => [
                  'urgency'   => 5
               ],
-              'urgency'  => '5',
-              'impact'   => '3',
-              'priority' => '4'
+              'urgency'  => 5,
+              'impact'   => 3,
+              'priority' => 4
            ], [
               'input'    => [
                  'impact'   => 5
               ],
-              'urgency'  => '3',
-              'impact'   => '5',
-              'priority' => '4'
+              'urgency'  => 3,
+              'impact'   => 5,
+              'priority' => 4
            ], [
               'input'    => [
                  'urgency'   => 5,
                  'impact'    => 5
               ],
-              'urgency'  => '5',
-              'impact'   => '5',
-              'priority' => '5'
+              'urgency'  => 5,
+              'impact'   => 5,
+              'priority' => 5
            ], [
               'input'    => [
                  'urgency'   => 5,
                  'impact'    => 1
               ],
-              'urgency'  => '5',
-              'impact'   => '1',
-              'priority' => '2'
+              'urgency'  => 5,
+              'impact'   => 1,
+              'priority' => 2
            ]
         ];
+        // HTML selects submit numeric strings. They must calculate the same
+        // domain values without relying on string coercion of native inputs.
+        foreach ($cases as $case) {
+            $case['input'] = array_map(static fn (int $value): string => (string)$value, $case['input']);
+            $cases[] = $case;
+        }
+        return $cases;
     }
 
     /**
      * @dataProvider computePriorityProvider
      */
-    public function testComputePriority($input, $urgency, $impact, $priority)
+    public function testComputePriority(array $input, int $urgency, int $impact, int $priority)
     {
-        $this->login();
-        $ticket = getItemByTypeName('Ticket', '_ticket01');
-        $input['id'] = $ticket->fields['id'];
-        $result = $ticket->prepareInputForUpdate($input);
-        $this->array($result)
-           ->string['urgency']->isIdenticalTo($urgency)
-           ->string['impact']->isIdenticalTo($impact)
-           ->string['priority']->isIdenticalTo($priority);
+        global $DB;
+
+        // Atoum runs every provider dataset inside one DbTestCase transaction.
+        // Isolate actual writes so missing-field cases retain their original data.
+        $connection = $DB->getDoctrineConnection();
+        $level = $connection->getTransactionNestingLevel();
+        $connection->beginTransaction();
+        try {
+            $this->login();
+            $ticket = getItemByTypeName('Ticket', '_ticket01');
+            $input['id'] = $ticket->fields['id'];
+            $this->boolean($ticket->can($input['id'], UPDATE))->isTrue();
+            $expected = ['urgency' => $urgency, 'impact' => $impact, 'priority' => $priority];
+            $before = array_intersect_key($ticket->fields, $expected);
+            $result = $ticket->prepareInputForUpdate($input);
+            $this->array($result);
+            foreach ($expected as $field => $value) {
+                // Preparation retains supplied text. Missing values come from
+                // integer fields; the frozen default matrix returns integers.
+                if (isset($input[$field]) && is_string($input[$field])) {
+                    $this->string($result[$field])->isIdenticalTo((string)$value);
+                } else {
+                    $this->integer($result[$field])->isIdenticalTo($value);
+                }
+            }
+            $this->boolean($ticket->update($input))->isTrue();
+            $reloaded = new \Ticket();
+            $this->boolean($reloaded->getFromDB($input['id']))->isTrue();
+            $native = \itsmng\Database\Orm::create($DB)->find(\itsmng\Database\Entity\Ticket::class, $input['id']);
+            $this->object($native)->isInstanceOf(\itsmng\Database\Entity\Ticket::class);
+            foreach ($expected as $field => $value) {
+                $this->integer($reloaded->fields[$field])->isIdenticalTo($value);
+                $this->integer($native->$field)->isIdenticalTo($value);
+            }
+        } finally {
+            $connection->rollBack();
+        }
+        $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        $restored = new \Ticket();
+        $this->boolean($restored->getFromDB($input['id']))->isTrue();
+        $this->array(array_intersect_key($restored->fields, $expected))->isIdenticalTo($before);
     }
 
     public function testGetDefaultValues()
