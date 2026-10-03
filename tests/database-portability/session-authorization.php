@@ -31,11 +31,11 @@ final class SessionAuthorizationResponse extends RuntimeException
 /** Exercise actual API endpoint policy, including private app-token/session checks. */
 final class SessionAuthorizationApi extends \Glpi\Api\APIRest
 {
-    public function request(int $client, string $endpoint, array $params = [], ?string $token = null): mixed
+    public function request(int $client, string $endpoint, array $params = [], ?string $token = null, string $appToken = 'session-authorization-fixture'): mixed
     {
         $this->session_write = true;
         $this->app_tokens = [$client => 'session-authorization-fixture'];
-        $this->parameters = ['app_token' => 'session-authorization-fixture', 'session_token' => $token ?? session_id()];
+        $this->parameters = ['app_token' => $appToken, 'session_token' => $token ?? session_id()];
         return match ($endpoint) {
             'profiles' => $this->getMyProfiles(), 'entities' => $this->getMyEntities($params),
             'profile' => $this->changeActiveProfile($params), 'entity' => $this->changeActiveEntities($params),
@@ -123,7 +123,7 @@ try {
     Session::initEntityProfiles($user);
 
     $groups = [];
-    foreach (['parent_direct' => [$parent, false], 'parent_recursive' => [$parent, true], 'child' => [$child, false], 'sibling' => [$sibling, true], 'foreign' => [$foreign, true], 'unlinked' => [$child, true]] as $kind => [$entity, $recursive]) {
+    foreach (['parent_direct' => [$parent, false], 'parent_recursive' => [$parent, true], 'child' => [$child, false], 'sibling' => [$sibling, true], 'foreign' => [$foreign, true], 'unlinked' => [$child, true], 'root' => [0, false]] as $kind => [$entity, $recursive]) {
         $groups[$kind] = $fixtures->create('glpi_groups', ['name' => $prefix . ' ' . $kind, 'entities_id' => $entity, 'is_recursive' => $recursive]);
         if ($kind !== 'unlinked') {
             $fixtures->create('glpi_groups_users', ['users_id' => $user, 'groups_id' => $groups[$kind], 'is_dynamic' => true, 'is_manager' => false]);
@@ -144,7 +144,7 @@ try {
     verify($_SESSION['glpigroups'] === [$groups['parent_direct'], $groups['parent_recursive'], $groups['child']], 'Explicit parent and child scope preserves membership order');
     $_SESSION['glpiactiveentities'] = [0];
     Session::loadGroups();
-    verify($_SESSION['glpigroups'] === [], 'Root scope cannot acquire child groups');
+    verify($_SESSION['glpigroups'] === [$groups['root']], 'Root scope includes its actual membership while excluding child groups');
 
     // Later writes must be visible through fresh managers on this same uncommitted connection.
     $connection->beginTransaction();
@@ -203,6 +203,17 @@ try {
     } catch (SessionAuthorizationResponse $error) {
         verify($error->getCode() === 401, 'Actual API endpoint still checks the session token');
     }
+    try {
+        $api->request($client, 'profiles', appToken: 'forged-app-token');
+        throw new LogicException('Forged app token accepted');
+    } catch (SessionAuthorizationResponse $error) {
+        verify($error->getCode() === 400 && str_contains($error->getMessage(), 'ERROR_WRONG_APP_TOKEN_PARAMETER')
+            && $_SESSION['glpiactiveprofile']['id'] === $before, 'Actual private app-token check rejects a forgery before changing authorization');
+    }
+    $api->request($client, 'profile', ['profiles_id' => $profiles['null']]);
+    verify($api->request($client, 'entity', ['entities_id' => 0, 'is_recursive' => false]) === true
+        && $_SESSION['glpiactive_entity'] === 0 && $_SESSION['glpigroups'] === [$groups['root']], 'Granted root API switch retains root identity and actual group membership');
+    verify(in_array(0, array_column($api->request($client, 'entities')['myentities'], 'id'), true), 'API root grant is represented as real ID zero');
     $api->request($client, 'profile', ['profiles_id' => $profiles['last']]);
     verify($_SESSION['glpiactiveprofile']['id'] === $profiles['last']
         && array_column($api->request($client, 'entities')['myentities'], 'id') === [$parent], 'API switches only to the selected profile ownership');

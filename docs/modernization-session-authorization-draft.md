@@ -1,7 +1,9 @@
 # Session authorization ORM draft — validation pending
 
-This isolated batch starts from `e29e33c9cd209dcc84597005375374a2f1416baf`.
-It is a source draft. No PostgreSQL/MariaDB contract, application bootstrap,
+Originally drafted from `e29e33c9cd209dcc84597005375374a2f1416baf`, this
+isolated batch is now rebased onto the exact combined lifecycle checkpoint
+`4dbc9f7c2edeafb5e54c65d9c9a5144f9132246c`. Its inherited Transfer and
+shared lifecycle changes remain intact. It is a source draft. No PostgreSQL/MariaDB contract, application bootstrap,
 HTTP request, browser flow, populated upgrade or full suite has been run for it.
 It must remain isolated until both-provider validation is available.
 
@@ -47,7 +49,8 @@ ordering/literal labels, root/empty/explicit scopes, recursive groups, hook orde
 and supplied-connection savepoint visibility/rollback. Its APIRest subclass
 only exposes protected endpoints and captures responses: private app-token,
 endpoint and session-token checks still execute. It tests profile/entity payloads,
-authorized switches, ungranted/foreign rejection and a forged session token.
+authorized switches (including real root-entity group membership),
+ungranted/foreign rejection, a forged session token and a forged app token.
 This is method-level API coverage, not live HTTP evidence.
 
 Source checks completed: four PHP files lint clean; scoped PHP CS Fixer dry-run
@@ -67,3 +70,10 @@ actual HTTP, browser and live read-replica evidence. A coherent dynamically
 discovered full portability suite and final schema inspection on both providers
 are required before reporting this application batch complete. No previous
 milestone's passing count establishes these results.
+
+Independent source review found no production blocker. Its positive root-group,
+root API switch and invalid app-token suggestions are now prepared controls;
+these remain unexecuted. App-token admission uses the existing method fixture
+client map and unchanged private checkAppToken; initApi IP/client-discovery and
+HTTP dispatch require subsequent live HTTP validation. No token gate is bypassed
+by the endpoint probe.
