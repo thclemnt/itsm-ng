@@ -997,6 +997,10 @@ abstract class CommonTreeDropdown extends CommonDropdown
             }
 
             $parent = parent::import($tmp);
+            if ($parent <= 0) {
+                // A refused ancestor cannot become the next node's root.
+                return $parent;
+            }
         }
         return $parent;
     }

@@ -39,6 +39,14 @@ without reloading the object and retains attempted form input for diagnostics.
 The unmapped per-field adapter path likewise propagates a failed write; outside
 an owning transaction it still cannot promise atomicity across several fields.
 
+Full-tree dropdown imports now propagate each refused intermediate node at
+the model's import boundary. A rejected Location ancestor cannot silently turn
+its intended descendant into a root and produce a successful final identifier.
+Prepared contracts cover actual multilevel Location transfer vetoes with owned
+and caller transactions, accepted ancestry, and direct Location/TaskCategory
+imports. Standalone full-tree import retains its per-node persistence semantics:
+accepted ancestors can remain when a later node refuses; its caller owns atomicity.
+
 Transfer restores its previous maps/options/destination/model state after
 failure. An operation-scoped journal captures the actual public model instances
 before selected mutations; it restores their fields/input/pending write state,

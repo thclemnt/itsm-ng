@@ -145,6 +145,96 @@ try {
     verify($_SESSION['MESSAGE_AFTER_REDIRECT'][INFO] === ['Previous feedback'] && $_SESSION['glpitransfer_list'] === ['Domain' => [$incompatible['domain']]], 'Failed operation preserves previous feedback and selected list');
     verify($CFG_GLPI === $flags, 'Failed transfer restores prior enable-flag types and ancillary configuration');
 
+    $locationRootName = $prefix . ' location root';
+    $locationLeafName = $prefix . ' location leaf';
+    $sourceLocation = (new Location())->import(['completename' => $locationRootName . ' > ' . $locationLeafName, 'entities_id' => $source]);
+    verify((int)$sourceLocation > 0, 'Actual source Location import prepares a two-level tree');
+    $sourceLocations = $rows('glpi_locations', ['entities_id' => $source, 'name' => [$locationRootName, $locationLeafName]]);
+    verify(count($sourceLocations) === 2, 'Source Location tree has both actual nodes');
+    foreach ($sourceLocations as $location) {
+        $created[] = ['glpi_locations', (int)$location['id']];
+    }
+    $locationGraph = $graph($recursiveCommercial, $recursive, $source);
+    verify((new Computer())->update(['id' => $locationGraph['computer'], 'locations_id' => $sourceLocation, 'comment' => 'Location transfer audit']), 'Public Computer assignment prepares source Location and audit');
+    $locationBefore = $snapshot($locationGraph);
+    foreach ([false, true] as $callerTransaction) {
+        $attemptedNodes = [];
+        $PLUGIN_HOOKS['pre_item_add']['transfer_atomicity_fixture'][Location::class] = static function (Location $item) use ($destination, $locationRootName, &$attemptedNodes): void {
+            if ((int)($item->input['entities_id'] ?? -1) === $destination) {
+                $attemptedNodes[] = $item->input['name'];
+                if ($item->input['name'] === $locationRootName) {
+                    $item->input = false;
+                }
+            }
+        };
+        if ($callerTransaction) {
+            $connection->beginTransaction();
+        }
+        try {
+            $marker = $callerTransaction ? $fixtures->create('glpi_suppliers', ['name' => $prefix . ' location caller marker', 'entities_id' => 0]) : null;
+            $level = $connection->getTransactionNestingLevel();
+            verify((new Transfer())->moveItems(['Computer' => [$locationGraph['computer']]], $destination, ['keep_history' => 0]) === false, 'Refused intermediate Location import cancels the actual transfer');
+            verify($attemptedNodes === [$locationRootName], 'Refused Location ancestor stops before a leaf can be created at the root');
+            verify($snapshot($locationGraph) === $locationBefore && $rows('glpi_locations', ['entities_id' => $source, 'name' => [$locationRootName, $locationLeafName]]) === $sourceLocations, 'Location refusal restores source owner, location, history and source tree');
+            verify($rows('glpi_locations', ['entities_id' => $destination, 'name' => [$locationRootName, $locationLeafName]]) === [], 'Location refusal leaves no target tree nodes');
+            verify($connection->getTransactionNestingLevel() === $level && (!$callerTransaction || $read('glpi_suppliers', $marker) !== null), 'Location refusal preserves caller transaction and prior marker');
+        } finally {
+            if ($callerTransaction) {
+                $connection->rollBack();
+            }
+            unset($PLUGIN_HOOKS['pre_item_add']['transfer_atomicity_fixture']);
+        }
+    }
+    verify((new Transfer())->moveItems(['Computer' => [$locationGraph['computer']]], $destination, ['keep_history' => 1]) === true, 'Accepted full Location tree permits actual transfer');
+    $targetLocations = $rows('glpi_locations', ['entities_id' => $destination, 'name' => [$locationRootName, $locationLeafName]]);
+    verify(count($targetLocations) === 2, 'Accepted Location transfer creates both target levels');
+    foreach ($targetLocations as $location) {
+        $created[] = ['glpi_locations', (int)$location['id']];
+    }
+    $targetLeaf = $read('glpi_locations', (int)$read('glpi_computers', $locationGraph['computer'])['locations_id']);
+    $targetRoot = $read('glpi_locations', (int)$targetLeaf['locations_id']);
+    verify(
+        $targetLeaf['name'] === $locationLeafName && $targetRoot['name'] === $locationRootName
+        && (int)$targetRoot['entities_id'] === $destination && $targetLeaf['completename'] === $locationRootName . ' > ' . $locationLeafName,
+        'Accepted transfer preserves target ancestor identity and complete path'
+    );
+
+    // The import boundary propagates failure; standalone import retains its
+    // established per-node transaction semantics. Its caller owns atomicity.
+    foreach ([Location::class, TaskCategory::class] as $treeType) {
+        $tree = new $treeType();
+        $rootName = $prefix . ' ' . $treeType . ' direct root';
+        $leafName = $prefix . ' ' . $treeType . ' direct leaf';
+        $treeInput = ['completename' => $rootName . ' > ' . $leafName, 'entities_id' => $destination];
+        $treeCriteria = ['name' => [$rootName, $leafName]];
+        $PLUGIN_HOOKS['pre_item_add']['transfer_atomicity_fixture'][$treeType] = static function (CommonTreeDropdown $item) use ($leafName): void {
+            if ($item->input['name'] === $leafName) {
+                $item->input = false;
+            }
+        };
+        $connection->beginTransaction();
+        try {
+            $level = $connection->getTransactionNestingLevel();
+            verify($tree->import($treeInput) === false, 'Direct ' . $treeType . ' import propagates refused leaf');
+            $acceptedAncestors = $rows($tree->getTable(), $treeCriteria);
+            verify(count($acceptedAncestors) === 1 && $acceptedAncestors[0]['name'] === $rootName
+                && $connection->getTransactionNestingLevel() === $level, 'Direct import leaves accepted ancestor and frame under caller control');
+        } finally {
+            $connection->rollBack();
+        }
+        verify($rows($tree->getTable(), $treeCriteria) === [], 'Caller rollback removes accepted direct-import ancestor');
+        verify($tree->import($treeInput) === false, 'Standalone ' . $treeType . ' import reports its refused leaf');
+        $acceptedAncestors = $rows($tree->getTable(), $treeCriteria);
+        verify(count($acceptedAncestors) === 1 && $acceptedAncestors[0]['name'] === $rootName, 'Standalone import keeps its earlier accepted ancestor without claiming implicit atomicity');
+        $created[] = [$tree->getTable(), (int)$acceptedAncestors[0]['id']];
+        unset($PLUGIN_HOOKS['pre_item_add']['transfer_atomicity_fixture']);
+        $leafId = $tree->import($treeInput);
+        verify((int)$leafId > 0 && $tree->import($treeInput) == $leafId && count($rows($tree->getTable(), $treeCriteria)) === 2, 'Accepted direct full-tree import reuses its valid ancestor and duplicate leaf');
+        $leaf = $read($tree->getTable(), (int)$leafId);
+        verify((int)$leaf[$tree->getForeignKeyField()] === (int)$acceptedAncestors[0]['id'], 'Accepted direct leaf keeps its actual parent identifier');
+        $created[] = [$tree->getTable(), (int)$leafId];
+    }
+
     // A coherent candidate permits all early auxiliary work, then its real public
     // update/hook refuses. Already-transferred siblings must roll back as well.
     foreach (['update refusal', 'late throw'] as $case) {
