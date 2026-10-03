@@ -66,15 +66,19 @@ $external = $postgres ? $prefix . '_external' : (getenv('PORT_PROJECTION_REFEREN
 verify(str_starts_with($external, 'itsm_port_') && $external !== $schema, 'External reference namespace is a separate disposable fixture');
 $tables = [$prefix . '_a', $prefix . '_b', $prefix . '_generated'];
 $created = [];
+$owned = [];
+$primaryError = null;
+$cleanupError = null;
 $externalCreated = false;
 $qualified = static fn (string $namespace, string $table): string => $platform->quoteIdentifier($namespace) . '.' . $platform->quoteIdentifier($table);
 $foreignName = $prefix . '_incoming';
-$createChild = static function (string $namespace, string $name, string $parent, string $column) use ($connection, $qualified, $platform, $schema, $foreignName, &$created): string {
+$createChild = static function (string $namespace, string $name, string $parent, string $column) use ($connection, $qualified, $platform, $schema, $foreignName, &$created, &$owned): string {
     $child = $qualified($namespace, $name);
     $connection->executeStatement('CREATE TABLE ' . $child . ' (id BIGINT NOT NULL PRIMARY KEY, parent_id BIGINT NULL, CONSTRAINT '
         . $platform->quoteIdentifier($foreignName) . ' FOREIGN KEY (parent_id) REFERENCES ' . $qualified($schema, $parent)
         . ' (' . $platform->quoteIdentifier($column) . '))');
     $created[] = $child;
+    $owned[$child] = [$namespace, $name];
     return $child;
 };
 $refused = static function (ProjectionPlanningFixture $migration, ?IncomingProjectionReferences $snapshot = null) use ($connection): bool {
@@ -107,6 +111,7 @@ try {
             $connection->executeStatement($sql);
             if ($position === 0) {
                 $created[] = $qualified($schema, $name);
+                $owned[$qualified($schema, $name)] = [$schema, $name];
             }
         }
         $connection->executeStatement(ProjectionPlanningFixture::checkSql($name));
@@ -165,13 +170,36 @@ try {
         $wrongRefused = $error->getMessage() === 'Existing typed item reference FK has a different definition: ' . $wrong;
     }
     verify($wrongRefused, 'Existing wrong canonical targets retain their explicit diagnostic');
+} catch (Throwable $error) {
+    $primaryError = $error;
 } finally {
     foreach (array_reverse($created) as $table) {
-        $connection->executeStatement('DROP TABLE ' . $table);
+        try {
+            $connection->executeStatement('DROP TABLE ' . $table);
+        } catch (Throwable $error) {
+            $cleanupError ??= $error;
+            fwrite(STDERR, 'Fixture cleanup failed for ' . $table . ': ' . (string)$error . "\n");
+        }
     }
     if ($externalCreated) {
-        $connection->executeStatement('DROP SCHEMA ' . $platform->quoteIdentifier($external));
+        try {
+            $connection->executeStatement('DROP SCHEMA ' . $platform->quoteIdentifier($external));
+        } catch (Throwable $error) {
+            $cleanupError ??= $error;
+            fwrite(STDERR, 'Fixture schema cleanup failed: ' . (string)$error . "\n");
+        }
     }
 }
-verify(!$connection->createSchemaManager()->tablesExist($tables), 'All owned fixture tables are removed');
+if ($primaryError !== null) {
+    throw $primaryError;
+}
+if ($cleanupError !== null) {
+    throw $cleanupError;
+}
+foreach ($owned as [$namespace, $name]) {
+    verify(
+        !(bool)$connection->fetchOne('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = ? AND table_name = ?', [$namespace, $name]),
+        'Every individually owned fixture table is removed: ' . $namespace . '.' . $name
+    );
+}
 echo $DB->getProvider() . ": $assertions incoming projection planning assertions passed.\n";
