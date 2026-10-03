@@ -6,6 +6,7 @@ use itsmng\Database\EntityRegistry;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\DropdownLifecycleRepository;
+use itsmng\Database\Repository\KanbanRepository;
 use itsmng\Database\Repository\RecordRepository;
 
 $directory = $argv[1] ?? '';
@@ -37,6 +38,8 @@ verify(!isset($relations['_virtual_device']['glpi_documents_items'])
 verify($relations['_virtual_device']['glpi_infocoms'] === ['items_id', 'itemtype'], 'Remaining virtual asset recursion links come from their ID property');
 verify($relations['glpi_domains']['_glpi_domains_items'] === 'domains_id', 'Typed parent and polymorphic item sides remain separate');
 verify($relations['glpi_profiles']['_glpi_dashboards'] === 'profileId', 'Quoted join column remains a canonical identifier');
+verify($relations['glpi_projects']['_glpi_items_kanbans'] === ['items_id', 'itemtype']
+    && !isset($relations['glpi_projects']['glpi_items_kanbans']), 'Kanban board lifecycle is model-managed in the metadata-derived compatibility view');
 $DB->beginTransaction();
 try {
     $fixtures = new FixtureRecords($DB);
@@ -82,10 +85,41 @@ try {
     if ($read('glpi_projecttasks', $project) === null) {
         $fixtures->create('glpi_projecttasks', ['id' => $project]);
     }
-    $kanban = $fixtures->create('glpi_items_kanbans', ['itemtype' => 'ProjectTask', 'items_id' => $project]);
+    $taskState = ['board' => 'task with overlapping identity'];
+    $projectState = ['board' => 'project'];
+    $neighborState = ['board' => 'neighboring project'];
+    $boards = fn (): KanbanRepository => new KanbanRepository(Orm::create($DB));
+    $fixtures->create('glpi_items_kanbans', ['itemtype' => 'ProjectTask', 'items_id' => $project, 'state' => json_encode($taskState, JSON_THROW_ON_ERROR)]);
     verify(!$repo()->isUsed('glpi_projects', $project, 'Project'), 'Colliding polymorphic IDs in another item type are excluded');
-    $fixtures->create('glpi_items_kanbans', ['itemtype' => 'Project', 'items_id' => $project]);
-    verify($repo()->isUsed('glpi_projects', $project, 'Project'), 'Polymorphic usage binds ID and discriminator together');
+    verify($boards()->load('ProjectTask', $project, 0) === $taskState && $boards()->load('Project', $project, 0) === [], 'Kanban loading binds the item discriminator to its ID');
+    $fixtures->create('glpi_items_kanbans', ['itemtype' => 'Project', 'items_id' => $project, 'state' => json_encode($projectState, JSON_THROW_ON_ERROR)]);
+    $neighborProject = $fixtures->create('glpi_projects');
+    $fixtures->create('glpi_items_kanbans', ['itemtype' => 'Project', 'items_id' => $neighborProject, 'state' => json_encode($neighborState, JSON_THROW_ON_ERROR)]);
+    verify(!$repo()->isUsed('glpi_projects', $project, 'Project'), 'A matching model-managed Kanban board does not block generic usage checks');
+    verify($boards()->load('Project', $project, 0) === $projectState
+        && $boards()->load('ProjectTask', $project, 0) === $taskState
+        && $boards()->load('Project', $neighborProject, 0) === $neighborState, 'Kanban loading preserves both discriminated and neighboring board identities');
+
+    // These legacy subject fields currently declare unmanaged polymorphic
+    // references. A future typed software ownership migration must update this
+    // policy fixture together with its authoritative entity declarations.
+    $software = $fixtures->create('glpi_softwares');
+    $version = $fixtures->create('glpi_softwareversions', ['softwares_id' => $software]);
+    $license = $fixtures->create('glpi_softwarelicenses', ['softwares_id' => $software]);
+    foreach ([['glpi_items_softwareversions', 'softwareversions_id', $version], ['glpi_items_softwarelicenses', 'softwarelicenses_id', $license]] as [$table, $ownerColumn, $owner]) {
+        verify($relations['glpi_computers'][$table] === ['items_id', 'itemtype']
+            && !isset($relations['glpi_computers']['_' . $table]), $table . ': current subject policy participates in generic usage');
+        $computer = $fixtures->create('glpi_computers');
+        if ($read('glpi_phones', $computer) === null) {
+            $fixtures->create('glpi_phones', ['id' => $computer]);
+        }
+        $neighborComputer = $fixtures->create('glpi_computers');
+        $fixtures->create($table, [$ownerColumn => $owner, 'itemtype' => 'Phone', 'items_id' => $computer]);
+        verify(!$repo()->isUsed('glpi_computers', $computer, 'Computer'), $table . ': a real colliding Phone subject does not count as Computer usage');
+        $fixtures->create($table, [$ownerColumn => $owner, 'itemtype' => 'Computer', 'items_id' => $computer]);
+        verify($repo()->isUsed('glpi_computers', $computer, 'Computer'), $table . ': generic usage binds ID and discriminator together');
+        verify(!$repo()->isUsed('glpi_computers', $neighborComputer, 'Computer'), $table . ': a matching discriminator with another ID does not count as usage');
+    }
 
     $mail = $fixtures->create('glpi_authmails');
     $ldap = $fixtures->create('glpi_authldaps');
@@ -104,6 +138,8 @@ try {
     $repo()->findId('glpi_calendars', $prefix . ' local', ['entities_id' => $child]);
     $repo()->isUsed('glpi_calendars', $rootCalendar, 'Calendar');
     $repo()->isUsed('glpi_projects', $project, 'Project');
+    $repo()->isUsed('glpi_computers', $computer, 'Computer');
+    $boards()->load('Project', $project, 0);
     verify($SQL_TOTAL_REQUEST === 0, 'Dropdown lifecycle reads bypass legacy adapter execution');
     verify((new ForeignKeys())->audit($DB->getDoctrineConnection()) === [], 'Lifecycle operations leave no orphaned FK relationships');
 } finally {
