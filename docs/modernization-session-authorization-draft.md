@@ -2,8 +2,15 @@
 
 Originally drafted from `e29e33c9cd209dcc84597005375374a2f1416baf`, this
 isolated batch is now rebased onto the exact combined lifecycle checkpoint
-`4dbc9f7c2edeafb5e54c65d9c9a5144f9132246c`. Its inherited Transfer and
-shared lifecycle changes remain intact. It is a source draft. No PostgreSQL/MariaDB contract, application bootstrap,
+`f3db6577c7324e04305c2a8cbbfbb4960ddf7c38`, after its earlier rebase onto
+`4dbc9f7c2edeafb5e54c65d9c9a5144f9132246c`. The conflict-free rebase preserves
+both feature patches unchanged (`git range-diff` reports equality):
+`dd840a7ba3` and `8689fdf1b2`. The original head `c00d7219f8` remains on
+`th/exp/postgres-session-authorization-before-f3-rebase`. Its inherited Transfer,
+native transport and shared lifecycle changes remain intact, together with f3's
+managed Kanban metadata and Document_Item preparation/refusal diagnostic controls.
+The separate cache bootstrap repair has not been composed into this branch.
+It is a source draft. No PostgreSQL/MariaDB contract, application bootstrap,
 HTTP request, browser flow, populated upgrade or full suite has been run for it.
 It must remain isolated until both-provider validation is available.
 
@@ -54,12 +61,19 @@ ungranted/foreign rejection, a forged session token and a forged app token.
 This is method-level API coverage, not live HTTP evidence.
 
 Source checks completed: four PHP files lint clean; scoped PHP CS Fixer dry-run
-and git diff whitespace checks pass. An external
+and git diff whitespace checks pass after the f3 rebase (PHP 8.2.33 / fixer
+3.95.27). The inherited Kanban/Document/Transfer/native source controls are
+byte-identical to f3. An external
 nonconnecting probe compiled both repository methods for PostgreSQL and MySQL,
 including recursive and contradictory-empty Group predicates: six statements
 were captured before execution, physical connect was forbidden, and all handles
 remained disconnected. This proves DQL/type/association compilation only;
 result hydration, grant folding and actual application behavior remain pending.
+The six-statement nonconnecting compilation was rerun after this rebase and
+recorded in `/workspace/itsm-env/evidence/session-authorization-f3-offline-sql.json`.
+The refreshed source/backup refs and file fingerprints are in
+`session-authorization-f3-source.json` in the same evidence directory. No
+database, bootstrap, dependency copy, asset build or HTTP/browser job was run.
 
 Next validation must run this contract on isolated disposable providers, then
 unchanged memberships.php, profile-rights.php, authentication.php,
@@ -70,6 +84,16 @@ actual HTTP, browser and live read-replica evidence. A coherent dynamically
 discovered full portability suite and final schema inspection on both providers
 are required before reporting this application batch complete. No previous
 milestone's passing count establishes these results.
+
+Integration order is deliberate: validate and integrate the BooleanDomains
+enforcement batch before these Session persistence changes. Scalar ORM hydration
+folds `ProfileUser::is_recursive` as its entity-declared boolean; historical
+MySQL-family integer storage could otherwise admit malformed values such as 2.
+The authoritative native boolean constraints and canonical readiness/adoption
+preflight own that rejection. No separate grant-flag registry or Session-specific
+coercion workaround is added. This Session contract preserves its valid 0/1 grant
+folding controls; it has no malformed historical-2 fixture. Historical invalid
+flag coverage belongs to the preceding boolean-domain contract.
 
 Independent source review found no production blocker. Its positive root-group,
 root API switch and invalid app-token suggestions are now prepared controls;
