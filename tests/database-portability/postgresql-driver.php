@@ -162,6 +162,15 @@ SQL, ['first ? \\ value', "second ' value"]);
         verify($DB->fetchAssoc($result) === ['second' => "second ' value", 'first' => 'first ? \\ value', 'repeated' => "second ' value",
             'quoted' => '$3 ? :not_bound', 'body' => " ? $4 :ignored ' \\ backtick ` "], 'Numbered references preserve repeat/order and literal/comment bytes');
         $DB->freeResult($result);
+        $result = $DB->queryParams(<<<'SQL'
+SELECT 'ends-with-\'::text AS literal, $1::text AS bound
+SQL, ['later bound value']);
+        verify($DB->fetchAssoc($result) === ['literal' => 'ends-with-\\', 'bound' => 'later bound value'], 'Standard PostgreSQL string ending in backslash does not swallow a later numbered bind');
+        $DB->freeResult($result);
+        $raw = $connection->fetchAssociative(<<<'SQL'
+SELECT 'ends-with-\'::text AS literal, ?::text AS bound
+SQL, ['later DBAL bound value']);
+        verify($raw === ['literal' => 'ends-with-\\', 'bound' => 'later DBAL bound value'], 'Ordinary DBAL preserves PostgreSQL standard-string and positional-binding semantics');
         $values = array_map(static fn (int $number): string => 'value-' . $number, range(1, 12));
         $columns = array_map(static fn (int $number): string => '$' . $number . '::text AS p' . $number, range(1, 12));
         $result = $DB->queryParams('SELECT ' . implode(', ', $columns), $values);
