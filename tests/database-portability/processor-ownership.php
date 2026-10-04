@@ -47,14 +47,23 @@ $read = static fn (string $table, int $id): ?array => (new RecordRepository(Orm:
 $rows = static fn (string $table, array $criteria): array => (new RecordRepository(Orm::create($DB)))->matching($table, $criteria, ['id']);
 $events = [];
 $updated = [];
+$createEntity = static function (string $name): int {
+    $entity = new Entity();
+    $input = ['name' => $name, 'entities_id' => 0];
+    verify($entity->can(-1, CREATE, $input), 'Fixture actor may create this actual child Entity');
+    $id = (int)$entity->add($input);
+    verify($id > 0 && Session::haveAccessToEntity($id), 'Public Entity creation retains tree and creator scope lifecycle');
+    return $id;
+};
 try {
     $CFG_GLPI['use_notifications'] = false;
     $fixtures = new FixtureRecords($DB);
     $prefix = 'Processor ownership ' . bin2hex(random_bytes(5));
-    $source = $fixtures->create('glpi_computers', ['id' => 4294991001, 'name' => $prefix . ' source']);
-    $destination = $fixtures->create('glpi_computers', ['id' => 4294991002, 'name' => $prefix . ' destination']);
+    $source = $fixtures->create('glpi_computers', ['id' => 4294991001, 'name' => $prefix . ' source', 'is_recursive' => true]);
+    $destination = $fixtures->create('glpi_computers', ['id' => 4294991002, 'name' => $prefix . ' destination', 'is_recursive' => true]);
     $phone = $fixtures->create('glpi_phones', ['id' => $source, 'name' => $prefix . ' collision']);
-    $foreignEntity = $fixtures->create('glpi_entities', ['name' => $prefix . ' foreign']);
+    $foreignEntity = $createEntity($prefix . ' foreign');
+    $admittedSession = $_SESSION;
     $foreign = $fixtures->create('glpi_computers', ['name' => $prefix . ' foreign Computer', 'entities_id' => $foreignEntity]);
     $device = $fixtures->create('glpi_deviceprocessors', ['designation' => $prefix . ' processor', 'entities_id' => $foreignEntity, 'frequency_default' => 3200]);
     $model = new Item_DeviceProcessor();
@@ -68,6 +77,24 @@ try {
         && $model->fields['nbthreads'] === null && (int)$model->fields['entities_id'] === $foreignEntity, 'Owning Computer and compatibility ID agree while device entity and nullable/literal payload remain independent');
     $duplicate = (new Item_DeviceProcessor())->add(['deviceprocessors_id' => $device, 'itemtype' => 'Computer', 'items_id' => $source, 'nbcores' => 4]);
     verify($duplicate > 0 && $duplicate !== $id, 'Multiple processors with the same device and Computer remain valid');
+    $stockSession = $_SESSION;
+    $bindingsBeforeDenial = $rows('glpi_items_deviceprocessors', ['deviceprocessors_id' => $device]);
+    $_SESSION['glpiactiveentities'] = [0];
+    $_SESSION['glpiactiveentities_string'] = '0';
+    $_SESSION['glpishowallentities'] = false;
+    try {
+        verify(!Session::haveAccessToEntity($foreignEntity), 'Narrow device-screen scope excludes the foreign Device entity');
+        (new Item_DeviceProcessor())->addDevices(1, '', 0, $device);
+        verify($rows('glpi_items_deviceprocessors', ['deviceprocessors_id' => $device]) === $bindingsBeforeDenial,
+            'Real stock command refuses invisible Device without changing any binding');
+    } finally {
+        $_SESSION = $stockSession;
+    }
+    $stockDevice = new DeviceProcessor();
+    verify($stockDevice->can($device, READ) && $stockDevice->can($device, UPDATE), 'Actual admitted actor may read and update the foreign-owned Device');
+    verify((int)$read('glpi_deviceprocessors', $device)['entities_id'] === $foreignEntity
+        && (int)$read('glpi_computers', $source)['entities_id'] === 0 && $read('glpi_computers', $source)['is_recursive'],
+        'Legitimate recursive Computer graph retains independent foreign Device ownership');
     $model->addDevices(2, '', 0, $device);
     $stock = $rows('glpi_items_deviceprocessors', ['deviceprocessors_id' => $device, 'itemtype' => null]);
     verify(count($stock) === 2 && (int)$stock[0]['frequency'] === 3200 && (int)$stock[0]['items_id'] === 0 && $stock[0]['computers_id'] === null, 'Real device-screen stock creation retains defaults and zero compatibility identity');
@@ -102,12 +129,14 @@ try {
     $deviceModel = new DeviceProcessor();
     verify($deviceModel->getFromDB($device), 'Load device-owned processor scope');
     $_SESSION['glpiactiveentities'] = [0];
+    $_SESSION['glpiactiveentities_string'] = '0';
     $_SESSION['glpishowallentities'] = false;
     verify(array_column($model->getTableGroupRows($deviceModel, 'Computer'), 'id') === [$id, $duplicate, $stock[0]['id']], 'Attached device view restricts Computer scope independently of device ownership');
     $_SESSION['glpiactiveentities'] = [];
+    $_SESSION['glpiactiveentities_string'] = '';
     $_SESSION['glpishowallentities'] = true;
     verify($model->getTableGroupRows($deviceModel, 'Computer') === [] && array_column($model->getTableGroupRows($deviceModel, ''), 'id') === [$stock[1]['id']], 'Explicit empty scope never leaks assigned Computers while remaining stock stays available');
-    $_SESSION = $savedSession;
+    $_SESSION = $admittedSession;
     $rights = $_SESSION['glpiactiveprofile'];
     $_SESSION['glpiactiveprofile'][Computer::$rightname] = 0;
     $_SESSION['glpiactiveprofile'][DeviceProcessor::$rightname] = 0;
@@ -147,7 +176,7 @@ try {
     verify($clone > 0 && count($rows('glpi_items_deviceprocessors', ['itemtype' => 'Computer', 'computers_id' => $clone])) === 2, 'Actual Computer cloning rebinds both duplicate Processor children through their concrete owning metadata');
     Item_Devices::cloneItem('Computer', $source, $destination);
     verify(count($rows('glpi_items_deviceprocessors', ['itemtype' => 'Computer', 'computers_id' => $destination])) === 3, 'Deprecated component cloning preserves distinct bindings and clears source canonical ownership');
-    $template = $fixtures->create('glpi_computers', ['name' => $prefix . ' template', 'is_template' => true]);
+    $template = $fixtures->create('glpi_computers', ['name' => $prefix . ' template', 'is_template' => true, 'is_recursive' => true]);
     $fixtures->create('glpi_items_deviceprocessors', ['deviceprocessors_id' => $device, 'itemtype' => 'Computer', 'items_id' => $template, 'nbcores' => 12]);
     verify($computer->getFromDB($template), 'Load real Computer template');
     $templateCopy = $computer->clone(['name' => $prefix . ' template copy', 'is_template' => 0]);
@@ -170,7 +199,7 @@ try {
     verify($read('glpi_contracts', $contract) !== null && $read('glpi_projects', $project) !== null && $read('glpi_items_deviceprocessors', $assignedForeign) !== null, 'Unrelated owners and foreign Computer components survive');
 
     // Shared stock prevents moving the device definition; the transfer must copy or reuse it.
-    $transferEntity = $fixtures->create('glpi_entities', ['name' => $prefix . ' transfer']);
+    $transferEntity = $createEntity($prefix . ' transfer');
     $transferAsset = $fixtures->create('glpi_computers', ['id' => 4294991003, 'name' => $prefix . ' transfer Computer']);
     $transferDevice = $fixtures->create('glpi_deviceprocessors', ['designation' => $prefix . ' shared transfer device']);
     $transferBinding = $fixtures->create('glpi_items_deviceprocessors', ['deviceprocessors_id' => $transferDevice, 'itemtype' => 'Computer', 'items_id' => $transferAsset]);
