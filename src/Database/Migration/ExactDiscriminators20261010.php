@@ -94,8 +94,10 @@ final class ExactDiscriminators20261010
                 // This operation-local audit view is derived only after its
                 // pending producer admits the frozen predecessor. DDL always
                 // uses the unchanged full historical definition.
-                $auditDefinition['branches'] = array_filter($definition['branches'],
-                    static fn (array $branch): bool => $actual->hasColumn($branch['column']));
+                $auditDefinition['branches'] = array_filter(
+                    $definition['branches'],
+                    static fn (array $branch): bool => $actual->hasColumn($branch['column'])
+                );
             }
             $valid = self::validSql($connection, $auditDefinition, $actual, $legacy, true);
             $count = (int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $quote($table) . ' source_subject WHERE NOT COALESCE((' . $valid . '), FALSE)');

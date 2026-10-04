@@ -127,9 +127,11 @@ try {
     $connection->insert($table, $legacyRow);
     $before = $facts();
     $plan = $history->plan($connection);
-    verify(in_array($table, $plan['exact_subject_discriminators']['deferred'], true)
+    verify(
+        in_array($table, $plan['exact_subject_discriminators']['deferred'], true)
         && $plan['domain_documents'][$table]['columns'] !== [] && $facts() === $before,
-        'Read-only canonical plan admits the genuine generated predecessor and plans its owning expansion');
+        'Read-only canonical plan admits the genuine generated predecessor and plans its owning expansion'
+    );
 
     $rebuild('old-column drift');
     $connection->insert($table, $legacyRow);
@@ -220,29 +222,37 @@ try {
             verify($seen && $error->getMessage() === 'Actual owning document interruption: ' . $phase, 'Actual History executes the selected producer statement before interruption');
         }
         $previousPhase = ['columns' => 'audited', 'copy' => 'columns', 'projection' => 'copy'][$phase];
-        verify(($actualOwnerState['complete'] ?? null) === false && ($actualOwnerState['phase'] ?? null) === $previousPhase,
-            'Actual producer receipt identifies the last completed phase before the selected native statement');
+        verify(
+            ($actualOwnerState['complete'] ?? null) === false && ($actualOwnerState['phase'] ?? null) === $previousPhase,
+            'Actual producer receipt identifies the last completed phase before the selected native statement'
+        );
         if ($postgres) {
             verify($facts() === $before, 'PostgreSQL canonical transaction rolls back the actual interrupted phase');
         } else {
             $state = Ledger::state($connection, $migration::VERSION);
-            verify(($state['complete'] ?? null) === false && ($state['phase'] ?? null) === $previousPhase
+            verify(
+                ($state['complete'] ?? null) === false && ($state['phase'] ?? null) === $previousPhase
                 && !(Ledger::state($connection, $migration::GENERAL_RECEIPT)['documents_restored'] ?? false),
-                'Nontransactional retry retains actual owner journal and defers data restoration');
+                'Nontransactional retry retains actual owner journal and defers data restoration'
+            );
         }
         if ($phase === 'columns') {
             $history->install($DB, 'en_GB');
         } else {
             $history->upgrade($connection);
         }
-        verify(History::pendingVersions($connection) === [] && (new SchemaCheck())->differences($connection) === [],
-            'Actual installation and upgrade retries converge through complete canonical history');
+        verify(
+            History::pendingVersions($connection) === [] && (new SchemaCheck())->differences($connection) === [],
+            'Actual installation and upgrade retries converge through complete canonical history'
+        );
         $rows = $connection->fetchAllAssociative('SELECT id, documents_id, itemtype, items_id, computers_id, domains_id, timeline_position FROM ' . $table . ' ORDER BY id');
-        verify(count($rows) === 2 && (int)$rows[0]['id'] === $linkId && (int)$rows[0]['items_id'] === $computer
+        verify(
+            count($rows) === 2 && (int)$rows[0]['id'] === $linkId && (int)$rows[0]['items_id'] === $computer
             && (int)$rows[0]['computers_id'] === $computer && $rows[0]['domains_id'] === null
             && (int)$rows[1]['id'] === $deferredId && (int)$rows[1]['documents_id'] === $document
             && (int)$rows[1]['items_id'] === $domain && (int)$rows[1]['domains_id'] === $domain,
-            'Canonical retry preserves populated old/new independent binding identities and containing document');
+            'Canonical retry preserves populated old/new independent binding identities and containing document'
+        );
         $after = $facts();
         $history->upgrade($connection);
         verify($facts() === $after, 'Completed retry preserves every later stored row and receipt');
@@ -271,16 +281,21 @@ try {
     }
     try {
         $DB->clearSchemaCache();
-        verify((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $table) === 0
+        verify(
+            (int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $table) === 0
             && $rawLedger() === $originalLedger && (new SchemaCheck())->differences($connection) === [],
-            'Fixture restores original rows, entire canonical ledger and required schema');
+            'Fixture restores original rows, entire canonical ledger and required schema'
+        );
     } catch (Throwable $error) {
         $cleanup[] = $error;
     }
 }
 if ($primary !== null) {
     foreach ($cleanup as $error) {
-        try { fwrite(STDERR, 'Additional fixture cleanup failure: ' . $error::class . "\n"); } catch (Throwable) { }
+        try {
+            fwrite(STDERR, 'Additional fixture cleanup failure: ' . $error::class . "\n");
+        } catch (Throwable) {
+        }
     }
     throw $primary;
 }
