@@ -45,10 +45,20 @@ $physicalBefore = $connection;
 $quote = $connection->quoteIdentifier(...);
 $fixtures = new FixtureRecords($DB);
 $read = static fn (string $table, int $id): array|false => $connection->fetchAssociative('SELECT * FROM ' . $quote($table) . ' WHERE id=?', [$id]);
-$ownTarget = static function (string $table) use ($connection, $quote, $fixtures): int {
+$ownTarget = static function (string $table, array $values = []) use ($connection, $quote, $fixtures): int {
     $id = max(4294969000, 10000 + (int)$connection->fetchOne('SELECT MAX(id) FROM ' . $quote($table)));
     verify((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $quote($table) . ' WHERE id=?', [$id]) === 0, 'Wide target identity is unused');
-    return $fixtures->create($table, ['id' => $id]);
+    return $fixtures->create($table, ['id' => $id] + $values);
+};
+$ownInfocom = static function () use ($ownTarget, $read): int {
+    // Financial records are unique per real asset, independently of their IDs.
+    $computer = $ownTarget('glpi_computers');
+    $id = $ownTarget('glpi_infocoms', ['itemtype' => 'Computer', 'items_id' => $computer]);
+    $row = $read('glpi_infocoms', $id);
+    verify($read('glpi_computers', $computer) !== false && $row !== false
+        && $row['itemtype'] === 'Computer' && (int)$row['items_id'] === $computer,
+        'Owned financial subject retains its actual Computer');
+    return $id;
 };
 $nativeRefusal = static function (callable $operation, string $family, string $constraint = '') use ($connection): void {
     $connection->beginTransaction();
@@ -99,7 +109,8 @@ try {
         $nativeIndexes = $connection->createSchemaManager()->listTableIndexes($table);
         foreach ($definition['branches'] as $kind => $branch) {
             verify($selections[$kind]['column'] === $branch['column'] && $selections[$kind]['target'] === $branch['target'], 'Frozen branch retains actual owning target');
-            $target = $kind === 'Entity' && $branch['minimum'] === 0 ? 0 : $ownTarget($branch['target']);
+            $createSubject = $kind === 'Infocom' ? $ownInfocom : static fn (): int => $ownTarget($branch['target']);
+            $target = $kind === 'Entity' && $branch['minimum'] === 0 ? 0 : $createSubject();
             $link = $fixtures->create($table, ['itemtype' => $kind, $branch['column'] => $target]);
             $row = $read($table, $link);
             verify(is_array($row) && $row['itemtype'] === $kind && (int)$row['items_id'] === $target && (int)$row[$branch['column']] === $target, 'Canonical branch INSERT and compatibility projection');
@@ -154,7 +165,7 @@ try {
                     $connection->rollBack();
                 }
             }
-            $replacement = $ownTarget($branch['target']);
+            $replacement = $createSubject();
             $connection->update($quote($table), [$branch['column'] => $replacement], ['id' => $link]);
             verify((int)$read($table, $link)['items_id'] === $replacement, 'Canonical UPDATE retains owning projection');
             $connection->delete($quote($table), ['id' => $link]);
