@@ -53,10 +53,14 @@ selected family chain does not pass. Preserve these actual failures:
   probe proved ObjectLock’s native automatic `date_mod` was the sole changed
   value. Corrections create legitimate owned targets and explicitly restore the
   captured owned timestamp; all original assertions remain.
-- Software/Project migration diagnostic assertions read encoded JSON as raw
-  text. Actual rejection reasons were present in decoded diagnostics. The
-  subject fixture also passed a boolean where the public authorization method
-  requires an input array. These fixture corrections do not validate upgrades.
+- Software migration diagnostic assertions read encoded JSON as raw text;
+  actual rejection reasons were present in decoded diagnostics. The Project
+  history fixture instead reached the newer Exact preflight before the older
+  Project preflight and received a legitimate Exact diagnostic for its owned
+  unsupported subject. Its correction retains the old diagnostics and admits
+  only that exact new envelope. The subject fixture also passed a boolean where
+  public authorization requires an input array. These corrections do not
+  validate populated upgrades.
 - Software atomicity’s accepted no-change callback failed on both engines.
   Controlled native probes found equal strict keys, types and values, with only
   map insertion order different because the normal model was not finalized.
