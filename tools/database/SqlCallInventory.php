@@ -184,12 +184,19 @@ final class SqlCallInventory
                     if (($tokens[$body]->id ?? null) === ord('{')) {
                         $end = $body + 1;
                         $bodyDepth = 1;
+                        $nestedScope = false;
                         while (isset($tokens[$end]) && $bodyDepth > 0) {
+                            if ($tokens[$end]->is([T_FUNCTION, T_FN])
+                                || ($tokens[$end]->id === T_CLASS && ($tokens[$end - 1]->id ?? null) !== T_DOUBLE_COLON)) {
+                                $nestedScope = true; // Nested declarations/closures require separate receiver analysis.
+                            }
                             $bodyDepth += self::braceDelta($tokens[$end]);
                             ++$end;
                         }
                         if ($bodyDepth === 0) {
-                            $bodies[strtolower($tokens[$name]->text)] = [$tokens[$body]->pos, $tokens[$end - 1]->pos];
+                            if (!$nestedScope) {
+                                $bodies[strtolower($tokens[$name]->text)] = [$tokens[$body]->pos, $tokens[$end - 1]->pos];
+                            }
                             $cursor = $end - 1;
                             continue;
                         }
