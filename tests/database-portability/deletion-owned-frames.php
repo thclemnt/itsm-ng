@@ -174,9 +174,11 @@ try {
         });
         throw new LogicException('Cancellation cleanup failure must propagate both actual errors');
     } catch (MutationCleanupFailure $error) {
-        verify($actualCancellation instanceof DeletionCancelled && $error->primary === $actualCancellation
+        verify(
+            $actualCancellation instanceof DeletionCancelled && $error->primary === $actualCancellation
             && $error->cleanup === $secondary && $error->getPrevious() === $actualCancellation && !$error->rollbackUnproven,
-            'The actual first required-child cancellation survives an independent restoration failure');
+            'The actual first required-child cancellation survives an independent restoration failure'
+        );
         verify($nativeRows() === $before && LifecycleModelJournal::state($model) === $checkpoint
             && !DeletionUnit::isActive($connection), 'Cancellation cleanup failure follows proven native/model rollback and retired authority');
     }

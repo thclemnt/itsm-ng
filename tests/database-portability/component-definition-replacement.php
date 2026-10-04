@@ -63,8 +63,10 @@ try {
     $_SESSION['glpiactive_entity'] = 0;
     $_SESSION['glpishowallentities'] = false;
     verify(!Session::haveAccessToEntity($foreignEntity), 'Actual actor cannot view the foreign asset entity');
-    verify(EntityRegistry::entityScopeOwner('glpi_items_deviceprocessors') === ['column' => 'deviceprocessors_id', 'target' => 'glpi_deviceprocessors'],
-        'Processor cached scope is declared by its actual owning definition property');
+    verify(
+        EntityRegistry::entityScopeOwner('glpi_items_deviceprocessors') === ['column' => 'deviceprocessors_id', 'target' => 'glpi_deviceprocessors'],
+        'Processor cached scope is declared by its actual owning definition property'
+    );
 
     $graph = static function (bool $recursive = false, ?bool $targetRecursive = null) use ($fixtures, $rootAsset, $foreignAsset): array {
         $source = $fixtures->create('glpi_deviceprocessors', ['designation' => 'Replacement source', 'entities_id' => 0, 'is_recursive' => $recursive]);
@@ -105,9 +107,11 @@ try {
         if ((int)$item->getID() !== $g['foreign']) {
             return;
         }
-        verify($item->getFromDB($item->getID()) && (int)$item->fields['deviceprocessors_id'] === $g['target']
+        verify(
+            $item->getFromDB($item->getID()) && (int)$item->fields['deviceprocessors_id'] === $g['target']
             && (int)$item->fields['computers_id'] === $foreignAsset && $item->fields['serial'] === 'Foreign original',
-            'Real late public reload returns the exact admitted current child and retains subject/specificities');
+            'Real late public reload returns the exact admitted current child and retains subject/specificities'
+        );
         ++$reloads;
     };
     // The trusted public delete seam does not invent a source PURGE requirement.
@@ -127,8 +131,10 @@ try {
         verify($read('glpi_items_deviceprocessors', $g[$key]) === $expected, 'Replacement changes only owning definition and preserves full asset tuple/specificities/definition cache: ' . $key);
     }
     verify($read('glpi_items_deviceprocessors', $g['neighbor']) === $oldRows['neighbor'], 'Neighbor target binding remains byte/type exact');
-    verify($read('glpi_deviceprocessors', $g['source']) === null && $connection->getTransactionNestingLevel() === $level,
-        'Actual source purge retains caller frame and required replacement links');
+    verify(
+        $read('glpi_deviceprocessors', $g['source']) === null && $connection->getTransactionNestingLevel() === $level,
+        'Actual source purge retains caller frame and required replacement links'
+    );
 
     $completed = 0;
     foreach (['item_can', 'cancel', 'subject', 'scalar', 'late_scalar', 'late_input', 'actor', 'queue_throw', 'writer'] as $mode) {
@@ -138,7 +144,9 @@ try {
         $actor = Session::getLoginUserID();
         $called = 0;
         $callbackError = new RuntimeException('Actual definition replacement queue callback failure');
-        $PLUGIN_HOOKS['item_update']['definition_replacement_fixture'][Item_DeviceProcessor::class] = static function () use (&$completed): void { ++$completed; };
+        $PLUGIN_HOOKS['item_update']['definition_replacement_fixture'][Item_DeviceProcessor::class] = static function () use (&$completed): void {
+            ++$completed;
+        };
         $event = $mode === 'item_can' ? 'item_can' : (in_array($mode, ['late_scalar', 'late_input', 'actor', 'queue_throw', 'writer'], true) ? 'item_update' : 'pre_item_update');
         $PLUGIN_HOOKS[$event]['definition_replacement_fixture'][Item_DeviceProcessor::class] = static function (Item_DeviceProcessor $item) use ($mode, $g, $rootAsset, &$called, $callbackError, &$completed): void {
             if ((int)$item->getID() !== $g['foreign']) {
@@ -164,9 +172,11 @@ try {
             } elseif ($mode === 'writer') {
                 $GLOBALS['DB'] = clone $GLOBALS['DB'];
             } else {
-                verify((new QueuedNotification())->add(['itemtype' => DeviceProcessor::class, 'items_id' => $g['source'],
+                verify(
+                    (new QueuedNotification())->add(['itemtype' => DeviceProcessor::class, 'items_id' => $g['source'],
                     'name' => 'Actual definition replacement callback queue', 'send_time' => '2026-01-01 00:00:00']) > 0,
-                    'Real late callback appends a genuine queue row');
+                    'Real late callback appends a genuine queue row'
+                );
                 throw $callbackError;
             }
             ++$completed;
@@ -190,14 +200,18 @@ try {
             verify($caught === null && $result === false, 'Unowned child change cancels required owner replacement: ' . $mode);
         }
         verify($snapshot() === $before, 'Actual owner rollback restores all native rows/history/queue/ledger: ' . $mode);
-        verify(LifecycleModelJournal::state($g['device']) === $checkpoint && Session::getLoginUserID() === $actor,
-            'Proven original rollback restores owner model and actor checkpoint: ' . $mode);
+        verify(
+            LifecycleModelJournal::state($g['device']) === $checkpoint && Session::getLoginUserID() === $actor,
+            'Proven original rollback restores owner model and actor checkpoint: ' . $mode
+        );
         verify($connection->getTransactionNestingLevel() === $level, 'Refused child preserves supplied caller frame: ' . $mode);
     }
     $g = $graph(true, false);
     $before = $snapshot();
-    verify(!$g['device']->delete(['id' => $g['source'], '_replace_by' => $g['target']], true) && $snapshot() === $before,
-        'A genuinely narrowed definition scope cannot invalidate an existing foreign asset link');
+    verify(
+        !$g['device']->delete(['id' => $g['source'], '_replace_by' => $g['target']], true) && $snapshot() === $before,
+        'A genuinely narrowed definition scope cannot invalidate an existing foreign asset link'
+    );
 } catch (Throwable $error) {
     $primary = $error;
 } finally {

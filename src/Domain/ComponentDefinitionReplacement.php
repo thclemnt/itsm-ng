@@ -61,13 +61,26 @@ final class ComponentDefinitionReplacement
                 throw new DeletionCancelled('The current definition owner or replacement changed.');
             }
             if (array_key_exists('entities_id', $source)
-                && !(new DeletionRepository($manager))->replacementEntityScope($owner->getTable(),
-                    $source['entities_id'], $replacement['entities_id'], !empty($replacement['is_recursive']))) {
+                && !(new DeletionRepository($manager))->replacementEntityScope(
+                    $owner->getTable(),
+                    $source['entities_id'],
+                    $replacement['entities_id'],
+                    !empty($replacement['is_recursive'])
+                )) {
                 throw new DeletionCancelled('The current replacement definition cannot reach its source owner.');
             }
             $scope->assertActive();
-            return new self($database, $connection, $scope, $owner, (int)$source['id'], (int)$replacement['id'],
-                $source, $replacement, $actor);
+            return new self(
+                $database,
+                $connection,
+                $scope,
+                $owner,
+                (int)$source['id'],
+                (int)$replacement['id'],
+                $source,
+                $replacement,
+                $actor
+            );
         } finally {
             $manager->clear();
         }
@@ -204,8 +217,12 @@ final class ComponentDefinitionReplacement
         $manager = Orm::create($this->database);
         try {
             if (array_key_exists('entities_id', $this->sourceRecord)
-                && !(new DeletionRepository($manager))->replacementEntityScope($this->owner->getTable(),
-                    $this->sourceRecord['entities_id'], $this->replacementRecord['entities_id'], !empty($this->replacementRecord['is_recursive']))) {
+                && !(new DeletionRepository($manager))->replacementEntityScope(
+                    $this->owner->getTable(),
+                    $this->sourceRecord['entities_id'],
+                    $this->replacementRecord['entities_id'],
+                    !empty($this->replacementRecord['is_recursive'])
+                )) {
                 throw new DeletionCancelled('The current replacement entity ancestry changed.');
             }
         } finally {

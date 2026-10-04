@@ -84,8 +84,12 @@ class Item_Devices extends CommonDBRelation
         $change = $command->bind($this, $input, $column);
         $this->definitionChange = $change;
         try {
-            return \itsmng\Database\OwnershipUpdateUnit::run($GLOBALS['DB'], $this, $change->stored,
-                fn (): bool => $this->update($change->input($input)) && $change->verify($this));
+            return \itsmng\Database\OwnershipUpdateUnit::run(
+                $GLOBALS['DB'],
+                $this,
+                $change->stored,
+                fn (): bool => $this->update($change->input($input)) && $change->verify($this)
+            );
         } finally {
             $this->definitionChange = null;
         }

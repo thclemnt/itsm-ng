@@ -63,7 +63,9 @@ final class DeletionRepository
         $rootTree = $model instanceof \CommonTreeDropdown
             && EntityRegistry::hasPolicy($model->getTable(), $model->getForeignKeyField(), ReferenceKind::RootParent);
         return !$model->isEntityAssign() || $rootTree || $this->replacementEntityScope(
-            $model->getTable(), $model->getEntityID(), $replacementModel->getEntityID(),
+            $model->getTable(),
+            $model->getEntityID(),
+            $replacementModel->getEntityID(),
             $replacementModel->maybeRecursive() && !empty($replacementModel->fields['is_recursive'])
         );
     }
