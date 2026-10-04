@@ -1709,3 +1709,9 @@ prepared for required NULL/invalid/truncation refusal, controlled configured mod
 read routing and all reconnect/installation paths. No database job has validated
 this draft; [the source record](mysql-session-integrity.md) states its boundaries
 and required broader checks. The combined passing checkpoint remains unchanged.
+
+### Pending MySQL inspection, adoption and CI integration
+
+The isolated source integration combines the accepted native generated-column inspection fix, historical adoption eligibility, original populated-upgrade key ownership and CI fixture directory/grant changes. The migration-history contract deliberately retains both assertion sets: every new duplicate, noncanonical and unsupported-provenance operation also checks the original parent and copied child key. Its raw refusal snapshots are taken after the owned SMTP ciphertext is installed, and successful adoption still proves that exact ciphertext decrypts with the original key. No frozen baseline, seed, historical JSON or version list changes are part of this integration.
+
+This is a source composition awaiting independent review and actual native validation. Run the unchanged migration-history contract on both supported native providers within its original 300-second limit, including negative provenance cases and positive populated adoption/retry, then the original focused/full and CI gates on their owned targets. The MySQL 8.4 inspection defect and the missing original CI key are distinct recorded failures; neither is bypassed. Current ROOT runs and all prior failure evidence remain authoritative for their exact sources.

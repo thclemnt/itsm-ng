@@ -463,6 +463,7 @@ try {
                     if (!$nativeSelected) {
                         verify(\itsmng\Database\LegacyAdoptionEligibility::release($connection) === $publishedRelease, 'Distinct PostgreSQL configuration key does not replace canonical publication');
                         $history->plan($connection);
+                        $assertOriginalKey();
                         verify(!$manager->tablesExist([LegacyToOrm::LEDGER]) && $rawRowbags() === $ambiguousRows
                             && $manager->createComparator()->compareSchemas($ambiguousSchema, $manager->introspectSchema())->isEmpty()
                             && BooleanDomainSchema::catalog($connection) === $ambiguousCatalog, 'Actual PostgreSQL preview preserves distinct configuration keys, all native rows/schema and absent ledger');
@@ -484,10 +485,12 @@ try {
                         verify(str_contains($error->getMessage(), $duplicateDiagnostic), $entrypoint . ' refuses ambiguous source identity without choosing a value');
                         verify(!str_contains($error->getMessage(), '"' . $input['value'] . '"'), 'Ambiguity diagnostic does not print actual duplicate values');
                     }
+                    $assertOriginalKey();
                     verify(!$manager->tablesExist([LegacyToOrm::LEDGER]) && $rawRowbags() === $ambiguousRows, $entrypoint . ' preserves every native row and absent ledger on duplicate refusal');
                 }
                 foreach ([['db:update', '--dry-run'], ['db:migrate', '--apply']] as $arguments) {
                     [$status, $output] = $cli($arguments);
+                    $assertOriginalKey();
                     verify($status !== 0 && str_contains($output, $duplicateDiagnostic), 'Actual CLI refuses contradictory or same-value duplicate publication');
                     verify(!$manager->tablesExist([LegacyToOrm::LEDGER]) && $rawRowbags() === $ambiguousRows, 'Actual CLI duplicate refusal preserves every native row and absent ledger');
                 }
@@ -520,12 +523,14 @@ try {
     $provenanceRefusals = [
         'History preview' => static fn () => $history->plan($connection),
         'History apply' => static fn () => $history->upgrade($connection),
-        'CLI preview' => static function () use ($cli): void {
+        'CLI preview' => static function () use ($cli, $assertOriginalKey): void {
             [$status, $output] = $cli(['db:update', '--dry-run']);
+            $assertOriginalKey();
             verify($status !== 0 && str_contains($output, 'Historical ITSM-NG adoption provenance'), 'Actual CLI preview refuses old historical data provenance');
         },
-        'CLI apply' => static function () use ($cli): void {
+        'CLI apply' => static function () use ($cli, $assertOriginalKey): void {
             [$status, $output] = $cli(['db:migrate', '--apply']);
+            $assertOriginalKey();
             verify($status !== 0 && str_contains($output, 'Historical ITSM-NG adoption provenance'), 'Actual CLI apply refuses old historical data provenance');
         },
     ];
@@ -538,6 +543,7 @@ try {
                 verify(str_contains($error->getMessage(), 'Historical ITSM-NG adoption provenance')
                     && str_contains($error->getMessage(), 'itsmdbversion="2.1.2"'), $entrypoint . ' diagnoses the exact missing historical format');
             }
+            $assertOriginalKey();
         } else {
             $operation();
         }
