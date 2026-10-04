@@ -10,7 +10,7 @@ use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_states')]
-#[ORM\UniqueConstraint(name: 'states_unicity', columns: ['parent_key', 'name'])]
+#[\itsmng\Database\Mapping\SchemaIndex('unicity', ['parent_key', 'name'], unique: true, postgresqlName: 'glpi_states_unicity')]
 class State
 {
     #[ORM\Id]
@@ -105,6 +105,7 @@ class State
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_creation = null;
-    #[ORM\Column(name: '`parent_key`', type: 'bigint', nullable: true, insertable: false, updatable: false, generated: 'ALWAYS', columnDefinition: 'BIGINT GENERATED ALWAYS AS (COALESCE(states_id, 0)) STORED')]
+    #[\itsmng\Database\Mapping\ReferenceKey('states_id')]
+    #[ORM\Column(name: '`parent_key`', type: 'bigint', nullable: true, insertable: false, updatable: false, generated: 'ALWAYS')]
     public ?int $parent_key = null;
 }

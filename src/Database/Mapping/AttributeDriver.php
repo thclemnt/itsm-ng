@@ -18,7 +18,11 @@ final class AttributeDriver extends \Doctrine\ORM\Mapping\Driver\AttributeDriver
     public function loadMetadataForClass(string $className, ClassMetadata $metadata): void
     {
         parent::loadMetadataForClass($className, $metadata);
-        foreach ((new \ReflectionClass($className))->getProperties() as $property) {
+        $entity = new \ReflectionClass($className);
+        foreach ($entity->getAttributes(SchemaIndex::class) as $attribute) {
+            $attribute->newInstance()->addToMetadata($metadata, $this->platform);
+        }
+        foreach ($entity->getProperties() as $property) {
             foreach ($property->getAttributes(ReferenceKey::class) as $attribute) {
                 $metadata->fieldMappings[$property->getName()]->columnDefinition = $attribute->newInstance()->declaration($this->platform);
             }

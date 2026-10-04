@@ -10,7 +10,8 @@ use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_locations')]
-#[ORM\UniqueConstraint(name: 'locations_unicity', columns: ['entities_id', 'parent_key', 'name'])]
+#[\itsmng\Database\Mapping\SchemaIndex('unicity', ['entities_id', 'parent_key', 'name'], unique: true, postgresqlName: 'glpi_locations_unicity')]
+#[\itsmng\Database\Mapping\SchemaIndex('glpi_locations_tree_entities', ['entities_id'])]
 class Location
 {
     #[ORM\Id]
@@ -84,6 +85,7 @@ class Location
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_creation = null;
-    #[ORM\Column(name: '`parent_key`', type: 'bigint', nullable: true, insertable: false, updatable: false, generated: 'ALWAYS', columnDefinition: 'BIGINT GENERATED ALWAYS AS (COALESCE(locations_id, 0)) STORED')]
+    #[\itsmng\Database\Mapping\ReferenceKey('locations_id')]
+    #[ORM\Column(name: '`parent_key`', type: 'bigint', nullable: true, insertable: false, updatable: false, generated: 'ALWAYS')]
     public ?int $parent_key = null;
 }

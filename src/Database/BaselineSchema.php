@@ -42,7 +42,7 @@ final class BaselineSchema
         Migration\NetworkPortAggregateOrigins::configureSchema($schema);
         Migration\PlanningEventGuests::configureSchema($schema);
         Migration\UnusedProjectTemplateReference::configureTable($schema->getTable('glpi_projects'));
-        $this->configureMissingPropertyColumns($schema, $platform);
+        $this->configurePropertyColumns($schema, $platform);
         $this->configureRequiredSubjects($schema, $platform);
         $this->extraSql['glpi_users'][] = Migration\UserAuthenticationSources::checkSql();
         $this->extraSql['glpi_notificationtargets'][] = Migration\NotificationRecipients::checkSql();
@@ -59,9 +59,6 @@ final class BaselineSchema
         Migration\DisplayPreferenceOwnership::addToTable($schema->getTable('glpi_displaypreferences'), $platform);
         Migration\KanbanOwnership::addToTable($schema->getTable('glpi_items_kanbans'), $platform);
         Migration\InventoryUniqueness::addToTable($schema->getTable('glpi_items_operatingsystems'), Migration\InventoryUniqueness::indexName($platform));
-        foreach (array_keys(Migration\TreeUniqueness::TABLES) as $table) {
-            Migration\TreeUniqueness::addToTable($schema->getTable($table), $platform);
-        }
         Migration\IdentifierColumns::configureSchema($schema);
         if ($foreignKeys) {
             (new ForeignKeys())->addToSchema($schema);
@@ -76,7 +73,7 @@ final class BaselineSchema
     }
 
     /** Current schema inspection uses entity policies; historical replay remains immutable. */
-    private function configureMissingPropertyColumns(Schema $schema, AbstractPlatform $platform): void
+    private function configurePropertyColumns(Schema $schema, AbstractPlatform $platform): void
     {
         $connection = \Doctrine\DBAL\DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
         $em = new \Doctrine\ORM\EntityManager($connection, Orm::configuration($platform));
@@ -90,8 +87,23 @@ final class BaselineSchema
             foreach ($mapped->getTables() as $declaration) {
                 $table = $schema->getTable($declaration->getName());
                 $entity = $declarations[$declaration->getName()];
+                $ownedIndexes = $ownedIndexColumns = [];
+                foreach ((new \ReflectionClass($entity->name))->getAttributes(Mapping\SchemaIndex::class) as $attribute) {
+                    $index = $attribute->newInstance();
+                    $ownedIndexes[] = $index->name($platform);
+                    array_push($ownedIndexColumns, ...$index->columns);
+                }
                 $subjectColumns = [];
-                foreach ($entity->fieldMappings as $field) {
+                $ownedKeys = [];
+                foreach ($entity->fieldMappings as $property => $field) {
+                    $name = trim($field->columnName, '`"');
+                    // Only explicit index-owned reference keys replace existing
+                    // definitions. Other generated subjects keep their own builder.
+                    if (in_array($name, $ownedIndexColumns, true)
+                        && (new \ReflectionProperty($entity->name, $property))->getAttributes(Mapping\ReferenceKey::class)) {
+                        $ownedKeys[] = $name;
+                        continue;
+                    }
                     if (($field->generated ?? null) !== null) {
                         // Compatibility projections retain their platform-aware
                         // metadata builders below, including legacy index names.
@@ -107,20 +119,29 @@ final class BaselineSchema
                 }
                 $added = [];
                 foreach ($declaration->getColumns() as $column) {
-                    if ($table->hasColumn($column->getName()) || in_array($column->getName(), $subjectColumns, true)) {
+                    $owned = in_array($column->getName(), $ownedKeys, true);
+                    if ((!$owned && $table->hasColumn($column->getName())) || in_array($column->getName(), $subjectColumns, true)) {
                         continue;
                     }
                     $options = $column->toArray(true);
                     unset($options['name'], $options['typeName']);
                     $options = array_filter($options, static fn ($name) => method_exists($column, 'set' . $name), ARRAY_FILTER_USE_KEY);
-                    $table->addColumn($column->getName(), Type::lookupName($column->getType()), $options);
+                    if ($table->hasColumn($column->getName())) {
+                        $table->modifyColumn($column->getName(), ['type' => $column->getType()] + $options);
+                    } else {
+                        $table->addColumn($column->getName(), Type::lookupName($column->getType()), $options);
+                    }
                     $added[] = $column->getName();
                 }
-                // Explicit property/table indexes for new fields belong to the
-                // same metadata, rather than a second runtime schema catalogue.
+                // Entity-owned physical indexes can also replace an old index
+                // on existing fields, without consulting migration table lists.
                 foreach ($declaration->getIndexes() as $index) {
                     $explicit = isset($entity->table['indexes'][$index->getName()]) || isset($entity->table['uniqueConstraints'][$index->getName()]);
-                    if ($explicit && array_intersect($added, $index->getColumns()) && !$table->hasIndex($index->getName())) {
+                    $owned = in_array($index->getName(), $ownedIndexes, true);
+                    if ($owned || ($explicit && array_intersect($added, $index->getColumns()) && !$table->hasIndex($index->getName()))) {
+                        if ($owned && $table->hasIndex($index->getName())) {
+                            $table->dropIndex($index->getName());
+                        }
                         $index->isUnique()
                             ? $table->addUniqueIndex($index->getColumns(), $index->getName(), $index->getOptions())
                             : $table->addIndex($index->getColumns(), $index->getName(), $index->getFlags(), $index->getOptions());

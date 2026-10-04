@@ -10,7 +10,7 @@ use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_businesscriticities')]
-#[ORM\UniqueConstraint(name: 'businesscriticities_unicity', columns: ['parent_key', 'name'])]
+#[\itsmng\Database\Mapping\SchemaIndex('unicity', ['parent_key', 'name'], unique: true, postgresqlName: 'glpi_businesscriticities_unicity')]
 class BusinessCriticity
 {
     #[ORM\Id]
@@ -55,6 +55,7 @@ class BusinessCriticity
 
     #[ORM\Column(name: '`sons_cache`', type: 'text', length: 4294967295, nullable: true)]
     public ?string $sons_cache = null;
-    #[ORM\Column(name: '`parent_key`', type: 'bigint', nullable: true, insertable: false, updatable: false, generated: 'ALWAYS', columnDefinition: 'BIGINT GENERATED ALWAYS AS (COALESCE(businesscriticities_id, 0)) STORED')]
+    #[\itsmng\Database\Mapping\ReferenceKey('businesscriticities_id')]
+    #[ORM\Column(name: '`parent_key`', type: 'bigint', nullable: true, insertable: false, updatable: false, generated: 'ALWAYS')]
     public ?int $parent_key = null;
 }

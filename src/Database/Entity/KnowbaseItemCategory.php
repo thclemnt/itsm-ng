@@ -10,7 +10,8 @@ use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_knowbaseitemcategories')]
-#[ORM\UniqueConstraint(name: 'knowbaseitemcategories_unicity', columns: ['entities_id', 'parent_key', 'name'])]
+#[\itsmng\Database\Mapping\SchemaIndex('unicity', ['entities_id', 'parent_key', 'name'], unique: true, postgresqlName: 'glpi_knowbaseitemcategories_unicity')]
+#[\itsmng\Database\Mapping\SchemaIndex('glpi_knowbaseitemcategories_tree_entities', ['entities_id'])]
 class KnowbaseItemCategory
 {
     #[ORM\Id]
@@ -54,6 +55,7 @@ class KnowbaseItemCategory
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_creation = null;
-    #[ORM\Column(name: '`parent_key`', type: 'bigint', nullable: true, insertable: false, updatable: false, generated: 'ALWAYS', columnDefinition: 'BIGINT GENERATED ALWAYS AS (COALESCE(knowbaseitemcategories_id, 0)) STORED')]
+    #[\itsmng\Database\Mapping\ReferenceKey('knowbaseitemcategories_id')]
+    #[ORM\Column(name: '`parent_key`', type: 'bigint', nullable: true, insertable: false, updatable: false, generated: 'ALWAYS')]
     public ?int $parent_key = null;
 }
