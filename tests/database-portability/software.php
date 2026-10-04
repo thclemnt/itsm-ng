@@ -301,7 +301,7 @@ try {
         foreach (['pre_item_purge', 'item_purge'] as $event) {
             $purged = $lifecycleCalls[$event][Item_SoftwareVersion::class] ?? [];
             sort($purged);
-            $expectedPurged = [$moveInstallation, $rejectInstallation];
+            $expectedPurged = [$movedLink, $moveInstallation, $rejectInstallation];
             sort($expectedPurged);
             verify($purged === $expectedPurged && ($lifecycleCalls[$event][Item_SoftwareLicense::class] ?? []) === [$computerLicense], 'Discard invokes actual public installation/licence ' . $event . ' hooks only for selected links');
         }
