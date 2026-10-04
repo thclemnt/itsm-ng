@@ -16,6 +16,30 @@ final class ComponentRepository
     {
     }
 
+    /** A selected typed subject must exist; stock deliberately selects no subject. */
+    public function hasSelectedSubject(string $table, array $values): bool
+    {
+        $reference = EntityRegistry::discriminatedReferences($table)['items_id'] ?? null;
+        if ($reference === null) {
+            return true;
+        }
+        $kind = $values[$reference['discriminator']] ?? null;
+        if ($kind === null && array_key_exists('empty_value', $reference)) {
+            return true;
+        }
+        $selection = is_string($kind) ? ($reference['selections'][$kind] ?? null) : null;
+        if ($selection === null || !isset($values[$selection['column']])) {
+            return false;
+        }
+        $class = EntityRegistry::tables()[$table];
+        $target = $this->em->getClassMetadata($class)->getAssociationTargetClass($class::referenceAssociation($kind));
+        // Scalar hydration checks the supplied writer, without accepting an ORM
+        // reference proxy or invoking public-model read callbacks.
+        return $this->em->createQueryBuilder()->select('subject.id')->from($target, 'subject')
+            ->where('subject.id = :id')->setParameter('id', $values[$selection['column']], Types::BIGINT)
+            ->getQuery()->getOneOrNullResult() !== null;
+    }
+
     /** Null entity scope means all entities; an empty scope admits no attached assets. */
     public function forDevice(string $table, string $deviceColumn, int $device, ?string $assetType, ?string $assetTable, ?array $entities): array
     {

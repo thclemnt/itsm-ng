@@ -1597,6 +1597,22 @@ class Item_Devices extends CommonDBRelation
         return true;
     }
 
+    /** Validate the final selected subject after ordinary preparation and hooks. */
+    protected function executePreparedAdd(callable $operation, array $priorState): mixed
+    {
+        global $DB;
+
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            if (!(new \itsmng\Database\Repository\ComponentRepository($em))->hasSelectedSubject($this->getTable(), $this->fields)) {
+                return false;
+            }
+        } finally {
+            $em->clear();
+        }
+        return parent::executePreparedAdd($operation, $priorState);
+    }
+
     public function prepareInputForAdd($input)
     {
         global $CFG_GLPI;

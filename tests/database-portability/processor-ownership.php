@@ -127,7 +127,34 @@ try {
         verify($model->update(['id' => $id] + $invalid) === false && $read('glpi_items_deviceprocessors', $id) === $snapshot, 'Public invalid discriminator/stock/canonical conflict refuses without changing the persisted binding');
     }
     verify($updated === [] && $rows('glpi_logs', ['itemtype' => 'Computer', 'items_id' => $source]) === $historyBefore, 'Refused public inputs emit no completion hook or false Computer audit history');
+    $missingBefore = [
+        $rows('glpi_items_deviceprocessors', []), $rows('glpi_logs', []), $rows('glpi_queuednotifications', []),
+    ];
     verify((new Item_DeviceProcessor())->add(['deviceprocessors_id' => $device, 'itemtype' => 'Computer', 'items_id' => 4294991999]) === false, 'Public invalid target fails before a binding is created');
+    $preparedMissing = 0;
+    $completedMissing = 0;
+    $PLUGIN_HOOKS['post_prepareadd']['processor_ownership_fixture'][Item_DeviceProcessor::class] = static function (Item_DeviceProcessor $item) use (&$preparedMissing): void {
+        ++$preparedMissing;
+        unset($item->input['items_id']);
+        $item->input['computers_id'] = 4294991999;
+    };
+    $PLUGIN_HOOKS['item_add']['processor_ownership_fixture'][Item_DeviceProcessor::class] = static function () use (&$completedMissing): void {
+        ++$completedMissing;
+    };
+    try {
+        verify(
+            (new Item_DeviceProcessor())->add(['deviceprocessors_id' => $device, 'itemtype' => 'Computer', 'items_id' => $source]) === false
+            && $preparedMissing === 1 && $completedMissing === 0,
+            'Actual preparation hook cannot replace a valid selected Computer with a missing target and complete insertion'
+        );
+    } finally {
+        unset($PLUGIN_HOOKS['post_prepareadd']['processor_ownership_fixture'][Item_DeviceProcessor::class]);
+        unset($PLUGIN_HOOKS['item_add']['processor_ownership_fixture'][Item_DeviceProcessor::class]);
+    }
+    verify(
+        [$rows('glpi_items_deviceprocessors', []), $rows('glpi_logs', []), $rows('glpi_queuednotifications', [])] === $missingBefore,
+        'Missing selected subject refusals preserve all bindings, audit rows and notification rows'
+    );
     verify(Item_DeviceProcessor::affectItem_Device($stock[0]['id'], $destination, 'Computer'), 'Public attachment moves actual stock to an owning Computer');
     verify($model->update(['id' => $id, 'itemtype' => null, 'serial' => null]), 'Supplied null kind returns an assigned processor to stock without retaining its prior positive identity');
     verify($model->getFromDB($id) && $model->fields['itemtype'] === null && (int)$model->fields['items_id'] === 0 && $model->fields['computers_id'] === null && $model->fields['serial'] === null, 'Null stock update publishes the actual cleared owner and supplied null payload');
