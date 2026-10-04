@@ -1,5 +1,53 @@
 # PostgreSQL and Doctrine modernization goal
 
+## 2026-10-04 04:04 UTC: follow-on composition, full validation pending
+
+The goal remains **OPEN**. Normal Git fetch and push dry-run work in this cloud
+environment. The remote `th/exp/postgres` is still `01aee6a7`; its changes and the
+original `897c5c9b` handoff are ancestors of the working branch. No native goal
+facility is available; this document remains the durable implementation plan.
+
+The newer e658 focused runs passed the original PostgreSQL driver contract
+(98 assertions), authentication completion, accepted-update finalization
+(50 assertions), and read-only SQL lexical controls. MariaDB passed native PDO
+session controls (82 assertions), result/connection lifetime controls, and the
+common driver contract (42 assertions). These are focused results, not complete
+suite receipts. Parent row bags, catalogue and migration ledger stayed unchanged
+in each guarded focused packet. A Supplier undefined-input warning and several
+later failing contracts remain recorded; do not describe those packets as green.
+
+The composed follow-on fixes include authoritative ownership-frame rollback,
+absent/null model checkpoints, metadata-derived clone overrides, preservation of
+caller feedback, and corrected Unicode, authentication identity and AJAX request
+fixtures. They preserve the original assertions and frozen historical schema.
+At `265e9682b2`, offline mapping validation passes on both platforms: 357 mapped
+tables, 1,070 expected foreign keys, no mapping errors, no connection opened.
+The required static SQL inventory contract passes. Current static inventory is
+1,070 enforced references, 30 discriminated identities, 34 polymorphic candidates,
+one pending candidate and 2,844 legacy adapter calls. Two native PDO calls are
+classified from their actual Doctrine connection declaration and concrete method
+bodies, without a path allowlist. Static discovery is not application validation.
+The runner discovers 209 contracts; their complete new-source execution is pending.
+
+The remaining Exact fixture failure was reproduced with an unchanged predicate
+on both engines. Private native observations identify `glpi_planningrecalls`:
+PostgreSQL SQLSTATE 42601 and MariaDB SQLSTATE 42000/native 1064, both caused by
+unquoted reserved column `when`. This is a syntax failure before the intended
+CHECK rejection, not evidence of a faulty constraint. Evidence directories are
+`exact-discriminator-e658-pg-native-refusal-before-actual-20261004T035612Z-ca398da26e`
+and `exact-discriminator-e658-mysql-native-refusal-before-actual-20261004T035714Z-7528e27d9d`
+under `/workspace/itsm-env/evidence/`. The bounded correction is being reviewed.
+
+Next: compose that correction; lint and validate the exact final source; run
+the complete discovered suite in its original order with the unchanged 300-second
+contract limit on PostgreSQL and MariaDB; inspect the final native schema; prove
+new-source fresh installation, populated adoption, retries and idempotency. Then
+exercise the original application/API flows before browser validation. The next
+ten component associations are being developed separately and remain SOURCE-only.
+Whole-parent clone graph atomicity, external authentication, live replica/TLS,
+and most legacy application SQL remain open. The latest complete both-provider
+suite and fresh-install receipts remain the historical checkpoints below.
+
 ## Current checkpoint: complete 30a4 suites; d8 composition under validation
 
 The overall goal remains **OPEN**: sound foreign keys for representable table
