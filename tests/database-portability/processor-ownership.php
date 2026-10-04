@@ -85,16 +85,20 @@ try {
     try {
         verify(!Session::haveAccessToEntity($foreignEntity), 'Narrow device-screen scope excludes the foreign Device entity');
         (new Item_DeviceProcessor())->addDevices(1, '', 0, $device);
-        verify($rows('glpi_items_deviceprocessors', ['deviceprocessors_id' => $device]) === $bindingsBeforeDenial,
-            'Real stock command refuses invisible Device without changing any binding');
+        verify(
+            $rows('glpi_items_deviceprocessors', ['deviceprocessors_id' => $device]) === $bindingsBeforeDenial,
+            'Real stock command refuses invisible Device without changing any binding'
+        );
     } finally {
         $_SESSION = $stockSession;
     }
     $stockDevice = new DeviceProcessor();
     verify($stockDevice->can($device, READ) && $stockDevice->can($device, UPDATE), 'Actual admitted actor may read and update the foreign-owned Device');
-    verify((int)$read('glpi_deviceprocessors', $device)['entities_id'] === $foreignEntity
+    verify(
+        (int)$read('glpi_deviceprocessors', $device)['entities_id'] === $foreignEntity
         && (int)$read('glpi_computers', $source)['entities_id'] === 0 && $read('glpi_computers', $source)['is_recursive'],
-        'Legitimate recursive Computer graph retains independent foreign Device ownership');
+        'Legitimate recursive Computer graph retains independent foreign Device ownership'
+    );
     $model->addDevices(2, '', 0, $device);
     $stock = $rows('glpi_items_deviceprocessors', ['deviceprocessors_id' => $device, 'itemtype' => null]);
     verify(count($stock) === 2 && (int)$stock[0]['frequency'] === 3200 && (int)$stock[0]['items_id'] === 0 && $stock[0]['computers_id'] === null, 'Real device-screen stock creation retains defaults and zero compatibility identity');
