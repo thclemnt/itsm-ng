@@ -1,5 +1,51 @@
 # PostgreSQL and Doctrine modernization goal
 
+## 2026-10-04: native MariaDB component storage failure diagnosed and repaired
+
+The goal remains **OPEN**. At `3942df7970ae`, the new PostgreSQL installation
+passed all 13 fresh phases: twenty completed versions, 1,080 native foreign keys,
+no pending migrations or schema differences, original seed/schema controls,
+sequence and idempotency checks, and original retained-parent comparisons.
+The corresponding MariaDB normal CLI failed after 88.72 seconds at final schema
+convergence. It reported exactly nine changed flag columns across Motherboard,
+Memory and HardDrive assignments. Both runs emitted no PHP warnings or fatals;
+MariaDB's final original-parent comparison passed. No current20 full suite ran.
+
+Bounded read-only native inspection proved the difference: PostgreSQL's nine
+BOOLEAN columns matched, while MariaDB's actual columns were signed
+`tinyint(4) NOT NULL DEFAULT 0`, compared with canonical SMALLINT declarations.
+Raw ledger and catalog stayed unchanged; the diagnostic read no application rows.
+`ComponentData20261013` had unconditionally selected BOOLEAN for physical DDL.
+The failed installation, first failure and actual creation receipts remain
+retained. Its creation proves ownership, not successful installation, and it must
+not be repaired manually or reused as a fresh target.
+
+Commit `1496ad5fbfcf` integrates the independently reviewed correction. Physical
+flag types now derive from the existing immutable baseline, with numeric zero
+defaults on MySQL/MariaDB and native BOOLEAN/false on PostgreSQL. Logical booleans
+remain entity-owned; no frozen snapshot, version or competing ledger is added.
+The existing component schema contract checks native storage before reconstruction,
+after populated wider-integer adoption, interrupted retries and completed replay.
+Its provider-specific physical assertion retains all semantic, invalid-data,
+CHECK/FK, row-preservation and complete schema controls.
+
+ROOT syntax/style, SQL inventory, offline three-provider mapping and actual
+discovery pass on the integrated correction: 357 mapped/schema tables, 1,080
+expected foreign keys, zero mapping errors, physical connections forbidden and
+222 unchanged discovered contracts. Corrected-source native validation is pending.
+Evidence: initial provider results (`24d1c33d` PASS, `dac73189` failure), native
+column receipts (`012101b0`, `36855eab`), cause checkpoint (`f101ae16`), committed
+source review (`f679484f`) and integrated compiler (`5b7851c2`).
+
+Next: new genuinely absent canonical databases on both providers; literal populated
+17-to-20 CLI upgrades from the isolated historical checkout; repaired historical
+and component focused checks; complete suites and post-suite native policy/schema
+checks; application/API restoration, rebuilt assets and browser validation.
+Normal cloud Git fetch continues to work and preserve the remote ancestor.
+VLAN implementation and schema-architecture audit remain separately held source
+work. Native timestamp ownership, remaining persistence paths and polymorphic
+relationships still require coherent application architecture batches.
+
 ## 2026-10-04: combined 20-version source compiled; database validation pending
 
 The modernization goal remains **OPEN**. Native persistent goals are unavailable;
