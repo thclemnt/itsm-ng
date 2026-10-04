@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 use itsmng\Database\DeletionOutcome;
+use itsmng\Database\DeletionCancelled;
 use itsmng\Database\DeletionUnit;
 use itsmng\Database\LifecycleModelJournal;
 use itsmng\Database\LifecycleNotifications;
@@ -153,6 +154,31 @@ try {
             && LifecycleModelJournal::state($model) === $checkpoint, 'Proven rollback restores child before independent failing parent cleanup');
     } finally {
         DeletionFrameSupplier::$failure = null;
+    }
+
+    $actualCancellation = null;
+    $secondary = new RuntimeException('Actual cancelled parent restoration failure');
+    $checkpoint = LifecycleModelJournal::state($model);
+    try {
+        DeletionUnit::run($connection, static function () use ($connection, $model, $seed, &$actualCancellation): DeletionOutcome {
+            verify($model->update(['id' => $seed, 'name' => 'Required cancelled child before cleanup failure']), 'Actual child write precedes required veto and failing restoration');
+            try {
+                DeletionUnit::requireSuccess($connection, false);
+            } catch (DeletionCancelled $cancelled) {
+                $actualCancellation = $cancelled;
+                throw $cancelled;
+            }
+            throw new LogicException('Actual required veto must throw its cancellation');
+        }, static function () use ($secondary): void {
+            throw $secondary;
+        });
+        throw new LogicException('Cancellation cleanup failure must propagate both actual errors');
+    } catch (MutationCleanupFailure $error) {
+        verify($actualCancellation instanceof DeletionCancelled && $error->primary === $actualCancellation
+            && $error->cleanup === $secondary && $error->getPrevious() === $actualCancellation && !$error->rollbackUnproven,
+            'The actual first required-child cancellation survives an independent restoration failure');
+        verify($nativeRows() === $before && LifecycleModelJournal::state($model) === $checkpoint
+            && !DeletionUnit::isActive($connection), 'Cancellation cleanup failure follows proven native/model rollback and retired authority');
     }
 
     // Legitimate deeper owner layers retain deletion authority; balanced nested

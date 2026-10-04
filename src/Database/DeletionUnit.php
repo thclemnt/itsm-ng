@@ -37,6 +37,7 @@ final class DeletionUnit
         $rollbackAttempted = false;
         $accepted = false;
         $failure = null;
+        $cancelled = null;
         $notifications = [];
         $journal = new LifecycleModelJournal();
         $delivery = LifecycleNotifications::begin($connection);
@@ -64,7 +65,10 @@ final class DeletionUnit
             }
         } catch (\Throwable $primary) {
             $outcome = DeletionOutcome::Cancelled;
-            $failure = $primary instanceof DeletionCancelled ? null : $primary;
+            $failure = $primary;
+            if ($primary instanceof DeletionCancelled) {
+                $cancelled = $primary;
+            }
             if ($frame !== null && !$rollbackAttempted) {
                 try {
                     $rollbackAttempted = true;
@@ -106,7 +110,7 @@ final class DeletionUnit
                 }
             }
         }
-        if ($failure !== null) {
+        if ($failure !== null && ($failure !== $cancelled || !$rolledBack)) {
             throw $failure;
         }
         // A released savepoint is not a physical commit or permission to deliver.
