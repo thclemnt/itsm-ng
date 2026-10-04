@@ -58,6 +58,44 @@ mkdir($temporary . '/files', 0700);
 $key = $upgrade->expectedSecurityKeyPath();
 verify($key !== null && !$upgrade->isSecurityKeyMissing(), 'Existing installation encryption key required');
 $keyHash = hash_file('sha256', $key);
+// Keep only the encryption-key fixture on its original filesystem. PHP rename()
+// across devices copies/unlinks the file and loses its original inode.
+$keyNode = static function (string $path): array|false {
+    clearstatcache(true, $path);
+    $stat = lstat($path);
+    if ($stat === false) {
+        return false;
+    }
+    return array_intersect_key($stat, array_flip(['dev', 'ino', 'uid', 'gid', 'mode', 'nlink', 'size']));
+};
+$originalKeyNode = $keyNode($key);
+verify($originalKeyNode !== false && ($originalKeyNode['mode'] & 0170000) === 0100000 && $originalKeyNode['nlink'] === 1, 'Original key is an ordinary single-link file');
+$keyIsOriginal = static fn (string $path): bool => $keyNode($path) === $originalKeyNode && hash_file('sha256', $path) === $keyHash;
+$keyHolding = $keyBackup = $keyHoldingNode = null;
+$keyCleanupErrors = [];
+$primaryError = null;
+$holdingIsOwned = static function () use (&$keyHolding, &$keyHoldingNode): bool {
+    if ($keyHolding === null || $keyHoldingNode === null) {
+        return false;
+    }
+    clearstatcache(true, $keyHolding);
+    $stat = lstat($keyHolding);
+    return $stat !== false && array_intersect_key($stat, array_flip(['dev', 'ino', 'uid', 'gid', 'mode'])) === $keyHoldingNode;
+};
+$restoreKey = static function () use (&$keyHolding, &$keyBackup, $holdingIsOwned, $keyIsOriginal, $key): void {
+    if ($keyHolding === null) {
+        return;
+    }
+    verify($holdingIsOwned(), 'Key holding directory retains its exclusively owned identity');
+    clearstatcache(true, $keyBackup);
+    if (file_exists($keyBackup) || is_link($keyBackup)) {
+        verify($keyIsOriginal($keyBackup), 'Only the original key inode and bytes may be restored');
+        clearstatcache(true, $key);
+        verify(!file_exists($key) && !is_link($key), 'Restoration never overwrites an unexpected key-path occupant');
+        verify(rename($keyBackup, $key), 'Same-device original key restoration succeeds');
+    }
+    verify($keyIsOriginal($key), 'Key restoration preserves the original inode, ownership, mode and bytes');
+};
 $server = null;
 $user = $profile = $membership = $right = $plugin = $audit = null;
 $beforeColumns = null;
@@ -153,7 +191,19 @@ try {
     $http('preview');
     verify($snapshot() === $before, 'Authenticated HTTP preview and anonymous/read-only denials make no changes');
 
-    rename($key, $temporary . '/original.key');
+    $holdingCandidate = GLPI_CONFIG_DIR . '/.upgrade-key-' . bin2hex(random_bytes(8));
+    verify(mkdir($holdingCandidate, 0700), 'Create an exclusive private key holding directory');
+    $keyHolding = $holdingCandidate;
+    $keyBackup = $keyHolding . '/original.key';
+    $holdingStat = lstat($keyHolding);
+    verify($holdingStat !== false, 'Inspect the newly owned key holding directory');
+    $keyHoldingNode = array_intersect_key($holdingStat, array_flip(['dev', 'ino', 'uid', 'gid', 'mode']));
+    verify(($holdingStat['mode'] & 0177777) === 0040700 && $holdingStat['dev'] === $originalKeyNode['dev'] && $holdingStat['uid'] === $originalKeyNode['uid'], 'Private holding directory shares the original key filesystem and owner');
+    verify($holdingIsOwned() && $keyIsOriginal($key) && !file_exists($keyBackup) && !is_link($keyBackup), 'Only the original key moves into its empty owned destination');
+    verify(rename($key, $keyBackup), 'Same-device original key withdrawal succeeds');
+    clearstatcache(true, $key);
+    verify(!file_exists($key) && !is_link($key) && $keyIsOriginal($keyBackup), 'Lost-key fixture retains the original inode and bytes privately');
+    $keyPhaseError = null;
     try {
         foreach ([['db:update'], ['db:update', '--force'], ['db:migrate', '--apply']] as $args) {
             [$status, $output] = $cli($args);
@@ -175,8 +225,18 @@ try {
         }
         $http('missing-key');
         verify(!file_exists($key) && $snapshot() === $before, 'Lost key changes neither encrypted data nor history/release state');
+    } catch (Throwable $error) {
+        $keyPhaseError = $error;
+        throw $error;
     } finally {
-        rename($temporary . '/original.key', $key);
+        try {
+            $restoreKey();
+        } catch (Throwable $error) {
+            if ($keyPhaseError === null) {
+                throw $error;
+            }
+            $keyCleanupErrors[] = $error;
+        }
     }
 
     $beforeColumns = $manager->introspectTable('glpi_profiles');
@@ -283,16 +343,26 @@ try {
     $pending();
     (new Update($DB))->doUpdates();
     verify(History::pendingVersions($connection) === [], 'Existing public Update facade follows canonical history on both providers');
+    verify($keyIsOriginal($key), 'Every entrypoint preserves the original key inode, ownership and mode');
     verify(hash_file('sha256', $key) === $keyHash, 'Every entrypoint preserves the original key bytes');
     verify($connection->fetchOne('SELECT old_value FROM glpi_logs WHERE id = ?', [$audit]) === "Existing audit O'Reilly 日本語", 'Existing audit history survives every supported upgrade entrypoint');
     verify((int)$connection->fetchOne("SELECT COUNT(*) FROM glpi_logs WHERE itemtype = 'Config' AND id > ?", [$maxLog]) >= 2, 'Release publication retains Config audit hooks');
+} catch (Throwable $error) {
+    $primaryError = $error;
+    throw $error;
 } finally {
     if (is_resource($server)) {
         proc_terminate($server);
         proc_close($server);
     }
-    if (file_exists($temporary . '/original.key')) {
-        rename($temporary . '/original.key', $key);
+    try {
+        $restoreKey();
+        if ($keyHolding !== null) {
+            verify($holdingIsOwned() && scandir($keyHolding) === ['.', '..'], 'Retire only the empty original owned key holding directory');
+            verify(rmdir($keyHolding), 'Owned key holding directory retirement succeeds');
+        }
+    } catch (Throwable $error) {
+        $keyCleanupErrors[] = $error;
     }
     if ($beforeColumns !== null) {
         foreach ($platform->getAlterTableSQL($manager->createComparator()->compareTables($manager->introspectTable('glpi_profiles'), $beforeColumns)) as $sql) {
@@ -325,5 +395,11 @@ try {
     $connection->executeStatement("DELETE FROM glpi_logs WHERE itemtype = 'Config' AND id > ?", [$maxLog]);
     $DB->clearSchemaCache();
     $GLPI_CACHE->clear();
+    if ($keyCleanupErrors !== []) {
+        if ($primaryError === null) {
+            throw $keyCleanupErrors[0];
+        }
+        fwrite(STDERR, 'Additional owned key cleanup failure; original contract failure retained.' . "\n");
+    }
 }
 echo $DB->getProvider() . ": canonical CLI/web upgrades, authorization, readiness, preview, retry, prerequisites and customer-data preservation passed.\n";
