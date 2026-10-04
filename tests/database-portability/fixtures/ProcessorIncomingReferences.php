@@ -214,18 +214,54 @@ final class ProcessorIncomingReferences
                 $references[$this->key($reference['schema'], $reference['table'], $reference['name'])] = $reference;
             }
         } else {
-            $rows = $this->connection->fetchAllAssociative(
-                "SELECT k.TABLE_SCHEMA AS source_schema, k.TABLE_NAME AS source_table, k.CONSTRAINT_NAME AS name,
-                    k.COLUMN_NAME AS local_column, k.REFERENCED_COLUMN_NAME AS referenced_column,
-                    k.ORDINAL_POSITION AS ordinal_position, k.POSITION_IN_UNIQUE_CONSTRAINT AS referenced_position,
-                    r.MATCH_OPTION AS match_option, r.UPDATE_RULE AS update_rule, r.DELETE_RULE AS delete_rule
-                 FROM information_schema.KEY_COLUMN_USAGE k
-                 JOIN information_schema.REFERENTIAL_CONSTRAINTS r ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA
-                    AND r.TABLE_NAME=k.TABLE_NAME AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME
-                 WHERE k.REFERENCED_TABLE_SCHEMA=? AND k.REFERENCED_TABLE_NAME=?
-                 ORDER BY k.TABLE_SCHEMA, k.TABLE_NAME, k.CONSTRAINT_NAME, k.ORDINAL_POSITION",
+            // Find every incoming owner first, then inspect only its actual native
+            // source constraint. Joining the two virtual catalogues can enumerate
+            // unrelated table definitions twice on an accumulated test server.
+            $constraints = $this->connection->fetchAllAssociative(
+                "SELECT CONSTRAINT_SCHEMA AS source_schema, TABLE_NAME AS source_table, CONSTRAINT_NAME AS name,
+                    UNIQUE_CONSTRAINT_SCHEMA AS referenced_schema, REFERENCED_TABLE_NAME AS referenced_table,
+                    MATCH_OPTION AS match_option, UPDATE_RULE AS update_rule, DELETE_RULE AS delete_rule
+                 FROM information_schema.REFERENTIAL_CONSTRAINTS
+                 WHERE UNIQUE_CONSTRAINT_SCHEMA=? AND REFERENCED_TABLE_NAME=?
+                 ORDER BY CONSTRAINT_SCHEMA, TABLE_NAME, CONSTRAINT_NAME",
                 [$this->schema, $this->target]
             );
+            $rows = [];
+            foreach ($constraints as $constraint) {
+                if ($constraint['referenced_schema'] !== $this->schema || $constraint['referenced_table'] !== $this->target) {
+                    throw new LogicException('Incoming processor native target spelling differs from fixture ownership.');
+                }
+                $columns = $this->connection->fetchAllAssociative(
+                    "SELECT CONSTRAINT_SCHEMA AS constraint_schema, TABLE_SCHEMA AS source_schema,
+                        TABLE_NAME AS source_table, CONSTRAINT_NAME AS name,
+                        REFERENCED_TABLE_SCHEMA AS referenced_schema, REFERENCED_TABLE_NAME AS referenced_table,
+                        COLUMN_NAME AS local_column, REFERENCED_COLUMN_NAME AS referenced_column,
+                        ORDINAL_POSITION AS ordinal_position, POSITION_IN_UNIQUE_CONSTRAINT AS referenced_position
+                     FROM information_schema.KEY_COLUMN_USAGE
+                     WHERE CONSTRAINT_SCHEMA=? AND TABLE_SCHEMA=? AND TABLE_NAME=? AND CONSTRAINT_NAME=?
+                     ORDER BY ORDINAL_POSITION",
+                    [$constraint['source_schema'], $constraint['source_schema'], $constraint['source_table'], $constraint['name']]
+                );
+                if ($columns === []) {
+                    throw new LogicException('Incoming processor native constraint has no column ownership.');
+                }
+                foreach ($columns as $column) {
+                    if ($column['constraint_schema'] !== $constraint['source_schema']
+                        || $column['source_schema'] !== $constraint['source_schema']
+                        || $column['source_table'] !== $constraint['source_table'] || $column['name'] !== $constraint['name']
+                        || $column['referenced_schema'] !== $this->schema || $column['referenced_table'] !== $this->target) {
+                        throw new LogicException('Incoming processor native reference identity differs from fixture ownership.');
+                    }
+                    // Keep every ordinal: the original single-column ownership
+                    // check below must still reject composite/custom constraints.
+                    $rows[] = [
+                        'source_schema' => $column['source_schema'], 'source_table' => $column['source_table'], 'name' => $column['name'],
+                        'local_column' => $column['local_column'], 'referenced_column' => $column['referenced_column'],
+                        'ordinal_position' => $column['ordinal_position'], 'referenced_position' => $column['referenced_position'],
+                        'match_option' => $constraint['match_option'], 'update_rule' => $constraint['update_rule'], 'delete_rule' => $constraint['delete_rule'],
+                    ];
+                }
+            }
             foreach ($rows as $row) {
                 $key = $this->key($row['source_schema'], $row['source_table'], $row['name']);
                 if (isset($references[$key]) || (int)$row['ordinal_position'] !== 1 || (int)$row['referenced_position'] !== 1
