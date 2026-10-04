@@ -148,7 +148,7 @@ try {
         return $snapshot;
     };
 
-    $PLUGIN_HOOKS['item_update']['accepted_update_fixture'][Software::class] = static function (Software $item): void {
+    $PLUGIN_HOOKS['item_update']['accepted_update_fixture'][AcceptedUpdateSoftware::class] = static function (Software $item): void {
         AcceptedUpdateSoftware::$events[] = 'item_update_hook';
     };
     foreach (['accept', 'refuse', 'identity'] as $mode) {
@@ -168,7 +168,7 @@ try {
     AcceptedUpdateSoftware::$mode = 'accept';
     AcceptedUpdateSoftware::$events = [];
     $before = $read('glpi_softwares', $software);
-    $PLUGIN_HOOKS['pre_item_update']['accepted_update_fixture'][Software::class] = static function (Software $item): void {
+    $PLUGIN_HOOKS['pre_item_update']['accepted_update_fixture'][AcceptedUpdateSoftware::class] = static function (Software $item): void {
         $item->input['name'] = 'Actual plugin-created software write';
     };
     try {
