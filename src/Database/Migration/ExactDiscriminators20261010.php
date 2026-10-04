@@ -23,9 +23,9 @@ final class ExactDiscriminators20261010
     }
 
     /** Audit every table before writing a receipt or issuing this migration's DDL. */
-    public function plan(Connection $connection, bool $preAdoption = false): array
+    public function plan(Connection $connection, bool $preAdoption = false, ?PendingSubjectShape $pendingShape = null): array
     {
-        $plan = $this->inspectPlan($connection, $preAdoption);
+        $plan = $this->inspectPlan($connection, $preAdoption, $pendingShape);
         foreach ($plan['tables'] as &$table) {
             // Preservation contains arbitrary existing comments/index options,
             // not executable preview SQL. Keep it solely in the private journal.
@@ -35,7 +35,7 @@ final class ExactDiscriminators20261010
         return $plan;
     }
 
-    private function inspectPlan(Connection $connection, bool $preAdoption = false): array
+    private function inspectPlan(Connection $connection, bool $preAdoption = false, ?PendingSubjectShape $pendingShape = null): array
     {
         CheckConstraintSupport::assertSupported($connection);
         $state = Ledger::state($connection, self::VERSION);
@@ -80,14 +80,24 @@ final class ExactDiscriminators20261010
                 : $connection->fetchAssociative('SELECT a.attgenerated AS generated FROM pg_catalog.pg_attribute a WHERE a.attrelid=to_regclass(?) AND a.attname=? AND NOT a.attisdropped', [$quote($table), $definition['column']]);
             $generated = $mysql ? !empty($native['GENERATION_EXPRESSION']) : ($native['generated'] ?? '') !== '';
             $missing = array_filter($definition['branches'], static fn ($branch) => !$actual->hasColumn($branch['column']));
+            $intermediate = $preAdoption && $priorPending && $generated && $missing
+                && ($pendingShape?->admitsGeneratedPredecessor($actual, $definition, $states) ?? false);
             $legacy = $preAdoption && $priorPending && !$generated;
-            if (($missing || !$generated) && !$legacy) {
+            if (($missing || !$generated) && !$legacy && !$intermediate) {
                 $problems[] = 'Incomplete canonical owning subject columns/projection: ' . $table;
                 continue;
             }
             // A partially adopted ordinary legacy identity is audited against
             // every canonical column that already exists, never ignored wholesale.
-            $valid = self::validSql($connection, $definition, $actual, $legacy, true);
+            $auditDefinition = $definition;
+            if ($intermediate) {
+                // This operation-local audit view is derived only after its
+                // pending producer admits the frozen predecessor. DDL always
+                // uses the unchanged full historical definition.
+                $auditDefinition['branches'] = array_filter($definition['branches'],
+                    static fn (array $branch): bool => $actual->hasColumn($branch['column']));
+            }
+            $valid = self::validSql($connection, $auditDefinition, $actual, $legacy, true);
             $count = (int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $quote($table) . ' source_subject WHERE NOT COALESCE((' . $valid . '), FALSE)');
             if ($count > 0) {
                 $samples = $connection->fetchAllAssociative('SELECT ' . $quote('id') . ', ' . $quote($definition['discriminator']) . ', ' . $quote($definition['column'])

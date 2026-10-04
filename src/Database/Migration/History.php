@@ -38,7 +38,8 @@ final class History
     {
         $pending = self::pendingVersions($connection);
         $booleans = (new Booleans20261002())->plan($connection);
-        return ['complete' => !$pending, 'pending' => $pending, 'legacy' => (new LegacyToOrm())->plan($connection), 'booleans' => $booleans, 'project_assets' => (new ProjectAssets20261003())->plan($connection), 'category_flags' => (new CategoryFlags20261004())->plan($connection), 'appliance_assets' => (new ApplianceAssets20261005())->plan($connection), 'appliance_recipients' => (new ApplianceRecipients20261005())->plan($connection), 'operating_system_subjects' => (new OperatingSystemSubjects20261006())->plan($connection), 'domain_documents' => (new DomainDocuments20261006())->plan($connection), 'domain_integration' => (new DomainIntegration20261006())->plan($connection), 'identifier_sequences' => (new IdentifierSequences20261007())->plan($connection), 'boolean_domains' => (new BooleanDomains20261008())->plan($connection, true), 'exact_subject_discriminators' => (new ExactDiscriminators20261010())->plan($connection, true), 'software_installation_subjects' => (new SoftwareInstallationSubjects20261011())->plan($connection), 'software_license_subjects' => (new SoftwareLicenseSubjects20261011())->plan($connection), 'processor_subjects' => (new ProcessorSubjects20261012())->plan($connection)];
+        $domainDocuments = new DomainDocuments20261006();
+        return ['complete' => !$pending, 'pending' => $pending, 'legacy' => (new LegacyToOrm())->plan($connection), 'booleans' => $booleans, 'project_assets' => (new ProjectAssets20261003())->plan($connection), 'category_flags' => (new CategoryFlags20261004())->plan($connection), 'appliance_assets' => (new ApplianceAssets20261005())->plan($connection), 'appliance_recipients' => (new ApplianceRecipients20261005())->plan($connection), 'operating_system_subjects' => (new OperatingSystemSubjects20261006())->plan($connection), 'domain_documents' => $domainDocuments->plan($connection), 'domain_integration' => (new DomainIntegration20261006())->plan($connection), 'identifier_sequences' => (new IdentifierSequences20261007())->plan($connection), 'boolean_domains' => (new BooleanDomains20261008())->plan($connection, true), 'exact_subject_discriminators' => (new ExactDiscriminators20261010())->plan($connection, true, $domainDocuments), 'software_installation_subjects' => (new SoftwareInstallationSubjects20261011())->plan($connection), 'software_license_subjects' => (new SoftwareLicenseSubjects20261011())->plan($connection), 'processor_subjects' => (new ProcessorSubjects20261012())->plan($connection)];
     }
 
     public static function isInstalling(Connection $connection): bool
@@ -144,9 +145,10 @@ final class History
                 throw new \RuntimeException('Resume the unfinished installation before applying upgrades.');
             }
             (new DomainsPluginAdoption20261006())->apply($connection, fn () => $this->canonicalPlan($connection), $progress);
+            $domainDocuments = new DomainDocuments20261006();
             // All stored subject spellings are audited before any canonical DDL,
             // including partial legacy ownership, after the validated source trial.
-            (new ExactDiscriminators20261010())->plan($connection, true);
+            (new ExactDiscriminators20261010())->plan($connection, true, $domainDocuments);
             // Reject newly constrained subject links before broader
             // historical audits; every preflight still completes before any DDL.
             (new ApplianceAssets20261005())->plan($connection);
@@ -163,7 +165,7 @@ final class History
             // identifier widening or any other nontransactional adoption DDL.
             (new ProjectAssets20261003())->plan($connection);
             (new CategoryFlags20261004())->plan($connection);
-            (new DomainDocuments20261006())->plan($connection);
+            $domainDocuments->plan($connection);
             (new DomainIntegration20261006())->plan($connection);
             (new BooleanDomains20261008())->plan($connection, true);
             (new LegacyToOrm())->apply($connection, $progress);
@@ -173,7 +175,7 @@ final class History
             (new ApplianceAssets20261005())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('ApplianceAssets20261005: ' . $phase));
             (new ApplianceRecipients20261005())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('ApplianceRecipients20261005: ' . $phase));
             (new OperatingSystemSubjects20261006())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('OperatingSystemSubjects20261006: ' . $phase));
-            (new DomainDocuments20261006())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('DomainDocuments20261006: ' . $phase));
+            $domainDocuments->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('DomainDocuments20261006: ' . $phase));
             (new DomainIntegration20261006())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('DomainIntegration20261006: ' . $phase));
             (new IdentifierSequences20261007())->apply($connection, $progress);
             (new BooleanDomains20261008())->apply($connection, $progress);

@@ -10,11 +10,61 @@ use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\DBAL\Types\Types;
 
 /** Frozen expansion of document subjects; document ownership remains independent. */
-final class DomainDocuments20261006 extends StagedTypedItemMigration
+final class DomainDocuments20261006 extends StagedTypedItemMigration implements PendingSubjectShape
 {
     public const VERSION = '20261006_domain_document_subjects';
     public const GENERAL_RECEIPT = '20261006_domain_documents_deferred_v1';
     public const GENERAL_FORMAT = 'infotel-domain-documents-deferred-v1';
+
+    /** Frozen old ownership can precede this stage's appended subject column. */
+    public function admitsGeneratedPredecessor(\Doctrine\DBAL\Schema\Table $actual, array $definition, array $states): bool
+    {
+        if ($actual->getName() !== $this->table() || ($states[self::VERSION]['complete'] ?? false) === true
+            || ($definition['column'] ?? null) !== 'items_id' || ($definition['discriminator'] ?? null) !== 'itemtype') {
+            return false;
+        }
+        // A missing introduced column can precede the first columns statement
+        // only. Every later checkpoint certifies that column already exists.
+        $state = $states[self::VERSION] ?? null;
+        if ($state !== null && (($state['complete'] ?? null) !== false
+            || ($state['phase'] ?? null) !== 'audited'
+            || !is_string($state['items_comment'] ?? null)
+            || (array_key_exists('projection_expanded', $state) && !is_bool($state['projection_expanded'])))) {
+            return false;
+        }
+        // Schema APIs expose exactly the existing historical declarations.
+        // No current entity or second table/target catalogue defines this view.
+        $previous = new \Doctrine\DBAL\Schema\Table($this->table());
+        $previous->addColumn('items_id', Types::BIGINT, ['notnull' => false]);
+        $previous->addColumn('itemtype', Types::STRING, ['length' => 100]);
+        DocumentSubjects::configureTable($previous);
+        $expanded = clone $previous;
+        static::configureTable($expanded);
+        $oldColumns = array_diff(array_keys($previous->getColumns()), ['items_id', 'itemtype']);
+        $newColumns = array_diff(array_keys($expanded->getColumns()), ['items_id', 'itemtype']);
+        $declaredColumns = array_unique(array_column($definition['branches'], 'column'));
+        if (array_diff($newColumns, $declaredColumns) || array_diff($declaredColumns, $newColumns)) {
+            return false;
+        }
+        foreach ($oldColumns as $column) {
+            if (!$actual->hasColumn($column) || $actual->getColumn($column)->getNotnull()
+                || \Doctrine\DBAL\Types\Type::lookupName($actual->getColumn($column)->getType()) !== Types::BIGINT) {
+                return false;
+            }
+        }
+        $missing = array_filter($newColumns, static fn (string $column): bool => !$actual->hasColumn($column));
+        $introduced = array_diff($newColumns, $oldColumns);
+        if (array_diff($missing, $introduced)) {
+            return false;
+        }
+        // The supported MariaDB expansion uses one MODIFY COLUMN, retaining
+        // compatibility indexes. PostgreSQL's replacement is transactional.
+        // A missing projection is not evidence for adopting a new index vector.
+        return $actual->hasColumn('items_id') && $missing
+            && ($state['projection_expanded'] ?? false) !== true
+            && !$actual->getColumn('items_id')->getNotnull()
+            && \Doctrine\DBAL\Types\Type::lookupName($actual->getColumn('items_id')->getType()) === Types::BIGINT;
+    }
 
     public function plan(Connection $connection, ?IncomingProjectionReferences $incomingReferences = null): array
     {
