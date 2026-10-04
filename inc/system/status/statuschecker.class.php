@@ -35,11 +35,11 @@ namespace Glpi\System\Status;
 
 use AuthLDAP;
 use CronTask;
-use DBConnection;
 use DBmysql;
 use MailCollector;
 use Plugin;
 use Toolbox;
+use itsmng\Database\DatabaseHealthProbe;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -71,68 +71,53 @@ final class StatusChecker
      * @param bool $public_only True if only public status information should be given.
      * @return array
      */
-    public static function getDBStatus($public_only = true): array
+    public static function getDBStatus($public_only = true, ?DatabaseHealthProbe $probe = null): array
     {
         static $status = null;
 
-        if ($status === null) {
-            $status = [
-               'status' => self::STATUS_OK,
-               'master' => [
-                  'status' => self::STATUS_OK,
-               ],
-               'slaves' => [
-                  'status' => self::STATUS_NO_DATA,
-                  'servers' => []
-               ]
-            ];
-            // Check slave server connection
-            if (DBConnection::isDBSlaveActive()) {
-                $DBslave = DBConnection::getDBSlaveConf();
-                if (is_array($DBslave->dbhost)) {
-                    $hosts = $DBslave->dbhost;
-                } else {
-                    $hosts = [$DBslave->dbhost];
-                }
+        if ($probe !== null) {
+            return self::inspectDatabase($probe);
+        }
+        return $status ??= self::inspectDatabase(DatabaseHealthProbe::configured());
+    }
 
-                if (count($hosts)) {
-                    $status['slaves']['status'] = self::STATUS_OK;
-                }
-
-                foreach ($hosts as $num => $name) {
-                    $diff = DBConnection::getReplicateDelay($num);
-                    if (abs($diff) > 1000000000) {
-                        $status['slaves']['servers'][$num] = [
-                           'status'             => self::STATUS_PROBLEM,
-                           'replication_delay'  => '-1'
-                        ];
-                        $status['slaves']['status'] = self::STATUS_PROBLEM;
-                        $status['status'] = self::STATUS_PROBLEM;
-                    } elseif (abs($diff) > HOUR_TIMESTAMP) {
-                        $status['slaves']['servers'][$num] = [
-                           'status'             => self::STATUS_PROBLEM,
-                           'replication_delay'  => abs($diff)
-                        ];
-                        $status['slaves']['status'] = self::STATUS_PROBLEM;
-                        $status['status'] = self::STATUS_PROBLEM;
-                    } else {
-                        $status['slaves']['servers'][$num] = [
-                           'status'             => self::STATUS_OK,
-                           'replication_delay'  => abs($diff)
-                        ];
-                    }
-                }
-            }
-
-            // Check main server connection
-            if (!DBConnection::establishDBConnection(false, true, false)) {
-                $status['master'] = [
-                   'status' => self::STATUS_PROBLEM
+    private static function inspectDatabase(DatabaseHealthProbe $probe): array
+    {
+        $status = [
+            'status' => self::STATUS_OK,
+            'master' => ['status' => self::STATUS_OK],
+            'slaves' => ['status' => self::STATUS_NO_DATA, 'servers' => []],
+        ];
+        if ($probe->replicaPositions() !== []) {
+            $status['slaves']['status'] = self::STATUS_OK;
+        }
+        foreach ($probe->replicaPositions() as $position) {
+            $delay = $probe->replicationDelay($position);
+            if (abs($delay) > 1000000000) {
+                $status['slaves']['servers'][$position] = [
+                    'status' => self::STATUS_PROBLEM,
+                    'replication_delay' => '-1',
                 ];
+            } elseif (abs($delay) > HOUR_TIMESTAMP) {
+                $status['slaves']['servers'][$position] = [
+                    'status' => self::STATUS_PROBLEM,
+                    'replication_delay' => abs($delay),
+                ];
+            } else {
+                $status['slaves']['servers'][$position] = [
+                    'status' => self::STATUS_OK,
+                    'replication_delay' => abs($delay),
+                ];
+            }
+            if ($status['slaves']['servers'][$position]['status'] === self::STATUS_PROBLEM) {
+                $status['slaves']['status'] = self::STATUS_PROBLEM;
                 $status['status'] = self::STATUS_PROBLEM;
             }
         }
-
+        if (!$probe->masterAvailable()) {
+            $status['master']['status'] = self::STATUS_PROBLEM;
+            $status['status'] = self::STATUS_PROBLEM;
+        }
         return $status;
     }
 
