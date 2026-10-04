@@ -219,11 +219,15 @@ try {
             } finally {
                 $DB = $originalDatabase;
             }
-            verify($refused && $model->loads === $loadNumber && $snapshot() === $before,
-                'Initial and nested own preload refuse writer rebinding before adopting a foreign mutation owner');
-            verify($secondary->getDoctrineConnection()->getTransactionNestingLevel() === 0
+            verify(
+                $refused && $model->loads === $loadNumber && $snapshot() === $before,
+                'Initial and nested own preload refuse writer rebinding before adopting a foreign mutation owner'
+            );
+            verify(
+                $secondary->getDoctrineConnection()->getTransactionNestingLevel() === 0
                 && $secondary->getDoctrineConnection()->fetchAssociative('SELECT * FROM glpi_softwares WHERE id = ?', [$source]) === $beforeSource,
-                'Actual secondary writer has no adopted frame or source mutation');
+                'Actual secondary writer has no adopted frame or source mutation'
+            );
         }
         $source = $fixtures->create('glpi_softwares', ['name' => $prefix . ' writer after deletion']);
         $before = $snapshot();
@@ -241,8 +245,10 @@ try {
             $DB = $originalDatabase;
             unset($PLUGIN_HOOKS['item_delete']['software_merge_source_fixture']);
         }
-        verify($refused && $snapshot() === $before && $secondary->getDoctrineConnection()->getTransactionNestingLevel() === 0,
-            'Actual delete completion rebind is refused before follow-up update and original-owner rollback is proven');
+        verify(
+            $refused && $snapshot() === $before && $secondary->getDoctrineConnection()->getTransactionNestingLevel() === 0,
+            'Actual delete completion rebind is refused before follow-up update and original-owner rollback is proven'
+        );
     } catch (Throwable $error) {
         $secondaryFailure = $error;
         throw $error;
@@ -316,7 +322,10 @@ try {
 }
 if ($primary !== null) {
     foreach ($cleanup as $error) {
-        try { fwrite(STDERR, 'Additional fixture cleanup failure: ' . $error::class . "\n"); } catch (Throwable) { }
+        try {
+            fwrite(STDERR, 'Additional fixture cleanup failure: ' . $error::class . "\n");
+        } catch (Throwable) {
+        }
     }
     throw $primary;
 }
