@@ -136,8 +136,10 @@ try {
         if ($alternatives !== []) {
             $alternateType = $alternatives[0];
             $alternate = getItemForItemtype($alternateType);
-            verify($alternate instanceof CommonDBTM && isset(\itsmng\Database\EntityRegistry::tables()[$alternate->getTable()]),
-                'Alternate component subject is a real mapped model: ' . $kind);
+            verify(
+                $alternate instanceof CommonDBTM && isset(\itsmng\Database\EntityRegistry::tables()[$alternate->getTable()]),
+                'Alternate component subject is a real mapped model: ' . $kind
+            );
             if ((new RecordRepository(Orm::create($DB)))->find($alternate->getTable(), 'id', $assetId) === null) {
                 $fixtures->create($alternate->getTable(), ['id' => $assetId, 'name' => 'Supported component subject with the same source ID']);
             }
@@ -169,9 +171,11 @@ try {
     } catch (InvalidArgumentException $error) {
         $processorRefused = $error->getMessage() === 'Unsupported Typed item reference: Monitor';
     }
-    verify($processorRefused
+    verify(
+        $processorRefused
         && $connection->fetchAllAssociative('SELECT * FROM ' . $connection->quoteIdentifier($processorTable) . ' ORDER BY id') === $processorRowsBefore,
-        'Actual entity input refuses unsupported Processor Monitor without inserting or changing any row');
+        'Actual entity input refuses unsupported Processor Monitor without inserting or changing any row'
+    );
     verify($ids(Item_DeviceProcessor::class, 'Monitor') === [], 'Unsupported Processor source kind cannot select a valid Computer or stock lock');
     // Ancestors need not be locked themselves. Every polymorphic hop must match its kind.
     $port = $fixtures->create('glpi_networkports', ['items_id' => $assetId, 'itemtype' => 'Computer']);

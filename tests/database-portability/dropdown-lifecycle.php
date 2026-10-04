@@ -120,8 +120,10 @@ try {
         $phoneBefore = $read($table, $phoneLink);
         verify(!$repo()->isUsed('glpi_computers', $computer, 'Computer'), $table . ': a real colliding Phone subject does not count as Computer usage');
         $computerLink = $fixtures->create($table, [$ownerColumn => $owner, 'itemtype' => 'Computer', 'items_id' => $computer]);
-        verify((int)$read($table, $computerLink)[$selection['column']] === $computer,
-            $table . ': matching Computer owns the canonical association rather than only a legacy projection');
+        verify(
+            (int)$read($table, $computerLink)[$selection['column']] === $computer,
+            $table . ': matching Computer owns the canonical association rather than only a legacy projection'
+        );
         verify(!$repo()->isUsed('glpi_computers', $computer, 'Computer'), $table . ': matching model-managed children do not block generic usage');
         verify(!$repo()->isUsed('glpi_computers', $neighborComputer, 'Computer'), $table . ': a matching discriminator with another ID does not count as usage');
         $neighborLink = $fixtures->create($table, [$ownerColumn => $owner, 'itemtype' => 'Computer', 'items_id' => $neighborComputer]);
@@ -139,15 +141,21 @@ try {
         } finally {
             $connection->rollBack();
         }
-        verify($refused && $read('glpi_computers', $computer) !== null
+        verify(
+            $refused && $read('glpi_computers', $computer) !== null
             && $connection->fetchAllAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table) . ' ORDER BY id') === $rowsBefore,
-            $table . ': direct owning-target deletion is refused without changing any allocation row');
+            $table . ': direct owning-target deletion is refused without changing any allocation row'
+        );
         verify((new Computer())->delete(['id' => $computer], true), $table . ': actual Computer purge runs model-managed child cleanup');
-        verify($read('glpi_computers', $computer) === null && $read($table, $computerLink) === null,
-            $table . ': actual Computer lifecycle removes its own allocation before deleting the owning target');
-        verify($read('glpi_phones', $computer) !== null && $read($table, $phoneLink) === $phoneBefore
+        verify(
+            $read('glpi_computers', $computer) === null && $read($table, $computerLink) === null,
+            $table . ': actual Computer lifecycle removes its own allocation before deleting the owning target'
+        );
+        verify(
+            $read('glpi_phones', $computer) !== null && $read($table, $phoneLink) === $phoneBefore
             && $read('glpi_computers', $neighborComputer) !== null && $read($table, $neighborLink) === $neighborBefore,
-            $table . ': actual purge preserves colliding Phone and neighboring Computer ownership and complete link rows');
+            $table . ': actual purge preserves colliding Phone and neighboring Computer ownership and complete link rows'
+        );
     }
 
     $mail = $fixtures->create('glpi_authmails');

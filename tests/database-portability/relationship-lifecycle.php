@@ -78,29 +78,39 @@ try {
         $softwareRows[$table] = ['own' => $computerRow, 'other' => [$monitorRow, $replacementRow],
             'before' => array_map(static fn (int $id): array => $read($table, $id), [$computerRow, $monitorRow, $replacementRow])];
         $selection = EntityRegistry::discriminatedReferences($table)['items_id']['selections']['Computer'];
-        verify($selection['target'] === 'glpi_computers'
+        verify(
+            $selection['target'] === 'glpi_computers'
             && (int)$softwareRows[$table]['before'][0][$selection['column']] === $computer,
-            $table . ': Software child has a real canonical Computer owner');
+            $table . ': Software child has a real canonical Computer owner'
+        );
     }
     $selections = iterator_to_array($repo()->replacements('glpi_computers', $computer, $computer, 'Computer', $index), false);
-    verify(array_filter($selections, static fn (array $selection): bool => isset($softwareRows[$selection['table']])) === [],
-        'Both owning Software families are excluded from automatic replacement, including their generated items_id projections');
+    verify(
+        array_filter($selections, static fn (array $selection): bool => isset($softwareRows[$selection['table']])) === [],
+        'Both owning Software families are excluded from automatic replacement, including their generated items_id projections'
+    );
     $model = new Computer();
     verify($model->getFromDB($computer), 'Load computer');
     $model->input = ['_replace_by' => $replacementComputer];
     $model->cleanRelationData();
     foreach ($softwareRows as $table => $rows) {
-        verify(array_map(static fn (int $id): array => $read($table, $id), [$rows['own'], ...$rows['other']]) === $rows['before'],
-            $table . ': Public generic replacement leaves every managed link and discriminator byte-for-byte unchanged');
+        verify(
+            array_map(static fn (int $id): array => $read($table, $id), [$rows['own'], ...$rows['other']]) === $rows['before'],
+            $table . ': Public generic replacement leaves every managed link and discriminator byte-for-byte unchanged'
+        );
     }
-    verify($model->delete(['id' => $computer, '_replace_by' => $replacementComputer], true),
-        'Public Computer purge delegates Software cleanup to its actual owning lifecycle');
+    verify(
+        $model->delete(['id' => $computer, '_replace_by' => $replacementComputer], true),
+        'Public Computer purge delegates Software cleanup to its actual owning lifecycle'
+    );
     verify($read('glpi_computers', $computer) === null && $read('glpi_computers', $replacementComputer) !== null
         && $read('glpi_monitors', $computer) !== null, 'Owning purge deletes its Computer and preserves colliding Monitor and replacement Computer');
     foreach ($softwareRows as $table => $rows) {
-        verify($read($table, $rows['own']) === null
+        verify(
+            $read($table, $rows['own']) === null
             && array_map(static fn (int $id): array => $read($table, $id), $rows['other']) === array_slice($rows['before'], 1),
-            $table . ': Actual purge removes only its source child and preserves complete differently typed and destination links');
+            $table . ': Actual purge removes only its source child and preserves complete differently typed and destination links'
+        );
     }
 
     $connection = $DB->getDoctrineConnection();
