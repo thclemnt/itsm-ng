@@ -399,7 +399,11 @@ try {
         if ($primaryError === null) {
             throw $keyCleanupErrors[0];
         }
-        fwrite(STDERR, 'Additional owned key cleanup failure; original contract failure retained.' . "\n");
+        try {
+            fwrite(STDERR, 'Additional owned key cleanup failure; original contract failure retained.' . "\n");
+        } catch (Throwable) {
+            // Reporting must not replace the original contract failure.
+        }
     }
 }
 echo $DB->getProvider() . ": canonical CLI/web upgrades, authorization, readiness, preview, retry, prerequisites and customer-data preservation passed.\n";
