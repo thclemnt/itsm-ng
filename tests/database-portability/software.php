@@ -235,6 +235,9 @@ try {
     $computerLicense = $fixtures->create('glpi_items_softwarelicenses', ['itemtype' => 'Computer', 'items_id' => $otherAsset, 'softwarelicenses_id' => $transferTemplate]);
     $monitorLicense = $fixtures->create('glpi_items_softwarelicenses', ['itemtype' => 'Monitor', 'items_id' => $overlappingMonitor, 'softwarelicenses_id' => $transferTemplate]);
     $transferInstallations->options = ['keep_software' => 1];
+    verify($transferInstallations->to === -1
+        && \itsmng\Domain\SoftwareTransferSelection::selected(['Computer' => [$otherAsset]])->destinationRoots() === [], 'Independent version retarget selects its actual subject graph without inventing an entity destination');
+    verify(\itsmng\Domain\SoftwareTransferSelection::toEntity(['Computer' => [$otherAsset]], 0)->destinationRoots() === [0], 'An explicit root-entity transfer retains its actual root destination');
     $transferInstallations->noneedtobe_transfer['SoftwareVersion'] = [900000000 => $installationExcluded];
     $transferInstallations->versions = [$installationSource => $installationTarget, $installationRejected => -1];
     $transferLifecycleRows = static fn (string $table): array => (new RecordRepository(Orm::create($DB)))->matching($table, [], 'id ASC');

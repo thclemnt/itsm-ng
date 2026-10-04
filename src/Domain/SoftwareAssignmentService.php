@@ -146,12 +146,12 @@ final class SoftwareAssignmentService
     }
 
     /** Establish selected source/destination ancestry before transfer graph locks. */
-    public function withTransferHierarchy(array $items, int $destination, callable $operation): mixed
+    public function withTransferHierarchy(SoftwareTransferSelection $selection, callable $operation): mixed
     {
         $subjects = [];
         $licenses = [];
         $software = [];
-        foreach ($items as $kind => $ids) {
+        foreach ($selection->items as $kind => $ids) {
             foreach ($ids as $id) {
                 if ($kind === \Software::class) {
                     $software[] = (int)$id;
@@ -175,7 +175,7 @@ final class SoftwareAssignmentService
                 }
             }
         }
-        $roots = $this->assignments->hierarchyRoots($subjects, $licenses, $software, [$destination], includeInstallations: true);
+        $roots = $this->assignments->hierarchyRoots($subjects, $licenses, $software, $selection->destinationRoots(), includeInstallations: true);
         return SoftwareHierarchyUnit::run($this->database, $roots, $operation);
     }
 

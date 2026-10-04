@@ -143,7 +143,7 @@ class Transfer extends CommonDBTM
             $this->inittype = 0;
             $this->performMoveItems($items, (int)$to, $options);
             return true;
-        }, $items, (int)$to);
+        }, \itsmng\Domain\SoftwareTransferSelection::toEntity($items, (int)$to));
     }
 
     /** The coordinator includes simulation cleanup and every selected mutation. */
@@ -269,7 +269,7 @@ class Transfer extends CommonDBTM
 
 
     /** Recursive transfers join the current operation and propagate refusals. */
-    private function runTransfer(callable $operation, array $items = [], ?int $destination = null)
+    private function runTransfer(callable $operation, \itsmng\Domain\SoftwareTransferSelection $selection)
     {
         global $DB;
         try {
@@ -293,8 +293,7 @@ class Transfer extends CommonDBTM
         try {
             return $this->transferModels->observe($DB->getDoctrineConnection(), fn () => NotificationSetting::withoutNotifications(
                 fn () => $this->transferCoordinator->run(fn () => (new \itsmng\Domain\SoftwareAssignmentService($DB))->withTransferHierarchy(
-                    $items,
-                    $destination ?? (int)$this->to,
+                    $selection,
                     $operation
                 ))
             ));
@@ -1181,7 +1180,7 @@ class Transfer extends CommonDBTM
     **/
     public function transferItem($itemtype, $ID, $newID)
     {
-        return $this->runTransfer(fn () => $this->performTransferItem($itemtype, $ID, $newID), [$itemtype => [$ID, $newID]]);
+        return $this->runTransfer(fn () => $this->performTransferItem($itemtype, $ID, $newID), \itsmng\Domain\SoftwareTransferSelection::toEntity([$itemtype => [$ID, $newID]], (int)$this->to));
     }
 
     private function performTransferItem($itemtype, $ID, $newID): bool
@@ -1689,6 +1688,9 @@ class Transfer extends CommonDBTM
                     $this->checkpointTransferModel($vers);
                     unset($vers->fields['id']);
                     $input                 = $vers->fields;
+                    // Software owns these values; the ordinary child preparation
+                    // must derive them from the selected destination parent.
+                    unset($input['entities_id'], $input['is_recursive']);
                     $vers->fields = [];
                     // entities_id and is_recursive from new software are set in prepareInputForAdd
                     $input['softwares_id'] = $newsoftID;
@@ -1765,7 +1767,9 @@ class Transfer extends CommonDBTM
                 }
             }
             return true;
-        }, [$itemtype => [$ID]]);
+        }, $this->to < 0
+            ? \itsmng\Domain\SoftwareTransferSelection::selected([$itemtype => [$ID]])
+            : \itsmng\Domain\SoftwareTransferSelection::toEntity([$itemtype => [$ID]], (int)$this->to));
     }
 
 
@@ -1790,7 +1794,7 @@ class Transfer extends CommonDBTM
                 }
             );
             return true;
-        }, [Item_SoftwareLicense::class => [$ID]]);
+        }, \itsmng\Domain\SoftwareTransferSelection::toEntity([Item_SoftwareLicense::class => [$ID]], (int)$this->to));
     }
 
 

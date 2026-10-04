@@ -706,10 +706,15 @@ try {
             $heldEarlier = null;
             $heldFinance = null;
             $heldCopies = [];
+            $copiedVersionScopes = [];
             $sourceCopyStates = [Software::class => ['fields' => $read('glpi_softwares', $software)], SoftwareVersion::class => ['fields' => $read('glpi_softwareversions', $version)]];
             foreach ([Software::class, SoftwareVersion::class, SoftwareLicense::class] as $copyClass) {
-                $PLUGIN_HOOKS['item_add']['software_assignment_atomicity_fixture'][$copyClass] = static function (CommonDBTM $item) use (&$heldCopies): void {
+                $PLUGIN_HOOKS['item_add']['software_assignment_atomicity_fixture'][$copyClass] = static function (CommonDBTM $item) use (&$heldCopies, &$copiedVersionScopes, $read): void {
                     $heldCopies[] = $item;
+                    if ($item instanceof SoftwareVersion) {
+                        $parent = $read('glpi_softwares', (int)$item->fields['softwares_id']);
+                        $copiedVersionScopes[] = [$item->fields['entities_id'], $item->fields['is_recursive'], $parent['entities_id'], $parent['is_recursive']];
+                    }
                 };
             }
             $PLUGIN_HOOKS['item_update']['software_assignment_atomicity_fixture'][Computer::class] = static function (Computer $item) use ($earlier, &$heldEarlier): void {
@@ -757,6 +762,9 @@ try {
                     $transfer->moveItems(['Computer' => [$earlier, $asset]], $destination, ['keep_software' => $case !== 'discard purge', 'keep_infocom' => 1, 'keep_history' => 1]) === false && $vetoes === 1,
                     'Actual no-cache ' . $context . ' moveItems propagates required ' . $case . ' veto'
                 );
+                if ($case === 'fresh copies then assignment update') {
+                    verify(count($copiedVersionScopes) === 1 && $copiedVersionScopes[0] === [$destination, 0, $destination, 0], 'Actual copied Version add hook observes the current destination Software scope before the later allocation veto');
+                }
                 verify($takeSnapshot() === $before, 'Late refusal restores earlier asset/Infocom, actual software copies, assignments, quantity, audit and queue');
                 verify($heldEarlier instanceof Computer && $heldEarlier->fields === $before[0], 'Operation journal restores the earlier successful asset retained by the real completion hook');
                 verify($heldFinance instanceof Infocom && $heldFinance->fields === $before[3], 'Operation journal restores actual earlier financial model work');
