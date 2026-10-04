@@ -471,6 +471,14 @@ abstract class CommonDBRelation extends CommonDBConnexity
                 static::$items_id_1,
                 $item1
             );
+            // Fixed endpoints need their global policy as well as their loaded-item policy.
+            // Dynamic endpoints and DONT_CHECK roles retain canConnexity's existing semantics.
+            $can1 = $can1 && static::canConnexity(
+                $methodNotItem,
+                static::$checkItem_1_Rights,
+                static::$itemtype_1,
+                static::$items_id_1
+            );
             if ($OneWriteIsEnough) {
                 $view1 = $this->canConnexityItem(
                     $method,
@@ -479,6 +487,12 @@ abstract class CommonDBRelation extends CommonDBConnexity
                     static::$itemtype_1,
                     static::$items_id_1,
                     $item1
+                );
+                $view1 = $view1 && static::canConnexity(
+                    'canView',
+                    static::$checkItem_1_Rights,
+                    static::$itemtype_1,
+                    static::$items_id_1
                 );
             }
         } catch (CommonDBConnexityItemNotFound $e) {
@@ -500,6 +514,14 @@ abstract class CommonDBRelation extends CommonDBConnexity
                 static::$items_id_2,
                 $item2
             );
+            // Fixed endpoints need their global policy as well as their loaded-item policy.
+            // Dynamic endpoints and DONT_CHECK roles retain canConnexity's existing semantics.
+            $can2 = $can2 && static::canConnexity(
+                $methodNotItem,
+                static::$checkItem_2_Rights,
+                static::$itemtype_2,
+                static::$items_id_2
+            );
             if ($OneWriteIsEnough) {
                 $view2 = $this->canConnexityItem(
                     $method,
@@ -508,6 +530,12 @@ abstract class CommonDBRelation extends CommonDBConnexity
                     static::$itemtype_2,
                     static::$items_id_2,
                     $item2
+                );
+                $view2 = $view2 && static::canConnexity(
+                    'canView',
+                    static::$checkItem_2_Rights,
+                    static::$itemtype_2,
+                    static::$items_id_2
                 );
             }
         } catch (CommonDBConnexityItemNotFound $e) {

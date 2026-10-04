@@ -220,9 +220,10 @@ try {
         'Actual recursive subject ancestor is accepted in reverse'
     );
     $_SESSION['glpiactiveprofile']['monitor'] = READ;
-    $_SESSION['glpiactiveprofile']['software'] = READ | UPDATE;
-    verify((new Item_SoftwareLicense())->can(-1, CREATE, $input), 'Writable licence and visible owner suffice');
     $_SESSION['glpiactiveprofile']['software'] = READ;
+    $_SESSION['glpiactiveprofile']['license'] = READ | UPDATE;
+    verify((new Item_SoftwareLicense())->can(-1, CREATE, $input), 'Writable licence and visible owner suffice');
+    $_SESSION['glpiactiveprofile']['license'] = READ;
     verify(!(new Item_SoftwareLicense())->can(-1, CREATE, $input), 'Two read-only ends cannot create an assignment');
     $_SESSION['glpiactiveprofile']['monitor'] = READ | UPDATE;
     verify((new Item_SoftwareLicense())->can(-1, CREATE, $input), 'Writable owner and visible licence preserve inherited public policy');
