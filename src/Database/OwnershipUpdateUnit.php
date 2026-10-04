@@ -23,45 +23,81 @@ final class OwnershipUpdateUnit
     {
         $database->assertManagedTransaction();
         $connection = $database->getDoctrineConnection();
-        $level = $connection->getTransactionNestingLevel();
+        $frame = null;
+        $rolledBack = false;
+        $rollbackAttempted = false;
         $journal = new LifecycleModelJournal();
         // Keep attempted input for diagnostics, without retaining pending writes.
-        $journal->remember($model, ['fields' => $storedFields, 'input' => $model->input, 'updates' => [], 'oldvalues' => []]);
+        $checkpoint = LifecycleModelJournal::state($model);
+        $checkpoint['fields'] = $storedFields;
+        $checkpoint['updates'] = [];
+        $checkpoint['oldvalues'] = [];
+        $journal->remember($model, $checkpoint);
         $session = $_SESSION;
         $delivery = LifecycleNotifications::begin($connection);
         $accepted = false;
+        $failure = null;
+        $notifications = [];
         try {
-            $connection->beginTransaction();
-            $accepted = $journal->observe($connection, $operation);
-            if ($connection->getTransactionNestingLevel() !== $level + 1) {
-                throw new \LogicException('An ownership update hook changed transaction ownership');
-            }
-            if ($accepted) {
-                $connection->commit();
+            $frame = OwnedMutationFrame::begin($connection);
+            if ($journal->observe($connection, $operation)) {
+                $frame->commit();
+                $accepted = true;
             } else {
-                $connection->rollBack();
+                $rollbackAttempted = true;
+                $frame->rollBack();
+                $rolledBack = true;
             }
-        } catch (\Throwable $error) {
-            $accepted = false;
-            while ($connection->getTransactionNestingLevel() > $level) {
-                $connection->rollBack();
-            }
-            throw $error;
-        } finally {
-            $notifications = $delivery->finish($accepted);
-            if (!$accepted) {
-                $journal->restore();
-                $feedback = $_SESSION['MESSAGE_AFTER_REDIRECT'] ?? [];
-                $_SESSION = $session;
-                foreach ([WARNING, ERROR] as $type) {
-                    foreach (array_diff($feedback[$type] ?? [], $session['MESSAGE_AFTER_REDIRECT'][$type] ?? []) as $message) {
-                        $_SESSION['MESSAGE_AFTER_REDIRECT'][$type][] = $message;
-                    }
+        } catch (\Throwable $primary) {
+            $failure = $primary;
+            if ($frame !== null && !$rollbackAttempted) {
+                try {
+                    $frame->rollBack();
+                    $rolledBack = true;
+                } catch (\Throwable $cleanup) {
+                    $failure = new MutationRollbackFailure($primary, $cleanup);
                 }
             }
+        } finally {
+            try {
+                $notifications = $delivery->finish($accepted);
+            } catch (\Throwable $cleanup) {
+                $failure = self::preserveFailure($failure, $cleanup);
+            }
+            // Only a completed rollback of our exact frame authorizes a rewind.
+            if (!$accepted && $rolledBack) {
+                try {
+                    $journal->restore();
+                } catch (\Throwable $cleanup) {
+                    $failure = self::preserveFailure($failure, $cleanup);
+                }
+                try {
+                    $feedback = $_SESSION['MESSAGE_AFTER_REDIRECT'] ?? [];
+                    $_SESSION = $session;
+                    foreach ([WARNING, ERROR] as $type) {
+                        foreach (array_diff($feedback[$type] ?? [], $session['MESSAGE_AFTER_REDIRECT'][$type] ?? []) as $message) {
+                            $_SESSION['MESSAGE_AFTER_REDIRECT'][$type][] = $message;
+                        }
+                    }
+                } catch (\Throwable $cleanup) {
+                    $failure = self::preserveFailure($failure, $cleanup);
+                }
+            }
+        }
+        if ($failure !== null) {
+            throw $failure;
         }
         // A transport failure after physical commit cannot rewind persisted models.
         LifecycleNotifications::deliver($notifications);
         return $accepted;
+    }
+
+    private static function preserveFailure(?\Throwable $primary, \Throwable $cleanup): \Throwable
+    {
+        return $primary === null ? $cleanup : new MutationCleanupFailure(
+            $primary,
+            $cleanup,
+            $primary instanceof MutationCleanupFailure && $primary->rollbackUnproven
+        );
     }
 }
