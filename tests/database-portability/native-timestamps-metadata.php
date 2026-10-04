@@ -54,7 +54,7 @@ foreach ([new MySQLPlatform(), new MariaDBPlatform(), new PostgreSQLPlatform()] 
             foreach ($properties as $property) {
                 $field = $metadata->getFieldMapping($property);
                 $column = $mapped->getColumn($field->columnName);
-                verify($field->type === Types::DATETIMETZ_MUTABLE && !($field->version ?? false), 'Existing datetime hydration survives without an optimistic version field');
+                verify($field->type === Types::DATETIMETZ_MUTABLE && !$metadata->isVersioned && $metadata->versionField === null, 'Existing datetime hydration survives without an optimistic version field');
                 if ($class === ObjectLock::class) {
                     verify(
                         $field->generated === Doctrine\ORM\Mapping\ClassMetadata::GENERATED_ALWAYS && !$field->notInsertable && !$field->notUpdatable

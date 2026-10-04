@@ -147,6 +147,17 @@ try {
         && $managedLock->date_mod->format('Y-m-d H:i:s') === substr($connection->fetchOne('SELECT date_mod FROM glpi_objectlocks WHERE id = ?', [$lock]), 0, 19),
         'The actual lock update refreshes the retained managed timestamp after native automatic touch'
     );
+    $unit = $lockEm->getUnitOfWork();
+    verify(($unit->getOriginalEntityData($managedLock)['date_mod'] ?? null) === $managedLock->date_mod, 'Successful native clock readback owns the same managed dirty-check snapshot');
+    $unit->computeChangeSets();
+    verify($unit->getEntityChangeSet($managedLock) === [], 'No-op managed lock schedules no generated timestamp or unrelated write');
+    $clockBeforeNoop = $managedLock->date_mod->format('Y-m-d H:i:s');
+    $lockEm->flush();
+    verify(
+        $managedLock->date_mod->format('Y-m-d H:i:s') === $clockBeforeNoop
+        && substr($connection->fetchOne('SELECT date_mod FROM glpi_objectlocks WHERE id = ?', [$lock]), 0, 19) === $clockBeforeNoop,
+        'No-op flush preserves the managed and actually stored lock clock'
+    );
     $fresh = Orm::create($DB)->find(MappedObjectLock::class, $lock);
     verify(
         $fresh->date_mod instanceof DateTimeInterface && $fresh->date_mod->format('Y-m-d H:i:s') !== $old
@@ -157,6 +168,13 @@ try {
     verify($managedLock->date_mod->format('Y-m-d H:i:s') === $explicit, 'The retained managed lock preserves an explicit distinct writable timestamp');
     $row = (new RecordRepository(Orm::create($DB)))->find('glpi_objectlocks', 'id', $lock);
     verify(substr($row['date_mod'], 0, 19) === $explicit && (int)$row['users_id'] === $first, 'Explicit ORM lock timestamp and ownership survive the native touch policy');
+    $requestedColumns = (new RecordWriter($lockEm))->update('glpi_objectlocks', $lock, ['users_id' => $second]);
+    verify(in_array('users_id', $requestedColumns, true) && !in_array('date_mod', $requestedColumns, true), 'The next ordinary owning update does not resend a generated clock as an explicit request');
+    verify(
+        $managedLock->date_mod->format('Y-m-d H:i:s') !== $explicit
+        && $managedLock->date_mod->format('Y-m-d H:i:s') === substr($connection->fetchOne('SELECT date_mod FROM glpi_objectlocks WHERE id = ?', [$lock]), 0, 19),
+        'A second same-unit ordinary update still touches and refreshes the actual lock clock'
+    );
     $scope->assertActive();
     verify($connection->getTransactionNestingLevel() === 1, 'Only the original owned temporal frame may roll back');
     $connection->rollBack();
