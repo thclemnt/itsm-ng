@@ -135,12 +135,14 @@ try {
     $computer = $fixtures->create('glpi_computers', ['name' => 'Temporal lock subject']);
     $first = $fixtures->create('glpi_users', ['name' => 'Temporal first locker']);
     $second = $fixtures->create('glpi_users', ['name' => 'Temporal second locker']);
-    $lock = $fixtures->create('glpi_objectlocks', ['itemtype' => 'Computer', 'subject_computers_id' => $computer, 'users_id' => $first, 'date_mod' => new DateTimeImmutable($old, new DateTimeZone('UTC'))]);
+    $lockEm = Orm::create($DB);
+    $lock = (new RecordWriter($lockEm))->insert('glpi_objectlocks', ['itemtype' => 'Computer', 'subject_computers_id' => $computer, 'users_id' => $first, 'date_mod' => new DateTimeImmutable($old, new DateTimeZone('UTC'))]);
+    $managedLock = $lockEm->find(MappedObjectLock::class, $lock);
+    verify($lock > 0 && $managedLock->date_mod->format('Y-m-d H:i:s') === $old, 'Actual ORM lock insertion preserves its supplied old timestamp');
+    verify(($lockEm->getUnitOfWork()->getOriginalEntityData($managedLock)['date_mod'] ?? null) === $managedLock->date_mod, 'Successful ORM lock insertion retains its native clock readback in the original snapshot');
     $cutoff = new DateTimeImmutable('2002-01-01 00:00:00', new DateTimeZone('UTC'));
     $expired = static fn (): array => array_map(static fn ($row): int => (int)$row['id'], (new ObjectLockRepository(Orm::create($DB)))->expired($cutoff));
     verify(in_array($lock, $expired(), true), 'Actual lock expiry repository consumes the explicitly stored old instant');
-    $lockEm = Orm::create($DB);
-    $managedLock = $lockEm->find(MappedObjectLock::class, $lock);
     (new RecordWriter($lockEm))->update('glpi_objectlocks', $lock, ['users_id' => $second]);
     verify(
         $managedLock->date_mod->format('Y-m-d H:i:s') !== $old
