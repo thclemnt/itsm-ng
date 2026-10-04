@@ -1262,11 +1262,41 @@ class AuthLDAP extends DbTestCase
         unset($dup['date_creation']);
         unset($dup['date_mod']);
         $aid = $dup['auths_id'];
-        $dup['auths_id'] = $aid + 1;
+
+        // The duplicate must own a real different directory. A copied row also
+        // contains the canonical source, which must agree with auths_id.
+        $otherDirectory = new \AuthLDAP();
+        $otherId = (int)$otherDirectory->add([
+            'name' => 'Duplicate DN directory',
+            'is_active' => 0,
+            'is_default' => 0,
+        ]);
+        $this->integer($otherId)->isGreaterThan(0)->isNotEqualTo($aid);
+        $this->integer($dup['authldaps_id'])->isIdenticalTo($aid);
+
+        $contradictory = $dup;
+        $contradictory['auths_id'] = $otherId;
+        $this->exception(
+            static function () use ($contradictory) {
+                (new \User())->add($contradictory);
+            }
+        )->isInstanceOf(\InvalidArgumentException::class)
+            ->hasMessage('Legacy and canonical authentication servers disagree');
+        $this->boolean(
+            (new \User())->getFromDBbyNameAndAuth($dup['name'], \Auth::LDAP, $otherId)
+        )->isFalse();
+
+        $dup['auths_id'] = $dup['authldaps_id'] = $otherId;
+        $duplicate = new \User();
 
         $this->integer(
-            (int)$user->add($dup)
+            (int)$duplicate->add($dup)
         )->isGreaterThan(0);
+        $this->boolean($duplicate->getFromDB($duplicate->getID()))->isTrue();
+        $this->array($duplicate->fields)
+            ->integer['auths_id']->isIdenticalTo($otherId)
+            ->integer['authldaps_id']->isIdenticalTo($otherId)
+            ->string['user_dn']->isIdenticalTo($dup['user_dn']);
 
         $auth = $this->login('brazil6', 'password', false);
         $this->array($auth->user->fields)
