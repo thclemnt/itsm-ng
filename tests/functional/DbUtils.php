@@ -697,75 +697,79 @@ class DbUtils extends DbTestCase
      * Run getAncestorsOf tests
      *
      * @param boolean $cache Is cache enabled?
-     * @param boolean $hit   Do we expect a cache hit? (ie. data already exists)
      *
      * @return void
      */
-    private function runGetAncestorsOf($cache = false, $hit = false)
+    private function runGetAncestorsOf($cache = false)
     {
-        global $GLPI_CACHE;
+        global $DB, $GLPI_CACHE;
 
         $ent0 = getItemByTypeName('Entity', '_test_root_entity', true);
         $ent1 = getItemByTypeName('Entity', '_test_child_1', true);
         $ent2 = getItemByTypeName('Entity', '_test_child_2', true);
 
-        //Cache tests:
-        //- if $cache === 0; we do not expect anything,
-        //- if $cache === 1; we expect cache to be empty before call, and populated after
-        //- if $hit   === 1; we expect cache to be populated
+        // The caller owns an uncommitted tree; cache-enabled reads must not publish it.
 
         $ckey_ent0 = 'ancestors_cache_glpi_entities_' . $ent0;
         $ckey_ent1 = 'ancestors_cache_glpi_entities_' . $ent1;
         $ckey_ent2 = 'ancestors_cache_glpi_entities_' . $ent2;
 
+        $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
+
         //test on ent0
         $expected = [0 => 0];
-        if ($cache === true && $hit === false) {
-            $this->boolean($GLPI_CACHE->has($ckey_ent0))->isFalse();
-        } elseif ($cache === true && $hit === true) {
-            $this->array($GLPI_CACHE->get($ckey_ent0))->isIdenticalTo($expected);
-        }
 
+        if ($cache === true) {
+            $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
+            $this->boolean(\Toolbox::useCache())->isTrue();
+            $GLPI_CACHE->set($ckey_ent0, [$ent2 => $ent2]);
+            $this->boolean($GLPI_CACHE->has($ckey_ent0))->isTrue();
+            $this->array($GLPI_CACHE->get($ckey_ent0))->isIdenticalTo([$ent2 => $ent2]);
+        }
         $ancestors = getAncestorsOf('glpi_entities', $ent0);
         $this->array($ancestors)->isIdenticalTo($expected);
 
-        if ($cache === true && $hit === false) {
-            $this->array($GLPI_CACHE->get($ckey_ent0))->isIdenticalTo($expected);
+        if ($cache === true) {
+            $this->boolean($GLPI_CACHE->has($ckey_ent0))->isFalse();
         }
 
         //test on ent1
         $expected = [0 => 0, 1 => $ent0];
-        if ($cache === true && $hit === false) {
-            $this->boolean($GLPI_CACHE->has($ckey_ent1))->isFalse();
-        } elseif ($cache === true && $hit === true) {
-            $this->array($GLPI_CACHE->get($ckey_ent1))->isIdenticalTo($expected);
-        }
 
+        if ($cache === true) {
+            $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
+            $this->boolean(\Toolbox::useCache())->isTrue();
+            $GLPI_CACHE->set($ckey_ent1, [$ent2 => $ent2]);
+            $this->boolean($GLPI_CACHE->has($ckey_ent1))->isTrue();
+            $this->array($GLPI_CACHE->get($ckey_ent1))->isIdenticalTo([$ent2 => $ent2]);
+        }
         $ancestors = getAncestorsOf('glpi_entities', $ent1);
         $this->array($ancestors)->isIdenticalTo($expected);
 
-        if ($cache === true && $hit === false) {
-            $this->array($GLPI_CACHE->get($ckey_ent1))->isIdenticalTo($expected);
+        if ($cache === true) {
+            $this->boolean($GLPI_CACHE->has($ckey_ent1))->isFalse();
         }
 
         //test on ent2
         $expected = [0 => 0, 1 => $ent0];
-        if ($cache === true && $hit === false) {
-            $this->boolean($GLPI_CACHE->has($ckey_ent2))->isFalse();
-        } elseif ($cache === true && $hit === true) {
-            $this->array($GLPI_CACHE->get($ckey_ent2))->isIdenticalTo($expected);
-        }
 
+        if ($cache === true) {
+            $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
+            $this->boolean(\Toolbox::useCache())->isTrue();
+            $GLPI_CACHE->set($ckey_ent2, [$ent2 => $ent2]);
+            $this->boolean($GLPI_CACHE->has($ckey_ent2))->isTrue();
+            $this->array($GLPI_CACHE->get($ckey_ent2))->isIdenticalTo([$ent2 => $ent2]);
+        }
         $ancestors = getAncestorsOf('glpi_entities', $ent2);
         $this->array($ancestors)->isIdenticalTo($expected);
 
-        if ($cache === true && $hit === false) {
-            $this->array($GLPI_CACHE->get($ckey_ent2))->isIdenticalTo($expected);
+        if ($cache === true) {
+            $this->boolean($GLPI_CACHE->has($ckey_ent2))->isFalse();
         }
 
         //test with new sub entity
         //Cache tests:
-        //APCu cache is updated on entity creation; so even if we do not expect $hit; we got it.
+        // Public creation in this caller frame must not publish tentative edges.
         $new_id = getItemByTypeName('Entity', 'Sub child entity', true);
         if (!$new_id) {
             $entity = new \Entity();
@@ -779,14 +783,21 @@ class DbUtils extends DbTestCase
 
         $expected = [0 => 0, $ent0 => $ent0, $ent1 => $ent1];
         if ($cache === true) {
-            $this->array($GLPI_CACHE->get($ckey_new_id))->isIdenticalTo($expected);
+            $this->boolean($GLPI_CACHE->has($ckey_new_id))->isFalse();
         }
 
+        if ($cache === true) {
+            $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
+            $this->boolean(\Toolbox::useCache())->isTrue();
+            $GLPI_CACHE->set($ckey_new_id, [$ent2 => $ent2]);
+            $this->boolean($GLPI_CACHE->has($ckey_new_id))->isTrue();
+            $this->array($GLPI_CACHE->get($ckey_new_id))->isIdenticalTo([$ent2 => $ent2]);
+        }
         $ancestors = getAncestorsOf('glpi_entities', $new_id);
         $this->array($ancestors)->isIdenticalTo($expected);
 
-        if ($cache === true && $hit === false) {
-            $this->array($GLPI_CACHE->get($ckey_new_id))->isIdenticalTo($expected);
+        if ($cache === true) {
+            $this->boolean($GLPI_CACHE->has($ckey_new_id))->isFalse();
         }
 
         //test with another new sub entity
@@ -803,30 +814,39 @@ class DbUtils extends DbTestCase
 
         $expected = [0 => 0, $ent0 => $ent0, $ent2 => $ent2];
         if ($cache === true) {
-            $this->array($GLPI_CACHE->get($ckey_new_id2))->isIdenticalTo($expected);
+            $this->boolean($GLPI_CACHE->has($ckey_new_id2))->isFalse();
         }
 
+        if ($cache === true) {
+            $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
+            $this->boolean(\Toolbox::useCache())->isTrue();
+            $GLPI_CACHE->set($ckey_new_id2, [$ent2 => $ent2]);
+            $this->boolean($GLPI_CACHE->has($ckey_new_id2))->isTrue();
+            $this->array($GLPI_CACHE->get($ckey_new_id2))->isIdenticalTo([$ent2 => $ent2]);
+        }
         $ancestors = getAncestorsOf('glpi_entities', $new_id2);
         $this->array($ancestors)->isIdenticalTo($expected);
 
-        if ($cache === true && $hit === false) {
-            $this->array($GLPI_CACHE->get($ckey_new_id2))->isIdenticalTo($expected);
+        if ($cache === true) {
+            $this->boolean($GLPI_CACHE->has($ckey_new_id2))->isFalse();
         }
 
         //test on multiple entities
         $expected = [0 => 0, $ent0 => $ent0, $ent1 => $ent1, $ent2 => $ent2];
         $ckey_new_all = 'ancestors_cache_glpi_entities_' . md5($new_id . '|' . $new_id2);
-        if ($cache === true && $hit === false) {
-            $this->boolean($GLPI_CACHE->has($ckey_new_all))->isFalse();
-        } elseif ($cache === true && $hit === true) {
-            $this->array($GLPI_CACHE->get($ckey_new_all))->isIdenticalTo($expected);
-        }
 
+        if ($cache === true) {
+            $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
+            $this->boolean(\Toolbox::useCache())->isTrue();
+            $GLPI_CACHE->set($ckey_new_all, [$ent2 => $ent2]);
+            $this->boolean($GLPI_CACHE->has($ckey_new_all))->isTrue();
+            $this->array($GLPI_CACHE->get($ckey_new_all))->isIdenticalTo([$ent2 => $ent2]);
+        }
         $ancestors = getAncestorsOf('glpi_entities', [$new_id, $new_id2]);
         $this->array($ancestors)->isIdenticalTo($expected);
 
-        if ($cache === true && $hit === false) {
-            $this->array($GLPI_CACHE->get($ckey_new_all))->isIdenticalTo($expected);
+        if ($cache === true) {
+            $this->boolean($GLPI_CACHE->has($ckey_new_all))->isFalse();
         }
     }
 
@@ -844,8 +864,8 @@ class DbUtils extends DbTestCase
                 [
                  'NOT' => ['ancestors_cache' => null]]
             )
-        )->isGreaterThan(0);
-        //run a second time: db cache must be set
+        )->isIdenticalTo(0);
+        // Repeated private reads still must not publish a durable cache.
         $this->runGetAncestorsOf();
     }
 
@@ -857,13 +877,13 @@ class DbUtils extends DbTestCase
         $this->login();
 
         global $GLPI_CACHE;
-        $GLPI_CACHE->clear(); // login produce cache, must be cleared
+        $GLPI_CACHE->clear(); // Keep the controlled external cache fixture initially empty.
 
         //run with cache
-        //first run: no cache hit expected
+        // Cold and repeated reads both remain private to the caller frame.
         $this->runGetAncestorsOf(true);
-        //second run: cache hit expected
-        $this->runGetAncestorsOf(true, true);
+        // Repeated private reads still must not publish shared cache.
+        $this->runGetAncestorsOf(true);
     }
 
 
@@ -871,76 +891,80 @@ class DbUtils extends DbTestCase
      * Run getSonsOf tests
      *
      * @param boolean $cache Is cache enabled?
-     * @param boolean $hit   Do we expect a cache hit? (ie. data already exists)
      *
      * @return void
      */
-    private function runGetSonsOf($cache = false, $hit = false)
+    private function runGetSonsOf($cache = false)
     {
-        global $GLPI_CACHE;
+        global $DB, $GLPI_CACHE;
 
         $ent0 = getItemByTypeName('Entity', '_test_root_entity', true);
         $ent1 = getItemByTypeName('Entity', '_test_child_1', true);
         $ent2 = getItemByTypeName('Entity', '_test_child_2', true);
         $this->newTestedInstance();
 
-        //Cache tests:
-        //- if $cache === 0; we do not expect anything,
-        //- if $cache === 1; we expect cache to be empty before call, and populated after
-        //- if $hit   === 1; we expect cache to be populated
+        // The caller owns an uncommitted tree; cache-enabled reads must not publish it.
 
         $ckey_ent0 = 'sons_cache_glpi_entities_' . $ent0;
         $ckey_ent1 = 'sons_cache_glpi_entities_' . $ent1;
         $ckey_ent2 = 'sons_cache_glpi_entities_' . $ent2;
 
+        $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
+
         //test on ent0
         $expected = [$ent0 => $ent0, $ent1 => $ent1, $ent2 => $ent2];
-        if ($cache === true && $hit === false) {
-            $this->boolean($GLPI_CACHE->has($ckey_ent0))->isFalse();
-        } elseif ($cache === true && $hit === true) {
-            $this->array($GLPI_CACHE->get($ckey_ent0))->isIdenticalTo($expected);
-        }
 
+        if ($cache === true) {
+            $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
+            $this->boolean(\Toolbox::useCache())->isTrue();
+            $GLPI_CACHE->set($ckey_ent0, [$ent2 => $ent2]);
+            $this->boolean($GLPI_CACHE->has($ckey_ent0))->isTrue();
+            $this->array($GLPI_CACHE->get($ckey_ent0))->isIdenticalTo([$ent2 => $ent2]);
+        }
         $sons = $this->testedInstance->getSonsOf('glpi_entities', $ent0);
         $this->array($sons)->isIdenticalTo($expected);
 
-        if ($cache === true && $hit === false) {
-            $this->array($GLPI_CACHE->get($ckey_ent0))->isIdenticalTo($expected);
+        if ($cache === true) {
+            $this->boolean($GLPI_CACHE->has($ckey_ent0))->isFalse();
         }
 
         //test on ent1
         $expected = [$ent1 => $ent1];
-        if ($cache === true && $hit === false) {
-            $this->boolean($GLPI_CACHE->has($ckey_ent1))->isFalse();
-        } elseif ($cache === true && $hit === true) {
-            $this->array($GLPI_CACHE->get($ckey_ent1))->isIdenticalTo($expected);
-        }
 
+        if ($cache === true) {
+            $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
+            $this->boolean(\Toolbox::useCache())->isTrue();
+            $GLPI_CACHE->set($ckey_ent1, [$ent2 => $ent2]);
+            $this->boolean($GLPI_CACHE->has($ckey_ent1))->isTrue();
+            $this->array($GLPI_CACHE->get($ckey_ent1))->isIdenticalTo([$ent2 => $ent2]);
+        }
         $sons = $this->testedInstance->getSonsOf('glpi_entities', $ent1);
         $this->array($sons)->isIdenticalTo($expected);
 
-        if ($cache === true && $hit === false) {
-            $this->array($GLPI_CACHE->get($ckey_ent1))->isIdenticalTo($expected);
+        if ($cache === true) {
+            $this->boolean($GLPI_CACHE->has($ckey_ent1))->isFalse();
         }
 
         //test on ent2
         $expected = [$ent2 => $ent2];
-        if ($cache === true && $hit === false) {
-            $this->boolean($GLPI_CACHE->has($ckey_ent2))->isFalse();
-        } elseif ($cache === true && $hit === true) {
-            $this->array($GLPI_CACHE->get($ckey_ent2))->isIdenticalTo($expected);
-        }
 
+        if ($cache === true) {
+            $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
+            $this->boolean(\Toolbox::useCache())->isTrue();
+            $GLPI_CACHE->set($ckey_ent2, [$ent0 => $ent0]);
+            $this->boolean($GLPI_CACHE->has($ckey_ent2))->isTrue();
+            $this->array($GLPI_CACHE->get($ckey_ent2))->isIdenticalTo([$ent0 => $ent0]);
+        }
         $sons = $this->testedInstance->getSonsOf('glpi_entities', $ent2);
         $this->array($sons)->isIdenticalTo($expected);
 
-        if ($cache === true && $hit === false) {
-            $this->array($GLPI_CACHE->get($ckey_ent2))->isIdenticalTo($expected);
+        if ($cache === true) {
+            $this->boolean($GLPI_CACHE->has($ckey_ent2))->isFalse();
         }
 
         //test with new sub entity
         //Cache tests:
-        //APCu cache is updated on entity creation; so even if we do not expect $hit; we got it.
+        // Public creation in this caller frame must not publish tentative edges.
         $new_id = getItemByTypeName('Entity', 'Sub child entity', true);
         if (!$new_id) {
             $entity = new \Entity();
@@ -953,14 +977,21 @@ class DbUtils extends DbTestCase
 
         $expected = [$ent1 => $ent1, $new_id => $new_id];
         if ($cache === true) {
-            $this->array($GLPI_CACHE->get($ckey_ent1))->isIdenticalTo($expected);
+            $this->boolean($GLPI_CACHE->has($ckey_ent1))->isFalse();
         }
 
+        if ($cache === true) {
+            $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
+            $this->boolean(\Toolbox::useCache())->isTrue();
+            $GLPI_CACHE->set($ckey_ent1, [$ent2 => $ent2]);
+            $this->boolean($GLPI_CACHE->has($ckey_ent1))->isTrue();
+            $this->array($GLPI_CACHE->get($ckey_ent1))->isIdenticalTo([$ent2 => $ent2]);
+        }
         $sons = $this->testedInstance->getSonsOf('glpi_entities', $ent1);
         $this->array($sons)->isIdenticalTo($expected);
 
-        if ($cache === true && $hit === false) {
-            $this->array($GLPI_CACHE->get($ckey_ent1))->isIdenticalTo($expected);
+        if ($cache === true) {
+            $this->boolean($GLPI_CACHE->has($ckey_ent1))->isFalse();
         }
 
         //test with another new sub entity
@@ -976,27 +1007,36 @@ class DbUtils extends DbTestCase
 
         $expected = [$ent1 => $ent1, $new_id => $new_id, $new_id2 => $new_id2];
         if ($cache === true) {
-            $this->array($GLPI_CACHE->get($ckey_ent1))->isIdenticalTo($expected);
+            $this->boolean($GLPI_CACHE->has($ckey_ent1))->isFalse();
         }
 
+        if ($cache === true) {
+            $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
+            $this->boolean(\Toolbox::useCache())->isTrue();
+            $GLPI_CACHE->set($ckey_ent1, [$ent2 => $ent2]);
+            $this->boolean($GLPI_CACHE->has($ckey_ent1))->isTrue();
+            $this->array($GLPI_CACHE->get($ckey_ent1))->isIdenticalTo([$ent2 => $ent2]);
+        }
         $sons = $this->testedInstance->getSonsOf('glpi_entities', $ent1);
         $this->array($sons)->isIdenticalTo($expected);
 
-        if ($cache === true && $hit === false) {
-            $this->array($GLPI_CACHE->get($ckey_ent1))->isIdenticalTo($expected);
+        if ($cache === true) {
+            $this->boolean($GLPI_CACHE->has($ckey_ent1))->isFalse();
         }
 
         //drop sub entity
         $expected = [$ent1 => $ent1, $new_id2 => $new_id2];
         $this->boolean($entity->delete(['id' => $new_id], true))->isTrue();
+        $this->array($this->testedInstance->getSonsOf('glpi_entities', $ent1))->isIdenticalTo($expected);
         if ($cache === true) {
-            $this->array($GLPI_CACHE->get($ckey_ent1))->isIdenticalTo($expected);
+            $this->boolean($GLPI_CACHE->has($ckey_ent1))->isFalse();
         }
 
         $expected = [$ent1 => $ent1];
         $this->boolean($entity->delete(['id' => $new_id2], true))->isTrue();
+        $this->array($this->testedInstance->getSonsOf('glpi_entities', $ent1))->isIdenticalTo($expected);
         if ($cache === true) {
-            $this->array($GLPI_CACHE->get($ckey_ent1))->isIdenticalTo($expected);
+            $this->boolean($GLPI_CACHE->has($ckey_ent1))->isFalse();
         }
     }
 
@@ -1015,8 +1055,8 @@ class DbUtils extends DbTestCase
                  'NOT' => ['sons_cache' => null]
             ]
             )
-        )->isGreaterThan(0);
-        //run a second time: db cache must be set
+        )->isIdenticalTo(0);
+        // Repeated private reads still must not publish a durable cache.
         $this->runGetSonsOf();
     }
 
@@ -1028,13 +1068,13 @@ class DbUtils extends DbTestCase
         $this->login();
 
         global $GLPI_CACHE;
-        $GLPI_CACHE->clear(); // login produce cache, must be cleared
+        $GLPI_CACHE->clear(); // Keep the controlled external cache fixture initially empty.
 
         //run with cache
-        //first run: no cache hit expected
+        // Cold and repeated reads both remain private to the caller frame.
         $this->runGetSonsOf(true);
-        //second run: cache hit expected
-        $this->runGetSonsOf(true, true);
+        // Repeated private reads still must not publish shared cache.
+        $this->runGetSonsOf(true);
     }
 
     /**

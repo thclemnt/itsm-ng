@@ -138,13 +138,12 @@ class Entity extends DbTestCase
      * Run getSonsOf tests
      *
      * @param boolean $cache Is cache enabled?
-     * @param boolean $hit   Do we expect a cache hit? (ie. data already exists)
      *
      * @return void
      */
-    public function runChangeEntityParent($cache = false, $hit = false)
+    public function runChangeEntityParent($cache = false)
     {
-        global $GLPI_CACHE;
+        global $DB, $GLPI_CACHE;
 
         $this->login();
         $ent0 = getItemByTypeName('Entity', '_test_root_entity', true);
@@ -154,24 +153,36 @@ class Entity extends DbTestCase
         $sckey_ent1 = 'sons_cache_glpi_entities_' . $ent1;
         $sckey_ent2 = 'sons_cache_glpi_entities_' . $ent2;
 
+        $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
+        $predicted = (int)$DB->getDoctrineConnection()->fetchOne('SELECT COALESCE(MAX(id), 0) + 1 FROM glpi_entities');
+        $privateKey = 'ancestors_cache_glpi_entities_' . $predicted;
+        $stale = [$ent2 => $ent2];
+        if ($cache === true) {
+            $this->boolean(\Toolbox::useCache())->isTrue();
+            $GLPI_CACHE->set($privateKey, $stale);
+            $this->boolean($GLPI_CACHE->has($privateKey))->isTrue();
+            $this->array($GLPI_CACHE->get($privateKey))->isIdenticalTo($stale);
+        }
+
         $entity = new \Entity();
         $new_id = (int)$entity->add([
            'name'         => 'Sub child entity',
            'entities_id'  => $ent1
         ]);
         $this->integer($new_id)->isGreaterThan(0);
+        $this->integer($new_id)->isIdenticalTo($predicted);
         $ackey_new_id = 'ancestors_cache_glpi_entities_' . $new_id;
 
         $expected = [0 => 0, $ent0 => $ent0, $ent1 => $ent1];
         if ($cache === true) {
-            $this->array($GLPI_CACHE->get($ackey_new_id))->isIdenticalTo($expected);
+            $this->boolean(!$GLPI_CACHE->has($ackey_new_id) || $GLPI_CACHE->get($ackey_new_id) === $stale)->isTrue();
         }
 
         $ancestors = getAncestorsOf('glpi_entities', $new_id);
         $this->array($ancestors)->isIdenticalTo($expected);
 
-        if ($cache === true && $hit === false) {
-            $this->array($GLPI_CACHE->get($ackey_new_id))->isIdenticalTo($expected);
+        if ($cache === true) {
+            $this->boolean($GLPI_CACHE->has($ackey_new_id))->isFalse();
         }
 
         $expected = [$ent1 => $ent1, $new_id => $new_id];
@@ -179,8 +190,8 @@ class Entity extends DbTestCase
         $sons = getSonsOf('glpi_entities', $ent1);
         $this->array($sons)->isIdenticalTo($expected);
 
-        if ($cache === true && $hit === false) {
-            $this->array($GLPI_CACHE->get($sckey_ent1))->isIdenticalTo($expected);
+        if ($cache === true) {
+            $this->boolean($GLPI_CACHE->has($sckey_ent1))->isFalse();
         }
 
         //change parent entity
@@ -191,33 +202,71 @@ class Entity extends DbTestCase
          ])
         )->isTrue();
 
-        $expected = [0 => 0, $ent0 => $ent0, $ent2 => $ent2];
         if ($cache === true) {
-            $this->array($GLPI_CACHE->get($ackey_new_id))->isIdenticalTo($expected);
+            $GLPI_CACHE->set($ackey_new_id, [0 => 0, $ent0 => $ent0, $ent1 => $ent1]);
+            $this->boolean($GLPI_CACHE->has($ackey_new_id))->isTrue();
+            $this->array($GLPI_CACHE->get($ackey_new_id))->isIdenticalTo([0 => 0, $ent0 => $ent0, $ent1 => $ent1]);
         }
+        $expected = [0 => 0, $ent0 => $ent0, $ent2 => $ent2];
 
         $ancestors = getAncestorsOf('glpi_entities', $new_id);
         $this->array($ancestors)->isIdenticalTo($expected);
 
-        if ($cache === true && $hit === false) {
-            $this->array($GLPI_CACHE->get($ackey_new_id))->isIdenticalTo($expected);
+        if ($cache === true) {
+            $this->boolean($GLPI_CACHE->has($ackey_new_id))->isFalse();
         }
 
         $expected = [$ent1 => $ent1];
         $sons = getSonsOf('glpi_entities', $ent1);
         $this->array($sons)->isIdenticalTo($expected);
 
-        if ($cache === true && $hit === false) {
-            $this->array($GLPI_CACHE->get($sckey_ent1))->isIdenticalTo($expected);
+        if ($cache === true) {
+            $this->boolean($GLPI_CACHE->has($sckey_ent1))->isFalse();
         }
 
         $expected = [$ent2 => $ent2, $new_id => $new_id];
         $sons = getSonsOf('glpi_entities', $ent2);
         $this->array($sons)->isIdenticalTo($expected);
 
-        if ($cache === true && $hit === false) {
-            $this->array($GLPI_CACHE->get($sckey_ent2))->isIdenticalTo($expected);
+        if ($cache === true) {
+            $this->boolean($GLPI_CACHE->has($sckey_ent2))->isFalse();
         }
+
+        $connection = $DB->getDoctrineConnection();
+        $outerDepth = $connection->getTransactionNestingLevel();
+        $frame = \itsmng\Database\OwnedMutationFrame::begin($connection);
+        $primary = null;
+        try {
+            $this->boolean($entity->update(['id' => $new_id, 'entities_id' => $ent1]))->isTrue();
+            $this->array(getAncestorsOf('glpi_entities', $new_id))->isIdenticalTo([0 => 0, $ent0 => $ent0, $ent1 => $ent1]);
+            $this->array(getSonsOf('glpi_entities', $ent1))->isIdenticalTo([$ent1 => $ent1, $new_id => $new_id]);
+            $this->array(getSonsOf('glpi_entities', $ent2))->isIdenticalTo([$ent2 => $ent2]);
+            $frame->assertActive();
+            if ($cache === true) {
+                $this->boolean($GLPI_CACHE->has($ackey_new_id))->isFalse();
+                $this->boolean($GLPI_CACHE->has($sckey_ent1))->isFalse();
+                $this->boolean($GLPI_CACHE->has($sckey_ent2))->isFalse();
+            }
+        } catch (\Throwable $error) {
+            $primary = $error;
+        }
+        try {
+            $frame->rollBack();
+        } catch (\Throwable $cleanup) {
+            if ($primary !== null) {
+                throw new \itsmng\Database\MutationRollbackFailure($primary, $cleanup);
+            }
+            throw $cleanup;
+        }
+        if ($primary !== null) {
+            throw $primary;
+        }
+        $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($outerDepth);
+        $this->boolean($entity->getFromDB($new_id))->isTrue();
+        $this->integer($entity->fields['entities_id'])->isIdenticalTo($ent2);
+        $this->array(getAncestorsOf('glpi_entities', $new_id))->isIdenticalTo([0 => 0, $ent0 => $ent0, $ent2 => $ent2]);
+        $this->array(getSonsOf('glpi_entities', $ent1))->isIdenticalTo([$ent1 => $ent1]);
+        $this->array(getSonsOf('glpi_entities', $ent2))->isIdenticalTo([$ent2 => $ent2, $new_id => $new_id]);
 
         //clean new entity
         $this->boolean(
@@ -260,7 +309,7 @@ class Entity extends DbTestCase
             [true]
         );
         $this->runChangeEntityParent();
-        //reset cache (checking for expected defaults) then run a second time: db cache must be set
+        // Preserve default tree results and repeat without durable cache publication.
         $this->checkParentsSonsAreReset();
         $this->runChangeEntityParent();
     }
@@ -271,10 +320,10 @@ class Entity extends DbTestCase
     public function testChangeEntityParentCached()
     {
         //run with cache
-        //first run: no cache hit expected
+        // Cold private reads must not publish shared cache.
         $this->runChangeEntityParent(true);
-        //reset cache (checking for expected defaults) then run a second time: cache hit expected
-        //second run: cache hit expected
+        // Preserve default tree results and repeat without private cache publication.
+        // Repeated private reads must not publish shared cache.
         $this->checkParentsSonsAreReset();
         $this->runChangeEntityParent(true);
     }
