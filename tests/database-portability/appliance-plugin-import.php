@@ -126,9 +126,32 @@ try {
     }
     $relation->setPrimaryKey(['id']);
     foreach ([$type, $environment, $appliance, $item, $relation] as $table) {
+        if ($DB->getProvider() === 'mysql') {
+            $table->addOption('charset', 'utf8mb4');
+            $table->addOption('collation', 'utf8mb4_unicode_ci');
+        }
         verify(!$manager->tablesExist([$table->getName()]), 'Fixture owns plugin source table: ' . $table->getName());
         $manager->createTable($table);
         $sourceTables[] = $table->getName();
+        if ($DB->getProvider() === 'mysql') {
+            verify($connection->fetchOne(
+                'SELECT TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?',
+                [$table->getName()]
+            ) === 'utf8mb4_unicode_ci', 'Actual historical source fixture owns Unicode table encoding: ' . $table->getName());
+            $expectedEncoding = [];
+            foreach ($table->getColumns() as $column) {
+                if (in_array(\Doctrine\DBAL\Types\Type::lookupName($column->getType()), ['string', 'text'], true)) {
+                    $expectedEncoding[$column->getName()] = ['column_name' => $column->getName(), 'character_set' => 'utf8mb4', 'column_collation' => 'utf8mb4_unicode_ci'];
+                }
+            }
+            ksort($expectedEncoding);
+            verify($connection->fetchAllAssociative(
+                "SELECT COLUMN_NAME AS column_name, CHARACTER_SET_NAME AS character_set, COLLATION_NAME AS column_collation
+                FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND CHARACTER_SET_NAME IS NOT NULL
+                ORDER BY COLUMN_NAME",
+                [$table->getName()]
+            ) === array_values($expectedEncoding), 'Every actual historical source text column retains its declared Unicode encoding: ' . $table->getName());
+        }
     }
     $importer = new AppliancePluginImport($DB);
     $missing = clone $appliance;

@@ -53,6 +53,10 @@ check((int)$DB->request(['FROM' => 'glpi_entities', 'WHERE' => ['id' => 0]])->co
 $name = 'glpi_portability_contract';
 check(!$DB->tableExists($name, false), 'Contract table must not already exist.');
 $table = new Table($name);
+if ($DB->getProvider() === 'mysql') {
+    $table->addOption('charset', 'utf8mb4');
+    $table->addOption('collation', 'utf8mb4_unicode_ci');
+}
 $table->addColumn('id', 'integer', ['autoincrement' => true]);
 $table->addColumn('name', 'string', ['length' => 255]);
 $table->addColumn('flag', 'integer', ['default' => 0]);
@@ -62,6 +66,19 @@ $connection->createSchemaManager()->createTable($table);
 $DB->clearSchemaCache();
 try {
     if ($DB->getProvider() === 'mysql') {
+        $encoding = $connection->fetchAllAssociative(
+            "SELECT t.TABLE_COLLATION AS table_collation, c.COLUMN_NAME AS column_name,
+                c.CHARACTER_SET_NAME AS character_set, c.COLLATION_NAME AS column_collation
+            FROM information_schema.TABLES t JOIN information_schema.COLUMNS c
+                ON c.TABLE_SCHEMA=t.TABLE_SCHEMA AND c.TABLE_NAME=t.TABLE_NAME
+            WHERE t.TABLE_SCHEMA=DATABASE() AND t.TABLE_NAME=? AND c.CHARACTER_SET_NAME IS NOT NULL
+            ORDER BY c.COLUMN_NAME",
+            [$name]
+        );
+        check($encoding === [
+            ['table_collation' => 'utf8mb4_unicode_ci', 'column_name' => 'name', 'character_set' => 'utf8mb4', 'column_collation' => 'utf8mb4_unicode_ci'],
+            ['table_collation' => 'utf8mb4_unicode_ci', 'column_name' => 'optional', 'character_set' => 'utf8mb4', 'column_collation' => 'utf8mb4_unicode_ci'],
+        ], 'Actual owned fixture table and both text columns retain explicit Unicode before legacy INSERT.');
         check($DB->insertId() === 0, 'No generated identity is represented as zero.');
     }
     $values = ["O'Reilly", "two  spaces", "C:\\new\\test", "x'); DROP TABLE glpi_users; --", 'é € 日本語', "a\nb", 'GROUP_CONCAT(`name`) ? # --'];
