@@ -6,9 +6,11 @@ use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use itsmng\Database\Entity\Holiday as HolidayPeriod;
 use itsmng\Database\Orm;
+use itsmng\Database\OwnedMutationFrame;
 use itsmng\Database\Repository\CalendarRepository;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\SchemaCheck;
+use itsmng\Database\TransactionOwnership;
 
 $directory = $argv[1] ?? '';
 if (!is_file($directory . '/config_db.php')) {
@@ -43,6 +45,44 @@ $savedHooks = $PLUGIN_HOOKS;
 $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
 $savedPlugins = $plugins->getValue();
 $reader = null;
+$outerFrame = null;
+$primary = null;
+$secondary = [];
+$recordFailure = static function (Throwable $error, string $label) use (&$primary, &$secondary): void {
+    if ($primary === null) {
+        $primary = $error;
+    } elseif ($primary !== $error) {
+        $secondary[] = ['label' => $label, 'class' => $error::class];
+    }
+};
+$cleanup = static function (callable $operation, string $label) use ($recordFailure): bool {
+    try {
+        $operation();
+        return true;
+    } catch (Throwable $error) {
+        $recordFailure($error, $label);
+        return false;
+    }
+};
+$rollbackScope = static function (callable $operation, string $label) use ($connection, $recordFailure): void {
+    $frame = OwnedMutationFrame::begin($connection);
+    $failure = null;
+    try {
+        $operation();
+    } catch (Throwable $error) {
+        $failure = $error;
+        $recordFailure($error, $label);
+    }
+    try {
+        $frame->rollBack();
+    } catch (Throwable $error) {
+        $failure ??= $error;
+        $recordFailure($error, $label . '-rollback');
+    }
+    if ($failure !== null) {
+        throw $failure;
+    }
+};
 $rows = static fn (string $table, array $criteria = []): array => (new RecordRepository(Orm::create($writer)))->matching($table, $criteria, 'id ASC');
 $read = static fn (string $table, int $id): ?array => (new RecordRepository(Orm::create($writer)))->find($table, 'id', $id);
 $closures = static fn (int $id): array => (new CalendarRepository(Orm::create($writer)))->closures($id);
@@ -64,7 +104,7 @@ set_error_handler(static function (int $severity, string $message, string $file,
     throw new ErrorException($message, 0, $severity, $file, $line);
 }, E_WARNING);
 try {
-    $connection->beginTransaction();
+    $outerFrame = OwnedMutationFrame::begin($connection);
     $_SESSION['glpiextauth'] = 0;
     verify((new Auth())->login('itsm', 'itsm', true), 'Actual administrator login');
     $_SESSION['_glpi_csrf_token'] = Session::getNewCSRFToken();
@@ -89,21 +129,15 @@ try {
     verify((new Calendar_Holiday())->delete(['id' => $relationId], true), 'Public membership purge');
     verify(!$calendar->isHoliday('2030-05-07') && $read('glpi_holidays', $may) !== null, 'Removing membership reopens its warmed date and preserves the reusable Holiday');
 
-    $connection->beginTransaction();
-    try {
+    $rollbackScope(static function () use ($link, $calendarId, $may, $calendar, $rollbackScope, $mayModel): void {
         $link($calendarId, $may);
         verify($calendar->isHoliday('2030-05-07'), 'Caller savepoint sees its own membership');
-        $connection->beginTransaction();
-        try {
+        $rollbackScope(static function () use ($mayModel, $may, $calendar): void {
             verify($mayModel->update(['id' => $may, 'begin_date' => '2030-05-08', 'end_date' => '2030-05-08']), 'Nested caller changes closure dates');
             verify(!$calendar->isHoliday('2030-05-07') && $calendar->isHoliday('2030-05-08'), 'Nested date mutation is immediately visible');
-        } finally {
-            $connection->rollBack();
-        }
+        }, 'nested-date-mutation');
         verify($calendar->isHoliday('2030-05-07') && !$calendar->isHoliday('2030-05-08'), 'Nested rollback restores actual dates without resetting application caches');
-    } finally {
-        $connection->rollBack();
-    }
+    }, 'membership-savepoint');
     verify(!$calendar->isHoliday('2030-05-07') && $closures($calendarId) === [], 'Outer savepoint rollback restores the open date and membership list');
 
     $vetoes = 0;
@@ -160,6 +194,7 @@ try {
     verify($selectedPairs === $links, 'Same-name Holidays retain their own link IDs and target identities');
 
     // Separate valid fields prevent a different integrity error masking the selected refusal.
+    verify($read('glpi_calendars', PHP_INT_MAX) === null && $read('glpi_holidays', PHP_INT_MAX) === null, 'Both selected invalid native targets are actually absent');
     foreach ([
         [['calendars_id' => $calendarId, 'holidays_id' => array_key_first($links)], UniqueConstraintViolationException::class],
         [['calendars_id' => PHP_INT_MAX, 'holidays_id' => $may], ForeignKeyConstraintViolationException::class],
@@ -167,14 +202,13 @@ try {
     ] as [$values, $expected]) {
         $before = $rows('glpi_calendars_holidays');
         $rejected = false;
-        $connection->beginTransaction();
-        try {
-            $connection->insert('glpi_calendars_holidays', $values);
-        } catch (\Doctrine\DBAL\Exception\DriverException $error) {
-            $rejected = $error instanceof $expected;
-        } finally {
-            $connection->rollBack();
-        }
+        $rollbackScope(static function () use ($connection, $values, $expected, &$rejected): void {
+            try {
+                $connection->insert('glpi_calendars_holidays', $values);
+            } catch (\Doctrine\DBAL\Exception\DriverException $error) {
+                $rejected = $error instanceof $expected;
+            }
+        }, 'native-membership-refusal');
         verify($rejected && $rows('glpi_calendars_holidays') === $before, 'Native duplicate/invalid owning target is refused without changing memberships');
     }
 
@@ -272,23 +306,32 @@ try {
         $DB = $writer;
     }
     verify($calendar->isHoliday('2030-05-07') && $read('glpi_calendars_holidays', $readMay) !== null, 'Returning to writer routing observes its original membership');
+} catch (Throwable $error) {
+    $recordFailure($error, 'calendar-scenario');
 } finally {
     $DB = $writer;
-    try {
-        while ($connection->getTransactionNestingLevel() > 0) {
-            $connection->rollBack();
-        }
-        $reader?->close();
-    } finally {
-        $_SESSION = $savedSession;
-        $CFG_GLPI = $savedConfig;
-        $PLUGIN_HOOKS = $savedHooks;
-        $plugins->setValue(null, $savedPlugins);
-        restore_error_handler();
+    if ($outerFrame !== null) {
+        // Refuse a replaced/unknown layer; never unwind arbitrary callback frames.
+        $cleanup(static fn () => $outerFrame->rollBack(), 'owned-outer-rollback');
     }
+    $cleanup(static fn () => $reader?->close(), 'independent-reader-close');
+    $_SESSION = $savedSession;
+    $CFG_GLPI = $savedConfig;
+    $PLUGIN_HOOKS = $savedHooks;
+    $cleanup(static fn () => $plugins->setValue(null, $savedPlugins), 'plugin-context-restore');
+    $cleanup(static fn () => restore_error_handler(), 'error-handler-restore');
 }
-verify($connection->getTransactionNestingLevel() === 0, 'All owned ordinary and nested transactions are closed');
-verify($rows('glpi_logs') === $originalLogs && $rows('glpi_queuednotifications') === $originalQueue, 'Caller rollback restores audit and notification rows');
-verify($connection->fetchAllAssociative('SELECT * FROM itsmng_migrations ORDER BY version') === $originalLedger, 'Calendar operations never rewrite historical receipts');
-verify((new SchemaCheck())->differences($connection) === [], 'Canonical schema remains unchanged');
+$preservationSafe = $cleanup(static function () use ($connection): void {
+    TransactionOwnership::assertManaged($connection);
+    verify($connection->getTransactionNestingLevel() === 0, 'All owned ordinary and nested transactions are closed');
+}, 'idle-managed-owner');
+if ($preservationSafe) {
+    // Preservation still runs after the first actual scenario failure.
+    $cleanup(static fn () => verify($rows('glpi_logs') === $originalLogs && $rows('glpi_queuednotifications') === $originalQueue, 'Caller rollback restores audit and notification rows'), 'audit-queue-preservation');
+    $cleanup(static fn () => verify($connection->fetchAllAssociative('SELECT * FROM itsmng_migrations ORDER BY version') === $originalLedger, 'Calendar operations never rewrite historical receipts'), 'raw-ledger-preservation');
+    $cleanup(static fn () => verify((new SchemaCheck())->differences($connection) === [], 'Canonical schema remains unchanged'), 'schema-preservation');
+}
+if ($primary !== null) {
+    throw new RuntimeException('Calendar closure contract failed; secondary diagnostic classes: ' . json_encode($secondary, JSON_THROW_ON_ERROR), previous: $primary);
+}
 echo "Calendar closure ownership, policy and lifecycle passed ($assertions assertions).\n";
