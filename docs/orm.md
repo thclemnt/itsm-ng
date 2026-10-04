@@ -1,9 +1,10 @@
 # Mapped persistence and reporting
 
-The latest full integrated validation record is
-[canonical upgrades and owning dropdown choices](modernization-upgrade-dropdown-validation.md).
-Newer integrated batches and their pending combined validation are tracked in
-[the modernization handoff](modernization-handoff.md).
+The current validation record and open implementation plan are tracked in
+[the modernization handoff](modernization-handoff.md). The latest complete
+both-provider suites are 186/186 at `30a4cce2`; the newer 209-contract composition
+awaits complete validation. [Canonical upgrades and owning dropdown choices](modernization-upgrade-dropdown-validation.md)
+records an earlier integrated checkpoint.
 Earlier dated counts below describe their own checkpoints, not current completion.
 
 The isolated [session authorization draft](modernization-session-authorization-draft.md)

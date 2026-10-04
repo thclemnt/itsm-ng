@@ -1,15 +1,15 @@
 # PostgreSQL port (experimental)
 
-Current checkpoint: `741fb2b1f0cc852404bd55080e4ed7bbb0bf8b7e`.
-The latest complete local portability checkpoint is
-`741fb2b1f0cc852404bd55080e4ed7bbb0bf8b7e`: PostgreSQL and MariaDB both pass
-180/180 contracts, fresh installs and final native inspection. The modernization
-goal remains OPEN; official-engine/remote CI, replicas/TLS and prepared next
-batches are separate pending evidence.
-[The handoff](modernization-handoff.md#current-741-complete-local-portability-checkpoint)
-separates these results from the retained a736 full failures and the earlier complete
-green b66 checkpoint. Later passages marked pending describe their earlier
-preparation checkpoint unless superseded by the precise checkpoint results above.
+Current evidence checkpoint, 2026-10-04: the latest complete suites on both
+providers are `30a4cce27ac6b493210c2d5867376293506563ab`, **186/186** contracts.
+Later `be258c8b` fresh installations replay all **17** canonical versions and
+converge on **1,070** foreign keys on both engines. The newer follow-on composition
+discovers 209 contracts; its complete suites and new-source installation evidence
+remain pending. Focused successes and failures are recorded separately in
+[the durable handoff](modernization-handoff.md). The modernization goal remains
+OPEN; these checkpoints do not establish production readiness, complete application
+ORM adoption, remote CI, live replica routing or TLS validation. The older figures
+below describe their explicitly named historical source checkpoints.
 
 The retained a736 validation is recorded in [the durable handoff](modernization-handoff.md).
 The completed portability runs pass 178/179 on PostgreSQL and 151/179 on MariaDB;
@@ -28,7 +28,7 @@ This branch is a development port, **not a complete or production-ready PostgreS
 
 ## Architecture
 
-See [the latest complete portability checkpoint](modernization-handoff.md#current-741-complete-local-portability-checkpoint)
+See [the current validation record](modernization-handoff.md)
 for exact source, provider versions, test evidence and remaining work. Dated earlier
 validation figures are historical checkpoints. Prepared next batches and their
 pending validation are recorded in [the handoff](modernization-handoff.md).
