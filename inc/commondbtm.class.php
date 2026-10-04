@@ -1914,17 +1914,17 @@ class CommonDBTM extends CommonGLPI
                         }
                     }
                     $this->pre_updateInDB();
-
-                    if (!$this->hasLifecycleOperationIdentity($storedFields)
-                        || !$this->finalizeLifecycleUpdate($storedFields)
-                        || !$this->hasLifecycleOperationIdentity($storedFields)) {
-                        $this->fields = $storedFields;
-                        $this->updates = [];
-                        $this->oldvalues = [];
-                        return false;
-                    }
-
-
+                }
+                // Every accepted prepared model needs its final owning-field
+                // view, including an unchanged input. Date modification and
+                // pre_updateInDB still belong only to actual prepared writes.
+                if (!$this->hasLifecycleOperationIdentity($storedFields)
+                    || !$this->finalizeLifecycleUpdate($storedFields)
+                    || !$this->hasLifecycleOperationIdentity($storedFields)) {
+                    $this->fields = $storedFields;
+                    $this->updates = [];
+                    $this->oldvalues = [];
+                    return false;
                 }
                 return $this->executePreparedUpdate(
                     fn () => $this->completeOwnedLifecycleUpdate($history, $storedFields),
