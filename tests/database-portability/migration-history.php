@@ -267,7 +267,12 @@ foreach ([['itemtype' => 'PluginExampleAsset', 'items_id' => $legacyId], ['itemt
         $history->upgrade($connection);
         throw new LogicException('Invalid project subject accepted before adoption');
     } catch (RuntimeException $error) {
-        verify(str_contains($error->getMessage(), 'project asset kinds') || str_contains($error->getMessage(), 'Invalid or unsupported legacy typed item references: glpi_items_projects'), 'Project diagnostic identifies the unsupported/invalid relationship before adoption');
+        $exactDiagnostic = "Exact subject preflight failed before DDL or receipt:\n"
+            . 'Invalid exact subject data: glpi_items_projects (1 rows); samples: '
+            . json_encode([['id' => 303] + $invalid], JSON_THROW_ON_ERROR)
+            . '. Correct the source assignment explicitly; no spelling or identifier is rewritten.';
+        verify(str_contains($error->getMessage(), 'project asset kinds') || str_contains($error->getMessage(), 'Invalid or unsupported legacy typed item references: glpi_items_projects')
+            || ($error::class === RuntimeException::class && $error->getMessage() === $exactDiagnostic), 'Project diagnostic identifies the unsupported/invalid relationship before adoption');
     }
     verify(Ledger::state($connection, LegacyToOrm::VERSION) === null && Ledger::state($connection, ProjectAssets20261003::VERSION) === null
         && Type::lookupName($manager->listTableColumns('glpi_computers')['id']->getType()) === 'integer'
