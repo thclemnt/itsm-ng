@@ -819,14 +819,15 @@ class User extends CommonDBTM
         if ((int)$this->getID() !== $completion->user) {
             throw new LogicException('Authentication completion belongs to another account.');
         }
-        if (!$this->getFromDB($completion->user)
-            || (int)$this->fields['authtype'] !== Auth::DB_GLPI
-            || (int)$this->fields['auths_id'] !== 0) {
-            return false;
-        }
         $previous = $this->pendingAuthenticationCompletion;
-        $this->pendingAuthenticationCompletion = $completion;
+        $checkpoint = $this->authenticationUpdateDepth > 0 ? $this->authenticationLifecycleView() : null;
         try {
+            if (!$this->getFromDB($completion->user)
+                || (int)$this->fields['authtype'] !== Auth::DB_GLPI
+                || (int)$this->fields['auths_id'] !== 0) {
+                return false;
+            }
+            $this->pendingAuthenticationCompletion = $completion;
             $input = Toolbox::addslashes_deep($completion->lifecycleInput());
             if (!$this->update($input)) {
                 return false;
@@ -839,6 +840,9 @@ class User extends CommonDBTM
                 && $completion->acceptsAdmission($this->fields);
         } finally {
             $this->pendingAuthenticationCompletion = $previous;
+            if ($checkpoint !== null) {
+                $this->restoreAuthenticationLifecycleView($checkpoint);
+            }
         }
     }
 
@@ -849,7 +853,7 @@ class User extends CommonDBTM
         // ordinary edits retain their own authorization and preference policy.
         $previous = $this->authenticationCompletion;
         $checkpoint = $this->authenticationUpdateDepth > 0
-            ? array_intersect_key(get_object_vars($this), array_flip(['fields', 'input', 'updates', 'oldvalues'])) : null;
+            ? $this->authenticationLifecycleView() : null;
         ++$this->authenticationUpdateDepth;
         $this->authenticationCompletion = $this->pendingAuthenticationCompletion;
         $this->pendingAuthenticationCompletion = null;
@@ -861,13 +865,25 @@ class User extends CommonDBTM
             if ($checkpoint !== null) {
                 // Restore the outer lifecycle view; completion reloads actual
                 // persisted state after all callbacks, including nested writes.
-                foreach (['fields', 'input', 'updates', 'oldvalues'] as $property) {
-                    if (array_key_exists($property, $checkpoint)) {
-                        $this->{$property} = $checkpoint[$property];
-                    } else {
-                        unset($this->{$property});
-                    }
-                }
+                $this->restoreAuthenticationLifecycleView($checkpoint);
+            }
+        }
+    }
+
+
+    /** Model lifecycle state, including properties not yet initialized by update. */
+    private function authenticationLifecycleView(): array
+    {
+        return array_intersect_key(get_object_vars($this), array_flip(['fields', 'input', 'updates', 'oldvalues']));
+    }
+
+    private function restoreAuthenticationLifecycleView(array $checkpoint): void
+    {
+        foreach (['fields', 'input', 'updates', 'oldvalues'] as $property) {
+            if (array_key_exists($property, $checkpoint)) {
+                $this->{$property} = $checkpoint[$property];
+            } else {
+                unset($this->{$property});
             }
         }
     }

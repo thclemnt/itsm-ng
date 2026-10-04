@@ -189,6 +189,29 @@ try {
     unset($PLUGIN_HOOKS['pre_item_update']['authentication_completion_fixture'][User::class]);
     $writer()->update('glpi_users', $user, ['highcontrast_css' => false]);
 
+    // A late callback already has outer pending fields; nested reloads must not replace them.
+    $lateName = $prefix . ' late outcome';
+    $fixtures->create('glpi_ruleactions', ['rules_id' => $rule, 'action_type' => 'assign', 'field' => 'realname', 'value' => $lateName]);
+    $rules->load = 0;
+    $lateOutcome = $collection->evaluateAuthentication([$group], $read(), ['type' => Auth::DB_GLPI, 'login' => $prefix]);
+    verify($lateOutcome->outcome->assignments['realname'] === $lateName, 'Late control uses an actual executed non-boolean rule action');
+    $lateNested = new class extends User {
+        private bool $reentered = false;
+        public static function getTable($classname = null) { return User::getTable(); }
+        public function pre_updateInDB() {
+            parent::pre_updateInDB();
+            if (!$this->reentered) {
+                $this->reentered = true;
+                $pendingName = $this->fields['realname'];
+                verify($this->completeAuthentication(new \itsmng\Domain\Authentication\AuthenticationCompletion((int)$this->getID(), $_SESSION['glpi_currenttime'])), 'Genuine late callback completes a nested login');
+                verify($this->fields['realname'] === $pendingName && in_array('realname', $this->updates, true), 'Whole nested completion retains the outer prepared non-boolean write');
+            }
+        }
+    };
+    verify($lateNested->getFromDB($user), 'Late nested lifecycle uses the stored account');
+    verify($lateNested->completeAuthentication(new \itsmng\Domain\Authentication\AuthenticationCompletion($user, $_SESSION['glpi_currenttime'], $lateOutcome->outcome)), 'Outer completion survives a late same-model nested completion');
+    verify($read()['realname'] === $lateName && $preferences() === $baseline, 'Exact outer rule outcome persists after nested initial and final reloads');
+
     // A real deactivation action is mandatory admission intent, not optional input.
     $writer()->update('glpi_ruleactions', $actionIds['is_active'], ['value' => '0']);
     $rules->load = 0;
