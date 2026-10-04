@@ -25,6 +25,7 @@ final class History
     public function plan(Connection $connection): array
     {
         \itsmng\Database\CheckConstraintSupport::assertSupported($connection);
+        \itsmng\Database\LegacyAdoptionEligibility::assertConnection($connection);
         $prerequisite = (new DomainsPluginAdoption20261006())->plan($connection);
         if ($prerequisite) {
             return ['complete' => false, 'pending' => self::pendingVersions($connection), 'domain_prerequisite' => $prerequisite,
@@ -140,10 +141,9 @@ final class History
     {
         \itsmng\Database\CheckConstraintSupport::assertSupported($connection);
         $this->locked($connection, function () use ($connection, $progress, $onComplete): void {
-            $baseline = Ledger::state($connection, Baseline20261001::VERSION);
-            if (($baseline['origin'] ?? null) === 'installed' && (($baseline['complete'] ?? false) !== true || (Ledger::state($connection, Seeds20261001::VERSION)['complete'] ?? false) !== true)) {
-                throw new \RuntimeException('Resume the unfinished installation before applying upgrades.');
-            }
+            // Admit provenance under the same lock before source remapping,
+            // ledger bootstrap or nontransactional canonical DDL can occur.
+            \itsmng\Database\LegacyAdoptionEligibility::assertConnection($connection);
             (new DomainsPluginAdoption20261006())->apply($connection, fn () => $this->canonicalPlan($connection), $progress);
             $domainDocuments = new DomainDocuments20261006();
             // All stored subject spellings are audited before any canonical DDL,

@@ -23,6 +23,7 @@ define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
 require __DIR__ . '/fixtures/domains-plugin-2.1.0/Export.php';
+require __DIR__ . '/fixtures/LegacyReleaseFormat.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
     exit(1);
@@ -67,6 +68,7 @@ try {
     }
     (new Seeds20261001())->apply($connection);
     $manager->dropTable(LegacyToOrm::LEDGER);
+    LegacyReleaseFormat::publish($connection);
     $checkpoint('Raw frozen baseline and seeds, ledger removed');
     // These are raw historical records, deliberately independent of today's
     // entities, generated projections, repositories and input normalization.

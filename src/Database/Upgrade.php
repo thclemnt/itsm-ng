@@ -6,8 +6,6 @@ namespace itsmng\Database;
 
 use itsmng\Database\Migration\Baseline20261001;
 use itsmng\Database\Migration\History;
-use itsmng\Database\Migration\Ledger;
-use itsmng\Database\Migration\Seeds20261001;
 
 /** Supported upgrade entrypoints share canonical history and release publication. */
 final class Upgrade
@@ -109,36 +107,13 @@ final class Upgrade
     /** Inspect configuration through DBAL before current ORM mappings can be used. */
     public function release(): array
     {
-        $connection = $this->database->getDoctrineConnection();
-        $manager = $connection->createSchemaManager();
-        if (!$manager->tablesExist(['glpi_configs'])) {
-            throw new \RuntimeException($this->prerequisiteMessage('Missing table: glpi_configs'));
-        }
-        $columns = $manager->listTableColumns('glpi_configs');
-        foreach (['context', 'name', 'value'] as $column) {
-            if (!isset($columns[$column])) {
-                throw new \RuntimeException($this->prerequisiteMessage('Missing column: glpi_configs.' . $column));
-            }
-        }
-        $quote = $connection->getDatabasePlatform()->quoteIdentifier(...);
-        $rows = $connection->fetchAllAssociative('SELECT ' . $quote('name') . ', ' . $quote('value') . ' FROM ' . $quote('glpi_configs') . ' WHERE ' . $quote('context') . ' = ? AND ' . $quote('name') . ' IN (?, ?, ?, ?) ORDER BY ' . $quote('name'), ['core', 'version', 'dbversion', 'itsmversion', 'itsmdbversion']);
-        return array_column($rows, 'value', 'name');
+        return LegacyAdoptionEligibility::release($this->database->getDoctrineConnection());
     }
 
     private function assertSupportedSchema(): void
     {
-        $states = Ledger::states($this->database->getDoctrineConnection());
-        $baseline = $states[Baseline20261001::VERSION] ?? null;
-        if (($baseline['origin'] ?? null) === 'installed' && (($baseline['complete'] ?? false) !== true || ($states[Seeds20261001::VERSION]['complete'] ?? false) !== true)) {
-            throw new \RuntimeException('Resume the unfinished installation with db:install using this configuration before applying upgrades. Its existing baseline and seed journal will resume without replacing application data.');
-        }
-        $release = $this->release();
-        foreach (['itsmversion' => ITSM_VERSION, 'itsmdbversion' => ITSM_SCHEMA_VERSION] as $field => $target) {
-            if (isset($release[$field]) && preg_match('/^\d+(?:\.\d+)+(?:[-.][a-zA-Z0-9]+)*$/D', $release[$field]) && version_compare($release[$field], $target, '>')) {
-                throw new \RuntimeException('The installed ' . $field . ' (' . $release[$field] . ') is newer than these application files (' . $target . '). Use the matching application release; this updater cannot downgrade it.');
-            }
-        }
         $connection = $this->database->getDoctrineConnection();
+        LegacyAdoptionEligibility::assertConnection($connection);
         $platform = $connection->getDatabasePlatform();
         $historical = (new Baseline20261001())->build($platform);
         $required = (new BaselineSchema())->build($platform, false);

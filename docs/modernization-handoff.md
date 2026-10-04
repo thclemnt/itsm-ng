@@ -1433,6 +1433,44 @@ Release-engine CI, PostgreSQL 14/18, MariaDB 11.8, MySQL 8.4 and live replica
 validation remain unavailable or unexecuted. The modernization goal remains open.
 ## Unified upgrade and readiness batch (2026-10-02)
 
+Prepared follow-up, unexecuted: legacy adoption now has one read-only
+`LegacyAdoptionEligibility` policy shared by Upgrade and direct History. Source
+inspection of the actual 2.1.3 release `1871d3f461` proves that both old update and
+fresh-install paths publish all four ITSM release/format aliases, after the
+historical final data migration. The 2.1.2 and 2.1.3 SQL dumps have identical
+SHA256 `501eae1681a2cfdc36ce98953d3e14177ce84616ce891836de6104fdd6608d09`;
+structural admission alone can silently bypass that data transition. Ledgerless
+adoption requires stable 2.1.3 format publication and consistent ITSM application
+aliases; known canonical installation/adoption and pending journals preserve
+their original recovery behavior. The policy neither replays old scripts nor
+infers completion from mutable profile rights. Metadata itself cannot prove a
+manually relabeled database's historical DML.
+The first source draft was blocked on ambiguous duplicate configuration aliases:
+table/column structural admission does not itself establish the Config uniqueness
+index, so `array_column` could hide contradictory rows. The distinct correction
+refuses repeated selected alias names before building the release map, including
+same-value duplicates. It selects or removes no original row and prints no actual
+values. Malformed legacy Config fixtures exercise the real History, Upgrade and
+CLI readers and require complete native row/schema/absent-ledger preservation.
+The second source draft was then blocked on native MySQL/MariaDB case-insensitive
+selection of distinct PHP spelling keys. A separate correction admits only exact
+published context/alias spellings before repeat checks, without normalization or
+PHP collation emulation. Actual `Version`/`Core` fixture rows must refuse on
+MariaDB when selected as native-equivalent keys; PostgreSQL's distinct identities
+remain excluded by its canonical selector and unchanged through read-only preview.
+Both earlier blocked source reviews and immutable drafts remain part of the
+record. These controls are prepared source, not executed provider evidence.
+
+The source-only tests add a pure provenance matrix and reconstruct the real
+ledgerless 2.1.2 case in the existing migration-history fixture. Direct History
+and actual CLI preview/apply must refuse before writing any row, ledger or schema;
+the supported 2.1.3 case must preserve later customized followup/task masks.
+Existing raw ledgerless fixtures publish actual historical labels instead of
+unfinished seed placeholders, while retaining their assertions and time limits.
+No PHP syntax checks, database contracts, full suites or application tests have
+run for this preparation. The concrete next step is independent source review,
+then isolated syntax/pure/provider validation and the unchanged retry/full gates.
+
 The existing canonical History/ledger now owns supported CLI, facade and web
 upgrades through `Database\Upgrade`. This replaces old release-selected MySQL
 script execution, plugin deactivation and permission/OIDC mutations. Supported

@@ -4975,6 +4975,68 @@ The frozen migration identifier containing `legacy_2_2` is historical nomenclatu
 not a verified older-release support matrix. Interrupted installation journals
 resume through `db:install`, rather than upgrading unseeded tables.
 
+The prepared legacy-provenance admission repair also checks historical data-format
+publication before ledgerless adoption. Release `1871d3f461` publishes both schema
+aliases (`dbversion`, `itsmdbversion`) as `2.1.3`, and both application aliases
+(`version`, `itsmversion`) using its ITSM version, after the final historical
+`update212to213` data migration. Its fresh installer publishes the same fields;
+the separate GLPI compatibility constant does not populate them. The actual
+2.1.2 and 2.1.3 schema dumps are byte-identical, so structural matching alone
+cannot establish that this data transition ran.
+
+`LegacyAdoptionEligibility` owns the read-only policy for `Upgrade` and direct
+`History` preview/apply. Genuinely ledgerless databases require both exact stable
+`2.1.3` format aliases and consistent ITSM application aliases at that format or
+later; an application `-dev` suffix alone does not invalidate stable format
+publication. Missing, contradictory, GLPI-only and development schema-format
+labels receive an actionable historical-release diagnostic before canonical DDL,
+source remapping or ledger creation. The original newer-release refusal remains.
+No old MySQL scripts run against the canonical ORM schema.
+Duplicate selected `core` aliases also refuse before any row ordering or map
+conversion can collapse them. Equal duplicate values still lack a single-valued
+historical publication identity. This read-only refusal prints the alias name,
+chooses no value and leaves both original rows for operator reconciliation.
+Native-equivalent spelling variants selected by MySQL/MariaDB collation also
+refuse unless the fetched context and alias exactly match the historical
+publication keys. The reader does not lowercase source names or imitate native
+collation rules. PostgreSQL's distinct keys remain outside its exact canonical
+selector; a distinct key cannot replace a required historical alias.
+
+Known canonical installation/adoption and interrupted widening/prerequisite
+journals retain their existing recovery owners. An unfinished baseline or seed
+continues through `db:install`; established older completed Legacy receipts and
+captured pending operations resume without adding invented provenance fields.
+Unrelated completion records do not admit an otherwise unsupported installation.
+Receipt recognition does not replace reference, schema or source-fingerprint
+validation by the migration that owns it.
+
+Release labels are historical application publication evidence, not cryptographic
+proof of completed data migrations on a manually relabeled database. In
+particular, current profile rights cannot prove the historical transition: the
+historical migration grants bit `16384` on existing followup/task rows, but an
+administrator may later revoke it. Admission therefore neither grants that bit
+nor overwrites current rights or cron customizations. Operators must verify the
+historical upgrade before restoring genuine missing release metadata.
+
+This repair is source preparation, not executed validation. The proposed pure
+admission matrix and existing raw migration-history fixture cover unsupported
+2.1.2 refusal through direct History and actual CLI entrypoints, complete native
+row/schema preservation, and supported 2.1.3 adoption retaining customized rights.
+Raw ledgerless fixtures now publish the actual historical installer labels rather
+than seed placeholders. Syntax, provider execution, partial-install/retry suites,
+coherent full suites and application readiness remain pending for this source.
+The distinct source correction also reconstructs a malformed Config uniqueness
+index with conflicting schema and same-value application duplicates. Direct
+History, Upgrade and actual CLI paths must refuse without changing any native
+row, schema/CHECK definition or absent ledger; the fixture then restores the
+original complete Config rows and native uniqueness index. The first draft's
+duplicate-collapse source-review failure remains recorded separately.
+The second draft's case-sensitive PHP key comparison against case-insensitive
+native aliases is also retained as a separate source-review failure. The next
+correction adds actual `Version` and `Core` controls: MariaDB must refuse selected
+noncanonical identities, while PostgreSQL's exact selector and read-only preview
+must preserve those distinct keys without treating them as release publication.
+
 Configuration bootstrap reads through the supplied DBAL connection and defers
 lock-profile hydration until history is ready. Ordinary web requests refuse pending
 history with HTTP 503; ordinary CLI commands return 129. Read-only schema and

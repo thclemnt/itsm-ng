@@ -33,6 +33,7 @@ if (!is_file($directory . '/config_db.php')) {
 define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
+require __DIR__ . '/fixtures/LegacyReleaseFormat.php';
 $started = $phaseStarted = microtime(true);
 $checkpoint = static function (string $phase) use ($started, &$phaseStarted): void {
     $now = microtime(true);
@@ -216,6 +217,9 @@ $rawLedger = $manager->introspectTable(LegacyToOrm::LEDGER);
 $rawSuppliers = range(1701, 1707);
 try {
     $manager->dropTable(LegacyToOrm::LEDGER);
+    // A completed historical installer publishes all four aliases; raw seed
+    // placeholders alone do not represent an eligible ledgerless installation.
+    LegacyReleaseFormat::publish($connection);
     if ($postgres) {
         foreach (['glpi_computers' => 'is_deleted', 'glpi_suppliers' => 'is_recursive'] as $table => $column) {
             $connection->executeStatement('ALTER TABLE ' . $table . ' ALTER COLUMN ' . $column . ' DROP DEFAULT, ALTER COLUMN ' . $column
@@ -402,10 +406,143 @@ $cli = static function (array $arguments) use ($upgradeConfig): array {
 try {
     $manager->dropTable(LegacyToOrm::LEDGER);
     verify(Ledger::states($connection) === [] && Type::lookupName($manager->listTableColumns('glpi_computers')['id']->getType()) === 'integer', 'Actual populated updater starts from raw tables with no ledger and legacy identifier widths');
+    $rawRowbags = static function () use ($connection, $platform, $schema): array {
+        $result = [];
+        foreach ($schema->getTables() as $table) {
+            $rows = $connection->fetchAllAssociative('SELECT * FROM ' . $platform->quoteIdentifier($table->getName()));
+            $bag = array_map(serialize(...), $rows);
+            sort($bag, SORT_STRING);
+            $result[$table->getName()] = $bag;
+        }
+        ksort($result);
+        return $result;
+    };
+    // A malformed legacy source can lack the Config uniqueness index while
+    // retaining every admitted table/column. Duplicate publication rows must
+    // refuse before any same-name ordering or array map can choose a value.
+    LegacyReleaseFormat::publish($connection);
+    $publishedRelease = \itsmng\Database\LegacyAdoptionEligibility::release($connection);
+    $configBefore = $manager->introspectTable('glpi_configs');
+    $configRowsBefore = $connection->fetchAllAssociative('SELECT * FROM glpi_configs ORDER BY id');
+    $configIndexes = array_values(array_filter($configBefore->getIndexes(),
+        static fn ($index): bool => $index->isUnique() && $index->getColumns() === ['context', 'name']));
+    verify(count($configIndexes) === 1, 'Actual historical Config has one context/name uniqueness index');
+    $configIndex = $configIndexes[0];
+    $manager->dropIndex($configIndex->getName(), 'glpi_configs');
+    try {
+        $ambiguousSchema = $manager->introspectSchema();
+        $ambiguousCatalog = BooleanDomainSchema::catalog($connection);
+        $ambiguousInputs = [
+            ['context' => 'core', 'name' => 'itsmdbversion', 'source' => 'itsmdbversion', 'value' => '2.1.2', 'diagnostic' => 'Ambiguous historical publication: duplicate core.itsmdbversion alias'],
+            ['context' => 'core', 'name' => 'version', 'source' => 'version', 'value' => '2.1.3', 'diagnostic' => 'Ambiguous historical publication: duplicate core.version alias'],
+            ['context' => 'core', 'name' => 'Version', 'source' => 'version', 'value' => '2.1.2', 'diagnostic' => 'Noncanonical historical publication key: "core"."Version"'],
+            ['context' => 'Core', 'name' => 'version', 'source' => 'version', 'value' => '2.1.2', 'diagnostic' => 'Noncanonical historical publication key: "Core"."version"'],
+        ];
+        foreach ($ambiguousInputs as $input) {
+            $original = $connection->fetchAssociative('SELECT * FROM glpi_configs WHERE context = ? AND name = ?', ['core', $input['source']]);
+            verify($original !== false, 'Actual historical alias exists before duplicate fixture');
+            $duplicateId = 1 + (int)$connection->fetchOne('SELECT MAX(id) FROM glpi_configs');
+            $connection->insert('glpi_configs', array_replace($original, ['id' => $duplicateId, 'context' => $input['context'], 'name' => $input['name'], 'value' => $input['value']]));
+            try {
+                $ambiguousRows = $rawRowbags();
+                $variant = $input['context'] !== 'core' || $input['name'] !== $input['source'];
+                if ($variant) {
+                    $nativeSelected = (int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_configs WHERE id = ? AND context = ? AND name = ?', [$duplicateId, 'core', 'version']) === 1;
+                    verify($nativeSelected === !$postgres, 'Actual provider membership distinguishes case-sensitive keys from native-equivalent legacy spellings');
+                    if (!$nativeSelected) {
+                        verify(\itsmng\Database\LegacyAdoptionEligibility::release($connection) === $publishedRelease, 'Distinct PostgreSQL configuration key does not replace canonical publication');
+                        $history->plan($connection);
+                        verify(!$manager->tablesExist([LegacyToOrm::LEDGER]) && $rawRowbags() === $ambiguousRows
+                            && $manager->createComparator()->compareSchemas($ambiguousSchema, $manager->introspectSchema())->isEmpty()
+                            && BooleanDomainSchema::catalog($connection) === $ambiguousCatalog, 'Actual PostgreSQL preview preserves distinct configuration keys, all native rows/schema and absent ledger');
+                        continue;
+                    }
+                }
+                $duplicateDiagnostic = $input['diagnostic'];
+                $refusals = [
+                    'History preview' => static fn () => $history->plan($connection),
+                    'History apply' => static fn () => $history->upgrade($connection),
+                    'Upgrade preview' => static fn () => (new \itsmng\Database\Upgrade($database))->plan(),
+                    'Upgrade apply' => static fn () => (new \itsmng\Database\Upgrade($database))->apply(),
+                ];
+                foreach ($refusals as $entrypoint => $operation) {
+                    try {
+                        $operation();
+                        throw new LogicException('Duplicate historical publication was accepted by ' . $entrypoint);
+                    } catch (RuntimeException $error) {
+                        verify(str_contains($error->getMessage(), $duplicateDiagnostic), $entrypoint . ' refuses ambiguous source identity without choosing a value');
+                        verify(!str_contains($error->getMessage(), '"' . $input['value'] . '"'), 'Ambiguity diagnostic does not print actual duplicate values');
+                    }
+                    verify(!$manager->tablesExist([LegacyToOrm::LEDGER]) && $rawRowbags() === $ambiguousRows, $entrypoint . ' preserves every native row and absent ledger on duplicate refusal');
+                }
+                foreach ([['db:update', '--dry-run'], ['db:migrate', '--apply']] as $arguments) {
+                    [$status, $output] = $cli($arguments);
+                    verify($status !== 0 && str_contains($output, $duplicateDiagnostic), 'Actual CLI refuses contradictory or same-value duplicate publication');
+                    verify(!$manager->tablesExist([LegacyToOrm::LEDGER]) && $rawRowbags() === $ambiguousRows, 'Actual CLI duplicate refusal preserves every native row and absent ledger');
+                }
+                verify($manager->createComparator()->compareSchemas($ambiguousSchema, $manager->introspectSchema())->isEmpty()
+                    && BooleanDomainSchema::catalog($connection) === $ambiguousCatalog, 'Every duplicate refusal preserves the complete native schema and CHECK definitions');
+            } finally {
+                $connection->delete('glpi_configs', ['id' => $duplicateId]);
+            }
+        }
+    } finally {
+        $manager->createIndex($configIndex, 'glpi_configs');
+    }
+    verify($connection->fetchAllAssociative('SELECT * FROM glpi_configs ORDER BY id') === $configRowsBefore
+        && $manager->createComparator()->compareTables($configBefore, $manager->introspectTable('glpi_configs'))->isEmpty(),
+        'Duplicate fixture restores every original single-valued publication row and native uniqueness definition');
+    // The actual 2.1.2 and 2.1.3 dumps are byte-identical. Reconstruct its
+    // missing terminal DML on existing default right rows, without fake DDL.
+    LegacyReleaseFormat::publish($connection, '2.1.2', '2.1.2');
+    $retainedCustomRights = [];
+    foreach (['followup', 'task'] as $rightName) {
+        $row = $connection->fetchAssociative('SELECT id, rights FROM glpi_profilerights WHERE profiles_id = ? AND name = ?', [1, $rightName]);
+        verify($row !== false, 'Historical default profile has the original ' . $rightName . ' row');
+        $retainedCustomRights[(int)$row['id']] = (int)$row['rights'] & ~16384;
+        $connection->update('glpi_profilerights', ['rights' => $retainedCustomRights[(int)$row['id']]], ['id' => $row['id']]);
+    }
+    $unsupportedSchema = $manager->introspectSchema();
+    $unsupportedCatalog = BooleanDomainSchema::catalog($connection);
+    $oldRowbags = $rawRowbags;
+    $unsupportedRows = $oldRowbags();
+    $provenanceRefusals = [
+        'History preview' => static fn () => $history->plan($connection),
+        'History apply' => static fn () => $history->upgrade($connection),
+        'CLI preview' => static function () use ($cli): void {
+            [$status, $output] = $cli(['db:update', '--dry-run']);
+            verify($status !== 0 && str_contains($output, 'Historical ITSM-NG adoption provenance'), 'Actual CLI preview refuses old historical data provenance');
+        },
+        'CLI apply' => static function () use ($cli): void {
+            [$status, $output] = $cli(['db:migrate', '--apply']);
+            verify($status !== 0 && str_contains($output, 'Historical ITSM-NG adoption provenance'), 'Actual CLI apply refuses old historical data provenance');
+        },
+    ];
+    foreach ($provenanceRefusals as $entrypoint => $operation) {
+        if (str_starts_with($entrypoint, 'History')) {
+            try {
+                $operation();
+                throw new LogicException('Structurally matching pre-2.1.3 data was accepted by ' . $entrypoint);
+            } catch (RuntimeException $error) {
+                verify(str_contains($error->getMessage(), 'Historical ITSM-NG adoption provenance')
+                    && str_contains($error->getMessage(), 'itsmdbversion="2.1.2"'), $entrypoint . ' diagnoses the exact missing historical format');
+            }
+        } else {
+            $operation();
+        }
+        verify(!$manager->tablesExist([LegacyToOrm::LEDGER]) && Ledger::states($connection) === [], $entrypoint . ' creates no ledger or progress receipt');
+        verify($manager->createComparator()->compareSchemas($unsupportedSchema, $manager->introspectSchema())->isEmpty()
+            && BooleanDomainSchema::catalog($connection) === $unsupportedCatalog, $entrypoint . ' preserves complete schema/native column and CHECK definitions');
+        verify($oldRowbags() === $unsupportedRows, $entrypoint . ' preserves every native row bag, credentials, rights, sentinels and audit record');
+    }
+    // A genuine completed historical publication is the supported boundary.
+    // These current revoked masks may be administrator edits after that upgrade;
+    // they must survive the existing positive adoption and all retries below.
+    LegacyReleaseFormat::publish($connection);
     $beforeCliSchema = $manager->introspectSchema();
     $beforeCliCatalog = BooleanDomainSchema::catalog($connection);
     $beforeCliRows = [];
-    foreach (['glpi_computers', 'glpi_appliances_items', 'glpi_configs', 'glpi_users', 'glpi_logs'] as $table) {
+    foreach (['glpi_computers', 'glpi_appliances_items', 'glpi_configs', 'glpi_users', 'glpi_profilerights', 'glpi_logs'] as $table) {
         $beforeCliRows[$table] = $connection->fetchAllAssociative('SELECT * FROM ' . $connection->getDatabasePlatform()->quoteIdentifier($table) . ' ORDER BY id');
     }
     $beforeCliComputer = $connection->fetchAssociative('SELECT * FROM glpi_computers WHERE id = ?', [$legacyId]);
@@ -479,6 +616,9 @@ foreach ([Baseline20261001::VERSION, Seeds20261001::VERSION] as $adoptedVersion)
     verify(Ledger::state($connection, $adoptedVersion) === ['complete' => true, 'origin' => 'adopted', 'data' => 'preserved'], 'Actual ledgerless updater records inherited history without replaying seeds: ' . $adoptedVersion);
 }
 verify((new SchemaCheck())->differences($connection) === [], 'Populated historical replay converges to the complete required schema');
+foreach ($retainedCustomRights as $rightId => $mask) {
+    verify((int)$connection->fetchOne('SELECT rights FROM glpi_profilerights WHERE id = ?', [$rightId]) === $mask, 'Canonical adoption preserves customized historical rights instead of replaying the old bit grant');
+}
 $document = $connection->fetchAssociative('SELECT id, documents_id, domains_id, items_id, users_id, is_recursive, timeline_position FROM glpi_documents_items WHERE id=803');
 $documentReceipt = Ledger::state($connection, DomainDocuments20261006::GENERAL_RECEIPT);
 verify((int)$document['id'] === 803 && (int)$document['documents_id'] === 802 && (int)$document['domains_id'] === 801 && (int)$document['items_id'] === 801
