@@ -48,8 +48,14 @@ final class ComponentData20261013
             $valid = $reference['policy'] === 'empty'
                 ? '(' . $field . ' IS NULL OR ' . $field . ' = 0 OR (' . $field . ' > 0 AND p.id IS NOT NULL))'
                 : '(' . $field . ' IS NOT NULL AND ' . $field . ($reference['policy'] === 'root' ? ' >= 0' : ' > 0') . ' AND p.id IS NOT NULL)';
-            self::audit($connection, $snapshot['table'], $column, 'NOT ' . $valid,
-                ' LEFT JOIN ' . $quote($reference['target']) . ' p ON p.id = ' . $field, 'r.');
+            self::audit(
+                $connection,
+                $snapshot['table'],
+                $column,
+                'NOT ' . $valid,
+                ' LEFT JOIN ' . $quote($reference['target']) . ' p ON p.id = ' . $field,
+                'r.'
+            );
         }
         if (!$platform instanceof PostgreSQLPlatform
             && (Ledger::state($connection, BooleanDomains20261008::VERSION)['complete'] ?? false) === true) {

@@ -288,8 +288,10 @@ try {
                     'entities_id' => $targetRecord['entities_id'], 'is_recursive' => $targetRecord['is_recursive']]);
                 verify($read($table, $g[$key]) === $expected, 'Attached/duplicate/stock cached scope follows the new definition while subject and payload remain exact');
             }
-            verify($read($table, $g['neighbor']) === $oldRows['neighbor'] && $read($deviceTable, $g['source']) === null,
-                'Widened replacement removes only the owned source and preserves the actual target neighbor');
+            verify(
+                $read($table, $g['neighbor']) === $oldRows['neighbor'] && $read($deviceTable, $g['source']) === null,
+                'Widened replacement removes only the owned source and preserves the actual target neighbor'
+            );
             verify($connection->getTransactionNestingLevel() === $level, 'Valid scope forwarding preserves the caller-owned frame');
             $g = $graph(true, false);
             $before = $snapshot();

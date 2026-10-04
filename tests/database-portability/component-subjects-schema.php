@@ -197,10 +197,12 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
             } catch (RuntimeException $error) {
                 verify(str_contains($error->getMessage(), $diagnostic) && str_contains($error->getMessage(), $table), 'The actual frozen core/CHECK ownership diagnostic refuses before DDL');
             }
-            verify($connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id') === $rows
+            verify(
+                $connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id') === $rows
                 && $connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $ledger
                 && $platform->getCreateTableSQL($manager->introspectTable($table)) === $shape && $nativeForeign() === $foreignBefore,
-                'Valid source rows cannot bypass damaged completed core shape; all rows, raw receipts and DBAL DDL remain exact');
+                'Valid source rows cannot bypass damaged completed core shape; all rows, raw receipts and DBAL DDL remain exact'
+            );
             $afterChecks = $platform instanceof PostgreSQLPlatform
                 ? $connection->fetchAllAssociative("SELECT conname, pg_get_constraintdef(oid) AS definition FROM pg_catalog.pg_constraint WHERE conrelid=to_regclass(?) AND contype='c' ORDER BY conname", [$platform->quoteIdentifier($table)])
                 : \itsmng\Database\BooleanDomainSchema::checks($connection, $table);
@@ -290,9 +292,11 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
         }
         $migration->apply($connection);
         verify(Type::lookupName($manager->introspectTable($table)->getColumn('is_dynamic')->getType()) === 'boolean', 'Constraint-free valid legacy flag storage converges to the intended boolean mapping');
-        verify(Type::getType('boolean')->convertToPHPValue($connection->fetchOne('SELECT is_dynamic FROM ' . $table . ' WHERE id=?', [4294996200]), $platform) === true
+        verify(
+            Type::getType('boolean')->convertToPHPValue($connection->fetchOne('SELECT is_dynamic FROM ' . $table . ' WHERE id=?', [4294996200]), $platform) === true
             && Type::getType('boolean')->convertToPHPValue($connection->fetchOne('SELECT is_dynamic FROM ' . $table . ' WHERE id=?', [4294996280]), $platform) === false,
-            'Actual integer1/0 values become true/false without losing populated identities');
+            'Actual integer1/0 values become true/false without losing populated identities'
+        );
         verify(Ledger::state($connection, Booleans20261002::VERSION) === $oldBoolean, 'New family conversion retains exact old boolean receipt');
         foreach (['columns', 'stock_normalization', 'copy', 'projection', 'constraints', ...($postgres ? ['missing_projection'] : [])] as $interruption) {
             $reconstruction->legacy($comment);
@@ -368,11 +372,15 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
             // CHECK controls keep every FK valid, and FK controls keep the
             // discriminator/positive-identity CHECK valid.
             $updateId = 4294996400 + array_search($kind, array_keys($reference['selections']), true);
-            verify((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $table . ' WHERE id=?', [$updateId]) === 0,
-                'Canonical native UPDATE fixture never adopts an existing binding');
+            verify(
+                (int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $table . ' WHERE id=?', [$updateId]) === 0,
+                'Canonical native UPDATE fixture never adopts an existing binding'
+            );
             $missingSubject = $secondSubject + 999;
-            verify((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $selection['target'] . ' WHERE id=?', [$missingSubject]) === 0,
-                'Selected native UPDATE FK control proves its target absent');
+            verify(
+                (int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $selection['target'] . ' WHERE id=?', [$missingSubject]) === 0,
+                'Selected native UPDATE FK control proves its target absent'
+            );
             $secondValue = $connection->fetchOne('SELECT id FROM ' . $selection['target'] . ' WHERE id=?', [$secondSubject]);
             verify((int)$secondValue === $secondSubject, 'Canonical positive UPDATE has a real second subject');
             $beforeUpdate = $connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id');
@@ -381,21 +389,31 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
             $updatePrimary = null;
             $updateCleanup = [];
             try {
-                verify($connection->insert($table, ['id' => $updateId] + $valid + $payload) === 1,
-                    'Every branch admits a canonical native INSERT before UPDATE refusal controls');
+                verify(
+                    $connection->insert($table, ['id' => $updateId] + $valid + $payload) === 1,
+                    'Every branch admits a canonical native INSERT before UPDATE refusal controls'
+                );
                 $inserted = $connection->fetchAssociative('SELECT * FROM ' . $table . ' WHERE id=?', [$updateId]);
-                verify($inserted !== false && $inserted['itemtype'] === $kind
+                verify(
+                    $inserted !== false && $inserted['itemtype'] === $kind
                     && (int)$inserted[$selection['column']] === $subject && (int)$inserted['items_id'] === $subject,
-                    'Canonical native INSERT has the selected owner and generated legacy projection');
+                    'Canonical native INSERT has the selected owner and generated legacy projection'
+                );
                 foreach ($reference['selections'] as $otherKind => $other) {
-                    verify($otherKind === $kind || $inserted[$other['column']] === null,
-                        'Canonical native INSERT leaves each unselected subject empty');
+                    verify(
+                        $otherKind === $kind || $inserted[$other['column']] === null,
+                        'Canonical native INSERT leaves each unselected subject empty'
+                    );
                 }
-                verify($connection->update($table, [$selection['column'] => $secondSubject], ['id' => $updateId]) === 1,
-                    'Actual positive native UPDATE changes the selected owning identity');
+                verify(
+                    $connection->update($table, [$selection['column'] => $secondSubject], ['id' => $updateId]) === 1,
+                    'Actual positive native UPDATE changes the selected owning identity'
+                );
                 $expectedUpdate = array_replace($inserted, [$selection['column'] => $secondValue, 'items_id' => $secondValue]);
-                verify($connection->fetchAssociative('SELECT * FROM ' . $table . ' WHERE id=?', [$updateId]) === $expectedUpdate,
-                    'Positive native UPDATE regenerates items_id and retains every other native cell');
+                verify(
+                    $connection->fetchAssociative('SELECT * FROM ' . $table . ' WHERE id=?', [$updateId]) === $expectedUpdate,
+                    'Positive native UPDATE regenerates items_id and retains every other native cell'
+                );
                 $validUpdateRows = $connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id');
                 $check = $table . '_typed_item_kind';
                 $invalidUpdates = [];
@@ -411,11 +429,18 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
                     }
                 }
                 foreach ($invalidUpdates as [$invalid, $cause, $constraint]) {
-                    ComponentNativeAdmission::reject($connection,
-                        fn () => $connection->update($table, $invalid, ['id' => $updateId]), $table, $cause, $constraint);
-                    verify($connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id') === $validUpdateRows
+                    ComponentNativeAdmission::reject(
+                        $connection,
+                        fn () => $connection->update($table, $invalid, ['id' => $updateId]),
+                        $table,
+                        $cause,
+                        $constraint
+                    );
+                    verify(
+                        $connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id') === $validUpdateRows
                         && $connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $beforeUpdateLedger,
-                        'Selected CHECK/FK UPDATE refusal restores the complete canonical row vector and receipts');
+                        'Selected CHECK/FK UPDATE refusal restores the complete canonical row vector and receipts'
+                    );
                 }
             } catch (Throwable $error) {
                 $updatePrimary = $error;
@@ -426,9 +451,11 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
                     $updateCleanup[] = $error;
                 }
                 try {
-                    verify($connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id') === $beforeUpdate
+                    verify(
+                        $connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id') === $beforeUpdate
                         && $connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $beforeUpdateLedger,
-                        'Owned canonical INSERT/UPDATE controls restore the complete original family graph and ledger');
+                        'Owned canonical INSERT/UPDATE controls restore the complete original family graph and ledger'
+                    );
                 } catch (Throwable $error) {
                     $updateCleanup[] = $error;
                 }

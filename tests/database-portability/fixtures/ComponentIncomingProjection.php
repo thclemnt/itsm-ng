@@ -45,12 +45,14 @@ final class ComponentIncomingProjection
             } catch (RuntimeException $error) {
                 verify(str_contains($error->getMessage(), 'Incoming typed legacy item foreign key'), 'Actual incoming projection diagnostic refuses the supplied graph');
             }
-            verify($connection->fetchAllAssociative('SELECT * FROM ' . $quote($table) . ' ORDER BY id') === $rows
+            verify(
+                $connection->fetchAllAssociative('SELECT * FROM ' . $quote($table) . ' ORDER BY id') === $rows
                 && $connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $receipt
                 && $connection->fetchAllAssociative('SELECT * FROM ' . $quote($consumer)) === [['id' => 1, 'binding_id' => $binding, 'subject_id' => $subject]]
                 && $platform->getCreateTableSQL($manager->introspectTable($table)) === $sourceDdl
                 && $platform->getCreateTableSQL($manager->introspectTable($consumer)) === $consumerDdl,
-                'Incoming FK refusal preserves actual source/consumer rows, every raw receipt and both structural definitions');
+                'Incoming FK refusal preserves actual source/consumer rows, every raw receipt and both structural definitions'
+            );
         } catch (Throwable $error) {
             $primary = $error;
         } finally {

@@ -27,8 +27,10 @@ final class NotificationTemplateService
     public function translations(int $template): array
     {
         $em = Orm::create($this->database);
-        return array_map(fn (NotificationTemplateTranslation $translation): NotificationTemplateContent => $this->content($em, $translation),
-            (new NotificationTemplateRepository($em))->translations($template));
+        return array_map(
+            fn (NotificationTemplateTranslation $translation): NotificationTemplateContent => $this->content($em, $translation),
+            (new NotificationTemplateRepository($em))->translations($template)
+        );
     }
 
     public function usedLanguages(int $template): array
@@ -44,8 +46,12 @@ final class NotificationTemplateService
     {
         $row = (new RecordRepository($em))->toRow($translation);
         return new NotificationTemplateContent(
-            $translation->id, $row['notificationtemplates_id'], $translation->language,
-            $translation->subject, $translation->content_text, $translation->content_html
+            $translation->id,
+            $row['notificationtemplates_id'],
+            $translation->language,
+            $translation->subject,
+            $translation->content_text,
+            $translation->content_html
         );
     }
 }

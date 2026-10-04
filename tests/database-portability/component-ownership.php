@@ -137,12 +137,14 @@ try {
                 $deleted = $fixtures->create('glpi_items_disks', ['itemtype' => $kind, 'items_id' => $sameId, 'filesystems_id' => $filesystem,
                     'name' => $prefix . ' deleted volume ' . $kind, 'is_deleted' => true]);
                 $actual = $api->readItem($kind, $sameId, ['with_disks' => true, 'get_hateoas' => false]);
-                verify(count($actual['_disks']) === 1 && (int)$actual['_disks'][0]['name']['id'] === $disk
+                verify(
+                    count($actual['_disks']) === 1 && (int)$actual['_disks'][0]['name']['id'] === $disk
                     && $actual['_disks'][0]['name']['itemtype'] === $kind
                     && $actual['_disks'][0]['name']['fsname'] === $prefix . ' filesystem'
                     && (int)$actual['_disks'][0]['name']['totalsize'] === 200
                     && !array_key_exists('items_id', $actual['_disks'][0]['name']) && !array_key_exists('is_deleted', $actual['_disks'][0]['name']),
-                    'Actual with_disks endpoint preserves separate filesystem rows/output and excludes deleted/colliding-kind records');
+                    'Actual with_disks endpoint preserves separate filesystem rows/output and excludes deleted/colliding-kind records'
+                );
                 verify($read('glpi_items_disks', $deleted) !== null, 'API read never deletes historical filesystem rows');
                 $hiddenAsset = $fixtures->create($selection['target'], ['name' => $prefix . ' denied API ' . $kind, 'entities_id' => $foreignEntity]);
                 $fixtures->create('glpi_items_disks', ['itemtype' => $kind, 'items_id' => $hiddenAsset, 'name' => $prefix . ' denied volume']);
@@ -174,10 +176,12 @@ try {
             $input = [$deviceColumn => $device, 'itemtype' => $kind, 'items_id' => $sameId, 'serial' => "Component O'Reilly \\ 日本語", 'otherserial' => null] + $payload;
             verify($model->can(-1, CREATE, $input), 'Actual actor may create this supported subject binding');
             $id = (int)$model->add(Toolbox::addslashes_deep($input));
-            verify($id > 0 && $model->getFromDB($id) && (int)$model->fields[$selection['column']] === $sameId
+            verify(
+                $id > 0 && $model->getFromDB($id) && (int)$model->fields[$selection['column']] === $sameId
                 && (int)$model->fields['items_id'] === $sameId && (int)$model->fields['entities_id'] === $foreignEntity
                 && $model->fields['serial'] === $input['serial'] && $model->fields['otherserial'] === null,
-                'Public add publishes actual owning subject, generated wide projection and independent Device entity/literal payload');
+                'Public add publishes actual owning subject, generated wide projection and independent Device entity/literal payload'
+            );
             $duplicate = (int)(new $linkClass())->add([$deviceColumn => $device, 'itemtype' => $kind, 'items_id' => $sameId] + $payload);
             verify($duplicate > 0 && $duplicate !== $id, 'Individual duplicate component links remain legitimate');
             $bindings[$kind] = [$id, $duplicate];
@@ -203,8 +207,10 @@ try {
         }
         $deletedStock = $fixtures->create($table, [$deviceColumn => $device, 'itemtype' => null, 'items_id' => 0, 'is_deleted' => true] + $payload);
         $stockCandidates = $repository->stock($table, $deviceColumn, $device);
-        verify(count($stockCandidates) === 3 && (int)$stockCandidates[2]['id'] === $deletedStock && $stockCandidates[2]['is_deleted'],
-            'Stock selection retains legitimate historical deleted stock candidates separately from active screen rows');
+        verify(
+            count($stockCandidates) === 3 && (int)$stockCandidates[2]['id'] === $deletedStock && $stockCandidates[2]['is_deleted'],
+            'Stock selection retains legitimate historical deleted stock candidates separately from active screen rows'
+        );
         $_POST = ['itemtype' => $deviceClass, 'items_id' => $device];
         ob_start();
         try {
@@ -249,12 +255,16 @@ try {
                 verify($kind === $otherKind ? (int)$model->fields[$other['column']] === $sameId : $model->fields[$other['column']] === null, 'Retarget update selects one real owner and clears all old associations');
             }
         }
-        verify($model->update(['id' => $id, 'itemtype' => null, 'serial' => null]) && $model->getFromDB($id)
+        verify(
+            $model->update(['id' => $id, 'itemtype' => null, 'serial' => null]) && $model->getFromDB($id)
             && $model->fields['itemtype'] === null && (int)$model->fields['items_id'] === 0 && $model->fields['serial'] === null,
-            'Supplied null kind/payload returns the component to stock with a cleared projection');
+            'Supplied null kind/payload returns the component to stock with a cleared projection'
+        );
         verify($linkClass::affectItem_Device($id, $sameId, $firstKind), 'Actual public attachment can reassign stock');
-        verify($model->update(['id' => $id, 'otherserial' => null]) && $model->getFromDB($id) && $model->fields['itemtype'] === $firstKind,
-            'Absent subject keys retain owner while an explicit nullable specificity is accepted');
+        verify(
+            $model->update(['id' => $id, 'otherserial' => null]) && $model->getFromDB($id) && $model->fields['itemtype'] === $firstKind,
+            'Absent subject keys retain owner while an explicit nullable specificity is accepted'
+        );
         $rights = $_SESSION['glpiactiveprofile'];
         $_SESSION['glpiactiveprofile'][$firstKind::$rightname] = 0;
         $_SESSION['glpiactiveprofile'][$deviceClass::$rightname] = 0;
@@ -268,13 +278,17 @@ try {
             verify($original->getFromDB($bindings[$kind][1]), 'Load each real concrete binding for cloning');
             $copy = (int)$original->clone($entityClass::withReference(['serial' => null], $kind, $destinationId));
             $cloned = $read($table, $copy);
-            verify($copy > 0 && $copy !== $bindings[$kind][1] && $cloned['itemtype'] === $kind && (int)$cloned[$selection['column']] === $destinationId
+            verify(
+                $copy > 0 && $copy !== $bindings[$kind][1] && $cloned['itemtype'] === $kind && (int)$cloned[$selection['column']] === $destinationId
                 && (int)$cloned['items_id'] === $destinationId && $cloned['serial'] === null && (int)$cloned[$deviceColumn] === $device,
-                'Real concrete cloning retargets ownership, preserves Device and distinguishes supplied null payload');
+                'Real concrete cloning retargets ownership, preserves Device and distinguishes supplied null payload'
+            );
             $beforeCopies = count($rows($table, ['itemtype' => $kind, $selection['column'] => $destinationId]));
             Item_Devices::cloneItem($kind, $sameId, $destinationId);
-            verify(count($rows($table, ['itemtype' => $kind, $selection['column'] => $destinationId])) === $beforeCopies + 2,
-                'Deprecated actual clone caller retains each distinct selected-family source link');
+            verify(
+                count($rows($table, ['itemtype' => $kind, $selection['column'] => $destinationId])) === $beforeCopies + 2,
+                'Deprecated actual clone caller retains each distinct selected-family source link'
+            );
         }
 
         // Each supported real asset purge covers keep_devices versus deletion.
@@ -290,15 +304,19 @@ try {
             $projectLink = $fixtures->create('glpi_items_projects', ['projects_id' => $project, 'itemtype' => $linkClass, 'items_id' => $binding]);
             $asset = new $kind();
             verify($asset->getFromDB($purgeSource) && $asset->delete(['id' => $purgeSource, 'keep_devices' => 1], true), 'Actual asset purge returns its components to stock');
-            verify($read($table, $binding)[$selection['column']] === null && (int)$read($table, $binding)['items_id'] === 0
+            verify(
+                $read($table, $binding)[$selection['column']] === null && (int)$read($table, $binding)['items_id'] === 0
                 && $read('glpi_infocoms', $infocom) !== null && $read('glpi_contracts_items', $contractLink) !== null && $read('glpi_items_projects', $projectLink) !== null,
-                'Stock return retains actual binding-owned financial/contract/project relations');
+                'Stock return retains actual binding-owned financial/contract/project relations'
+            );
             verify($linkClass::affectItem_Device($binding, $purgeDestination, $kind), 'Financially linked stock can be reassigned');
             verify($asset->getFromDB($purgeDestination) && $asset->delete(['id' => $purgeDestination, 'keep_devices' => 0], true), 'Actual asset deletion invokes component purge');
-            verify($read($table, $binding) === null && $read('glpi_infocoms', $infocom) === null
+            verify(
+                $read($table, $binding) === null && $read('glpi_infocoms', $infocom) === null
                 && $read('glpi_contracts_items', $contractLink) === null && $read('glpi_items_projects', $projectLink) === null
                 && $read('glpi_contracts', $contract) !== null && $read('glpi_projects', $project) !== null,
-                'Actual binding purge deletes its links while retaining surviving Contract/Project owners');
+                'Actual binding purge deletes its links while retaining surviving Contract/Project owners'
+            );
         }
 
         // Same ID in several kinds is a graph key, never a global asset identity.
@@ -317,10 +335,12 @@ try {
         verify(!$repository->canMoveDevice($table, $deviceColumn, $moveDevice, $moving), 'Real canonical stock outside the moving graph requires copying');
         verify((new Transfer())->moveItems([$firstKind => [$destinationId]], $transferEntity, ['keep_device' => 1, 'keep_history' => 1]), 'Actual Transfer copies the selected family while stock/mixed-kind users remain outside');
         $moved = $read($table, $moveBindings[$firstKind]);
-        verify((int)$moved[$deviceColumn] !== $moveDevice && (int)$moved[$definition['selections'][$firstKind]['column']] === $destinationId
+        verify(
+            (int)$moved[$deviceColumn] !== $moveDevice && (int)$moved[$definition['selections'][$firstKind]['column']] === $destinationId
             && (int)$read($deviceTable, $moved[$deviceColumn])['entities_id'] === $transferEntity
             && (int)$read($deviceTable, $moveDevice)['entities_id'] === 0 && (int)$read($table, $stockBinding)[$deviceColumn] === $moveDevice,
-            'Actual Transfer preserves original stock/Device ownership and selected generated projection when copying');
+            'Actual Transfer preserves original stock/Device ownership and selected generated projection when copying'
+        );
         foreach (array_slice($kinds, 1) as $kind) {
             verify((int)$read($table, $moveBindings[$kind])[$deviceColumn] === $moveDevice, 'Unselected colliding-kind binding remains on its own original Device');
         }
@@ -345,9 +365,11 @@ try {
             }
         };
         verify((new Transfer())->moveItems([$firstKind => [$destinationId]], 0, ['keep_device' => 0]) === false, 'Actual binding purge hook can veto Transfer');
-        verify($read($table, $moveBindings[$firstKind]) === $beforeBinding
+        verify(
+            $read($table, $moveBindings[$firstKind]) === $beforeBinding
             && $read($definition['selections'][$firstKind]['target'], $destinationId) === $beforeAsset,
-            'Late actual purge veto restores selected parent and binding writes');
+            'Late actual purge veto restores selected parent and binding writes'
+        );
         unset($PLUGIN_HOOKS['pre_item_purge']['component_ownership_fixture'][$linkClass]);
         verify($connection->getTransactionNestingLevel() === $level + 1, 'Application commands preserve original caller transaction');
     }
