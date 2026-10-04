@@ -31,7 +31,7 @@ final class Connection extends AbstractConnectionMiddleware
     public function query(string $sql): Result
     {
         try {
-            return new Result($this->pdo->query($sql));
+            return new Result($this->pdo->query(\itsmng\Database\PostgresParameters::prepare($sql)));
         } catch (\PDOException $error) {
             throw Exception::new($error);
         }

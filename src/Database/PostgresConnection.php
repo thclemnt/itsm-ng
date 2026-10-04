@@ -4,6 +4,7 @@
 
 namespace itsmng\Database;
 
+use Doctrine\DBAL\Cache\QueryCacheProfile;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Configuration;
 use Doctrine\DBAL\Driver;
@@ -56,6 +57,29 @@ final class PostgresConnection extends Connection implements ManagedTransactionC
     {
         $this->executeQuery("SELECT set_config('TimeZone', ?, false)", [$timezone])->free();
         $this->timezone = $timezone;
+    }
+
+    /** Protect lexical regions before DBAL expands named or array parameters. */
+    public function executeQuery(
+        string $sql,
+        array $params = [],
+        array $types = [],
+        ?QueryCacheProfile $qcp = null,
+    ): Result {
+        // Cache keys and hits retain the caller's SQL. DBAL's cache miss calls
+        // this method again without qcp before it expands/binds parameters.
+        if ($params !== [] && $qcp === null) {
+            $sql = PostgresParameters::prepare($sql);
+        }
+        return parent::executeQuery($sql, $params, $types, $qcp);
+    }
+
+    public function executeStatement(string $sql, array $params = [], array $types = []): int|string
+    {
+        if ($params !== []) {
+            $sql = PostgresParameters::prepare($sql);
+        }
+        return parent::executeStatement($sql, $params, $types);
     }
 
     /** Bound compatibility queries use the same DBAL driver and exception owner. */

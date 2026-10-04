@@ -13,6 +13,7 @@ require GLPI_ROOT . '/inc/based_config.php';
 require GLPI_ROOT . '/inc/db.function.php';
 require GLPI_CONFIG_DIR . '/config_db.php';
 $DB = null;
+$cold = null;
 $connection = null;
 $scope = null;
 $primary = null;
@@ -56,6 +57,54 @@ SELECT :actual::text AS bound /* outer /* inner ? */ ? :ignored */
 SQL, ['actual' => 'named value']);
         verify($row === ['bound' => 'named value'], 'Real named PDO binding ignores positional bytes inside nested comments');
         $row = $connection->fetchAssociative(<<<'SQL'
+SELECT 2 IN (:ids) AS allowed /* outer /* inner */ ? :ignored */
+SQL, ['ids' => [1, 2, 3]], ['ids' => \Doctrine\DBAL\ArrayParameterType::INTEGER]);
+        verify($row === ['allowed' => true], 'Actual typed array expansion occurs after lexical regions are protected');
+        $row = $connection->fetchAssociative(<<<'SQL'
+SELECT 2 IN (:ids) AS allowed /* outer /* inner */ ? :ignored */
+SQL, ['ids' => []], ['ids' => \Doctrine\DBAL\ArrayParameterType::INTEGER]);
+        verify($row === ['allowed' => null], 'Actual empty array keeps normal DBAL SQL NULL semantics');
+        $count = $connection->executeStatement(<<<'SQL'
+SELECT :actual::text AS bound /* outer /* inner ? */ ? :ignored */
+SQL, ['actual' => 'statement value'], ['actual' => \Doctrine\DBAL\ParameterType::STRING]);
+        verify($count === 1, 'Real statement execution retains typed named binding and native row count');
+        foreach (["binary\0\xfe", null] as $bytes) {
+            $value = $connection->fetchOne(<<<'SQL'
+SELECT :bytes::bytea AS payload /* outer /* inner */ ? :ignored */
+SQL, ['bytes' => $bytes], ['bytes' => $bytes === null ? \Doctrine\DBAL\ParameterType::NULL : \Doctrine\DBAL\ParameterType::BINARY]);
+            if (is_resource($value)) {
+                $stream = $value;
+                $value = stream_get_contents($stream);
+                verify(fclose($stream), 'Only the fetched test-owned binary stream is closed');
+            }
+            verify($value === $bytes, 'Actual DBAL typed binary and NULL values survive named expansion unchanged');
+        }
+        $cacheSql = <<<'SQL'
+SELECT :actual::text AS bound /* outer /* inner */ ? :ignored */
+SQL;
+        $cache = new \Symfony\Component\Cache\Adapter\ArrayAdapter();
+        $profile = new \Doctrine\DBAL\Cache\QueryCacheProfile(60, 'lexical-owned-cache', $cache);
+        $params = ['actual' => 'cached actual value'];
+        $types = ['actual' => \Doctrine\DBAL\ParameterType::STRING];
+        $result = $connection->executeQuery($cacheSql, $params, $types, $profile);
+        verify($result->fetchAssociative() === ['bound' => 'cached actual value'], 'Real cache miss executes the protected bound SQL');
+        $result->free();
+        [$cacheKey, $realKey] = $profile->generateCacheKeys($cacheSql, $params, $types, $connection->getParams());
+        $item = $cache->getItem($cacheKey);
+        verify($item->isHit() && array_key_exists($realKey, $item->get()), 'Actual DBAL cache uses the original caller SQL key');
+        $cold = \itsmng\Database\PostgresConnection::create($connection->getParams(), $connection->getConfiguration());
+        verify(!$cold->isConnected(), 'Genuine complete-parameter owner factory is lazy');
+        $result = $cold->executeQuery($cacheSql, $params, $types, $profile);
+        verify($result->fetchAssociative() === ['bound' => 'cached actual value'] && !$cold->isConnected(), 'Actual cache hit retains values and opens no physical connection');
+        $result->free();
+        $directProfile = $profile->setCacheKey('lexical-direct-cache');
+        $result = $connection->executeCacheQuery($cacheSql, $params, $types, $directProfile);
+        verify($result->fetchAssociative() === ['bound' => 'cached actual value'], 'Direct public cache miss also reaches the same owning preparation boundary');
+        $result->free();
+        $result = $connection->executeQuery(\itsmng\Database\PostgresParameters::prepare($cacheSql), $params, $types);
+        verify($result->fetchAssociative() === ['bound' => 'cached actual value'], 'Repeated preparation remains idempotent through actual named execution');
+        $result->free();
+        $row = $connection->fetchAssociative(<<<'SQL'
 SELECT ?::jsonb ?? 'present' AS value /* outer /* inner */ ? :ignored */
 SQL, ['{"present":false}']);
         verify($row === ['value' => true], 'Real PostgreSQL question-mark operator survives nested-comment preparation');
@@ -70,11 +119,11 @@ SQL, ['after prefixes']);
             'unicode' => 'dat', 'quoted ? :ignored' => 'after prefixes'], 'Actual prefixed literals and quoted identifiers retain their distinct PostgreSQL semantics');
         $row = $connection->fetchAssociative(<<<'SQL'
 SELECT 'left'
+'right'::text AS combined, ?::text AS bound
 /* outer /* inner */
    ? :ignored */
-'right'::text AS combined, ?::text AS bound
 SQL, ['after concatenation']);
-        verify($row === ['combined' => 'leftright', 'bound' => 'after concatenation'], 'Comment newlines preserve PostgreSQL adjacent-literal concatenation');
+        verify($row === ['combined' => 'leftright', 'bound' => 'after concatenation'], 'Valid adjacent-literal newlines and trailing nested-comment text retain their separate PostgreSQL semantics');
         $result = $DB->queryParams(<<<'SQL'
 SELECT $2::text AS second, $1::text AS first, $2::text AS repeated,
        $body$ /* nested-looking */ ? :ignored ' \ $3 $body$::text AS body
@@ -94,6 +143,15 @@ SQL, ['ordinary dollar']);
 } catch (Throwable $error) {
     $primary = $error;
 } finally {
+    try {
+        $cold?->close();
+    } catch (Throwable $error) {
+        if ($primary === null) {
+            $primary = $error;
+        } else {
+            $cleanup[] = $error;
+        }
+    }
     if ($scope !== null) {
         try {
             $scope->assertActive();
