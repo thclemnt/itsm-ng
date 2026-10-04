@@ -267,14 +267,14 @@ try {
 } finally {
     try {
         if ($historicalStarted) {
-        $manager->dropTable($table);
-        $manager->createTable($required);
-        $booleans->restore();
-        $connection->executeStatement($migration::checkSql($table));
-        foreach ([DomainDocuments20261006::VERSION, OperatingSystemSubjects20261006::VERSION] as $version) {
-            Ledger::save($connection, $version, $saved[$version]);
-        }
-        $connection->delete(LegacyToOrm::LEDGER, ['version' => $migration::GENERAL_RECEIPT]);
+            $manager->dropTable($table);
+            $manager->createTable($required);
+            $booleans->restore();
+            $connection->executeStatement($migration::checkSql($table));
+            foreach ([DomainDocuments20261006::VERSION, OperatingSystemSubjects20261006::VERSION] as $version) {
+                Ledger::save($connection, $version, $saved[$version]);
+            }
+            $connection->delete(LegacyToOrm::LEDGER, ['version' => $migration::GENERAL_RECEIPT]);
         }
     } catch (Throwable $error) {
         $cleanup[] = $error;

@@ -290,7 +290,10 @@ foreach ([['Document', 'glpi_documents_items', 'documents_id']] as [$type, $tabl
         }
     }
     foreach ($historicalCleanup as $error) {
-        try { fwrite(STDERR, 'Additional historical fixture cleanup failure: ' . $error::class . "\n"); } catch (Throwable) {}
+        try {
+            fwrite(STDERR, 'Additional historical fixture cleanup failure: ' . $error::class . "\n");
+        } catch (Throwable) {
+        }
     }
     if ($historicalPrimary !== null) {
         throw $historicalPrimary;

@@ -265,15 +265,15 @@ try {
             $connection->executeStatement('SET SESSION time_zone = ?', [$timezone]);
         }
         if ($historicalStarted) {
-        $manager->dropTable($table);
-        if ($postgres) {
-            $connection->executeStatement('DROP FUNCTION IF EXISTS itsm_domain_document_restore_probe()');
-        }
-        $manager->createTable($required);
-        $nativeBooleans->restore();
-        $connection->executeStatement($migration::checkSql($table));
-        Ledger::save($connection, $migration::VERSION, $savedStage);
-        $connection->delete('itsmng_migrations', ['version' => $migration::GENERAL_RECEIPT]);
+            $manager->dropTable($table);
+            if ($postgres) {
+                $connection->executeStatement('DROP FUNCTION IF EXISTS itsm_domain_document_restore_probe()');
+            }
+            $manager->createTable($required);
+            $nativeBooleans->restore();
+            $connection->executeStatement($migration::checkSql($table));
+            Ledger::save($connection, $migration::VERSION, $savedStage);
+            $connection->delete('itsmng_migrations', ['version' => $migration::GENERAL_RECEIPT]);
         }
         foreach (['glpi_domains' => $domain, 'glpi_documents' => $document, 'glpi_computers' => $computer] as $parent => $id) {
             $connection->delete($parent, ['id' => $id]);
@@ -289,7 +289,10 @@ try {
     }
 }
 foreach ($historicalCleanup as $error) {
-    try { fwrite(STDERR, 'Additional historical fixture cleanup failure: ' . $error::class . "\n"); } catch (Throwable) {}
+    try {
+        fwrite(STDERR, 'Additional historical fixture cleanup failure: ' . $error::class . "\n");
+    } catch (Throwable) {
+    }
 }
 if ($historicalPrimary !== null) {
     throw $historicalPrimary;
