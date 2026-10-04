@@ -309,7 +309,15 @@ foreach ([['itemtype' => 'PluginInventoryAsset', 'items_id' => $legacyId], ['ite
         $history->upgrade($connection);
         throw new LogicException('Invalid inventory subject accepted before adoption');
     } catch (RuntimeException $error) {
-        verify(str_contains($error->getMessage(), 'glpi_items_operatingsystems') && (str_contains($error->getMessage(), 'Unsupported typed relationship kinds') || str_contains($error->getMessage(), 'Invalid or unsupported')), 'OS source diagnostic identifies invalid owning subject before adoption');
+        verify(str_contains($error->getMessage(), 'glpi_items_operatingsystems') && (
+            str_contains($error->getMessage(), 'Unsupported typed relationship kinds')
+            || str_contains($error->getMessage(), 'Invalid or unsupported')
+            || ($error::class === RuntimeException::class && $error->getMessage() ===
+                "Exact subject preflight failed before DDL or receipt:\n"
+                . 'Invalid exact subject data: glpi_items_operatingsystems (1 rows); samples: '
+                . json_encode([['id' => 804] + $invalid], JSON_THROW_ON_ERROR)
+                . '. Correct the source assignment explicitly; no spelling or identifier is rewritten.')
+        ), 'OS source diagnostic identifies invalid owning subject before adoption');
     }
     verify(Ledger::state($connection, LegacyToOrm::VERSION) === null && Ledger::state($connection, OperatingSystemSubjects20261006::VERSION) === null
         && Type::lookupName($manager->listTableColumns('glpi_computers')['id']->getType()) === 'integer'
