@@ -82,7 +82,13 @@ try {
     if (!$postgres) {
         $params['dbname'] = $name;
     }
-    $fixture = DriverManager::getConnection($params);
+    $fixture = $postgres ? DriverManager::getConnection($params)
+        : \itsmng\Database\MySQLConnection::create($params, $connection->getConfiguration());
+    if (!$postgres) {
+        verify($fixture !== $connection && $fixture instanceof \itsmng\Database\MySQLManagedConnection
+            && $fixture->getNativeConnection() !== $connection->getNativeConnection()
+            && $fixture->fetchOne('SELECT DATABASE()') === $name, 'Separate historical fixture retains its actual canonical MySQL writer and exclusively owned database');
+    }
     if ($postgres) {
         $fixture->executeStatement('SET search_path TO ' . $quote);
     }
