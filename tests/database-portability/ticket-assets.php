@@ -35,6 +35,11 @@ function verify(bool $ok, string $message): void
 }
 verify(str_starts_with($DB->dbdefault, 'itsm_port_'), 'Dedicated fixture required');
 $connection = $DB->getDoctrineConnection();
+require_once __DIR__ . '/fixtures/ExactSubjectHistoricalFixture.php';
+$nativeExact = new ExactSubjectHistoricalFixture($connection, ['glpi_items_tickets'], captureTableDeclarations: false, preserveLedger: true);
+$nativeExactFailure = null;
+try {
+    $nativeExact->beginOwnedAlteration();
 $migration = new TicketAssets();
 $migration->apply($connection);
 $DB->clearSchemaCache();
@@ -281,4 +286,10 @@ try {
     }
     $connection->delete('glpi_tickets', ['id' => $legacyTicket]);
     $connection->delete('glpi_computers', ['id' => $computer]);
+}
+
+} catch (Throwable $error) {
+    $nativeExactFailure = $error;
+} finally {
+    $nativeExact->restorePreservingFailure($nativeExactFailure);
 }

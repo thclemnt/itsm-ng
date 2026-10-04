@@ -34,6 +34,11 @@ function verify(bool $ok, string $message): void
 }
 verify(str_starts_with($DB->dbdefault, 'itsm_port_'), 'Dedicated fixture required');
 $connection = $DB->getDoctrineConnection();
+require_once __DIR__ . '/fixtures/ExactSubjectHistoricalFixture.php';
+$nativeExact = new ExactSubjectHistoricalFixture($connection, ['glpi_objectlocks'], captureTableDeclarations: false, preserveLedger: true);
+$nativeExactFailure = null;
+try {
+    $nativeExact->beginOwnedAlteration();
 $migration = new ObjectLockSubjects();
 $migration->apply($connection);
 $DB->clearSchemaCache();
@@ -236,5 +241,11 @@ try {
     (new ForeignKeys())->apply($connection);
     $connection->delete('glpi_computers', ['id' => $parent]);
     $connection->delete('glpi_computers', ['id' => $otherParent]);
+}
+
+} catch (Throwable $error) {
+    $nativeExactFailure = $error;
+} finally {
+    $nativeExact->restorePreservingFailure($nativeExactFailure);
 }
 echo $DB->getProvider() . ": thirty object lock subject FKs, public lock status, native persistence, wide overlapping IDs, subject purges and frozen upgrade passed.\n";

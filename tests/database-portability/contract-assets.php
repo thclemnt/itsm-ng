@@ -36,6 +36,11 @@ function verify(bool $ok, string $message): void
 }
 verify(str_starts_with($DB->dbdefault, 'itsm_port_'), 'Dedicated fixture required');
 $connection = $DB->getDoctrineConnection();
+require_once __DIR__ . '/fixtures/ExactSubjectHistoricalFixture.php';
+$nativeExact = new ExactSubjectHistoricalFixture($connection, ['glpi_contracts_items'], captureTableDeclarations: false, preserveLedger: true);
+$nativeExactFailure = null;
+try {
+    $nativeExact->beginOwnedAlteration();
 $migration = new ContractAssets();
 $migration->apply($connection);
 $DB->clearSchemaCache();
@@ -234,5 +239,11 @@ foreach ([['Contract', 'glpi_contracts_items', 'contracts_id']] as [$type, $tabl
         $connection->delete($parentTable, ['id' => $parent]);
         $connection->delete('glpi_computers', ['id' => $computer]);
     }
+}
+
+} catch (Throwable $error) {
+    $nativeExactFailure = $error;
+} finally {
+    $nativeExact->restorePreservingFailure($nativeExactFailure);
 }
 echo "PASS: thirty-five owning contract assets, native/public writes, bounded lists, components, transfer, purge and frozen upgrade\n";

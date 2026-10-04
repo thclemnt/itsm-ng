@@ -33,6 +33,11 @@ function verify(bool $condition, string $message): void
 }
 verify(str_starts_with($DB->dbdefault, 'itsm_port_'), 'Dedicated fixture required');
 $connection = $DB->getDoctrineConnection();
+require_once __DIR__ . '/fixtures/ExactSubjectHistoricalFixture.php';
+$nativeExact = new ExactSubjectHistoricalFixture($connection, ['glpi_appliances_items', 'glpi_appliances_items_relations'], captureTableDeclarations: false, preserveLedger: true);
+$nativeExactFailure = null;
+try {
+    $nativeExact->beginOwnedAlteration();
 $platform = $connection->getDatabasePlatform();
 $postgres = $platform instanceof PostgreSQLPlatform;
 $mysql = $platform instanceof MySQLPlatform;
@@ -131,4 +136,10 @@ foreach ([['glpi_appliances_items', 'appliances_id', 'glpi_appliances', new Appl
     }
 }
 verify((new SchemaCheck())->differences($connection) === [], 'CHECK fixtures restore the entire required schema');
+
+} catch (Throwable $error) {
+    $nativeExactFailure = $error;
+} finally {
+    $nativeExact->restorePreservingFailure($nativeExactFailure);
+}
 echo $DB->getProvider() . ": permissive/unenforced owned CHECK replacement, invalid canonical preflight, DROP interruption, retry, native discriminator rejection and unrelated constraint preservation passed.\n";

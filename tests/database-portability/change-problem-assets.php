@@ -35,6 +35,11 @@ function verify(bool $ok, string $message): void
 }
 verify(str_starts_with($DB->dbdefault, 'itsm_port_'), 'Dedicated fixture required');
 $connection = $DB->getDoctrineConnection();
+require_once __DIR__ . '/fixtures/ExactSubjectHistoricalFixture.php';
+$nativeExact = new ExactSubjectHistoricalFixture($connection, ['glpi_changes_items', 'glpi_items_problems'], captureTableDeclarations: false, preserveLedger: true);
+$nativeExactFailure = null;
+try {
+    $nativeExact->beginOwnedAlteration();
 $migration = new ChangeProblemAssets();
 $migration->apply($connection);
 $DB->clearSchemaCache();
@@ -256,5 +261,11 @@ foreach ($cases as [$type, , , , $table, $parentColumn]) {
         $connection->delete($parentTable, ['id' => $parent]);
         $connection->delete('glpi_computers', ['id' => $computer]);
     }
+}
+
+} catch (Throwable $error) {
+    $nativeExactFailure = $error;
+} finally {
+    $nativeExact->restorePreservingFailure($nativeExactFailure);
 }
 echo "PASS: forty change/problem asset FKs, native/public writes, active pickers, actor tabs, purge and frozen upgrade\n";

@@ -39,6 +39,11 @@ function verify(bool $ok, string $message): void
 }
 verify(str_starts_with($DB->dbdefault, 'itsm_port_'), 'Dedicated fixture required');
 $connection = $DB->getDoctrineConnection();
+require_once __DIR__ . '/fixtures/ExactSubjectHistoricalFixture.php';
+$nativeExact = new ExactSubjectHistoricalFixture($connection, ['glpi_certificates_items', 'glpi_domains_items', 'glpi_items_clusters'], captureTableDeclarations: false, preserveLedger: true);
+$nativeExactFailure = null;
+try {
+    $nativeExact->beginOwnedAlteration();
 foreach ([new CertificateAssets(), new DomainAssets(), new ClusterAssets()] as $migration) {
     $migration->apply($connection);
 }
@@ -276,5 +281,11 @@ foreach ($scopes as [$type, $table, $parentColumn, $class, $modelClass, $migrati
         $connection->delete($parentTable, ['id' => $parent]);
         $connection->delete('glpi_computers', ['id' => $computer]);
     }
+}
+
+} catch (Throwable $error) {
+    $nativeExactFailure = $error;
+} finally {
+    $nativeExact->restorePreservingFailure($nativeExactFailure);
 }
 echo "PASS: twenty infrastructure asset FKs, native/public graphs, scoped owning queries, category roles, purge and frozen upgrades\n";

@@ -34,6 +34,11 @@ function verify(bool $ok, string $message): void
 }
 verify(str_starts_with($DB->dbdefault, 'itsm_port_'), 'Dedicated database required');
 $connection = $DB->getDoctrineConnection();
+require_once __DIR__ . '/fixtures/ExactSubjectHistoricalFixture.php';
+$nativeExact = new ExactSubjectHistoricalFixture($connection, ['glpi_projectteams', 'glpi_projecttaskteams'], captureTableDeclarations: false, preserveLedger: true);
+$nativeExactFailure = null;
+try {
+    $nativeExact->beginOwnedAlteration();
 $migration = new ProjectTeamMembers();
 $migration->apply($connection);
 $DB->clearSchemaCache();
@@ -298,4 +303,10 @@ try {
     $connection->delete('glpi_projecttasks', ['id' => $task]);
     $connection->delete('glpi_projects', ['id' => $project]);
     $connection->delete('glpi_users', ['id' => $user]);
+}
+
+} catch (Throwable $error) {
+    $nativeExactFailure = $error;
+} finally {
+    $nativeExact->restorePreservingFailure($nativeExactFailure);
 }

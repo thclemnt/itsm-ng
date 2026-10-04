@@ -38,6 +38,11 @@ function verify(bool $condition, string $message): void
 }
 verify(str_starts_with($DB->dbdefault, 'itsm_port_'), 'Dedicated fixture required');
 $connection = $DB->getDoctrineConnection();
+require_once __DIR__ . '/fixtures/ExactSubjectHistoricalFixture.php';
+$nativeExact = new ExactSubjectHistoricalFixture($connection, ['glpi_appliances_items', 'glpi_appliances_items_relations'], captureTableDeclarations: true, preserveLedger: true);
+$nativeExactFailure = null;
+try {
+    $nativeExact->beginOwnedAlteration();
 $platform = $connection->getDatabasePlatform();
 $postgres = $platform instanceof PostgreSQLPlatform;
 $manager = $connection->createSchemaManager();
@@ -221,7 +226,7 @@ try {
         $manager->dropTable($table);
     }
     foreach ($stages as $table => $stage) {
-        $manager->createTable($required->getTable($table));
+        $manager->createTable($nativeExact->restorationTable($table));
         $connection->executeStatement($stage[3]::checkSql($table));
         Ledger::save($connection, $stage[3]::VERSION, $states[$table]);
     }
@@ -231,4 +236,10 @@ try {
     $DB->clearSchemaCache();
 }
 verify((new SchemaCheck())->differences($connection) === [], 'Cleanup restores entire required schema');
+
+} catch (Throwable $error) {
+    $nativeExactFailure = $error;
+} finally {
+    $nativeExact->restorePreservingFailure($nativeExactFailure);
+}
 echo $DB->getProvider() . ": eight owning appliance subjects, three nested recipients, separate owners, wide native graphs, restrictive FKs, asset uniqueness, nested duplicate preservation, invalid-data preflight and four-phase populated retry passed.\n";

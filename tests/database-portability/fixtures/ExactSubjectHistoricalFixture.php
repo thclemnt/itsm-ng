@@ -20,8 +20,9 @@ final class ExactSubjectHistoricalFixture
     private array $definitions;
     private array $restorationFacts = [];
     private array $restorationTables = [];
+    private ?array $originalLedger = null;
 
-    public function __construct(private Connection $connection, ?array $tables = null)
+    public function __construct(private Connection $connection, ?array $tables = null, bool $captureTableDeclarations = true, bool $preserveLedger = false)
     {
         if ($connection->getTransactionNestingLevel() !== 0 || History::pendingVersions($connection) !== []) {
             throw new LogicException('An idle complete disposable history is required before historical fixture setup.');
@@ -42,6 +43,12 @@ final class ExactSubjectHistoricalFixture
         $this->receipt = $connection->fetchAssociative('SELECT version, state FROM ' . $quote(LegacyToOrm::LEDGER) . ' WHERE version=?', [ExactDiscriminators20261010::VERSION]);
         if ($this->receipt === false) {
             throw new LogicException('Capture a real completed exact-subject receipt; never synthesize one.');
+        }
+        if ($preserveLedger) {
+            if ($tables === null) {
+                throw new LogicException('Complete ledger preservation requires an explicit selected historical scope.');
+            }
+            $this->originalLedger = $connection->fetchAllAssociative('SELECT version, state FROM ' . $quote(LegacyToOrm::LEDGER) . ' ORDER BY version');
         }
         $catalog = $platform instanceof AbstractMySQLPlatform ? BooleanDomainSchema::catalog($connection) : null;
         foreach ($this->definitions as $table => $definition) {
@@ -69,7 +76,9 @@ final class ExactSubjectHistoricalFixture
             }
             if ($tables !== null) {
                 $this->restorationFacts[$table] = $this->facts($table);
-                $this->restorationTables[$table] = $this->captureRestorationTable($table);
+                if ($captureTableDeclarations) {
+                    $this->restorationTables[$table] = $this->captureRestorationTable($table);
+                }
             }
         }
         $this->assertSelectedReconstruction();
@@ -121,18 +130,49 @@ final class ExactSubjectHistoricalFixture
                 $column->setColumnDefinition($declaration);
             }
         }
-        $projection = $captured->getColumn('items_id');
-        // PostgreSQL introspection exposes a generated expression as a DEFAULT.
-        // Retain the captured owning expression as generation instead, never both.
-        $projection->setDefault(null);
-        $projection->setAutoincrement(false);
-        $declaration = $projection->getType()->getSQLDeclaration($projection->toArray(), $platform)
-            . ' GENERATED ALWAYS AS (' . $this->original[$table]['projection'] . ') STORED'
-            . ($projection->getNotnull() ? ' NOT NULL' : '');
-        if ($platform->supportsInlineColumnComments() && $projection->getComment() !== null && $projection->getComment() !== '') {
-            $declaration .= ' ' . $platform->getInlineColumnCommentSQL($projection->getComment());
+        $generated = ['items_id' => $this->original[$table]['projection']];
+        foreach ($this->restorationFacts[$table]['native']['columns'] as $name => $native) {
+            if ($platform instanceof AbstractMySQLPlatform) {
+                if ($name === 'items_id' || ($native['GENERATION_EXPRESSION'] ?? '') !== '') {
+                    if ($native['EXTRA'] !== 'STORED GENERATED') {
+                        throw new LogicException('Unsupported generated storage before selected reconstruction: ' . $table . '.' . $name);
+                    }
+                    if ($name !== 'items_id') {
+                        $generated[$name] = $native['GENERATION_EXPRESSION'];
+                    }
+                }
+            } elseif ($name !== 'items_id' && $native['is_generated'] === 'ALWAYS') {
+                if (!is_string($native['generation_expression']) || $native['generation_expression'] === '') {
+                    throw new LogicException('Missing native generated expression before selected reconstruction: ' . $table . '.' . $name);
+                }
+                $generated[$name] = $native['generation_expression'];
+            }
         }
-        $projection->setColumnDefinition($declaration);
+        if (!$platform instanceof AbstractMySQLPlatform) {
+            $storage = $this->connection->fetchAllAssociative("SELECT attname, attgenerated FROM pg_catalog.pg_attribute WHERE attrelid=to_regclass(?) AND NOT attisdropped AND attgenerated<>''", [$this->connection->quoteIdentifier($table)]);
+            foreach ($storage as $native) {
+                if ($native['attgenerated'] !== 's' || !isset($generated[$native['attname']])) {
+                    throw new LogicException('Unsupported native generated storage before selected reconstruction: ' . $table);
+                }
+            }
+            if (count($storage) !== count($generated)) {
+                throw new LogicException('Incomplete native generation capture before selected reconstruction: ' . $table);
+            }
+        }
+        foreach ($generated as $name => $expression) {
+            $projection = $captured->getColumn($name);
+            // PostgreSQL hydrates generated expressions as DEFAULTs; MySQL
+            // loses generation entirely. Retain each actual stored owner once.
+            $projection->setDefault(null);
+            $projection->setAutoincrement(false);
+            $declaration = $projection->getType()->getSQLDeclaration($projection->toArray(), $platform)
+                . ' GENERATED ALWAYS AS (' . $expression . ') STORED'
+                . ($projection->getNotnull() ? ' NOT NULL' : '');
+            if ($platform->supportsInlineColumnComments() && $projection->getComment() !== null && $projection->getComment() !== '') {
+                $declaration .= ' ' . $platform->getInlineColumnCommentSQL($projection->getComment());
+            }
+            $projection->setColumnDefinition($declaration);
+        }
         return $captured;
     }
 
@@ -236,8 +276,32 @@ final class ExactSubjectHistoricalFixture
             }
         }
         $this->connection->delete(LegacyToOrm::LEDGER, ['version' => ExactDiscriminators20261010::VERSION]);
+        if ($this->originalLedger !== null) {
+            $expected = array_values(array_filter($this->originalLedger, static fn (array $row): bool => $row['version'] !== ExactDiscriminators20261010::VERSION));
+            $actual = $this->connection->fetchAllAssociative('SELECT version, state FROM ' . $quote(LegacyToOrm::LEDGER) . ' ORDER BY version');
+            if ($actual !== $expected) {
+                throw new RuntimeException('Historical fixture changed another raw history receipt; Exact completion was not restored.');
+            }
+        }
         $this->connection->insert(LegacyToOrm::LEDGER, $this->receipt);
         $this->detached = false;
+    }
+
+    /** Preserve the actual fixture failure if independent native restoration also fails. */
+    public function restorePreservingFailure(?Throwable $primary): void
+    {
+        try {
+            $this->restore();
+        } catch (Throwable $cleanup) {
+            if ($primary !== null) {
+                throw new RuntimeException('Historical fixture failed and captured native cleanup also failed: '
+                    . $cleanup::class . ': ' . $cleanup->getMessage(), previous: $primary);
+            }
+            throw $cleanup;
+        }
+        if ($primary !== null) {
+            throw $primary;
+        }
     }
 
     /** Actual schema facts; physical column positions and allocator advances are not ownership. */

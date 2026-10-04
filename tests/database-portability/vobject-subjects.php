@@ -38,6 +38,11 @@ function verify(bool $ok, string $message): void
 }
 verify(str_starts_with($DB->dbdefault, 'itsm_port_'), 'Dedicated fixture required');
 $connection = $DB->getDoctrineConnection();
+require_once __DIR__ . '/fixtures/ExactSubjectHistoricalFixture.php';
+$nativeExact = new ExactSubjectHistoricalFixture($connection, ['glpi_vobjects'], captureTableDeclarations: false, preserveLedger: true);
+$nativeExactFailure = null;
+try {
+    $nativeExact->beginOwnedAlteration();
 $migration = new VObjectSubjects();
 $migration->apply($connection);
 $DB->clearSchemaCache();
@@ -270,5 +275,11 @@ try {
     $migration->apply($connection);
     (new ForeignKeys())->apply($connection);
     $connection->delete('glpi_planningexternalevents', ['id' => $parent]);
+}
+
+} catch (Throwable $error) {
+    $nativeExactFailure = $error;
+} finally {
+    $nativeExact->restorePreservingFailure($nativeExactFailure);
 }
 echo $DB->getProvider() . ": six calendar subject FKs, public CalDAV CRUD, bound/ambiguous UID lookup, native persistence, wide overlapping IDs, purge and frozen upgrade passed.\n";

@@ -32,6 +32,11 @@ function verify(bool $condition, string $message): void
 }
 verify(str_starts_with($DB->dbdefault, 'itsm_port_'), 'Disposable database required');
 $connection = $DB->getDoctrineConnection();
+require_once __DIR__ . '/fixtures/ExactSubjectHistoricalFixture.php';
+$nativeExact = new ExactSubjectHistoricalFixture($connection, ['glpi_items_operatingsystems'], captureTableDeclarations: true, preserveLedger: true);
+$nativeExactFailure = null;
+try {
+    $nativeExact->beginOwnedAlteration();
 $platform = $connection->getDatabasePlatform();
 $postgres = $platform instanceof PostgreSQLPlatform;
 $manager = $connection->createSchemaManager();
@@ -156,7 +161,7 @@ try {
     }
 } finally {
     $manager->dropTable($tableName);
-    $manager->createTable($required);
+    $manager->createTable($nativeExact->restorationTable($tableName));
     $nativeBooleans->restore();
     $connection->executeStatement(OperatingSystemSubjects20261006::checkSql($tableName));
     Ledger::save($connection, $version, $originalState);
@@ -165,4 +170,10 @@ try {
     $DB->clearSchemaCache();
 }
 verify((new SchemaCheck())->differences($connection) === [], 'Fixture cleanup restores complete schema');
+
+} catch (Throwable $error) {
+    $nativeExactFailure = $error;
+} finally {
+    $nativeExact->restorePreservingFailure($nativeExactFailure);
+}
 echo $DB->getProvider() . ": frozen OS ownership migration, invalid/zero/orphan/duplicate diagnostics, read-only CLI preview, wide populated payload, four real interrupted phases and idempotent retry passed.\n";

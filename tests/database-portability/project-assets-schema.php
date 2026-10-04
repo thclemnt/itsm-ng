@@ -37,6 +37,10 @@ function verify(bool $condition, string $message): void
 }
 verify(str_starts_with($DB->dbdefault, 'itsm_port_'), 'Dedicated fixture required');
 $connection = $DB->getDoctrineConnection();
+require_once __DIR__ . '/fixtures/ExactSubjectHistoricalFixture.php';
+$nativeExact = new ExactSubjectHistoricalFixture($connection, ['glpi_items_projects'], captureTableDeclarations: true, preserveLedger: true);
+$nativeExactFailure = null;
+try {
 $platform = $connection->getDatabasePlatform();
 $postgres = $platform instanceof PostgreSQLPlatform;
 $manager = $connection->createSchemaManager();
@@ -131,6 +135,7 @@ $owner = $fixtures->create('glpi_projects');
 $subjectProject = $fixtures->create('glpi_projects');
 $computer = $fixtures->create('glpi_computers', ['id' => 950000571]);
 $comment = "Historical project identity O'Reilly 日本語";
+$nativeExact->beginOwnedAlteration();
 try {
     foreach (['columns', 'copy', 'projection', 'constraints'] as $interruptPhase) {
         $manager->dropTable($table);
@@ -201,7 +206,7 @@ try {
     }
 } finally {
     $manager->dropTable($table);
-    $manager->createTable($restore);
+    $manager->createTable($nativeExact->restorationTable($table));
     $connection->executeStatement(ProjectAssets20261003::checkSql($table));
     Ledger::save($connection, ProjectAssets20261003::VERSION, $oldVersion);
     $connection->delete('glpi_projects', ['id' => $owner]);
@@ -210,4 +215,10 @@ try {
     $DB->clearSchemaCache();
 }
 verify((new SchemaCheck())->differences($connection) === [], 'Fixture cleanup restores the entire required schema');
+
+} catch (Throwable $error) {
+    $nativeExactFailure = $error;
+} finally {
+    $nativeExact->restorePreservingFailure($nativeExactFailure);
+}
 echo $DB->getProvider() . ": thirty-five owning project subjects, separate Project roles, wide native graphs, FK/CHECK/duplicate rejection, frozen populated phased retry, comment preservation, plugin preflight and actual installer refusal passed.\n";

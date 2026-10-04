@@ -34,6 +34,11 @@ function verify(bool $ok, string $message): void
 }
 verify(str_starts_with($DB->dbdefault, 'itsm_port_'), 'Dedicated fixture required');
 $connection = $DB->getDoctrineConnection();
+require_once __DIR__ . '/fixtures/ExactSubjectHistoricalFixture.php';
+$nativeExact = new ExactSubjectHistoricalFixture($connection, ['glpi_alerts'], captureTableDeclarations: false, preserveLedger: true);
+$nativeExactFailure = null;
+try {
+    $nativeExact->beginOwnedAlteration();
 $migration = new AlertSubjects();
 $migration->apply($connection);
 $DB->clearSchemaCache();
@@ -218,5 +223,11 @@ try {
     $migration->apply($connection);
     (new ForeignKeys())->apply($connection);
     $connection->delete('glpi_cartridgeitems', ['id' => $parent]);
+}
+
+} catch (Throwable $error) {
+    $nativeExactFailure = $error;
+} finally {
+    $nativeExact->restorePreservingFailure($nativeExactFailure);
 }
 echo $DB->getProvider() . ": ten alert subject FKs, ORM public lookups, native persistence, wide overlapping IDs, public purges and frozen upgrade passed.\n";
