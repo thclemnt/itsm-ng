@@ -14,68 +14,119 @@ final class DeletionUnit
 
     public static function isActive(Connection $connection): bool
     {
-        return !empty(self::$units[$connection]);
+        $frames = self::$units[$connection] ?? [];
+        if (!$frames) {
+            return false;
+        }
+        $frame = end($frames);
+        $frame['scope']->assertActive();
+        return true;
     }
 
-    public static function run(Connection $connection, callable $operation): DeletionResult
+    /** Model/session rewind is authorized only by rollback of this exact owner frame. */
+    public static function run(Connection $connection, callable $operation, ?callable $afterRollback = null): DeletionResult
     {
         TransactionOwnership::assertManaged($connection);
+        self::isActive($connection); // A stale parent cannot mint a fresh deletion authority.
         self::$units ??= new \WeakMap();
-        $frames = self::$units[$connection] ?? [];
-        $frames[] = ['cancelled' => false];
-        self::$units[$connection] = $frames;
         $level = $connection->getTransactionNestingLevel();
         $outcome = DeletionOutcome::Cancelled;
+        $frame = null;
+        $registered = false;
+        $rolledBack = false;
+        $rollbackAttempted = false;
+        $accepted = false;
+        $failure = null;
         $notifications = [];
+        $journal = new LifecycleModelJournal();
         $delivery = LifecycleNotifications::begin($connection);
         try {
-            $connection->beginTransaction();
-            $outcome = $operation();
-            if ($connection->getTransactionNestingLevel() !== $level + 1) {
-                throw new \LogicException('A deletion hook changed the lifecycle transaction ownership');
+            $frame = OwnedMutationFrame::begin($connection);
+            $frames = self::$units[$connection] ?? [];
+            $frames[] = ['scope' => $connection->captureManagedTransactionScope(), 'cancelled' => false];
+            self::$units[$connection] = $frames;
+            $registered = true;
+            $outcome = $journal->observe($connection, $operation);
+            if (!$outcome instanceof DeletionOutcome) {
+                throw new \LogicException('A deletion operation must return a structured outcome');
             }
+            $frame->assertActive();
             $frames = self::$units[$connection];
-            $frame = end($frames);
-            if ($outcome === DeletionOutcome::Cancelled || $frame['cancelled']) {
+            $current = end($frames);
+            if ($outcome === DeletionOutcome::Cancelled || $current['cancelled']) {
                 $outcome = DeletionOutcome::Cancelled;
-                $connection->rollBack();
+                $rollbackAttempted = true;
+                $frame->rollBack();
+                $rolledBack = true;
             } else {
-                $connection->commit();
+                $frame->commit();
+                $accepted = true;
             }
-        } catch (DeletionCancelled) {
+        } catch (\Throwable $primary) {
             $outcome = DeletionOutcome::Cancelled;
-            while ($connection->getTransactionNestingLevel() > $level) {
-                $connection->rollBack();
-            }
-        } catch (\Throwable $error) {
-            $outcome = DeletionOutcome::Cancelled;
-            $notifications = [];
-            while ($connection->getTransactionNestingLevel() > $level) {
-                $connection->rollBack();
-            }
-            throw $error;
-        } finally {
-            $frames = self::$units[$connection];
-            array_pop($frames);
-            if ($frames) {
-                $last = array_key_last($frames);
-                if ($outcome === DeletionOutcome::Cancelled) {
-                    $frames[$last]['cancelled'] = true;
+            $failure = $primary instanceof DeletionCancelled ? null : $primary;
+            if ($frame !== null && !$rollbackAttempted) {
+                try {
+                    $rollbackAttempted = true;
+                    $frame->rollBack();
+                    $rolledBack = true;
+                } catch (\Throwable $cleanup) {
+                    $failure = new MutationRollbackFailure($primary, $cleanup);
                 }
             }
-            self::$units[$connection] = $frames;
-            $notifications = $delivery->finish($outcome !== DeletionOutcome::Cancelled);
+        } finally {
+            if ($registered) {
+                $frames = self::$units[$connection];
+                array_pop($frames);
+                if ($frames && !$accepted) {
+                    $last = array_key_last($frames);
+                    $frames[$last]['cancelled'] = true;
+                }
+                self::$units[$connection] = $frames;
+            }
+            try {
+                $notifications = $delivery->finish($accepted);
+            } catch (\Throwable $cleanup) {
+                $failure = self::preserveFailure($failure, $cleanup);
+            }
+            // Depth alone cannot prove rollback after commit/reopen or reconnect.
+            // Each cleanup remains independent; none may replace the first failure.
+            if ($rolledBack) {
+                try {
+                    $journal->restore();
+                } catch (\Throwable $cleanup) {
+                    $failure = self::preserveFailure($failure, $cleanup);
+                }
+                if ($afterRollback !== null) {
+                    try {
+                        $afterRollback();
+                    } catch (\Throwable $cleanup) {
+                        $failure = self::preserveFailure($failure, $cleanup);
+                    }
+                }
+            }
         }
-        // A released savepoint is not a commit. Caller-owned transactions keep
-        // their persisted queue rows for cron, including subsequent caller rollback.
+        if ($failure !== null) {
+            throw $failure;
+        }
+        // A released savepoint is not a physical commit or permission to deliver.
         return new DeletionResult($outcome, $level === 0 ? $notifications : []);
     }
 
     /** Refused child mutations cannot leave a parent purge partially committed. */
     public static function requireSuccess(Connection $connection, bool $result): void
     {
-        if (!$result && !empty(self::$units[$connection])) {
+        if (!$result && self::isActive($connection)) {
             throw new DeletionCancelled('A related lifecycle operation was cancelled');
         }
+    }
+
+    private static function preserveFailure(?\Throwable $primary, \Throwable $cleanup): \Throwable
+    {
+        return $primary === null ? $cleanup : new MutationCleanupFailure(
+            $primary,
+            $cleanup,
+            $primary instanceof MutationCleanupFailure && $primary->rollbackUnproven
+        );
     }
 }
