@@ -1,5 +1,81 @@
 # PostgreSQL and Doctrine modernization goal
 
+## 2026-10-04 06:25 UTC: actual failures diagnosed; goal remains OPEN
+
+Normal Git fetch works directly in this cloud environment. The remote remains
+`01aee6a7bbd5a3f0301a6f27b329381a12ea8470`; both it and the verified original
+`897c5c9b` handoff are ancestors of this branch. Native persistent goals are
+unavailable. This document remains the durable implementation plan. Parallel
+agents own isolated source batches and independent reviews; ROOT alone executes
+PHP, builds and database jobs, with providers run sequentially.
+
+The complete discovered **209-contract** runs at `7ec628e3c828` were not green:
+PostgreSQL passed **198/209** in 1200.812 seconds; MariaDB passed **68/209** in
+1029.475 seconds. MariaDB's Exact populated-upgrade contract exceeded the
+unchanged 300-second limit, leaving its owned database's migration incomplete;
+subsequent bootstrap refusals account for the large failure cascade. That
+database and its original receipts remain untouched. Original parent native
+rows, ledger and catalogue remained unchanged. The PostgreSQL run passed the
+original certificate schema assertion in complete suite order.
+
+Actual unique fresh installations at `7ec628e3c828` pass on both providers using
+the normal CLI: PostgreSQL 36.625 seconds, MariaDB 139.741 seconds. Frozen DBAL
+baseline and raw seeds replay all **17** canonical versions through the existing
+ledger; both native inspections show **1,070** foreign keys, no pending versions
+or schema differences, and installed baseline/seed origins. These are genuine
+7ec628 installation receipts, not fresh-install claims for later source. See
+`/workspace/itsm-env/evidence/final-source-fresh-7ec628-7c881d0b-{pg,mysql}`.
+
+At clean `2fe3ca280dfd727d21207e6b4fb9c13b3079db25`, eight changed PHP files pass
+syntax and style checks; optimized autoload generation succeeds. Seven original
+focused contracts run on each provider: PostgreSQL **4/7**, MariaDB **5/7**. Exact
+populated upgrade and real interruption/retry pass in **15.501 / 61.958 seconds**,
+within the original 300-second limit. A fresh, metadata-scope-derived incoming
+catalogue batch replaces repeated catalogue scans without changing historical
+DDL, scope preservation, refusal assertions or retry policy. Processor ownership,
+Software discard and schema-check pass on both engines. Processor schema replay
+passes MariaDB in 60.389 seconds; PostgreSQL's later CHECK catch queries the
+database name in an aborted frame and masks its native error. A reviewed fixture
+correction captures that actual identity before the transaction.
+
+Original observer copies retain their failing assertions. Both engines identify
+the later OS diagnostic as the newer Exact preflight, with its exact table,
+count, row identity and no-rewrite envelope. Both also prove a real fixed-end
+permission gap: Monitor READ plus Licence READ still permits relation CREATE,
+although both endpoint global update checks return false. Positive converse
+controls permit either writable endpoint; no licence visibility refuses. A
+central declared-role permission correction is under source review. Separately,
+both original Software merge observations return success with zero delete-veto
+hook calls. A merge-specific removal path must invoke real delete before its
+legacy follow-up update; dictionary callers retain their existing helper.
+
+Current read-only native inspections at 2fe3 pass both providers: 17 completed
+versions, no pending versions or differences, 1,070 expected/actual native FKs,
+and signed nullable BIGINT generated certificate projection with all nine
+metadata-declared subject selections. MariaDB catalogue default `NULL` is a SQL
+literal string normalized to null by DBAL; an initially incorrect ROOT helper
+assertion and its failed receipt remain retained. The original schema comparison
+was not weakened. The handoff certificate mismatch has not been reproduced in
+these isolated fresh installs or the completed PostgreSQL suite; the repaired
+complete MariaDB execution order is still required before a new milestone.
+
+Evidence: `owned-domains-7ec628-*`, `owned-domains-6f1-*-focused-*`,
+`owned-domains-2fe3ca280d-*-focused-*`, `later-2fe3-native-observer-*`,
+`acl-variants-2fe3-native-*`, and `current-2fe3-native-schema-v2-*` under the private
+`/workspace/itsm-env/evidence/` directory. Focused or source-only receipts never
+replace whole-suite, application, browser or remote CI validation.
+
+Next: compose the reviewed deletion-frame/Device owning-command batch, the
+Processor observation fix, strict OS diagnostic correction, and Software merge
+and declared-role permission repairs. Validate their genuine public lifecycle,
+callback, queue, audit, ownership and native controls on both providers; run the
+complete dynamically discovered suite and inspect the final schema. Then prove
+current-source fresh replay, populated adoption/retry/idempotency and application
+flows. The next ten component associations remain a separate source-only batch.
+Most legacy adapter queries, unconverted component ownership, whole-parent graph
+atomicity, live replicas and external authentication remain open. The latest
+complete both-provider green suite remains the historical 30a4 checkpoint below.
+
 ## 2026-10-04 04:04 UTC: follow-on composition, full validation pending
 
 The goal remains **OPEN**. Normal Git fetch and push dry-run work in this cloud
