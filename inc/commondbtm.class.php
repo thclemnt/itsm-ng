@@ -1306,6 +1306,7 @@ class CommonDBTM extends CommonGLPI
             return false;
         }
 
+        $this->captureLifecycleWriter($DB);
         $priorState = \itsmng\Database\LifecycleModelJournal::state($this);
 
         // This means we are not adding a cloned object
@@ -1419,6 +1420,16 @@ class CommonDBTM extends CommonGLPI
     protected function executePreparedAdd(callable $operation, array $priorState): mixed
     {
         return $operation();
+    }
+
+    /**
+     * Capture the selected writer before loading/preparation/plugin callbacks.
+     * Default models retain their existing lifecycle. An owning model may keep
+     * this capability privately and check it at its existing validation seams.
+     * This hook neither authorizes a command nor begins a transaction.
+     */
+    protected function captureLifecycleWriter(DBAdapter $writer): void
+    {
     }
 
     private function completeLifecycleAdd(array $input, $history)
@@ -1820,6 +1831,7 @@ class CommonDBTM extends CommonGLPI
             return false;
         }
 
+        $this->captureLifecycleWriter($DB);
         if (!array_key_exists(static::getIndexName(), $input)) {
             return false;
         }
