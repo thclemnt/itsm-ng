@@ -48,7 +48,9 @@ $entities = array_values(array_intersect($active, $requested));
 $em = \itsmng\Database\Orm::create($DB);
 try {
     $values = (new \itsmng\Database\Repository\TicketCategoryRepository($em))->choices(
-        (int)($_POST['type'] ?? 0), $entities, Session::getCurrentInterface() === 'helpdesk'
+        (int)($_POST['type'] ?? 0),
+        $entities,
+        Session::getCurrentInterface() === 'helpdesk'
     );
 } finally {
     $em->clear();
