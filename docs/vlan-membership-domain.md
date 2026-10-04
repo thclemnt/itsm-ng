@@ -63,7 +63,8 @@ Two new contracts are discoverable by the unchanged portability runner:
   input, native unique refusal, current typed target existence, missing-pair safety,
   endpoint reassignment, nullable/literal screen payload, repeated uncommitted
   reads, actual history for both parents, hook-created queue/session rollback,
-  post-callback identity/input refusal, current reload, entity ancestry, legacy and
+  post-callback identity/input refusal, current reload, entity ancestry including
+  a real two-node cycle containing the selected ancestor, legacy and
   modern clone characterization, and required-child purge veto/acceptance.
 - `vlan-membership-callers.php`: the actual SAME/VIEW/dynamic-parent combination,
   force-both, form guard/helper pipeline, real inherited API creation via ordinary
@@ -88,3 +89,10 @@ Next step: independent source review and ROOT-controlled focused validation;
 resolve actual failures without weakening rights, native uniqueness, current tuple
 checks, history or rollback assertions. Physical notification sends, browser/E2E
 and live replica tests require separate ROOT infrastructure gates.
+
+The first frozen `6c8361` SOURCE checkpoint had an early-return ancestry flaw:
+it returned at the requested ancestor before proving the rest of that owning
+parent chain terminated. The distinct follow-on walks the complete chain to NULL,
+remembering whether the ancestor occurred; missing rows and repeated identities
+refuse. The new genuine two-Entity control retains native edges and every earlier
+contract assertion. This is a source correction; no native cycle result is claimed.

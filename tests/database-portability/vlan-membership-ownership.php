@@ -49,7 +49,7 @@ $records = static fn (): RecordRepository => new RecordRepository(Orm::create($D
 $read = static fn (string $table, int $id): ?array => $records()->find($table, 'id', $id);
 $snapshot = static function () use ($connection): array {
     $result = [];
-    foreach ([NetworkPort_Vlan::getTable(), NetworkPort::getTable(), Vlan::getTable(), Log::getTable(), QueuedNotification::getTable()] as $table) {
+    foreach ([NetworkPort_Vlan::getTable(), NetworkPort::getTable(), Vlan::getTable(), Entity::getTable(), Log::getTable(), QueuedNotification::getTable()] as $table) {
         $result[$table] = $connection->fetchAllAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table) . ' ORDER BY ' . $connection->quoteIdentifier('id'));
     }
     return $result;
@@ -209,6 +209,24 @@ try {
     verify((new NetworkPort_Vlan())->assignVlan($childPort, $recursive, 1) > 0, 'Actual recursive ancestor VLAN can serve a descendant port');
     $before = $snapshot();
     verify((new NetworkPort_Vlan())->assignVlan($childPort, $nonrecursive, 1) === false && $snapshot() === $before, 'The command retains entity coherency for a nonrecursive cross-entity proposal');
+    $grandchildInput = ['name' => $prefix . ' cycle grandchild', 'entities_id' => $child];
+    verify((new Entity())->can(-1, CREATE, $grandchildInput), 'Create the actual second Entity for the cycle control');
+    $grandchild = (new Entity())->add($grandchildInput);
+    verify($grandchild > 0, 'The cycle control starts from two distinct valid persisted Entities');
+    $cycleVlan = $fixtures->create('glpi_vlans', ['name' => $prefix . ' cycle ancestor VLAN', 'entities_id' => $grandchild, 'is_recursive' => true]);
+    $connection->executeStatement('UPDATE ' . $connection->quoteIdentifier(Entity::getTable()) . ' SET entities_id = ? WHERE id = ?', [$grandchild, $child]);
+    $cycleBefore = $snapshot();
+    verify((int)$read(Entity::getTable(), $child)['entities_id'] === $grandchild && (int)$read(Entity::getTable(), $grandchild)['entities_id'] === $child,
+        'Both actual native owning edges form a genuine two-node cycle');
+    $cycleFailure = null;
+    try {
+        (new NetworkPort_Vlan())->assignVlan($childPort, $cycleVlan, 0);
+    } catch (UnexpectedValueException $error) {
+        $cycleFailure = $error;
+    }
+    verify($cycleFailure !== null && $snapshot() === $cycleBefore, 'An encountered selected ancestor inside a cycle cannot authorize a membership or change history');
+    $connection->executeStatement('UPDATE ' . $connection->quoteIdentifier(Entity::getTable()) . ' SET entities_id = ? WHERE id = ?', [0, $child]);
+
 
     $cloneSource = $fixtures->create('glpi_computers', ['name' => $prefix . ' legacy clone source']);
     $cloneDestination = $fixtures->create('glpi_computers', ['name' => $prefix . ' legacy clone destination']);

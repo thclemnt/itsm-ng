@@ -103,10 +103,9 @@ final class NetworkPortVlanRepository
     public function containsEntity(int $ancestor, int $entity, ?callable $assertActive = null): bool
     {
         $seen = [];
+        $found = false;
         while (!isset($seen[$entity])) {
-            if ($entity === $ancestor) {
-                return true;
-            }
+            $found = $found || $entity === $ancestor;
             $seen[$entity] = true;
             if ($assertActive !== null) {
                 $assertActive();
@@ -117,8 +116,11 @@ final class NetworkPortVlanRepository
             if ($assertActive !== null) {
                 $assertActive();
             }
-            if (!$rows || $rows[0]['parent'] === null) {
+            if (!$rows) {
                 return false;
+            }
+            if ($rows[0]['parent'] === null) {
+                return $found;
             }
             $entity = (int)$rows[0]['parent'];
         }
