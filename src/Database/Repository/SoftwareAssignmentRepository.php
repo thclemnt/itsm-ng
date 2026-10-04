@@ -20,6 +20,7 @@ final class SoftwareAssignmentRepository
 
     public function installationOwner(int $id): ?array
     {
+        \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
         $rows = $this->em->createQueryBuilder()->select('i.itemtype AS kind, i.items_id AS subject, IDENTITY(i.softwareversions) AS version')
             ->from(Entity\ItemSoftwareVersion::class, 'i')->where('i.id = :id')
             ->setParameter('id', $id, Types::BIGINT)->getQuery()->setLockMode(LockMode::PESSIMISTIC_READ)->getScalarResult();
@@ -28,6 +29,9 @@ final class SoftwareAssignmentRepository
 
     public function allocationOwner(int $id, bool $current = true): ?array
     {
+        if ($current) {
+            \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
+        }
         $rows = $this->em->createQueryBuilder()->select('a.itemtype AS kind, a.items_id AS subject, IDENTITY(a.softwarelicenses) AS license')
             ->from(Entity\ItemSoftwareLicense::class, 'a')->where('a.id = :id')
             ->setParameter('id', $id, Types::BIGINT)->getQuery()
@@ -37,6 +41,9 @@ final class SoftwareAssignmentRepository
 
     public function license(int $id, bool $current = true): ?Entity\SoftwareLicense
     {
+        if ($current) {
+            \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
+        }
         return $this->em->createQueryBuilder()->select('l')->from(Entity\SoftwareLicense::class, 'l')
             ->where('l.id = :id')->setParameter('id', $id, Types::BIGINT)->getQuery()
             ->setHint(Query::HINT_REFRESH, true)->setLockMode($current ? LockMode::PESSIMISTIC_READ : LockMode::NONE)->getOneOrNullResult();
@@ -50,6 +57,9 @@ final class SoftwareAssignmentRepository
 
     public function software(int $id, bool $current = true): ?Entity\Software
     {
+        if ($current) {
+            \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
+        }
         return $this->em->createQueryBuilder()->select('s')->from(Entity\Software::class, 's')
             ->where('s.id = :id')->setParameter('id', $id, Types::BIGINT)->getQuery()
             ->setHint(Query::HINT_REFRESH, true)->setLockMode($current ? LockMode::PESSIMISTIC_READ : LockMode::NONE)->getOneOrNullResult();
@@ -60,6 +70,9 @@ final class SoftwareAssignmentRepository
         $licenses = self::identifiers($licenses);
         if (!$licenses) {
             return [];
+        }
+        if ($current) {
+            \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
         }
         $rows = $this->em->createQueryBuilder()->select('l.id AS id, IDENTITY(l.softwares) AS software')
             ->from(Entity\SoftwareLicense::class, 'l')->where('l.id IN (:ids)')->setParameter('ids', $licenses)
@@ -72,6 +85,9 @@ final class SoftwareAssignmentRepository
 
     public function subjectContexts(array $subjects, bool $current = false): array
     {
+        if ($current && $subjects !== []) {
+            \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
+        }
         $contexts = [];
         $metadata = $this->em->getClassMetadata(Entity\ItemSoftwareLicense::class);
         foreach ($subjects as [$kind, $id]) {
@@ -99,6 +115,7 @@ final class SoftwareAssignmentRepository
     /** Current actual subject objects implement their declared allocation scope. */
     public function allocationSubject(string $kind, int $id): \itsmng\Domain\AllocationSubject
     {
+        \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
         $metadata = $this->em->getClassMetadata(Entity\ItemSoftwareLicense::class);
         $property = Entity\ItemSoftwareLicense::referenceAssociation($kind);
         $target = $metadata->getAssociationMapping($property)->targetEntity;
@@ -204,6 +221,7 @@ final class SoftwareAssignmentRepository
         if (!$ids) {
             return;
         }
+        \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
         $query = $this->em->createQueryBuilder()->select('r.id AS id')->from($entity, 'r')
             ->where('r.id IN (:ids)')->setParameter('ids', $ids)->orderBy('r.id')->getQuery();
         $query->setLockMode(LockMode::PESSIMISTIC_WRITE);
@@ -229,6 +247,9 @@ final class SoftwareAssignmentRepository
 
     public function licensesForSubject(string $kind, int $id, bool $current = true): array
     {
+        if ($current) {
+            \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
+        }
         $property = Entity\ItemSoftwareLicense::referenceAssociation($kind);
         $rows = $this->em->createQueryBuilder()->select('IDENTITY(a.softwarelicenses) AS id')
             ->from(Entity\ItemSoftwareLicense::class, 'a')->where('IDENTITY(a.' . $property . ') = :id')
@@ -243,6 +264,9 @@ final class SoftwareAssignmentRepository
         if (!$software) {
             return [];
         }
+        if ($current) {
+            \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
+        }
         $rows = $this->em->createQueryBuilder()->select('l.id AS id')->from(Entity\SoftwareLicense::class, 'l')
             ->where('l.softwares IN (:software)')->setParameter('software', $software)->orderBy('l.id')->getQuery()
             ->setLockMode($current ? LockMode::PESSIMISTIC_READ : LockMode::NONE)->getScalarResult();
@@ -255,6 +279,9 @@ final class SoftwareAssignmentRepository
         $licenses = self::identifiers($licenses);
         if (!$licenses) {
             return [];
+        }
+        if ($current) {
+            \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
         }
         $rows = $this->em->createQueryBuilder()->select('a.id AS id, a.itemtype AS kind, a.items_id AS subject')
             ->from(Entity\ItemSoftwareLicense::class, 'a')->where('a.softwarelicenses IN (:ids)')
@@ -294,6 +321,9 @@ final class SoftwareAssignmentRepository
 
     public function softwareForVersion(int $version, bool $current = false): int
     {
+        if ($current) {
+            \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
+        }
         $rows = $this->em->createQueryBuilder()->select('IDENTITY(v.softwares) AS id')
             ->from(Entity\SoftwareVersion::class, 'v')->where('v.id = :id')->setParameter('id', $version, Types::BIGINT)
             ->getQuery()->setLockMode($current ? LockMode::PESSIMISTIC_READ : LockMode::NONE)->getScalarResult();

@@ -24,6 +24,7 @@ final class MySQLManagedConnection extends Connection implements ManagedTransact
     public function beginTransaction(): void
     {
         $this->assertManagedTransaction();
+        MySQLConnection::assertCurrentReads($this);
         parent::beginTransaction();
         $this->recordManagedFrame();
     }

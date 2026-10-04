@@ -21,6 +21,9 @@ final class SoftwareInstallationRepository
 
     public function installationsForTransfer(string $itemtype, int $item, array $excludedVersions, bool $currentRead = false): array
     {
+        if ($currentRead) {
+            \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
+        }
         $query = $this->em->createQueryBuilder()->select('i.id AS id', 'IDENTITY(i.softwareversions) AS softwareversions_id')
             ->from(Entity\ItemSoftwareVersion::class, 'i')->where('IDENTITY(i.' . Entity\ItemSoftwareVersion::referenceAssociation($itemtype) . ') = :item')
             ->setParameter('item', $item, Types::BIGINT)
@@ -33,6 +36,9 @@ final class SoftwareInstallationRepository
 
     public function licenseAssignmentsForTransfer(string $itemtype, int $item, bool $currentRead = false): array
     {
+        if ($currentRead) {
+            \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
+        }
         $rows = $this->em->createQueryBuilder()->select('i.id AS id')->from(Entity\ItemSoftwareLicense::class, 'i')
             ->where('IDENTITY(i.' . Entity\ItemSoftwareLicense::referenceAssociation($itemtype) . ') = :item')
             ->setParameter('item', $item, Types::BIGINT)->orderBy('i.id')->getQuery()
@@ -42,6 +48,9 @@ final class SoftwareInstallationRepository
 
     public function itemTypes(bool $licenses, int $parent, bool $software = false, bool $currentRead = false): array
     {
+        if ($currentRead) {
+            \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
+        }
         $query = $this->em->createQueryBuilder()->select(($currentRead ? '' : 'DISTINCT ') . 'i.itemtype AS itemtype')
             ->from($licenses ? Entity\ItemSoftwareLicense::class : Entity\ItemSoftwareVersion::class, 'i');
         $this->parent($query, $licenses, $parent, $software);
@@ -56,6 +65,9 @@ final class SoftwareInstallationRepository
     /** Asset criteria retain the caller's entity and recursive-visibility policy. */
     public function count(bool $licenses, int $parent, bool $software, string $itemtype, string $assetTable, array $assetCriteria, bool $currentRead = false): int
     {
+        if ($currentRead) {
+            \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
+        }
         $query = $this->assets($licenses, $parent, $software, $itemtype, $assetTable, $assetCriteria);
         if ($currentRead) {
             // Lock actual eligible rows: PostgreSQL cannot lock an aggregate,

@@ -109,6 +109,12 @@ final class SoftwareMutation
     public static function assertSupportedIsolation(\DBAdapter $database): void
     {
         $connection = $database->getDoctrineConnection();
+        try {
+            \itsmng\Database\MySQLConnection::assertCurrentReads($connection);
+        } catch (\itsmng\Database\CurrentReadUnavailable $error) {
+            \Session::addMessageAfterRedirect(__('Finish the current operation, then retry this software change.'), true, ERROR, false);
+            throw new SoftwareAssignmentCancelled($error->getMessage(), previous: $error);
+        }
         if ($connection->getDatabasePlatform() instanceof \Doctrine\DBAL\Platforms\PostgreSQLPlatform) {
             // Inspect the actual physical session; DBAL's cached isolation may
             // differ after caller SQL. Never change the caller's isolation.

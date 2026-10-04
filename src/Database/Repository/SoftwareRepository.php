@@ -34,6 +34,9 @@ final class SoftwareRepository
 
     public function versionForTransfer(int $software, ?string $name, bool $currentRead = false): ?int
     {
+        if ($currentRead) {
+            \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
+        }
         $query = $this->em->createQueryBuilder()->select('v.id AS id')->from(Entity\SoftwareVersion::class, 'v')
             ->where('v.softwares = :software')->andWhere($name === null ? 'v.name IS NULL' : 'v.name = :name')
             ->setParameter('software', $software, Types::INTEGER)
@@ -48,6 +51,9 @@ final class SoftwareRepository
     /** Include templates and trashed licenses, matching the internal transfer selection. */
     public function licenseForTransfer(int $software, string $name, string $serial, bool $currentRead = false): ?array
     {
+        if ($currentRead) {
+            \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
+        }
         $rows = $this->em->createQueryBuilder()->select('l.id AS id', 'l.number AS number')->from(Entity\SoftwareLicense::class, 'l')
             ->where('l.softwares = :software AND l.name = :name AND l.serial = :serial')
             ->setParameter('software', $software, Types::INTEGER)->setParameter('name', $name, Types::STRING)
@@ -101,6 +107,9 @@ final class SoftwareRepository
 
     public function hasInvalidLicense(int $software, bool $currentRead = false): bool
     {
+        if ($currentRead) {
+            \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
+        }
         return (bool)$this->em->createQueryBuilder()->select('l.id')->from(Entity\SoftwareLicense::class, 'l')
             ->where('l.softwares = :software AND l.is_valid = :invalid')
             ->setParameter('software', $software, Types::INTEGER)->setParameter('invalid', false, Types::BOOLEAN)
@@ -249,6 +258,7 @@ final class SoftwareRepository
                 $ids = [...$sources, $target];
                 $lock = $this->em->createQueryBuilder()->select('s.id AS id', 's.is_template AS is_template')->from(Entity\Software::class, 's')
                     ->where('s.id IN (:ids)')->setParameter('ids', $ids)->orderBy('s.id')->getQuery();
+                \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
                 $lock->setLockMode(LockMode::PESSIMISTIC_WRITE);
                 $locked = $lock->getScalarResult();
                 if (count($locked) !== count($ids)) {
@@ -261,6 +271,7 @@ final class SoftwareRepository
                 }
                 $assignments->lockSoftwareAssignments($ids);
                 $records = new RecordRepository($this->em);
+                \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
                 $versionRows = $this->em->createQueryBuilder()->select('v')->from(Entity\SoftwareVersion::class, 'v')
                     ->where('v.softwares IN (:sources)')->setParameter('sources', $sources)->orderBy('v.id')->getQuery()
                     ->setHint(\Doctrine\ORM\Query::HINT_REFRESH, true)->setLockMode(LockMode::PESSIMISTIC_READ)->getResult();
@@ -335,6 +346,7 @@ final class SoftwareRepository
 
     private function moveVersionReferences(int $source, int $destination): void
     {
+        \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
         foreach (['buyVersion', 'useVersion'] as $field) {
             $this->em->createQueryBuilder()->update(Entity\SoftwareLicense::class, 'l')
                 ->set('l.' . $field, ':destination')->setParameter('destination', $destination, Types::INTEGER)
@@ -345,6 +357,7 @@ final class SoftwareRepository
 
     private function moveInstallations(int $source, int $destination): void
     {
+        \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
         $subjects = [];
         foreach (\itsmng\Database\EntityRegistry::discriminatedReferences('glpi_items_softwareversions')['items_id']['selections'] as $kind => $selection) {
             $association = Entity\ItemSoftwareVersion::referenceAssociation($kind);

@@ -37,6 +37,7 @@ final class KanbanRepository
             ->setParameter('type', $type, Types::STRING)->setParameter('item', $item, Types::BIGINT)
             ->orderBy('s.id')->getQuery();
         if ($this->em->getConnection()->isTransactionActive()) {
+            \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
             $query->setLockMode(LockMode::PESSIMISTIC_WRITE);
         }
         return $query->getScalarResult();
@@ -48,6 +49,7 @@ final class KanbanRepository
             ->from(ItemKanban::class, 's')->where('s.id = :id')->setParameter('id', $id, Types::BIGINT)
             ->getQuery();
         if ($this->em->getConnection()->isTransactionActive()) {
+            \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
             $query->setLockMode(LockMode::PESSIMISTIC_WRITE);
         }
         $rows = $query->getScalarResult();
@@ -65,6 +67,7 @@ final class KanbanRepository
             ->setParameter('type', $type, Types::STRING)->setParameter('item', $item, Types::BIGINT)
             ->setParameter('owners', $owners)->orderBy('s.id')->setMaxResults(1)->getQuery();
         if ($this->em->getConnection()->isTransactionActive()) {
+            \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
             $query->setLockMode(LockMode::PESSIMISTIC_WRITE);
         }
         return $query->getScalarResult() !== [];

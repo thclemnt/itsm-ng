@@ -145,6 +145,59 @@ final class MySQLConnection implements Middleware
         }
     }
 
+    /** Inspect the actual capability; MySQL and older MariaDB may not expose it. */
+    public static function snapshotIsolation(Connection|DriverConnection $connection): ?bool
+    {
+        $sql = "SHOW SESSION VARIABLES WHERE Variable_name = 'innodb_snapshot_isolation'";
+        $result = $connection instanceof Connection ? $connection->executeQuery($sql) : $connection->query($sql);
+        try {
+            $rows = $result->fetchAllNumeric();
+        } finally {
+            $result->free();
+        }
+        if ($rows === []) {
+            return null;
+        }
+        if (count($rows) !== 1 || count($rows[0]) !== 2 || $rows[0][0] !== 'innodb_snapshot_isolation'
+            || !in_array($rows[0][1], ['ON', 'OFF'], true)) {
+            throw new CurrentReadUnavailable('Unexpected native innodb_snapshot_isolation capability; current locking reads cannot be admitted.');
+        }
+        return $rows[0][1] === 'ON';
+    }
+
+    /** @internal Called only while a new physical driver session is being admitted. */
+    public static function initializeCurrentReads(DriverConnection $connection): void
+    {
+        $native = $connection->getNativeConnection();
+        if ($native instanceof \PDO && $native->inTransaction()) {
+            throw new CurrentReadUnavailable('Current locking-read policy cannot initialize an existing caller transaction.');
+        }
+        if (self::snapshotIsolation($connection) === true) {
+            // The application deliberately retains traditional InnoDB current
+            // locking reads under RR, rather than MariaDB's newer snapshot mode.
+            $statement = $connection->prepare('SET SESSION innodb_snapshot_isolation = ?');
+            $statement->bindValue(1, 0, ParameterType::INTEGER);
+            $statement->execute()->free();
+            if (self::snapshotIsolation($connection) !== false) {
+                throw new CurrentReadUnavailable('The new physical session did not establish traditional InnoDB current locking reads.');
+            }
+        }
+    }
+
+    /** Read-only admission: never repair isolation inside a supplied caller frame. */
+    public static function assertCurrentReads(Connection $connection): void
+    {
+        if (!$connection->getDatabasePlatform() instanceof \Doctrine\DBAL\Platforms\AbstractMySQLPlatform) {
+            return;
+        }
+        if ($connection->isTransactionActive()) {
+            TransactionOwnership::assertManaged($connection);
+        }
+        if (self::snapshotIsolation($connection) === true) {
+            throw new CurrentReadUnavailable('This caller enabled innodb_snapshot_isolation; finish its transaction and open an application session before performing a current locking read.');
+        }
+    }
+
     public function wrap(Driver $driver): Driver
     {
         return new class ($driver) extends AbstractDriverMiddleware {
@@ -168,6 +221,7 @@ final class MySQLConnection implements Middleware
                 $statement = $connection->prepare('SET SESSION sql_mode = ?');
                 $statement->bindValue(1, MySQLConnection::strictModes($configured), ParameterType::STRING);
                 $statement->execute()->free();
+                MySQLConnection::initializeCurrentReads($connection);
                 return new \itsmng\Database\Driver\OwnedConnection($connection);
             }
         };
