@@ -1267,10 +1267,7 @@ class NetworkPort extends CommonDBChild
 
             $npv = new NetworkPort_Vlan();
             foreach (
-                $DB->request(
-                    $npv->getTable(),
-                    [$npv::$items_id_1 => $data["id"]]
-                ) as $vlan
+                NetworkPort_Vlan::membershipsForPort($data["id"]) as $vlan
             ) {
                 $input = [$npv::$items_id_1 => $portid,
                                $npv::$items_id_2 => $vlan['vlans_id']];
