@@ -43,6 +43,14 @@ $sessionBefore = $_SESSION;
 $configurationBefore = $CFG_GLPI;
 $physicalBefore = $connection;
 $quote = $connection->quoteIdentifier(...);
+// DBAL convenience writers accept SQL identifiers verbatim, including type-map keys.
+$quoteColumns = static function (array $values) use ($quote): array {
+    $quoted = [];
+    foreach ($values as $column => $value) {
+        $quoted[$quote($column)] = $value;
+    }
+    return $quoted;
+};
 $fixtures = new FixtureRecords($DB);
 $read = static fn (string $table, int $id): array|false => $connection->fetchAssociative('SELECT * FROM ' . $quote($table) . ' WHERE id=?', [$id]);
 $ownTarget = static function (string $table, array $values = []) use ($connection, $quote, $fixtures): int {
@@ -130,30 +138,30 @@ try {
             }
             $types = array_fill_keys(array_keys(EntityRegistry::booleanFields($table)), Types::BOOLEAN);
             if (strtoupper($kind) === $kind) {
-                $connection->update($quote($table), ['itemtype' => strtoupper($kind)], ['id' => $link]);
+                $connection->update($quote($table), $quoteColumns(['itemtype' => strtoupper($kind)]), $quoteColumns(['id' => $link]));
                 verify($read($table, $link) === $row, 'Canonical uppercase INSERT and UPDATE retain the exact owning row');
             }
             // Uppercase canonical kinds such as PDU are positive identities,
             // not invalid alternatives to themselves. Keep every changed value.
             foreach (array_filter([strtolower($kind), strtoupper($kind), $kind . ' ', $kind . '  ', ' ' . $kind, 'UnknownManagedSubject'], static fn (string $candidate): bool => $candidate !== $kind) as $bad) {
-                $nativeRefusal(static function () use ($connection, $quote, $table, $link, $bad, $payload, $types): void {
+                $nativeRefusal(static function () use ($connection, $quote, $quoteColumns, $table, $link, $bad, $payload, $types): void {
                     // The invalid INSERT gets an unused relationship pair;
                     // this savepoint restores the positive row afterwards.
-                    $connection->delete($quote($table), ['id' => $link]);
-                    $connection->insert($quote($table), ['itemtype' => $bad] + $payload, $types);
+                    $connection->delete($quote($table), $quoteColumns(['id' => $link]));
+                    $connection->insert($quote($table), $quoteColumns(['itemtype' => $bad] + $payload), $quoteColumns($types));
                 }, 'check', $definition['constraint']);
-                $nativeRefusal(static fn () => $connection->update($quote($table), ['itemtype' => $bad], ['id' => $link]), 'check', $definition['constraint']);
+                $nativeRefusal(static fn () => $connection->update($quote($table), $quoteColumns(['itemtype' => $bad]), $quoteColumns(['id' => $link])), 'check', $definition['constraint']);
                 verify($read($table, $link) === $row, 'Invalid INSERT/UPDATE retains the full canonical row after savepoint rollback');
             }
             $otherKind = array_key_first(array_diff_key($definition['branches'], [$kind => true]));
             if ($otherKind !== null) {
-                $nativeRefusal(static fn () => $connection->update($quote($table), ['itemtype' => $otherKind], ['id' => $link]), 'check', $definition['constraint']);
+                $nativeRefusal(static fn () => $connection->update($quote($table), $quoteColumns(['itemtype' => $otherKind]), $quoteColumns(['id' => $link])), 'check', $definition['constraint']);
             }
             $missingTarget = max(9999999000, 10000 + (int)$connection->fetchOne('SELECT MAX(id) FROM ' . $quote($branch['target'])));
-            $nativeRefusal(static fn () => $connection->update($quote($table), [$branch['column'] => $missingTarget], ['id' => $link]), 'foreign');
-            $nativeRefusal(static fn () => $connection->update($quote($table), ['items_id' => $target + 1], ['id' => $link]), 'generated');
+            $nativeRefusal(static fn () => $connection->update($quote($table), $quoteColumns([$branch['column'] => $missingTarget]), $quoteColumns(['id' => $link])), 'foreign');
+            $nativeRefusal(static fn () => $connection->update($quote($table), $quoteColumns(['items_id' => $target + 1]), $quoteColumns(['id' => $link])), 'generated');
             if ($branch['minimum'] === 0) {
-                $nativeRefusal(static fn () => $connection->update($quote($table), [$branch['column'] => null], ['id' => $link]), 'check', $definition['constraint']);
+                $nativeRefusal(static fn () => $connection->update($quote($table), $quoteColumns([$branch['column'] => null]), $quoteColumns(['id' => $link])), 'check', $definition['constraint']);
             }
             $unique = false;
             foreach ($nativeIndexes as $index) {
@@ -163,20 +171,20 @@ try {
                 $unique = $unique || !array_filter($index->getColumns(), static fn ($column) => !array_key_exists($column, $row) || $row[$column] === null);
             }
             if ($unique) {
-                $nativeRefusal(static fn () => $connection->insert($quote($table), $payload, $types), 'unique');
+                $nativeRefusal(static fn () => $connection->insert($quote($table), $quoteColumns($payload), $quoteColumns($types)), 'unique');
             } else {
                 $connection->beginTransaction();
                 try {
-                    $connection->insert($quote($table), $payload, $types);
+                    $connection->insert($quote($table), $quoteColumns($payload), $quoteColumns($types));
                     verify((int)$connection->lastInsertId() !== $link, 'Nonunique relationship retains independent duplicate row');
                 } finally {
                     $connection->rollBack();
                 }
             }
             $replacement = $createSubject();
-            $connection->update($quote($table), [$branch['column'] => $replacement], ['id' => $link]);
+            $connection->update($quote($table), $quoteColumns([$branch['column'] => $replacement]), $quoteColumns(['id' => $link]));
             verify((int)$read($table, $link)['items_id'] === $replacement, 'Canonical UPDATE retains owning projection');
-            $connection->delete($quote($table), ['id' => $link]);
+            $connection->delete($quote($table), $quoteColumns(['id' => $link]));
             verify($read($table, $link) === false && $read($branch['target'], $replacement) !== false, 'Relationship DELETE retains subject');
             ++$branchesTested;
         }
@@ -184,7 +192,7 @@ try {
     verify($branchesTested === 293, 'Every frozen owning branch was exercised');
     $stock = $fixtures->create('glpi_consumables');
     verify($read('glpi_consumables', $stock)['itemtype'] === null && (int)$read('glpi_consumables', $stock)['items_id'] === 0, 'Empty stock has NULL kind/owners and zero compatibility identity');
-    $nativeRefusal(static fn () => $connection->update($quote('glpi_consumables'), ['date_out' => '2030-01-01'], ['id' => $stock]), 'check', 'glpi_consumables_typed_item_kind');
+    $nativeRefusal(static fn () => $connection->update($quote('glpi_consumables'), $quoteColumns(['date_out' => '2030-01-01']), $quoteColumns(['id' => $stock])), 'check', 'glpi_consumables_typed_item_kind');
     $recipient = $ownTarget('glpi_users');
     $consumable = new Consumable();
     verify($consumable->out($stock, 'User', $recipient), 'Actual public stock issue uses canonical owning association');
