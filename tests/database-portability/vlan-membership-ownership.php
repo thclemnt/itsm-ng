@@ -196,13 +196,15 @@ try {
         && (new NetworkPort_Vlan())->assignVlan($port, PHP_INT_MAX, 0) === false, 'Missing typed targets refuse before membership insertion');
     verify($snapshot() === $before, 'Missing targets leave parent histories and queue untouched');
     foreach ([null, 2, 'false'] as $invalidTagged) {
-        $failure = null;
-        try {
-            (new NetworkPort_Vlan())->assignVlan($port2, $vlan2, $invalidTagged);
-        } catch (InvalidArgumentException $error) {
-            $failure = $error;
-        }
-        verify($failure !== null && str_contains($failure->getMessage(), 'tagged') && $snapshot() === $before, 'Property-owned nonnullable boolean rejects arbitrary truthy/NULL input');
+        $priorFeedback = $_SESSION['MESSAGE_AFTER_REDIRECT'] ?? [];
+        $_SESSION['MESSAGE_AFTER_REDIRECT'][ERROR] = ['Earlier VLAN boolean feedback'];
+        $result = (new NetworkPort_Vlan())->assignVlan($port2, $vlan2, $invalidTagged);
+        $diagnostic = 'Invalid boolean value: ' . NetworkPort_Vlan::getTable() . '.tagged. Expected zero or one; received ' . get_debug_type($invalidTagged) . '.';
+        verify($result === false && $_SESSION['MESSAGE_AFTER_REDIRECT'][ERROR] === ['Earlier VLAN boolean feedback', $diagnostic],
+            'Actual public lifecycle rejects invalid nonnullable tagged input and retains its field-owned Session error');
+        verify($snapshot() === $before, 'Every explicit NULL/arbitrary truthy boolean refusal leaves the native graph unchanged');
+        $frame->assertActive();
+        $_SESSION['MESSAGE_AFTER_REDIRECT'] = $priorFeedback;
     }
 
     $model->getFromDB($id);

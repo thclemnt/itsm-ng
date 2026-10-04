@@ -107,3 +107,11 @@ future instant from the actual session time and proves that it fits the preserve
 native range before the callback executes. The primary exception identity and
 actual queued-work rollback controls remain strict. These are source corrections;
 compiler and database outcomes remain unrun.
+
+The distinct post-`228762` contract correction follows the existing public boolean
+normalization boundary: invalid NULL, integer 2 and string `false` return false and
+record the field-specific Session ERROR before prepared persistence. The earlier
+fixture incorrectly expected the internal BooleanValue exception to escape that
+boundary. Its replacement checks the genuine public false result, exact diagnostic,
+preserved prior feedback, unchanged native graph and still-active caller frame.
+Production behavior remains unchanged; no native result is claimed.
