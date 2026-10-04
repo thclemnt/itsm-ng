@@ -83,6 +83,6 @@ $output = [
     'invalid_legacy_declarations' => $invalid,
     'legacy_call_sites' => array_map(static fn (array $call): string => $call['path'] . ':' . $call['line'], $legacyCalls),
     'sql_calls' => $sqlCalls,
-    'limits' => 'Static inventory, not completion proof. Method candidates include alternate DB receivers, Doctrine and model CRUD; inspect them semantically. Aliased class/function imports, callbacks, generated code, dynamic receivers and plugin code outside the scanned roots require further discovery. Serialized references and custom relationship discriminators require semantic review. Call counts now use PHP tokens, not historical regex-matched lines.',
+    'limits' => 'Static inventory, not completion proof. Owned driver boundaries retain exact native call locations and are established only by the actual same-source Doctrine Driver Connection declaration, PDO-typed property and concrete query/prepare method. This does not prove that driver behavior or application persistence is correct. Method candidates include alternate DB receivers, Doctrine and model CRUD; inspect them semantically. Aliased class/function imports, callbacks, generated code, dynamic receivers and plugin code outside the scanned roots require further discovery. Serialized references and custom relationship discriminators require semantic review. Call counts now use PHP tokens, not historical regex-matched lines.',
 ];
 echo json_encode($output, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";

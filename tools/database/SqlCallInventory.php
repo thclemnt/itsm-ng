@@ -74,11 +74,87 @@ final class SqlCallInventory
             $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root . '/' . $directory));
             foreach ($files as $file) {
                 if ($file->isFile() && $file->getExtension() === 'php') {
-                    array_push($calls, ...self::scan(file_get_contents($file->getPathname()), substr($file->getPathname(), strlen($root) + 1)));
+                    $source = file_get_contents($file->getPathname());
+                    $found = self::scan($source, substr($file->getPathname(), strlen($root) + 1));
+                    array_push($calls, ...self::classifyOwnedDriverBoundaries($found, $source, $file->getPathname()));
                 }
             }
         }
         usort($calls, static fn (array $a, array $b): int => [$a['path'], $a['offset']] <=> [$b['path'], $b['offset']]);
+        return $calls;
+    }
+
+    /** Resolve only native PDO query/prepare owned by an actual DBAL driver declaration. */
+    public static function classifyOwnedDriverBoundaries(array $calls, string $source, string $file): array
+    {
+        if (!array_filter($calls, static fn (array $call): bool => $call['category'] === 'direct_driver'
+            && in_array(strtolower($call['method']), ['prepare', 'query'], true))) {
+            return $calls;
+        }
+        if (!is_file($file) || is_link($file) || file_get_contents($file) !== $source) {
+            return $calls; // A path or supplied declaration is not ownership evidence.
+        }
+        $tokens = array_values(array_filter(PhpToken::tokenize($source), static fn (PhpToken $token): bool =>
+            !$token->isIgnorable()));
+        $native = [];
+        foreach ($calls as $index => $call) {
+            if ($call['category'] !== 'direct_driver' || !in_array(strtolower($call['method']), ['prepare', 'query'], true)) {
+                continue;
+            }
+            foreach ($tokens as $position => $token) {
+                if ($token->pos === $call['offset'] && ($tokens[$position - 4]->text ?? '') === '$this'
+                    && ($tokens[$position - 3]->id ?? null) === T_OBJECT_OPERATOR
+                    && ($tokens[$position - 2]->id ?? null) === T_STRING
+                    && ($tokens[$position - 1]->id ?? null) === T_OBJECT_OPERATOR) {
+                    $native[$index] = $tokens[$position - 2]->text;
+                    break;
+                }
+            }
+        }
+        if (!$native) {
+            return $calls; // Constructors, static native calls and free functions remain direct.
+        }
+        $namespace = '';
+        foreach ($tokens as $position => $token) {
+            if ($token->id === T_NAMESPACE) {
+                $namespace = '';
+                for ($cursor = $position + 1; isset($tokens[$cursor]) && !in_array($tokens[$cursor]->text, [';', '{'], true); ++$cursor) {
+                    $namespace .= $tokens[$cursor]->text;
+                }
+            }
+            if ($token->id !== T_CLASS || ($tokens[$position - 1]->id ?? null) === T_DOUBLE_COLON
+                || ($tokens[$position + 1]->id ?? null) !== T_STRING) {
+                continue;
+            }
+            $name = ltrim($namespace . '\\' . $tokens[$position + 1]->text, '\\');
+            if (!class_exists($name)) {
+                continue;
+            }
+            $class = new ReflectionClass($name); // Declaration only; no driver/model construction.
+            if (realpath((string) $class->getFileName()) !== realpath($file)
+                || !$class->implementsInterface(\Doctrine\DBAL\Driver\Connection::class)) {
+                continue;
+            }
+            foreach ($native as $index => $propertyName) {
+                $methodName = strtolower($calls[$index]['method']);
+                if (!$class->hasProperty($propertyName) || !$class->hasMethod($methodName)) {
+                    continue;
+                }
+                $property = $class->getProperty($propertyName);
+                $type = $property->getType();
+                $method = $class->getMethod($methodName);
+                if (!$type instanceof ReflectionNamedType || $type->getName() !== PDO::class
+                    || $property->getDeclaringClass()->getName() !== $class->getName()
+                    || $method->getDeclaringClass()->getName() !== $class->getName()
+                    || realpath((string) $method->getFileName()) !== realpath($file)
+                    || $calls[$index]['line'] < $method->getStartLine() || $calls[$index]['line'] > $method->getEndLine()) {
+                    continue;
+                }
+                $calls[$index]['category'] = 'owned_driver_boundary';
+                $calls[$index]['ownership'] = ['class' => $class->getName(), 'interface' => \Doctrine\DBAL\Driver\Connection::class,
+                    'method' => $method->getName(), 'property' => $propertyName, 'native_type' => $type->getName()];
+            }
+        }
         return $calls;
     }
 }
