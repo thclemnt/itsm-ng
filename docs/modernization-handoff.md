@@ -1,5 +1,65 @@
 # PostgreSQL and Doctrine modernization goal
 
+## 2026-10-04 10:18 UTC: complete suites expose document fixture policy drift
+
+The goal remains **OPEN**. The complete discovered **215-contract** suite at
+`5019fd7b0376fb0405cd171ed542c6cf2e799f54` completed on both providers with the
+original 300-second limit. PostgreSQL passes **215/215**; MariaDB passes
+**213/215**, with no timeouts or PHP Warning/Fatal. Both emit four explicit
+Toolbox deprecation diagnostics. The original schema-check passes in both full
+execution orders. The handoff certificate-column mismatch has not been
+reproduced in cloud; these results do not establish its local cause.
+
+MariaDB fails the exact-discriminator contract and the software concurrent-read
+fixture. A bounded observer preserves the original failing assertion and proves
+that `glpi_documents_items` accepts a lowercase `budget` INSERT for the canonical
+Budget branch without throwing. This is a native integrity gap, not exception
+message matching. A separate read-only inspection of both providers proves the
+MariaDB document CHECK is enforced but lacks the frozen Exact migration's binary
+comparison, while the generated projection retains binary comparison. Ledger
+and table catalogue remain unchanged during inspection. PostgreSQL comparison
+semantics explain its green discriminator result; mechanical SQL-string hashes
+are not claimed as semantic equivalence.
+
+Source tracing identifies three historical test reconstructions:
+`document-subjects.php`, `domain-documents-schema.php` and
+`pending-subject-preflight.php`. They can install an earlier document CHECK or
+projection while retaining the completed exact-policy receipt. The canonical
+production order already runs Domain documents before Exact discriminators;
+no corrective migration or historical-definition rewrite is warranted. The
+reviewed fixture repair must capture and restore original native policy before
+restoring the raw receipt, preserving every historical replay assertion. The
+already integrated software fixture opens both writers through the actual
+configured adapter instead of reconstructing an incomplete DBAL transport.
+Its syntax/style pass; its new native race execution remains pending.
+
+The full runs retain final 17-version history, 1,070 actual/expected FKs, no
+pending versions and no column/index/FK differences. Original protected parent
+native row bags, raw ledger and database catalogue comparisons pass before and
+finally after both suites. The original migration-history contract passes in
+151.901 seconds on PostgreSQL and 223.929 seconds on MariaDB, including populated
+adoption and actual fresh interruption/retry. Those complete-suite checks are
+not a new current-source installation claim.
+
+Evidence remains under the private cloud evidence directory:
+`final17-5019-root-terminal-and-exact-refusal-checkpoint.json`, the two original
+`final17-5019fd7b0376-*-full-*` terminal receipts,
+`exact-refusal-5019-mysql-v2-observation-*`,
+`exact-policy-5019-root-readonly-20261004T101710676301Z` and the independent source
+reviews. Normal Git fetch again confirms unchanged remote `01aee6a7`, with that
+commit and handoff `897c5c9b` preserved ancestors. Native persistent goals remain
+unavailable; this document is the durable plan.
+
+Next: integrate and validate the scoped fixture restoration; freeze the exact
+source; install genuinely NEW disposable databases through normal full-history
+CLI replay on both providers, proving seeds, sequence policy, repeated-install
+refusal and migration idempotency. Run the complete discovered suite on those
+new cores, retaining the old drifted databases as evidence and preserving the
+original parent baseline plus only proven database additions. Then run original
+application/API and browser checks before the held ten component associations
+and further ORM/domain conversions. No corrected dual-provider full suite,
+browser, live replica or remote CI success is claimed.
+
 ## 2026-10-04 08:06 UTC: canonical fresh-install retry repaired on both providers
 
 The goal remains **OPEN**. At clean integrated
