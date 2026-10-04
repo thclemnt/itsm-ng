@@ -108,8 +108,17 @@ try {
         $wide = max(4294969000, 10000 + (int)$connection->fetchOne('SELECT MAX(id) FROM ' . $quote($branch['target'])));
         verify((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $quote($branch['target']) . ' WHERE id=?', [$wide]) === 0, 'Unused wide subject identity');
         $target = $fixtures->create($branch['target'], ['id' => $wide]);
-        $id = $fixtures->create($table, ['itemtype' => $kind, $branch['column'] => $target]);
+        $values = ['itemtype' => $kind, $branch['column'] => $target];
+        if ($table === 'glpi_objectlocks') {
+            // A real historical lock makes automatic timestamp changes deterministic.
+            $values['date_mod'] = new DateTimeImmutable('2000-01-01 00:00:00', new DateTimeZone('UTC'));
+        }
+        $id = $fixtures->create($table, $values);
         $owned[$table] = ['id' => $id, 'kind' => $kind, 'target' => $target];
+        if ($table === 'glpi_objectlocks') {
+            $owned[$table]['date_mod'] = $connection->fetchOne('SELECT date_mod FROM ' . $quote($table) . ' WHERE id=?', [$id]);
+            verify(is_string($owned[$table]['date_mod']) && $owned[$table]['date_mod'] !== '', 'Capture the actual owned historical lock timestamp');
+        }
         verify((int)$connection->fetchOne('SELECT items_id FROM ' . $quote($table) . ' WHERE id=?', [$id]) === $target, 'Populated legacy compatibility projection preserves wide IDs');
     }
     $populatedBefore = $rowHashes();
@@ -118,6 +127,8 @@ try {
     foreach ($owned as $table => $row) {
         $connection->update($quote($table), ['itemtype' => strtolower($row['kind'])], ['id' => $row['id']]);
     }
+    verify($connection->fetchOne('SELECT date_mod FROM ' . $quote('glpi_objectlocks') . ' WHERE id=?', [$owned['glpi_objectlocks']['id']])
+        !== $owned['glpi_objectlocks']['date_mod'], 'Owned discriminator corruption exercises the native lock timestamp touch');
     $invalidRows = $rowHashes();
     foreach (['plan', 'apply'] as $method) {
         $diagnostic = null;
@@ -171,7 +182,12 @@ try {
     verify($rawLedger() === $fixtureLedger, 'Restore the exact raw prerequisite receipt after the deferral control');
     foreach ($owned as $table => $row) {
         // Explicit fixture correction, never an application migration repair.
-        $connection->update($quote($table), ['itemtype' => $row['kind']], ['id' => $row['id']]);
+        $values = ['itemtype' => $row['kind']];
+        if ($table === 'glpi_objectlocks') {
+            // Restore the fixture's own native value, including its provider serialization.
+            $values['date_mod'] = $row['date_mod'];
+        }
+        $connection->update($quote($table), $values, ['id' => $row['id']]);
     }
     verify($rowHashes() === $populatedBefore, 'Explicit fixture repair restored its own rows exactly');
 
