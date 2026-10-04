@@ -1,5 +1,46 @@
 # PostgreSQL and Doctrine modernization goal
 
+## 2026-10-04 07:18 UTC: lifecycle repairs validated; install retry remains open
+
+The goal remains **OPEN**. Direct Git fetch again confirms remote `01aee6a7`
+and original handoff `897c5c9b` are preserved ancestors. At integrated
+`c0593b65719e7fbcd19df33b2e3c9a22605d597e`, all **12/12** selected original-order
+contracts pass on each provider, with no PHP Warning/Fatal and one Deprecated
+notice each. Discovery now finds **214** contracts. These checks cover relation
+endpoint global/loaded permissions, Software subject/allocation ownership,
+actors, connexity, global scopes, deletion-owned frames, component replacement,
+unmapped plugin subjects and schema comparison. Changed PHP syntax and optimized
+autoload (8,461 classes) pass; the one formatting change preserves every
+non-whitespace token kind and byte. Evidence is
+`owned-domains-c0593b6571-{pg,mysql}-focused-*` and
+`owned-domains-c0593b6571-focused-diagnostic-summary.json` under the retained
+private evidence directory. This is focused validation, not a complete suite.
+
+Earlier integrated `112f9decde` passes **7/7** selected contracts on PostgreSQL
+and **6/7** on MariaDB. Both original Software atomicity contracts pass all
+2,316 assertions, in 217.217 / 113.805 seconds respectively. PostgreSQL's full
+migration-history contract passes in 156.928 seconds. MariaDB's fails in 192.167
+seconds at the genuine fresh-install retry after an OS columns interruption:
+Exact preflight rejects the preceding document producer's valid generated
+33-subject projection because the later Domain column has not yet been added.
+A bounded read-only capture proves zero document rows, 44 columns, absent
+`domains_id`, the old stored generated projection, completed adoption,
+incomplete OS history and absent Domain-document history. It performs no repair
+and changes no ledger or rows. The cause is admission of intermediate schema
+ownership, not a stale fixture or the certificate comparison assertion.
+
+The certificate assertion passes both latest focused runs. The handoff mismatch
+still has not been reproduced; the repaired complete MariaDB execution order
+and current-source fresh replay remain mandatory before a new milestone.
+Next: validate the narrow producer-owned History retry repair, retaining strict
+invalid-data/completed-owner drift refusals and all frozen definitions; run the
+complete dynamically discovered suites with their original 300-second limit,
+final native inspection, genuinely new fresh installations and populated
+upgrade/retry/idempotency on both providers. Then exercise application/API flows
+before browser validation. The next ten component associations remain held as
+a separately reviewed source batch. No new whole-suite or remote CI success is
+claimed. Native persistent goals remain unavailable; this is the durable plan.
+
 ## 2026-10-04 06:25 UTC: actual failures diagnosed; goal remains OPEN
 
 Normal Git fetch works directly in this cloud environment. The remote remains
