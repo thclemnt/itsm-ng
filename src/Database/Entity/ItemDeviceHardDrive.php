@@ -17,6 +17,7 @@ class ItemDeviceHardDrive implements \itsmng\Database\Mapping\LegacyInput
 
     #[ORM\ManyToOne(targetEntity: DeviceHardDrive::class)]
     #[ORM\JoinColumn(name: 'deviceharddrives_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\EntityScopeOwner]
     public ?DeviceHardDrive $deviceharddrives = null;
 
     #[ORM\Id]

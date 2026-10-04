@@ -17,6 +17,7 @@ class ItemDeviceMotherboard implements \itsmng\Database\Mapping\LegacyInput
 
     #[ORM\ManyToOne(targetEntity: DeviceMotherboard::class)]
     #[ORM\JoinColumn(name: 'devicemotherboards_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\EntityScopeOwner]
     public ?DeviceMotherboard $devicemotherboards = null;
 
     #[ORM\Id]

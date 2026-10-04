@@ -17,6 +17,7 @@ class ItemDeviceMemory implements \itsmng\Database\Mapping\LegacyInput
 
     #[ORM\ManyToOne(targetEntity: DeviceMemory::class)]
     #[ORM\JoinColumn(name: 'devicememories_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\EntityScopeOwner]
     public ?DeviceMemory $devicememories = null;
 
     #[ORM\Id]
