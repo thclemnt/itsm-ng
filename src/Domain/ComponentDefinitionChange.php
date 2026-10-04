@@ -60,7 +60,7 @@ final class ComponentDefinitionChange
 
     public function load(\Item_Devices $model, int $id): ?array
     {
-        if ($model !== $this->model || $id !== (int)$this->stored['id']) {
+        if ($model::class !== $this->model::class || $id !== (int)$this->stored['id']) {
             return null;
         }
         $row = $this->command->current($model->getTable(), $id);

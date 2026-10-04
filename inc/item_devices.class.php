@@ -155,7 +155,19 @@ class Item_Devices extends CommonDBRelation
         if ($this->definitionChange === null) {
             return parent::executePreparedUpdate($operation, $storedFields);
         }
-        if (!$this->retainItemPermission(UPDATE) || !$this->definitionChange->ready($this)) {
+        // The original new-item CREATE branch has no relation item_can hook.
+        // Retain the actual old-role DELETE/PURGE restrictions on its stored row.
+        foreach ([DELETE, PURGE] as $right) {
+            $probe = clone $this;
+            $probe->fields = $this->definitionChange->stored;
+            if (!$probe->retainItemPermission($right) || !is_array($probe->input)
+                || $probe->fields !== $this->definitionChange->stored
+                || !$this->definitionChange->authorize($probe, $probe->input)
+                || !$this->definitionChange->ready($this)) {
+                return false;
+            }
+        }
+        if (!$this->definitionChange->ready($this)) {
             return false;
         }
         return $operation() && $this->definitionChange->verify($this);
