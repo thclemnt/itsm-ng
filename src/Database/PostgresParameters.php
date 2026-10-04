@@ -29,7 +29,7 @@ final class PostgresParameters
                 // In the numbered API an SQL ? is an operator, not a parameter.
                 $output .= '??';
             } else {
-                $output .= $kind === 'dollar' ? self::literal($text) : $text;
+                $output .= $text;
             }
         }
         if (count($used) !== count($values)) {
@@ -38,12 +38,21 @@ final class PostgresParameters
         return [$output, $bound];
     }
 
-    /** PDO's parser must see a quoted literal rather than a dollar-quoted body. */
+    /** PostgreSQL lexical regions stay opaque to PDO's less capable parser. */
     public static function prepare(string $sql): string
     {
         $output = '';
         foreach (self::tokens($sql) as [$kind, $text]) {
-            $output .= $kind === 'dollar' ? self::literal($text) : $text;
+            if ($kind === 'dollar') {
+                $output .= self::literal($text);
+            } elseif ($kind === 'comment') {
+                // PostgreSQL nests comments; PDO stops at the first */. Keep
+                // the outer comment, its body and line positions, but render
+                // inner delimiters as whitespace within that same comment.
+                $output .= '/*' . str_replace(['/*', '*/'], ['  ', '  '], substr($text, 2, -2)) . '*/';
+            } else {
+                $output .= $text;
+            }
         }
         return $output;
     }
@@ -94,6 +103,7 @@ final class PostgresParameters
                     $offset++;
                 }
             } elseif (substr($sql, $offset, 2) === '/*') {
+                $kind = 'comment';
                 $depth = 1;
                 $offset += 2;
                 while ($offset < $length && $depth > 0) {
