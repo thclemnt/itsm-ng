@@ -809,6 +809,10 @@ class User extends CommonDBTM
     }
 
 
+    private ?\itsmng\Domain\Authentication\AuthenticationCompletion $authenticationCompletion = null;
+    private ?\itsmng\Domain\Authentication\AuthenticationCompletion $pendingAuthenticationCompletion = null;
+    private int $authenticationUpdateDepth = 0;
+
     /** Complete a verified existing local login through the ordinary public lifecycle. */
     public function completeAuthentication(\itsmng\Domain\Authentication\AuthenticationCompletion $completion): bool
     {
@@ -820,15 +824,70 @@ class User extends CommonDBTM
             || (int)$this->fields['auths_id'] !== 0) {
             return false;
         }
-        $input = Toolbox::addslashes_deep($completion->lifecycleInput());
-        if (!$this->update($input)) {
+        $previous = $this->pendingAuthenticationCompletion;
+        $this->pendingAuthenticationCompletion = $completion;
+        try {
+            $input = Toolbox::addslashes_deep($completion->lifecycleInput());
+            if (!$this->update($input)) {
+                return false;
+            }
+            // Completion requires the actual accepted account, including any
+            // security-rule admission decision, after all public callbacks.
+            return $this->getFromDB($completion->user)
+                && $this->fields['last_login'] === $completion->at
+                && $this->fields['is_deleted_ldap'] === 0
+                && $completion->acceptsAdmission($this->fields);
+        } finally {
+            $this->pendingAuthenticationCompletion = $previous;
+        }
+    }
+
+
+    public function update(array $input, $history = 1, $options = [])
+    {
+        // Only this public lifecycle consumes its typed completion. Reentrant
+        // ordinary edits retain their own authorization and preference policy.
+        $previous = $this->authenticationCompletion;
+        $checkpoint = $this->authenticationUpdateDepth > 0
+            ? array_intersect_key(get_object_vars($this), array_flip(['fields', 'input', 'updates', 'oldvalues'])) : null;
+        ++$this->authenticationUpdateDepth;
+        $this->authenticationCompletion = $this->pendingAuthenticationCompletion;
+        $this->pendingAuthenticationCompletion = null;
+        try {
+            return parent::update($input, $history, $options);
+        } finally {
+            $this->authenticationCompletion = $previous;
+            --$this->authenticationUpdateDepth;
+            if ($checkpoint !== null) {
+                // Restore the outer lifecycle view; completion reloads actual
+                // persisted state after all callbacks, including nested writes.
+                foreach (['fields', 'input', 'updates', 'oldvalues'] as $property) {
+                    if (array_key_exists($property, $checkpoint)) {
+                        $this->{$property} = $checkpoint[$property];
+                    } else {
+                        unset($this->{$property});
+                    }
+                }
+            }
+        }
+    }
+
+
+    protected function authorizeLifecycleUpdate(array $input): array|false
+    {
+        $input = parent::authorizeLifecycleUpdate($input);
+        if ($input !== false && $this->authenticationCompletion !== null
+            && !$this->authenticationCompletion->acceptsAdmission($input)) {
             return false;
         }
-        // A public callback may cancel required writes while returning true.
-        // Session admission must use the actual persisted completion, not input.
-        return $this->getFromDB($completion->user)
-            && $this->fields['last_login'] === $completion->at
-            && $this->fields['is_deleted_ldap'] === 0;
+        return $input;
+    }
+
+    protected function finalizeLifecycleUpdate(array $storedFields): bool
+    {
+        return parent::finalizeLifecycleUpdate($storedFields)
+            && ($this->authenticationCompletion === null
+                || $this->authenticationCompletion->acceptsAdmission($this->fields));
     }
 
 
@@ -1089,6 +1148,12 @@ class User extends CommonDBTM
 
     public function post_updateItem($history = 1)
     {
+        // No-change updates can reach this callback without the final write
+        // guard. Refuse an incomplete security decision before grant effects.
+        if ($this->authenticationCompletion !== null
+            && !$this->authenticationCompletion->acceptsAdmission($this->fields)) {
+            throw new LogicException('Authentication security-rule admission was not accepted.');
+        }
         $this->refreshSubmittedBooleanPreferences();
         //handle timezone change for current user
         if ($this->fields['id'] == Session::getLoginUserID()) {

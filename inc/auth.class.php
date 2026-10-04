@@ -766,7 +766,10 @@ class Auth extends CommonGLPI
                     && (int)$this->user->fields['authtype'] === self::DB_GLPI
                     && (int)$this->user->fields['auths_id'] === 0) {
                     $this->authenticationCompletion = new \itsmng\Domain\Authentication\AuthenticationCompletion(
-                        (int)$this->user->getID(), $_SESSION['glpi_currenttime']
+                        (int)$this->user->getID(), $_SESSION['glpi_currenttime'], provider:
+                        $authtype === self::API
+                            ? \itsmng\Domain\Authentication\VerifiedLoginProvider::ApiToken
+                            : \itsmng\Domain\Authentication\VerifiedLoginProvider::RememberCookie
                     );
                 }
 

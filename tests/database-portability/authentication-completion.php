@@ -87,10 +87,12 @@ try {
     );
     $nativeBaseline = $nativePreferences();
     $observedInputs = [];
-    $PLUGIN_HOOKS['pre_item_update']['authentication_completion_fixture'][User::class] = static function ($item) use ($user, &$observedInputs): void {
+    $observedProviders = [];
+    $PLUGIN_HOOKS['pre_item_update']['authentication_completion_fixture'][User::class] = static function ($item) use ($user, &$observedInputs, &$observedProviders): void {
         if ($item instanceof User && (int)$item->getID() === $user) {
             verify(array_key_exists('highcontrast_css', $item->fields), 'Public hook retains complete stored account context');
             $observedInputs[] = array_keys($item->input);
+            $observedProviders[] = $item->input['_extauth'] ?? null;
         }
     };
     foreach (['local', 'api', 'cookie'] as $provider) {
@@ -105,6 +107,7 @@ try {
         verify($read()['is_deleted_ldap'] === 0 && $read()['last_login'] !== null, 'Completion persists owned account state');
         verify($DB->getDoctrineConnection() === $connection && $connection->getTransactionNestingLevel() === $nesting + 1, 'Login retains supplied writer and caller-owned frame');
     }
+    verify($observedProviders === [null, 1, 1], 'Actual local/API/cookie hooks retain verified provider transients');
     foreach ($observedInputs as $keys) {
         verify(!in_array('highcontrast_css', $keys, true) && !in_array('language', $keys, true), 'Read-context preferences are not writable completion input');
     }
@@ -125,8 +128,9 @@ try {
     // Actual stored rules, criterias and actions; no fabricated action/SQL engine.
     $rule = $fixtures->create('glpi_rules', ['sub_type' => RuleRight::class, 'name' => $prefix, 'match' => Rule::AND_MATCHING, 'is_active' => true]);
     $fixtures->create('glpi_rulecriterias', ['rules_id' => $rule, 'criteria' => 'LOGIN', 'condition' => Rule::PATTERN_IS, 'pattern' => $prefix]);
+    $actionIds = [];
     foreach (['timezone' => 'UTC', 'is_active' => '1', '_entities_id_default' => '0', '_profiles_id_default' => (string)$profile, 'groups_id' => (string)$group, 'entities_id' => '0', 'profiles_id' => (string)$profile] as $field => $value) {
-        $fixtures->create('glpi_ruleactions', ['rules_id' => $rule, 'action_type' => 'assign', 'field' => $field, 'value' => $value]);
+        $actionIds[$field] = $fixtures->create('glpi_ruleactions', ['rules_id' => $rule, 'action_type' => 'assign', 'field' => $field, 'value' => $value]);
     }
     $rules->load = 0;
     $collection = new RuleRightCollection();
@@ -168,6 +172,66 @@ try {
     verify($after->outcome->assignments === [] && $after->outcome->grants === [], 'Exceptional evaluation releases actual mutation context');
     $legacy = $collection->processAllRules([$group], $context, ['type' => Auth::DB_GLPI, 'login' => $prefix]);
     verify($legacy['timezone'] === 'UTC' && isset($legacy['_ldap_rules']), 'Ordinary legacy rule evaluation still uses its original output contract');
+
+    // Genuine same-model public reentrancy owns a separate lifecycle/context.
+    $model = new User();
+    verify($model->getFromDB($user), 'Reentrant completion uses the actual stored User');
+    $reentered = false;
+    $PLUGIN_HOOKS['pre_item_update']['authentication_completion_fixture'][User::class] = static function ($item) use ($user, $evaluation, &$reentered): void {
+        if ($item instanceof User && (int)$item->getID() === $user && !$reentered) {
+            $reentered = true;
+            verify($item->update(['id' => $user, 'highcontrast_css' => false]), 'Nested ordinary preference edit has no inherited completion requirement');
+            verify($item->completeAuthentication(new \itsmng\Domain\Authentication\AuthenticationCompletion($user, $_SESSION['glpi_currenttime'], $evaluation->outcome)), 'Nested typed completion owns and restores its own outcome');
+        }
+    };
+    verify($model->completeAuthentication(new \itsmng\Domain\Authentication\AuthenticationCompletion($user, $_SESSION['glpi_currenttime'], $evaluation->outcome)), 'Outer completion resumes after genuine nested public lifecycles');
+    verify($reentered && $read()['highcontrast_css'] === null, 'Nested deliberate preference edit persists its legitimate inheritance effect');
+    unset($PLUGIN_HOOKS['pre_item_update']['authentication_completion_fixture'][User::class]);
+    $writer()->update('glpi_users', $user, ['highcontrast_css' => false]);
+
+    // A real deactivation action is mandatory admission intent, not optional input.
+    $writer()->update('glpi_ruleactions', $actionIds['is_active'], ['value' => '0']);
+    $rules->load = 0;
+    $_SESSION = $savedSession;
+    $_REQUEST = $_COOKIE = [];
+    verify((new Auth())->login($prefix, $password, true) === false, 'Actual rule deactivation refuses Session admission');
+    verify($read()['is_active'] === 0 && Session::getLoginUserID() !== $user, 'Real deactivation is persisted and no successful user session is published');
+    verify($preferences() === $baseline && $records()->find('glpi_profiles_users', 'id', $manual) !== null, 'Deactivation retains unrelated preference and manual grant ownership');
+    $writer()->update('glpi_users', $user, ['is_active' => true]);
+
+    foreach (['drop', 'replace'] as $mutation) {
+        $_SESSION = $savedSession;
+        $PLUGIN_HOOKS['pre_item_update']['authentication_completion_fixture'][User::class] = static function ($item) use ($user, $mutation): bool {
+            if ($item instanceof User && (int)$item->getID() === $user) {
+                if ($mutation === 'drop') { unset($item->input['is_active']); }
+                else { $item->input['is_active'] = true; }
+            }
+            return true;
+        };
+        $before = $read();
+        $beforeGrants = $records()->matching('glpi_profiles_users', ['users_id' => $user], order: ['id']);
+        verify((new Auth())->login($prefix, $password, true) === false, 'True-return hook cannot ' . $mutation . ' required rule deactivation');
+        verify($read() === $before && $records()->matching('glpi_profiles_users', ['users_id' => $user], order: ['id']) === $beforeGrants, 'Rejected admission hook performs no account or grant update');
+    }
+    unset($PLUGIN_HOOKS['pre_item_update']['authentication_completion_fixture'][User::class]);
+    $_SESSION = $savedSession;
+    $deactivation = $collection->evaluateAuthentication([$group], $read(), ['type' => Auth::DB_GLPI, 'login' => $prefix]);
+    $late = new class extends User {
+        public static function getTable($classname = null) { return User::getTable(); }
+        public function pre_updateInDB() {
+            parent::pre_updateInDB();
+            $this->updates = array_values(array_diff($this->updates, ['is_active']));
+        }
+    };
+    verify($late->getFromDB($user), 'Actual model callback has the persisted local account');
+    $before = $read();
+    verify($late->completeAuthentication(new \itsmng\Domain\Authentication\AuthenticationCompletion($user, $_SESSION['glpi_currenttime'], $deactivation->outcome)) === false, 'Late public model callback cannot cancel mandatory rule deactivation');
+    verify($read() === $before, 'Final write guard refuses before any account write');
+    verify($late->update(['id' => $user, 'highcontrast_css' => false]), 'Refused completion releases typed context for normal preference edits');
+    verify($read()['highcontrast_css'] === null, 'Normal preference inheritance remains valid after completion refusal');
+    $writer()->update('glpi_users', $user, ['highcontrast_css' => false]);
+    $writer()->update('glpi_ruleactions', $actionIds['is_active'], ['value' => '1']);
+    $rules->load = 0;
 
     // Public login honors a cancelled lifecycle and emits no invented completion.
     $PLUGIN_HOOKS['pre_item_update']['authentication_completion_fixture'][User::class] = static function ($item) use ($user): void {
