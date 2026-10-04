@@ -62,6 +62,24 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
     $columns = array_column($reference['selections'], 'column');
     $migration = new $migrationClass();
     $version = $migrationClass::VERSION;
+    $flagColumns = array_keys(EntityRegistry::booleanFields($table));
+    verify(count($flagColumns) === 3, 'All three component flags come from the owning entity properties');
+    $flagStorage = static function () use ($connection, $platform, $postgres, $table, $flagColumns, $expected): array {
+        $selection = implode(', ', array_fill(0, count($flagColumns), '?'));
+        $rows = $postgres
+            ? $connection->fetchAllAssociative('SELECT column_name AS name, data_type AS storage, is_nullable AS nullable FROM information_schema.columns '
+                . 'WHERE (table_schema, table_name)=(SELECT n.nspname, c.relname FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE c.oid=to_regclass(?)) '
+                . 'AND column_name IN (' . $selection . ') ORDER BY column_name', [$platform->quoteIdentifier($table), ...$flagColumns])
+            : $connection->fetchAllAssociative('SELECT COLUMN_NAME AS name, DATA_TYPE AS storage, IS_NULLABLE AS nullable FROM information_schema.COLUMNS '
+                . 'WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME IN (' . $selection . ') ORDER BY COLUMN_NAME', [$table, ...$flagColumns]);
+        verify(count($rows) === count($flagColumns), 'Native inspection finds every property-owned component flag');
+        foreach ($rows as $row) {
+            verify($row['storage'] === Type::lookupName($expected->getTable($table)->getColumn($row['name'])->getType())
+                && $row['nullable'] === 'NO', 'Native component flags retain canonical provider storage and required nullability');
+        }
+        return $rows;
+    };
+    $canonicalFlagStorage = $flagStorage();
     $reconstruction = null;
     $owners = [];
     $primary = null;
@@ -291,7 +309,9 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
             }
         }
         $migration->apply($connection);
-        verify(Type::lookupName($manager->introspectTable($table)->getColumn('is_dynamic')->getType()) === 'boolean', 'Constraint-free valid legacy flag storage converges to the intended boolean mapping');
+        verify(Type::lookupName($manager->introspectTable($table)->getColumn('is_dynamic')->getType())
+            === Type::lookupName($expected->getTable($table)->getColumn('is_dynamic')->getType()), 'Constraint-free valid legacy flag storage converges to the intended provider mapping');
+        verify($flagStorage() === $canonicalFlagStorage, 'Populated integer drift converges to canonical physical flag storage without changing the older receipt');
         verify(
             Type::getType('boolean')->convertToPHPValue($connection->fetchOne('SELECT is_dynamic FROM ' . $table . ' WHERE id=?', [4294996200]), $platform) === true
             && Type::getType('boolean')->convertToPHPValue($connection->fetchOne('SELECT is_dynamic FROM ' . $table . ' WHERE id=?', [4294996280]), $platform) === false,
@@ -349,7 +369,9 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
             $withComment = clone $expected;
             $withComment->getTable($table)->getColumn('items_id')->setComment($comment);
             verify((new SchemaCheck())->differences($connection, $withComment) === [], 'Completed populated family matches intended complete schema');
+            verify($flagStorage() === $canonicalFlagStorage, 'Every real interrupted phase retains provider-native physical flag storage');
             verify($migration->plan($connection) === [] && $migration->apply($connection) === [], 'Completed family replay is idempotent');
+            verify($flagStorage() === $canonicalFlagStorage, 'Completed replay leaves native flag storage unchanged');
             verify((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_locations WHERE id=0') === 1
                 && (int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_states WHERE id=0') === 1, 'Canonical empty-selection conversion preserves the independent source target rows');
         }

@@ -20,6 +20,9 @@ final class ComponentData20261013
         $manager = $connection->createSchemaManager();
         $before = $manager->introspectTable($snapshot['table']);
         $after = clone $before;
+        // The immutable baseline owns physical flag storage: native BOOLEAN
+        // on PostgreSQL, historical integer widths on MySQL/MariaDB.
+        $frozen = (new Baseline20261001())->build($platform)->getTable($snapshot['table']);
         foreach ($snapshot['booleans'] as $column) {
             if (!$before->hasColumn($column)) {
                 throw new \RuntimeException('Missing historical component boolean: ' . $snapshot['table'] . '.' . $column);
@@ -38,7 +41,8 @@ final class ComponentData20261013
                 $invalid .= ' OR ' . $field . ' NOT IN (0, 1)';
             }
             self::audit($connection, $snapshot['table'], $column, $invalid);
-            $after->getColumn($column)->setType(Type::getType(Types::BOOLEAN))->setNotnull(true)->setDefault(false);
+            $after->getColumn($column)->setType($frozen->getColumn($column)->getType())->setNotnull(true)
+                ->setDefault($platform instanceof PostgreSQLPlatform ? false : 0);
         }
         foreach ($snapshot['references'] as $column => $reference) {
             if (!$before->hasColumn($column)) {
