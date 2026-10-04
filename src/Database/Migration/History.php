@@ -12,7 +12,7 @@ use itsmng\Database\SequenceSynchronizer;
 /** Empty-database replay and validated adoption share one canonical history and ledger. */
 final class History
 {
-    public const VERSIONS = [Baseline20261001::VERSION, Seeds20261001::VERSION, LegacyToOrm::VERSION, Booleans20261002::VERSION, ProjectAssets20261003::VERSION, CategoryFlags20261004::VERSION, ApplianceAssets20261005::VERSION, ApplianceRecipients20261005::VERSION, OperatingSystemSubjects20261006::VERSION, DomainDocuments20261006::VERSION, DomainIntegration20261006::VERSION, IdentifierSequences20261007::VERSION, BooleanDomains20261008::VERSION, ExactDiscriminators20261010::VERSION, SoftwareInstallationSubjects20261011::VERSION, SoftwareLicenseSubjects20261011::VERSION, ProcessorSubjects20261012::VERSION];
+    public const VERSIONS = [Baseline20261001::VERSION, Seeds20261001::VERSION, LegacyToOrm::VERSION, Booleans20261002::VERSION, ProjectAssets20261003::VERSION, CategoryFlags20261004::VERSION, ApplianceAssets20261005::VERSION, ApplianceRecipients20261005::VERSION, OperatingSystemSubjects20261006::VERSION, DomainDocuments20261006::VERSION, DomainIntegration20261006::VERSION, IdentifierSequences20261007::VERSION, BooleanDomains20261008::VERSION, ExactDiscriminators20261010::VERSION, SoftwareInstallationSubjects20261011::VERSION, SoftwareLicenseSubjects20261011::VERSION, ProcessorSubjects20261012::VERSION, MotherboardSubjects20261013::VERSION, MemorySubjects20261013::VERSION, HardDriveSubjects20261013::VERSION];
 
     /** Application readiness uses the ledger, without planning or executing DDL. */
     public static function pendingVersions(Connection $connection): array
@@ -39,7 +39,7 @@ final class History
         $pending = self::pendingVersions($connection);
         $booleans = (new Booleans20261002())->plan($connection);
         $domainDocuments = new DomainDocuments20261006();
-        return ['complete' => !$pending, 'pending' => $pending, 'legacy' => (new LegacyToOrm())->plan($connection), 'booleans' => $booleans, 'project_assets' => (new ProjectAssets20261003())->plan($connection), 'category_flags' => (new CategoryFlags20261004())->plan($connection), 'appliance_assets' => (new ApplianceAssets20261005())->plan($connection), 'appliance_recipients' => (new ApplianceRecipients20261005())->plan($connection), 'operating_system_subjects' => (new OperatingSystemSubjects20261006())->plan($connection), 'domain_documents' => $domainDocuments->plan($connection), 'domain_integration' => (new DomainIntegration20261006())->plan($connection), 'identifier_sequences' => (new IdentifierSequences20261007())->plan($connection), 'boolean_domains' => (new BooleanDomains20261008())->plan($connection, true), 'exact_subject_discriminators' => (new ExactDiscriminators20261010())->plan($connection, true, $domainDocuments), 'software_installation_subjects' => (new SoftwareInstallationSubjects20261011())->plan($connection), 'software_license_subjects' => (new SoftwareLicenseSubjects20261011())->plan($connection), 'processor_subjects' => (new ProcessorSubjects20261012())->plan($connection)];
+        return ['complete' => !$pending, 'pending' => $pending, 'legacy' => (new LegacyToOrm())->plan($connection), 'booleans' => $booleans, 'project_assets' => (new ProjectAssets20261003())->plan($connection), 'category_flags' => (new CategoryFlags20261004())->plan($connection), 'appliance_assets' => (new ApplianceAssets20261005())->plan($connection), 'appliance_recipients' => (new ApplianceRecipients20261005())->plan($connection), 'operating_system_subjects' => (new OperatingSystemSubjects20261006())->plan($connection), 'domain_documents' => $domainDocuments->plan($connection), 'domain_integration' => (new DomainIntegration20261006())->plan($connection), 'identifier_sequences' => (new IdentifierSequences20261007())->plan($connection), 'boolean_domains' => (new BooleanDomains20261008())->plan($connection, true), 'exact_subject_discriminators' => (new ExactDiscriminators20261010())->plan($connection, true, $domainDocuments), 'software_installation_subjects' => (new SoftwareInstallationSubjects20261011())->plan($connection), 'software_license_subjects' => (new SoftwareLicenseSubjects20261011())->plan($connection), 'processor_subjects' => (new ProcessorSubjects20261012())->plan($connection), 'motherboard_subjects' => (new MotherboardSubjects20261013())->plan($connection), 'memory_subjects' => (new MemorySubjects20261013())->plan($connection), 'hard_drive_subjects' => (new HardDriveSubjects20261013())->plan($connection)];
     }
 
     public static function isInstalling(Connection $connection): bool
@@ -159,6 +159,9 @@ final class History
             (new SoftwareLicenseSubjects20261011())->plan($connection);
             // Optional component ownership is audited before any earlier DDL.
             (new ProcessorSubjects20261012())->plan($connection);
+            (new MotherboardSubjects20261013())->plan($connection);
+            (new MemorySubjects20261013())->plan($connection);
+            (new HardDriveSubjects20261013())->plan($connection);
             // Validate every integer flag before MySQL adoption or any PostgreSQL DDL.
             (new Booleans20261002())->plan($connection);
             // Unsupported plugin kinds and invalid subjects refuse before
@@ -183,6 +186,9 @@ final class History
             (new SoftwareInstallationSubjects20261011())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('SoftwareInstallationSubjects20261011: ' . $phase));
             (new SoftwareLicenseSubjects20261011())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('SoftwareLicenseSubjects20261011: ' . $phase));
             (new ProcessorSubjects20261012())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('ProcessorSubjects20261012: ' . $phase));
+            (new MotherboardSubjects20261013())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('MotherboardSubjects20261013: ' . $phase));
+            (new MemorySubjects20261013())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('MemorySubjects20261013: ' . $phase));
+            (new HardDriveSubjects20261013())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('HardDriveSubjects20261013: ' . $phase));
             $differences = (new SchemaCheck())->differences($connection);
             if ($differences) {
                 throw new \RuntimeException("Migration history did not converge:\n" . implode("\n", $differences));

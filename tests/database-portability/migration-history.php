@@ -174,6 +174,37 @@ foreach ([1902, 1903] as $processorId) {
 }
 $connection->insert('glpi_items_deviceprocessors', ['id' => 1904, 'deviceprocessors_id' => 1901, 'itemtype' => '', 'items_id' => 0]);
 $connection->insert('glpi_items_deviceprocessors', ['id' => 1905, 'deviceprocessors_id' => 1901, 'itemtype' => null, 'items_id' => 0]);
+// New family ownership is exercised in the same raw populated adoption, not
+// marked complete after constructing today’s metadata schema.
+foreach (['glpi_networkequipments', 'glpi_peripherals', 'glpi_printers', 'glpi_phones'] as $subjectTable) {
+    $connection->insert($subjectTable, ['id' => 2100, 'name' => 'Historical component subject']);
+}
+$componentFamilies = [
+    ['glpi_items_devicemotherboards', 'glpi_devicemotherboards', 'devicemotherboards_id', ['Computer'], []],
+    ['glpi_items_devicememories', 'glpi_devicememories', 'devicememories_id', ['Computer', 'NetworkEquipment', 'Peripheral', 'Printer'], ['size' => 8192]],
+    ['glpi_items_deviceharddrives', 'glpi_deviceharddrives', 'deviceharddrives_id', ['Computer', 'Peripheral', 'NetworkEquipment', 'Printer', 'Phone'], ['capacity' => 1048576]],
+];
+$componentHistorical = [];
+foreach ($componentFamilies as $familyIndex => [$bindingTable, $definitionTable, $deviceColumn, $kinds, $payload]) {
+    $definition = 2200 + $familyIndex;
+    $connection->insert($definitionTable, ['id' => $definition, 'designation' => 'Historical component definition']);
+    foreach ($kinds as $kindIndex => $kind) {
+        $identity = $kind === 'Computer' ? $legacyId : 2100;
+        foreach ([0, 1] as $deleted) {
+            $id = 2300 + $familyIndex * 100 + $kindIndex * 2 + $deleted;
+            $values = ['id' => $id, $deviceColumn => $definition, 'itemtype' => $kind, 'items_id' => $identity,
+                'serial' => "Historical component O'Reilly", 'is_deleted' => $deleted, 'is_dynamic' => 1] + $payload;
+            $connection->insert($bindingTable, $values);
+            $componentHistorical[$bindingTable][$id] = $values;
+        }
+    }
+    foreach (['', null] as $stockIndex => $kind) {
+        $id = 2390 + $familyIndex * 100 + $stockIndex;
+        $values = ['id' => $id, $deviceColumn => $definition, 'itemtype' => $kind, 'items_id' => 0, 'serial' => null] + $payload;
+        $connection->insert($bindingTable, $values);
+        $componentHistorical[$bindingTable][$id] = $values;
+    }
+}
 $connection->insert('glpi_logs', ['id' => $auditId, 'itemtype' => 'Computer', 'items_id' => $legacyId, 'user_name' => 'Legacy administrator', 'old_value' => $audit]);
 $password = 'customer-password-hash-must-survive';
 $connection->update('glpi_users', ['password' => $password], ['id' => 2]);
@@ -510,10 +541,33 @@ verify($connection->fetchOne('SELECT password FROM glpi_users WHERE id = 2') ===
 foreach (History::VERSIONS as $version) {
     verify(Ledger::state($connection, $version)['complete'], 'Every canonical migration is complete: ' . $version);
 }
-verify(count(History::VERSIONS) === 17
-    && array_slice(History::VERSIONS, -4) === [\itsmng\Database\Migration\ExactDiscriminators20261010::VERSION,
+verify(count(History::VERSIONS) === 20
+    && array_slice(History::VERSIONS, 13, 4) === [\itsmng\Database\Migration\ExactDiscriminators20261010::VERSION,
         SoftwareInstallationSubjects20261011::VERSION, SoftwareLicenseSubjects20261011::VERSION,
         \itsmng\Database\Migration\ProcessorSubjects20261012::VERSION], 'Exact14, Software15/16 and Processor17 retain one ordered canonical ledger');
+verify(array_slice(History::VERSIONS, -3) === [
+    \itsmng\Database\Migration\MotherboardSubjects20261013::VERSION,
+    \itsmng\Database\Migration\MemorySubjects20261013::VERSION,
+    \itsmng\Database\Migration\HardDriveSubjects20261013::VERSION,
+], 'Motherboard18, Memory19 and HardDrive20 extend the same ordered canonical ledger');
+foreach ($componentHistorical as $bindingTable => $sourceRows) {
+    $reference = \itsmng\Database\EntityRegistry::discriminatedReferences($bindingTable)['items_id'];
+    foreach ($sourceRows as $id => $sourceRow) {
+        $row = $connection->fetchAssociative('SELECT * FROM ' . $bindingTable . ' WHERE id = ?', [$id]);
+        verify($row !== false && (int)$row['id'] === $id && $row['serial'] === $sourceRow['serial'], 'Canonical full replay preserves every historical component row and nullable literal payload');
+        foreach ($sourceRow as $column => $value) {
+            if (in_array($column, ['id', 'itemtype', 'items_id', 'serial'], true)) {
+                continue;
+            }
+            verify((int)$row[$column] === (int)$value, 'Canonical full replay retains definition, capacity/size and deletion/dynamic flags');
+        }
+        $kind = $sourceRow['itemtype'] ?: null;
+        verify($row['itemtype'] === $kind && (int)$row['items_id'] === (int)$sourceRow['items_id'], 'Canonical full replay retains every selected kind and normalizes only explicit stock');
+        foreach ($reference['selections'] as $selection => $target) {
+            verify($selection === $kind ? (int)$row[$target['column']] === (int)$sourceRow['items_id'] : $row[$target['column']] === null, 'Exactly the selected historical component acquires its real owning FK');
+        }
+    }
+}
 $processorLinks = $connection->fetchAllAssociative('SELECT * FROM glpi_items_deviceprocessors WHERE id IN (1902,1903,1904,1905) ORDER BY id');
 verify(count($processorLinks) === 4, 'Full populated replay retains both duplicate processor assignments and both stock records');
 foreach (array_slice($processorLinks, 0, 2) as $row) {

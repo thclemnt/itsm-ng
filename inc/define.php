@@ -356,13 +356,11 @@ $CFG_GLPI["itemdevices_types"]            = [
 
 $CFG_GLPI["itemdevices_itemaffinity"]     = ['Computer'];
 
-$CFG_GLPI["itemdevicememory_types"]       = ['Computer', 'NetworkEquipment', 'Peripheral', 'Printer'];
 
 $CFG_GLPI["itemdevicepowersupply_types"]  = ['Computer', 'NetworkEquipment', 'Enclosure'];
 
 $CFG_GLPI["itemdevicenetworkcard_types"]  = ['Computer', 'NetworkEquipment', 'Peripheral', 'Phone', 'Printer'];
 
-$CFG_GLPI['itemdeviceharddrive_types']    = ['Computer', 'Peripheral', 'NetworkEquipment', 'Printer', 'Phone'];
 
 $CFG_GLPI['itemdevicebattery_types']      = ['Computer', 'Peripheral', 'Phone', 'Printer'];
 
@@ -380,7 +378,6 @@ $CFG_GLPI['itemdevicesoundcard_types']    = ['Computer'];
 
 $CFG_GLPI['itemdevicegraphiccard_types']  = ['Computer'];
 
-$CFG_GLPI['itemdevicemotherboard_types']  = ['Computer'];
 
 $CFG_GLPI["notificationtemplates_types"]  = [
    'CartridgeItem', 'Change', 'ConsumableItem',

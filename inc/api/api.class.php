@@ -651,11 +651,12 @@ abstract class API extends CommonGLPI
             $fields['_devices'] = $all_devices;
         }
 
-        // retrieve computer disks
+        // Filesystem rows retain their historical eligibility via the derived
+        // physical-device affinity; this does not declare Disk subject ownership.
         if (
             isset($params['with_disks'])
             && $params['with_disks']
-            && in_array($itemtype, $CFG_GLPI['itemdeviceharddrive_types'])
+            && in_array($itemtype, \Item_DeviceHardDrive::itemAffinity(), true)
         ) {
             // build query to retrive filesystems
             $fs_iterator = $DB->request([

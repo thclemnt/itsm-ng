@@ -1,0 +1,52 @@
+{
+    "provenance": {
+        "source_commit": "e658117283f872269c55782be33592519f988399",
+        "purpose": "Frozen Motherboard stock-or-asset subject adoption; historical replay never inspects current entity metadata.",
+        "subject_policy_source": "inc/define.php itemdevicemotherboard_types; inc/item_devices.class.php stock and public relation callers"
+    },
+    "table": "glpi_items_devicemotherboards",
+    "targets": {
+        "Computer": {
+            "producer_target": "computers",
+            "target": "glpi_computers",
+            "column": "computers_id",
+            "nullable": true,
+            "constraint": "fk_items_devicemotherboards_computers_id"
+        }
+    },
+    "allows_empty_reference": true,
+    "minimum_selected_id": 1,
+    "canonical_stock_kind": null,
+    "legacy_stock_identity": 0,
+    "booleans": [
+        "is_deleted",
+        "is_dynamic",
+        "is_recursive"
+    ],
+    "references": {
+        "devicemotherboards_id": {
+            "target": "glpi_devicemotherboards",
+            "policy": "required",
+            "nullable": false,
+            "constraint": "fk_items_devicemotherboards_devicemotherboards_id"
+        },
+        "entities_id": {
+            "target": "glpi_entities",
+            "policy": "root",
+            "nullable": false,
+            "constraint": "fk_items_devicemotherboards_entities_id"
+        },
+        "locations_id": {
+            "target": "glpi_locations",
+            "policy": "empty",
+            "nullable": true,
+            "constraint": "fk_items_devicemotherboards_locations_id"
+        },
+        "states_id": {
+            "target": "glpi_states",
+            "policy": "empty",
+            "nullable": true,
+            "constraint": "fk_items_devicemotherboards_states_id"
+        }
+    }
+}
