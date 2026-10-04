@@ -68,8 +68,10 @@ try {
             WHERE t.TABLE_SCHEMA=DATABASE() AND t.TABLE_NAME=? AND c.COLUMN_NAME='label'",
             [$name]
         );
-        verify($encoding === ['table_collation' => 'utf8mb4_unicode_ci', 'character_set' => 'utf8mb4', 'column_collation' => 'utf8mb4_unicode_ci'],
-            'Actual owned table and label column retain explicit Unicode before the measured bound INSERT');
+        verify(
+            $encoding === ['table_collation' => 'utf8mb4_unicode_ci', 'character_set' => 'utf8mb4', 'column_collation' => 'utf8mb4_unicode_ci'],
+            'Actual owned table and label column retain explicit Unicode before the measured bound INSERT'
+        );
     }
     $sql = 'INSERT INTO ' . $connection->getDatabasePlatform()->quoteIdentifier($name) . ' (id, label, flag, payload) VALUES (?, ?, ?, ?)';
     if ($DB->getProvider() === 'mysql') {

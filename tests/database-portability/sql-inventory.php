@@ -80,20 +80,28 @@ $boundaries = array_values(array_filter($ownedCalls, static fn (array $call): bo
 verify(count($nativeCalls) === 2 && count($boundaries) === 2, 'Actual native PDO calls retain lexical evidence and resolve to the two real driver methods');
 foreach ($boundaries as $boundary) {
     $owner = new ReflectionClass($boundary['ownership']['class']);
-    verify($owner->implementsInterface(Doctrine\DBAL\Driver\Connection::class)
+    verify(
+        $owner->implementsInterface(Doctrine\DBAL\Driver\Connection::class)
         && realpath($owner->getFileName()) === realpath($driverFile)
         && $boundary['ownership']['native_type'] === PDO::class,
-        'Actual interface, declaration file and native PDO ownership establish the driver boundary');
+        'Actual interface, declaration file and native PDO ownership establish the driver boundary'
+    );
 }
-verify(SqlCallInventory::classifyOwnedDriverBoundaries($driverCalls, $driverSource, __FILE__) === $driverCalls,
-    'A real driver declaration supplied under a different physical source is not ownership evidence');
-verify(SqlCallInventory::classifyOwnedDriverBoundaries($driverCalls, $driverSource . "\n// forged source\n", $driverFile) === $driverCalls,
-    'A modified supplied declaration cannot borrow ownership from the loaded actual source');
+verify(
+    SqlCallInventory::classifyOwnedDriverBoundaries($driverCalls, $driverSource, __FILE__) === $driverCalls,
+    'A real driver declaration supplied under a different physical source is not ownership evidence'
+);
+verify(
+    SqlCallInventory::classifyOwnedDriverBoundaries($driverCalls, $driverSource . "\n// forged source\n", $driverFile) === $driverCalls,
+    'A modified supplied declaration cannot borrow ownership from the loaded actual source'
+);
 $unownedSource = '<?php $this->pdo->query("SELECT 1"); PDO::query("SELECT 2"); mysqli_query($link, "SELECT 3"); pg_query($link, "SELECT 4");';
 $unowned = SqlCallInventory::scan($unownedSource, 'src/Database/Driver/Forged.php');
-verify(array_column($unowned, 'category') === ['direct_driver', 'direct_driver', 'direct_driver', 'direct_driver']
+verify(
+    array_column($unowned, 'category') === ['direct_driver', 'direct_driver', 'direct_driver', 'direct_driver']
     && SqlCallInventory::classifyOwnedDriverBoundaries($unowned, $unownedSource, $driverFile) === $unowned,
-    'A driver-like path, PDO spelling, static native calls and native free functions confer no exception');
+    'A driver-like path, PDO spelling, static native calls and native free functions confer no exception'
+);
 $probeSource = file_get_contents(__FILE__);
 $probeCalls = SqlCallInventory::scan($probeSource, 'tests/database-portability/sql-inventory.php');
 $probeSemantic = SqlCallInventory::classifyOwnedDriverBoundaries($probeCalls, $probeSource, __FILE__);
@@ -103,14 +111,18 @@ $compactFile = __DIR__ . '/fixtures/compact-native-driver-declaration.txt';
 require $compactFile; // Declaration fixture only; no instance or native method invocation.
 $compactSource = file_get_contents($compactFile);
 $compactOwner = new ReflectionClass(InventoryCompactNativeDriverProbe::class);
-verify($compactOwner->implementsInterface(Doctrine\DBAL\Driver\Connection::class)
+verify(
+    $compactOwner->implementsInterface(Doctrine\DBAL\Driver\Connection::class)
     && $compactOwner->getProperty('pdo')->getType()->getName() === PDO::class
     && $compactOwner->getMethod('query')->getStartLine() === $compactOwner->getMethod('applicationSql')->getStartLine(),
-    'Actual typed native driver declaration has genuinely overlapping reflection line ranges');
+    'Actual typed native driver declaration has genuinely overlapping reflection line ranges'
+);
 $compactCalls = SqlCallInventory::scan($compactSource, 'fixtures/compact-native-driver-declaration.txt');
-verify(count($compactCalls) === 1 && $compactCalls[0]['category'] === 'direct_driver'
+verify(
+    count($compactCalls) === 1 && $compactCalls[0]['category'] === 'direct_driver'
     && SqlCallInventory::classifyOwnedDriverBoundaries($compactCalls, $compactSource, $compactFile) === $compactCalls,
-    'A same-line unrelated method cannot borrow the real owning driver query method through line ranges');
+    'A same-line unrelated method cannot borrow the real owning driver query method through line ranges'
+);
 $all = SqlCallInventory::discover($root);
 verify($all === SqlCallInventory::discover($root), 'Repository inventory order is deterministic');
 verify(!array_filter($all, static fn (array $call): bool => $call['path'] === 'install/install.php' && $call['category'] === 'direct_driver'), 'Web installer no longer opens native driver connections');
