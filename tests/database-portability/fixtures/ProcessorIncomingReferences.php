@@ -5,6 +5,7 @@
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Schema;
+use Doctrine\DBAL\Schema\ForeignKeyConstraint\ReferentialAction;
 
 /** Own only canonical incoming ID constraints during empty processor reconstruction. */
 final class ProcessorIncomingReferences
@@ -30,7 +31,7 @@ final class ProcessorIncomingReferences
                 $columns = array_map(static fn (string $name): string => trim($name, '`"'), $foreign->getLocalColumns());
                 if (count($columns) !== 1 || $foreign->getForeignColumns() !== ['id']
                     || $table->getColumn($columns[0])->getNotnull()
-                    || $foreign->onUpdate() !== 'RESTRICT' || $foreign->onDelete() !== 'RESTRICT') {
+                    || $foreign->getOnUpdateAction() !== ReferentialAction::RESTRICT || $foreign->getOnDeleteAction() !== ReferentialAction::RESTRICT) {
                     throw new LogicException('Processor reconstruction requires canonical nullable incoming ID ownership.');
                 }
                 $key = $this->key($this->schema, $table->getName(), $foreign->getName());
