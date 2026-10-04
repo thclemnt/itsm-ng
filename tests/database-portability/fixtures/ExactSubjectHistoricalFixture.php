@@ -4,7 +4,10 @@
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\DBAL\Schema\DefaultExpression;
 use Doctrine\DBAL\Schema\Table;
 use itsmng\Database\BooleanDomainSchema;
 use itsmng\Database\Migration\ExactDiscriminators20261010;
@@ -128,6 +131,34 @@ final class ExactSubjectHistoricalFixture
                     $declaration .= ' ' . $platform->getInlineColumnCommentSQL($column->getComment());
                 }
                 $column->setColumnDefinition($declaration);
+            }
+        }
+        if ($platform instanceof PostgreSQLPlatform) {
+            foreach ($this->restorationFacts[$table]['native']['columns'] as $name => $native) {
+                $column = $captured->getColumn($name);
+                if ($native['column_default'] === null || $column->getDefault() !== null || !$column->getNotnull()) {
+                    continue;
+                }
+                // PostgreSQLSchemaManager collapses an explicit NULL:: default
+                // into PHP null. Keep the observed finite native expression in
+                // DBAL's default seam, preserving the other column properties.
+                if ($native['column_default'] !== 'NULL::character varying'
+                    || $native['data_type'] !== 'character varying' || $native['udt_schema'] !== 'pg_catalog' || $native['udt_name'] !== 'varchar'
+                    || $native['is_identity'] !== 'NO' || $native['is_generated'] !== 'NEVER'
+                    || $native['is_nullable'] !== 'NO'
+                    || $column->getAutoincrement() || $column->getColumnDefinition() !== null) {
+                    throw new LogicException('Unsupported collapsed native default before selected reconstruction: ' . $table . '.' . $name);
+                }
+                $column->setDefault(new class ($native['column_default']) implements DefaultExpression {
+                    public function __construct(private readonly string $expression)
+                    {
+                    }
+
+                    public function toSQL(AbstractPlatform $platform): string
+                    {
+                        return $this->expression;
+                    }
+                });
             }
         }
         $generated = ['items_id' => $this->original[$table]['projection']];
