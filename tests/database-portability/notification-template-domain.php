@@ -134,8 +134,9 @@ namespace {
         $localSecond = $bind($local, $otherTemplate, 'plan');
         $localOther = $bind($local, $template, 'otherplan');
         $rootBinding = $bind($ancestor, $template, 'plan');
+        $excludedBindings = [];
         foreach ([$nonrecursive, $foreign, $inactive, $wrongType] as $excluded) {
-            $bind($excluded, $template, 'plan');
+            $excludedBindings[$excluded] = $bind($excluded, $template, 'plan');
         }
         Notification_NotificationTemplate::registerMode('plan', 'Plan probe', 'plan');
         Notification_NotificationTemplate::registerMode('otherplan', 'Other plan probe', 'plan');
@@ -155,7 +156,14 @@ namespace {
         verify($owners === $expectedOwners && $rows[2]['notificationtemplates_id'] === $template, 'Distinct links sharing a rule or template retain their own ownership');
         verify($rows[0]['allow_response'] === 0 && $rows[0]['is_active'] === 1, 'Compatibility row retains legacy integer boolean semantics');
         verify(count($delivery->plan($event, $type, getEntitiesRestrictCriteria(Notification::getTable(), 'entities_id', [], true), ['plan'])) === 0, 'Explicit empty scope cannot leak notifications');
-        verify(count($delivery->plan($event, $type, getEntitiesRestrictCriteria(Notification::getTable(), 'entities_id', 0, true), ['plan'])) === 1, 'Explicit root excludes descendant rules');
+        $rootIdentities = [];
+        foreach ($delivery->plan($event, $type, getEntitiesRestrictCriteria(Notification::getTable(), 'entities_id', 0, true), ['plan']) as $step) {
+            $rootIdentities[] = [$step->legacyRow()['id'], $step->bindingId];
+        }
+        sort($rootIdentities);
+        $expectedRootIdentities = [[$ancestor, $rootBinding], [$nonrecursive, $excludedBindings[$nonrecursive]]];
+        sort($expectedRootIdentities);
+        verify($rootIdentities === $expectedRootIdentities, 'Explicit root selects both root-local rules and exact bindings while excluding descendants');
         $_SESSION['glpishowallentities'] = true;
         verify(count($delivery->plan($event, $type, getEntitiesRestrictCriteria(Notification::getTable(), 'entities_id', '', true), ['plan'])) === 5, 'Existing all-entity selector retains an unrestricted scope');
         $_SESSION['glpishowallentities'] = false;
