@@ -1,5 +1,74 @@
 # PostgreSQL and Doctrine modernization goal
 
+## 2026-10-04: combined 20-version source compiled; database validation pending
+
+The modernization goal remains **OPEN**. Native persistent goals are unavailable;
+this document and the implementation plan retain the objective and next steps.
+Normal Git fetch works in the cloud. The remote still points to
+`01aee6a7bbd5a3f0301a6f27b329381a12ea8470`; both that revision and the verified
+`897c5c9bd636f65e5a2a596d350ef087635303f9` handoff remain ancestors.
+
+The combined source at `400d3f40adca45cd4f865bfa96205a4bb5115dab` adds ten
+component subject associations and three frozen migration stages, qualified
+native identifier-FK ownership, and notification delivery/template repositories
+and domain services. It also preserves the captured PostgreSQL explicit NULL
+default during historical table reconstruction. These are separate Conventional
+Commits. The two reviewed patch groups integrated exactly; formatting preserved
+every non-whitespace token in all 42 changed PHP files.
+
+ROOT compilation passed all 42 syntax checks, repository style, optimized
+autoloading, SQL inventory and offline metadata validation. The runner actually
+discovers **222 contracts**. Offline PostgreSQL, MariaDB and MySQL metadata each
+produce 357 tables and **1,080 expected foreign keys**, with zero mapping errors
+and physical connections forbidden. This is not a native schema or full-suite
+pass. Current token inventory records 33 discriminated relationships, 31
+polymorphic candidates, one pending candidate, 2,839 adapter call sites and two
+owned driver boundaries; it has no unowned direct-driver category. Static
+inventory does not prove that every application caller is converted or that
+historical installer paths are inactive.
+
+The preceding 17-version revision `9e7e3d1649` passed all 13 genuine fresh-install
+phases on both providers, including the normal CLI, schema checking, frozen
+seed/sequence controls, reinstallation refusal and idempotent replay. Its repaired
+historical sequence passed **22/22 on MariaDB**, including original Exact and
+schema controls and final native/retained-parent checks. PostgreSQL passed the
+first ten contracts, then OS cleanup failed the strict captured-native-facts
+guard; the remaining eleven refused setup with Exact completion absent. Its
+final parent comparison passed. These failed receipts and databases remain
+retained, without manual receipt repair or reuse as fresh installations.
+
+A separate genuinely absent PostgreSQL diagnostic database reproduced that OS
+failure after normal installation and the original schema/run controls passed.
+Its bounded observer found exactly one difference: native
+`itemtype.column_default` changed from `NULL::character varying` to absence.
+DBAL hydrates that SQL expression as PHP null, and its NOT NULL column serializer
+omits the default. The committed correction uses DBAL's default-expression API
+for the proven captured form, preserving ordinary nullable serialization and
+every original assertion. Other unsupported collapsed forms refuse before DDL.
+The original failure remains recorded; corrected database validation is pending.
+DBAL 4.4 API compatibility was verified from the declared upstream tag.
+
+Evidence checkpoints include `next20-root-compiler-400d3f40adca/final-result.json`
+(`e86e24a8`), actual discovery (`ea77c5b3`), source integration (`0434a60b`),
+formatting tokens (`3ad031eb`), both 17-version fresh installs (`aa4458b7`),
+focused provider outcomes (`fe8e9a02`) and the reproduced OS cause (`e527cf87`).
+The diagnostic parent comparison preserves original full native row bags and raw
+ledger; its new database is admitted only through actual absence/CREATE proof,
+never as a passing fresh replay. The reported handoff certificate `items_id`
+schema-check mismatch remains unreproduced in cloud; this OS default defect does
+not establish that earlier failure's cause.
+
+Next: freeze the combined source and its concrete 20-version test adapters; run
+new canonical fresh installations and a literal populated CLI 17-to-20 upgrade
+from an isolated historical checkout on both providers. Exercise invalid-data
+diagnostics and retry/idempotency, the repaired historical sequence, all seven new
+contracts, complete discovered suites and post-suite native/schema/discriminator
+controls. The combined suite must include every original contract; no standalone
+17-version full-suite success is claimed. Then run application/API restoration,
+rebuilt assets and browser gates. VLAN source work remains held for review and
+native validation. Most remaining persistence paths and polymorphic ownership,
+live replicas, external integrations and remote CI remain open.
+
 ## 2026-10-04: full suites diagnose historical native-policy ownership
 
 The modernization goal remains **OPEN**; native persistent goals remain unavailable. Normal cloud Git fetch works directly and again confirms remote `01aee6a7`, with it and verified handoff `897c5c9b` preserved as ancestors. The current installation architecture replays an explicit frozen DBAL baseline, frozen seeds and the existing canonical history/ledger; runtime MySQL-dump parsing has already been removed.
