@@ -160,7 +160,9 @@ try {
     verify($reentered && $outer->outcome->grants === $evaluation->outcome->grants, 'Balanced nested evaluation preserves exact outer outcome');
     unset($PLUGIN_HOOKS['rule_matched']['authentication_completion_fixture']);
     $failure = new RuntimeException('Actual authentication rule hook refusal');
-    $PLUGIN_HOOKS['rule_matched']['authentication_completion_fixture'] = static function () use ($failure): never { throw $failure; };
+    $PLUGIN_HOOKS['rule_matched']['authentication_completion_fixture'] = static function () use ($failure): never {
+        throw $failure;
+    };
     try {
         $collection->evaluateAuthentication([$group], $context, ['type' => Auth::DB_GLPI, 'login' => $prefix]);
         throw new LogicException('Throwing real rule hook accepted');
@@ -195,10 +197,14 @@ try {
     $rules->load = 0;
     $lateOutcome = $collection->evaluateAuthentication([$group], $read(), ['type' => Auth::DB_GLPI, 'login' => $prefix]);
     verify($lateOutcome->outcome->assignments['realname'] === $lateName, 'Late control uses an actual executed non-boolean rule action');
-    $lateNested = new class extends User {
+    $lateNested = new class () extends User {
         private bool $reentered = false;
-        public static function getTable($classname = null) { return User::getTable(); }
-        public function pre_updateInDB() {
+        public static function getTable($classname = null)
+        {
+            return User::getTable();
+        }
+        public function pre_updateInDB()
+        {
             parent::pre_updateInDB();
             if (!$this->reentered) {
                 $this->reentered = true;
@@ -226,8 +232,11 @@ try {
         $_SESSION = $savedSession;
         $PLUGIN_HOOKS['pre_item_update']['authentication_completion_fixture'][User::class] = static function ($item) use ($user, $mutation): bool {
             if ($item instanceof User && (int)$item->getID() === $user) {
-                if ($mutation === 'drop') { unset($item->input['is_active']); }
-                else { $item->input['is_active'] = true; }
+                if ($mutation === 'drop') {
+                    unset($item->input['is_active']);
+                } else {
+                    $item->input['is_active'] = true;
+                }
             }
             return true;
         };
@@ -239,9 +248,13 @@ try {
     unset($PLUGIN_HOOKS['pre_item_update']['authentication_completion_fixture'][User::class]);
     $_SESSION = $savedSession;
     $deactivation = $collection->evaluateAuthentication([$group], $read(), ['type' => Auth::DB_GLPI, 'login' => $prefix]);
-    $late = new class extends User {
-        public static function getTable($classname = null) { return User::getTable(); }
-        public function pre_updateInDB() {
+    $late = new class () extends User {
+        public static function getTable($classname = null)
+        {
+            return User::getTable();
+        }
+        public function pre_updateInDB()
+        {
             parent::pre_updateInDB();
             $this->updates = array_values(array_diff($this->updates, ['is_active']));
         }
@@ -277,18 +290,27 @@ try {
             if ($primary === null) {
                 $primary = $error;
             } else {
-                try { error_log('Authentication fixture cleanup: ' . $error->getMessage()); } catch (Throwable) { }
+                try {
+                    error_log('Authentication fixture cleanup: ' . $error->getMessage());
+                } catch (Throwable) {
+                }
             }
         }
     };
     $cleanup(static function () use ($connection, $nesting): void {
-        while ($connection->getTransactionNestingLevel() > $nesting) { $connection->rollBack(); }
+        while ($connection->getTransactionNestingLevel() > $nesting) {
+            $connection->rollBack();
+        }
     });
     $cleanup(static function () use ($savedSessionId, $savedSessionStatus): void {
         if (session_id() !== $savedSessionId || session_status() !== $savedSessionStatus) {
-            if (session_status() === PHP_SESSION_ACTIVE) { session_abort(); }
+            if (session_status() === PHP_SESSION_ACTIVE) {
+                session_abort();
+            }
             session_id($savedSessionId);
-            if ($savedSessionStatus === PHP_SESSION_ACTIVE) { Session::start(); }
+            if ($savedSessionStatus === PHP_SESSION_ACTIVE) {
+                Session::start();
+            }
         }
     });
     $_SESSION = $savedSession;
@@ -302,7 +324,11 @@ try {
     $rules->list = $savedRuleList;
     $rules->load = $savedRuleLoad;
     $cleanup(static fn () => $plugins->setValue(null, $savedPlugins));
-    if ($savedLocale !== null) { $cleanup(static fn () => Locale::setDefault($savedLocale)); }
+    if ($savedLocale !== null) {
+        $cleanup(static fn () => Locale::setDefault($savedLocale));
+    }
 }
-if ($primary !== null) { throw $primary; }
+if ($primary !== null) {
+    throw $primary;
+}
 echo $DB->getProvider() . ": Actual authentication completion, preference ownership, rule intentions and lifecycle controls passed.\n";

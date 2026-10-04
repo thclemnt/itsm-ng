@@ -82,14 +82,18 @@ try {
         }), 'Direct actual transfer coordinator refuses without taking caller ownership');
         $transfer = new Transfer();
         $transferState = LifecycleModelJournal::state($transfer);
-        verify($transfer->moveItems([], 0, []) === false && LifecycleModelJournal::state($transfer) === $transferState,
-            'Actual public transfer refuses before its model journal/coordinator mutation');
+        verify(
+            $transfer->moveItems([], 0, []) === false && LifecycleModelJournal::state($transfer) === $transferState,
+            'Actual public transfer refuses before its model journal/coordinator mutation'
+        );
         verify(!$called && !DeletionUnit::isActive($connection) && $connection->getTransactionNestingLevel() === 0
             && LifecycleModelJournal::state($model) === $stored, 'No callback, logical frame, deletion frame or public-model mutation');
-        verify($connection->fetchOne('SELECT name FROM glpi_suppliers WHERE id=?', [$seed]) === $marker
+        verify(
+            $connection->fetchOne('SELECT name FROM glpi_suppliers WHERE id=?', [$seed]) === $marker
             && $observer->fetchOne('SELECT name FROM glpi_suppliers WHERE id=?', [$seed]) === $prefix
             && $connection->fetchAllAssociative('SELECT * FROM glpi_queuednotifications ORDER BY id') === $queued,
-            'Refusal neither commits nor rolls back caller data nor changes the notification queue');
+            'Refusal neither commits nor rolls back caller data nor changes the notification queue'
+        );
         verify($DB->query('ROLLBACK') === true, 'Only the raw caller ends its transaction');
         $rawOwned = false;
         verify($connection->fetchOne('SELECT name FROM glpi_suppliers WHERE id=?', [$seed]) === $prefix, 'Explicit caller rollback remains effective');

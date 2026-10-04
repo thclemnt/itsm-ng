@@ -138,26 +138,34 @@ try {
     verify($ordinaryResult->fetchOne() === $prefix, 'Retained ordinary DBAL statement/result are real');
     $ordinaryResult->free(); // Retain even a freed cursor object: PDO's result still holds its statement/session.
     verify($secondary->getLock($lock) && !$DB->getLock($lock), 'Caller owns a real contended advisory session lock');
-    verify($secondary->query('BEGIN') === true && $owner->getTransactionNestingLevel() === 0,
-        'Actual raw caller transaction is physically active outside DBAL nesting');
-    verify($legacy->execute() && $writer->fetchOne('SELECT name FROM glpi_suppliers WHERE id=?', [$seed]) === $prefix,
-        'Retained legacy statement writes a genuinely uncommitted caller marker');
+    verify(
+        $secondary->query('BEGIN') === true && $owner->getTransactionNestingLevel() === 0,
+        'Actual raw caller transaction is physically active outside DBAL nesting'
+    );
+    verify(
+        $legacy->execute() && $writer->fetchOne('SELECT name FROM glpi_suppliers WHERE id=?', [$seed]) === $prefix,
+        'Retained legacy statement writes a genuinely uncommitted caller marker'
+    );
     $owner->close();
     verify(!$owner->isConnected() && $physical->get() === null, 'Direct owner close releases the physical PDO despite all retained legacy/DBAL/result objects');
     $applicationLock = $DB->getLock($lock);
     verify($applicationLock, 'Independent observer acquires the released real advisory session lock');
     verify($DB->releaseLock($lock), 'Observer releases only its acquired owned fixture lock');
     $applicationLock = false;
-    verify($writer->fetchOne('SELECT name FROM glpi_suppliers WHERE id=?', [$seed]) === $prefix,
-        'Physical closure rolls back original raw caller data instead of leaving a retained PDO session alive');
+    verify(
+        $writer->fetchOne('SELECT name FROM glpi_suppliers WHERE id=?', [$seed]) === $prefix,
+        'Physical closure rolls back original raw caller data instead of leaving a retained PDO session alive'
+    );
     closedCommand($legacy->execute(...), 'Retained legacy command refuses after direct owner close');
     closedCommand($ordinary->executeQuery(...), 'Retained ordinary DBAL command refuses after direct owner close');
     closedCommand($ordinaryResult->fetchOne(...), 'Retained native result cannot operate on the closed physical owner');
     verify(!$owner->isConnected(), 'Stale retained commands/results never reconnect the closed owner');
     verify($DB->fetchAssoc($buffered) === ['marker' => $marker], 'Already buffered legacy rows survive physical owner close');
     $newSessionId = (int)$owner->fetchOne('SELECT CONNECTION_ID()');
-    verify($newSessionId !== $sessionId && $secondary->getDoctrineConnection() === $owner,
-        'Real same-DBAL reconnect replaces the actual native session');
+    verify(
+        $newSessionId !== $sessionId && $secondary->getDoctrineConnection() === $owner,
+        'Real same-DBAL reconnect replaces the actual native session'
+    );
     closedCommand($legacy->execute(...), 'Old legacy statement cannot revive after same-DBAL reconnect');
     closedCommand($ordinary->executeQuery(...), 'Old DBAL statement cannot revive after same-DBAL reconnect');
     $fresh = $secondary->prepare('SELECT ? AS marker');
@@ -166,8 +174,10 @@ try {
     verify($secondary->close() === true && $secondary->connect() === true, 'Actual public adapter close/reconnect obtains a new owner');
     verify($secondary->getDoctrineConnection() !== $owner, 'Adapter rebind replaces the exact DBAL identity');
     closedCommand($fresh->execute(...), 'Retained legacy facade refuses execution against a newly supplied DBAL owner');
-    verify($writer->fetchOne('SELECT name FROM glpi_suppliers WHERE id=?', [$seed]) === $prefix,
-        'Stale commands never mutate data through the closed or replacement writer');
+    verify(
+        $writer->fetchOne('SELECT name FROM glpi_suppliers WHERE id=?', [$seed]) === $prefix,
+        'Stale commands never mutate data through the closed or replacement writer'
+    );
 
     foreach ([false, true] as $cursorFails) {
         $disconnectFailure = new RuntimeException('Owned fixture disconnect callback failure');
@@ -190,10 +200,14 @@ try {
         } catch (Throwable $error) {
             $caught = $error;
         }
-        verify($caught === ($cursorFails ? $cursorFailure : $disconnectFailure),
-            'Actual supplied logging disconnect cannot replace the earlier cursor cleanup failure');
-        verify($logger->disconnects === 1 && !$cleanupProbe->isConnected() && $probePhysical->get() === null,
-            'All actual physical handles close despite cursor/disconnect callback exceptions');
+        verify(
+            $caught === ($cursorFails ? $cursorFailure : $disconnectFailure),
+            'Actual supplied logging disconnect cannot replace the earlier cursor cleanup failure'
+        );
+        verify(
+            $logger->disconnects === 1 && !$cleanupProbe->isConnected() && $probePhysical->get() === null,
+            'All actual physical handles close despite cursor/disconnect callback exceptions'
+        );
         closedCommand($probeStatement->executeQuery(...), 'Cleanup exception cannot leave a retained command executable');
         closedCommand($probeResult->fetchOne(...), 'Cleanup exception cannot leave a retained result executable');
         $cleanupProbe->close();

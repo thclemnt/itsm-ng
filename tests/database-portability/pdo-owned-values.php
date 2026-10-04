@@ -76,12 +76,17 @@ try {
     verify(is_resource($stream), 'Own an actual LOB stream fixture');
     fwrite($stream, "stream\0payload\xff");
     rewind($stream);
-    $connection->insert($name, ['id' => ++$id, 'label' => 'DBAL stream', 'flag' => 9, 'payload' => $stream, 'measure' => 1.25],
-        ['id' => Types::BIGINT, 'payload' => Types::BLOB, 'measure' => Types::FLOAT]);
+    $connection->insert(
+        $name,
+        ['id' => ++$id, 'label' => 'DBAL stream', 'flag' => 9, 'payload' => $stream, 'measure' => 1.25],
+        ['id' => Types::BIGINT, 'payload' => Types::BLOB, 'measure' => Types::FLOAT]
+    );
     $row = $connection->fetchAssociative('SELECT * FROM ' . $name . ' WHERE id=?', [$id]);
-    verify(binaryValue($row['payload']) === "stream\0payload\xff"
+    verify(
+        binaryValue($row['payload']) === "stream\0payload\xff"
         && \Doctrine\DBAL\Types\Type::getType(Types::FLOAT)->convertToPHPValue($row['measure'], $connection->getDatabasePlatform()) === 1.25,
-        'Real DBAL LOB stream and mapped FloatType value survive the physical PDO driver');
+        'Real DBAL LOB stream and mapped FloatType value survive the physical PDO driver'
+    );
     if ($DB->getProvider() === 'mysql') {
         verify($row['measure'] === 1.25, 'Actual MySQL PDO retains its native floating representation');
     }

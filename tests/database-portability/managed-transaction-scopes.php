@@ -84,8 +84,10 @@ try {
     expired($outerAgain->assertActive(...), 'All scopes of the removed actual frame expire');
     $connection->beginTransaction();
     $replacement = $connection->captureManagedTransactionScope();
-    verify($connection->getTransactionNestingLevel() === 1 && $physical->get() === $connection->getNativeConnection(),
-        'Same logical depth and same physical PDO are real, not a new connection fixture');
+    verify(
+        $connection->getTransactionNestingLevel() === 1 && $physical->get() === $connection->getNativeConnection(),
+        'Same logical depth and same physical PDO are real, not a new connection fixture'
+    );
     expired($outer->assertActive(...), 'Same-depth DBAL rollback/reopen cannot revive the old frame identity');
     $replacement->assertActive();
     $connection->commit();

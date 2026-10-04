@@ -173,7 +173,7 @@ try {
         verify($adapter->connect() === true, 'Exclusive configured probe connection opens.');
         return $adapter;
     };
-    $factoryProbe = new class extends DBpgsql {
+    $factoryProbe = new class () extends DBpgsql {
         public function __construct()
         {
         }

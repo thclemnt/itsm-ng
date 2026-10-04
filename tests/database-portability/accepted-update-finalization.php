@@ -94,9 +94,11 @@ class AcceptedUpdateAllocation extends Item_SoftwareLicense
     public function post_updateItem($history = 1)
     {
         parent::post_updateItem($history);
-        verify((new QueuedNotification())->add(['itemtype' => Software::class, 'items_id' => self::$software,
+        verify(
+            (new QueuedNotification())->add(['itemtype' => Software::class, 'items_id' => self::$software,
             'name' => 'Finalized no-change rollback', 'send_time' => '2026-01-01 00:00:00']) > 0,
-            'Real post-update callback creates an actual queue row inside the owning command');
+            'Real post-update callback creates an actual queue row inside the owning command'
+        );
         throw new RuntimeException('Actual finalized no-change post-update refusal');
     }
 }
@@ -156,8 +158,10 @@ try {
         $model = new AcceptedUpdateSoftware();
         $result = $model->update(['id' => $software, 'name' => $read('glpi_softwares', $software)['name']]);
         verify($result === ($mode === 'accept'), 'Actual unchanged public update respects final decision ' . $mode);
-        verify(AcceptedUpdateSoftware::$events === ($mode === 'accept' ? ['finalize', 'post_updateItem'] : ['finalize']),
-            'Unchanged input finalizes once without real-write callback; refusal stops lifecycle ' . $mode);
+        verify(
+            AcceptedUpdateSoftware::$events === ($mode === 'accept' ? ['finalize', 'post_updateItem'] : ['finalize']),
+            'Unchanged input finalizes once without real-write callback; refusal stops lifecycle ' . $mode
+        );
         verify($nativeSnapshot() === $before, 'Unchanged finalization preserves all exact native values/date/history/queue ' . $mode);
         verify((int)$model->fields['id'] === $software && $model->updates === [], 'Final refusal preserves loaded identity and no pending writes ' . $mode);
     }
@@ -168,16 +172,22 @@ try {
         $item->input['name'] = 'Actual plugin-created software write';
     };
     try {
-        verify((new AcceptedUpdateSoftware())->update(['id' => $software, 'name' => $before['name']]) === true,
-            'Public hook can create a real write from originally unchanged input');
+        verify(
+            (new AcceptedUpdateSoftware())->update(['id' => $software, 'name' => $before['name']]) === true,
+            'Public hook can create a real write from originally unchanged input'
+        );
     } finally {
         unset($PLUGIN_HOOKS['pre_item_update']['accepted_update_fixture']);
     }
     $after = $read('glpi_softwares', $software);
-    verify($after['name'] === 'Actual plugin-created software write' && $after['date_mod'] !== $before['date_mod'],
-        'Hook-created real write stores its value and normal date modification');
-    verify(AcceptedUpdateSoftware::$events === ['pre_updateInDB', 'finalize', 'item_update_hook', 'post_updateItem'],
-        'Hook-created write retains exactly one actual callback and finalization');
+    verify(
+        $after['name'] === 'Actual plugin-created software write' && $after['date_mod'] !== $before['date_mod'],
+        'Hook-created real write stores its value and normal date modification'
+    );
+    verify(
+        AcceptedUpdateSoftware::$events === ['pre_updateInDB', 'finalize', 'item_update_hook', 'post_updateItem'],
+        'Hook-created write retains exactly one actual callback and finalization'
+    );
 
     AcceptedUpdateSoftware::$mode = 'cancel';
     AcceptedUpdateSoftware::$events = [];
@@ -194,10 +204,14 @@ try {
         Item_SoftwareVersion::class => [$installation, 'softwareversions_id', $version]] as $kind => [$id, $parentField, $parent]) {
         $before = $nativeSnapshot();
         $model = new $kind();
-        verify($model->update([$parentField => $parent, 'id' => $id]) === true,
-            'Unchanged owning relationship accepts reordered prepared input with strict writer guard ' . $kind);
-        verify($model->updates === [] && $nativeSnapshot() === $before,
-            'Unchanged relationship retains owning projections/context and no aggregate/history/date writes ' . $kind);
+        verify(
+            $model->update([$parentField => $parent, 'id' => $id]) === true,
+            'Unchanged owning relationship accepts reordered prepared input with strict writer guard ' . $kind
+        );
+        verify(
+            $model->updates === [] && $nativeSnapshot() === $before,
+            'Unchanged relationship retains owning projections/context and no aggregate/history/date writes ' . $kind
+        );
         verify($connection->getTransactionNestingLevel() === 1, 'Relationship releases only its owned nested frame ' . $kind);
         $scope = $_SESSION;
         $_SESSION['glpiactiveentities'] = [];
@@ -224,8 +238,10 @@ try {
         $caught = $error->getMessage() === 'Actual finalized no-change post-update refusal';
     }
     verify($caught, 'Original public callback error survives unchanged finalization');
-    verify($nativeSnapshot() === $before && $model->fields === $storedFields,
-        'Owning rollback restores exact database graph/queue/audit and actual stored model fields');
+    verify(
+        $nativeSnapshot() === $before && $model->fields === $storedFields,
+        'Owning rollback restores exact database graph/queue/audit and actual stored model fields'
+    );
     verify($connection->getTransactionNestingLevel() === 1, 'Rejected no-change callback preserves caller frame');
 } catch (Throwable $error) {
     $primary = $error;
@@ -239,8 +255,10 @@ try {
         $cleanupErrors[] = $error;
     }
     try {
-        verify($DB->getDoctrineConnection() === $connection && $connection->getTransactionNestingLevel() === 1,
-            'Fixture only ends its supplied original outer frame');
+        verify(
+            $DB->getDoctrineConnection() === $connection && $connection->getTransactionNestingLevel() === 1,
+            'Fixture only ends its supplied original outer frame'
+        );
         $connection->rollBack();
     } catch (Throwable $error) {
         $cleanupErrors[] = $error;
@@ -248,7 +266,10 @@ try {
 }
 if ($primary !== null) {
     foreach ($cleanupErrors as $cleanupError) {
-        try { fwrite(STDERR, 'Secondary fixture cleanup failure: ' . $cleanupError::class . "\n"); } catch (Throwable) { }
+        try {
+            fwrite(STDERR, 'Secondary fixture cleanup failure: ' . $cleanupError::class . "\n");
+        } catch (Throwable) {
+        }
     }
     throw $primary;
 }

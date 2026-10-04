@@ -158,9 +158,11 @@ try {
                     $graphRejected = true;
                 }
                 verify($graphRejected && $foreignVector() === $beforeForeign, 'Fixture reconstruction refuses the custom projection consumer without detaching any constraints');
-                verify($connection->fetchAllAssociative('SELECT * FROM ' . $tableName . ' ORDER BY id') === $beforeIncoming
+                verify(
+                    $connection->fetchAllAssociative('SELECT * FROM ' . $tableName . ' ORDER BY id') === $beforeIncoming
                     && $connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $beforeIncomingLedger,
-                    'Fixture graph refusal preserves every processor row and raw receipt');
+                    'Fixture graph refusal preserves every processor row and raw receipt'
+                );
                 try {
                     $migration->plan($connection, $incoming);
                     throw new LogicException('Incoming legacy projection FK accepted destructive migration');

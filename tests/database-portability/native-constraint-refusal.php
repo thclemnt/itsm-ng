@@ -98,13 +98,17 @@ foreach ([
     ['HY000', 3819],
     ['HY000', 3819, $checkMessage, 'unexpected'],
 ] as $information) {
-    verify(!NativeConstraintRefusal::matchesSelectedCheck($makePdo(DriverException::class, $checkMessage, 3819, 'HY000', $information), $ownedCheck),
-        'Malformed/mismatched/unowned PDO errorInfo cannot impersonate selected CHECK refusal');
+    verify(
+        !NativeConstraintRefusal::matchesSelectedCheck($makePdo(DriverException::class, $checkMessage, 3819, 'HY000', $information), $ownedCheck),
+        'Malformed/mismatched/unowned PDO errorInfo cannot impersonate selected CHECK refusal'
+    );
 }
 $withoutNative = new DriverException(new \Doctrine\DBAL\Driver\PDO\Exception($checkMessage, 'HY000', 3819), null);
 verify(!NativeConstraintRefusal::matchesSelectedCheck($withoutNative, $ownedCheck), 'Typed PDO driver alone cannot fabricate the absent native cause');
 foreach ([NotNullConstraintViolationException::class, ForeignKeyConstraintViolationException::class, UniqueConstraintViolationException::class] as $class) {
-    verify(!NativeConstraintRefusal::matchesSelectedCheck($makePdo($class, $checkMessage, 3819, 'HY000'), $ownedCheck),
-        'PDO CHECK vector retains exact converted-class requirement');
+    verify(
+        !NativeConstraintRefusal::matchesSelectedCheck($makePdo($class, $checkMessage, 3819, 'HY000'), $ownedCheck),
+        'PDO CHECK vector retains exact converted-class requirement'
+    );
 }
 echo "Native constraint refusal classification passed.\n";

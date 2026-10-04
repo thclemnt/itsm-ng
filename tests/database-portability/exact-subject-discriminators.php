@@ -55,9 +55,11 @@ $ownInfocom = static function () use ($ownTarget, $read): int {
     $computer = $ownTarget('glpi_computers');
     $id = $ownTarget('glpi_infocoms', ['itemtype' => 'Computer', 'items_id' => $computer]);
     $row = $read('glpi_infocoms', $id);
-    verify($read('glpi_computers', $computer) !== false && $row !== false
+    verify(
+        $read('glpi_computers', $computer) !== false && $row !== false
         && $row['itemtype'] === 'Computer' && (int)$row['items_id'] === $computer,
-        'Owned financial subject retains its actual Computer');
+        'Owned financial subject retains its actual Computer'
+    );
     return $id;
 };
 $nativeRefusal = static function (callable $operation, string $family, string $constraint = '') use ($connection): void {
