@@ -38,8 +38,7 @@ final class ComponentNativeAdmission
                             && $native === 'new row for relation "' . $table . '" violates check constraint "' . $constraint . '"',
                         'foreign' => $error instanceof ForeignKeyConstraintViolationException && $error->getSQLState() === '23503'
                             && $native === 'insert or update on table "' . $table . '" violates foreign key constraint "' . $constraint . '"',
-                        'parent-foreign' => $error instanceof ForeignKeyConstraintViolationException && $error->getSQLState() === '23503'
-                            && $native === 'update or delete on table "' . $parent . '" violates foreign key constraint "' . $constraint . '" on table "' . $table . '"',
+                        'parent-foreign' => self::matchesPostgresParentForeign($error, $native, $table, $constraint, $parent),
                         'generated-insert' => $error->getSQLState() === '428C9' && $native === 'cannot insert a non-DEFAULT value into column "items_id"',
                         'generated-update' => $error->getSQLState() === '428C9' && $native === 'column "items_id" can only be updated to DEFAULT',
                         default => false,
@@ -88,5 +87,16 @@ final class ComponentNativeAdmission
         if ($cleanup !== null) {
             throw $cleanup;
         }
+    }
+
+    /** Both server forms retain the selected parent, child and owning constraint. */
+    public static function matchesPostgresParentForeign(DriverException $error, string $native, string $table, ?string $constraint, ?string $parent): bool
+    {
+        return $constraint !== null && $parent !== null && $error instanceof ForeignKeyConstraintViolationException
+            && match ($error->getSQLState()) {
+                '23503' => $native === 'update or delete on table "' . $parent . '" violates foreign key constraint "' . $constraint . '" on table "' . $table . '"',
+                '23001' => $native === 'update or delete on table "' . $parent . '" violates RESTRICT setting of foreign key constraint "' . $constraint . '" on table "' . $table . '"',
+                default => false,
+            };
     }
 }

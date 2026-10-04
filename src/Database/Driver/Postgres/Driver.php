@@ -15,6 +15,11 @@ final class Driver extends AbstractDriverMiddleware
         parent::__construct(new \Doctrine\DBAL\Driver\PDO\PgSQL\Driver());
     }
 
+    public function getExceptionConverter(): \Doctrine\DBAL\Driver\API\ExceptionConverter
+    {
+        return new ExceptionConverter(parent::getExceptionConverter());
+    }
+
     public function connect(#[\SensitiveParameter] array $params): DriverConnection
     {
         // libpq's connect_timeout is supplied by PDO's driver option. Keep
