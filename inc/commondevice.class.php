@@ -175,6 +175,11 @@ abstract class CommonDevice extends CommonDropdown
         if (empty($this->input['_replace_by'])) {
             return parent::deleteFromDB($force);
         }
+        $family = getItemForItemtype(static::getItem_DeviceType());
+        if (!$family instanceof Item_Devices
+            || !\itsmng\Database\Repository\ComponentDefinitionRepository::supportsFamily($family, $this->getTable())) {
+            return parent::deleteFromDB($force);
+        }
         // The ordinary deletion lifecycle owns caller authorization. Its
         // validated definition replacement delegates no asset editing rights.
         $previous = $this->definitionReplacement;
@@ -191,7 +196,8 @@ abstract class CommonDevice extends CommonDropdown
     protected function updateReplacementRelation(CommonDBTM $related, array $input, string $column): bool
     {
         if ($this->definitionReplacement !== null && $related instanceof Item_Devices
-            && $related::getDeviceType() === $this->getType() && $column === $related::getDeviceForeignKey()) {
+            && $related::getDeviceType() === $this->getType()
+            && \itsmng\Database\Repository\ComponentDefinitionRepository::supportsFamily($related, $this->getTable(), $column)) {
             return $related->replaceDefinition($this->definitionReplacement, $input, $column);
         }
         return parent::updateReplacementRelation($related, $input, $column);

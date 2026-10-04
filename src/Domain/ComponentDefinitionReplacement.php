@@ -114,6 +114,9 @@ final class ComponentDefinitionReplacement
     public function bind(\Item_Devices $model, array $input, string $column): ComponentDefinitionChange
     {
         $this->assertActive();
+        if (!ComponentDefinitionRepository::supportsFamily($model, $this->owner->getTable(), $column)) {
+            throw new DeletionCancelled('The component subject family has no closed owning declaration.');
+        }
         $manager = Orm::create($this->database);
         try {
             if (!(new ComponentDefinitionRepository($manager))->ownsDefinition($model->getTable(), $column, $this->owner->getTable())) {

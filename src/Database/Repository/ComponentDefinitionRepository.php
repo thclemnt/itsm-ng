@@ -16,6 +16,18 @@ final class ComponentDefinitionRepository
     {
     }
 
+    /** Only closed, property-owned subject families enter the delegated command. */
+    public static function supportsFamily(\Item_Devices $model, string $definitionTable, ?string $column = null): bool
+    {
+        $table = $model->getTable();
+        $column ??= $model::getDeviceForeignKey();
+        $subject = EntityRegistry::discriminatedReferences($table)[$model::$items_id_1] ?? null;
+        return $column === $model::getDeviceForeignKey()
+            && ($subject['discriminator'] ?? null) === $model::$itemtype_1
+            && !empty($subject['selections'])
+            && (EntityRegistry::relations()[$table][$column] ?? null) === $definitionTable;
+    }
+
     public function ownsDefinition(string $bindingTable, string $column, string $definitionTable): bool
     {
         $tables = EntityRegistry::tables();
