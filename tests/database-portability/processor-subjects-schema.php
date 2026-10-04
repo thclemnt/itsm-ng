@@ -94,12 +94,13 @@ $rebuild = static function () use ($current, $manager, $connection, $tableName, 
     verify($coreIncoming->restored(), 'Each legacy reconstruction retains exact core incoming ownership and all consumer rows');
 };
 $rejectSql = static function (array $values, bool $foreign = false) use ($connection, $tableName, &$device): void {
+    $database = (string)$connection->getDatabase();
     $connection->beginTransaction();
     try {
         $connection->insert($tableName, $values + ['deviceprocessors_id' => $device]);
         throw new LogicException('Invalid canonical processor row was accepted');
     } catch (DriverException $error) {
-        verify($foreign ? $error instanceof ForeignKeyConstraintViolationException : ProcessorNativeAdmission::selectedCheck($error, $tableName, (string)$connection->getDatabase()), 'Actual selected processor CHECK/FK native cause rejects ownership; unrelated integrity or HY000 failure is not enforcement evidence');
+        verify($foreign ? $error instanceof ForeignKeyConstraintViolationException : ProcessorNativeAdmission::selectedCheck($error, $tableName, $database), 'Actual selected processor CHECK/FK native cause rejects ownership; unrelated integrity or HY000 failure is not enforcement evidence');
     } finally {
         $connection->rollBack();
     }
