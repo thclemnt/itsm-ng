@@ -115,7 +115,7 @@ final class SoftwareMutation
             $isolation = strtolower((string)$connection->fetchOne("SELECT current_setting('transaction_isolation')"));
             if ($isolation !== 'read committed' && $isolation !== 'read uncommitted') {
                 $message = __('Finish the current operation, then retry this software change.');
-                \Session::addMessageAfterRedirect($message, true, ERROR, true);
+                \Session::addMessageAfterRedirect($message, true, ERROR, false);
                 throw new SoftwareAssignmentCancelled('Software allocation requires PostgreSQL READ COMMITTED; actual isolation is ' . $isolation . '. Retry outside the caller transaction.');
             }
         }
