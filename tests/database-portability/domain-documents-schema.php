@@ -20,6 +20,7 @@ define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
 require __DIR__ . '/fixtures/NativeConstraintRefusal.php';
 require __DIR__ . '/FixtureRecords.php';
+require __DIR__ . '/fixtures/ExactSubjectHistoricalFixture.php';
 require __DIR__ . '/fixtures/NativeBooleanFixture.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
@@ -102,6 +103,7 @@ verify(Ledger::state($connection, $migration::GENERAL_RECEIPT) === null, 'Never 
 $required = (new \itsmng\Database\BaselineSchema())->build($platform)->getTable($table);
 $savedStage = Ledger::state($connection, $migration::VERSION);
 $nativeBooleans = new NativeBooleanFixture($connection, $table);
+$nativeExact = new ExactSubjectHistoricalFixture($connection, [$table]);
 $domain = $fixtures->create('glpi_domains', ['id' => 4294976101]);
 $document = $fixtures->create('glpi_documents', ['id' => 4294976102]);
 $computer = $fixtures->create('glpi_computers', ['id' => 4294976103]);
@@ -115,7 +117,12 @@ $original = [
 $receipt = ['complete' => true, 'format' => $migration::GENERAL_FORMAT, 'timestamp_timezone' => '+00:00',
     'deferred_documents' => [['id' => 4294976201, 'domain_id' => $domain, 'original' => $original]]];
 $timezone = $postgres ? null : $connection->fetchOne('SELECT @@session.time_zone');
+$historicalStarted = false;
+$historicalPrimary = null;
+$historicalCleanup = [];
 try {
+    $nativeExact->beginOwnedAlteration();
+    $historicalStarted = true;
     foreach (['columns', 'projection', 'constraints'] as $interrupt) {
         $manager->dropTable($table);
         $old = clone $required;
@@ -250,23 +257,45 @@ try {
             && $connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id') === $beforeRows
             && $connection->fetchOne("SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='$table'") === 'MyISAM', 'Storage refusal preserves every existing row and changes neither engine nor stage receipt');
     }
+} catch (Throwable $error) {
+    $historicalPrimary = $error;
 } finally {
-    if (!$postgres) {
-        $connection->executeStatement('SET SESSION time_zone = ?', [$timezone]);
+    try {
+        if (!$postgres) {
+            $connection->executeStatement('SET SESSION time_zone = ?', [$timezone]);
+        }
+        if ($historicalStarted) {
+        $manager->dropTable($table);
+        if ($postgres) {
+            $connection->executeStatement('DROP FUNCTION IF EXISTS itsm_domain_document_restore_probe()');
+        }
+        $manager->createTable($required);
+        $nativeBooleans->restore();
+        $connection->executeStatement($migration::checkSql($table));
+        Ledger::save($connection, $migration::VERSION, $savedStage);
+        $connection->delete('itsmng_migrations', ['version' => $migration::GENERAL_RECEIPT]);
+        }
+        foreach (['glpi_domains' => $domain, 'glpi_documents' => $document, 'glpi_computers' => $computer] as $parent => $id) {
+            $connection->delete($parent, ['id' => $id]);
+        }
+        $DB->clearSchemaCache();
+    } catch (Throwable $error) {
+        $historicalCleanup[] = $error;
     }
-    $manager->dropTable($table);
-    if ($postgres) {
-        $connection->executeStatement('DROP FUNCTION IF EXISTS itsm_domain_document_restore_probe()');
+    try {
+        $nativeExact->restore();
+    } catch (Throwable $error) {
+        $historicalCleanup[] = $error;
     }
-    $manager->createTable($required);
-    $nativeBooleans->restore();
-    $connection->executeStatement($migration::checkSql($table));
-    Ledger::save($connection, $migration::VERSION, $savedStage);
-    $connection->delete('itsmng_migrations', ['version' => $migration::GENERAL_RECEIPT]);
-    foreach (['glpi_domains' => $domain, 'glpi_documents' => $document, 'glpi_computers' => $computer] as $parent => $id) {
-        $connection->delete($parent, ['id' => $id]);
-    }
-    $DB->clearSchemaCache();
+}
+foreach ($historicalCleanup as $error) {
+    try { fwrite(STDERR, 'Additional historical fixture cleanup failure: ' . $error::class . "\n"); } catch (Throwable) {}
+}
+if ($historicalPrimary !== null) {
+    throw $historicalPrimary;
+}
+if ($historicalCleanup !== []) {
+    throw new RuntimeException('Historical Domain document fixture cleanup failed.', previous: $historicalCleanup[0]);
 }
 verify((new SchemaCheck())->differences($connection) === [], 'Fixture cleanup restores the complete required schema');
 echo $DB->getProvider() . ": $assertions assertions; owning Domain documents, native projection/uniqueness, frozen expansion, invalid-data preflight, preserved timestamps and populated retry passed.\n";

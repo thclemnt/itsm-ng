@@ -22,6 +22,7 @@ define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
 require __DIR__ . '/FixtureRecords.php';
+require __DIR__ . '/fixtures/ExactSubjectHistoricalFixture.php';
 require __DIR__ . '/fixtures/NativeBooleanFixture.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
@@ -50,6 +51,7 @@ verify((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $table) === 0, 'Refu
 verify(Ledger::state($connection, $migration::GENERAL_RECEIPT) === null, 'Refuse to overwrite an existing deferred source receipt');
 $required = (new BaselineSchema())->build($platform)->getTable($table);
 $booleans = new NativeBooleanFixture($connection, $table);
+$nativeExact = new ExactSubjectHistoricalFixture($connection, [$table]);
 $saved = Ledger::states($connection);
 $rawLedger = static fn (): array => $connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
 $originalLedger = $rawLedger();
@@ -67,6 +69,7 @@ $fixtures = new FixtureRecords($DB, static function (string $parent, int $id) us
     $createdRows[] = [$parent, $id];
 });
 $created = [];
+$historicalStarted = false;
 $primary = null;
 $cleanup = [];
 $rebuild = static function (string $mode = 'generated') use ($connection, $manager, $table, $required, $booleans, $migration): void {
@@ -107,6 +110,8 @@ $refuse = static function (string $fragment) use ($connection, $history, $facts)
 };
 
 try {
+    $nativeExact->beginOwnedAlteration();
+    $historicalStarted = true;
     foreach (['glpi_domains', 'glpi_documents', 'glpi_computers'] as $parent) {
         $created[$parent] = $fixtures->create($parent);
     }
@@ -261,14 +266,21 @@ try {
     $primary = $error;
 } finally {
     try {
+        if ($historicalStarted) {
         $manager->dropTable($table);
         $manager->createTable($required);
         $booleans->restore();
         $connection->executeStatement($migration::checkSql($table));
-        foreach ([DomainDocuments20261006::VERSION, ExactDiscriminators20261010::VERSION, OperatingSystemSubjects20261006::VERSION] as $version) {
+        foreach ([DomainDocuments20261006::VERSION, OperatingSystemSubjects20261006::VERSION] as $version) {
             Ledger::save($connection, $version, $saved[$version]);
         }
         $connection->delete(LegacyToOrm::LEDGER, ['version' => $migration::GENERAL_RECEIPT]);
+        }
+    } catch (Throwable $error) {
+        $cleanup[] = $error;
+    }
+    try {
+        $nativeExact->restore();
     } catch (Throwable $error) {
         $cleanup[] = $error;
     }

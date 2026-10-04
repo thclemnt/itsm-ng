@@ -25,6 +25,7 @@ define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
 require __DIR__ . '/FixtureRecords.php';
+require __DIR__ . '/fixtures/ExactSubjectHistoricalFixture.php';
 require __DIR__ . '/fixtures/NativeConstraintRefusal.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
@@ -166,13 +167,19 @@ try {
 $manager = $connection->createSchemaManager();
 $platform = $connection->getDatabasePlatform();
 foreach ([['Document', 'glpi_documents_items', 'documents_id']] as [$type, $table, $parentColumn]) {
+    $nativeExact = new ExactSubjectHistoricalFixture($connection, [$table]);
     $computer = $fixtures->create('glpi_computers', ['id' => 950000172]);
     $parentTable = (new $type())->getTable();
     $parent = $fixtures->create($parentTable);
     $id = $rootId = null;
     $domainStage = new DomainDocuments20261006();
     $domainState = Ledger::state($connection, DomainDocuments20261006::VERSION);
+    $historicalStarted = false;
+    $historicalPrimary = null;
+    $historicalCleanup = [];
     try {
+        $nativeExact->beginOwnedAlteration();
+        $historicalStarted = true;
         $connection->delete('itsmng_migrations', ['version' => DomainDocuments20261006::VERSION]);
         $drop = $platform instanceof PostgreSQLPlatform || $platform instanceof MariaDbPlatform ? ' DROP CONSTRAINT ' : ' DROP CHECK ';
         $connection->executeStatement('ALTER TABLE ' . $table . $drop . $table . '_typed_item_kind');
@@ -254,20 +261,42 @@ foreach ([['Document', 'glpi_documents_items', 'documents_id']] as [$type, $tabl
             verify(!$entry['sql'] && !$entry['key_sql'] && !$entry['constraint_sql'], 'Upgrade retry is idempotent: ' . $type);
         }
         verify($domainStage->plan($connection) === [], 'Appended Domain document stage is idempotent after historical replay');
+    } catch (Throwable $error) {
+        $historicalPrimary = $error;
     } finally {
-        if ($rootId !== null) {
-            $connection->delete($table, ['id' => $rootId]);
+        try {
+            if ($rootId !== null) {
+                $connection->delete($table, ['id' => $rootId]);
+            }
+            if ($id !== null) {
+                $connection->delete($table, ['id' => $id]);
+            }
+            $connection->delete($parentTable, ['id' => $parent]);
+            $connection->delete('glpi_computers', ['id' => $computer]);
+            if ($historicalStarted) {
+                $domainStage->apply($connection);
+                if ($domainState !== null) {
+                    Ledger::save($connection, DomainDocuments20261006::VERSION, $domainState);
+                }
+            }
+            $DB->clearSchemaCache();
+        } catch (Throwable $error) {
+            $historicalCleanup[] = $error;
         }
-        if ($id !== null) {
-            $connection->delete($table, ['id' => $id]);
+        try {
+            $nativeExact->restore();
+        } catch (Throwable $error) {
+            $historicalCleanup[] = $error;
         }
-        $connection->delete($parentTable, ['id' => $parent]);
-        $connection->delete('glpi_computers', ['id' => $computer]);
-        $domainStage->apply($connection);
-        if ($domainState !== null) {
-            Ledger::save($connection, DomainDocuments20261006::VERSION, $domainState);
-        }
-        $DB->clearSchemaCache();
+    }
+    foreach ($historicalCleanup as $error) {
+        try { fwrite(STDERR, 'Additional historical fixture cleanup failure: ' . $error::class . "\n"); } catch (Throwable) {}
+    }
+    if ($historicalPrimary !== null) {
+        throw $historicalPrimary;
+    }
+    if ($historicalCleanup !== []) {
+        throw new RuntimeException('Historical document fixture cleanup failed.', previous: $historicalCleanup[0]);
     }
 }
 echo "PASS: thirty-four current document subject FKs and frozen thirty-three-subject replay, real root, independent roles, native/public writes, queries, transfer, purge and frozen upgrade\n";
