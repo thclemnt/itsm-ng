@@ -1,5 +1,17 @@
 # PostgreSQL and Doctrine modernization goal
 
+## 2026-10-04 11:08 UTC: strict document reconstruction failure isolated
+
+The goal remains **OPEN**. At `edb7cd687817cac6deb68ec0d0d511243c41bf64`, genuinely new normal CLI installations pass all thirteen installation, frozen-seed, sequence, repeated-install refusal and migration-idempotency phases on PostgreSQL and MariaDB. Both have seventeen completed versions and 1,070 actual foreign keys. A second independently created probe pair passes the same phases. These are fresh-install results, not corrected full-suite results.
+
+The subsequent six-contract focused sequence fails on both providers: document subjects passes, Domain documents fails its new strict restoration guard, and four following contracts refuse the legitimately withheld Exact receipt. The databases and failed receipts remain intact. PostgreSQL reconstruction adds two native indexes (40 to 42); DBAL portable introspection reports two synthesized support indexes even before reconstruction. MariaDB's portable comparison instead detects replacement of the document support phantom and actual entity-support index name with two current Baseline-derived names. Foreign-key and native-column facts remain equal on MariaDB; its observer did not collect separate native index counts. No assertion or schema comparison was weakened.
+
+The follow-up fixture repair recreates the captured actual table rather than today's Baseline table, excludes only portable indexes absent from the actual index listing, and explicitly preserves captured generation and native TIMESTAMP semantics. Historical test schemas, native restoration equality, receipt guards and migration definitions remain unchanged. It adds actual canonical Budget and lowercase INSERT/UPDATE controls after cleanup. ROOT syntax and style checks pass; repaired native execution is pending.
+
+All original protected-parent row bags, raw ledger and catalog comparisons pass before and after these installations and diagnostics; only proven new database additions are admitted. Evidence: `final17-edb7-root-compiler-preparation`, `final17-edb7-root-fresh-pass-focused-failure-checkpoint.json`, `final17-new-fresh-*-7ece42f8`, `final17-probe-*-ca7391d6`, and `document-owner-edb7-*-probe-observation-v1`. Normal Git fetch confirms unchanged remote `01aee6a7`, preserving it and handoff `897c5c9b` as ancestors. Native persistent goals remain unavailable.
+
+Next: freeze the reviewed captured-table repair, install another genuinely new pair, run the original ordered focused controls and the complete discovered suite on both engines with the original 300-second limit. Follow both full terminals with the original Exact/schema controls and native inspection, then application/API/browser checks and the held component and notification ORM batches. Most legacy query sites and remaining relationship families are still open. No corrected full-suite, browser, live-replica or remote CI pass is claimed.
+
 ## 2026-10-04 10:18 UTC: complete suites expose document fixture policy drift
 
 The goal remains **OPEN**. The complete discovered **215-contract** suite at
