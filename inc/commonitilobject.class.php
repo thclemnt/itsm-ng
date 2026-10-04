@@ -6190,9 +6190,9 @@ abstract class CommonITILObject extends CommonDBTM
             // Force date mod and lastupdater
             $update = ['date_mod' => $_SESSION['glpi_currenttime']];
 
-            // set last updater if interactive user
-            if (!Session::isCron()) {
-                $update['users_id_lastupdater'] = Session::getLoginUserID();
+            // An absent human actor must not replace an existing updater with zero.
+            if (!Session::isCron() && ($last_updater = Session::getLoginUserID())) {
+                $update['users_id_lastupdater'] = $last_updater;
             } elseif ($users_id_lastupdater > 0) {
                 $update['users_id_lastupdater'] = $users_id_lastupdater;
             }
