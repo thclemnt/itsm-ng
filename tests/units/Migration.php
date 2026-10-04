@@ -54,8 +54,13 @@ class Migration extends \GLPITestCase
      */
     private $queries;
 
+    /** The configured writer must survive each legacy query-mock method. */
+    private $configuredDatabase;
+
     public function beforeTestMethod($method)
     {
+        global $DB;
+        $this->configuredDatabase = $DB;
         parent::beforeTestMethod($method);
         if ($method !== 'testConstructor') {
             $this->db = new \mock\DB();
@@ -79,6 +84,13 @@ class Migration extends \GLPITestCase
                 }
             );
         }
+    }
+
+    public function afterTestMethod($method)
+    {
+        global $DB;
+        $DB = $this->configuredDatabase;
+        parent::afterTestMethod($method);
     }
 
     public function testConstructor()
@@ -115,102 +127,132 @@ class Migration extends \GLPITestCase
     public function testAddConfig()
     {
         global $DB;
-        $this->calling($this->db)->numrows = 0;
-        $this->calling($this->db)->fetchAssoc = [];
-        $this->calling($this->db)->dataSeek = true;
-        $this->calling($this->db)->listFields = [
-           'id'        => '',
-           'context'   => '',
-           'name'      => '',
-           'value'     => ''
-        ];
-        $DB = $this->db;
 
-        //test with non existing value => new keys should be inserted
-        $this->migration->addConfig([
-           'one' => 'key',
-           'two' => 'value'
-        ]);
-
-        $this->output(
-            function () {
-                $this->migration->executeMigration();
+        // The real configured writer owns Config and its mapped audit lifecycle.
+        // Mocking only DB::query no longer observes those writes.
+        $connection = $DB->getConnection();
+        $depth = $connection->getTransactionNestingLevel();
+        $savedSession = $_SESSION;
+        $prefix = 'migration_config_' . bin2hex(random_bytes(6));
+        $one = $prefix . '_one';
+        $two = $prefix . '_two';
+        $context = $prefix . '_context';
+        $existingContext = $prefix . '_existing';
+        $rows = static function (string $table, array $criteria = []) use ($DB): array {
+            $em = \itsmng\Database\Orm::create($DB);
+            try {
+                return (new \itsmng\Database\Repository\RecordRepository($em))->matching($table, $criteria, ['id ASC']);
+            } finally {
+                $em->clear();
             }
-        )->isIdenticalTo('Configuration values added for one, two (core).Task completed.');
-
-        $core_queries = [
-           0 => 'SELECT * FROM `glpi_configs` WHERE `context` = \'core\' AND `name` IN (\'one\', \'two\')',
-           1 => 'SELECT `id` FROM `glpi_configs` WHERE `context` = \'core\' AND `name` = \'one\'',
-           2 => 'INSERT INTO `glpi_configs` (`context`, `name`, `value`) VALUES (\'core\', \'one\', \'key\')',
-           3 => 'SELECT * FROM `glpi_configs` WHERE `glpi_configs`.`id` = \'0\' LIMIT 1',
-           4 => 'INSERT INTO `glpi_logs` (`items_id`, `itemtype`, `itemtype_link`, `linked_action`, `user_name`, `date_mod`, `id_search_option`, `old_value`, `new_value`) VALUES (\'1\', \'Config\', \'\', \'0\', \'\', \''.$_SESSION['glpi_currenttime'].'\', \'1\', \'one \', \'key\')',
-           5 => 'SELECT `id` FROM `glpi_configs` WHERE `context` = \'core\' AND `name` = \'two\'',
-           6 => 'INSERT INTO `glpi_configs` (`context`, `name`, `value`) VALUES (\'core\', \'two\', \'value\')',
-           7 => 'SELECT * FROM `glpi_configs` WHERE `glpi_configs`.`id` = \'0\' LIMIT 1',
-           8 => 'INSERT INTO `glpi_logs` (`items_id`, `itemtype`, `itemtype_link`, `linked_action`, `user_name`, `date_mod`, `id_search_option`, `old_value`, `new_value`) VALUES (\'1\', \'Config\', \'\', \'0\', \'\', \''.$_SESSION['glpi_currenttime'].'\', \'1\', \'two \', \'value\')',
-        ];
-        $this->array($this->queries)->isIdenticalTo($core_queries);
-
-        //test with existing value on different context => new keys should be inserted in correct context
-        $this->queries = [];
-        $this->migration->addConfig([
-           'one' => 'key',
-           'two' => 'value'
-        ], 'test-context');
-
-        $this->output(
-            function () {
-                $this->migration->executeMigration();
-            }
-        )->isIdenticalTo('Configuration values added for one, two (test-context).Task completed.');
-
-        $this->array($this->queries)->isIdenticalTo([
-           0 => 'SELECT * FROM `glpi_configs` WHERE `context` = \'test-context\' AND `name` IN (\'one\', \'two\')',
-           1 => 'SELECT `id` FROM `glpi_configs` WHERE `context` = \'test-context\' AND `name` = \'one\'',
-           2 => 'INSERT INTO `glpi_configs` (`context`, `name`, `value`) VALUES (\'test-context\', \'one\', \'key\')',
-           3 => 'SELECT * FROM `glpi_configs` WHERE `glpi_configs`.`id` = \'0\' LIMIT 1',
-           4 => 'INSERT INTO `glpi_logs` (`items_id`, `itemtype`, `itemtype_link`, `linked_action`, `user_name`, `date_mod`, `id_search_option`, `old_value`, `new_value`) VALUES (\'1\', \'Config\', \'\', \'0\', \'\', \''.$_SESSION['glpi_currenttime'].'\', \'1\', \'one (test-context) \', \'key\')',
-           5 => 'SELECT `id` FROM `glpi_configs` WHERE `context` = \'test-context\' AND `name` = \'two\'',
-           6 => 'INSERT INTO `glpi_configs` (`context`, `name`, `value`) VALUES (\'test-context\', \'two\', \'value\')',
-           7 => 'SELECT * FROM `glpi_configs` WHERE `glpi_configs`.`id` = \'0\' LIMIT 1',
-           8 => 'INSERT INTO `glpi_logs` (`items_id`, `itemtype`, `itemtype_link`, `linked_action`, `user_name`, `date_mod`, `id_search_option`, `old_value`, `new_value`) VALUES (\'1\', \'Config\', \'\', \'0\', \'\', \''.$_SESSION['glpi_currenttime'].'\', \'1\', \'two (test-context) \', \'value\')',
-        ]);
-
-        //test with one existing value => only new key should be inserted
-        $this->migration->addConfig([
-           'one' => 'key',
-           'two' => 'value'
-        ]);
-        $this->queries = [];
-        $this->calling($this->db)->request = function ($table) {
-            // Call using 'glpi_configs' value for first parameter
-            // corresponds to the call made to retrieve exisintg values
-            // -> returns a value for config 'one'
-            if ('glpi_configs' === $table) {
-                $dbresult = [[
-                   'id'        => '42',
-                   'context'   => 'core',
-                   'name'      => 'one',
-                   'value'     => 'setted value'
-                ]];
-                return new \ArrayIterator($dbresult);
-            }
-            // Other calls corresponds to call made in Config::setConfigurationValues()
-            return new \ArrayIterator();
         };
-
-        $DB = $this->db;
-
-        $this->output(
-            function () {
-                $this->migration->executeMigration();
+        $configsBefore = $rows('glpi_configs');
+        $logsBefore = $rows('glpi_logs', ['itemtype' => \Config::getType()]);
+        $frame = \itsmng\Database\OwnedMutationFrame::begin($connection);
+        $primary = null;
+        try {
+            foreach (['core', $context, $existingContext] as $owner) {
+                $this->array($rows('glpi_configs', ['context' => $owner, 'name' => [$one, $two]]))->isEmpty();
             }
-        )->isIdenticalTo('Configuration values added for two (core).Task completed.');
 
-        $this->array($this->queries)->isIdenticalTo([
-           0 => 'INSERT INTO `glpi_configs` (`context`, `name`, `value`) VALUES (\'core\', \'two\', \'value\')',
-           1 => 'INSERT INTO `glpi_logs` (`items_id`, `itemtype`, `itemtype_link`, `linked_action`, `user_name`, `date_mod`, `id_search_option`, `old_value`, `new_value`) VALUES (\'1\', \'Config\', \'\', \'0\', \'\', \''.$_SESSION['glpi_currenttime'].'\', \'1\', \'two \', \'value\')',
-        ]);
+            // Both originally absent core values are inserted and audited.
+            $this->object($this->migration->addConfig([$one => 'key', $two => 'value']))->isIdenticalTo($this->migration);
+            // First registration wins, even before the queue is persisted.
+            $this->migration->addConfig([$one => 'replacement']);
+            $this->output(function () {
+                $this->migration->executeMigration();
+            })->isIdenticalTo("Configuration values added for $one, $two (core).Task completed.");
+            $core = $rows('glpi_configs', ['context' => 'core', 'name' => [$one, $two]]);
+            $this->array($core)->hasSize(2);
+            $this->array(array_column($core, 'value', 'name'))->isIdenticalTo([$one => 'key', $two => 'value']);
+            $this->array(array_column($core, 'context'))->isIdenticalTo(['core', 'core']);
+            foreach ($core as $record) {
+                $this->integer($record['id'])->isGreaterThan(0);
+                $config = new \Config();
+                $this->boolean($config->getFromDB($record['id']))->isTrue();
+                $this->array($config->fields)->isIdenticalTo($record);
+            }
+            $history = array_slice($rows('glpi_logs', ['itemtype' => \Config::getType()]), count($logsBefore));
+            $this->array($history)->hasSize(2);
+            $this->array(array_column($history, 'old_value'))->isIdenticalTo([$one . ' ', $two . ' ']);
+            $this->array(array_column($history, 'new_value'))->isIdenticalTo(['key', 'value']);
+
+            // Existing names in core do not prevent independent context values.
+            $this->migration->addConfig([$one => 'key', $two => 'value'], $context);
+            $this->output(function () {
+                $this->migration->executeMigration();
+            })->isIdenticalTo("Configuration values added for $one, $two ($context).Task completed.");
+            $other = $rows('glpi_configs', ['context' => $context, 'name' => [$one, $two]]);
+            $this->array($other)->hasSize(2);
+            $this->array(array_column($other, 'value', 'name'))->isIdenticalTo([$one => 'key', $two => 'value']);
+            $this->array(array_column($other, 'context'))->isIdenticalTo([$context, $context]);
+            $this->array($rows('glpi_configs', ['context' => 'core', 'name' => [$one, $two]]))->isIdenticalTo($core);
+            $history = array_slice($rows('glpi_logs', ['itemtype' => \Config::getType()]), count($logsBefore) + 2);
+            $this->array($history)->hasSize(2);
+            $this->array(array_column($history, 'old_value'))->isIdenticalTo([$one . " ($context) ", $two . " ($context) "]);
+            $this->array(array_column($history, 'new_value'))->isIdenticalTo(['key', 'value']);
+
+            // With one actual existing value, only the missing key is inserted.
+            \Config::setConfigurationValues($existingContext, [$one => 'setted value']);
+            $existing = $rows('glpi_configs', ['context' => $existingContext, 'name' => $one]);
+            $historyBeforeMissing = $rows('glpi_logs', ['itemtype' => \Config::getType()]);
+            $this->array($existing)->hasSize(1);
+            $this->string($existing[0]['value'])->isIdenticalTo('setted value');
+            $this->migration->addConfig([$one => 'key', $two => 'value'], $existingContext);
+            $this->output(function () {
+                $this->migration->executeMigration();
+            })->isIdenticalTo("Configuration values added for $two ($existingContext).Task completed.");
+            $this->array($rows('glpi_configs', ['context' => $existingContext, 'name' => $one]))->isIdenticalTo($existing);
+            $missing = $rows('glpi_configs', ['context' => $existingContext, 'name' => $two]);
+            $this->array($missing)->hasSize(1);
+            $this->string($missing[0]['value'])->isIdenticalTo('value');
+            $history = array_slice($rows('glpi_logs', ['itemtype' => \Config::getType()]), count($historyBeforeMissing));
+            $this->array($history)->hasSize(1);
+            $this->string($history[0]['old_value'])->isIdenticalTo($two . " ($existingContext) ");
+            $this->string($history[0]['new_value'])->isIdenticalTo('value');
+
+            // Re-registering persisted keys and executing an empty queue are
+            // idempotent: full rows and audit identities remain unchanged.
+            $persisted = $rows('glpi_configs');
+            $audited = $rows('glpi_logs', ['itemtype' => \Config::getType()]);
+            foreach (['core', $context, $existingContext] as $owner) {
+                $this->migration->addConfig([$one => 'replacement', $two => 'replacement'], $owner);
+            }
+            for ($attempt = 0; $attempt < 2; ++$attempt) {
+                $this->output(function () {
+                    $this->migration->executeMigration();
+                })->isIdenticalTo('Task completed.');
+                $this->array($rows('glpi_configs'))->isIdenticalTo($persisted);
+                $this->array($rows('glpi_logs', ['itemtype' => \Config::getType()]))->isIdenticalTo($audited);
+            }
+            $this->integer(count($persisted))->isIdenticalTo(count($configsBefore) + 6);
+            $ownedIds = array_column(array_merge($core, $other, $existing, $missing), 'id');
+            $this->array(array_values(array_filter($persisted, static fn (array $row): bool => !in_array($row['id'], $ownedIds, true))))->isIdenticalTo($configsBefore);
+            foreach (array_slice($audited, count($logsBefore)) as $record) {
+                $this->integer($record['items_id'])->isIdenticalTo(1);
+                $this->integer($record['id_search_option'])->isIdenticalTo(1);
+                $this->integer($record['linked_action'])->isIdenticalTo(0);
+                $this->string($record['itemtype_link'])->isIdenticalTo('');
+                $this->string($record['user_name'])->isIdenticalTo('');
+                $this->string($record['date_mod'])->isIdenticalTo($_SESSION['glpi_currenttime']);
+            }
+        } catch (\Throwable $error) {
+            $primary = $error;
+        } finally {
+            try {
+                $frame->rollBack();
+            } catch (\Throwable $cleanup) {
+                $primary = $primary === null ? $cleanup : new \itsmng\Database\MutationRollbackFailure($primary, $cleanup);
+            } finally {
+                $_SESSION = $savedSession;
+            }
+        }
+        if ($primary !== null) {
+            throw $primary;
+        }
+        $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+        $this->array($rows('glpi_configs'))->isIdenticalTo($configsBefore);
+        $this->array($rows('glpi_logs', ['itemtype' => \Config::getType()]))->isIdenticalTo($logsBefore);
     }
 
     public function testBackupTables()
