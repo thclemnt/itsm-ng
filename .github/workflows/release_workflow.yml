@@ -18,7 +18,7 @@ jobs:
       DB_USER: test
       DB_PASSWORD: test
       PORT_HISTORY_DB: itsm_port_release_migration_history
-      MIGRATION_CONFIG: ${{ runner.temp }}/itsm-port-release-migration-config
+      MIGRATION_CONFIG: /tmp/itsm-port-release-migration-config
       TAG: ${{ github.ref_name }}
 
     steps:

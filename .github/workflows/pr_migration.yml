@@ -23,7 +23,7 @@ jobs:
       DB_USER: itsm_migration
       DB_PASSWORD: itsm_migration
       PORT_HISTORY_DB: itsm_port_migration_history
-      MIGRATION_CONFIG: ${{ runner.temp }}/itsm-port-migration-config
+      MIGRATION_CONFIG: /tmp/itsm-port-migration-config
 
     services:
       db:
