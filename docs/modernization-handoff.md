@@ -2,6 +2,21 @@
 
 ## 2026-10-04 07:18 UTC: lifecycle repairs validated; install retry remains open
 
+Additional executed checks at clean `605c67ef233881898409e742aa4d1b763ce189f6`
+pass **12/12** application portability contracts on each provider: application,
+asset workflows, deletion atomicity/user scopes, documents, Domain application,
+ITIL users, notification recipients, project memberships/projects, Ticket assets
+and transfer atomicity. Each has zero Warning/Fatal and one Deprecated notice.
+These are portability contracts, not the separate original 23-method app/API or
+browser packets. Receipts: `owned-domains-605c67ef23-application-*-focused-*` and
+`owned-domains-605c67ef23-application-diagnostic-summary.json`. Offline validation
+for PostgreSQL, MariaDB and MySQL reports 357 mappings, 1,070 FKs and no mapping
+errors with physical connection attempts explicitly forbidden. The actual static
+inventory contract passes: 30 discriminated references, 34 polymorphic candidates,
+one pending candidate, 2,844 legacy adapter calls and two declaration-owned native
+driver calls. See `current-605c67ef23-root-offline-validation-summary.json`; counts
+do not prove complete ORM/domain adoption.
+
 The goal remains **OPEN**. Direct Git fetch again confirms remote `01aee6a7`
 and original handoff `897c5c9b` are preserved ancestors. At integrated
 `c0593b65719e7fbcd19df33b2e3c9a22605d597e`, all **12/12** selected original-order
