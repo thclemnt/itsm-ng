@@ -751,9 +751,12 @@ class CommonDBTM extends CommonGLPI
                     $this->fields['id'] = $DB->insertId();
                 }
 
-                $this->getFromDB($this->fields['id']);
+                // Persistence owns this scalar identity before read callbacks
+                // can change the public model or perform another insertion.
+                $createdId = $this->fields['id'];
+                $this->getFromDB($createdId);
 
-                return $this->fields['id'];
+                return $createdId;
             }
         }
         return false;
@@ -1393,7 +1396,7 @@ class CommonDBTM extends CommonGLPI
     {
         global $CFG_GLPI;
 
-        if ($this->addToDB() !== false) {
+        if (($createdId = $this->addToDB()) !== false) {
             $this->post_addItem();
             $this->addMessageOnAddAction();
 
@@ -1445,7 +1448,7 @@ class CommonDBTM extends CommonGLPI
             if ($this->notificationqueueonaction) {
                 QueuedNotification::forceSendFor($this->getType(), $this->fields['id']);
             }
-            return $this->fields['id'];
+            return $createdId;
         }
         return false;
     }

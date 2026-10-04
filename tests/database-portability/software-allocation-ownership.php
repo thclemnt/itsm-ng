@@ -55,6 +55,42 @@ class OwnershipCallbackAllocation extends Item_SoftwareLicense
     }
 }
 
+/** Genuine insertion/read callbacks retain ordinary parent lifecycle work. */
+class OwnershipAddCallbackAllocation extends Item_SoftwareLicense
+{
+    public static ?Closure $afterAdd = null;
+    public static ?Closure $afterLoad = null;
+    public static int $calls = 0;
+
+    public static function getTable($classname = null)
+    {
+        return Item_SoftwareLicense::getTable();
+    }
+
+    public static function getType()
+    {
+        return Item_SoftwareLicense::getType();
+    }
+
+    public function post_addItem()
+    {
+        parent::post_addItem();
+        if (self::$afterAdd !== null) {
+            ++self::$calls;
+            (self::$afterAdd)($this);
+        }
+    }
+
+    public function post_getFromDB()
+    {
+        parent::post_getFromDB();
+        if (self::$afterLoad !== null) {
+            ++self::$calls;
+            (self::$afterLoad)($this);
+        }
+    }
+}
+
 verify(str_starts_with($DB->dbdefault, 'itsm_port_'), 'Dedicated disposable database required');
 $_SESSION['glpiextauth'] = 0;
 verify((new Auth())->login('itsm', 'itsm', true), 'Actual administrator login');
@@ -223,6 +259,68 @@ try {
         && $read('glpi_items_softwarelicenses', $otherLink) === $otherOld
         && (int)$selectedModel->getID() === $callbackLink && $counts() === $before,
         'Identity substitution restores only the actual rolled-back selected model and leaves both rows/history unchanged');
+
+    foreach (['post_getFromDB', 'post_addItem'] as $phase) {
+        $before = $counts();
+        $createdModel = new OwnershipAddCallbackAllocation();
+        $checkpoint = \itsmng\Database\LifecycleModelJournal::state($createdModel);
+        OwnershipAddCallbackAllocation::$calls = 0;
+        $substitute = static function (OwnershipAddCallbackAllocation $model) use ($otherLink): void {
+            $model->fields['id'] = $otherLink;
+        };
+        if ($phase === 'post_getFromDB') {
+            OwnershipAddCallbackAllocation::$afterLoad = $substitute;
+        } else {
+            OwnershipAddCallbackAllocation::$afterAdd = $substitute;
+        }
+        try {
+            verify($createdModel->add(['itemtype' => 'Monitor', 'items_id' => $callbackSubject,
+                'softwarelicenses_id' => $license]) === false && OwnershipAddCallbackAllocation::$calls === 1,
+                'Actual ' . $phase . ' cannot substitute another same-owner row for the inserted allocation identity');
+        } finally {
+            OwnershipAddCallbackAllocation::$afterLoad = null;
+            OwnershipAddCallbackAllocation::$afterAdd = null;
+        }
+        $restored = \itsmng\Database\LifecycleModelJournal::state($createdModel);
+        // Failed public add retains its prepared input for ordinary feedback;
+        // persisted model state and update bookkeeping return to the prior view.
+        unset($restored['input'], $checkpoint['input']);
+        verify($counts() === $before && $read('glpi_items_softwarelicenses', $otherLink) === $otherOld
+            && $restored === $checkpoint && $createdModel->input['softwarelicenses_id'] === $license,
+            'Add substitution rolls back inserted row/history/queue and model fields while retaining existing row and submitted licence');
+    }
+    $before = $counts();
+    $nestedId = null;
+    OwnershipAddCallbackAllocation::$calls = 0;
+    OwnershipAddCallbackAllocation::$afterAdd = static function (OwnershipAddCallbackAllocation $model) use (
+        &$nestedId, $callbackSubject, $license
+    ): void {
+        if (OwnershipAddCallbackAllocation::$calls !== 1) {
+            return;
+        }
+        $outerId = (int)$model->getID();
+        $nestedId = $model->add(['itemtype' => 'Monitor', 'items_id' => $callbackSubject,
+            'softwarelicenses_id' => $license]);
+        if (!is_int($nestedId) || $nestedId <= 0 || !$model->getFromDB($outerId)) {
+            throw new RuntimeException('Actual nested insertion and restored outer model required');
+        }
+    };
+    $nestedModel = new OwnershipAddCallbackAllocation();
+    try {
+        $outerId = $nestedModel->add(['itemtype' => 'Monitor', 'items_id' => $callbackSubject,
+            'softwarelicenses_id' => $license]);
+        verify(is_int($outerId) && $outerId > 0 && is_int($nestedId) && $outerId !== $nestedId
+            && (int)$nestedModel->getID() === $outerId && OwnershipAddCallbackAllocation::$calls === 2
+            && $read('glpi_items_softwarelicenses', $outerId)['items_id'] === $callbackSubject
+            && $read('glpi_items_softwarelicenses', $nestedId)['items_id'] === $callbackSubject
+            && $counts()[0] === $before[0] + 2,
+            'Real same-model nested insertion keeps distinct producer IDs and resumes original accepted allocation');
+    } finally {
+        OwnershipAddCallbackAllocation::$afterAdd = null;
+    }
+    verify((new Item_SoftwareLicense())->delete(['id' => $outerId], true) === true
+        && (new Item_SoftwareLicense())->delete(['id' => $nestedId], true) === true,
+        'Actual public purge independently removes both owned nested insertion identities');
 
     $otherSoftware = $fixtures->create('glpi_softwares', ['name' => 'Allocation late unselected aggregate', 'entities_id' => $first]);
     $licenseOld = $read('glpi_softwarelicenses', $license);
