@@ -407,7 +407,14 @@ try {
     );
 
     $cyclic = $fixtures->create('glpi_entities', ['name' => 'Allocation cyclic native parent']);
-    $writer()->update('glpi_entities', $cyclic, ['entities_id' => $cyclic]);
+    $cyclicPeer = $fixtures->create('glpi_entities', ['name' => 'Allocation cyclic native peer', 'entities_id' => $cyclic]);
+    $writer()->update('glpi_entities', $cyclic, ['entities_id' => $cyclicPeer]);
+    verify(
+        $cyclic !== $cyclicPeer
+        && (int)$read('glpi_entities', $cyclic)['entities_id'] === $cyclicPeer
+        && (int)$read('glpi_entities', $cyclicPeer)['entities_id'] === $cyclic,
+        'Distinct persisted parents form a real ancestor cycle while retaining native self-parent protection'
+    );
     $cyclicSubject = $fixtures->create('glpi_monitors', ['entities_id' => $cyclic]);
     $before = $counts();
     verify($add($cyclicSubject, $license) === false, 'Corrupt native ancestor cycle is diagnosed before allocation persistence');
