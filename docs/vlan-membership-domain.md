@@ -96,3 +96,14 @@ parent chain terminated. The distinct follow-on walks the complete chain to NULL
 remembering whether the ancestor occurred; missing rows and repeated identities
 refuse. The new genuine two-Entity control retains native edges and every earlier
 contract assertion. This is a source correction; no native cycle result is claimed.
+
+The independent `87bf05` SOURCE review found two further bounded defects. The
+compared intent now preserves absent `tagged` when input and prepared fields both
+omit it, allowing the same entity-declared default to apply. Explicit NULL remains
+invalid. Actual public add and inherited API omitted-flag controls are added without
+changing any previous assertion. The rollback hook's former year-2100 queue fixture
+would exceed native MySQL/MariaDB TIMESTAMP; its distinct correction derives a
+future instant from the actual session time and proves that it fits the preserved
+native range before the callback executes. The primary exception identity and
+actual queued-work rollback controls remain strict. These are source corrections;
+compiler and database outcomes remain unrun.

@@ -230,7 +230,11 @@ final class VlanMembershipCommand
             $values[$column] = array_key_exists($column, $this->model->input) ? $this->model->input[$column] : $this->model->fields[$column];
         }
         $column = $this->metadata->getFieldMapping('tagged')->columnName;
-        $values[$column] = array_key_exists($column, $this->model->input) ? $this->model->input[$column] : $this->model->fields[$column];
+        if (array_key_exists($column, $this->model->input)) {
+            $values[$column] = $this->model->input[$column];
+        } elseif (array_key_exists($column, $this->model->fields)) {
+            $values[$column] = $this->model->fields[$column];
+        }
         return $this->selected === null || $this->selected->matches($values, $this->metadata);
     }
 }

@@ -89,6 +89,7 @@ try {
     $port = $fixtures->create('glpi_networkports', ['name' => $prefix . ' port', 'itemtype' => 'Computer', 'items_id' => $computer]);
     $vlan = $fixtures->create('glpi_vlans', ['name' => $prefix . ' VLAN']);
     $apiVlan = $fixtures->create('glpi_vlans', ['name' => $prefix . ' API VLAN']);
+    $apiDefaultVlan = $fixtures->create('glpi_vlans', ['name' => $prefix . ' API omitted tagged VLAN']);
     $bulkVlan = $fixtures->create('glpi_vlans', ['name' => $prefix . ' massive VLAN']);
     $apiToken = bin2hex(random_bytes(32));
     $client = $fixtures->create('glpi_apiclients', ['name' => $prefix . ' active API client', 'is_active' => 1, 'app_token' => $apiToken, 'dolog_method' => 0]);
@@ -122,6 +123,10 @@ try {
     $apiResult = $api->createMembership(['networkports_id' => $port, 'vlans_id' => $apiVlan, 'tagged' => true]);
     verify(is_int($apiResult['id']) && $apiResult['id'] > 0 && $read($apiResult['id'])['tagged'] === 1, 'Actual inherited API create uses the same relation roles and normal public lifecycle');
     verify(in_array([$apiResult['id'], $port, $apiVlan, 1], $events, true), 'Actual API producer reaches the normal membership callback');
+    $apiDefault = $api->createMembership(['networkports_id' => $port, 'vlans_id' => $apiDefaultVlan]);
+    verify(is_int($apiDefault['id']) && $apiDefault['id'] > 0 && $read($apiDefault['id'])['tagged'] === 0,
+        'Actual inherited API creation preserves omitted tagged as the metadata-owned false default');
+    verify(in_array([$apiDefault['id'], $port, $apiDefaultVlan, 0], $events, true), 'Omitted API flag still reaches the actual persisted lifecycle callback');
     $_SESSION['glpiactiveprofile']['dropdown'] = 0;
     $invisible = ['networkports_id' => $port, 'vlans_id' => $bulkVlan, 'tagged' => 1];
     verify(!(new NetworkPort_Vlan())->can(-1, CREATE, $invisible), 'A VLAN VIEW role still requires actual VLAN visibility');

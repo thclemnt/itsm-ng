@@ -60,6 +60,12 @@ $updated = [];
 $primaryHookFailure = new RuntimeException('Actual VLAN membership item_update failure');
 try {
     $CFG_GLPI['use_notifications'] = false;
+    $sessionInstant = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', (string)$_SESSION['glpi_currenttime'], new DateTimeZone('UTC'));
+    verify($sessionInstant !== false && $sessionInstant->format('Y-m-d H:i:s') === $_SESSION['glpi_currenttime'], 'Actual session instant is a valid queue timestamp');
+    $futureInstant = $sessionInstant->modify('+1 day');
+    verify($futureInstant > $sessionInstant && $futureInstant >= new DateTimeImmutable('1970-01-01 00:00:01', new DateTimeZone('UTC'))
+        && $futureInstant <= new DateTimeImmutable('2038-01-19 03:14:07', new DateTimeZone('UTC')), 'Future queue fixture fits the preserved native MySQL/MariaDB TIMESTAMP domain');
+    $futureQueueTime = $futureInstant->format('Y-m-d H:i:s');
     $plugins->setValue(null, [...$savedPlugins, 'vlan_membership_fixture']);
     $PLUGIN_HOOKS['pre_item_add']['vlan_membership_fixture'][NetworkPort_Vlan::class] = static function (NetworkPort_Vlan $model) use (&$mode): void {
         if ($mode === 'cancel-add') {
@@ -77,11 +83,11 @@ try {
             $model->input['vlans_id'] = PHP_INT_MAX;
         }
     };
-    $PLUGIN_HOOKS['item_update']['vlan_membership_fixture'][NetworkPort_Vlan::class] = static function (NetworkPort_Vlan $model) use (&$mode, &$updated, $primaryHookFailure): void {
+    $PLUGIN_HOOKS['item_update']['vlan_membership_fixture'][NetworkPort_Vlan::class] = static function (NetworkPort_Vlan $model) use (&$mode, &$updated, $primaryHookFailure, $futureQueueTime): void {
         $updated[] = [$model->getID(), $model->fields['tagged']];
         if ($mode === 'throw-after-history') {
             $_SESSION['vlan_membership_attempt'] = 'Actual public callback state';
-            $queue = (new QueuedNotification())->add(['itemtype' => NetworkPort_Vlan::class, 'items_id' => $model->getID(), 'mode' => 'mail', 'send_time' => '2100-01-01 00:00:00', 'name' => 'VLAN callback queued work']);
+            $queue = (new QueuedNotification())->add(['itemtype' => NetworkPort_Vlan::class, 'items_id' => $model->getID(), 'mode' => 'mail', 'send_time' => $futureQueueTime, 'name' => 'VLAN callback queued work']);
             verify($queue > 0, 'Actual public callback queues future work before its primary failure');
             throw $primaryHookFailure;
         }
@@ -119,6 +125,14 @@ try {
         'Screens preserve relation identity separately from the displayed endpoint identity');
     verify(NetworkPort_Vlan::getVlansForNetworkPort($port) === [$vlan => $vlan], 'The public VLAN-ID compatibility map preserves its keys');
     verify($service->countForPort($port) === 1 && $service->countForVlan($vlan) === 1, 'Association counts retain both roles');
+    $defaultVlan = $fixtures->create('glpi_vlans', ['name' => $prefix . ' omitted tagged VLAN']);
+    $defaultModel = new NetworkPort_Vlan();
+    $defaultId = $defaultModel->add(['networkports_id' => $port2, 'vlans_id' => $defaultVlan]);
+    verify(is_int($defaultId) && $defaultId > 0 && $read(NetworkPort_Vlan::getTable(), $defaultId)['tagged'] === 0,
+        'Actual public add preserves omitted tagged and the existing property-owned false default');
+    verify(!array_key_exists('tagged', $defaultModel->input) && in_array([$defaultId, $port2, $defaultVlan, 0], $added, true),
+        'Omitted tagged remains absent in prepared input while the real persisted callback sees false');
+    verify($defaultModel->unassignVlan($port2, $defaultVlan), 'Remove only the additional actual omitted-default control');
     $duplicateBefore = $snapshot();
     $duplicate = null;
     try {
