@@ -214,8 +214,9 @@ try {
     verify(!(new Item_SoftwareLicense())->can(-1, CREATE, $input), 'Licence flag cannot bypass Software recursion capability');
     verify((new Software())->update(['id' => $software, 'is_recursive' => true]), 'Restore actual Software recursion');
     $recursiveAsset = $fixtures->create('glpi_monitors', ['is_recursive' => true]);
+    $recursiveSubjectInput = ['itemtype' => 'Monitor', 'items_id' => $recursiveAsset, 'softwarelicenses_id' => $siblingLicense];
     verify(
-        (new Item_SoftwareLicense())->can(-1, CREATE, ['itemtype' => 'Monitor', 'items_id' => $recursiveAsset, 'softwarelicenses_id' => $siblingLicense]),
+        (new Item_SoftwareLicense())->can(-1, CREATE, $recursiveSubjectInput),
         'Actual recursive subject ancestor is accepted in reverse'
     );
     $_SESSION['glpiactiveprofile']['monitor'] = READ;
