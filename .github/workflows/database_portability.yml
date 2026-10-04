@@ -100,6 +100,21 @@ jobs:
           else
             php -r 'require "vendor/autoload.php"; $db = \Doctrine\DBAL\DriverManager::getConnection(["driver" => "pgsql", "host" => "127.0.0.1", "user" => "test", "password" => "test", "dbname" => "itsm_port_ci"]); $db->executeStatement("CREATE DATABASE itsm_port_session_legacy"); $db->close();'
           fi
+      - name: Prepare software migration database and fixture-owned database grants
+        run: |
+          if [ '${{ matrix.database.provider }}' = 'mysql' ]; then
+            docker exec -i "${{ job.services.database.id }}" ${{ matrix.database.client }} -uroot -ptest <<'SQL'
+          CREATE DATABASE itsm_port_software_subjects CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+          GRANT ALL ON `itsm\_port\_software\_subjects`.* TO 'test'@'%';
+          GRANT ALL ON `itsm\_port\_ci\_domain\_schema`.* TO 'test'@'%';
+          GRANT ALL ON `itsm\_port\_ci\_domain\_adoption`.* TO 'test'@'%';
+          GRANT ALL ON `itsm\_port\_entity\_parents\_%`.* TO 'test'@'%';
+          GRANT ALL ON `itsm\_port\_notification\_targets\_%`.* TO 'test'@'%';
+          GRANT ALL ON `itsm\_port\_authentication\_sources\_%`.* TO 'test'@'%';
+          SQL
+          else
+            docker exec "${{ job.services.database.id }}" psql -U test -d itsm_port_ci --set=ON_ERROR_STOP=1 -c 'CREATE DATABASE itsm_port_software_subjects'
+          fi
       - name: Test all database portability contracts
         run: python3 tests/database-portability/suite.py tests/config
       - name: Test PostgreSQL web installation and login
