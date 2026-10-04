@@ -9,6 +9,7 @@ use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\DefaultExpression;
 use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Mapping\FieldMapping;
 
 /** Native instant storage; the ORM field still owns hydration, defaults and nullability. */
@@ -21,6 +22,13 @@ final class NativeTimestamp
         if ($touchTrigger === '') {
             throw new \InvalidArgumentException('Automatic timestamp touch requires an explicit trigger name.');
         }
+    }
+
+    /** A writable generated automatic clock owns its successful native readback. */
+    public function ownsWritableClock(FieldMapping $field): bool
+    {
+        return $this->touchTrigger !== null && $field->generated === ClassMetadata::GENERATED_ALWAYS
+            && !$field->notInsertable && !$field->notUpdatable;
     }
 
     public function declaration(AbstractPlatform $platform, FieldMapping $field): ?string

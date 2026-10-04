@@ -18,6 +18,7 @@ final class AttributeDriver extends \Doctrine\ORM\Mapping\Driver\AttributeDriver
     public function loadMetadataForClass(string $className, ClassMetadata $metadata): void
     {
         parent::loadMetadataForClass($className, $metadata);
+        $writableClock = false;
         foreach ((new \ReflectionClass($className))->getProperties() as $property) {
             foreach ($property->getAttributes(ReferenceKey::class) as $attribute) {
                 $metadata->fieldMappings[$property->getName()]->columnDefinition = $attribute->newInstance()->declaration($this->platform);
@@ -26,8 +27,15 @@ final class AttributeDriver extends \Doctrine\ORM\Mapping\Driver\AttributeDriver
                 $metadata->fieldMappings[$property->getName()]->columnDefinition = $attribute->newInstance()->declaration($this->platform, $metadata, $property->getName());
             }
             foreach ($property->getAttributes(NativeTimestamp::class) as $attribute) {
-                $metadata->fieldMappings[$property->getName()]->columnDefinition = $attribute->newInstance()->declaration($this->platform, $metadata->fieldMappings[$property->getName()]);
+                $timestamp = $attribute->newInstance();
+                $field = $metadata->fieldMappings[$property->getName()];
+                $field->columnDefinition = $timestamp->declaration($this->platform, $field);
+                $writableClock = $writableClock || $timestamp->ownsWritableClock($field);
             }
+        }
+        if ($writableClock) {
+            $metadata->addEntityListener(\Doctrine\ORM\Events::postPersist, NativeTimestampOutcome::class, 'synchronize');
+            $metadata->addEntityListener(\Doctrine\ORM\Events::postUpdate, NativeTimestampOutcome::class, 'synchronize');
         }
     }
 }
