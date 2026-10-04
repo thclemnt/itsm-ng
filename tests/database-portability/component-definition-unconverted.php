@@ -79,8 +79,11 @@ try {
     $manager->createTable($table);
     $created = true;
     $frame = OwnedMutationFrame::begin($connection);
-    $connection->insert($name, ['id' => 42041, 'name' => 'Unmapped plugin subject', 'entities_id' => 0, 'is_recursive' => false],
-        ['id' => Types::BIGINT, 'entities_id' => Types::BIGINT, 'is_recursive' => Types::BOOLEAN]);
+    $connection->insert(
+        $name,
+        ['id' => 42041, 'name' => 'Unmapped plugin subject', 'entities_id' => 0, 'is_recursive' => false],
+        ['id' => Types::BIGINT, 'entities_id' => Types::BIGINT, 'is_recursive' => Types::BOOLEAN]
+    );
     $asset = getItemForItemtype(PluginDefinitionFixtureAsset::class);
     verify($asset instanceof PluginDefinitionFixtureAsset && $asset->getFromDB(42041), 'Actual plugin subject uses its unchanged public unmapped read');
     $pluginRows = $connection->fetchAllAssociative('SELECT * FROM ' . $connection->quoteIdentifier($name));
@@ -116,15 +119,21 @@ try {
         verify($owner->getFromDB($source) && $owner->delete(['id' => $source, '_replace_by' => $target], true), 'Actual public definition replacement accepts the existing unmapped subject: ' . $linkClass);
         $expected = $before;
         $expected[$column] = $target;
-        verify($callbacks === 1 && $read($id) === $expected && $read($neighbor) === $neighborBefore,
-            'Exactly one ordinary update changes only the definition FK and preserves all subject/cache/specificity cells');
-        verify($connection->fetchAllAssociative('SELECT * FROM ' . $connection->quoteIdentifier($name)) === $pluginRows,
-            'Definition substitution preserves every unmapped plugin row');
+        verify(
+            $callbacks === 1 && $read($id) === $expected && $read($neighbor) === $neighborBefore,
+            'Exactly one ordinary update changes only the definition FK and preserves all subject/cache/specificity cells'
+        );
+        verify(
+            $connection->fetchAllAssociative('SELECT * FROM ' . $connection->quoteIdentifier($name)) === $pluginRows,
+            'Definition substitution preserves every unmapped plugin row'
+        );
         $PLUGIN_HOOKS = $savedHooks;
     }
-    verify(ComponentDefinitionRepository::supportsFamily(new Item_DeviceProcessor(), DeviceProcessor::getTable())
+    verify(
+        ComponentDefinitionRepository::supportsFamily(new Item_DeviceProcessor(), DeviceProcessor::getTable())
         && !ComponentDefinitionRepository::supportsFamily(new Item_DeviceProcessor(), DeviceGeneric::getTable()),
-        'Closed Processor delegation requires its actual owning definition target, independently of row values');
+        'Closed Processor delegation requires its actual owning definition target, independently of row values'
+    );
 } catch (Throwable $error) {
     $primary = $error;
 } finally {
