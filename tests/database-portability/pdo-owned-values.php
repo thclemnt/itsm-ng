@@ -40,6 +40,10 @@ $manager = $connection->createSchemaManager();
 $name = 'glpi_port_pdo_' . bin2hex(random_bytes(5));
 verify(!$manager->tablesExist([$name]), 'Never adopt a preexisting value fixture');
 $table = new Table($name);
+if ($DB->getProvider() === 'mysql') {
+    $table->addOption('charset', 'utf8mb4');
+    $table->addOption('collation', 'utf8mb4_unicode_ci');
+}
 $table->addColumn('id', Types::BIGINT);
 $table->addColumn('label', Types::STRING, ['length' => 255, 'notnull' => false]);
 $table->addColumn('flag', Types::INTEGER);
@@ -56,6 +60,17 @@ $cleanup = [];
 try {
     $manager->createTable($table);
     $created = true;
+    if ($DB->getProvider() === 'mysql') {
+        $encoding = $connection->fetchAssociative(
+            "SELECT t.TABLE_COLLATION AS table_collation, c.CHARACTER_SET_NAME AS character_set, c.COLLATION_NAME AS column_collation
+            FROM information_schema.TABLES t JOIN information_schema.COLUMNS c
+                ON c.TABLE_SCHEMA=t.TABLE_SCHEMA AND c.TABLE_NAME=t.TABLE_NAME
+            WHERE t.TABLE_SCHEMA=DATABASE() AND t.TABLE_NAME=? AND c.COLUMN_NAME='label'",
+            [$name]
+        );
+        verify($encoding === ['table_collation' => 'utf8mb4_unicode_ci', 'character_set' => 'utf8mb4', 'column_collation' => 'utf8mb4_unicode_ci'],
+            'Actual owned table and label column retain explicit Unicode before the measured bound INSERT');
+    }
     $sql = 'INSERT INTO ' . $connection->getDatabasePlatform()->quoteIdentifier($name) . ' (id, label, flag, payload) VALUES (?, ?, ?, ?)';
     if ($DB->getProvider() === 'mysql') {
         // Prepare this read-only observer once, before the baseline. Reusing it
