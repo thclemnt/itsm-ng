@@ -289,7 +289,11 @@ foreach ([['glpi_appliances_items', 'appliances_id', 401, 'Computer', $legacyId,
             $history->upgrade($connection);
             throw new LogicException('Invalid appliance relationship accepted before adoption');
         } catch (RuntimeException $error) {
-            verify(str_contains($error->getMessage(), $table) && (str_contains($error->getMessage(), 'Unsupported typed relationship kinds') || str_contains($error->getMessage(), 'Invalid or unsupported')), 'Appliance diagnostic identifies invalid relationship before adoption');
+            $canonicalDiagnostic = "Exact subject preflight failed before DDL or receipt:\nInvalid exact subject data: " . $table . ' (1 rows); samples: '
+                . json_encode([['id' => 701] + $invalid], JSON_THROW_ON_ERROR)
+                . '. Correct the source assignment explicitly; no spelling or identifier is rewritten.';
+            verify((str_contains($error->getMessage(), $table) && (str_contains($error->getMessage(), 'Unsupported typed relationship kinds') || str_contains($error->getMessage(), 'Invalid or unsupported')))
+                || ($error::class === RuntimeException::class && $error->getMessage() === $canonicalDiagnostic), 'Appliance diagnostic identifies invalid relationship before adoption');
         }
         verify(
             Ledger::state($connection, LegacyToOrm::VERSION) === null && Ledger::state($connection, ApplianceAssets20261005::VERSION) === null && Ledger::state($connection, ApplianceRecipients20261005::VERSION) === null
