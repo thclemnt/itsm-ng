@@ -152,9 +152,9 @@ abstract class SoftwareTypedItemMigration20261011
             if (!$hasKey && array_filter(static::targets(), static fn ($target) => !$before->hasColumn(static::column($target)))) {
                 throw new \RuntimeException('Missing typed item identity without recoverable canonical columns: ' . $table);
             }
-            $generated = $hasKey && (bool)$connection->fetchOne($postgres
-                ? "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = 'items_id' AND is_generated = 'ALWAYS'"
-                : "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = 'items_id' AND extra LIKE '%GENERATED%'", [$schema, $table]);
+            $generated = $hasKey && ($postgres
+                ? (bool)$connection->fetchOne("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = 'items_id' AND is_generated = 'ALWAYS'", [$schema, $table])
+                : \itsmng\Database\MySQLGeneratedColumnInspection::isGenerated($connection, $schema, $table, 'items_id'));
             $identity = $hasKey ? 'r.items_id' : '(' . self::identity('r.', $platform) . ')';
             $joins = $invalid = [];
             foreach (static::targets() as $kind => $target) {

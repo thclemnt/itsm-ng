@@ -85,9 +85,9 @@ final class WideIdentifiers
         }
         $generatedColumns = [];
         foreach ($widen as $name => $columns) {
-            $generatedColumns[$name] = $columns ? $connection->fetchAllAssociative($postgres
-                ? "SELECT column_name, generation_expression FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND is_generated = 'ALWAYS' ORDER BY ordinal_position"
-                : "SELECT column_name, generation_expression FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND extra LIKE '%GENERATED%' ORDER BY ordinal_position", [$namespace, $name]) : [];
+            $generatedColumns[$name] = $columns ? ($postgres
+                ? $connection->fetchAllAssociative("SELECT column_name, generation_expression FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND is_generated = 'ALWAYS' ORDER BY ordinal_position", [$namespace, $name])
+                : \itsmng\Database\MySQLGeneratedColumnInspection::listGeneratedColumns($connection, $namespace, $name)) : [];
         }
         $native->assertOwnedChanges($widen, $generatedColumns, $tables);
         $dropForeign = $restoreForeign = $dropGenerated = $restoreGenerated = $alter = $dropChecks = $restoreChecks = [];

@@ -66,9 +66,9 @@ final class UserAuthenticationSources
         $platform = $connection->getDatabasePlatform();
         $postgres = $platform instanceof PostgreSQLPlatform;
         $schema = $connection->fetchOne($postgres ? 'SELECT current_schema()' : 'SELECT DATABASE()');
-        $generated = $hasKey && (bool)$connection->fetchOne($postgres
-            ? "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = 'glpi_users' AND column_name = 'auths_id' AND is_generated = 'ALWAYS'"
-            : "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = 'glpi_users' AND column_name = 'auths_id' AND extra LIKE '%GENERATED%'", [$schema]);
+        $generated = $hasKey && ($postgres
+            ? (bool)$connection->fetchOne("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = ? AND table_name = 'glpi_users' AND column_name = 'auths_id' AND is_generated = 'ALWAYS'", [$schema])
+            : \itsmng\Database\MySQLGeneratedColumnInspection::isGenerated($connection, $schema, 'glpi_users', 'auths_id'));
         $identity = $hasKey ? 'r.auths_id' : '(CASE WHEN r.authtype IN (0, 3, 4, 5, 6) THEN COALESCE(r.authldaps_id, 0) WHEN r.authtype = 2 THEN COALESCE(r.authmails_id, 0) ELSE r.auth_source_code END)';
         $invalid = (int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_users r'
             . ' LEFT JOIN glpi_authldaps g ON g.id = ' . $identity . ' LEFT JOIN glpi_authmails p ON p.id = ' . $identity
