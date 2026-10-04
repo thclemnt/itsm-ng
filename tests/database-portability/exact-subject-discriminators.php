@@ -129,7 +129,13 @@ try {
                 }
             }
             $types = array_fill_keys(array_keys(EntityRegistry::booleanFields($table)), Types::BOOLEAN);
-            foreach ([strtolower($kind), strtoupper($kind), $kind . ' ', $kind . '  ', ' ' . $kind, 'UnknownManagedSubject'] as $bad) {
+            if (strtoupper($kind) === $kind) {
+                $connection->update($quote($table), ['itemtype' => strtoupper($kind)], ['id' => $link]);
+                verify($read($table, $link) === $row, 'Canonical uppercase INSERT and UPDATE retain the exact owning row');
+            }
+            // Uppercase canonical kinds such as PDU are positive identities,
+            // not invalid alternatives to themselves. Keep every changed value.
+            foreach (array_filter([strtolower($kind), strtoupper($kind), $kind . ' ', $kind . '  ', ' ' . $kind, 'UnknownManagedSubject'], static fn (string $candidate): bool => $candidate !== $kind) as $bad) {
                 $nativeRefusal(static function () use ($connection, $quote, $table, $link, $bad, $payload, $types): void {
                     // The invalid INSERT gets an unused relationship pair;
                     // this savepoint restores the positive row afterwards.
