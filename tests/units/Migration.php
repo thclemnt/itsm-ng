@@ -130,7 +130,7 @@ class Migration extends \GLPITestCase
 
         // The real configured writer owns Config and its mapped audit lifecycle.
         // Mocking only DB::query no longer observes those writes.
-        $connection = $DB->getConnection();
+        $connection = $DB->getDoctrineConnection();
         $depth = $connection->getTransactionNestingLevel();
         $savedSession = $_SESSION;
         $prefix = 'migration_config_' . bin2hex(random_bytes(6));
