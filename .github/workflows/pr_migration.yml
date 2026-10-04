@@ -13,13 +13,17 @@ jobs:
           - image: mariadb:11.8
             label: MariaDB 11.8
             healthcheck: mariadb-admin ping
+            client: mariadb
           - image: mysql:8.4
             label: MySQL 8.4
             healthcheck: mysqladmin ping
+            client: mysql
     env:
-      DB_DATABASE: itsm_migration
+      DB_DATABASE: itsm_port_migration
       DB_USER: itsm_migration
       DB_PASSWORD: itsm_migration
+      PORT_HISTORY_DB: itsm_port_migration_history
+      MIGRATION_CONFIG: ${{ runner.temp }}/itsm-port-migration-config
 
     services:
       db:
@@ -51,8 +55,14 @@ jobs:
       - name: Run composer / npm install
         run: export NODE_OPTIONS=--openssl-legacy-provider && php bin/console dependencies install
 
-      - name: Install ITSM-ng
-        run: sudo mysql -h 127.0.0.1 -u $DB_USER -p$DB_PASSWORD $DB_DATABASE < tests/migrations/schema.sql
+      - name: Install the disposable parent and its original encryption key
+        run: |
+          mkdir -m 700 "$MIGRATION_CONFIG"
+          php bin/console db:install --config-dir="$MIGRATION_CONFIG" --db-host=127.0.0.1 --db-user="$DB_USER" --db-password="$DB_PASSWORD" --db-name="$DB_DATABASE" --no-interaction
 
-      - name: Run migration tests
-        run: php bin/console itsmng:database:update --config-dir=/home/runner/work/itsm-ng/itsm-ng/tests/migrations -n
+      - name: Provision the separate populated-history fixture
+        run: |
+          docker exec "${{ job.services.db.id }}" ${{ matrix.db.client }} -uroot -p"$DB_PASSWORD" -e "CREATE DATABASE $PORT_HISTORY_DB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL ON $PORT_HISTORY_DB.* TO '$DB_USER'@'%';"
+
+      - name: Test populated frozen adoption, original-key preservation and retry
+        run: timeout --signal=TERM --kill-after=10s 300s php tests/database-portability/migration-history.php "$MIGRATION_CONFIG"

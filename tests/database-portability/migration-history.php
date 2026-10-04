@@ -393,8 +393,14 @@ file_put_contents($upgradeConfig . '/config_db.php', $source . '}');
 chmod($upgradeConfig . '/config_db.php', 0600);
 $key = (new \itsmng\Database\Upgrade($DB))->expectedSecurityKeyPath();
 verify($key !== null && is_file($key), 'The configured parent installation has its original encryption key');
-copy($key, $upgradeConfig . '/glpicrypt.key');
+$originalKeyHash = hash_file('sha256', $key);
+verify(is_string($originalKeyHash) && copy($key, $upgradeConfig . '/glpicrypt.key'), 'The populated child receives the existing installation key without regeneration');
 chmod($upgradeConfig . '/glpicrypt.key', 0600);
+verify(hash_file('sha256', $upgradeConfig . '/glpicrypt.key') === $originalKeyHash, 'The copied child key is byte-identical to the original installation key');
+$encryptedFixtureValue = 'Owned migration encryption fixture';
+$encryptedFixture = Toolbox::sodiumEncrypt($encryptedFixtureValue);
+verify((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_configs WHERE context = ? AND name = ?', ['core', 'smtp_passwd']) === 1, 'The frozen seed owns exactly one encrypted configuration field');
+$connection->update('glpi_configs', ['value' => $encryptedFixture], ['context' => 'core', 'name' => 'smtp_passwd']);
 $cli = static function (array $arguments) use ($upgradeConfig): array {
     $process = proc_open([PHP_BINARY, GLPI_ROOT . '/bin/console', '--config-dir=' . $upgradeConfig, '--no-interaction', ...$arguments], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['redirect', 1]], $pipes, GLPI_ROOT);
     verify(is_resource($process), 'Historical CLI updater starts');
@@ -402,6 +408,11 @@ $cli = static function (array $arguments) use ($upgradeConfig): array {
     $output = stream_get_contents($pipes[1]);
     fclose($pipes[1]);
     return [proc_close($process), $output];
+};
+$assertOriginalKey = static function () use ($key, $upgradeConfig, $originalKeyHash): void {
+    verify(is_file($key) && is_readable($key) && hash_file('sha256', $key) === $originalKeyHash, 'Historical CLI operations preserve the original parent encryption key');
+    $childKey = $upgradeConfig . '/glpicrypt.key';
+    verify(is_file($childKey) && is_readable($childKey) && hash_file('sha256', $childKey) === $originalKeyHash, 'Historical CLI operations preserve the copied original child encryption key');
 };
 try {
     $manager->dropTable(LegacyToOrm::LEDGER);
@@ -563,6 +574,7 @@ try {
             }
             $invalid = $connection->fetchAssociative('SELECT * FROM ' . ($refusal === 'invalid boolean' ? 'glpi_computers WHERE id = ' . $legacyId : 'glpi_appliances_items WHERE id = 402'));
             [$status, $output] = $cli($arguments);
+            $assertOriginalKey();
             verify($status !== 0 && str_contains($output, $diagnostic), 'Actual raw CLI apply refuses ' . $refusal . ' with its owning-field diagnostic: ' . $output);
             verify(!$manager->tablesExist([LegacyToOrm::LEDGER]) && Ledger::states($connection) === [], 'Refused raw CLI ' . $refusal . ' bootstraps no ledger');
             verify($manager->createComparator()->compareSchemas($beforeCliSchema, $manager->introspectSchema())->isEmpty()
@@ -599,12 +611,16 @@ try {
     $checkpoint('Raw baseline/seeds and invalid-data audits');
     $beforePreviewRows = $connection->fetchAllAssociative('SELECT * FROM glpi_documents_items ORDER BY id');
     [$status, $output] = $cli(['db:update', '--dry-run']);
+    $assertOriginalKey();
     verify($status === 0 && str_contains($output, 'Deferred canonical audits') && str_contains($output, 'No changes.'), 'Actual raw CLI preview retains its read-only deferred canonical plan output: ' . $output);
     verify(!$manager->tablesExist([LegacyToOrm::LEDGER]) && Ledger::states($connection) === []
         && $connection->fetchAllAssociative('SELECT * FROM glpi_documents_items ORDER BY id') === $beforePreviewRows
         && BooleanDomainSchema::catalog($connection) === $beforeCliCatalog, 'CLI preview preserves raw source rows, schema/check definitions and absent ledger');
     [$status, $output] = $cli(['db:update']);
+    $assertOriginalKey();
     verify($status === 0 && str_contains($output, 'Canonical database history complete'), 'Actual db:update adopts populated frozen history without requiring later columns: ' . $output);
+    $retainedCiphertext = $connection->fetchOne('SELECT value FROM glpi_configs WHERE context = ? AND name = ?', ['core', 'smtp_passwd']);
+    verify($retainedCiphertext === $encryptedFixture && Toolbox::sodiumDecrypt($retainedCiphertext) === $encryptedFixtureValue, 'Populated adoption preserves encrypted data which remains decryptable with the unchanged original key');
 } finally {
     unlink($upgradeConfig . '/config_db.php');
     unlink($upgradeConfig . '/glpicrypt.key');
