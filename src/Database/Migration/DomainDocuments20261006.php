@@ -40,8 +40,8 @@ final class DomainDocuments20261006 extends StagedTypedItemMigration implements 
         DocumentSubjects::configureTable($previous);
         $expanded = clone $previous;
         static::configureTable($expanded);
-        $oldColumns = array_diff(array_keys($previous->getColumns()), ['items_id', 'itemtype']);
-        $newColumns = array_diff(array_keys($expanded->getColumns()), ['items_id', 'itemtype']);
+        $oldColumns = array_diff(array_map(static fn (\Doctrine\DBAL\Schema\Column $column): string => $column->getName(), $previous->getColumns()), ['items_id', 'itemtype']);
+        $newColumns = array_diff(array_map(static fn (\Doctrine\DBAL\Schema\Column $column): string => $column->getName(), $expanded->getColumns()), ['items_id', 'itemtype']);
         $declaredColumns = array_unique(array_column($definition['branches'], 'column'));
         if (array_diff($newColumns, $declaredColumns) || array_diff($declaredColumns, $newColumns)) {
             return false;
