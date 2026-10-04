@@ -38,104 +38,104 @@ $nativeExact = new ExactSubjectHistoricalFixture($connection, ['glpi_appliances_
 $nativeExactFailure = null;
 try {
     $nativeExact->beginOwnedAlteration();
-$platform = $connection->getDatabasePlatform();
-$postgres = $platform instanceof PostgreSQLPlatform;
-$mysql = $platform instanceof MySQLPlatform;
-$schema = $connection->fetchOne($postgres ? 'SELECT current_schema()' : 'SELECT DATABASE()');
-$fixtures = new FixtureRecords($DB);
-$exists = static fn (string $table, string $name): bool => (bool)$connection->fetchOne(
-    "SELECT COUNT(*) FROM information_schema.table_constraints WHERE constraint_schema = ? AND table_name = ? AND constraint_name = ? AND constraint_type = 'CHECK'",
-    [$schema, $table, $name]
-);
-$drop = static fn (string $table, string $name): int => $connection->executeStatement('ALTER TABLE ' . $table . ' DROP ' . ($mysql ? 'CHECK ' : 'CONSTRAINT ') . $name);
-foreach ([['glpi_appliances_items', 'appliances_id', 'glpi_appliances', new ApplianceAssets20261005()],
-    ['glpi_appliances_items_relations', 'appliances_items_id', 'glpi_appliances_items', new ApplianceRecipients20261005()]] as [$table, $ownerColumn, $ownerTable, $migration]) {
-    verify((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $table) === 0, 'Do not alter a nonempty shared fixture');
-    $name = $table . '_typed_item_kind';
-    $other = 'port_' . substr($table, 5) . '_nonempty_kind';
-    $original = Ledger::state($connection, $migration::VERSION);
-    verify($original['complete'] && !$exists($table, $other), 'Fresh history and exclusively owned constraint fixture required');
-    $branches = array_slice(EntityRegistry::discriminatedReferences($table)['items_id']['selections'], 0, 2, true);
-    $kind = array_key_first($branches);
-    $invalidRow = static function () use ($fixtures, $branches, $kind, $ownerColumn, $ownerTable): array {
-        $values = [$ownerColumn => $fixtures->create($ownerTable), 'itemtype' => $kind];
-        foreach ($branches as $branch) {
-            $values[$branch['column']] = $fixtures->create($branch['target']);
-        }
-        return $values;
-    };
-    try {
-        $drop($table, $name);
-        $connection->executeStatement('ALTER TABLE ' . $table . ' ADD CONSTRAINT ' . $name . ' CHECK (1 = 1)' . ($mysql ? ' NOT ENFORCED' : ''));
-        $connection->executeStatement('ALTER TABLE ' . $table . ' ADD CONSTRAINT ' . $other . " CHECK (itemtype <> '')");
-        $connection->delete(LegacyToOrm::LEDGER, ['version' => $migration::VERSION]);
-        $before = $connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
-        $plan = $migration->plan($connection);
-        verify(count($plan[$table]['constraints']) >= 2, 'A same-name permissive or unenforced CHECK must be replaced');
-        verify($connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $before, 'Constraint repair preview stays read-only');
-        // Every malformed canonical row must refuse before the owned constraint
-        // is dropped. The transaction removes only our deliberately invalid data.
-        $connection->beginTransaction();
-        try {
-            $connection->insert($table, $invalidRow());
-            try {
-                $migration->plan($connection);
-                throw new LogicException('Permissive CHECK concealed existing invalid canonical data');
-            } catch (RuntimeException $error) {
-                verify(str_contains($error->getMessage(), 'Canonical and legacy typed item references disagree') || str_contains($error->getMessage(), 'Invalid canonical typed item references'), 'Preflight reports the inconsistent owning selection');
+    $platform = $connection->getDatabasePlatform();
+    $postgres = $platform instanceof PostgreSQLPlatform;
+    $mysql = $platform instanceof MySQLPlatform;
+    $schema = $connection->fetchOne($postgres ? 'SELECT current_schema()' : 'SELECT DATABASE()');
+    $fixtures = new FixtureRecords($DB);
+    $exists = static fn (string $table, string $name): bool => (bool)$connection->fetchOne(
+        "SELECT COUNT(*) FROM information_schema.table_constraints WHERE constraint_schema = ? AND table_name = ? AND constraint_name = ? AND constraint_type = 'CHECK'",
+        [$schema, $table, $name]
+    );
+    $drop = static fn (string $table, string $name): int => $connection->executeStatement('ALTER TABLE ' . $table . ' DROP ' . ($mysql ? 'CHECK ' : 'CONSTRAINT ') . $name);
+    foreach ([['glpi_appliances_items', 'appliances_id', 'glpi_appliances', new ApplianceAssets20261005()],
+        ['glpi_appliances_items_relations', 'appliances_items_id', 'glpi_appliances_items', new ApplianceRecipients20261005()]] as [$table, $ownerColumn, $ownerTable, $migration]) {
+        verify((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $table) === 0, 'Do not alter a nonempty shared fixture');
+        $name = $table . '_typed_item_kind';
+        $other = 'port_' . substr($table, 5) . '_nonempty_kind';
+        $original = Ledger::state($connection, $migration::VERSION);
+        verify($original['complete'] && !$exists($table, $other), 'Fresh history and exclusively owned constraint fixture required');
+        $branches = array_slice(EntityRegistry::discriminatedReferences($table)['items_id']['selections'], 0, 2, true);
+        $kind = array_key_first($branches);
+        $invalidRow = static function () use ($fixtures, $branches, $kind, $ownerColumn, $ownerTable): array {
+            $values = [$ownerColumn => $fixtures->create($ownerTable), 'itemtype' => $kind];
+            foreach ($branches as $branch) {
+                $values[$branch['column']] = $fixtures->create($branch['target']);
             }
-            verify($exists($table, $name) && Ledger::state($connection, $migration::VERSION) === null, 'Invalid preflight alters neither existing CHECK nor ledger');
-        } finally {
-            $connection->rollBack();
-        }
+            return $values;
+        };
         try {
-            $migration->apply($connection, static function (string $phase, string $statement): void {
-                if ($phase === 'constraints' && str_contains($statement, ' DROP ')) {
-                    throw new RuntimeException('Injected interruption after owned CHECK DROP');
-                }
-            });
-            throw new LogicException('Owned CHECK DROP did not execute');
-        } catch (RuntimeException $error) {
-            verify($error->getMessage() === 'Injected interruption after owned CHECK DROP', 'Real DDL interruption is surfaced');
-        }
-        verify($exists($table, $name) === $postgres, 'PostgreSQL rolls back DROP; MySQL retains the committed constraint gap');
-        verify($postgres ? Ledger::state($connection, $migration::VERSION) === null : !Ledger::state($connection, $migration::VERSION)['complete'], 'Interruption retains the proper retry state');
-        verify($exists($table, $other), 'Migration never drops an unrelated CHECK');
-        $migration->apply($connection);
-        verify($exists($table, $name) && $exists($table, $other) && Ledger::state($connection, $migration::VERSION)['complete'], 'Retry installs its owned CHECK and preserves the unrelated CHECK');
-        if ($mysql) {
-            verify($connection->fetchOne("SELECT ENFORCED FROM information_schema.table_constraints WHERE constraint_schema = ? AND table_name = ? AND constraint_name = ?", [$schema, $table, $name]) === 'YES', 'MySQL replacement is explicitly enforced');
-        }
-        $connection->beginTransaction();
-        try {
-            $values = $invalidRow(); // Parent fixture errors cannot count as rejection.
-            $rejected = false;
-            try {
-                $connection->insert($table, $values);
-            } catch (DriverException $error) {
-                $rejected = in_array($error->getSQLState(), ['23514', '23000'], true)
-                    || NativeConstraintRefusal::matchesSelectedCheck($error, $name);
-            }
-            verify($rejected, 'Native writes with multiple owning selections reject after repair');
-        } finally {
-            $connection->rollBack();
-        }
-        verify($migration->apply($connection) === [], 'Completed migration leaves its CHECK untouched on repeat');
-    } finally {
-        if ($connection->isTransactionActive()) {
-            $connection->rollBack();
-        }
-        if ($exists($table, $other)) {
-            $drop($table, $other);
-        }
-        if ($exists($table, $name)) {
             $drop($table, $name);
+            $connection->executeStatement('ALTER TABLE ' . $table . ' ADD CONSTRAINT ' . $name . ' CHECK (1 = 1)' . ($mysql ? ' NOT ENFORCED' : ''));
+            $connection->executeStatement('ALTER TABLE ' . $table . ' ADD CONSTRAINT ' . $other . " CHECK (itemtype <> '')");
+            $connection->delete(LegacyToOrm::LEDGER, ['version' => $migration::VERSION]);
+            $before = $connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
+            $plan = $migration->plan($connection);
+            verify(count($plan[$table]['constraints']) >= 2, 'A same-name permissive or unenforced CHECK must be replaced');
+            verify($connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $before, 'Constraint repair preview stays read-only');
+            // Every malformed canonical row must refuse before the owned constraint
+            // is dropped. The transaction removes only our deliberately invalid data.
+            $connection->beginTransaction();
+            try {
+                $connection->insert($table, $invalidRow());
+                try {
+                    $migration->plan($connection);
+                    throw new LogicException('Permissive CHECK concealed existing invalid canonical data');
+                } catch (RuntimeException $error) {
+                    verify(str_contains($error->getMessage(), 'Canonical and legacy typed item references disagree') || str_contains($error->getMessage(), 'Invalid canonical typed item references'), 'Preflight reports the inconsistent owning selection');
+                }
+                verify($exists($table, $name) && Ledger::state($connection, $migration::VERSION) === null, 'Invalid preflight alters neither existing CHECK nor ledger');
+            } finally {
+                $connection->rollBack();
+            }
+            try {
+                $migration->apply($connection, static function (string $phase, string $statement): void {
+                    if ($phase === 'constraints' && str_contains($statement, ' DROP ')) {
+                        throw new RuntimeException('Injected interruption after owned CHECK DROP');
+                    }
+                });
+                throw new LogicException('Owned CHECK DROP did not execute');
+            } catch (RuntimeException $error) {
+                verify($error->getMessage() === 'Injected interruption after owned CHECK DROP', 'Real DDL interruption is surfaced');
+            }
+            verify($exists($table, $name) === $postgres, 'PostgreSQL rolls back DROP; MySQL retains the committed constraint gap');
+            verify($postgres ? Ledger::state($connection, $migration::VERSION) === null : !Ledger::state($connection, $migration::VERSION)['complete'], 'Interruption retains the proper retry state');
+            verify($exists($table, $other), 'Migration never drops an unrelated CHECK');
+            $migration->apply($connection);
+            verify($exists($table, $name) && $exists($table, $other) && Ledger::state($connection, $migration::VERSION)['complete'], 'Retry installs its owned CHECK and preserves the unrelated CHECK');
+            if ($mysql) {
+                verify($connection->fetchOne("SELECT ENFORCED FROM information_schema.table_constraints WHERE constraint_schema = ? AND table_name = ? AND constraint_name = ?", [$schema, $table, $name]) === 'YES', 'MySQL replacement is explicitly enforced');
+            }
+            $connection->beginTransaction();
+            try {
+                $values = $invalidRow(); // Parent fixture errors cannot count as rejection.
+                $rejected = false;
+                try {
+                    $connection->insert($table, $values);
+                } catch (DriverException $error) {
+                    $rejected = in_array($error->getSQLState(), ['23514', '23000'], true)
+                        || NativeConstraintRefusal::matchesSelectedCheck($error, $name);
+                }
+                verify($rejected, 'Native writes with multiple owning selections reject after repair');
+            } finally {
+                $connection->rollBack();
+            }
+            verify($migration->apply($connection) === [], 'Completed migration leaves its CHECK untouched on repeat');
+        } finally {
+            if ($connection->isTransactionActive()) {
+                $connection->rollBack();
+            }
+            if ($exists($table, $other)) {
+                $drop($table, $other);
+            }
+            if ($exists($table, $name)) {
+                $drop($table, $name);
+            }
+            $connection->executeStatement($migration::checkSql($table));
+            Ledger::save($connection, $migration::VERSION, $original);
         }
-        $connection->executeStatement($migration::checkSql($table));
-        Ledger::save($connection, $migration::VERSION, $original);
     }
-}
-verify((new SchemaCheck())->differences($connection) === [], 'CHECK fixtures restore the entire required schema');
+    verify((new SchemaCheck())->differences($connection) === [], 'CHECK fixtures restore the entire required schema');
 
 } catch (Throwable $error) {
     $nativeExactFailure = $error;
