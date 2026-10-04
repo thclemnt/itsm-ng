@@ -105,12 +105,17 @@ try {
     $repository = new ComponentRepository(Orm::create($DB));
     verify(array_column($repository->stock('glpi_items_deviceprocessors', 'deviceprocessors_id', $device), 'id') === array_column($stock, 'id'), 'Stock selection uses canonical unassigned owning references');
     $_POST = ['itemtype' => 'DeviceProcessor', 'items_id' => $device];
+    $ajaxServer = $_SERVER;
+    $_SERVER['REQUEST_URI'] = $CFG_GLPI['root_doc'] . '/ajax/selectUnaffectedOrNewItem_Device.php';
+    $_SERVER['PHP_SELF'] = $_SERVER['REQUEST_URI'];
+    $_SERVER['HTTP_REFERER'] = $CFG_GLPI['url_base'] . '/front/deviceprocessor.form.php?id=' . $device;
     ob_start();
     try {
         include GLPI_ROOT . '/ajax/selectUnaffectedOrNewItem_Device.php';
         $selection = json_decode(ob_get_contents(), true, flags: JSON_THROW_ON_ERROR);
     } finally {
         ob_end_clean();
+        $_SERVER = $ajaxServer;
     }
     verify($selection['name'] === 'deviceprocessors_id' && array_keys($selection['options']) === array_column($stock, 'id'), 'Actual stock AJAX route retains field name, binding identities and complete available stock');
     $snapshot = $read('glpi_items_deviceprocessors', $id);
