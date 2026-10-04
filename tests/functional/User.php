@@ -265,6 +265,67 @@ class User extends \DbTestCase
         $this->array($user->prepareInputForAdd($input))->isIdenticalTo($expected);
     }
 
+    public function testCanonicalAuthenticationCreation()
+    {
+        $this->login();
+        $ldap = new \AuthLDAP();
+        $ldapId = (int)$ldap->add(['name' => 'Canonical input directory', 'is_active' => 0, 'is_default' => 0]);
+        $otherLdap = new \AuthLDAP();
+        $otherId = (int)$otherLdap->add(['name' => 'Other canonical input directory', 'is_active' => 0, 'is_default' => 0]);
+        $mail = new \AuthMail();
+        $mailId = (int)$mail->add(['name' => 'Canonical input mail server']);
+        $this->integer($ldapId)->isGreaterThan(0);
+        $this->integer($otherId)->isGreaterThan(0)->isNotEqualTo($ldapId);
+        $this->integer($mailId)->isGreaterThan(0);
+
+        foreach ([[], ['auths_id' => null], ['auths_id' => 0]] as $legacyDefault) {
+            $prepared = (new \User())->prepareInputForAdd(['name' => 'legacy-authentication-default'] + $legacyDefault);
+            $this->integer($prepared['auths_id'])->isIdenticalTo(0);
+            $this->integer($prepared['authtype'])->isIdenticalTo(\Auth::DB_GLPI);
+        }
+
+        // A fallback account must not be mistaken for a real selected owner.
+        // The same login is valid for distinct authentication identities.
+        $login = 'canonical-authentication-input';
+        foreach ([
+            [\Auth::LDAP, 'authldaps_id', null, 0],
+            [\Auth::LDAP, 'authldaps_id', $ldapId, $ldapId],
+            [\Auth::LDAP, 'authldaps_id', $otherId, $otherId],
+            [\Auth::MAIL, 'authmails_id', $mailId, $mailId],
+            [\Auth::DB_GLPI, 'auth_source_code', -5, -5],
+        ] as [$type, $column, $canonical, $selection]) {
+            $input = ['name' => $login, 'authtype' => $type, $column => $canonical];
+            $user = new \User();
+            $prepared = $user->prepareInputForAdd($input);
+            $this->array($prepared)->notHasKey('auths_id');
+            $this->variable($prepared[$column])->isIdenticalTo($canonical);
+            $id = (int)$user->add($input);
+            $this->integer($id)->isGreaterThan(0);
+            $this->boolean($user->getFromDB($id))->isTrue();
+            $before = $user->fields;
+            $this->integer($before['auths_id'])->isIdenticalTo($selection);
+            $this->variable($before[$column])->isIdenticalTo($canonical);
+
+            $this->boolean((new \User())->add($input))->isFalse();
+            $this->boolean((new \User())->add([
+                'name' => $login, 'authtype' => $type, 'auths_id' => $selection,
+            ]))->isFalse();
+            $this->boolean($user->getFromDB($id))->isTrue();
+            $this->array($user->fields)->isIdenticalTo($before);
+        }
+
+        foreach ([
+            ['authldaps_id' => $ldapId, 'auths_id' => $otherId],
+            ['authmails_id' => $mailId],
+        ] as $conflict) {
+            $input = ['name' => 'rejected-canonical-authentication-input', 'authtype' => \Auth::LDAP] + $conflict;
+            $this->exception(static function () use ($input) {
+                (new \User())->add($input);
+            })->isInstanceOf(\InvalidArgumentException::class);
+            $this->boolean((new \User())->getFromDBbyName($input['name']))->isFalse();
+        }
+    }
+
     protected function prepareInputForTimezoneUpdateProvider()
     {
         return [

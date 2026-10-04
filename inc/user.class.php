@@ -641,14 +641,14 @@ class User extends CommonDBTM
             $input["authtype"] = Auth::DB_GLPI;
         }
 
-        if (!isset($input["auths_id"])) {
-            $input["auths_id"] = 0;
-        }
+        $authentication = (new \itsmng\Database\Entity\User())->prepareAuthenticationInput($input);
+        $input = $authentication['input'];
 
         // Check if user does not exists
-        if ((new UserRepository(Orm::create($DB)))->exists([
-            'name' => $input['name'], 'authtype' => $input['authtype'], 'auths_id' => $input['auths_id'],
-        ], true)) {
+        if ((new UserRepository(Orm::create($DB)))->exists(
+            ['name' => $input['name']] + $authentication['identity'],
+            true
+        )) {
             Session::addMessageAfterRedirect(
                 __('Unable to add. The user already exists.'),
                 false,

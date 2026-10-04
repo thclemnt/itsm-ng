@@ -352,6 +352,28 @@ class User implements LegacyInput
     #[ORM\Column(name: '`menu_open`', type: 'text', length: 4294967295, nullable: true)]
     public ?string $menu_open = null;
 
+    /**
+     * Preserve public creation input while deriving its logical uniqueness key.
+     * A supplied canonical owner must not acquire an artificial legacy zero.
+     *
+     * @return array{input: array, identity: array{authtype: int, auths_id: int}}
+     */
+    public function prepareAuthenticationInput(array $values): array
+    {
+        $type = (int)($values['authtype'] ?? $this->authtype);
+        $property = self::authenticationReference($type);
+        $column = $property === null ? 'auth_source_code'
+            : $property->getAttributes(ORM\JoinColumn::class)[0]->newInstance()->name;
+        if (!isset($values['auths_id']) && !array_key_exists($column, $values)) {
+            // Retain historical omitted/null legacy defaults when the selected
+            // canonical property was not supplied, including directory fallback.
+            $values['auths_id'] = 0;
+        }
+        $normalized = $this->normalizeInput($values);
+        $source = array_key_exists($column, $normalized) ? $normalized[$column] : $this->auths_id;
+        return ['input' => $values, 'identity' => ['authtype' => $type, 'auths_id' => (int)$source]];
+    }
+
     /** Legacy source IDs select the association declared on this entity. */
     public function normalizeInput(array $values): array
     {
