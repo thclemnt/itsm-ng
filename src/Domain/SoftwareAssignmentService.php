@@ -145,6 +145,46 @@ final class SoftwareAssignmentService
         }
     }
 
+    /** Establish selected source/destination ancestry before transfer graph locks. */
+    public function withTransferHierarchy(array $items, int $destination, callable $operation): mixed
+    {
+        $subjects = [];
+        $licenses = [];
+        $software = [];
+        foreach ($items as $kind => $ids) {
+            foreach ($ids as $id) {
+                if ($kind === \Software::class) {
+                    $software[] = (int)$id;
+                } elseif ($kind === \SoftwareLicense::class) {
+                    $licenses[] = (int)$id;
+                } elseif ($kind === \Item_SoftwareLicense::class) {
+                    $allocation = $this->assignments->allocationOwner((int)$id, current: false);
+                    if ($allocation === null) {
+                        throw new SoftwareAssignmentCancelled('The selected transfer allocation is missing.');
+                    }
+                    $subjects[] = [$allocation['kind'], (int)$allocation['subject']];
+                    $licenses[] = (int)$allocation['license'];
+                } else {
+                    try {
+                        \itsmng\Database\Entity\ItemSoftwareLicense::referenceAssociation($kind);
+                        $subjects[] = [$kind, (int)$id];
+                        $licenses = [...$licenses, ...$this->assignments->licensesForSubject($kind, (int)$id, current: false)];
+                    } catch (\InvalidArgumentException) {
+                        // A transfer of an unrelated domain creates no allocation graph.
+                    }
+                }
+            }
+        }
+        $roots = $this->assignments->hierarchyRoots($subjects, $licenses, $software, [$destination], includeInstallations: true);
+        return SoftwareHierarchyUnit::run($this->database, $roots, $operation);
+    }
+
+    /** Bulk producers reserve every selected owning graph before their first lock. */
+    public function withSoftwareHierarchy(array $software, callable $operation): mixed
+    {
+        return SoftwareHierarchyUnit::run($this->database, $this->assignments->hierarchyRoots(software: $software, includeInstallations: true), $operation);
+    }
+
     public function mutateAllocation(\Item_SoftwareLicense $model, array $checkpoint, callable $operation, string $mode, ?callable $guard = null): mixed
     {
         return $this->mutate($model, $checkpoint, $mode, function () use ($model, $checkpoint, $operation, $mode, $guard) {
@@ -170,6 +210,9 @@ final class SoftwareAssignmentService
             if ($this->assignments->subjectContexts($subjects, current: true) != $context || ($guard !== null && !$guard($this->assignments->subjectContexts($subjects, current: true)))) {
                 throw new SoftwareAssignmentCancelled('Allocation scope changed before persistence; retry the command.');
             }
+            $selectedSoftware = $mode === 'delete' ? null : $this->assertAllocationPair($model);
+            $selected = [$model->fields['itemtype'], (int)$model->fields['items_id'], (int)$model->fields['softwarelicenses_id']];
+            $selectedId = $mode === 'add' ? null : (int)$checkpoint['fields']['id'];
             $changed = $mode !== 'update' || (bool)array_intersect($model->updates, [
                 'softwarelicenses_id', 'itemtype', 'items_id', 'is_deleted',
                 ...\itsmng\Database\ConnexityInput::endpointFields($model),
@@ -183,8 +226,38 @@ final class SoftwareAssignmentService
                     SoftwareAssignmentCancelled::requireSuccess($this->refreshLicenseValidity($license), 'Allocation licence validity');
                 }
             }
+            if ($mode !== 'delete') {
+                // Actual row hooks and required aggregate callbacks may change
+                // selected scope on this same writer even while locks are held.
+                $selectedId ??= (int)$result;
+                $owner = $this->assignments->allocationOwner($selectedId);
+                if ((int)$model->getID() !== $selectedId
+                    || [$model->fields['itemtype'], (int)$model->fields['items_id'], (int)$model->fields['softwarelicenses_id']] !== $selected
+                    || $owner === null || [$owner['kind'], (int)$owner['subject'], (int)$owner['license']] !== $selected) {
+                    throw new SoftwareAssignmentCancelled('A lifecycle callback changed the persisted selected allocation.');
+                }
+                $this->assertAllocationPair($model, $selectedSoftware);
+            }
             return $result;
         });
+    }
+
+    private function assertAllocationPair(\Item_SoftwareLicense $model, ?int $selectedSoftware = null): int
+    {
+        $subject = $this->assignments->allocationSubject($model->fields['itemtype'], (int)$model->fields['items_id']);
+        $license = $this->assignments->license((int)$model->fields['softwarelicenses_id']);
+        if ($license === null || $license->softwares === null
+            || ($selectedSoftware !== null && $license->softwares->id !== $selectedSoftware)) {
+            // Refuse a callback's new aggregate before acquiring its row lock,
+            // even when its entity happens to belong to the reserved ancestry.
+            throw new SoftwareAssignmentCancelled('The selected allocation licence changed its owning Software.');
+        }
+        $software = $this->assignments->software($license->softwares->id);
+        if ($software === null
+            || !SoftwareHierarchyUnit::acceptsPair($this->database, $subject->allocationEntityScope(), $license->allocationEntityScope($software))) {
+            throw new SoftwareAssignmentCancelled('The selected allocation subject and licence have incompatible current entity scopes.');
+        }
+        return $software->id;
     }
 
     public function mutateInstallation(\Item_SoftwareVersion $model, array $checkpoint, callable $operation, string $mode, ?callable $guard = null): mixed
@@ -433,7 +506,53 @@ final class SoftwareAssignmentService
         } elseif ($mode === 'update' || $mode === 'restore') {
             $checkpoint['updates'] = $checkpoint['oldvalues'] = [];
         }
-        return SoftwareMutation::run($this->database, $model, $checkpoint, $operation);
+        return SoftwareMutation::run($this->database, $model, $checkpoint, function () use ($model, $checkpoint, $operation, $mode) {
+            // Reserve before aggregate locks even for cleanup, whose required
+            // validity refresh can invoke nested public licence callbacks.
+            $subjects = [];
+            $licenses = [];
+            $software = [];
+            $roots = [];
+            $includeInstallations = false;
+            foreach ([$checkpoint['fields'] ?? [], $model->fields] as $fields) {
+                if (array_key_exists('entities_id', $fields) && $fields['entities_id'] !== null) {
+                    $roots[] = (int)$fields['entities_id'];
+                }
+                if ($model instanceof \Item_SoftwareVersion) {
+                    if (isset($fields['itemtype'], $fields['items_id'])) {
+                        $subjects[] = [$fields['itemtype'], (int)$fields['items_id']];
+                        $licenses = [...$licenses, ...$this->assignments->licensesForSubject($fields['itemtype'], (int)$fields['items_id'], current: false)];
+                    }
+                    if ((int)($fields['softwareversions_id'] ?? 0) > 0) {
+                        $software[] = $this->assignments->softwareForVersion((int)$fields['softwareversions_id']);
+                    }
+                } elseif ($model instanceof \Item_SoftwareLicense) {
+                    if (isset($fields['itemtype'], $fields['items_id'])) {
+                        $subjects[] = [$fields['itemtype'], (int)$fields['items_id']];
+                    }
+                    $licenses[] = (int)($fields['softwarelicenses_id'] ?? 0);
+                } elseif ($model instanceof \SoftwareLicense) {
+                    $licenses[] = (int)($fields['id'] ?? 0);
+                    $software[] = (int)($fields['softwares_id'] ?? 0);
+                } elseif ($model instanceof \Software) {
+                    $software[] = (int)($fields['id'] ?? 0);
+                    $includeInstallations = $mode === 'delete';
+                } else {
+                    try {
+                        \itsmng\Database\Entity\ItemSoftwareLicense::referenceAssociation($model->getType());
+                        $includeInstallations = $mode === 'delete';
+                        if ((int)($fields['id'] ?? 0) > 0) {
+                            $subjects[] = [$model->getType(), (int)$fields['id']];
+                            $licenses = [...$licenses, ...$this->assignments->licensesForSubject($model->getType(), (int)$fields['id'], current: false)];
+                        }
+                    } catch (\InvalidArgumentException) {
+                        // Non-allocation domain models have no subject graph to reserve.
+                    }
+                }
+            }
+            $roots = $this->assignments->hierarchyRoots($subjects, $licenses, $software, $roots, $includeInstallations);
+            return SoftwareHierarchyUnit::run($this->database, $roots, $operation);
+        });
     }
 
     private function complete(callable $operation, string $mode): mixed

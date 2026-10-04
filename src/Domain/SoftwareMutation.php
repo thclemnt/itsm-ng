@@ -6,6 +6,9 @@ namespace itsmng\Domain;
 
 use itsmng\Database\LifecycleModelJournal;
 use itsmng\Database\LifecycleNotifications;
+use itsmng\Database\MutationCleanupFailure;
+use itsmng\Database\MutationRollbackFailure;
+use itsmng\Database\OwnedMutationFrame;
 
 /** One prepared software command, including its required public lifecycle work. */
 final class SoftwareMutation
@@ -16,53 +19,90 @@ final class SoftwareMutation
             return false;
         }
         $connection = $database->getDoctrineConnection();
-        $level = $connection->getTransactionNestingLevel();
+        \itsmng\Database\TransactionOwnership::assertManaged($connection);
+        $frame = null;
+        $frameRequested = false;
+        $rolledBack = false;
         $journal = new LifecycleModelJournal();
         $journal->remember($model, $checkpoint);
         $session = $_SESSION;
         $delivery = LifecycleNotifications::begin($connection);
         $accepted = false;
         $result = false;
+        $failure = null;
+        $cancelled = null;
+        $notifications = [];
         try {
             self::assertSupportedIsolation($database);
-            $connection->beginTransaction();
+            $frameRequested = true;
+            $frame = OwnedMutationFrame::begin($connection);
             self::assertTransactionalStorage($database, [\Log::getTable(), \QueuedNotification::getTable()]);
             $result = $journal->observe($connection, $operation);
-            if ($connection->getTransactionNestingLevel() !== $level + 1) {
-                throw new \LogicException('A software mutation hook changed transaction ownership');
-            }
             if ($result !== false) {
-                $connection->commit();
+                $frame->commit();
                 $accepted = true;
             } else {
-                $connection->rollBack();
+                $frame->rollBack();
+                $rolledBack = true;
             }
-        } catch (SoftwareAssignmentCancelled) {
-            while ($connection->getTransactionNestingLevel() > $level) {
-                $connection->rollBack();
-            }
-            $result = false;
-        } catch (\Throwable $error) {
-            while ($connection->getTransactionNestingLevel() > $level) {
-                $connection->rollBack();
-            }
-            throw $error;
-        } finally {
-            $notifications = $delivery->finish($accepted);
-            if (!$accepted) {
-                $journal->restore();
-                $feedback = $_SESSION['MESSAGE_AFTER_REDIRECT'] ?? [];
-                $_SESSION = $session;
-                foreach ([WARNING, ERROR] as $type) {
-                    foreach (array_diff($feedback[$type] ?? [], $session['MESSAGE_AFTER_REDIRECT'][$type] ?? []) as $message) {
-                        $_SESSION['MESSAGE_AFTER_REDIRECT'][$type][] = $message;
-                    }
+        } catch (\Throwable $primary) {
+            if ($frame !== null) {
+                try {
+                    $frame->rollBack();
+                    $rolledBack = true;
+                } catch (\Throwable $cleanup) {
+                    // The replacement frame is not ours. Preserve both actual
+                    // errors and do not rewind models/session as if data reverted.
+                    $failure = new MutationRollbackFailure($primary, $cleanup);
                 }
             }
+            $failure ??= $primary;
+            if ($primary instanceof SoftwareAssignmentCancelled) {
+                $cancelled = $primary;
+                $result = false;
+            }
+        } finally {
+            try {
+                $notifications = $delivery->finish($accepted);
+            } catch (\Throwable $cleanup) {
+                $failure = self::preserveFailure($failure, $cleanup);
+            }
+            // Before frame admission only preparation has occurred. Once a
+            // frame was requested, rewind requires its proven actual rollback.
+            if (!$accepted && ($rolledBack || !$frameRequested)) {
+                try {
+                    $journal->restore();
+                } catch (\Throwable $cleanup) {
+                    $failure = self::preserveFailure($failure, $cleanup);
+                }
+                try {
+                    $feedback = $_SESSION['MESSAGE_AFTER_REDIRECT'] ?? [];
+                    $_SESSION = $session;
+                    foreach ([WARNING, ERROR] as $type) {
+                        foreach (array_diff($feedback[$type] ?? [], $session['MESSAGE_AFTER_REDIRECT'][$type] ?? []) as $message) {
+                            $_SESSION['MESSAGE_AFTER_REDIRECT'][$type][] = $message;
+                        }
+                    }
+                } catch (\Throwable $cleanup) {
+                    $failure = self::preserveFailure($failure, $cleanup);
+                }
+            }
+        }
+        if ($failure !== null && $failure !== $cancelled) {
+            throw $failure;
         }
         // A transport error after commit cannot reverse persisted database work.
         LifecycleNotifications::deliver($notifications);
         return $result;
+    }
+
+    private static function preserveFailure(?\Throwable $primary, \Throwable $cleanup): \Throwable
+    {
+        return $primary === null ? $cleanup : new MutationCleanupFailure(
+            $primary,
+            $cleanup,
+            $primary instanceof MutationCleanupFailure && $primary->rollbackUnproven
+        );
     }
 
     /** PostgreSQL strong snapshots cannot see later allocation phantoms. */

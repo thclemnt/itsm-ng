@@ -10,8 +10,10 @@ use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_computers')]
-class Computer
+class Computer implements \itsmng\Domain\AllocationSubject
 {
+    use \itsmng\Database\Mapping\AllocationSubjectScope;
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]

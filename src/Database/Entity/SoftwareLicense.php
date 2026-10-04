@@ -51,6 +51,15 @@ class SoftwareLicense
         return [(int)$this->softwares?->id, (int)$this->entities?->id, $this->is_recursive, $this->is_deleted, $this->is_template];
     }
 
+    /** A licence inherits recursion capability from its actual owning Software. */
+    public function allocationEntityScope(Software $software): \itsmng\Domain\EntityScope
+    {
+        if ($this->entities === null || $this->softwares === null || $software->id !== $this->softwares->id) {
+            throw new \itsmng\Domain\SoftwareAssignmentCancelled('Allocation licence requires its current owning Software and entity.');
+        }
+        return new \itsmng\Domain\EntityScope($this->entities->id, $this->is_recursive && $software->is_recursive);
+    }
+
     /** Finite over-allocation is permitted and represented by an invalid licence. */
     public function isValidForAllocationCount(int $count): bool
     {

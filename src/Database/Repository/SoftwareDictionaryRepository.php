@@ -116,7 +116,7 @@ final class SoftwareDictionaryRepository
         if ($source <= 0 || $target <= 0 || !$software->getFromDB($target)) {
             return false;
         }
-        return SoftwareMutation::run($DB, $software, LifecycleModelJournal::state($software), function () use ($DB, $source, $target, $service): bool {
+        return SoftwareMutation::run($DB, $software, LifecycleModelJournal::state($software), fn () => $service->withSoftwareHierarchy([$source, $target], function () use ($DB, $source, $target, $service): bool {
             SoftwareMutation::assertTransactionalStorage($DB, [\Software::getTable(), \SoftwareLicense::getTable()]);
             $service->lockSoftwareAssignments([$source, $target]);
             if ($source === $target) {
@@ -134,6 +134,6 @@ final class SoftwareDictionaryRepository
                 );
             }
             return true;
-        });
+        }));
     }
 }

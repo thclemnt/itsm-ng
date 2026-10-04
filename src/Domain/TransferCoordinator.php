@@ -22,22 +22,7 @@ final class TransferCoordinator
         }
         $this->database->assertManagedTransaction();
         $connection = $this->database->getDoctrineConnection();
-        $level = $connection->getTransactionNestingLevel();
-        try {
-            // DBAL uses a savepoint when the caller already owns a transaction.
-            $connection->beginTransaction();
-            $result = $operation();
-            if ($connection->getTransactionNestingLevel() !== $level + 1) {
-                throw new \LogicException('A transfer hook changed transaction ownership');
-            }
-            $connection->commit();
-            return $result;
-        } catch (\Throwable $error) {
-            while ($connection->getTransactionNestingLevel() > $level) {
-                $connection->rollBack();
-            }
-            throw $error;
-        }
+        return \itsmng\Database\OwnedMutationFrame::run($connection, $operation);
     }
 
     /** A selected MyISAM parent cannot participate in this rollback contract. */

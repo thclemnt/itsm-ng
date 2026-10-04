@@ -243,81 +243,89 @@ final class SoftwareRepository
             \Software::getTable(), \SoftwareVersion::getTable(), \SoftwareLicense::getTable(), \Item_SoftwareVersion::getTable(),
             \Log::getTable(), \QueuedNotification::getTable(),
         ]);
-        $this->em->getConnection()->transactional(function () use ($target, $entity, $sources, $trash, $progress, $assignments): void {
-            $ids = [...$sources, $target];
-            $lock = $this->em->createQueryBuilder()->select('s.id AS id')->from(Entity\Software::class, 's')
-                ->where('s.id IN (:ids)')->setParameter('ids', $ids)->orderBy('s.id')->getQuery();
-            $lock->setLockMode(LockMode::PESSIMISTIC_WRITE);
-            $locked = $lock->getScalarResult();
-            $assignments->lockSoftwareAssignments($ids);
-            if (count($locked) !== count($ids)) {
-                throw new \RuntimeException('A software selected for merging no longer exists.');
-            }
-            $records = new RecordRepository($this->em);
-            $versionRows = $this->em->createQueryBuilder()->select('v')->from(Entity\SoftwareVersion::class, 'v')
-                ->where('v.softwares IN (:sources)')->setParameter('sources', $sources)->orderBy('v.id')->getQuery()
-                ->setHint(\Doctrine\ORM\Query::HINT_REFRESH, true)->setLockMode(LockMode::PESSIMISTIC_READ)->getResult();
-            $versions = array_map($records->toRow(...), $versionRows);
-            $done = 0;
-            foreach ($versions as $from) {
-                $destination = $this->versionForTransfer($target, $from['name'], currentRead: true);
-                if ($destination !== null) {
-                    $this->moveVersionReferences((int)$from['id'], $destination);
-                    $this->em->createQueryBuilder()->delete(Entity\SoftwareVersion::class, 'v')
-                        ->where('v.id = :id')->setParameter('id', $from['id'], Types::INTEGER)->getQuery()->execute();
-                } else {
-                    $this->em->createQueryBuilder()->update(Entity\SoftwareVersion::class, 'v')
-                        ->set('v.softwares', ':target')->setParameter('target', $target, Types::INTEGER)
-                        ->set('v.entities', ':entity')->setParameter('entity', $entity, Types::INTEGER)
-                        ->where('v.id = :id')->setParameter('id', $from['id'], Types::INTEGER)->getQuery()->execute();
+        \itsmng\Database\OwnedMutationFrame::run($this->em->getConnection(), fn () => $assignments->withSoftwareHierarchy(
+            [...$sources, $target],
+            function () use ($target, $entity, $sources, $trash, $progress, $assignments): void {
+                $ids = [...$sources, $target];
+                $lock = $this->em->createQueryBuilder()->select('s.id AS id')->from(Entity\Software::class, 's')
+                    ->where('s.id IN (:ids)')->setParameter('ids', $ids)->orderBy('s.id')->getQuery();
+                $lock->setLockMode(LockMode::PESSIMISTIC_WRITE);
+                $locked = $lock->getScalarResult();
+                $assignments->lockSoftwareAssignments($ids);
+                if (count($locked) !== count($ids)) {
+                    throw new \RuntimeException('A software selected for merging no longer exists.');
                 }
-                ++$done;
+                $records = new RecordRepository($this->em);
+                $versionRows = $this->em->createQueryBuilder()->select('v')->from(Entity\SoftwareVersion::class, 'v')
+                    ->where('v.softwares IN (:sources)')->setParameter('sources', $sources)->orderBy('v.id')->getQuery()
+                    ->setHint(\Doctrine\ORM\Query::HINT_REFRESH, true)->setLockMode(LockMode::PESSIMISTIC_READ)->getResult();
+                $versions = array_map($records->toRow(...), $versionRows);
+                $done = 0;
+                foreach ($versions as $from) {
+                    $destination = $this->versionForTransfer($target, $from['name'], currentRead: true);
+                    if ($destination !== null) {
+                        $this->moveVersionReferences((int)$from['id'], $destination);
+                        $this->em->createQueryBuilder()->delete(Entity\SoftwareVersion::class, 'v')
+                            ->where('v.id = :id')->setParameter('id', $from['id'], Types::INTEGER)->getQuery()->execute();
+                    } else {
+                        $this->em->createQueryBuilder()->update(Entity\SoftwareVersion::class, 'v')
+                            ->set('v.softwares', ':target')->setParameter('target', $target, Types::INTEGER)
+                            ->set('v.entities', ':entity')->setParameter('entity', $entity, Types::INTEGER)
+                            ->where('v.id = :id')->setParameter('id', $from['id'], Types::INTEGER)->getQuery()->execute();
+                    }
+                    ++$done;
+                    if ($progress !== null) {
+                        $progress($done, count($versions) + 1);
+                    }
+                }
+                $this->em->createQueryBuilder()->update(Entity\SoftwareLicense::class, 'l')
+                    ->set('l.softwares', ':target')->setParameter('target', $target, Types::INTEGER)
+                    ->where('l.softwares IN (:sources)')->setParameter('sources', $sources)->getQuery()->execute();
+                // Licence ownership changed without per-licence hooks. Reconcile
+                // every old/new Software on this same writer before trashing sources.
+                foreach ($locked as $software) {
+                    SoftwareAssignmentCancelled::requireSuccess(
+                        $assignments->refreshSoftwareValidity((int)$software['id']),
+                        'Merged Software validity refresh'
+                    );
+                }
+                foreach ($sources as $source) {
+                    if (!$trash($source)) {
+                        throw new SoftwareAssignmentCancelled('Unable to trash software after merging.');
+                    }
+                }
                 if ($progress !== null) {
-                    $progress($done, count($versions) + 1);
+                    $progress(count($versions) + 1, count($versions) + 1);
                 }
             }
-            $this->em->createQueryBuilder()->update(Entity\SoftwareLicense::class, 'l')
-                ->set('l.softwares', ':target')->setParameter('target', $target, Types::INTEGER)
-                ->where('l.softwares IN (:sources)')->setParameter('sources', $sources)->getQuery()->execute();
-            // Licence ownership changed without per-licence hooks. Reconcile
-            // every old/new Software on this same writer before trashing sources.
-            foreach ($locked as $software) {
-                SoftwareAssignmentCancelled::requireSuccess(
-                    $assignments->refreshSoftwareValidity((int)$software['id']),
-                    'Merged Software validity refresh'
-                );
-            }
-            foreach ($sources as $source) {
-                if (!$trash($source)) {
-                    throw new SoftwareAssignmentCancelled('Unable to trash software after merging.');
-                }
-            }
-            if ($progress !== null) {
-                $progress(count($versions) + 1, count($versions) + 1);
-            }
-        });
+        ));
     }
 
     /** Dictionary renames retain entity ownership; a merged version uses its lifecycle. */
     public function moveDictionaryVersion(int $target, int $version, ?string $name, callable $remove): void
     {
-        $this->em->getConnection()->transactional(function () use ($target, $version, $name, $remove): void {
-            $destination = (new SoftwareDictionaryRepository($this->em))->versionId($target, $name);
-            if ($destination === $version) {
-                return;
+        $assignments = SoftwareAssignmentService::forConnection($this->em->getConnection());
+        $source = (new SoftwareAssignmentRepository($this->em))->softwareForVersion($version);
+        \itsmng\Database\OwnedMutationFrame::run($this->em->getConnection(), fn () => $assignments->withSoftwareHierarchy(
+            [$source, $target],
+            function () use ($target, $version, $name, $remove): void {
+                $destination = (new SoftwareDictionaryRepository($this->em))->versionId($target, $name);
+                if ($destination === $version) {
+                    return;
+                }
+                if ($destination === -1) {
+                    $this->em->createQueryBuilder()->update(Entity\SoftwareVersion::class, 'v')
+                        ->set('v.name', ':name')->setParameter('name', $name, Types::STRING)
+                        ->set('v.softwares', ':target')->setParameter('target', $target, Types::INTEGER)
+                        ->where('v.id = :id')->setParameter('id', $version, Types::INTEGER)->getQuery()->execute();
+                    return;
+                }
+                $this->moveVersionReferences($version, $destination);
+                if (!$remove($version)) {
+                    throw new \RuntimeException('Unable to delete software version after dictionary merging.');
+                }
             }
-            if ($destination === -1) {
-                $this->em->createQueryBuilder()->update(Entity\SoftwareVersion::class, 'v')
-                    ->set('v.name', ':name')->setParameter('name', $name, Types::STRING)
-                    ->set('v.softwares', ':target')->setParameter('target', $target, Types::INTEGER)
-                    ->where('v.id = :id')->setParameter('id', $version, Types::INTEGER)->getQuery()->execute();
-                return;
-            }
-            $this->moveVersionReferences($version, $destination);
-            if (!$remove($version)) {
-                throw new \RuntimeException('Unable to delete software version after dictionary merging.');
-            }
-        });
+        ));
     }
 
     private function moveVersionReferences(int $source, int $destination): void

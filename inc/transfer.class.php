@@ -143,7 +143,7 @@ class Transfer extends CommonDBTM
             $this->inittype = 0;
             $this->performMoveItems($items, (int)$to, $options);
             return true;
-        });
+        }, $items, (int)$to);
     }
 
     /** The coordinator includes simulation cleanup and every selected mutation. */
@@ -269,7 +269,7 @@ class Transfer extends CommonDBTM
 
 
     /** Recursive transfers join the current operation and propagate refusals. */
-    private function runTransfer(callable $operation)
+    private function runTransfer(callable $operation, array $items = [], ?int $destination = null)
     {
         global $DB;
         try {
@@ -292,9 +292,18 @@ class Transfer extends CommonDBTM
         $this->createdTransferRecords = [];
         try {
             return $this->transferModels->observe($DB->getDoctrineConnection(), fn () => NotificationSetting::withoutNotifications(
-                fn () => $this->transferCoordinator->run($operation)
+                fn () => $this->transferCoordinator->run(fn () => (new \itsmng\Domain\SoftwareAssignmentService($DB))->withTransferHierarchy(
+                    $items,
+                    $destination ?? (int)$this->to,
+                    $operation
+                ))
             ));
         } catch (Throwable $error) {
+            if ($error instanceof \itsmng\Database\MutationCleanupFailure && $error->rollbackUnproven) {
+                // A lost frame cannot justify restoring old model/session views
+                // or a routine false outcome. Actual persisted state stays open.
+                throw $error;
+            }
             $this->transferModels->restore();
             [
                 $this->already_transfer, $this->needtobe_transfer, $this->noneedtobe_transfer,
@@ -1172,7 +1181,7 @@ class Transfer extends CommonDBTM
     **/
     public function transferItem($itemtype, $ID, $newID)
     {
-        return $this->runTransfer(fn () => $this->performTransferItem($itemtype, $ID, $newID));
+        return $this->runTransfer(fn () => $this->performTransferItem($itemtype, $ID, $newID), [$itemtype => [$ID, $newID]]);
     }
 
     private function performTransferItem($itemtype, $ID, $newID): bool
@@ -1756,7 +1765,7 @@ class Transfer extends CommonDBTM
                 }
             }
             return true;
-        });
+        }, [$itemtype => [$ID]]);
     }
 
 
@@ -1781,7 +1790,7 @@ class Transfer extends CommonDBTM
                 }
             );
             return true;
-        });
+        }, [Item_SoftwareLicense::class => [$ID]]);
     }
 
 

@@ -26,11 +26,12 @@ final class SoftwareAssignmentRepository
         return $rows[0] ?? null;
     }
 
-    public function allocationOwner(int $id): ?array
+    public function allocationOwner(int $id, bool $current = true): ?array
     {
         $rows = $this->em->createQueryBuilder()->select('a.itemtype AS kind, a.items_id AS subject, IDENTITY(a.softwarelicenses) AS license')
             ->from(Entity\ItemSoftwareLicense::class, 'a')->where('a.id = :id')
-            ->setParameter('id', $id, Types::BIGINT)->getQuery()->setLockMode(LockMode::PESSIMISTIC_READ)->getScalarResult();
+            ->setParameter('id', $id, Types::BIGINT)->getQuery()
+            ->setLockMode($current ? LockMode::PESSIMISTIC_READ : LockMode::NONE)->getScalarResult();
         return $rows[0] ?? null;
     }
 
@@ -93,6 +94,68 @@ final class SoftwareAssignmentRepository
         }
         ksort($contexts);
         return $contexts;
+    }
+
+    /** Current actual subject objects implement their declared allocation scope. */
+    public function allocationSubject(string $kind, int $id): \itsmng\Domain\AllocationSubject
+    {
+        $metadata = $this->em->getClassMetadata(Entity\ItemSoftwareLicense::class);
+        $property = Entity\ItemSoftwareLicense::referenceAssociation($kind);
+        $target = $metadata->getAssociationMapping($property)->targetEntity;
+        $subject = $this->em->createQueryBuilder()->select('s')->from($target, 's')
+            ->where('s.id = :id')->setParameter('id', $id, Types::BIGINT)->getQuery()
+            ->setHint(Query::HINT_REFRESH, true)->setLockMode(LockMode::PESSIMISTIC_READ)->getOneOrNullResult();
+        if (!$subject instanceof \itsmng\Domain\AllocationSubject) {
+            throw new SoftwareAssignmentCancelled('The selected allocation subject has no declared domain scope.');
+        }
+        return $subject;
+    }
+
+    /** Discover selected ancestry without taking any aggregate or subject locks. */
+    public function hierarchyRoots(
+        array $subjects = [],
+        array $licenses = [],
+        array $software = [],
+        array $extra = [],
+        bool $includeInstallations = false
+    ): array {
+        if ($includeInstallations) {
+            // Bulk version/Software removal and transfer invoke installation
+            // lifecycles. Scalar aggregate validity updates do not.
+            $software = [...$software, ...$this->softwareForSubjectInstallations($subjects)];
+            $subjects = [...$subjects, ...$this->subjectsForSoftwareInstallations($software)];
+        }
+        foreach ($subjects as [$kind, $id]) {
+            $licenses = [...$licenses, ...$this->licensesForSubject($kind, $id, current: false)];
+        }
+        $licenses = self::identifiers($licenses);
+        // Licence validity invokes its owning Software's public lifecycle. That
+        // lifecycle requires its other licence subjects before any graph lock.
+        $software = self::identifiers([...$software, ...$this->softwareIdsForLicenses($licenses)]);
+        $licenses = self::identifiers([...$licenses, ...$this->licensesForSoftware($software, current: false)]);
+        $subjects = [...$subjects, ...$this->subjectsForLicenses($licenses, current: false)];
+        $roots = $extra;
+        foreach ($this->subjectContexts($subjects) as $context) {
+            $roots[] = (int)$context['entity'];
+        }
+        foreach ($licenses as $id) {
+            $license = $this->license($id, current: false);
+            if ($license === null || $license->entities === null || $license->softwares === null) {
+                throw new SoftwareAssignmentCancelled('The selected allocation licence has no owning scope.');
+            }
+            $roots[] = $license->entities->id;
+            $software[] = $license->softwares->id;
+        }
+        foreach (self::identifiers($software) as $id) {
+            $owner = $this->software($id, current: false);
+            if ($owner === null || $owner->entities === null) {
+                throw new SoftwareAssignmentCancelled('The selected Software has no owning entity.');
+            }
+            $roots[] = $owner->entities->id;
+        }
+        $roots = array_values(array_unique(array_map('intval', $roots)));
+        sort($roots);
+        return $roots;
     }
 
     public function subjectTables(array $subjects): array
@@ -174,7 +237,7 @@ final class SoftwareAssignmentRepository
         return self::identifiers(array_column($rows, 'id'));
     }
 
-    public function licensesForSoftware(array $software): array
+    public function licensesForSoftware(array $software, bool $current = true): array
     {
         $software = self::identifiers($software);
         if (!$software) {
@@ -182,12 +245,12 @@ final class SoftwareAssignmentRepository
         }
         $rows = $this->em->createQueryBuilder()->select('l.id AS id')->from(Entity\SoftwareLicense::class, 'l')
             ->where('l.softwares IN (:software)')->setParameter('software', $software)->orderBy('l.id')->getQuery()
-            ->setLockMode(LockMode::PESSIMISTIC_READ)->getScalarResult();
+            ->setLockMode($current ? LockMode::PESSIMISTIC_READ : LockMode::NONE)->getScalarResult();
         return self::identifiers(array_column($rows, 'id'));
     }
 
     /** Current allocation identities in one stable row-lock order. */
-    public function subjectsForLicenses(array $licenses): array
+    public function subjectsForLicenses(array $licenses, bool $current = true): array
     {
         $licenses = self::identifiers($licenses);
         if (!$licenses) {
@@ -196,7 +259,36 @@ final class SoftwareAssignmentRepository
         $rows = $this->em->createQueryBuilder()->select('a.id AS id, a.itemtype AS kind, a.items_id AS subject')
             ->from(Entity\ItemSoftwareLicense::class, 'a')->where('a.softwarelicenses IN (:ids)')
             ->setParameter('ids', $licenses)->orderBy('a.id')->getQuery()
-            ->setLockMode(LockMode::PESSIMISTIC_READ)->getScalarResult();
+            ->setLockMode($current ? LockMode::PESSIMISTIC_READ : LockMode::NONE)->getScalarResult();
+        return array_map(static fn (array $row): array => [$row['kind'], (int)$row['subject']], $rows);
+    }
+
+    /** Selected asset purge/transfer invokes public lifecycles for its installed owners. */
+    private function softwareForSubjectInstallations(array $subjects): array
+    {
+        $software = [];
+        foreach ($subjects as [$kind, $id]) {
+            $property = Entity\ItemSoftwareVersion::referenceAssociation($kind);
+            $rows = $this->em->createQueryBuilder()->select('IDENTITY(v.softwares) AS id')
+                ->from(Entity\ItemSoftwareVersion::class, 'i')->innerJoin('i.softwareversions', 'v')
+                ->where('IDENTITY(i.' . $property . ') = :subject')->setParameter('subject', $id, Types::BIGINT)
+                ->orderBy('i.id')->getQuery()->getScalarResult();
+            $software = [...$software, ...array_column($rows, 'id')];
+        }
+        return self::identifiers($software);
+    }
+
+    /** Installation purge invokes public allocation validity work for its actual subjects. */
+    private function subjectsForSoftwareInstallations(array $software): array
+    {
+        $software = self::identifiers($software);
+        if (!$software) {
+            return [];
+        }
+        $rows = $this->em->createQueryBuilder()->select('i.itemtype AS kind, i.items_id AS subject')
+            ->from(Entity\ItemSoftwareVersion::class, 'i')->innerJoin('i.softwareversions', 'v')
+            ->where('v.softwares IN (:software)')->setParameter('software', $software)->orderBy('i.id')
+            ->getQuery()->getScalarResult();
         return array_map(static fn (array $row): array => [$row['kind'], (int)$row['subject']], $rows);
     }
 
