@@ -145,9 +145,11 @@ try {
     $secondaryAdapter = (new ReflectionClass($DB))->newInstanceWithoutConstructor();
     verify($secondaryAdapter->connect() === true, 'Independent configured application writer opens');
     $secondary = $secondaryAdapter->getDoctrineConnection();
-    verify($secondaryAdapter->getProvider() === $DB->getProvider() && !$secondaryAdapter->isSlave()
+    verify(
+        $secondaryAdapter->getProvider() === $DB->getProvider() && !$secondaryAdapter->isSlave()
         && $secondaryAdapter->dbdefault === $DB->dbdefault && $secondary->getDatabase() === $connection->getDatabase(),
-        'Independent adapter retains the actual configured provider, database and writer routing');
+        'Independent adapter retains the actual configured provider, database and writer routing'
+    );
     verify($secondary->getParams() === $connection->getParams(), 'Independent writer retains all configured connection and TLS parameters');
     if ($DB->getProvider() === 'pgsql') {
         verify($secondaryAdapter->connected, 'Independent configured PostgreSQL writer opens');
@@ -157,8 +159,10 @@ try {
     } else {
         $physicalId = 'SELECT CONNECTION_ID()';
         $sessionPolicy = 'SELECT @@SESSION.time_zone AS timezone, @@SESSION.sql_mode AS modes, @@SESSION.foreign_key_checks AS foreign_keys';
-        verify($secondary->fetchAssociative($sessionPolicy) === $connection->fetchAssociative($sessionPolicy),
-            'Independent MySQL writer retains configured timezone and canonical session enforcement');
+        verify(
+            $secondary->fetchAssociative($sessionPolicy) === $connection->fetchAssociative($sessionPolicy),
+            'Independent MySQL writer retains configured timezone and canonical session enforcement'
+        );
     }
     verify($secondary !== $connection && $secondary->fetchOne($physicalId) !== $connection->fetchOne($physicalId), 'A and B use distinct physical writers');
     $entity = $record('glpi_entities', ['name' => $prefix . ' visible']);
