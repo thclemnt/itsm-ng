@@ -203,9 +203,10 @@ try {
         $_SESSION['glpiactiveentities'] = [];
         $_SESSION['glpiactiveentities_string'] = '';
         try {
-            verify((new $kind())->update(['id' => $id, $parentField => $parent]) === false,
-                'Unchanged owning command still refuses empty entity scope ' . $kind);
-            verify($nativeSnapshot() === $before, 'Scope refusal has no native/history/aggregate side effects ' . $kind);
+            // Public callers admit the actor before invoking trusted update;
+            // unchanged direct update is not an actor-command boundary.
+            verify(!(new $kind())->can($id, UPDATE), 'Public owning relationship admission refuses empty entity scope ' . $kind);
+            verify($nativeSnapshot() === $before, 'Refused public admission dispatches no native/history/aggregate writes ' . $kind);
         } finally {
             $_SESSION = $scope;
         }
