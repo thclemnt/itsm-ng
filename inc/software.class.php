@@ -89,16 +89,44 @@ class Software extends CommonDBTM
     {
         global $DB;
 
-        if ($DB->isSlave() || !array_key_exists(static::getIndexName(), $input)
-            || !$this->getFromDB($input[static::getIndexName()])) {
+        $database = $DB;
+        if ($database->isSlave() || !array_key_exists(static::getIndexName(), $input)) {
             return false;
         }
-        return (new \itsmng\Domain\SoftwareAssignmentService($DB))->mutateSoftware(
+        $assertOwner = $this->softwareWriterContinuity($database);
+        $loaded = $this->getFromDB($input[static::getIndexName()]);
+        $assertOwner();
+        if (!$loaded) {
+            return false;
+        }
+        return (new \itsmng\Domain\SoftwareAssignmentService($database))->mutateSoftware(
             $this,
             \itsmng\Database\LifecycleModelJournal::state($this),
             fn () => parent::delete($input, $force, $history),
             'delete'
         );
+    }
+
+    /** Capture this mutation's supplied owner before an overridable preload. */
+    private function softwareWriterContinuity(DBAdapter $database): \Closure
+    {
+        if (($GLOBALS['DB'] ?? null) !== $database) {
+            throw new \itsmng\Database\TransactionOwnershipMismatch('Software mutation changed its supplied writer.');
+        }
+        $connection = $database->getDoctrineConnection();
+        \itsmng\Database\TransactionOwnership::assertManaged($connection);
+        $level = $connection->getTransactionNestingLevel();
+        $scope = $level > 0 ? $connection->captureManagedTransactionScope() : null;
+        return static function () use ($database, $connection, $scope, $level): void {
+            if (($GLOBALS['DB'] ?? null) !== $database || $database->getDoctrineConnection() !== $connection) {
+                throw new \itsmng\Database\TransactionOwnershipMismatch('Software mutation changed its supplied writer.');
+            }
+            \itsmng\Database\TransactionOwnership::assertManaged($connection);
+            if ($connection->getTransactionNestingLevel() !== $level) {
+                throw new \itsmng\Database\TransactionOwnershipMismatch('Software preload or callback changed its managed nesting.');
+            }
+            $scope?->assertActive();
+        };
     }
 
     // From CommonDBTM
@@ -992,6 +1020,77 @@ class Software extends CommonDBTM
     }
 
 
+    /** Merge source removal owns the real delete lifecycle and its follow-up intents. */
+    public function removeMergedSource(int $ID, string $comment = ''): bool
+    {
+        global $DB, $CFG_GLPI;
+
+        $database = $DB;
+        if ($database->isSlave()) {
+            return false;
+        }
+        $assertOwner = $this->softwareWriterContinuity($database);
+        $loaded = $this->getFromDB($ID);
+        $assertOwner();
+        if (!$loaded || (int)$this->getID() !== $ID || $this->isTemplate()) {
+            return false;
+        }
+        // Preserve the existing merge comment/category input, including its
+        // historical conditional newline. Dictionary putInTrash stays separate.
+        $input = ['id' => $ID, 'is_deleted' => 1];
+        if (isset($CFG_GLPI['softwarecategories_id_ondelete']) && $CFG_GLPI['softwarecategories_id_ondelete'] != 0) {
+            $input['softwarecategories_id'] = $CFG_GLPI['softwarecategories_id_ondelete'];
+        }
+        $input['comment'] = (($this->fields['comment'] != '') ? "\n" : '') . $comment;
+        return (new \itsmng\Domain\SoftwareAssignmentService($database))->mutateSoftware(
+            $this,
+            \itsmng\Database\LifecycleModelJournal::state($this),
+            function () use ($database, $ID, $input): bool {
+                $assertOwner = $this->softwareWriterContinuity($database);
+                $manager = \itsmng\Database\Orm::create($database);
+                try {
+                    $repository = new \itsmng\Database\Repository\SoftwareAssignmentRepository($manager);
+                    $source = $repository->software($ID);
+                    if ($source === null || $source->is_template) {
+                        return false;
+                    }
+                } finally {
+                    $manager->clear();
+                }
+                $deleted = $this->delete(['id' => $ID]);
+                $assertOwner();
+                if (!$deleted) {
+                    return false;
+                }
+                if ((int)$this->getID() !== $ID) {
+                    throw new \itsmng\Domain\SoftwareAssignmentCancelled('Merged source delete changed its selected identity.');
+                }
+                $updated = $this->update($input);
+                $assertOwner();
+                if (!$updated) {
+                    return false;
+                }
+                if ((int)$this->getID() !== $ID) {
+                    throw new \itsmng\Domain\SoftwareAssignmentCancelled('Merged source update changed its selected identity.');
+                }
+                // Completion hooks may write on this same owner. Observe the
+                // actual selected source, never a callback-mutated model ID.
+                $manager = \itsmng\Database\Orm::create($database);
+                try {
+                    $source = (new \itsmng\Database\Repository\SoftwareAssignmentRepository($manager))->software($ID);
+                    if ($source === null || !$source->is_deleted || $source->is_template) {
+                        throw new \itsmng\Domain\SoftwareAssignmentCancelled('Merged source removal did not retain the deleted source.');
+                    }
+                } finally {
+                    $manager->clear();
+                }
+                return true;
+            },
+            'delete'
+        );
+    }
+
+
     /**
      * Restore a software from trashbin
      *
@@ -1115,7 +1214,7 @@ class Software extends CommonDBTM
                     (int)$ID,
                     (int)$this->getField('entities_id'),
                     array_keys($item),
-                    static fn (int $source): bool => (new self())->putInTrash($source, __('Software deleted after merging')),
+                    static fn (int $source): bool => (new self())->removeMergedSource($source, __('Software deleted after merging')),
                     $html ? static fn (int $done, int $total) => Html::changeProgressBarPosition($done, $total) : null
                 );
                 return true;

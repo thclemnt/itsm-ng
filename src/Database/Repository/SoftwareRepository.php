@@ -247,14 +247,19 @@ final class SoftwareRepository
             [...$sources, $target],
             function () use ($target, $entity, $sources, $trash, $progress, $assignments): void {
                 $ids = [...$sources, $target];
-                $lock = $this->em->createQueryBuilder()->select('s.id AS id')->from(Entity\Software::class, 's')
+                $lock = $this->em->createQueryBuilder()->select('s.id AS id', 's.is_template AS is_template')->from(Entity\Software::class, 's')
                     ->where('s.id IN (:ids)')->setParameter('ids', $ids)->orderBy('s.id')->getQuery();
                 $lock->setLockMode(LockMode::PESSIMISTIC_WRITE);
                 $locked = $lock->getScalarResult();
-                $assignments->lockSoftwareAssignments($ids);
                 if (count($locked) !== count($ids)) {
                     throw new \RuntimeException('A software selected for merging no longer exists.');
                 }
+                foreach ($locked as $software) {
+                    if (in_array((int)$software['id'], $sources, true) && $software['is_template']) {
+                        throw new SoftwareAssignmentCancelled('A software template cannot be removed by merging.');
+                    }
+                }
+                $assignments->lockSoftwareAssignments($ids);
                 $records = new RecordRepository($this->em);
                 $versionRows = $this->em->createQueryBuilder()->select('v')->from(Entity\SoftwareVersion::class, 'v')
                     ->where('v.softwares IN (:sources)')->setParameter('sources', $sources)->orderBy('v.id')->getQuery()
