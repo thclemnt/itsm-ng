@@ -269,7 +269,7 @@ try {
             if ($postgres) {
                 $connection->executeStatement('DROP FUNCTION IF EXISTS itsm_domain_document_restore_probe()');
             }
-            $manager->createTable($required);
+            $manager->createTable($nativeExact->restorationTable($table));
             $nativeBooleans->restore();
             $connection->executeStatement($migration::checkSql($table));
             Ledger::save($connection, $migration::VERSION, $savedStage);
@@ -301,4 +301,19 @@ if ($historicalCleanup !== []) {
     throw new RuntimeException('Historical Domain document fixture cleanup failed.', previous: $historicalCleanup[0]);
 }
 verify((new SchemaCheck())->differences($connection) === [], 'Fixture cleanup restores the complete required schema');
+// Exercise the restored native policy independently of the completed receipt.
+$connection->beginTransaction();
+try {
+    $policyDocument = $fixtures->create('glpi_documents');
+    $policyBudget = $fixtures->create('glpi_budgets');
+    $policyLink = ['documents_id' => $policyDocument, 'itemtype' => 'Budget', 'budgets_id' => $policyBudget];
+    $reject(static fn () => $connection->insert($table, array_replace($policyLink, ['itemtype' => 'budget'])), 'Restored document CHECK rejects a lowercase Budget INSERT', $table . '_typed_item_kind');
+    $connection->insert($table, $policyLink);
+    $policyId = (int)$connection->fetchOne('SELECT id FROM ' . $table . ' WHERE documents_id=? AND budgets_id=?', [$policyDocument, $policyBudget]);
+    verify($policyId > 0 && (int)$connection->fetchOne('SELECT items_id FROM ' . $table . ' WHERE id=?', [$policyId]) === $policyBudget, 'Restored canonical Budget link keeps its actual generated owning identity');
+    $reject(static fn () => $connection->update($table, ['itemtype' => 'budget'], ['id' => $policyId]), 'Restored document CHECK rejects a lowercase Budget UPDATE', $table . '_typed_item_kind');
+} finally {
+    $connection->rollBack();
+}
+
 echo $DB->getProvider() . ": $assertions assertions; owning Domain documents, native projection/uniqueness, frozen expansion, invalid-data preflight, preserved timestamps and populated retry passed.\n";

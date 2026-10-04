@@ -5,6 +5,7 @@
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
+use Doctrine\DBAL\Schema\Table;
 use itsmng\Database\BooleanDomainSchema;
 use itsmng\Database\Migration\ExactDiscriminators20261010;
 use itsmng\Database\Migration\History;
@@ -18,6 +19,7 @@ final class ExactSubjectHistoricalFixture
     private bool $detached = false;
     private array $definitions;
     private array $restorationFacts = [];
+    private array $restorationTables = [];
 
     public function __construct(private Connection $connection, ?array $tables = null)
     {
@@ -67,9 +69,71 @@ final class ExactSubjectHistoricalFixture
             }
             if ($tables !== null) {
                 $this->restorationFacts[$table] = $this->facts($table);
+                $this->restorationTables[$table] = $this->captureRestorationTable($table);
             }
         }
         $this->assertSelectedReconstruction();
+    }
+
+    /** Captured native declaration for cleanup only; historical test schemas stay separate. */
+    public function restorationTable(string $table): Table
+    {
+        if (!$this->detached || !isset($this->restorationTables[$table])) {
+            throw new LogicException('A selected owned reconstruction is required before requesting its cleanup declaration.');
+        }
+        return clone $this->restorationTables[$table];
+    }
+
+    private function captureRestorationTable(string $table): Table
+    {
+        $manager = $this->connection->createSchemaManager();
+        $captured = $manager->introspectTable($table);
+        // Table hydration synthesizes FK-support indexes. listTableIndexes reads
+        // actual indexes without constructing a Table or inventing those owners.
+        $nativeNames = [];
+        foreach ($manager->listTableIndexes($table) as $index) {
+            $nativeNames[$index->getName()] = true;
+        }
+        foreach ($captured->getIndexes() as $index) {
+            if (!isset($nativeNames[$index->getName()])) {
+                $captured->dropIndex($index->getName());
+            }
+        }
+        $platform = $this->connection->getDatabasePlatform();
+        if ($platform instanceof AbstractMySQLPlatform) {
+            foreach ($this->restorationFacts[$table]['native']['columns'] as $name => $native) {
+                // DBAL maps TIMESTAMP to datetime and loses its native declaration.
+                // Admit only the actually captured simple nullable timestamp form;
+                // do not parse or silently approximate other native DEFAULT/EXTRA.
+                if (!preg_match('/^timestamp(?:\([0-6]\))?$/iD', $native['COLUMN_TYPE'])) {
+                    continue;
+                }
+                $column = $captured->getColumn($name);
+                // The schema manager owns provider default parsing, including
+                // MariaDB's native string NULL representation of a NULL default.
+                if ($native['IS_NULLABLE'] !== 'YES' || $column->getDefault() !== null || $native['EXTRA'] !== '') {
+                    throw new LogicException('Unsupported native timestamp shape before selected fixture reconstruction: ' . $table . '.' . $name);
+                }
+                $declaration = $native['COLUMN_TYPE'] . ' NULL DEFAULT NULL';
+                if ($column->getComment() !== null && $column->getComment() !== '') {
+                    $declaration .= ' ' . $platform->getInlineColumnCommentSQL($column->getComment());
+                }
+                $column->setColumnDefinition($declaration);
+            }
+        }
+        $projection = $captured->getColumn('items_id');
+        // PostgreSQL introspection exposes a generated expression as a DEFAULT.
+        // Retain the captured owning expression as generation instead, never both.
+        $projection->setDefault(null);
+        $projection->setAutoincrement(false);
+        $declaration = $projection->getType()->getSQLDeclaration($projection->toArray(), $platform)
+            . ' GENERATED ALWAYS AS (' . $this->original[$table]['projection'] . ') STORED'
+            . ($projection->getNotnull() ? ' NOT NULL' : '');
+        if ($platform->supportsInlineColumnComments() && $projection->getComment() !== null && $projection->getComment() !== '') {
+            $declaration .= ' ' . $platform->getInlineColumnCommentSQL($projection->getComment());
+        }
+        $projection->setColumnDefinition($declaration);
+        return $captured;
     }
 
     /** Current valid rows survive old collation behavior; deliberately bad rows are owned later. */

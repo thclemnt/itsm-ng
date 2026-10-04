@@ -268,7 +268,7 @@ try {
     try {
         if ($historicalStarted) {
             $manager->dropTable($table);
-            $manager->createTable($required);
+            $manager->createTable($nativeExact->restorationTable($table));
             $booleans->restore();
             $connection->executeStatement($migration::checkSql($table));
             foreach ([DomainDocuments20261006::VERSION, OperatingSystemSubjects20261006::VERSION] as $version) {
