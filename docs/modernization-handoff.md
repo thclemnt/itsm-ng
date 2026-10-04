@@ -1,5 +1,51 @@
 # PostgreSQL and Doctrine modernization goal
 
+## 2026-10-04 08:06 UTC: canonical fresh-install retry repaired on both providers
+
+The goal remains **OPEN**. At clean integrated
+`d6d263bd201086f596b744021860db29ad91c8ba`, the unchanged original
+migration-history contract passes PostgreSQL in **147.862 seconds** and MariaDB
+in **211.207 seconds**, within the original 300-second limit. Both pass actual
+populated adoption, invalid-data diagnostics, native sequences and the fresh OS
+interruption/resume that previously failed MariaDB. The new populated producer
+retry/refusal contract passes **36 assertions** on each provider, in
+**31.364 / 125.194 seconds**. Schema-check then passes both; the entire selected
+three-contract chain has zero Warning/Fatal/Deprecated. Discovery finds **215**
+contracts. Evidence: `owned-domains-d6d263bd20-retry-{pg,mysql}-focused-*` and
+`owned-domains-d6d263bd20-retry-diagnostic-summary.json`.
+
+The pending Domain-document producer owns admission of its generated historical
+33-subject predecessor, derived through frozen DBAL declarations. Only absent or
+genuine pre-column owner state can admit its own missing future column; later
+checkpoint loss, old-column drift, invalid/exclusive/target identities and
+missing projection still refuse before DDL or receipt. History supplies the same
+producer to preview, audit and apply. The audit view does not change the frozen
+CHECK/projection builders, target declarations, baseline, seeds, ordering or
+existing ledger. The initial integrated repair's new positive contract exposed
+an additional API error: DBAL 4 returns a list of Column objects, not keyed
+columns. The reviewed two-expression correction uses actual Column names.
+Those earlier failing receipts remain retained: PostgreSQL 4/5 and MariaDB 3/5
+at `2c01d4d502`; both following schema comparisons passed. They are not relabeled
+as successes. See `owned-domains-2c01d4d502-retry-failure-summary.json`.
+
+All twelve PHP files changed since 112f9 pass syntax/style; optimized autoload
+contains 8,462 classes. ROOT's two formatting edits preserve every non-whitespace
+token kind/byte. Direct Git fetch confirms unchanged remote `01aee6a7`, with it
+and verified handoff `897c5c9b` preserved ancestors. Native goals remain
+unavailable; this is the durable implementation plan. Source reviewers and
+isolated subagents prepared the repair and validation packets; ROOT alone ran
+compiler/database jobs, sequentially by provider.
+
+Next: bind the actual final source/runtime to the independently reviewed complete
+suite packet, preserving all original historical inputs and explicitly reviewed
+runtime inspection/admission changes. Run the complete discovered order on both
+providers with original limits and final native/parent checks; prove genuinely
+new current-source normal CLI installs and repeat-migration behavior separately.
+Then validate the original application/API flows and browser checks before the
+next ten component associations. The latest complete both-provider green suite
+is still historical 30a4; no new complete-suite, browser, live-replica or remote
+CI success is claimed. Most legacy application SQL and relationship gaps remain.
+
 ## 2026-10-04 07:18 UTC: lifecycle repairs validated; install retry remains open
 
 Additional executed checks at clean `605c67ef233881898409e742aa4d1b763ce189f6`
