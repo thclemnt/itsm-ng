@@ -32,6 +32,12 @@ final class EntityRegistry
         return self::model()['booleans'];
     }
 
+    /** Physical instant/touch policy is declared once, on its owning temporal property. */
+    public static function nativeTimestamps(): array
+    {
+        return self::model()['native_timestamps'];
+    }
+
     /** Nullability belongs to the same mapped properties as the flag's type. */
     public static function booleanFields(string $table): array
     {
@@ -111,6 +117,7 @@ final class EntityRegistry
         $connection = DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
         $em = new EntityManager($connection, Orm::configuration(new MySQLPlatform()));
         $metadata = $em->getMetadataFactory()->getAllMetadata();
+        $nativeTimestamps = NativeTimestampSchema::declarations($metadata);
         $tables = $types = $booleans = $booleanFields = $relations = $references = $discriminators = $lifecycle = $readOnly = $scopeOwners = [];
         foreach ($metadata as $record) {
             $table = $record->getTableName();
@@ -240,6 +247,6 @@ final class EntityRegistry
         // Only immutable lookup projections survive bootstrap, not the offline unit of work.
         unset($em, $metadata, $record);
         gc_collect_cycles();
-        return self::$model = ['tables' => $tables, 'types' => $types, 'booleans' => $booleans, 'boolean_fields' => $booleanFields, 'relations' => $relations, 'references' => $references, 'discriminators' => $discriminators, 'lifecycle' => $lifecycle, 'read_only' => $readOnly, 'scope_owners' => $scopeOwners];
+        return self::$model = ['tables' => $tables, 'types' => $types, 'booleans' => $booleans, 'boolean_fields' => $booleanFields, 'relations' => $relations, 'references' => $references, 'discriminators' => $discriminators, 'lifecycle' => $lifecycle, 'read_only' => $readOnly, 'scope_owners' => $scopeOwners, 'native_timestamps' => $nativeTimestamps];
     }
 }

@@ -204,7 +204,8 @@ class ObjectLock implements \itsmng\Database\Mapping\LegacyInput
     #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?User $users = null;
 
-    #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: false, options: ['default' => 'CURRENT_TIMESTAMP'])]
+    #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: false, generated: 'ALWAYS', options: ['default' => new \Doctrine\DBAL\Schema\DefaultExpression\CurrentTimestamp(), 'comment' => 'Timestamp of the lock'])]
+    #[\itsmng\Database\Mapping\NativeTimestamp(touchTrigger: 'glpi_objectlocks_date_mod_touch')]
     public ?\DateTimeInterface $date_mod = null;
     #[ORM\PrePersist]
     public function initializeLockDate(): void

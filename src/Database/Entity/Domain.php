@@ -44,6 +44,7 @@ class Domain
     public bool $is_recursive = false;
 
     #[ORM\Column(name: '`date_expiration`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date_expiration = null;
 
     #[ORM\ManyToOne(targetEntity: User::class)]
@@ -66,9 +67,11 @@ class Domain
     public ?string $comment = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date_creation = null;
 
     /** The commercial supplier must be local or a recursive ancestor of this owner. */

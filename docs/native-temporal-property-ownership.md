@@ -1,0 +1,30 @@
+# Native timestamp property ownership
+
+This source batch moves the physical timestamp policy for seven existing properties onto their Doctrine declarations: Computer date_mod/date_creation, Alert date, Domain date_expiration/date_mod/date_creation, and ObjectLock date_mod. Their datetimetz hydration, nullability and lifecycle callbacks stay with the existing mapped properties. Alert and ObjectLock express their existing database defaults through DBAL's CurrentTimestamp expression. ObjectLock also owns its existing timestamp comment and the explicitly named automatic-touch policy.
+
+NativeTimestamp is a property attribute, not an ORM version field or a global type replacement. The metadata driver gives marked MySQL/MariaDB fields a native TIMESTAMP declaration using the same property's null/default/comment options. PostgreSQL retains ordinary Doctrine datetimetz storage. Unmarked datetimetz fields retain their existing behavior.
+
+ObjectLock date_mod also declares Doctrine generated ALWAYS readback while retaining explicit insert/update writes. An ordinary ownership update therefore refreshes the same managed object's actual database clock after flush. This does not make the timestamp an optimistic lock or a read-only compatibility projection. A distinct supplied timestamp remains accepted. The existing provider difference for an explicitly supplied unchanged clock is retained: MySQL suppresses automatic touch; the frozen PostgreSQL trigger touches it when another row value changes. This batch does not rewrite that historical trigger body or claim those two native cases were already equivalent.
+
+The current expected-schema builder is still named BaselineSchema. It now replaces existing marked columns from their ORM declarations instead of skipping them because the historical baseline already contains those columns. The metadata-derived compatibility view holds immutable attribute values, not another maintained field catalogue. Existing indexes retain their names and definitions. ObjectLock's current PostgreSQL touch DDL replaces only its precisely named inherited function/trigger statements and is generated from its owning property.
+
+Compatibility-projection skipping uses actual non-insertable/non-updatable metadata. Server-refreshed writable fields are not mistaken for read-only identity projections when adding a new mapped property.
+
+Historical Baseline20261001 and all canonical migration producers, snapshots and history registration are unchanged. This batch introduces no migration version, DDL repair, ledger rewrite or data conversion: the seven current declarations describe the existing canonical storage. Fresh installation must continue to replay frozen history. Native convergence on both providers remains a required validation gate.
+
+Schema inspection additionally verifies declared automatic touch. MySQL/MariaDB must retain the native ON UPDATE expression; PostgreSQL must retain the enabled unrestricted row-before-update trigger and its local, invoker-owned function with the declared body. An UPDATE OF column restriction is drift even if the function body and names match. This inspector only reads catalogs. Other unrelated trigger policies remain outside this inspection.
+
+## Validation status and next steps
+
+Source-only preparation has added two discovered portability contracts. No PHP syntax check, metadata execution, database test, full suite or browser test has been run by this author.
+
+- native-timestamps-metadata.php compares the seven properties with frozen and current schema semantics on MySQL, MariaDB and PostgreSQL platforms, checks a separately declared SchemaTool entity, and proves marked existing-column replacement while retaining an unrelated field and supporting index.
+- native-timestamps.php owns a previously absent probe table/function on the actual configured idle writer. It tests null/default hydration, UTC and Europe/Paris winter/summer conversion, untouched datetime semantics, actual ORM ObjectLock ownership updates and expiry reads, explicit/no-op clock behavior, and native type/touch drift diagnostics without repair. It rolls back owned rows, drops only its new objects and separately verifies raw ledger, table catalog, complete computer/user/lock row bags and timezones while retaining the original failure if cleanup also fails.
+
+The main worker must run syntax/style checks, both new contracts on both engines, existing timestamps/schema-check/lock contracts, genuine fresh installation and populated/retry migration evidence, then the discovered full suite on both engines and final native schema inspection before claiming this cohort complete. The migration history must remain byte-identical.
+
+The original source inventory counted 472 timestamp properties across 208 mapped tables. This batch selects seven; the other 465 remain open pending individually justified property ownership. This source checkpoint does not establish native inventory counts or finish the modernization goal.
+
+## Composition with held tree schema ownership
+
+The separately reviewed tree batch 40f07986709ca4a86b56739c2fec08c2ff6bfdd0 also changes AttributeDriver and the current BaselineSchema projection. Its class-level index ownership must remain alongside this property's temporal ownership. Keep its existing-reference/index replacement and this NativeTimestampSchema::replaceOwnedColumns call; preserve both original generated-subject skips. The temporal property's driver loop is separate from the tree class-index projection. Compose those two seams deliberately and review the combined source instead of accepting an automatic conflict resolution. Neither batch may rewrite frozen historical files.

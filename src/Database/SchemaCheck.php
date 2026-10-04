@@ -13,7 +13,7 @@ final class SchemaCheck
 {
     /**
      * Additional tables and indexes are allowed for plugins and local tuning.
-     * Boolean domains have a metadata-derived native CHECK inspector. Other
+     * Boolean domains and declared timestamp touch have native inspectors. Other
      * platform-specific expressions, triggers and CHECKs are not compared by DBAL.
      *
      * @return list<string>
@@ -77,6 +77,6 @@ final class SchemaCheck
                 $differences[] = 'Unexpected or changed foreign key: ' . $name . '.' . $key->getName();
             }
         }
-        return new SchemaInspection($actual, [...$differences, ...BooleanDomainSchema::differences($connection, $expected)]);
+        return new SchemaInspection($actual, [...$differences, ...BooleanDomainSchema::differences($connection, $expected), ...NativeTimestampSchema::differences($connection, $expected)]);
     }
 }

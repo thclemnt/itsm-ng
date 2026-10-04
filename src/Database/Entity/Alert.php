@@ -82,7 +82,8 @@ class Alert implements \itsmng\Database\Mapping\LegacyInput
     #[ORM\Column(name: '`type`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $type = 0;
 
-    #[ORM\Column(name: '`date`', type: 'datetimetz', nullable: false, options: ['default' => 'CURRENT_TIMESTAMP'])]
+    #[ORM\Column(name: '`date`', type: 'datetimetz', nullable: false, options: ['default' => new \Doctrine\DBAL\Schema\DefaultExpression\CurrentTimestamp()])]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date = null;
 
     #[ORM\PrePersist]
