@@ -34,7 +34,7 @@ $DB->assertManagedTransaction();
 $native = $connection->getNativeConnection();
 verify($native instanceof PDO && $native->getAttribute(PDO::ATTR_DRIVER_NAME) === ($DB->getProvider() === 'pgsql' ? 'pgsql' : 'mysql'), 'The configured provider is actually owned by its PDO driver');
 if ($DB->getProvider() === 'mysql') {
-    verify($native->getAttribute(PDO::ATTR_EMULATE_PREPARES) === false && $native->getAttribute(PDO::ATTR_STRINGIFY_FETCHES) === false, 'Actual MySQL driver retains native prepare and numeric fetching');
+    verify(in_array($native->getAttribute(PDO::ATTR_EMULATE_PREPARES), [false, 0], true) && $native->getAttribute(PDO::ATTR_STRINGIFY_FETCHES) === false, 'Actual MySQL driver retains native prepare and numeric fetching');
 }
 $manager = $connection->createSchemaManager();
 $name = 'glpi_port_pdo_' . bin2hex(random_bytes(5));
@@ -49,18 +49,41 @@ $table->setPrimaryKey(['id']);
 $created = false;
 $statement = null;
 $stream = null;
+$protocolStatement = null;
+$readPrepares = null;
 $primary = null;
 $cleanup = [];
 try {
     $manager->createTable($table);
     $created = true;
     $sql = 'INSERT INTO ' . $connection->getDatabasePlatform()->quoteIdentifier($name) . ' (id, label, flag, payload) VALUES (?, ?, ?, ?)';
+    if ($DB->getProvider() === 'mysql') {
+        // Prepare this read-only observer once, before the baseline. Reusing it
+        // does not add prepare commands to the measured public INSERT interval.
+        $protocolStatement = $native->prepare("SHOW SESSION STATUS LIKE 'Com_stmt_prepare'");
+        verify($protocolStatement instanceof PDOStatement, 'Own an actual same-session prepare-counter observer');
+        $readPrepares = static function () use ($protocolStatement): int {
+            verify($protocolStatement->execute(), 'Read actual session protocol prepare count');
+            $row = $protocolStatement->fetch(PDO::FETCH_NUM);
+            verify(is_array($row) && count($row) === 2 && $row[0] === 'Com_stmt_prepare'
+                && filter_var($row[1], FILTER_VALIDATE_INT) !== false && (int)$row[1] >= 0
+                && $protocolStatement->fetch(PDO::FETCH_NUM) === false,
+                'Actual server returns exactly one nonnegative prepare counter');
+            verify($protocolStatement->closeCursor(), 'Release owned protocol result before public bound operation');
+            return (int)$row[1];
+        };
+        $preparesBefore = $readPrepares();
+    }
     $statement = $DB->prepare($sql);
     $id = 4294999001;
     $label = "PDO O'Reilly \\ 日本語";
     $flag = false;
     $payload = "a\0b\xff";
     verify($statement->bind_param('isib', $id, $label, $flag, $payload) && $statement->execute(), 'Actual legacy by-reference statement binds wide IDs, null/boolean and binary bytes through DBAL');
+    if ($readPrepares !== null) {
+        verify($readPrepares() === $preparesBefore + 1,
+            'Actual public bound INSERT emits one native prepare on the same physical session');
+    }
     $row = $connection->fetchAssociative('SELECT * FROM ' . $name . ' WHERE id=?', [$id]);
     verify((int)$row['id'] === $id && $row['label'] === $label && $row['flag'] === 0 && binaryValue($row['payload']) === $payload, 'Literal UTF8/backslash and native integer/binary values round-trip without coercion');
     $id++;
@@ -117,6 +140,15 @@ try {
         $statement?->close();
     } catch (Throwable $error) {
         $cleanup[] = $error;
+    }
+    if ($protocolStatement !== null) {
+        try {
+            verify($protocolStatement->closeCursor(), 'Close actual owned prepare-counter result');
+            $protocolStatement = null;
+            $readPrepares = null;
+        } catch (Throwable $error) {
+            $cleanup[] = $error;
+        }
     }
     if (is_resource($stream)) {
         fclose($stream);
