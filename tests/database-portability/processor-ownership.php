@@ -236,7 +236,7 @@ try {
 
     // Shared stock prevents moving the device definition; the transfer must copy or reuse it.
     $transferEntity = $createEntity($prefix . ' transfer');
-    $transferAsset = $fixtures->create('glpi_computers', ['id' => 4294991003, 'name' => $prefix . ' transfer Computer']);
+    $transferAsset = $fixtures->create('glpi_computers', ['name' => $prefix . ' transfer Computer']);
     $transferDevice = $fixtures->create('glpi_deviceprocessors', ['designation' => $prefix . ' shared transfer device']);
     $transferBinding = $fixtures->create('glpi_items_deviceprocessors', ['deviceprocessors_id' => $transferDevice, 'itemtype' => 'Computer', 'items_id' => $transferAsset]);
     $transferStock = $fixtures->create('glpi_items_deviceprocessors', ['deviceprocessors_id' => $transferDevice, 'itemtype' => '', 'items_id' => 0]);
