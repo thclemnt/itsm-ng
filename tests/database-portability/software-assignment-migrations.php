@@ -128,7 +128,7 @@ try {
                     $migration->plan($connection);
                     throw new LogicException('Invalid historical scope accepted');
                 } catch (RuntimeException $error) {
-                    verify(str_contains($error->getMessage(), $diagnostic), 'Historical scope diagnostic ' . $diagnostic);
+                    verify(str_contains($error->getMessage(), substr(json_encode($diagnostic, JSON_THROW_ON_ERROR), 1, -1)), 'Historical scope diagnostic ' . $diagnostic);
                 }
             }
             verify(Ledger::state($connection, $migration::VERSION) === null, 'Historical scope preflight creates no ledger');
