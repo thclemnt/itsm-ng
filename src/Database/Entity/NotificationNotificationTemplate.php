@@ -11,12 +11,12 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\UniqueConstraint(name: 'notifications_notificationtemplates_unicity', columns: ['notifications_id', 'mode', 'notificationtemplates_id'])]
 class NotificationNotificationTemplate
 {
-    #[ORM\ManyToOne(targetEntity: Notification::class)]
+    #[ORM\ManyToOne(targetEntity: Notification::class, inversedBy: 'templateBindings')]
     #[ORM\JoinColumn(name: 'notifications_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
     #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?Notification $notifications = null;
 
-    #[ORM\ManyToOne(targetEntity: NotificationTemplate::class)]
+    #[ORM\ManyToOne(targetEntity: NotificationTemplate::class, inversedBy: 'templateBindings')]
     #[ORM\JoinColumn(name: 'notificationtemplates_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
     #[\itsmng\Database\Mapping\ApplicationManaged]
     public ?NotificationTemplate $notificationtemplates = null;

@@ -4,12 +4,28 @@
 
 namespace itsmng\Database\Entity;
 
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_notificationtemplates')]
 class NotificationTemplate
 {
+    /** @var Collection<int, NotificationNotificationTemplate> */
+    #[ORM\OneToMany(targetEntity: NotificationNotificationTemplate::class, mappedBy: 'notificationtemplates')]
+    public Collection $templateBindings;
+
+    /** @var Collection<int, NotificationTemplateTranslation> */
+    #[ORM\OneToMany(targetEntity: NotificationTemplateTranslation::class, mappedBy: 'notificationtemplates')]
+    public Collection $translations;
+
+    public function __construct()
+    {
+        $this->templateBindings = new ArrayCollection();
+        $this->translations = new ArrayCollection();
+    }
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]

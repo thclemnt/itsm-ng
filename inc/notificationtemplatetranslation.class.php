@@ -227,11 +227,9 @@ class NotificationTemplateTranslation extends CommonDBChild
         $massiveActionValues = [];
 
         foreach (
-            $DB->request(
-                'glpi_notificationtemplatetranslations',
-                ['notificationtemplates_id' => $nID]
-            ) as $data
+            (new \itsmng\Domain\NotificationTemplateService($DB))->translations((int)$nID) as $translation
         ) {
+            $data = $translation->legacyRow();
             $link = '';
             if ($this->getFromDB($data['id'])) {
                 Session::addToNavigateListItems('NotificationTemplateTranslation', $data['id']);
@@ -349,19 +347,9 @@ class NotificationTemplateTranslation extends CommonDBChild
     public static function getAllUsedLanguages($language_id)
     {
 
-        $used_languages = getAllDataFromTable(
-            'glpi_notificationtemplatetranslations',
-            [
-                'notificationtemplates_id' => $language_id
-            ]
-        );
-        $used = [];
+        global $DB;
 
-        foreach ($used_languages as $used_language) {
-            $used[$used_language['language']] = $used_language['language'];
-        }
-
-        return $used;
+        return (new \itsmng\Domain\NotificationTemplateService($DB))->usedLanguages((int)$language_id);
     }
 
 

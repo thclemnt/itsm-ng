@@ -156,10 +156,9 @@ class Notification_NotificationTemplate extends CommonDBRelation
         ];
         $values = [];
 
-        $iterator = $DB->request([
-           'FROM'   => self::gettable(),
-           'WHERE'  => ['notifications_id' => $ID]
-        ]);
+        $iterator = new \itsmng\Database\RowIterator(
+            (new \itsmng\Domain\NotificationDeliveryService($DB))->bindingsForNotification((int)$ID)
+        );
         $notiftpl = new self();
         while ($data = $iterator->next()) {
             $notiftpl->getFromDB($data['id']);
@@ -213,10 +212,9 @@ class Notification_NotificationTemplate extends CommonDBRelation
 
         echo "<div class='center'>";
 
-        $iterator = $DB->request([
-           'FROM'   => self::getTable(),
-           'WHERE'  => ['notificationtemplates_id' => $ID]
-        ]);
+        $iterator = new \itsmng\Database\RowIterator(
+            (new \itsmng\Domain\NotificationDeliveryService($DB))->bindingsForTemplate((int)$ID)
+        );
 
         echo "<table class='tab_cadre_fixehov' aria-label='Notification'>";
         $colspan = 2;

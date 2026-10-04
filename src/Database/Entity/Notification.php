@@ -4,6 +4,8 @@
 
 namespace itsmng\Database\Entity;
 
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\ReferencePolicy;
@@ -12,6 +14,15 @@ use itsmng\Database\Mapping\ReferencePolicy;
 #[ORM\Table(name: 'glpi_notifications')]
 class Notification
 {
+    /** @var Collection<int, NotificationNotificationTemplate> */
+    #[ORM\OneToMany(targetEntity: NotificationNotificationTemplate::class, mappedBy: 'notifications')]
+    public Collection $templateBindings;
+
+    public function __construct()
+    {
+        $this->templateBindings = new ArrayCollection();
+    }
+
     #[ORM\Id]
     #[ORM\GeneratedValue(strategy: 'IDENTITY')]
     #[ORM\Column(name: '`id`', type: 'bigint', nullable: false)]

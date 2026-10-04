@@ -572,21 +572,9 @@ class NotificationTemplate extends CommonDBTM
     {
         global $DB;
 
-        $iterator = $DB->request([
-           'FROM'   => 'glpi_notificationtemplatetranslations',
-           'WHERE'  => [
-              'notificationtemplates_id' => $this->getField('id'),
-              'language'                 => [$language, '']
-           ],
-           'ORDER'  => 'language DESC',
-           'LIMIT'  => 1
-        ]);
-        if (count($iterator)) {
-            return $iterator->next();
-        }
-
-        //No template found at all!
-        return false;
+        $content = (new \itsmng\Domain\NotificationTemplateService($DB))
+            ->contentForLanguage((int)$this->getField('id'), $language);
+        return $content?->legacyRow() ?? false;
     }
 
 

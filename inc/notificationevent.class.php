@@ -129,14 +129,15 @@ class NotificationEvent extends CommonDBTM
             $notificationtarget->addAdditionnalInfosForTarget();
 
             //Foreach notification
-            $notifications = Notification::getNotificationsByEventAndType(
+            $notifications = Notification::getDeliveryPlan(
                 $event,
-                addslashes($item->getType()),
+                $item->getType(),
                 $notificationtarget->getEntity()
             );
 
             $processed = []; // targets list
-            foreach ($notifications as $data) {
+            foreach ($notifications as $delivery) {
+                $data = $delivery->legacyRow();
                 $notificationtarget->clearAddressesList();
                 $notificationtarget->setMode($data['mode']);
                 $notificationtarget->setAllowResponse($data['allow_response']);
