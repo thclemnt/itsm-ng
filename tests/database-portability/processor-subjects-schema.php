@@ -240,17 +240,21 @@ try {
             $connection->executeStatement('UPDATE ' . $tableName . ' SET computers_id = NULL');
             // The disagreement control added this owned partial column. Restore
             // actual historical absence before interrupting its required ADD.
-            $legacyRows = array_map(static fn (array $row): array => array_diff_key($row, ['computers_id' => true]),
-                $connection->fetchAllAssociative('SELECT * FROM ' . $tableName . ' ORDER BY id'));
+            $legacyRows = array_map(
+                static fn (array $row): array => array_diff_key($row, ['computers_id' => true]),
+                $connection->fetchAllAssociative('SELECT * FROM ' . $tableName . ' ORDER BY id')
+            );
             $partial = $manager->introspectTable($tableName);
             $legacyAgain = clone $partial;
             $legacyAgain->dropColumn('computers_id');
             foreach ($platform->getAlterTableSQL($manager->createComparator()->compareTables($partial, $legacyAgain)) as $statement) {
                 $connection->executeStatement($statement);
             }
-            verify(!$manager->introspectTable($tableName)->hasColumn('computers_id')
+            verify(
+                !$manager->introspectTable($tableName)->hasColumn('computers_id')
                 && $connection->fetchAllAssociative('SELECT * FROM ' . $tableName . ' ORDER BY id') === $legacyRows,
-                'Owned partial-column control returns to genuine historical absence without changing any legacy row');
+                'Owned partial-column control returns to genuine historical absence without changing any legacy row'
+            );
             verify($connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $ledger
                 && Ledger::state($connection, $version) === null, 'Removing the owned partial column preserves every adoption receipt');
             verify($migration->plan($connection)[$tableName]['columns'] !== [], 'Actual missing canonical column requires real columns-phase DDL before interruption');
