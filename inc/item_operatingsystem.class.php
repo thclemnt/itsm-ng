@@ -793,20 +793,4 @@ class Item_OperatingSystem extends CommonDBRelation
         return $input === false ? false : parent::prepareInputForUpdate($input);
     }
 
-    /** Copying a relation to another owner replaces all copied subject associations. */
-    public function clone(array $override_input = [], bool $history = true)
-    {
-        $selections = \itsmng\Database\EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'];
-        $columns = array_column($selections, 'column');
-        if (array_intersect(array_keys($override_input), ['itemtype', 'items_id', ...$columns])) {
-            $kind = array_key_exists('itemtype', $override_input) ? $override_input['itemtype'] : $this->fields['itemtype'];
-            $column = $selections[$kind]['column'] ?? null;
-            $subject = $column !== null && array_key_exists($column, $override_input)
-                ? $override_input[$column]
-                : (array_key_exists('items_id', $override_input) ? $override_input['items_id'] : $this->fields['items_id']);
-            $reference = ['itemtype' => $kind, 'items_id' => $subject] + array_intersect_key($override_input, array_flip($columns));
-            $override_input = (new \itsmng\Database\Entity\ItemOperatingSystem())->normalizeInput($reference) + ['items_id' => $subject] + $override_input;
-        }
-        return parent::clone($override_input, $history);
-    }
 }

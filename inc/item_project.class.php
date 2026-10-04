@@ -108,22 +108,6 @@ class Item_Project extends CommonDBRelation
         return parent::prepareInputForUpdate($input);
     }
 
-    /** Explicit clone retargeting replaces the source's owning association as well as its legacy identity. */
-    public function clone(array $override_input = [], bool $history = true)
-    {
-        $columns = array_column(\itsmng\Database\EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'], 'column');
-        if (array_intersect(array_keys($override_input), ['itemtype', 'items_id', ...$columns])) {
-            $kind = $override_input['itemtype'] ?? $this->fields['itemtype'];
-            $selection = \itsmng\Database\EntityRegistry::discriminatedReferences(static::getTable())['items_id']['selections'][$kind] ?? null;
-            $subject = $selection !== null && array_key_exists($selection['column'], $override_input)
-                ? $override_input[$selection['column']]
-                : (array_key_exists('items_id', $override_input) ? $override_input['items_id'] : $this->fields['items_id']);
-            $reference = ['itemtype' => $kind, 'items_id' => $subject] + array_intersect_key($override_input, array_flip($columns));
-            $override_input = (new \itsmng\Database\Entity\ItemProject())->normalizeInput($reference) + ['items_id' => $subject] + $override_input;
-        }
-        return parent::clone($override_input, $history);
-    }
-
     /** Both Project roles are explicit; unrelated subject IDs never select another kind. */
     public static function getSQLCriteriaToSearchForItem($itemtype, $items_id)
     {

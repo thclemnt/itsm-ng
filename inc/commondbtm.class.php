@@ -1508,9 +1508,14 @@ class CommonDBTM extends CommonGLPI
             return false;
         }
         $new_item = new static();
-        $input = Toolbox::addslashes_deep($this->fields);
-        foreach ($override_input as $key => $value) {
-            $input[$key] = $value;
+        try {
+            $input = \itsmng\Database\CloneInput::merge(
+                static::getTable(),
+                Toolbox::addslashes_deep($this->fields),
+                $override_input
+            );
+        } catch (\InvalidArgumentException) {
+            return false;
         }
         $input = $new_item->prepareInputForClone($input);
         if (isset($input['id'])) {

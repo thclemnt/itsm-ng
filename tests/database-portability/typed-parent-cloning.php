@@ -99,6 +99,61 @@ try {
     $deprecatedRows = $subjectRows('glpi_contracts_items', $target);
     verify($deprecations === 1 && count($deprecatedRows) === 2 && array_column($deprecatedRows, 'contracts_id') === [$contract, $contractClone], 'Deprecated public clone retains one notice, all eligible contracts and the link-limit guard');
     $verifyOwnership('glpi_contracts_items', $deprecatedRows, $target);
+    // Direct callers supply partial legacy or canonical proposals, unlike Clonable's
+    // already-normalized relation overrides. Exercise the common public boundary.
+    $direct = new Document_Item();
+    $directSource = $subjectRows('glpi_documents_items', $sourceId)[0];
+    verify($direct->getFromDB($directSource['id']), 'Load direct converted relation clone source');
+    $legacyClone = $direct->clone(\itsmng\Database\Entity\DocumentItem::withReference([], 'Computer', $target));
+    $legacyRows = $subjectRows('glpi_documents_items', $target);
+    verify(is_int($legacyClone) && $legacyClone > 0 && count($legacyRows) === 1, 'Partial legacy clone replaces the copied owning identity');
+    $verifyOwnership('glpi_documents_items', $legacyRows, $target);
+    $typedTarget = $fixtures->create('glpi_computers', ['name' => 'Canonical direct clone target']);
+    $canonicalClone = $direct->clone(['computers_id' => $typedTarget, 'timeline_position' => 7]);
+    $canonicalRows = $subjectRows('glpi_documents_items', $typedTarget);
+    verify(is_int($canonicalClone) && $canonicalClone > 0 && count($canonicalRows) === 1 && $canonicalRows[0]['timeline_position'] === 7, 'Canonical-only override retains the current kind, replaces its identity and preserves scalar overrides');
+    $verifyOwnership('glpi_documents_items', $canonicalRows, $typedTarget);
+    $crossTarget = $fixtures->create('glpi_monitors', ['name' => 'Cross-kind direct clone target']);
+    $crossClone = $direct->clone(\itsmng\Database\Entity\DocumentItem::withReference([], 'Monitor', $crossTarget));
+    $crossRow = $records->matching('glpi_documents_items', ['id' => $crossClone])[0] ?? null;
+    $crossColumn = EntityRegistry::discriminatedReferences('glpi_documents_items')['items_id']['selections']['Monitor']['column'];
+    verify(is_int($crossClone) && $crossClone > 0 && $crossRow[$crossColumn] === $crossTarget && $crossRow['items_id'] === $crossTarget && $crossRow['computers_id'] === null, 'Legacy cross-kind clone replaces and clears the copied subject association');
+    $scalarClone = $direct->clone(['timeline_position' => 8]);
+    $scalarRow = $records->matching('glpi_documents_items', ['id' => $scalarClone])[0] ?? null;
+    verify(is_int($scalarClone) && $scalarClone > 0 && $scalarRow['computers_id'] === $sourceId && $scalarRow['items_id'] === $sourceId && $scalarRow['timeline_position'] === 8, 'Scalar-only direct clone retains its canonical relationship and regenerates the legacy identity');
+    $beforeRefusal = $records->countMatching('glpi_documents_items', ['documents_id' => $document]);
+    verify($direct->clone(['itemtype' => 'Computer', 'items_id' => $target, 'computers_id' => $sourceId]) === false, 'Conflicting caller-supplied legacy and canonical clone identities are refused');
+    verify($direct->clone(['computers_id' => null]) === false, 'A required selected clone identity cannot be explicitly NULL');
+    verify($records->countMatching('glpi_documents_items', ['documents_id' => $document]) === $beforeRefusal, 'Rejected partial clone proposals insert no relation');
+    $unchangedSource = new Document_Item();
+    verify($unchangedSource->getFromDB($directSource['id']) && $unchangedSource->fields === $direct->fields, 'Direct cloning and rejection preserve the source model and database tuple');
+
+    $nullableSource = $fixtures->create('glpi_computers', ['name' => 'Clone nullable source', 'serial' => 'Retained source serial']);
+    $nullable = new Computer();
+    verify($nullable->getFromDB($nullableSource), 'Load nonnull source for nullable override');
+    $nullClone = $nullable->clone(['serial' => null]);
+    $absentClone = $nullable->clone(['name' => 'Absent serial clone']);
+    $nullRow = $records->matching('glpi_computers', ['id' => $nullClone])[0] ?? null;
+    $absentRow = $records->matching('glpi_computers', ['id' => $absentClone])[0] ?? null;
+    verify(is_int($nullClone) && $nullClone > 0 && $nullRow['serial'] === null, 'Supplied nullable scalar clone override remains NULL');
+    verify(is_int($absentClone) && $absentClone > 0 && $absentRow['serial'] === 'Retained source serial', 'Absent nullable scalar override retains the source value');
+
+    // Other converted identities use entity-owned fallback and empty policies too.
+    $authCopy = \itsmng\Database\CloneInput::merge('glpi_users', [
+        'authtype' => Auth::LDAP, 'auths_id' => 9, 'authldaps_id' => 9,
+        'authmails_id' => null, 'auth_source_code' => null, 'comment' => 'Original',
+    ], ['authldaps_id' => 10, 'comment' => null]);
+    verify($authCopy['auths_id'] === 10 && $authCopy['authldaps_id'] === 10 && $authCopy['authmails_id'] === null && $authCopy['comment'] === null, 'Canonical authentication clone override uses its current discriminator and preserves explicit scalar NULL');
+    $nullServer = \itsmng\Database\CloneInput::merge('glpi_users', $authCopy, ['authldaps_id' => null]);
+    $absentServer = \itsmng\Database\CloneInput::merge('glpi_users', $authCopy, ['comment' => 'Scalar only']);
+    verify($nullServer['authldaps_id'] === null && $nullServer['auths_id'] === 0 && $absentServer['authldaps_id'] === 10 && $absentServer['auths_id'] === 10, 'Nullable canonical override distinguishes supplied NULL from an absent relationship key');
+    $localCopy = \itsmng\Database\CloneInput::merge('glpi_users', $authCopy, ['authtype' => Auth::DB_GLPI, 'auth_source_code' => 0]);
+    verify($localCopy['auths_id'] === 0 && $localCopy['authldaps_id'] === null && $localCopy['authmails_id'] === null, 'Fallback authentication clone clears copied server ownership and projects the actual local code');
+    $stockCopy = \itsmng\Database\CloneInput::merge('glpi_items_deviceprocessors', [
+        'itemtype' => 'Computer', 'items_id' => 9, 'computers_id' => 9,
+        'entities_id' => 0, 'deviceprocessors_id' => 1,
+    ], ['itemtype' => null, 'items_id' => 0]);
+    verify($stockCopy['itemtype'] === null && $stockCopy['computers_id'] === null && $stockCopy['items_id'] === 0 && $stockCopy['entities_id'] === 0, 'Entity-owned optional stock clone normalizes explicit NULL kind and owning columns');
     verify((new ForeignKeys())->audit($DB->getDoctrineConnection()) === [], 'Cloning leaves no orphaned relationships');
 } finally {
     $DB->rollBack();

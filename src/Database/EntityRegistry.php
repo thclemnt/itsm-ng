@@ -46,6 +46,12 @@ final class EntityRegistry
         ]));
     }
 
+    /** Generated compatibility fields are never copied as physical clone writes. */
+    public static function readOnlyColumns(string $table): array
+    {
+        return self::model()['read_only'][$table] ?? [];
+    }
+
     /** Owning association join columns, not inferred names or nullable scalars. */
     public static function relations(): array
     {
@@ -99,7 +105,7 @@ final class EntityRegistry
         $connection = DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
         $em = new EntityManager($connection, Orm::configuration(new MySQLPlatform()));
         $metadata = $em->getMetadataFactory()->getAllMetadata();
-        $tables = $types = $booleans = $booleanFields = $relations = $references = $discriminators = $lifecycle = [];
+        $tables = $types = $booleans = $booleanFields = $relations = $references = $discriminators = $lifecycle = $readOnly = [];
         foreach ($metadata as $record) {
             $table = $record->getTableName();
             if (isset($tables[$table])) {
@@ -108,6 +114,9 @@ final class EntityRegistry
             $tables[$table] = $record->name;
             foreach ($record->fieldMappings as $mapping) {
                 $types[$table][$mapping->columnName] = $mapping->type;
+                if ($mapping->notInsertable && $mapping->notUpdatable) {
+                    $readOnly[$table][] = $mapping->columnName;
+                }
                 if ($mapping->type === 'boolean') {
                     $booleans[$table][] = $mapping->columnName;
                     $booleanFields[$table][$mapping->columnName] = (bool)$mapping->nullable;
@@ -115,7 +124,10 @@ final class EntityRegistry
             }
             foreach ($record->fieldMappings as $property => $mapping) {
                 foreach ((new \ReflectionProperty($record->name, $property))->getAttributes(Mapping\DiscriminatorKey::class) as $attribute) {
-                    $discriminators[$table][$mapping->columnName]['empty_value'] = $attribute->newInstance()->emptyValue;
+                    $key = $attribute->newInstance();
+                    $discriminators[$table][$mapping->columnName]['empty_value'] = $key->emptyValue;
+                    $discriminators[$table][$mapping->columnName]['fallback_column'] = $key->fallbackProperty === null
+                        ? null : $record->getColumnName($key->fallbackProperty);
                 }
             }
             foreach ($record->associationMappings as $property => $association) {
@@ -216,6 +228,6 @@ final class EntityRegistry
         // Only immutable lookup projections survive bootstrap, not the offline unit of work.
         unset($em, $metadata, $record);
         gc_collect_cycles();
-        return self::$model = ['tables' => $tables, 'types' => $types, 'booleans' => $booleans, 'boolean_fields' => $booleanFields, 'relations' => $relations, 'references' => $references, 'discriminators' => $discriminators, 'lifecycle' => $lifecycle];
+        return self::$model = ['tables' => $tables, 'types' => $types, 'booleans' => $booleans, 'boolean_fields' => $booleanFields, 'relations' => $relations, 'references' => $references, 'discriminators' => $discriminators, 'lifecycle' => $lifecycle, 'read_only' => $readOnly];
     }
 }
