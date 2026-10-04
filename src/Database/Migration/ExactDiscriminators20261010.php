@@ -66,6 +66,7 @@ final class ExactDiscriminators20261010
         $schema = (string)$connection->fetchOne($mysql ? 'SELECT DATABASE()' : 'SELECT current_schema()');
         $manager = $connection->createSchemaManager();
         $catalog = $mysql ? BooleanDomainSchema::catalog($connection) : null;
+        $incomingSnapshots = $mysql ? IncomingProjectionReferences::mysqlSnapshots($connection, array_keys(self::definitions()['tables'])) : null;
         $incoming = new IncomingProjectionReferences($connection);
         $tables = $deferred = $problems = [];
         foreach (self::definitions()['tables'] as $table => $definition) {
@@ -130,7 +131,7 @@ final class ExactDiscriminators20261010
                     $problems[] = 'Exact subject policy requires deterministic PostgreSQL discriminator collation: ' . $table;
                 }
             }
-            $preserve = self::preservation($connection, $actual, $catalog['checks'] ?? null);
+            $preserve = self::preservation($connection, $actual, $catalog['checks'] ?? null, $incomingSnapshots[$table] ?? null);
             if (isset($state['preservation'][$table]) && $state['preservation'][$table] !== $preserve) {
                 $problems[] = 'Exact subject retry ownership/index/comment changed: ' . $table;
             }
@@ -283,7 +284,7 @@ final class ExactDiscriminators20261010
         return implode(' OR ', $branches);
     }
 
-    private static function preservation(Connection $connection, \Doctrine\DBAL\Schema\Table $table, ?array $checks = null): array
+    private static function preservation(Connection $connection, \Doctrine\DBAL\Schema\Table $table, ?array $checks = null, ?array $incomingSnapshot = null): array
     {
         $indexes = $foreignKeys = [];
         foreach ($table->getIndexes() as $index) {
@@ -313,7 +314,7 @@ final class ExactDiscriminators20261010
             unset($native['other_checks'][self::definitions()['tables'][$table->getName()]['constraint']]);
             // Incoming references remain attached to this same column. Do not
             // omit other schemas or silently discard a supported custom FK.
-            $native['incoming'] = $connection->fetchAllAssociative('SELECT k.CONSTRAINT_SCHEMA, k.TABLE_NAME, k.CONSTRAINT_NAME, k.ORDINAL_POSITION, k.COLUMN_NAME, k.REFERENCED_TABLE_SCHEMA, k.REFERENCED_TABLE_NAME, k.REFERENCED_COLUMN_NAME, r.UPDATE_RULE, r.DELETE_RULE FROM information_schema.KEY_COLUMN_USAGE k JOIN information_schema.REFERENTIAL_CONSTRAINTS r ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME AND r.TABLE_NAME=k.TABLE_NAME WHERE k.REFERENCED_TABLE_SCHEMA=DATABASE() AND k.REFERENCED_TABLE_NAME=? AND EXISTS (SELECT 1 FROM information_schema.KEY_COLUMN_USAGE selected_key WHERE selected_key.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA AND selected_key.TABLE_NAME=k.TABLE_NAME AND selected_key.CONSTRAINT_NAME=k.CONSTRAINT_NAME AND selected_key.REFERENCED_TABLE_SCHEMA=DATABASE() AND selected_key.REFERENCED_TABLE_NAME=k.REFERENCED_TABLE_NAME AND selected_key.REFERENCED_COLUMN_NAME=?) ORDER BY k.CONSTRAINT_SCHEMA, k.TABLE_NAME, k.CONSTRAINT_NAME, k.ORDINAL_POSITION', [$table->getName(), 'items_id']);
+            $native['incoming'] = $incomingSnapshot ?? IncomingProjectionReferences::mysqlReferences($connection, $table->getName());
         } else {
             // Relation OIDs keep all referencing namespaces and complete
             // composite FK definitions, even when constraint names repeat.

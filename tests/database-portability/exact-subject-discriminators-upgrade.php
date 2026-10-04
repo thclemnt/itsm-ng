@@ -9,6 +9,7 @@ use itsmng\Database\Migration\BooleanDomains20261008;
 use itsmng\Database\Migration\History;
 use itsmng\Database\Migration\Ledger;
 use itsmng\Database\Migration\LegacyToOrm;
+use itsmng\Database\Migration\IncomingProjectionReferences;
 use itsmng\Database\SchemaCheck;
 
 $directory = $argv[1] ?? '';
@@ -57,8 +58,9 @@ $preservationMethod = new ReflectionMethod(ExactDiscriminators20261010::class, '
 $facts = static function () use ($connection, $scope, $preservationMethod, $quote, $mysql): array {
     $result = [];
     $catalog = $mysql ? BooleanDomainSchema::catalog($connection) : null;
+    $incomingSnapshots = $mysql ? IncomingProjectionReferences::mysqlSnapshots($connection, array_keys($scope)) : null;
     foreach ($scope as $table => $definition) {
-        $result[$table] = $preservationMethod->invoke(null, $connection, $connection->createSchemaManager()->introspectTable($table), $catalog['checks'] ?? null);
+        $result[$table] = $preservationMethod->invoke(null, $connection, $connection->createSchemaManager()->introspectTable($table), $catalog['checks'] ?? null, $incomingSnapshots[$table] ?? null);
         if ($mysql) {
             $result[$table]['subject_check'] = $catalog['checks'][$table][$definition['constraint']] ?? null;
             $result[$table]['projection'] = $connection->fetchOne('SELECT GENERATION_EXPRESSION FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=?', [$table, 'items_id']);
@@ -211,10 +213,11 @@ try {
     verify($withIncoming['tables']['glpi_items_tickets']['incoming_projection_references'] === true, 'Supported custom incoming generated-identity FK remains attached to its real target');
     $preserved = [];
     $preservedCatalog = $mysql ? BooleanDomainSchema::catalog($connection) : null;
+    $preservedIncoming = $mysql ? IncomingProjectionReferences::mysqlSnapshots($connection, array_keys($scope)) : null;
     foreach (array_keys($scope) as $table) {
-        $preserved[$table] = $preservationMethod->invoke(null, $connection, $connection->createSchemaManager()->introspectTable($table), $preservedCatalog['checks'] ?? null);
+        $preserved[$table] = $preservationMethod->invoke(null, $connection, $connection->createSchemaManager()->introspectTable($table), $preservedCatalog['checks'] ?? null, $preservedIncoming[$table] ?? null);
     }
-    unset($preservedCatalog);
+    unset($preservedCatalog, $preservedIncoming);
     if ($mysql) {
         $incomingRows = array_values(array_filter($preserved['glpi_items_tickets']['native']['incoming'], static fn (array $row): bool => $row['CONSTRAINT_NAME'] === $prefix . '_fk'));
         verify(array_map('intval', array_column($incomingRows, 'ORDINAL_POSITION')) === [1, 2]
