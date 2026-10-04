@@ -94,7 +94,17 @@ try {
     $cloned = $link->find(['itemtype' => 'Computer', 'items_id' => $otherId]);
     verify(count($cloned) === 1 && (int)reset($cloned)['size'] === 8192, 'Cloning preserves component specificities');
     Item_Devices::cleanItemDeviceDBOnItemDelete('Computer', $assetId, true);
-    verify($link->getFromDB($id) && $link->fields['itemtype'] === '', 'Public stock detach path');
+    $stockKind = isset(\itsmng\Database\EntityRegistry::discriminatedReferences($link->getTable())['items_id']['empty_value']) ? null : '';
+    verify(
+        $link->getFromDB($id)
+        && array_key_exists('itemtype', $link->fields)
+        && $link->fields['itemtype'] === $stockKind
+        && array_key_exists('items_id', $link->fields)
+        && $link->fields['items_id'] === 0
+        && $link->fields['devicememories_id'] === $memory
+        && $link->fields['size'] === 8192,
+        'Public stock detach path'
+    );
     Item_Devices::cleanItemDeviceDBOnItemDelete('Computer', $otherId, false);
     verify($link->find(['itemtype' => 'Computer', 'items_id' => $otherId]) === [], 'Public delete path');
     verify($link->getFromDB($id), 'Other stock preserved');
