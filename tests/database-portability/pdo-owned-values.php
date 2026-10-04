@@ -65,10 +65,12 @@ try {
         $readPrepares = static function () use ($protocolStatement): int {
             verify($protocolStatement->execute(), 'Read actual session protocol prepare count');
             $row = $protocolStatement->fetch(PDO::FETCH_NUM);
-            verify(is_array($row) && count($row) === 2 && $row[0] === 'Com_stmt_prepare'
+            verify(
+                is_array($row) && count($row) === 2 && $row[0] === 'Com_stmt_prepare'
                 && filter_var($row[1], FILTER_VALIDATE_INT) !== false && (int)$row[1] >= 0
                 && $protocolStatement->fetch(PDO::FETCH_NUM) === false,
-                'Actual server returns exactly one nonnegative prepare counter');
+                'Actual server returns exactly one nonnegative prepare counter'
+            );
             verify($protocolStatement->closeCursor(), 'Release owned protocol result before public bound operation');
             return (int)$row[1];
         };
@@ -81,8 +83,10 @@ try {
     $payload = "a\0b\xff";
     verify($statement->bind_param('isib', $id, $label, $flag, $payload) && $statement->execute(), 'Actual legacy by-reference statement binds wide IDs, null/boolean and binary bytes through DBAL');
     if ($readPrepares !== null) {
-        verify($readPrepares() === $preparesBefore + 1,
-            'Actual public bound INSERT emits one native prepare on the same physical session');
+        verify(
+            $readPrepares() === $preparesBefore + 1,
+            'Actual public bound INSERT emits one native prepare on the same physical session'
+        );
     }
     $row = $connection->fetchAssociative('SELECT * FROM ' . $name . ' WHERE id=?', [$id]);
     verify((int)$row['id'] === $id && $row['label'] === $label && $row['flag'] === 0 && binaryValue($row['payload']) === $payload, 'Literal UTF8/backslash and native integer/binary values round-trip without coercion');
