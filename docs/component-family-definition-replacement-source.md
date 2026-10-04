@@ -58,11 +58,16 @@ The required next validation is:
   enforcement drift, composite incoming projection FK preservation, staged
   interruption/retry and idempotency. Refusals must match the selected native
   CHECK/FK/generated cause and leave rows/receipts/constraints intact.
-- Add or observe raw malformed discriminator/owner UPDATE controls for every
-  branch, with canonical positive INSERT/UPDATE and full-row rollback/readback;
-  existing held native matrices primarily exercise INSERT (generated assignment
-  also covers UPDATE). Verify that PDO-generated refusals report exact causes on
-  each supported provider; official MySQL remains a separate native gate.
+- Run the added raw malformed discriminator/owner UPDATE controls for every
+  branch. Each owns an unused canonical INSERT, changes its identity to a second
+  real subject through positive UPDATE and verifies the full native row. Invalid
+  spelling/null/blank/wrong-kind and multiple-owner UPDATEs keep all targets real
+  and select only the CHECK cause; an absent positive target selects only the FK
+  cause. Nested rollback checks every family row and all raw receipts after each
+  refusal; the outer lane independently restores the original graph/ledger.
+  Original generated-column INSERT/UPDATE refusals remain unchanged. Verify that
+  PDO refusals report exact causes on each supported provider; official MySQL
+  remains a separate native gate. These added controls are source-only, unrun.
 - Run `component-ownership.php`, the new public definition replacement contract,
   original `components.php`, Processor replacement/unconverted-plugin contracts,
   transfer and public lifecycle/audit contracts. Preserve asset and definition

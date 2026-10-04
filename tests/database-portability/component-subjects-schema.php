@@ -70,12 +70,16 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
     $comment = "Component identity O'Reilly 日本語";
     $device = 4294996100 + $familyIndex;
     $subject = 4294996001;
+    $secondSubject = 4294996002;
     try {
         $reconstruction = new ComponentFamilyTable($connection, $expected, $table, $version, $columns);
         foreach ($reference['selections'] as $selection) {
             verify((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $selection['target'] . ' WHERE id = ?', [$subject]) === 0, 'Never adopt a preexisting source owner');
             $fixtures->create($selection['target'], ['id' => $subject, 'name' => $prefix]);
             $owners[] = [$selection['target'], $subject];
+            verify((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $selection['target'] . ' WHERE id = ?', [$secondSubject]) === 0, 'Never adopt a preexisting canonical update target');
+            $fixtures->create($selection['target'], ['id' => $secondSubject, 'name' => $prefix . ' update']);
+            $owners[] = [$selection['target'], $secondSubject];
         }
         verify((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $deviceTable . ' WHERE id = ?', [$device]) === 0, 'Never adopt a preexisting source definition');
         $fixtures->create($deviceTable, ['id' => $device, 'designation' => $prefix]);
@@ -359,6 +363,90 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
                 }
             }
             ComponentNativeAdmission::reject($connection, fn () => $connection->insert($table, $valid + ['items_id' => $subject]), $table, 'generated-insert');
+            // Each native update starts from an unused, canonical owned row.
+            // The second real target makes the positive UPDATE change identity;
+            // CHECK controls keep every FK valid, and FK controls keep the
+            // discriminator/positive-identity CHECK valid.
+            $updateId = 4294996400 + array_search($kind, array_keys($reference['selections']), true);
+            verify((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $table . ' WHERE id=?', [$updateId]) === 0,
+                'Canonical native UPDATE fixture never adopts an existing binding');
+            $missingSubject = $secondSubject + 999;
+            verify((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $selection['target'] . ' WHERE id=?', [$missingSubject]) === 0,
+                'Selected native UPDATE FK control proves its target absent');
+            $secondValue = $connection->fetchOne('SELECT id FROM ' . $selection['target'] . ' WHERE id=?', [$secondSubject]);
+            verify((int)$secondValue === $secondSubject, 'Canonical positive UPDATE has a real second subject');
+            $beforeUpdate = $connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id');
+            $beforeUpdateLedger = $connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
+            $updateFrame = \itsmng\Database\OwnedMutationFrame::begin($connection);
+            $updatePrimary = null;
+            $updateCleanup = [];
+            try {
+                verify($connection->insert($table, ['id' => $updateId] + $valid + $payload) === 1,
+                    'Every branch admits a canonical native INSERT before UPDATE refusal controls');
+                $inserted = $connection->fetchAssociative('SELECT * FROM ' . $table . ' WHERE id=?', [$updateId]);
+                verify($inserted !== false && $inserted['itemtype'] === $kind
+                    && (int)$inserted[$selection['column']] === $subject && (int)$inserted['items_id'] === $subject,
+                    'Canonical native INSERT has the selected owner and generated legacy projection');
+                foreach ($reference['selections'] as $otherKind => $other) {
+                    verify($otherKind === $kind || $inserted[$other['column']] === null,
+                        'Canonical native INSERT leaves each unselected subject empty');
+                }
+                verify($connection->update($table, [$selection['column'] => $secondSubject], ['id' => $updateId]) === 1,
+                    'Actual positive native UPDATE changes the selected owning identity');
+                $expectedUpdate = array_replace($inserted, [$selection['column'] => $secondValue, 'items_id' => $secondValue]);
+                verify($connection->fetchAssociative('SELECT * FROM ' . $table . ' WHERE id=?', [$updateId]) === $expectedUpdate,
+                    'Positive native UPDATE regenerates items_id and retains every other native cell');
+                $validUpdateRows = $connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id');
+                $check = $table . '_typed_item_kind';
+                $invalidUpdates = [];
+                foreach ([strtolower($kind), $kind . ' ', 'PluginAsset', null, ''] as $invalidKind) {
+                    $invalidUpdates[] = [['itemtype' => $invalidKind], 'check', $check];
+                }
+                $invalidUpdates[] = [[$selection['column'] => null], 'check', $check];
+                $invalidUpdates[] = [[$selection['column'] => $missingSubject], 'foreign', ForeignKeys::name($table, $selection['column'])];
+                foreach ($reference['selections'] as $otherKind => $other) {
+                    if ($otherKind !== $kind) {
+                        $invalidUpdates[] = [['itemtype' => $otherKind], 'check', $check];
+                        $invalidUpdates[] = [[$other['column'] => $subject], 'check', $check];
+                    }
+                }
+                foreach ($invalidUpdates as [$invalid, $cause, $constraint]) {
+                    ComponentNativeAdmission::reject($connection,
+                        fn () => $connection->update($table, $invalid, ['id' => $updateId]), $table, $cause, $constraint);
+                    verify($connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id') === $validUpdateRows
+                        && $connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $beforeUpdateLedger,
+                        'Selected CHECK/FK UPDATE refusal restores the complete canonical row vector and receipts');
+                }
+            } catch (Throwable $error) {
+                $updatePrimary = $error;
+            } finally {
+                try {
+                    $updateFrame->rollBack();
+                } catch (Throwable $error) {
+                    $updateCleanup[] = $error;
+                }
+                try {
+                    verify($connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id') === $beforeUpdate
+                        && $connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $beforeUpdateLedger,
+                        'Owned canonical INSERT/UPDATE controls restore the complete original family graph and ledger');
+                } catch (Throwable $error) {
+                    $updateCleanup[] = $error;
+                }
+            }
+            if ($updatePrimary !== null) {
+                foreach ($updateCleanup as $error) {
+                    try {
+                        fwrite(STDERR, 'Additional owned native UPDATE cleanup failure: ' . $error::class . "\n");
+                    } catch (Throwable) {
+                        // Secondary reporting cannot mask the original selected cause.
+                    }
+                }
+                throw $updatePrimary;
+            }
+            if ($updateCleanup) {
+                throw $updateCleanup[0];
+            }
+
         }
         ComponentNativeAdmission::reject($connection, fn () => $connection->executeStatement('UPDATE ' . $table . ' SET items_id=? WHERE id=?', [$subject, 4294996200]), $table, 'generated-update');
     } catch (Throwable $error) {
