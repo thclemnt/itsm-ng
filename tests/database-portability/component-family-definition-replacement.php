@@ -82,7 +82,7 @@ try {
         foreach ($reference['selections'] as $kind => $selection) {
             $subjectTable = $selection['target'];
             $subjectColumn = $selection['column'];
-            $foreignEntity = $fixtures->create('glpi_entities', ['name' => $prefix . ' foreign ' . $kind, 'entities_id' => 0]);
+            $foreignEntity = $fixtures->create('glpi_entities', ['name' => $prefix . ' ' . $linkClass . ' foreign ' . $kind, 'entities_id' => 0]);
             $rootAsset = $fixtures->create($subjectTable, ['name' => $prefix . ' root ' . $kind]);
             $foreignAsset = $fixtures->create($subjectTable, ['name' => $prefix . ' hidden ' . $kind, 'entities_id' => $foreignEntity]);
             $_SESSION['glpiactiveentities'] = [0];
