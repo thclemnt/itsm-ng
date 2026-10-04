@@ -1,11 +1,139 @@
 # PostgreSQL and Doctrine modernization goal
 
-Latest complete local portability checkpoint:
-[741 PostgreSQL/Doctrine validation](#current-741-complete-local-portability-checkpoint).
-Both providers pass the discovered 180 contracts at frozen source
-`741fb2b1f0cc852404bd55080e4ed7bbb0bf8b7e`, with fresh installs and clean final
-native inspections. The overall modernization goal remains OPEN and no native
-persistent goal is available. See the current checkpoint and remaining work below.
+## Current checkpoint: complete 30a4 suites; d8 composition under validation
+
+The overall goal remains **OPEN**: sound foreign keys for representable table
+relationships, meaningful ORM entities/repositories/domain persistence, removal
+of application mysqli/libpq calls, dependable PostgreSQL and MySQL/MariaDB,
+frozen DBAL installation and canonical migration replay, and maintainable
+application ownership. Native persistent goals are unavailable in this cloud
+session; this document and the retained implementation notes are the durable
+plan. The archived sections below remain byte-identical historical records.
+Their former “current/latest 741” wording is superseded by this dated checkpoint.
+
+At the 2026-10-04 source/evidence capture, the latest complete portability suites
+on **both providers** remain `30a4cce27ac6b493210c2d5867376293506563ab`:
+**186/186 contracts**, PostgreSQL in 784.413 seconds and MariaDB in 1380.710
+seconds. Both execute the discovered order exactly, have no counted PHP
+Warning/Fatal, and retain three Deprecated-prefix notices. Final native
+inspections show 13 completed canonical versions, no pending versions or schema
+differences, 357 mapped/358 actual tables and 1,057 foreign keys. The original
+certificate compatibility-projection schema contract passes in full suite order.
+The original selected application methods separately pass 23/23 on each engine,
+with no skips or void methods. These results belong to 30a4, not later source.
+
+The retained evidence is in `/workspace/itsm-env/evidence/`:
+`session-tree-30a4-post-capacity-full-{pg,mysql}-result.json`,
+`session-tree-30a4-post-full-native-{pg,mysql}-summary.json`, and
+`session-tree-30a4-original-23-both-result.json`. Earlier disk-aborted and failing
+runs remain retained. MariaDB’s measured environment uses table-definition and
+open-table caches of 32,768; this is environmental validation, not a PHP change.
+
+### Later frozen installation and focused evidence
+
+At `be258c8bd204dcfa2dfc5763e76e460ab80bb54f`, actual isolated fresh canonical
+installations pass both engines: PostgreSQL in 33.028 seconds and MariaDB in
+140.083 seconds. Each has all **17** migration versions complete, no pending
+versions or schema differences, 357 mapped/358 actual tables and **1,070** actual
+foreign keys. Parent native rows and ledger remain unchanged. See
+`owned-domains-be258-actual-both-fresh-summary.json`. These are genuine fresh
+installation receipts at be258; later configured-owner inspection links this
+provenance rather than claiming another fresh installation at a new source.
+Frozen migration/seed replay retains the existing ledger, not a competing history.
+
+The actual be258 Domain plugin-adoption and schema-check chain also passes both
+providers, followed by clean native inspection. Its receipts are
+`owned-domains-be258-pg-focused-20261004T013409406935Z-c42d217dbc` and
+`owned-domains-be258-mysql-focused-20261004T014035352931Z-c787ef8db5`.
+Storage and Software lifecycle controls pass selected tests, but the wider
+selected family chain does not pass. Preserve these actual failures:
+
+- Exact discriminator fixtures used two different Infocom IDs with the same
+  non-null unique default subject pair. The separate populated-upgrade row-vector
+  probe proved ObjectLock’s native automatic `date_mod` was the sole changed
+  value. Corrections create legitimate owned targets and explicitly restore the
+  captured owned timestamp; all original assertions remain.
+- Software/Project migration diagnostic assertions read encoded JSON as raw
+  text. Actual rejection reasons were present in decoded diagnostics. The
+  subject fixture also passed a boolean where the public authorization method
+  requires an input array. These fixture corrections do not validate upgrades.
+- Software atomicity’s accepted no-change callback failed on both engines.
+  Controlled native probes found equal strict keys, types and values, with only
+  map insertion order different because the normal model was not finalized.
+  The composed shared correction finalizes every accepted prepared update while
+  preserving real-write-only timestamp and `pre_updateInDB` behavior.
+- PostgreSQL’s two-writer Software current-read contract failed its changed
+  subject-scope refusal; MariaDB’s separate original chain passed 169 assertions.
+  The selected-pair/entity-hierarchy ownership correction remains a separate
+  source-reviewed dependency awaiting composition and native validation.
+- Processor stock creation was denied on both engines because the fixture actor
+  lacked access to the Device’s entity. The public Entity/tree/creator lifecycle
+  correction admits the actual intended graph and retains empty/foreign-scope
+  denials. Separate table-reconstruction failures required guarded restoration
+  of the existing frozen Processor receipt; recovery is not new-install proof.
+
+Every failed receipt and controlled recovery remains retained. Repaired schemas
+or source-reviewed fixtures do not turn those original family runs into passes.
+Canonical populated upgrades, invalid-data diagnostics, retry/idempotency and
+sequence behavior still need coherent final-source evidence on both providers.
+
+### Current composed source and open gates
+
+Current captured composition is `d8c01a2555cacc8a43e928b508bddec5ed6d7a13`.
+It includes the accepted authentication completion, owned PDO transports and
+managed transaction-frame capability, shared accepted-update correction and
+bounded fixture repairs. Actual checks pass syntax for all 62 selected PHP
+files, style, and autoload/extension ownership. The autoload check opens no
+connection and is not a database/application contract. Its complete discovery
+has 206 contracts; source counts are not execution results.
+
+Actual transport focus has now started at d8. PostgreSQL passes its first nine
+selected contracts, then the unchanged driver contract fails HY093 when PDO
+misreads nested PostgreSQL comments as parameters. The separate read-only probe
+passes both original trailing-backslash literal controls; those literals and
+assertions remain unchanged. The minimal nested-comment driver correction is a
+separate source-only candidate awaiting review/compilation/native validation.
+MariaDB passes its first five selected transport contracts, then
+`pdo-owned-values.php` fails its native-prepare/numeric-fetching assertion.
+Both failing chains retain successful pretest canonical17/schema/ledger/FK
+admission and unchanged parent snapshots. Neither transport chain is green.
+
+The local/API/cookie authentication completion owns explicit executed rule
+outcomes and login fields without resubmitting unrelated preferences. Its
+source contracts include equal-value actions, provider hook context, deactivation
+admission and nested lifecycle restoration; final-source native/HTTP validation
+is pending. The earlier original API method passed but its strict native
+restoration guard found explicit `highcontrast_css=false` became NULL during
+full-row login update. That failed packet and exact one-time guarded recovery
+remain separate. Preference edit semantics and the strict guard are preserved.
+LDAP/mail/SSO synchronization and verified password-rehash ownership remain
+explicit next domain work, not implicitly modernized by the local completion.
+
+Scope24’s selected-pair/current hierarchy correction, Approval decision command,
+remaining component subject families, genuine notification delivery, replica/TLS
+behavior and concurrency need their own reviewed implementation/native evidence.
+No complete d8 portability suite, current API/browser matrix, official-engine
+matrix or remote CI pass is claimed. Historical browser passes below belong to
+their recorded earlier source. Direct cloud Git access now works: ROOT’s actual
+2026-10-04 fetch verifies remote `origin/th/exp/postgres` remains at
+`01aee6a7bbd5a3f0301a6f27b329381a12ea8470`; earlier push dry-run passed, actual
+push remains unperformed at this capture.
+
+The latest actual static inventory is still 30a4: 357 mapped tables, 1,057
+enforced references, 27 discriminated identities, 37 polymorphic candidates and
+one pending archival identity; 2,849 legacy adapter and 22 direct-driver sites.
+The be258 native FK count is newer schema evidence. PDO transport source removes
+those core native calls, but current token/relationship inventories must be
+recomputed before claiming updated counts. Transport modernization does not
+replace thousands of application query paths with meaningful domain persistence.
+Polymorphic and archival facts are not unconstrained “foreign keys.”
+
+Next: finish the exact-source PDO driver failures and native focus on both
+providers, compose and validate the selected-pair hierarchy/actor boundary,
+then run the complete discovered portability suite and final native inspections
+on both engines. Validate populated upgrades/retries and original API strict
+restoration before browser work. Only then record a new complete checkpoint;
+continue the relationship/domain batches and verified rehash/external-auth work.
 
 ## Earlier b66 portability, application and browser evidence
 
