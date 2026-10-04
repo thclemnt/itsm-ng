@@ -203,6 +203,10 @@ try {
         {
             return User::getTable();
         }
+        public static function getType()
+        {
+            return User::getType();
+        }
         public function pre_updateInDB()
         {
             parent::pre_updateInDB();
@@ -252,6 +256,10 @@ try {
         public static function getTable($classname = null)
         {
             return User::getTable();
+        }
+        public static function getType()
+        {
+            return User::getType();
         }
         public function pre_updateInDB()
         {
