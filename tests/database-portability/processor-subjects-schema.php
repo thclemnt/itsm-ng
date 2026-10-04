@@ -24,6 +24,7 @@ require __DIR__ . '/FixtureRecords.php';
 require __DIR__ . '/fixtures/NativeConstraintRefusal.php';
 require __DIR__ . '/fixtures/ProcessorNativeAdmission.php';
 require __DIR__ . '/fixtures/ProcessorTableChecks.php';
+require __DIR__ . '/fixtures/ProcessorIncomingReferences.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
     exit(1);
@@ -52,19 +53,26 @@ $comment = "Processor identity O'Reilly 日本語";
 $expected->getTable($tableName)->getColumn('items_id')->setComment($comment);
 $originalState = Ledger::state($connection, $version);
 verify(($originalState['complete'] ?? false) === true, 'Processor append completed before contract');
+$originalLedger = $connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
+$originalReceipt = $connection->fetchAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' WHERE version = ?', [$version]);
+verify($originalReceipt !== false && json_decode($originalReceipt['state'], true, flags: JSON_THROW_ON_ERROR) === $originalState, 'Capture the exact completed processor receipt before fixture mutation');
 $nativeChecks = new ProcessorTableChecks($connection, $tableName);
+$coreIncoming = new ProcessorIncomingReferences($connection, $expected, $tableName);
 $fixtures = new FixtureRecords($DB);
 $computer = $device = null;
 $tableTouched = false;
+$dropAttempted = false;
 $consumerOwned = $uniqueOwned = false;
 $primary = null;
 $cleanupErrors = [];
 verify((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_computers WHERE id = 4294990001') === 0
     && (int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_deviceprocessors WHERE id = 4294990002') === 0, 'Never adopt preexisting fixed-ID processor fixture owners');
-$rebuild = static function () use ($current, $manager, $connection, $tableName, $version, $comment, $nativeChecks, &$tableTouched): void {
-    $tableTouched = true; // Repair partial DROP/CREATE/check setup failures too.
-    $connection->delete(LegacyToOrm::LEDGER, ['version' => $version]);
+$rebuild = static function () use ($current, $manager, $connection, $tableName, $version, $comment, $nativeChecks, $coreIncoming, &$tableTouched, &$dropAttempted): void {
+    $coreIncoming->detach();
+    $dropAttempted = true;
     $manager->dropTable($tableName);
+    $tableTouched = true; // Only a completed DROP authorizes table reconstruction in cleanup.
+    $connection->delete(LegacyToOrm::LEDGER, ['version' => $version]);
     $legacy = clone $current;
     foreach ($legacy->getForeignKeys() as $foreign) {
         if (array_map(static fn ($column) => trim($column, '`'), $foreign->getLocalColumns()) === ['computers_id']) {
@@ -81,6 +89,8 @@ $rebuild = static function () use ($current, $manager, $connection, $tableName, 
     $legacy->getColumn('items_id')->setColumnDefinition(null)->setNotnull(false)->setDefault(0)->setComment($comment);
     $manager->createTable($legacy);
     $nativeChecks->install(false);
+    $coreIncoming->restore();
+    verify($coreIncoming->restored(), 'Each legacy reconstruction retains exact core incoming ownership and all consumer rows');
 };
 $rejectSql = static function (array $values, bool $foreign = false) use ($connection, $tableName, &$device): void {
     $connection->beginTransaction();
@@ -126,6 +136,31 @@ try {
                 verify($incoming->has($schemaName, $tableName), 'Native incoming projection inventory finds items_id at second composite ordinal');
                 $beforeIncoming = $connection->fetchAllAssociative('SELECT * FROM ' . $tableName . ' ORDER BY id');
                 $beforeIncomingLedger = $connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
+                $foreignVector = static function () use ($manager, $tableName, $consumer): array {
+                    $vector = [];
+                    foreach ([$tableName, $consumer] as $table) {
+                        foreach ($manager->listTableForeignKeys($table) as $foreign) {
+                            $vector[$table][$foreign->getName()] = [$foreign->getLocalColumns(), $foreign->getForeignTableName(), $foreign->getForeignColumns(), $foreign->getOptions()];
+                        }
+                        ksort($vector[$table]);
+                    }
+                    return $vector;
+                };
+                $beforeForeign = $foreignVector();
+                $graphRejected = false;
+                try {
+                    $coreIncoming->detach();
+                } catch (LogicException $error) {
+                    verify(in_array($error->getMessage(), [
+                        'Validated nondeferrable RESTRICT incoming processor ownership required.',
+                        'Single-column RESTRICT incoming processor ownership required.'
+                    ], true), 'The actual unowned composite projection reference causes fixture graph refusal');
+                    $graphRejected = true;
+                }
+                verify($graphRejected && $foreignVector() === $beforeForeign, 'Fixture reconstruction refuses the custom projection consumer without detaching any constraints');
+                verify($connection->fetchAllAssociative('SELECT * FROM ' . $tableName . ' ORDER BY id') === $beforeIncoming
+                    && $connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $beforeIncomingLedger,
+                    'Fixture graph refusal preserves every processor row and raw receipt');
                 try {
                     $migration->plan($connection, $incoming);
                     throw new LogicException('Incoming legacy projection FK accepted destructive migration');
@@ -287,16 +322,46 @@ try {
         }
     }
     // Native definitions must be restored before its completed receipt.
-    if ($tableTouched && !$consumerOwned) {
+    $dropStateKnown = true;
+    if ($dropAttempted && !$tableTouched) {
         try {
+            // A transport error may follow actual DDL: inspect before claiming no DROP occurred.
+            $tableTouched = !$manager->tablesExist([$tableName]);
+        } catch (Throwable $error) {
+            $dropStateKnown = false;
+            $cleanupErrors[] = $error;
+        }
+    }
+    if ($dropStateKnown && $tableTouched && !$consumerOwned) {
+        try {
+            $coreIncoming->detach();
             if ($manager->tablesExist([$tableName])) {
                 $manager->dropTable($tableName);
             }
             $manager->createTable($current);
             $nativeChecks->install(true);
+            $coreIncoming->restore();
             verify($nativeChecks->restored(), 'All original native processor CHECKs, including BooleanDomains, restore exactly');
+            verify($coreIncoming->restored(), 'All original incoming processor FKs and consumer rows restore exactly');
             verify((new SchemaCheck())->differences($connection) === [], 'Structural/native schema restored before completed processor receipt');
-            Ledger::save($connection, $version, $originalState);
+            $unrelated = static fn (array $rows): array => array_values(array_filter($rows, static fn (array $row): bool => $row['version'] !== $version));
+            verify($unrelated($connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version')) === $unrelated($originalLedger), 'Refuse unrelated ledger changes before restoring the owned raw processor receipt');
+            if ($connection->fetchOne('SELECT 1 FROM ' . LegacyToOrm::LEDGER . ' WHERE version = ?', [$version]) === false) {
+                $connection->insert(LegacyToOrm::LEDGER, $originalReceipt);
+            } else {
+                $connection->update(LegacyToOrm::LEDGER, ['state' => $originalReceipt['state']], ['version' => $version]);
+            }
+            verify($connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $originalLedger, 'Every original raw receipt restores exactly after full native proof');
+        } catch (Throwable $error) {
+            $cleanupErrors[] = $error;
+        }
+    } elseif ($dropStateKnown && !$consumerOwned) {
+        try {
+            // A failed detach/DROP must preserve the existing table and completed receipt.
+            $coreIncoming->restore();
+            verify($coreIncoming->restored() && $nativeChecks->restored(), 'Failed setup restores only its owned incoming constraint changes');
+            verify((new SchemaCheck())->differences($connection) === [], 'Failed setup leaves the original processor schema intact');
+            verify($connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $originalLedger, 'Failed setup leaves every raw receipt intact');
         } catch (Throwable $error) {
             $cleanupErrors[] = $error;
         }
