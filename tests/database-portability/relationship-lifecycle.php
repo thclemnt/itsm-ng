@@ -59,8 +59,9 @@ try {
         static fn (array $selection): bool => $selection['table'] === 'glpi_items_kanbans'
     ) === [], 'Parent-managed Kanban state is excluded from automatic replacement');
 
-    // Keep generic polymorphic replacement coverage on a genuinely automatic
-    // reference. Kanban's managed replacement is tested through public purge below.
+    // Typed software ownership is model-managed. The actual automatic
+    // discriminated User/AuthMail replacement remains covered below; generic
+    // Computer replacement must leave these owning software rows untouched.
     $computer = $fixtures->create('glpi_computers', ['name' => $prefix]);
     $replacementComputer = $fixtures->create('glpi_computers', ['name' => $prefix . ' replacement']);
     if ($read('glpi_monitors', $computer) === null) {
@@ -68,20 +69,39 @@ try {
     }
     $software = $fixtures->create('glpi_softwares', ['name' => $prefix]);
     $version = $fixtures->create('glpi_softwareversions', ['softwares_id' => $software]);
-    $computerInstallation = $fixtures->create('glpi_items_softwareversions', ['itemtype' => 'Computer', 'items_id' => $computer, 'softwareversions_id' => $version]);
-    $monitorInstallation = $fixtures->create('glpi_items_softwareversions', ['itemtype' => 'Monitor', 'items_id' => $computer, 'softwareversions_id' => $version]);
+    $license = $fixtures->create('glpi_softwarelicenses', ['softwares_id' => $software, 'number' => -1]);
+    $softwareRows = [];
+    foreach ([['glpi_items_softwareversions', 'softwareversions_id', $version], ['glpi_items_softwarelicenses', 'softwarelicenses_id', $license]] as [$table, $ownerColumn, $owner]) {
+        $computerRow = $fixtures->create($table, ['itemtype' => 'Computer', 'items_id' => $computer, $ownerColumn => $owner]);
+        $monitorRow = $fixtures->create($table, ['itemtype' => 'Monitor', 'items_id' => $computer, $ownerColumn => $owner]);
+        $replacementRow = $fixtures->create($table, ['itemtype' => 'Computer', 'items_id' => $replacementComputer, $ownerColumn => $owner]);
+        $softwareRows[$table] = ['own' => $computerRow, 'other' => [$monitorRow, $replacementRow],
+            'before' => array_map(static fn (int $id): array => $read($table, $id), [$computerRow, $monitorRow, $replacementRow])];
+        $selection = EntityRegistry::discriminatedReferences($table)['items_id']['selections']['Computer'];
+        verify($selection['target'] === 'glpi_computers'
+            && (int)$softwareRows[$table]['before'][0][$selection['column']] === $computer,
+            $table . ': Software child has a real canonical Computer owner');
+    }
     $selections = iterator_to_array($repo()->replacements('glpi_computers', $computer, $computer, 'Computer', $index), false);
-    $installationSelection = array_values(array_filter($selections, static fn (array $selection): bool => $selection['table'] === 'glpi_items_softwareversions'));
-    verify(count($installationSelection) === 1 && $installationSelection[0]['column'] === 'items_id'
-        && array_map('intval', $installationSelection[0]['ids']) === [$computerInstallation] && !$installationSelection[0]['physical'], 'Polymorphic replacement selects one ID/type pair, never the discriminator column');
+    verify(array_filter($selections, static fn (array $selection): bool => isset($softwareRows[$selection['table']])) === [],
+        'Both owning Software families are excluded from automatic replacement, including their generated items_id projections');
     $model = new Computer();
     verify($model->getFromDB($computer), 'Load computer');
     $model->input = ['_replace_by' => $replacementComputer];
     $model->cleanRelationData();
-    verify((int)$read('glpi_items_softwareversions', $computerInstallation)['items_id'] === $replacementComputer
-        && $read('glpi_items_softwareversions', $computerInstallation)['itemtype'] === 'Computer', 'Public generic replacement preserves the discriminator');
-    verify((int)$read('glpi_items_softwareversions', $monitorInstallation)['items_id'] === $computer
-        && $read('glpi_items_softwareversions', $monitorInstallation)['itemtype'] === 'Monitor', 'Same numeric ID of another type is untouched');
+    foreach ($softwareRows as $table => $rows) {
+        verify(array_map(static fn (int $id): array => $read($table, $id), [$rows['own'], ...$rows['other']]) === $rows['before'],
+            $table . ': Public generic replacement leaves every managed link and discriminator byte-for-byte unchanged');
+    }
+    verify($model->delete(['id' => $computer, '_replace_by' => $replacementComputer], true),
+        'Public Computer purge delegates Software cleanup to its actual owning lifecycle');
+    verify($read('glpi_computers', $computer) === null && $read('glpi_computers', $replacementComputer) !== null
+        && $read('glpi_monitors', $computer) !== null, 'Owning purge deletes its Computer and preserves colliding Monitor and replacement Computer');
+    foreach ($softwareRows as $table => $rows) {
+        verify($read($table, $rows['own']) === null
+            && array_map(static fn (int $id): array => $read($table, $id), $rows['other']) === array_slice($rows['before'], 1),
+            $table . ': Actual purge removes only its source child and preserves complete differently typed and destination links');
+    }
 
     $connection = $DB->getDoctrineConnection();
     $privateState = json_encode(['columns' => ["O'Reilly \\ 日本語"], 'visible' => false], JSON_THROW_ON_ERROR);
