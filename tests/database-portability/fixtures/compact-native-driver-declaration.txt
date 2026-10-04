@@ -1,0 +1,3 @@
+<?php
+// Deliberately compact declaration source: method offsets, not shared line ranges, establish ownership. No instance is ever constructed.
+final class InventoryCompactNativeDriverProbe extends \Doctrine\DBAL\Driver\Middleware\AbstractConnectionMiddleware { private \PDO $pdo; public function query(string $sql): \Doctrine\DBAL\Driver\Result { throw new \LogicException('Declaration probe is never invoked'); } public function applicationSql(string $sql): void { $this->pdo->query($sql); } }

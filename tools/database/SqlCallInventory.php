@@ -135,6 +135,7 @@ final class SqlCallInventory
                 || !$class->implementsInterface(\Doctrine\DBAL\Driver\Connection::class)) {
                 continue;
             }
+            $bodies = self::declaredMethodBodies($tokens, $position);
             foreach ($native as $index => $propertyName) {
                 $methodName = strtolower($calls[$index]['method']);
                 if (!$class->hasProperty($propertyName) || !$class->hasMethod($methodName)) {
@@ -147,7 +148,9 @@ final class SqlCallInventory
                     || $property->getDeclaringClass()->getName() !== $class->getName()
                     || $method->getDeclaringClass()->getName() !== $class->getName()
                     || realpath((string) $method->getFileName()) !== realpath($file)
-                    || $calls[$index]['line'] < $method->getStartLine() || $calls[$index]['line'] > $method->getEndLine()) {
+                    || !isset($bodies[$methodName])
+                    || $calls[$index]['offset'] <= $bodies[$methodName][0]
+                    || $calls[$index]['offset'] >= $bodies[$methodName][1]) {
                     continue;
                 }
                 $calls[$index]['category'] = 'owned_driver_boundary';
@@ -156,5 +159,53 @@ final class SqlCallInventory
             }
         }
         return $calls;
+    }
+
+    /** Exact method body offsets avoid borrowing ownership from same-line declarations. */
+    private static function declaredMethodBodies(array $tokens, int $class): array
+    {
+        $open = $class + 1;
+        while (isset($tokens[$open]) && $tokens[$open]->id !== ord('{')) {
+            ++$open;
+        }
+        $depth = 1;
+        $bodies = [];
+        for ($cursor = $open + 1; isset($tokens[$cursor]) && $depth > 0; ++$cursor) {
+            if ($depth === 1 && $tokens[$cursor]->id === T_FUNCTION) {
+                $name = $cursor + 1;
+                if (($tokens[$name]->text ?? '') === '&') {
+                    ++$name;
+                }
+                if (($tokens[$name]->id ?? null) === T_STRING) {
+                    $body = $name + 1;
+                    while (isset($tokens[$body]) && $tokens[$body]->id !== ord('{') && $tokens[$body]->id !== ord(';')) {
+                        ++$body;
+                    }
+                    if (($tokens[$body]->id ?? null) === ord('{')) {
+                        $end = $body + 1;
+                        $bodyDepth = 1;
+                        while (isset($tokens[$end]) && $bodyDepth > 0) {
+                            $bodyDepth += self::braceDelta($tokens[$end]);
+                            ++$end;
+                        }
+                        if ($bodyDepth === 0) {
+                            $bodies[strtolower($tokens[$name]->text)] = [$tokens[$body]->pos, $tokens[$end - 1]->pos];
+                            $cursor = $end - 1;
+                            continue;
+                        }
+                    }
+                }
+            }
+            $depth += self::braceDelta($tokens[$cursor]);
+        }
+        return $bodies;
+    }
+
+    private static function braceDelta(PhpToken $token): int
+    {
+        if ($token->id === ord('{') || $token->is([T_CURLY_OPEN, T_DOLLAR_OPEN_CURLY_BRACES])) {
+            return 1;
+        }
+        return $token->id === ord('}') ? -1 : 0;
     }
 }
