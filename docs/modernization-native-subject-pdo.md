@@ -1,0 +1,9 @@
+# Typed subject native PDO fixture causes
+
+Software and Processor native refusal fixtures now share precise cause extraction and selected typed CHECK/generated projection matching in NativeConstraintRefusal. Application behavior, frozen history, native constraints, original operations and assertions remain unchanged. Old native-driver cause matching is retained; PDO matching requires the actual typed DBAL/PDO exception chain and identical outer/driver/errorInfo state and code. Diagnostics come from native errorInfo, never query text or bound values.
+
+ROOT captured the unchanged Software CHECK failure on PostgreSQL: 23514/code7, with the native primary diagnostic naming glpi_items_softwareversions and its typed_item_kind CHECK, followed by DETAIL. The original helper rejected this actual cause solely because it expected the old PgSQL driver class. The shared PDO predicate compares that selected primary diagnostic exactly. Maria CHECK requires23000/4025 and the exact database/table/constraint; official MySQL3819 retains its existing precise selected constraint path.
+
+Generated projection predicates separately require428C9/code7 and the selected items_id INSERT/UPDATE primary diagnostic on PostgreSQL, or HY000/1906 or3105 with the exact generated field/table cause on MariaDB/MySQL. No generic HY000, unrelated constraint or accepted/ignored successful write enters this branch. Original generated operations and their complete-row rollback assertions remain required. These generated PDO formats are unexecuted source expectations until ROOT reaches the original native lanes; no generated passing result is claimed.
+
+Additional synthetic typed exception controls verify malformed vectors, wrong tables/constraints/databases/actions, CHECK versus generated causes and query-text decoys. They are unit examples, not fabricated native evidence. PHP/compiler/native execution of this correction remains pending ROOT. The modernization goal remains OPEN.

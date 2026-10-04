@@ -111,4 +111,37 @@ foreach ([NotNullConstraintViolationException::class, ForeignKeyConstraintViolat
         'PDO CHECK vector retains exact converted-class requirement'
     );
 }
+// Synthetic typed cause controls below are unit examples, not live native evidence.
+$table = 'glpi_items_softwareversions';
+$database = 'itsm_port_unit';
+$constraint = $table . '_typed_item_kind';
+$pgCheckText = 'ERROR:  new row for relation "' . $table . '" violates check constraint "' . $constraint . '"' . "\nDETAIL:  Failing row contains owned unit values.";
+$pgCheck = $makePdo(DriverException::class, $pgCheckText, 7, '23514');
+verify(NativeConstraintRefusal::matchesTypedSubjectCheck($pgCheck, $table, $database), 'Typed PDO PG selected CHECK primary diagnostic recognized with separate DETAIL');
+verify(!NativeConstraintRefusal::matchesTypedSubjectCheck($pgCheck, 'glpi_items_softwarelicenses', $database), 'PDO PG CHECK requires the actual selected table and constraint');
+verify(!NativeConstraintRefusal::matchesGeneratedProjection($pgCheck, $table, 'INSERT'), 'Selected CHECK cannot impersonate generated projection refusal');
+foreach (['ERROR:  ' . $checkMessage, 'Query mentions ' . $pgCheckText, explode("\n", $pgCheckText, 2)[0] . ' Extra primary text', str_replace($constraint, 'another_constraint', $pgCheckText)] as $text) {
+    verify(!NativeConstraintRefusal::matchesTypedSubjectCheck($makePdo(DriverException::class, $text, 7, '23514'), $table, $database), 'Wrong/embedded/extended selected CHECK primary diagnostic refused');
+}
+foreach ([[23514, 7, $pgCheckText], ['23514', 7], ['23514', 8, $pgCheckText], ['23514', 7, $pgCheckText, 'extra']] as $info) {
+    verify(!NativeConstraintRefusal::matchesTypedSubjectCheck($makePdo(DriverException::class, $pgCheckText, 7, '23514', $info), $table, $database), 'Malformed or mismatched typed PDO selected-CHECK vector refused');
+}
+$mariaCheck = 'CONSTRAINT `' . $constraint . '` failed for `' . $database . '`.`' . $table . '`';
+verify(NativeConstraintRefusal::matchesTypedSubjectCheck($makePdo(DriverException::class, $mariaCheck, 4025, '23000'), $table, $database), 'Typed PDO Maria selected CHECK requires exact4025/23000 native database and table');
+verify(!NativeConstraintRefusal::matchesTypedSubjectCheck($makePdo(DriverException::class, $mariaCheck, 4025, '23000'), $table, 'another_database'), 'PDO Maria CHECK refuses another database');
+foreach (['INSERT' => 'cannot insert a non-DEFAULT value into column "items_id"', 'UPDATE' => 'column "items_id" can only be updated to DEFAULT'] as $operation => $primary) {
+    $generated = $makePdo(DriverException::class, 'ERROR:  ' . $primary . "\nDETAIL:  Column is a generated column.", 7, '428C9');
+    verify(NativeConstraintRefusal::matchesGeneratedProjection($generated, $table, $operation), 'Typed PDO PG selected generated action recognized: ' . $operation);
+    verify(!NativeConstraintRefusal::matchesGeneratedProjection($generated, $table, $operation === 'INSERT' ? 'UPDATE' : 'INSERT'), 'PDO PG generated action cannot impersonate the other operation');
+    verify(!NativeConstraintRefusal::matchesGeneratedProjection($generated, $table, 'DELETE'), 'Unknown generated operation refused');
+    verify(!NativeConstraintRefusal::matchesTypedSubjectCheck($generated, $table, $database), 'Generated native cause cannot impersonate CHECK');
+}
+foreach ([1906 => "The value specified for generated column 'items_id' in table '" . $table . "' has been ignored", 3105 => "The value specified for generated column 'items_id' in table '" . $table . "' is not allowed."] as $code => $text) {
+    $generated = $makePdo(DriverException::class, $text, $code, 'HY000');
+    verify(NativeConstraintRefusal::matchesGeneratedProjection($generated, $table, 'INSERT'), 'PDO precise generated cause code and native diagnostic recognized: ' . $code);
+    verify(!NativeConstraintRefusal::matchesGeneratedProjection($generated, 'another_table', 'INSERT'), 'PDO generated cause requires selected native table');
+    verify(!NativeConstraintRefusal::matchesGeneratedProjection($makePdo(DriverException::class, $text, 3819, 'HY000'), $table, 'INSERT'), 'An unrelated HY000 code cannot enter generated projection branch');
+    verify(!NativeConstraintRefusal::matchesGeneratedProjection($makePdo(DriverException::class, 'Query mentions ' . $text, $code, 'HY000'), $table, 'INSERT'), 'Rendered/query text cannot enter generated projection branch');
+}
+
 echo "Native constraint refusal classification passed.\n";
