@@ -5,6 +5,7 @@
 use Doctrine\DBAL\Exception\DriverException;
 use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\DBAL\Platforms\MySQLPlatform;
 use itsmng\Database\BaselineSchema;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\Migration\History;
@@ -307,7 +308,8 @@ try {
     }
     // A generated projection is not proof of a completed canonical adoption.
     // Invalid partial states fail before stock normalization or any new receipt.
-    $connection->executeStatement('ALTER TABLE ' . $tableName . ' DROP ' . ($postgres ? 'CONSTRAINT ' : 'CHECK ') . $tableName . '_typed_item_kind');
+    $connection->executeStatement('ALTER TABLE ' . $platform->quoteIdentifier($tableName) . ' DROP '
+        . ($platform instanceof MySQLPlatform ? 'CHECK ' : 'CONSTRAINT ') . $platform->quoteIdentifier($tableName . '_typed_item_kind'));
     $connection->delete(LegacyToOrm::LEDGER, ['version' => $version]);
     foreach ([
         ['itemtype' => '', 'computers_id' => null],
