@@ -6,9 +6,9 @@ namespace itsmng\Database\Repository;
 
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\QueryBuilder;
 use itsmng\Database\Entity\CalendarHoliday;
 use itsmng\Database\Entity\CalendarSegment;
-use itsmng\Database\Entity\Holiday;
 
 final class CalendarRepository
 {
@@ -93,27 +93,31 @@ final class CalendarRepository
     }
 
 
+    /** @return list<CalendarHoliday> Every owning membership retains its individual link identity. */
+    public function closures(int $calendar): array
+    {
+        return $this->closureQuery($calendar)->orderBy('holiday.name')->addOrderBy('link.id')
+            ->getQuery()->getResult();
+    }
+
+    private function closureQuery(int $calendar): QueryBuilder
+    {
+        return $this->em->createQueryBuilder()->select('link', 'holiday')->from(CalendarHoliday::class, 'link')
+            ->join('link.holidays', 'holiday')->where('IDENTITY(link.calendars) = :calendar')
+            ->setParameter('calendar', $calendar, Types::INTEGER);
+    }
+
     public function isHoliday(int $calendar, \DateTimeImmutable $day): bool
     {
-        $holidays = $this->em->createQueryBuilder()
-            ->select('h')->from(Holiday::class, 'h')
-            ->join(CalendarHoliday::class, 'link', 'WITH', 'link.holidays = h.id')
-            ->where('IDENTITY(link.calendars) = :calendar AND (h.is_perpetual = :yes OR (h.begin_date <= :day AND h.end_date >= :day))')
-            ->setParameter('calendar', $calendar, Types::INTEGER)->setParameter('yes', true, Types::BOOLEAN)
+        $links = $this->closureQuery($calendar)
+            ->andWhere('holiday.is_perpetual = :yes OR (holiday.begin_date <= :day AND holiday.end_date >= :day)')
+            ->setParameter('yes', true, Types::BOOLEAN)
             ->setParameter('day', $day, Types::DATE_IMMUTABLE)->getQuery()->toIterable();
-        $monthDay = $day->format('md');
-        foreach ($holidays as $holiday) {
+        foreach ($links as $link) {
+            $holiday = $link->holidays;
+            $this->em->detach($link);
             $this->em->detach($holiday);
-            if ($holiday->begin_date === null || $holiday->end_date === null) {
-                continue;
-            }
-            if (!$holiday->is_perpetual) {
-                return true;
-            }
-            $begin = $holiday->begin_date->format('md');
-            $end = $holiday->end_date->format('md');
-            // Annual periods may cross New Year; compare month/day without a database dialect function.
-            if ($begin <= $end ? ($monthDay >= $begin && $monthDay <= $end) : ($monthDay >= $begin || $monthDay <= $end)) {
+            if ($holiday->containsDay($day)) {
                 return true;
             }
         }

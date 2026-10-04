@@ -45,4 +45,23 @@ class Holiday
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
     public ?\DateTimeInterface $date_creation = null;
+
+    /** Inclusive calendar dates; an annual period can cross New Year. */
+    public function containsDay(\DateTimeInterface $day): bool
+    {
+        if ($this->begin_date === null || $this->end_date === null) {
+            return false;
+        }
+        if (!$this->is_perpetual) {
+            $date = $day->format('Y-m-d');
+            return $date >= $this->begin_date->format('Y-m-d')
+                && $date <= $this->end_date->format('Y-m-d');
+        }
+        $date = $day->format('md');
+        $begin = $this->begin_date->format('md');
+        $end = $this->end_date->format('md');
+        return $begin <= $end
+            ? $date >= $begin && $date <= $end
+            : $date >= $begin || $date <= $end;
+    }
 }

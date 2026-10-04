@@ -275,21 +275,9 @@ class Calendar extends CommonDropdown
     {
         global $DB;
 
-        // Use a static cache to improve performances when multiple elements requires a computation
-        // on same calendars/dates.
-        static $result_cache = [];
-        $cache_key = $this->fields['id'] . '-' . date('Y-m-d', strtotime($date));
-        if (array_key_exists($cache_key, $result_cache)) {
-            return $result_cache[$cache_key];
-        }
-
         $day = new \DateTimeImmutable(date('Y-m-d', strtotime($date)));
-        $is_holiday = (new \itsmng\Database\Repository\CalendarRepository(\itsmng\Database\Orm::create($DB)))
+        return (new \itsmng\Database\Repository\CalendarRepository(\itsmng\Database\Orm::create($DB)))
             ->isHoliday((int)$this->fields['id'], $day);
-
-        $result_cache[$cache_key] = $is_holiday;
-
-        return $is_holiday;
     }
 
 
