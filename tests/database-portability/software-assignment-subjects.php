@@ -77,7 +77,12 @@ try {
     verify(in_array('PluginSoftwareAssignmentsAsset', $CFG_GLPI['software_types'], true), 'Plugin registration genuinely extends configured software types');
     foreach ([Item_SoftwareVersion::class => ['softwareversions_id' => $version], Item_SoftwareLicense::class => ['softwarelicenses_id' => $license]] as $model => $parent) {
         $unsupported = ['itemtype' => 'PluginSoftwareAssignmentsAsset', 'items_id' => 1] + $parent;
-        verify(!(new $model())->can(-1, CREATE, $unsupported) && !(new $model())->can(-1, UPDATE, $unsupported), 'An extension requires an owning mapping before public assignment writes ' . $model);
+        // can() normalizes its input by reference, including rejection to false.
+        // Each independent permission request needs its own proposed payload.
+        $createInput = $unsupported;
+        $updateInput = $unsupported;
+        verify(!(new $model())->can(-1, CREATE, $createInput), 'An extension requires an owning mapping before public assignment CREATE ' . $model);
+        verify(!(new $model())->can(-1, UPDATE, $updateInput), 'An extension requires an owning mapping before public assignment UPDATE ' . $model);
     }
     $CFG_GLPI['software_types'] = $beforeKinds;
     $sameId = 4294970801;
