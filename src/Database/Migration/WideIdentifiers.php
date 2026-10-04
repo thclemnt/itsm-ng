@@ -26,7 +26,8 @@ final class WideIdentifiers
         $postgres = $platform instanceof PostgreSQLPlatform;
         $quote = $platform->quoteIdentifier(...);
         $namespace = $connection->fetchOne($postgres ? 'SELECT current_schema()' : 'SELECT DATABASE()');
-        $scope = $this->identifiers ?? IdentifierColumns::history()['identifiers'];
+        $native = new NativeIdentifierForeignKeys($connection);
+        $scope = $native->expand($this->identifiers ?? IdentifierColumns::history()['identifiers']);
         $tables = $foreignKeys = [];
         // One catalogue snapshot retains core and custom FK edges without
         // repeating columns/indexes/FKs/options introspection for every table.
@@ -34,27 +35,14 @@ final class WideIdentifiers
             $name = $table->getName();
             $tables[$name] = $table;
             foreach ($table->getForeignKeys() as $foreign) {
-                $foreignKeys[] = [$name, $foreign];
-            }
-        }
-        // Include actual FK edges from plugin/custom tables so their types stay compatible.
-        do {
-            $changed = false;
-            foreach ($foreignKeys as [$table, $foreign]) {
-                foreach ($foreign->getLocalColumns() as $i => $column) {
-                    $target = $foreign->getForeignTableName();
-                    $targetColumn = $foreign->getForeignColumns()[$i];
-                    if (in_array($targetColumn, $scope[$target] ?? [], true) || in_array($column, $scope[$table] ?? [], true)) {
-                        foreach ([[$table, $column], [$target, $targetColumn]] as [$name, $field]) {
-                            if (!in_array($field, $scope[$name] ?? [], true)) {
-                                $scope[$name][] = $field;
-                                $changed = true;
-                            }
-                        }
-                    }
+                $target = $native->ownedTarget($table, $foreign);
+                if ($target !== null) {
+                    $foreignKeys[] = [$name, $foreign, $target];
                 }
             }
-        } while ($changed);
+        }
+        // The native graph follows qualified custom edges without treating an
+        // identically named table in another database as an owned parent.
         $widen = [];
         foreach ($scope as $name => $columns) {
             if (!isset($tables[$name])) {
@@ -101,12 +89,13 @@ final class WideIdentifiers
                 ? "SELECT column_name, generation_expression FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND is_generated = 'ALWAYS' ORDER BY ordinal_position"
                 : "SELECT column_name, generation_expression FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND extra LIKE '%GENERATED%' ORDER BY ordinal_position", [$namespace, $name]) : [];
         }
+        $native->assertOwnedChanges($widen, $generatedColumns, $tables);
         $dropForeign = $restoreForeign = $dropGenerated = $restoreGenerated = $alter = $dropChecks = $restoreChecks = [];
         $operation = static fn (string $sql, string $kind = 'sql', string $table = '', string $name = '') => compact('sql', 'kind', 'table', 'name');
         foreach (self::planOwnedSequences($connection, $scope) as $sql) {
             $alter[] = $operation($sql);
         }
-        foreach ($foreignKeys as [$table, $foreign]) {
+        foreach ($foreignKeys as [$table, $foreign, $target]) {
             $generatedNames = array_column($generatedColumns[$table] ?? [], 'column_name');
             $supportingGeneratedIndex = false;
             foreach ($tables[$table]->getIndexes() as $index) {
@@ -115,10 +104,10 @@ final class WideIdentifiers
                     $supportingGeneratedIndex = true;
                 }
             }
-            if ($supportingGeneratedIndex || array_intersect($foreign->getForeignColumns(), array_column($generatedColumns[$foreign->getForeignTableName()] ?? [], 'column_name'))
-                || array_intersect($foreign->getLocalColumns(), $widen[$table] ?? []) || array_intersect($foreign->getForeignColumns(), $widen[$foreign->getForeignTableName()] ?? [])) {
+            if ($supportingGeneratedIndex || array_intersect($foreign->getForeignColumns(), array_column($generatedColumns[$target] ?? [], 'column_name'))
+                || array_intersect($foreign->getLocalColumns(), $widen[$table] ?? []) || array_intersect($foreign->getForeignColumns(), $widen[$target] ?? [])) {
                 $dropForeign[] = $operation($platform->getDropForeignKeySQL($foreign->getQuotedName($platform), $quote($table)), 'drop_fk', $table, $foreign->getName());
-                $restoreForeign[] = $operation($platform->getCreateForeignKeySQL($foreign, $quote($table)), 'add_fk', $table, $foreign->getName());
+                $restoreForeign[] = $operation($native->restorationSql($tables[$table], $foreign), 'add_fk', $table, $foreign->getName());
             }
         }
         foreach ($widen as $name => $columns) {
