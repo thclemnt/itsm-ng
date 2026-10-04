@@ -100,25 +100,54 @@ try {
         && $boards()->load('ProjectTask', $project, 0) === $taskState
         && $boards()->load('Project', $neighborProject, 0) === $neighborState, 'Kanban loading preserves both discriminated and neighboring board identities');
 
-    // These legacy subject fields currently declare unmanaged polymorphic
-    // references. A future typed software ownership migration must update this
-    // policy fixture together with its authoritative entity declarations.
+    // Typed software subjects are model-managed owning associations. Generic
+    // usage deliberately excludes them; the real asset lifecycle purges its
+    // own children while the owning FKs prohibit an unmanaged target deletion.
     $software = $fixtures->create('glpi_softwares');
     $version = $fixtures->create('glpi_softwareversions', ['softwares_id' => $software]);
     $license = $fixtures->create('glpi_softwarelicenses', ['softwares_id' => $software]);
     foreach ([['glpi_items_softwareversions', 'softwareversions_id', $version], ['glpi_items_softwarelicenses', 'softwarelicenses_id', $license]] as [$table, $ownerColumn, $owner]) {
-        verify($relations['glpi_computers'][$table] === ['items_id', 'itemtype']
-            && !isset($relations['glpi_computers']['_' . $table]), $table . ': current subject policy participates in generic usage');
+        verify($relations['glpi_computers']['_' . $table] === ['items_id', 'itemtype']
+            && !isset($relations['glpi_computers'][$table]), $table . ': owning subject policy delegates cleanup to the real model lifecycle');
+        $selection = EntityRegistry::discriminatedReferences($table)['items_id']['selections']['Computer'];
+        verify($selection['target'] === 'glpi_computers', $table . ': Computer identity has a real owning target');
         $computer = $fixtures->create('glpi_computers');
         if ($read('glpi_phones', $computer) === null) {
             $fixtures->create('glpi_phones', ['id' => $computer]);
         }
         $neighborComputer = $fixtures->create('glpi_computers');
-        $fixtures->create($table, [$ownerColumn => $owner, 'itemtype' => 'Phone', 'items_id' => $computer]);
+        $phoneLink = $fixtures->create($table, [$ownerColumn => $owner, 'itemtype' => 'Phone', 'items_id' => $computer]);
+        $phoneBefore = $read($table, $phoneLink);
         verify(!$repo()->isUsed('glpi_computers', $computer, 'Computer'), $table . ': a real colliding Phone subject does not count as Computer usage');
-        $fixtures->create($table, [$ownerColumn => $owner, 'itemtype' => 'Computer', 'items_id' => $computer]);
-        verify($repo()->isUsed('glpi_computers', $computer, 'Computer'), $table . ': generic usage binds ID and discriminator together');
+        $computerLink = $fixtures->create($table, [$ownerColumn => $owner, 'itemtype' => 'Computer', 'items_id' => $computer]);
+        verify((int)$read($table, $computerLink)[$selection['column']] === $computer,
+            $table . ': matching Computer owns the canonical association rather than only a legacy projection');
+        verify(!$repo()->isUsed('glpi_computers', $computer, 'Computer'), $table . ': matching model-managed children do not block generic usage');
         verify(!$repo()->isUsed('glpi_computers', $neighborComputer, 'Computer'), $table . ': a matching discriminator with another ID does not count as usage');
+        $neighborLink = $fixtures->create($table, [$ownerColumn => $owner, 'itemtype' => 'Computer', 'items_id' => $neighborComputer]);
+        $neighborBefore = $read($table, $neighborLink);
+        $connection = $DB->getDoctrineConnection();
+        $rowsBefore = $connection->fetchAllAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table) . ' ORDER BY id');
+        $refused = false;
+        $connection->beginTransaction();
+        try {
+            try {
+                $connection->delete('glpi_computers', ['id' => $computer]);
+            } catch (Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException) {
+                $refused = true;
+            }
+        } finally {
+            $connection->rollBack();
+        }
+        verify($refused && $read('glpi_computers', $computer) !== null
+            && $connection->fetchAllAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table) . ' ORDER BY id') === $rowsBefore,
+            $table . ': direct owning-target deletion is refused without changing any allocation row');
+        verify((new Computer())->delete(['id' => $computer], true), $table . ': actual Computer purge runs model-managed child cleanup');
+        verify($read('glpi_computers', $computer) === null && $read($table, $computerLink) === null,
+            $table . ': actual Computer lifecycle removes its own allocation before deleting the owning target');
+        verify($read('glpi_phones', $computer) !== null && $read($table, $phoneLink) === $phoneBefore
+            && $read('glpi_computers', $neighborComputer) !== null && $read($table, $neighborLink) === $neighborBefore,
+            $table . ': actual purge preserves colliding Phone and neighboring Computer ownership and complete link rows');
     }
 
     $mail = $fixtures->create('glpi_authmails');
