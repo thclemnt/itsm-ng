@@ -120,6 +120,7 @@ try {
             verify($row['software'] === 'Locked software' && $row['version'] === 'Locked selection', 'Software labels follow mapped associations');
         }
     }
+    $differentKindControls = 0;
     foreach (Item_Devices::getDeviceTypes() as $kind) {
         $table = $kind::getTable();
         $deviceType = $kind::getDeviceType();
@@ -127,7 +128,24 @@ try {
         $values = [$kind::getDeviceForeignKey() => $deviceId, 'itemtype' => 'Computer', 'items_id' => $assetId];
         $expected[$kind] = $fixtures->create($table, $values + $locked);
         $excluded[] = [$table, $fixtures->create($table, ['items_id' => $otherId] + $values + $locked)];
-        $excluded[] = [$table, $fixtures->create($table, ['itemtype' => 'Monitor'] + $values + $locked)];
+        // Use the concrete model's supported affinity, derived from owning
+        // metadata where available. A same numeric ID in another real subject
+        // remains excluded; Computer-only families use legitimate stock instead.
+        $affinity = $kind::itemAffinity();
+        $alternatives = array_values(array_diff(in_array('*', $affinity, true) ? $CFG_GLPI['itemdevices_types'] : $affinity, ['Computer']));
+        if ($alternatives !== []) {
+            $alternateType = $alternatives[0];
+            $alternate = getItemForItemtype($alternateType);
+            verify($alternate instanceof CommonDBTM && isset(\itsmng\Database\EntityRegistry::tables()[$alternate->getTable()]),
+                'Alternate component subject is a real mapped model: ' . $kind);
+            if ((new RecordRepository(Orm::create($DB)))->find($alternate->getTable(), 'id', $assetId) === null) {
+                $fixtures->create($alternate->getTable(), ['id' => $assetId, 'name' => 'Supported component subject with the same source ID']);
+            }
+            $excluded[] = [$table, $fixtures->create($table, ['itemtype' => $alternateType] + $values + $locked)];
+            ++$differentKindControls;
+        } else {
+            $excluded[] = [$table, $fixtures->create($table, ['itemtype' => null, 'items_id' => 0] + $values + $locked)];
+        }
         $excluded[] = [$table, $fixtures->create($table, ['is_dynamic' => false] + $values + $locked)];
         $fixtures->create($table, ['is_deleted' => false] + $values + $locked);
         $rows = $locks->forItem($kind, 'Computer', $assetId);
@@ -135,6 +153,26 @@ try {
         verify($rows[0]['name'] === 'Locked ' . $deviceType, 'Component designation follows its mapped association');
     }
     verify(count(Item_Devices::getDeviceTypes()) === 17, 'All 17 core component associations exercised');
+    verify($differentKindControls > 0, 'Supported component families retain genuine same-ID wrong-discriminator controls');
+    $processorTable = Item_DeviceProcessor::getTable();
+    $processorReference = \itsmng\Database\EntityRegistry::discriminatedReferences($processorTable)['items_id'];
+    verify(array_keys($processorReference['selections']) === ['Computer'], 'Processor subject affinity remains its sole entity-owned Computer association');
+    $processorClass = \itsmng\Database\EntityRegistry::tables()[$processorTable];
+    $processorProposal = (new RecordRepository(Orm::create($DB)))->find($processorTable, 'id', $expected[Item_DeviceProcessor::class]);
+    unset($processorProposal['id']);
+    $processorProposal['itemtype'] = 'Monitor';
+    $connection = $DB->getDoctrineConnection();
+    $processorRowsBefore = $connection->fetchAllAssociative('SELECT * FROM ' . $connection->quoteIdentifier($processorTable) . ' ORDER BY id');
+    $processorRefused = false;
+    try {
+        (new $processorClass())->normalizeInput($processorProposal);
+    } catch (InvalidArgumentException $error) {
+        $processorRefused = $error->getMessage() === 'Unsupported Typed item reference: Monitor';
+    }
+    verify($processorRefused
+        && $connection->fetchAllAssociative('SELECT * FROM ' . $connection->quoteIdentifier($processorTable) . ' ORDER BY id') === $processorRowsBefore,
+        'Actual entity input refuses unsupported Processor Monitor without inserting or changing any row');
+    verify($ids(Item_DeviceProcessor::class, 'Monitor') === [], 'Unsupported Processor source kind cannot select a valid Computer or stock lock');
     // Ancestors need not be locked themselves. Every polymorphic hop must match its kind.
     $port = $fixtures->create('glpi_networkports', ['items_id' => $assetId, 'itemtype' => 'Computer']);
     $foreignPort = $fixtures->create('glpi_networkports', ['items_id' => $otherId, 'itemtype' => 'Computer']);
