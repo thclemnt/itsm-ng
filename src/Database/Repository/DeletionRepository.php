@@ -62,60 +62,66 @@ final class DeletionRepository
         }
         $rootTree = $model instanceof \CommonTreeDropdown
             && EntityRegistry::hasPolicy($model->getTable(), $model->getForeignKeyField(), ReferenceKind::RootParent);
-        if ($model->isEntityAssign() && !$rootTree) {
-            $sourceEntity = $model->getEntityID();
-            $targetEntity = $replacementModel->getEntityID();
-            $globalScope = EntityRegistry::hasPolicy($model->getTable(), 'entities_id', ReferenceKind::GlobalScope);
-            if ($globalScope && $targetEntity === null) {
-                return true;
-            }
-            if ($sourceEntity !== $targetEntity) {
-                $sourceEntities = $globalScope && $sourceEntity === null
-                    ? ($_SESSION['glpiactiveentities'] ?? [0]) : [$sourceEntity];
-                if (in_array($targetEntity, $sourceEntities, true)) {
-                    return true;
-                }
-                if (!$replacementModel->maybeRecursive() || empty($replacementModel->fields['is_recursive'])) {
-                    return false;
-                }
-                $scope = null;
-                foreach ($metadata->associationMappings as $property => $association) {
-                    $attributes = (new \ReflectionProperty($metadata->name, $property))->getAttributes(ReferencePolicy::class);
-                    if ($attributes && in_array($attributes[0]->newInstance()->kind, [ReferenceKind::RootEntity, ReferenceKind::GlobalScope], true)) {
-                        $scope = $this->em->getClassMetadata($association->targetEntity);
-                        break;
-                    }
-                }
-                if ($scope === null) {
-                    return false;
-                }
-                $parent = null;
-                foreach ($scope->associationMappings as $property => $association) {
-                    $attributes = (new \ReflectionProperty($scope->name, $property))->getAttributes(ReferencePolicy::class);
-                    if ($attributes && $attributes[0]->newInstance()->kind === ReferenceKind::RootParent) {
-                        $parent = $property;
-                        break;
-                    }
-                }
-                if ($parent === null) {
-                    return false;
-                }
-                foreach ($sourceEntities as $entity) {
-                    if ($this->hasAncestor($scope, $parent, (int)$entity, (int)$targetEntity)) {
-                        return true;
-                    }
-                }
-                return false;
+        return !$model->isEntityAssign() || $rootTree || $this->replacementEntityScope(
+            $model->getTable(), $model->getEntityID(), $replacementModel->getEntityID(),
+            $replacementModel->maybeRecursive() && !empty($replacementModel->fields['is_recursive'])
+        );
+    }
+
+    /** Shared structural policy, also usable with refreshed owning-record scopes. */
+    public function replacementEntityScope(string $table, ?int $sourceEntity, ?int $targetEntity, bool $targetRecursive): bool
+    {
+        $metadata = $this->em->getClassMetadata(EntityRegistry::tables()[$table]);
+        $globalScope = EntityRegistry::hasPolicy($table, 'entities_id', ReferenceKind::GlobalScope);
+        if ($globalScope && $targetEntity === null) {
+            return true;
+        }
+        if ($sourceEntity === $targetEntity) {
+            return true;
+        }
+        $sourceEntities = $globalScope && $sourceEntity === null
+            ? ($_SESSION['glpiactiveentities'] ?? [0]) : [$sourceEntity];
+        if (in_array($targetEntity, $sourceEntities, true)) {
+            return true;
+        }
+        if (!$targetRecursive) {
+            return false;
+        }
+        $scope = null;
+        foreach ($metadata->associationMappings as $property => $association) {
+            $attributes = (new \ReflectionProperty($metadata->name, $property))->getAttributes(ReferencePolicy::class);
+            if ($attributes && in_array($attributes[0]->newInstance()->kind, [ReferenceKind::RootEntity, ReferenceKind::GlobalScope], true)) {
+                $scope = $this->em->getClassMetadata($association->targetEntity);
+                break;
             }
         }
-        return true;
+        if ($scope === null) {
+            return false;
+        }
+        $parent = null;
+        foreach ($scope->associationMappings as $property => $association) {
+            $attributes = (new \ReflectionProperty($scope->name, $property))->getAttributes(ReferencePolicy::class);
+            if ($attributes && $attributes[0]->newInstance()->kind === ReferenceKind::RootParent) {
+                $parent = $property;
+                break;
+            }
+        }
+        if ($parent === null) {
+            return false;
+        }
+        foreach ($sourceEntities as $entity) {
+            if ($this->hasAncestor($scope, $parent, (int)$entity, (int)$targetEntity)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private function lock(ClassMetadata $metadata, string $column, int $id): ?object
     {
         $query = $this->em->createQueryBuilder()->select('r')->from($metadata->name, 'r');
         $query->where((new RecordCriteria($query, $metadata, false))->where([$column => $id]));
-        return $query->getQuery()->setLockMode(LockMode::PESSIMISTIC_WRITE)->getOneOrNullResult();
+        return $query->getQuery()->setHint(\Doctrine\ORM\Query::HINT_REFRESH, true)->setLockMode(LockMode::PESSIMISTIC_WRITE)->getOneOrNullResult();
     }
 
     private function selfParent(ClassMetadata $metadata, string $column): ?string

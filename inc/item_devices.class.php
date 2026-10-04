@@ -73,6 +73,90 @@ class Item_Devices extends CommonDBRelation
 
     public static $mustBeAttached_2 = false; // Mandatory to display creation form
 
+    private ?\itsmng\Domain\ComponentDefinitionChange $definitionChange = null;
+
+    /** Invoked only by the actual definition owner's replacement lifecycle. */
+    final public function replaceDefinition(\itsmng\Domain\ComponentDefinitionReplacement $command, array $input, string $column): bool
+    {
+        if ($this->definitionChange !== null) {
+            return false;
+        }
+        $change = $command->bind($this, $input, $column);
+        $this->definitionChange = $change;
+        try {
+            return \itsmng\Database\OwnershipUpdateUnit::run($GLOBALS['DB'], $this, $change->stored,
+                fn (): bool => $this->update($change->input($input)) && $change->verify($this));
+        } finally {
+            $this->definitionChange = null;
+        }
+    }
+
+    public function update(array $input, $history = 1, $options = [])
+    {
+        $change = $this->definitionChange;
+        if ($change === null) {
+            return parent::update($input, $history, $options);
+        }
+        if (!$change->enter($this)) {
+            return false;
+        }
+        try {
+            return parent::update($input, $history, $options);
+        } finally {
+            $change->leave();
+        }
+    }
+
+    public function getFromDB($ID)
+    {
+        if ($this->definitionChange === null) {
+            return parent::getFromDB($ID);
+        }
+        if (filter_var($ID, FILTER_VALIDATE_INT) === false
+            || ($row = $this->definitionChange->load($this, (int)$ID)) === null) {
+            return false;
+        }
+        $this->fields = $row;
+        $this->post_getFromDB();
+        // A real hydration callback may cancel or substitute the selected row.
+        return $this->fields === $row && $this->definitionChange->load($this, (int)$ID) === $row;
+    }
+
+    public function checkAttachedItemChangesAllowed(array $input, array $fields)
+    {
+        if ($this->definitionChange !== null) {
+            return $this->definitionChange->authorize($this, $input);
+        }
+        return parent::checkAttachedItemChangesAllowed($input, $fields);
+    }
+
+    protected function didPersistLifecycleUpdate(): void
+    {
+        $this->definitionChange?->didPersist($this);
+    }
+
+    protected function assertLifecycleUpdateContext(bool $persisted): void
+    {
+        if ($this->definitionChange === null) {
+            return;
+        }
+        $this->definitionChange->assertActive();
+        if ($persisted && !$this->definitionChange->verify($this)) {
+            throw new \itsmng\Database\DeletionCancelled('The component replacement callback changed its delegated write.');
+        }
+    }
+
+    protected function executePreparedUpdate(callable $operation, array $storedFields): bool
+    {
+        if ($this->definitionChange === null) {
+            return parent::executePreparedUpdate($operation, $storedFields);
+        }
+        if (!$this->retainItemPermission(UPDATE) || !$this->definitionChange->ready($this)) {
+            return false;
+        }
+        return $operation() && $this->definitionChange->verify($this);
+    }
+
     protected function computeFriendlyName()
     {
         $itemtype = static::$itemtype_2;
@@ -1611,6 +1695,24 @@ class Item_Devices extends CommonDBRelation
             $em->clear();
         }
         return parent::executePreparedAdd($operation, $priorState);
+    }
+
+    public function addNeededInfoToInput($input)
+    {
+        $owner = \itsmng\Database\EntityRegistry::entityScopeOwner($this->getTable());
+        if ($owner === null) {
+            return parent::addNeededInfoToInput($input);
+        }
+        if ($this->tryEntityForwarding() && !isset($input['entities_id'])) {
+            $values = array_replace($this->fields, $input);
+            $parent = getItemForItemtype(getItemTypeForTable($owner['target']));
+            if (!$parent || !$parent->getFromDB($values[$owner['column']] ?? 0)) {
+                return false;
+            }
+            $input['entities_id'] = $parent->getEntityID();
+            $input['is_recursive'] = (int)$parent->isRecursive();
+        }
+        return $input;
     }
 
     public function prepareInputForAdd($input)

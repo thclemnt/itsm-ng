@@ -803,6 +803,22 @@ class CommonDBTM extends CommonGLPI
     {
         global $DB;
 
+        $writer = $DB;
+        $connection = $writer->getDoctrineConnection();
+        $scope = \itsmng\Database\DeletionUnit::isActive($connection)
+            ? $connection->captureManagedTransactionScope() : null;
+        $identity = $this->fields['id'];
+        $publicIdentity = $this->getID();
+        $assertWriter = function () use ($writer, $connection, $scope, $identity, $publicIdentity): void {
+            $scope?->assertActive();
+            if ($writer !== ($GLOBALS['DB'] ?? null) || $writer->getDoctrineConnection() !== $connection) {
+                throw new \itsmng\Database\TransactionOwnershipMismatch('The deletion callback replaced its supplied writer.');
+            }
+            if (($this->fields['id'] ?? null) !== $identity || $this->getID() !== $publicIdentity) {
+                throw new \itsmng\Database\DeletionCancelled('The deletion callback replaced its selected owner.');
+            }
+        };
+
         if (
             ($force == 1)
             || !$this->maybeDeleted()
@@ -810,18 +826,24 @@ class CommonDBTM extends CommonGLPI
                 && !$this->isDynamic())
         ) {
             $this->cleanDBonPurge();
+            $assertWriter();
             if ($this instanceof CommonDropdown) {
                 $this->cleanTranslations();
+                $assertWriter();
             }
             $this->cleanHistory();
+            $assertWriter();
             $this->cleanRelationData();
+            $assertWriter();
             $this->cleanRelationTable();
+            $assertWriter();
 
             $result = \itsmng\Database\MappedStorage::supports($this->getTable())
                 ? (new \itsmng\Database\MappedStorage($DB))->delete($this->getTable(), (int)$this->fields['id'])
                 : $DB->delete($this->getTable(), ['id' => $this->fields['id']]);
             if ($result) {
                 $this->post_deleteFromDB();
+                $assertWriter();
                 return true;
             }
         } else {
@@ -839,6 +861,7 @@ class CommonDBTM extends CommonGLPI
                 $result = $DB->update($this->getTable(), $params, ['id' => $this->fields['id']]);
             }
             $this->cleanDBonMarkDeleted();
+            $assertWriter();
 
             if ($result) {
                 return true;
@@ -892,7 +915,7 @@ class CommonDBTM extends CommonGLPI
         foreach ($lifecycle->replacements($this->getTable(), (int)$this->fields['id'], (int)$this->getID(), $this->getType(), $index) as $selection) {
             foreach ($selection['ids'] as $id) {
                 $related = getItemForItemtype(getItemTypeForTable($selection['table']));
-                \itsmng\Database\DeletionUnit::requireSuccess($DB->getDoctrineConnection(), (bool)$related->update([$selection['index'] => $id, $selection['column'] => $selection['physical'] ? $physicalReplacement : $newval, '_disablenotif' => true]));
+                \itsmng\Database\DeletionUnit::requireSuccess($DB->getDoctrineConnection(), $this->updateReplacementRelation($related, [$selection['index'] => $id, $selection['column'] => $selection['physical'] ? $physicalReplacement : $newval, '_disablenotif' => true], $selection['column']));
             }
         }
 
@@ -918,7 +941,7 @@ class CommonDBTM extends CommonGLPI
                 }
                 foreach (\itsmng\Database\MappedReads::identifiers($DB, $table, $model->getIndexName(), $criteria) as $id) {
                     $related = getItemForItemtype($model->getType());
-                    \itsmng\Database\DeletionUnit::requireSuccess($DB->getDoctrineConnection(), (bool)$related->update([$model->getIndexName() => $id, $column => $physical ? $physicalReplacement : $newval, '_disablenotif' => true]));
+                    \itsmng\Database\DeletionUnit::requireSuccess($DB->getDoctrineConnection(), $this->updateReplacementRelation($related, [$model->getIndexName() => $id, $column => $physical ? $physicalReplacement : $newval, '_disablenotif' => true], $column));
                 }
             }
         }
@@ -938,6 +961,12 @@ class CommonDBTM extends CommonGLPI
         }
     }
 
+
+    /** The owning parent may delegate a narrowly typed child replacement. */
+    protected function updateReplacementRelation(CommonDBTM $related, array $input, string $column): bool
+    {
+        return (bool)$related->update($input);
+    }
 
     /**
      * Actions done after the DELETE of the item in the database
@@ -1818,6 +1847,7 @@ class CommonDBTM extends CommonGLPI
 
         // Plugin hook - $this->input can be altered
         Plugin::doHook("pre_item_update", $this);
+        $this->assertLifecycleUpdateContext(false);
         if ($this->input && is_array($this->input)) {
             $this->input = $this->normalizeLifecycleInput($this->input);
             if ($this->input !== false) {
@@ -1946,6 +1976,16 @@ class CommonDBTM extends CommonGLPI
 
 
 
+    /** A typed owning command may require continuity after actual callbacks. */
+    /** Marks the real writer producer boundary before public completion hooks. */
+    protected function didPersistLifecycleUpdate(): void
+    {
+    }
+
+    protected function assertLifecycleUpdateContext(bool $persisted): void
+    {
+    }
+
     protected function executePreparedUpdate(callable $operation, array $storedFields): bool
     {
         return $operation();
@@ -1985,8 +2025,10 @@ class CommonDBTM extends CommonGLPI
                                                                 : [])
                 )
             ) {
+                $this->didPersistLifecycleUpdate();
                 $this->addMessageOnUpdateAction();
                 Plugin::doHook("item_update", $this);
+                $this->assertLifecycleUpdateContext(true);
 
                 // As update have suceed, clean the old input value
                 if (isset($this->input['_update'])) {
@@ -2025,6 +2067,7 @@ class CommonDBTM extends CommonGLPI
             }
         }
         $this->post_updateItem($history);
+        $this->assertLifecycleUpdateContext(true);
         if ($this->notificationqueueonaction) {
             QueuedNotification::forceSendFor($this->getType(), $this->fields['id']);
         }
@@ -2270,25 +2313,26 @@ class CommonDBTM extends CommonGLPI
                 }
             }
         };
-        try {
-            $result = \itsmng\Database\DeletionUnit::run($DB->getDoctrineConnection(), function () use ($DB, $input, $force, $history): \itsmng\Database\DeletionOutcome {
-                $manager = \itsmng\Database\Orm::create($DB);
-                try {
-                    if (!(new \itsmng\Database\Repository\DeletionRepository($manager))->validate($this, $input)) {
-                        return \itsmng\Database\DeletionOutcome::Cancelled;
-                    }
-                } finally {
-                    $manager->clear();
-                }
-                return $this->deleteLifecycle($input, $force, $history, true);
-            });
-        } catch (Throwable $error) {
-            $restore();
-            throw $error;
-        }
-        if ($result->outcome === \itsmng\Database\DeletionOutcome::Cancelled) {
-            $restore();
-        }
+        $connection = $DB->getDoctrineConnection();
+        $result = \itsmng\Database\DeletionUnit::run($connection, function () use ($DB, $connection, $input, $force, $history): \itsmng\Database\DeletionOutcome {
+            $manager = \itsmng\Database\Orm::create($DB);
+            try {
+                $valid = (new \itsmng\Database\Repository\DeletionRepository($manager))->validate($this, $input);
+            } finally {
+                $manager->clear();
+            }
+            if ($DB !== ($GLOBALS['DB'] ?? null) || $DB->getDoctrineConnection() !== $connection) {
+                throw new \itsmng\Database\TransactionOwnershipMismatch('The deletion callback replaced its supplied writer.');
+            }
+            if (!$valid) {
+                return \itsmng\Database\DeletionOutcome::Cancelled;
+            }
+            $outcome = $this->deleteLifecycle($input, $force, $history, true);
+            if ($DB !== ($GLOBALS['DB'] ?? null) || $DB->getDoctrineConnection() !== $connection) {
+                throw new \itsmng\Database\TransactionOwnershipMismatch('The deletion callback replaced its supplied writer.');
+            }
+            return $outcome;
+        }, $restore);
         // SMTP/chat delivery occurs only after this unit physically commits.
         $result->deliverNotifications();
         return $result->outcome === \itsmng\Database\DeletionOutcome::Deleted;
@@ -2309,6 +2353,10 @@ class CommonDBTM extends CommonGLPI
         if ($DB->isSlave()) {
             return \itsmng\Database\DeletionOutcome::Cancelled;
         }
+
+        $writer = $DB;
+        $deleteConnection = $writer->getDoctrineConnection();
+        $deleteScope = $loaded ? $DB->getDoctrineConnection()->captureManagedTransactionScope() : null;
 
         if (!$loaded && !$this->getFromDB($input[static::getIndexName()])) {
             return \itsmng\Database\DeletionOutcome::Cancelled;
@@ -2351,7 +2399,11 @@ class CommonDBTM extends CommonGLPI
         $physicalIdentity = $this->fields['id'];
         $publicIdentity = $this->getID();
         $suppliedIdentities = array_intersect_key($input, array_flip(['id', $this->getIndexName()]));
-        $sourceUnchanged = function () use ($physicalIdentity, $publicIdentity, $suppliedIdentities): bool {
+        $sourceUnchanged = function () use ($physicalIdentity, $publicIdentity, $suppliedIdentities, $writer, $deleteConnection, $deleteScope): bool {
+            $deleteScope?->assertActive();
+            if ($writer !== ($GLOBALS['DB'] ?? null) || $writer->getDoctrineConnection() !== $deleteConnection) {
+                throw new \itsmng\Database\TransactionOwnershipMismatch('The deletion callback replaced its supplied writer.');
+            }
             if (!is_array($this->input)
                 || !isset($this->fields['id'], $this->fields[$this->getIndexName()], $this->input[$this->getIndexName()])
                 || (string)$this->fields['id'] !== (string)$physicalIdentity
@@ -2405,10 +2457,19 @@ class CommonDBTM extends CommonGLPI
         }
         if ($decision === \itsmng\Database\DeletionDecision::Proceed) {
             if ($this->deleteFromDB($force)) {
+                if (!$sourceUnchanged()) {
+                    return \itsmng\Database\DeletionOutcome::Cancelled;
+                }
                 if ($force) {
                     $this->addMessageOnPurgeAction();
                     $this->post_purgeItem();
+                    if (!$sourceUnchanged()) {
+                        return \itsmng\Database\DeletionOutcome::Cancelled;
+                    }
                     Plugin::doHook("item_purge", $this);
+                    if (!$sourceUnchanged()) {
+                        return \itsmng\Database\DeletionOutcome::Cancelled;
+                    }
                     Impact::clean($this);
                 } else {
                     $this->addMessageOnDeleteAction();
@@ -2436,8 +2497,16 @@ class CommonDBTM extends CommonGLPI
                         );
                     }
                     $this->post_deleteItem();
-
+                    if (!$sourceUnchanged()) {
+                        return \itsmng\Database\DeletionOutcome::Cancelled;
+                    }
                     Plugin::doHook("item_delete", $this);
+                    if (!$sourceUnchanged()) {
+                        return \itsmng\Database\DeletionOutcome::Cancelled;
+                    }
+                }
+                if (!$sourceUnchanged()) {
+                    return \itsmng\Database\DeletionOutcome::Cancelled;
                 }
                 if ($this->notificationqueueonaction) {
                     QueuedNotification::forceSendFor($this->getType(), $this->fields['id']);
@@ -3415,6 +3484,18 @@ class CommonDBTM extends CommonGLPI
     }
 
 
+    /** Keep the ordinary restrictive item_can hook for an owning-role command. */
+    protected function retainItemPermission($right): bool
+    {
+        $this->right = $right;
+        Plugin::doHook("item_can", $this);
+        if ($this->right !== $right) {
+            return false;
+        }
+        unset($this->right);
+        return true;
+    }
+
     /**
      * Check right on an item
      *
@@ -3469,13 +3550,9 @@ class CommonDBTM extends CommonGLPI
             }
         }
 
-        /* Hook to restrict user right on current item @since 9.2 */
-        $this->right = $right;
-        Plugin::doHook("item_can", $this);
-        if ($this->right !== $right) {
+        if (!$this->retainItemPermission($right)) {
             return false;
         }
-        unset($this->right);
 
         switch ($right) {
             case READ:

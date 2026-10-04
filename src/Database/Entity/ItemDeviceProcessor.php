@@ -17,6 +17,7 @@ class ItemDeviceProcessor implements \itsmng\Database\Mapping\LegacyInput
 
     #[ORM\ManyToOne(targetEntity: DeviceProcessor::class)]
     #[ORM\JoinColumn(name: 'deviceprocessors_id', referencedColumnName: 'id', nullable: false, onDelete: 'RESTRICT')]
+    #[\itsmng\Database\Mapping\EntityScopeOwner]
     public ?DeviceProcessor $deviceprocessors = null;
 
     #[ORM\Id]

@@ -168,6 +168,35 @@ abstract class CommonDevice extends CommonDropdown
         ];
     }
 
+    private ?\itsmng\Domain\ComponentDefinitionReplacement $definitionReplacement = null;
+
+    public function deleteFromDB($force = 0)
+    {
+        if (empty($this->input['_replace_by'])) {
+            return parent::deleteFromDB($force);
+        }
+        // The ordinary deletion lifecycle owns caller authorization. Its
+        // validated definition replacement delegates no asset editing rights.
+        $previous = $this->definitionReplacement;
+        $command = \itsmng\Domain\ComponentDefinitionReplacement::forPurge($GLOBALS['DB'], $this);
+        $this->definitionReplacement = $command;
+        try {
+            return parent::deleteFromDB($force);
+        } finally {
+            $command->release();
+            $this->definitionReplacement = $previous;
+        }
+    }
+
+    protected function updateReplacementRelation(CommonDBTM $related, array $input, string $column): bool
+    {
+        if ($this->definitionReplacement !== null && $related instanceof Item_Devices
+            && $related::getDeviceType() === $this->getType() && $column === $related::getDeviceForeignKey()) {
+            return $related->replaceDefinition($this->definitionReplacement, $input, $column);
+        }
+        return parent::updateReplacementRelation($related, $input, $column);
+    }
+
     public function cleanDBonPurge()
     {
         parent::cleanDBonPurge();

@@ -21,6 +21,12 @@ final class EntityRegistry
         return self::model()['tables'];
     }
 
+    /** Compatibility role derived only from the annotated owning association. */
+    public static function entityScopeOwner(string $table): ?array
+    {
+        return self::model()['scope_owners'][$table] ?? null;
+    }
+
     public static function booleanColumns(): array
     {
         return self::model()['booleans'];
@@ -105,7 +111,7 @@ final class EntityRegistry
         $connection = DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
         $em = new EntityManager($connection, Orm::configuration(new MySQLPlatform()));
         $metadata = $em->getMetadataFactory()->getAllMetadata();
-        $tables = $types = $booleans = $booleanFields = $relations = $references = $discriminators = $lifecycle = $readOnly = [];
+        $tables = $types = $booleans = $booleanFields = $relations = $references = $discriminators = $lifecycle = $readOnly = $scopeOwners = [];
         foreach ($metadata as $record) {
             $table = $record->getTableName();
             if (isset($tables[$table])) {
@@ -141,6 +147,12 @@ final class EntityRegistry
                     $target = $em->getClassMetadata($association->targetEntity)->getTableName();
                     $relations[$table][$join->name] = $target;
                     $propertyMetadata = new \ReflectionProperty($record->name, $property);
+                    if ($propertyMetadata->getAttributes(Mapping\EntityScopeOwner::class)) {
+                        if (isset($scopeOwners[$table]) || count($association->joinColumns) !== 1) {
+                            throw new \LogicException('An entity scope requires one explicit owning parent: ' . $table);
+                        }
+                        $scopeOwners[$table] = ['column' => $join->name, 'target' => $target];
+                    }
                     $logicalColumn = $join->name;
                     $logicalDiscriminator = null;
                     foreach ($propertyMetadata->getAttributes(Mapping\DiscriminatedBy::class) as $attribute) {
@@ -228,6 +240,6 @@ final class EntityRegistry
         // Only immutable lookup projections survive bootstrap, not the offline unit of work.
         unset($em, $metadata, $record);
         gc_collect_cycles();
-        return self::$model = ['tables' => $tables, 'types' => $types, 'booleans' => $booleans, 'boolean_fields' => $booleanFields, 'relations' => $relations, 'references' => $references, 'discriminators' => $discriminators, 'lifecycle' => $lifecycle, 'read_only' => $readOnly];
+        return self::$model = ['tables' => $tables, 'types' => $types, 'booleans' => $booleans, 'boolean_fields' => $booleanFields, 'relations' => $relations, 'references' => $references, 'discriminators' => $discriminators, 'lifecycle' => $lifecycle, 'read_only' => $readOnly, 'scope_owners' => $scopeOwners];
     }
 }
