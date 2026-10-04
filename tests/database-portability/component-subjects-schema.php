@@ -104,8 +104,22 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
         $owners[] = [$deviceTable, $device];
         foreach (['glpi_locations', 'glpi_states'] as $emptyTarget) {
             verify((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $emptyTarget . ' WHERE id=0') === 0, 'Never adopt a preexisting zero-sentinel target fixture');
-            verify($fixtures->create($emptyTarget, ['id' => 0, 'name' => $prefix . ' sentinel']) === 0, 'Create an explicit source target0 without confusing it with a generated identity');
-            $owners[] = [$emptyTarget, 0];
+            // Reconstruct an exceptional legacy ID through DBAL after a normal
+            // ORM insert. MySQL INSERT id=0 otherwise generates a positive ID.
+            $generated = $fixtures->create($emptyTarget, ['name' => $prefix . ' sentinel']);
+            $owners[] = [$emptyTarget, $generated];
+            verify($generated > 0, 'Ordinary ORM target insertion returns its generated positive identity');
+            $beforeZero = $connection->fetchAssociative('SELECT * FROM ' . $emptyTarget . ' WHERE id=?', [$generated]);
+            verify($beforeZero !== false && $beforeZero['name'] === $prefix . ' sentinel', 'Own the exact generated fixture before reconstructing its legacy identity');
+            $changed = $connection->update($emptyTarget, ['id' => 0], ['id' => $generated]);
+            if ($changed === 1) {
+                $owners[array_key_last($owners)] = [$emptyTarget, 0];
+            }
+            $zero = $connection->fetchAssociative('SELECT * FROM ' . $emptyTarget . ' WHERE id=0');
+            verify($changed === 1 && $zero !== false && (int)$zero['id'] === 0
+                && $connection->fetchOne('SELECT id FROM ' . $emptyTarget . ' WHERE id=?', [$generated]) === false, 'Create an explicit source target0 without confusing it with a generated identity');
+            unset($beforeZero['id'], $zero['id']);
+            verify($zero === $beforeZero, 'Legacy zero-target reconstruction retains every other native cell');
         }
 
         $source = [];
