@@ -2,7 +2,6 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-use Doctrine\DBAL\DriverManager;
 use Doctrine\DBAL\TransactionIsolationLevel;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
@@ -104,6 +103,8 @@ $CFG_GLPI['use_notifications'] = false;
 $originalIsolation = $connection->getTransactionIsolation();
 $secondaryAdapter = null;
 $secondary = null;
+$primary = null;
+$cleanup = [];
 $created = [];
 $fixtures = new FixtureRecords($DB);
 $prefix = 'Allocation current read ' . bin2hex(random_bytes(5));
@@ -138,20 +139,26 @@ $snapshot = static function ($writer, array $g) use ($read, $rows): array {
 };
 
 try {
+    // A fresh configured adapter owns B's canonical driver and middleware.
+    // Reusing DBAL parameters alone loses MySQL's physical command owner;
+    // cloning A would instead share its live transport.
+    $secondaryAdapter = (new ReflectionClass($DB))->newInstanceWithoutConstructor();
+    verify($secondaryAdapter->connect() === true, 'Independent configured application writer opens');
+    $secondary = $secondaryAdapter->getDoctrineConnection();
+    verify($secondaryAdapter->getProvider() === $DB->getProvider() && !$secondaryAdapter->isSlave()
+        && $secondaryAdapter->dbdefault === $DB->dbdefault && $secondary->getDatabase() === $connection->getDatabase(),
+        'Independent adapter retains the actual configured provider, database and writer routing');
+    verify($secondary->getParams() === $connection->getParams(), 'Independent writer retains all configured connection and TLS parameters');
     if ($DB->getProvider() === 'pgsql') {
-        // NativeDriver is bound to A's one handle and A's params contain only
-        // dbname. Never reuse that bridge/middleware or clone its live handle.
-        // This is the existing PostgreSQL transaction contract's fresh adapter
-        // pattern; normal connect applies the configured schema and timezone.
-        $secondaryAdapter = (new ReflectionClass($DB))->newInstanceWithoutConstructor();
-        verify($secondaryAdapter->connect() === true, 'Independent configured PostgreSQL writer opens');
-        $secondary = $secondaryAdapter->getDoctrineConnection();
+        verify($secondaryAdapter->connected, 'Independent configured PostgreSQL writer opens');
         $physicalId = 'SELECT pg_backend_pid()';
         verify($secondary->fetchOne("SELECT current_setting('search_path')") === $connection->fetchOne("SELECT current_setting('search_path')")
             && $secondary->fetchOne("SELECT current_setting('TimeZone')") === $connection->fetchOne("SELECT current_setting('TimeZone')"), 'Independent PostgreSQL writer preserves configured schema and timezone');
     } else {
-        $secondary = DriverManager::getConnection($connection->getParams());
         $physicalId = 'SELECT CONNECTION_ID()';
+        $sessionPolicy = 'SELECT @@SESSION.time_zone AS timezone, @@SESSION.sql_mode AS modes, @@SESSION.foreign_key_checks AS foreign_keys';
+        verify($secondary->fetchAssociative($sessionPolicy) === $connection->fetchAssociative($sessionPolicy),
+            'Independent MySQL writer retains configured timezone and canonical session enforcement');
     }
     verify($secondary !== $connection && $secondary->fetchOne($physicalId) !== $connection->fetchOne($physicalId), 'A and B use distinct physical writers');
     $entity = $record('glpi_entities', ['name' => $prefix . ' visible']);
@@ -169,8 +176,16 @@ try {
             verify($secondary->getTransactionNestingLevel() === 0, 'B finishes its physical commit before A takes aggregate locks');
             return $result;
         } catch (Throwable $error) {
-            while ($secondary->getTransactionNestingLevel() > 0) {
-                $secondary->rollBack();
+            try {
+                while ($secondary->getTransactionNestingLevel() > 0) {
+                    $secondary->rollBack();
+                }
+            } catch (Throwable $cleanupError) {
+                try {
+                    fwrite(STDERR, 'Additional B publication rollback failure: ' . $cleanupError::class . "\n");
+                } catch (Throwable) {
+                    // Secondary reporting cannot replace the publication primary.
+                }
             }
             throw $error;
         }
@@ -449,28 +464,45 @@ try {
                 && !$read($secondary, 'glpi_softwarelicenses', $g['license'])['is_valid'], 'Actual PostgreSQL standalone READ COMMITTED retry sees B current allocations and commits correct validity');
         }
     }
+} catch (Throwable $error) {
+    $primary = $error;
 } finally {
-    while ($connection->getTransactionNestingLevel() > 0) {
-        $connection->rollBack();
-    }
-    if ($secondary !== null) {
-        while ($secondary->getTransactionNestingLevel() > 0) {
-            $secondary->rollBack();
+    try {
+        while ($connection->getTransactionNestingLevel() > 0) {
+            $connection->rollBack();
         }
+    } catch (Throwable $error) {
+        $cleanup[] = $error;
     }
-    $connection->setTransactionIsolation($supported ?? TransactionIsolationLevel::READ_COMMITTED);
+    try {
+        if ($secondary !== null) {
+            while ($secondary->getTransactionNestingLevel() > 0) {
+                $secondary->rollBack();
+            }
+        }
+    } catch (Throwable $error) {
+        $cleanup[] = $error;
+    }
+    try {
+        $connection->setTransactionIsolation($supported ?? TransactionIsolationLevel::READ_COMMITTED);
+    } catch (Throwable $error) {
+        $cleanup[] = $error;
+    }
     // Fixture cleanup is bounded to rows created by this contract. Restore the
     // public policy state first, then use each actual model's purge lifecycle.
     $CFG_GLPI['use_notifications'] = false;
-    try {
-        foreach (array_reverse($created) as [$table, $id]) {
+    foreach (array_reverse($created) as [$table, $id]) {
+        try {
             $kind = getItemTypeForTable($table);
             $model = new $kind();
             if ($model->getFromDB($id)) {
                 verify((bool)$model->delete(['id' => $id, '_no_history' => true, '_disablenotif' => true], true), 'Owned fixture purge: ' . $table);
             }
+        } catch (Throwable $error) {
+            $cleanup[] = $error;
         }
-    } finally {
+    }
+    try {
         if ($secondaryAdapter !== null) {
             // Normal adapter close already closes its transferred native driver;
             // do not also close the same handle through the facade.
@@ -478,10 +510,29 @@ try {
         } elseif ($secondary !== null) {
             $secondary->close();
         }
-        $connection->setTransactionIsolation($originalIsolation);
-        $_SESSION = $savedSession;
-        $CFG_GLPI = $savedConfig;
+    } catch (Throwable $error) {
+        $cleanup[] = $error;
     }
+    try {
+        $connection->setTransactionIsolation($originalIsolation);
+    } catch (Throwable $error) {
+        $cleanup[] = $error;
+    }
+    $_SESSION = $savedSession;
+    $CFG_GLPI = $savedConfig;
+}
+if ($primary !== null) {
+    foreach ($cleanup as $error) {
+        try {
+            fwrite(STDERR, 'Additional current-read fixture cleanup failure: ' . $error::class . "\n");
+        } catch (Throwable) {
+            // Secondary reporting cannot replace the original scenario primary.
+        }
+    }
+    throw $primary;
+}
+if ($cleanup) {
+    throw $cleanup[0];
 }
 verify((new SchemaCheck())->differences($connection) === [], 'Canonical schema after current-read fixtures');
 echo $DB->getProvider() . ": $assertions two-writer current allocation, caller snapshot and isolation assertions passed.\n";
