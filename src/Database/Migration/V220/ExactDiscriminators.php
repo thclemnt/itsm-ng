@@ -39,7 +39,7 @@ final class ExactDiscriminators
     /** Native FK/CHECK ownership and exact stored selections, independent of receipts. */
     public function verify(Connection $connection): void
     {
-        $this->inspectPlan($connection, verify: true);
+        CheckConstraintSupport::assertSupported($connection);
         $policy = Ledger::state($connection, self::PHASE)['policy'] ?? null;
         if (!is_array($policy) || array_keys($policy) !== array_keys(self::definitions()['tables'])) {
             throw new \RuntimeException('The experimental exact-subject receipt lacks retained post-DDL native policy. Its CHECK and generated expressions cannot be certified from completion flags. Restore the genuine 2.1.3 source and apply the supported transition; no receipt or data was rewritten.');
@@ -49,6 +49,7 @@ final class ExactDiscriminators
                 throw new \RuntimeException('Frozen subject native policy changed after authoritative DDL: ' . $table);
             }
         }
+        $this->inspectPlan($connection, verify: true);
     }
 
     private function inspectPlan(Connection $connection, bool $preAdoption = false, ?PendingSubjectShape $pendingShape = null, bool $verify = false): array
@@ -97,7 +98,9 @@ final class ExactDiscriminators
             $native = $mysql
                 ? $connection->fetchAssociative('SELECT EXTRA, GENERATION_EXPRESSION FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME=? AND COLUMN_NAME=?', [$schema, $table, $definition['column']])
                 : $connection->fetchAssociative('SELECT a.attgenerated AS generated FROM pg_catalog.pg_attribute a WHERE a.attrelid=to_regclass(?) AND a.attname=? AND NOT a.attisdropped', [$quote($table), $definition['column']]);
-            $generated = $mysql ? !empty($native['GENERATION_EXPRESSION']) : ($native['generated'] ?? '') !== '';
+            $generated = $mysql
+                ? isset($native['GENERATION_EXPRESSION']) && $native['GENERATION_EXPRESSION'] !== ''
+                : ($native['generated'] ?? '') !== '';
             $missing = array_filter($definition['branches'], static fn ($branch) => !$actual->hasColumn($branch['column']));
             $intermediate = $preAdoption && $priorPending && $generated && $missing
                 && ($pendingShape?->admitsGeneratedPredecessor($actual, $definition, $states) ?? false);
