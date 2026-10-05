@@ -451,10 +451,7 @@ JAVASCRIPT;
            Rack::REAR  => array_fill(0, $rack->fields['number_units'], 0),
         ];
 
-        $rel = new self();
         foreach ($items as $row) {
-            $rel->getFromDB($row['id']);
-
             $item = new $row['itemtype']();
             $item->getFromDB($row['items_id']);
 

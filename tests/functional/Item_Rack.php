@@ -39,6 +39,65 @@ use DbTestCase;
 
 class Item_Rack extends DbTestCase
 {
+    public function testRackStatsAndOccupancyUseCurrentModelDimensions(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $rack = $this->createItem(\Rack::class, [
+            'name' => '_stats_rack', 'entities_id' => $entity, 'number_units' => 10,
+            'max_weight' => 100, 'max_power' => 1000,
+        ]);
+        $model = $this->createItem(\ComputerModel::class, [
+            'name' => '_stats_half_model', 'required_units' => 2, 'depth' => 0.5,
+            'is_half_rack' => 1, 'weight' => 20, 'power_consumption' => 100,
+        ]);
+        $computers = [];
+        foreach ([
+            [1, \Rack::FRONT, \Rack::POS_LEFT, 0],
+            [4, \Rack::REAR, \Rack::POS_RIGHT, 1],
+            [7, \Rack::FRONT, \Rack::POS_NONE, 0],
+        ] as $index => [$position, $orientation, $hpos, $reserved]) {
+            $input = ['name' => '_stats_computer_' . $index, 'entities_id' => $entity];
+            if ($index < 2) {
+                $input['computermodels_id'] = $model->getID();
+            }
+            $computer = $this->createItem(\Computer::class, $input);
+            $computers[] = (int)$computer->getID();
+            $this->createItem(\Item_Rack::class, [
+                'racks_id' => $rack->getID(), 'itemtype' => 'Computer', 'items_id' => $computer->getID(),
+                'position' => $position, 'orientation' => $orientation, 'hpos' => $hpos, 'is_reserved' => $reserved,
+            ]);
+        }
+        $frontLeft = [\Rack::POS_LEFT => [1, 1, 0, 0], \Rack::POS_RIGHT => [0, 0, 0, 0]];
+        $rearRight = [\Rack::POS_LEFT => [0, 0, 0, 0], \Rack::POS_RIGHT => [0, 0, 1, 1]];
+        $full = [\Rack::POS_LEFT => [1, 1, 1, 1], \Rack::POS_RIGHT => [1, 1, 1, 1]];
+        $this->array($rack->getFilled())->isEqualTo([1 => $frontLeft, 2 => $frontLeft, 4 => $rearRight, 5 => $rearRight, 7 => $full]);
+        $this->array($rack->getFilled('Computer', $computers[0]))->isEqualTo([4 => $rearRight, 5 => $rearRight, 7 => $full]);
+        $render = static function () use ($rack): string {
+            ob_start();
+            try {
+                \Item_Rack::showStats($rack);
+                return ob_get_contents();
+            } finally {
+                ob_end_clean();
+            }
+        };
+        // Reserved assignments count; an asset without a model still occupies one full unit.
+        $this->string($render())->contains('.text("30%")')
+            ->contains('.text("40 / 100")')->contains('.text("200 / 1000")');
+
+        $this->boolean($DB->update('glpi_computermodels', [
+            'required_units' => 3, 'depth' => 1, 'weight' => 30, 'power_consumption' => 200,
+        ], ['id' => $model->getID()]))->isTrue();
+        $left = [\Rack::POS_LEFT => [1, 1, 1, 1], \Rack::POS_RIGHT => [0, 0, 0, 0]];
+        $right = [\Rack::POS_LEFT => [0, 0, 0, 0], \Rack::POS_RIGHT => [1, 1, 1, 1]];
+        $this->array($rack->getFilled())->isEqualTo([1 => $left, 2 => $left, 3 => $left, 4 => $right, 5 => $right, 6 => $right, 7 => $full]);
+        $this->string($render())->contains('.text("70%")')
+            ->contains('.text("60 / 100")')->contains('.text("400 / 1000")');
+    }
+
     /**
      * Models provider
      *
