@@ -293,7 +293,9 @@ for (const [boundary, date] of [['undated', null], ['expired', '2000-01-01 00:00
       expect(response?.status(), 'Cookie-only refusal must return an application response without a server error.').toBeLessThan(500);
       await next.waitForLoadState('networkidle');
       await expect(next.getByText('Invalid cookie data', { exact: false })).toBeVisible();
-      await expect(next.locator('#login_name')).toBeVisible();
+      const recovery = next.getByRole('link', { name: 'Log in again', exact: true });
+      await expect(recovery).toBeVisible();
+      await expect(recovery).toHaveAttribute('href', /\/front\/logout\.php\?noAUTO=1$/);
       expect(scriptErrors.length === 0 && !/\b(?:Warning|Deprecated|Notice|Fatal error)\b/.test(await next.content()),
         'The actual refused-cookie response must contain no script error or PHP warning output.').toBe(true);
       expect(!await cookie(onlyCookie, seed.rememberName), 'Actual cookie-only refusal delivers deletion of the remembered browser cookie.').toBe(true);
@@ -310,6 +312,11 @@ for (const [boundary, date] of [['undated', null], ['expired', '2000-01-01 00:00
         'Refused rotation preserves the exact previous credential/date and history, despite deleting its browser delivery.').toBe(true);
       expect((await fixture<Observation>('observe', { guard: seed.guard })).cookieVeto === vetoes + 1,
         'The actual public User rotation veto executes exactly once in cookie-only admission.').toBe(true);
+      // Observe refusal completely before logout changes the anonymous session.
+      // The existing error page offers recovery; it does not embed the login form.
+      await recovery.click();
+      await expect(next).toHaveURL(/\/index\.php\?noAUTO=1$/);
+      await expect(next.locator('#login_name')).toBeVisible();
     } finally {
       try {
         await mode({ vetoCookie: false });
