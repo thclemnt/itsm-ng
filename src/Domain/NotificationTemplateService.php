@@ -35,11 +35,12 @@ final class NotificationTemplateService
 
     public function usedLanguages(int $template): array
     {
-        $languages = [];
-        foreach ($this->translations($template) as $translation) {
-            $languages[$translation->language] = $translation->language;
+        $em = Orm::create($this->database);
+        try {
+            return (new NotificationTemplateRepository($em))->usedLanguages($template);
+        } finally {
+            $em->clear();
         }
-        return $languages;
     }
 
     private function content(\Doctrine\ORM\EntityManager $em, NotificationTemplateTranslation $translation): NotificationTemplateContent

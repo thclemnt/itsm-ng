@@ -30,6 +30,19 @@ final class NotificationTemplateRepository
         return $this->translationsQuery($template)->getQuery()->getResult();
     }
 
+    /** Locale selection does not need subjects or message bodies. */
+    public function usedLanguages(int $template): array
+    {
+        $languages = [];
+        // Keep PHP's exact string keys and first-occurrence order. SQL DISTINCT
+        // could merge differently cased locale strings under native collation.
+        foreach ($this->translationsQuery($template)->select('t.language')
+            ->getQuery()->getSingleColumnResult() as $language) {
+            $languages[$language] = $language;
+        }
+        return $languages;
+    }
+
     private function translationsQuery(int $template): \Doctrine\ORM\QueryBuilder
     {
         return $this->em->createQueryBuilder()->select('t')->from(NotificationTemplateTranslation::class, 't')
