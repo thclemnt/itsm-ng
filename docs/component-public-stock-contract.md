@@ -1,9 +1,0 @@
-# Public component stock contract
-
-The public Memory detach assertion in `tests/database-portability/components.php` previously required an empty string discriminator. Both CI providers reported failure at that assertion after Memory acquired owning subject associations. This is a fixture expectation mismatch: public cleanup invokes `ComponentRepository::detach()`, which clears the selected association and uses `NULL` for the optional typed subject. `ItemDeviceMemory` declares `DiscriminatorKey(emptyValue: 0)` on its generated `items_id` projection; the frozen `20261013_memory_subjects` definition records `canonical_stock_kind: null` and `legacy_stock_identity: 0`.
-
-The corrected assertion derives the expected stock kind from the actual Memory link's property-derived discriminator metadata, as the earlier family loop already does. It requires the `itemtype` and `items_id` keys to exist, compares the discriminator strictly, and verifies the zero projection, original required Memory parent, and component size. `CommonDBTM::getFromDB()` reads through `RecordRepository::toRow()`, which retains `NULL` and normalizes representable bigint values to integers. An absent key or an empty string cannot satisfy the typed stock assertion.
-
-All other assertions, public add/clone/detach/delete/query calls, transaction cleanup, production code, and frozen history remain unchanged. This separate follow-on is based on `5cb8aec6d65890484167fb84f9e2e86b95c50e88`; it does not alter or extend the accepted two-fixture operational source transition.
-
-Validation is source-only. PHP syntax/style, focused execution on PostgreSQL and MariaDB/MySQL, fresh installs, and broader portability execution remain pending ROOT validation. Reproduce the original public assertion on both providers, then run the corrected component contract and the relevant broader suites before claiming the fixture is green.

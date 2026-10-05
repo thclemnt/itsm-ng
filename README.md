@@ -13,22 +13,25 @@ ITSM-NG is a GLPI fork with the objective of offering a strong community compone
 Here is the list of the different libraries and modules and their versions useful for ITSM-NG.
 
 * Apache, Nginx, etc
-* MariaDB >= 10.0 or MySQL >= 5.6
+* MariaDB >= 10.2.22 or MySQL >= 8.0.16 (enforced CHECK constraints and native inspection)
+* PostgreSQL 14+ is an experimental target; see [database installation and upgrades](docs/postgresql.md).
 * PHP 8.2 or newer
 * Required PHP extensions :
   * ctype
   * curl
+  * fileinfo
   * gd (picture generation)
   * iconv
   * intl
   * json
   * mbstring
-  * mysqli
+  * PDO with pdo_mysql for MySQL/MariaDB or pdo_pgsql for PostgreSQL
   * session
   * simplexml
   * zlib
 
 * Recommanded PHP extensions :
+  * mysqli (legacy plugin and tooling integrations)
   * APCU (cache)
   * exif (security enhancement on image validation)
   * imap (mail collector and users authentication)
@@ -49,6 +52,8 @@ You will find all ITSM-NG releases [here](https://github.com/itsmng/itsm-ng/rele
 ## Documentation
 
 ITSM-NG documentation is avalaible at the following link : [Wiki](https://wiki.itsm-ng.org/).
+
+For this branch, see [database operations](docs/postgresql.md), [Doctrine ownership](docs/orm.md), and the [open implementation plan](docs/modernization-handoff.md).
 
 ## Translation
 

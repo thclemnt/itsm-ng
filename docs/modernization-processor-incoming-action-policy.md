@@ -1,9 +1,0 @@
-# Processor incoming referential-action inspection
-
-The PostgreSQL portability run at `7ec628e3c8282f2f1f204d4aa3624290d2bcd942` refused the expected incoming Processor schema before fixture DDL. The frozen expected schema adds explicit RESTRICT update/delete actions through `ForeignKeys::addToSchema()`. Its incoming Processor columns are nullable owning properties of `DeviceItemAssociations`, used by ContractItem and ItemProject, and reference the physical Processor id.
-
-The installed DBAL `ForeignKeyConstraint::onUpdate()` and `onDelete()` delegate to `onEvent()`, which intentionally collapses both RESTRICT and NO ACTION to null. They cannot distinguish the exact policy required by this fixture. Its strict comparison against the string RESTRICT consequently rejects the expected legitimate declaration.
-
-The fixture now uses DBAL's typed `getOnUpdateAction()` and `getOnDeleteAction()` and requires `ReferentialAction::RESTRICT` for each. NO ACTION, CASCADE, SET NULL, absent/invalid action declarations, and all original invalid column/nullability/native shapes remain refused. No null fallback or equivalent-action relaxation was added. Existing local/foreign identifier quotation handling is unchanged: expected local quoted columns are normalized for the lookup, foreign id is the unquoted identifier declared by the builder, and names retain the existing native-catalog equality requirement.
-
-Every native capture/detach/rebuild/restore ownership guard, exact consumer row vector, unknown/custom incoming refusal, validated/nondeferrable/MATCH/native ordinal requirement, cleanup and raw migration receipt restoration remains unchanged. Historical schema producers and migration definitions are untouched. ROOT must execute corrected reconstruction on both engines; this source diagnosis alone does not establish a native pass.
