@@ -269,6 +269,71 @@ class APIRest extends APIBaseClass
      * @tags api
      * @covers API::getItems
      */
+    public function testUserCollectionDeletionSelectors()
+    {
+        $name = '_api_deleted_selector_' . bin2hex(random_bytes(6));
+        $headers = ['Session-Token' => $this->session_token];
+        $created = $this->query('createItems', [
+            'itemtype' => 'User',
+            'verb' => 'POST',
+            'headers' => $headers,
+            'json' => ['input' => [
+                'name' => $name,
+                'entities_id' => getItemByTypeName('Entity', '_test_root_entity', true),
+                '_entities_id' => getItemByTypeName('Entity', '_test_root_entity', true),
+                '_profiles_id' => 4,
+                '_is_recursive' => 1,
+            ]],
+        ], 201);
+        $this->integer((int)$created['id'])->isGreaterThan(0);
+        $id = (int)$created['id'];
+        try {
+            $params = [
+                'itemtype' => 'User',
+                'headers' => $headers,
+                'query' => [
+                    'searchText' => ['id' => '^' . $id . '$'],
+                    'only_id' => true,
+                    'get_hateoas' => false,
+                    'is_deleted' => 0,
+                ],
+            ];
+            $active = $this->query('getItems', $params);
+            unset($active['headers']);
+            $this->array($active)->isIdenticalTo([['id' => $id]]);
+
+            $this->query('deleteItems', [
+                'itemtype' => 'User',
+                'id' => $id,
+                'verb' => 'DELETE',
+                'headers' => $headers,
+            ]);
+            $active = $this->query('getItems', $params);
+            unset($active['headers']);
+            $this->array($active)->isEmpty();
+
+            $params['query']['is_deleted'] = 1;
+            $deleted = $this->query('getItems', $params);
+            unset($deleted['headers']);
+            $this->array($deleted)->isIdenticalTo([['id' => $id]]);
+
+            $params['query']['is_deleted'] = 2;
+            $this->query('getItems', $params, 400, 'ERROR');
+        } finally {
+            $this->query('deleteItems', [
+                'itemtype' => 'User',
+                'id' => $id,
+                'verb' => 'DELETE',
+                'headers' => $headers,
+                'query' => ['force_purge' => true],
+            ]);
+        }
+    }
+
+    /**
+     * @tags api
+     * @covers API::getItems
+     */
     public function testDropdownCollectionQueryFailure()
     {
         // A nonexistent filter field makes the physical SELECT fail on both providers.

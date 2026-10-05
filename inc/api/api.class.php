@@ -1307,7 +1307,17 @@ abstract class API extends CommonGLPI
                 $where = "1=1 ";
             }
             if ($item->maybeDeleted()) {
-                $where .= "AND " . $DB->quoteName("$table.is_deleted") . " = " . (int)$params['is_deleted'];
+                $deleted = (int)$params['is_deleted'];
+                if (\itsmng\Database\EntityRegistry::isBoolean($table, 'is_deleted')) {
+                    try {
+                        $deleted = \itsmng\Database\BooleanValue::normalize($params['is_deleted'], false, 'is_deleted');
+                    } catch (\InvalidArgumentException $error) {
+                        return $this->returnError($error->getMessage());
+                    }
+                    $deleted = $DB->getDoctrineConnection()->getDatabasePlatform()->convertBooleansToDatabaseValue($deleted);
+                    $deleted = $DB->quoteValue($deleted);
+                }
+                $where .= "AND " . $DB->quoteName("$table.is_deleted") . " = " . $deleted;
             }
 
             // add filter for a parent itemtype
@@ -1361,7 +1371,12 @@ abstract class API extends CommonGLPI
                 foreach ($params['searchText'] as $filter_field => $filter_value) {
                     if (!empty($filter_value)) {
                         $search_value = Search::makeTextSearch($DB->escape($filter_value));
-                        $where .= " AND (" . $DB->quoteName("$table.$filter_field") . " $search_value)";
+                        $field = $DB->quoteName("$table.$filter_field");
+                        if ($DB->getDoctrineConnection()->getDatabasePlatform() instanceof \Doctrine\DBAL\Platforms\PostgreSQLPlatform) {
+                            // API searchText is textual even when a selected field is an owning identifier.
+                            $field = "CAST($field AS TEXT)";
+                        }
+                        $where .= " AND ($field $search_value)";
                     }
                 }
             }
