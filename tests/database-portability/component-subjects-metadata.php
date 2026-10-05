@@ -10,6 +10,8 @@ use itsmng\Database\BaselineSchema;
 use itsmng\Database\Entity\ItemDeviceHardDrive;
 use itsmng\Database\Entity\ItemDeviceMemory;
 use itsmng\Database\Entity\ItemDeviceMotherboard;
+use itsmng\Database\Entity\ItemDeviceBattery;
+use itsmng\Database\Entity\ItemDevicePowerSupply;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Mapping\DiscriminatorKey;
@@ -17,6 +19,8 @@ use itsmng\Database\Migration\Baseline20261001;
 use itsmng\Database\Migration\HardDriveSubjects20261013;
 use itsmng\Database\Migration\MemorySubjects20261013;
 use itsmng\Database\Migration\MotherboardSubjects20261013;
+use itsmng\Database\Migration\BatterySubjects20261014;
+use itsmng\Database\Migration\PowerSupplySubjects20261014;
 use itsmng\Database\Orm;
 
 $source = realpath($argv[2] ?? dirname(__DIR__, 2));
@@ -38,6 +42,8 @@ $families = [
     [ItemDeviceMotherboard::class, MotherboardSubjects20261013::class, ['Computer']],
     [ItemDeviceMemory::class, MemorySubjects20261013::class, ['Computer', 'NetworkEquipment', 'Peripheral', 'Printer']],
     [ItemDeviceHardDrive::class, HardDriveSubjects20261013::class, ['Computer', 'Peripheral', 'NetworkEquipment', 'Printer', 'Phone']],
+    [ItemDeviceBattery::class, BatterySubjects20261014::class, ['Computer', 'Peripheral', 'Phone', 'Printer']],
+    [ItemDevicePowerSupply::class, PowerSupplySubjects20261014::class, ['Computer', 'NetworkEquipment', 'Enclosure']],
 ];
 foreach ([new MySQLPlatform(), new PostgreSQLPlatform()] as $platform) {
     $connection = DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
@@ -80,5 +86,5 @@ foreach ([new MySQLPlatform(), new PostgreSQLPlatform()] as $platform) {
     }
     verify(!$connection->isConnected(), 'Metadata inspection never connects or loads application configuration');
 }
-verify(count(EntityRegistry::tables()) === 357 && array_sum(array_map(count(...), ForeignKeys::relations())) === 1080, 'Ten real component subject associations extend the existing 357-table model');
-echo "Nonconnecting component subjects: both platform declarations, ten FKs and frozen/current projections passed.\n";
+verify(count(EntityRegistry::tables()) === 357 && array_sum(array_map(count(...), ForeignKeys::relations())) === 1087, 'Seventeen real component subject associations extend the existing 357-table model');
+echo "Nonconnecting component subjects: both platform declarations, seventeen FKs and frozen/current projections passed.\n";

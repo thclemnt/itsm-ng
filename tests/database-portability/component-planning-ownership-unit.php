@@ -10,6 +10,8 @@ use itsmng\Database\Migration\ComponentData20261013;
 use itsmng\Database\Migration\HardDriveSubjects20261013;
 use itsmng\Database\Migration\MemorySubjects20261013;
 use itsmng\Database\Migration\MotherboardSubjects20261013;
+use itsmng\Database\Migration\BatterySubjects20261014;
+use itsmng\Database\Migration\PowerSupplySubjects20261014;
 use itsmng\Database\Migration\ProcessorStagedTypedItemMigration20261012;
 use itsmng\Database\Migration\ProcessorTypedItemMigration20261012;
 
@@ -116,7 +118,8 @@ foreach ($planners as [$plan, $diagnostic]) {
     }
 }
 foreach ([ProcessorTypedItemMigration20261012::class, ProcessorStagedTypedItemMigration20261012::class,
-    MotherboardSubjects20261013::class, MemorySubjects20261013::class, HardDriveSubjects20261013::class] as $class) {
+    MotherboardSubjects20261013::class, MemorySubjects20261013::class, HardDriveSubjects20261013::class,
+    BatterySubjects20261014::class, PowerSupplySubjects20261014::class] as $class) {
     $method = new ReflectionMethod($class, 'plan');
     $parameters = $method->getParameters();
     $verify(

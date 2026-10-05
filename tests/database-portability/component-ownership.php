@@ -106,6 +106,8 @@ try {
         [Item_DeviceMotherboard::class, [], [0 => 'Computer']],
         [Item_DeviceMemory::class, ['size' => 8192], [0 => 'Computer', 1 => 'NetworkEquipment', 2 => 'Peripheral', 4 => 'Printer']],
         [Item_DeviceHardDrive::class, ['capacity' => 1048576], ['Computer', 'NetworkEquipment', 'Peripheral', 'Phone', 'Printer']],
+        [Item_DeviceBattery::class, [], [0 => 'Computer', 2 => 'Peripheral', 3 => 'Phone', 4 => 'Printer']],
+        [Item_DevicePowerSupply::class, [], [0 => 'Computer', 1 => 'NetworkEquipment', 5 => 'Enclosure']],
     ];
     foreach ($families as $familyIndex => [$linkClass, $payload, $concernedItems]) {
         $table = $linkClass::getTable();
@@ -117,7 +119,7 @@ try {
         $kinds = array_keys($definition['selections']);
         verify($linkClass::itemAffinity() === $kinds, 'Actual component affinity uses the owning declaration order');
         verify($linkClass::getConcernedItems() === $concernedItems, 'Public UI list retains its original global ordering and sparse keys while filtering metadata-owned affinity');
-        foreach (array_diff(['Computer', 'NetworkEquipment', 'Peripheral', 'Printer', 'Phone'], $kinds) as $unsupported) {
+        foreach (array_diff(['Computer', 'NetworkEquipment', 'Peripheral', 'Printer', 'Phone', 'Enclosure'], $kinds) as $unsupported) {
             verify(!in_array($linkClass, Glpi\Api\API::getHatoasClasses($unsupported), true), 'Actual API discovery excludes unsupported family subjects');
         }
         $sameId = 4294997000 + $familyIndex;
@@ -163,7 +165,7 @@ try {
         }
         $default = $payload === [] ? [] : [array_key_first($payload) . '_default' => reset($payload)];
         $device = $fixtures->create($deviceTable, ['designation' => $prefix . ' ' . $deviceClass, 'entities_id' => $foreignEntity] + $default);
-        foreach (array_diff(['Computer', 'NetworkEquipment', 'Peripheral', 'Printer', 'Phone'], $kinds) as $unsupported) {
+        foreach (array_diff(['Computer', 'NetworkEquipment', 'Peripheral', 'Printer', 'Phone', 'Enclosure'], $kinds) as $unsupported) {
             verify((new $linkClass())->add([$deviceColumn => $device, 'itemtype' => $unsupported, 'items_id' => 4294997999]) === false, 'Public creation refuses unsupported subject kinds with an otherwise real definition');
         }
         $model = new $linkClass();
@@ -174,6 +176,9 @@ try {
         $bindings = [];
         foreach ($definition['selections'] as $kind => $selection) {
             $input = [$deviceColumn => $device, 'itemtype' => $kind, 'items_id' => $sameId, 'serial' => "Component O'Reilly \\ 日本語", 'otherserial' => null] + $payload;
+            if (array_key_exists('manufacturing_date', $linkClass::getSpecificities())) {
+                $input['manufacturing_date'] = '2020-02-29';
+            }
             verify($model->can(-1, CREATE, $input), 'Actual actor may create this supported subject binding');
             $id = (int)$model->add(Toolbox::addslashes_deep($input));
             verify(
@@ -185,6 +190,13 @@ try {
             $duplicate = (int)(new $linkClass())->add([$deviceColumn => $device, 'itemtype' => $kind, 'items_id' => $sameId] + $payload);
             verify($duplicate > 0 && $duplicate !== $id, 'Individual duplicate component links remain legitimate');
             $bindings[$kind] = [$id, $duplicate];
+            if (array_key_exists('manufacturing_date', $input)) {
+                verify($model->fields['manufacturing_date'] === $input['manufacturing_date'], 'Actual Battery add preserves its date specificity independently of subject ownership');
+                verify($model->update(['id' => $id, 'manufacturing_date' => null]) && $model->getFromDB($id)
+                    && $model->fields['manufacturing_date'] === null && $model->fields['itemtype'] === $kind,
+                    'Explicit null Battery date leaves its selected owning subject intact');
+                verify($model->update(['id' => $id, 'manufacturing_date' => '2020-02-29']), 'The ordinary public Battery specificity update remains writable');
+            }
             foreach ($definition['selections'] as $otherKind => $other) {
                 if ($otherKind !== $kind) {
                     verify($model->fields[$other['column']] === null, 'Same numerical subject IDs in other tables do not leak into owning associations');

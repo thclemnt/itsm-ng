@@ -177,13 +177,15 @@ $connection->insert('glpi_items_deviceprocessors', ['id' => 1904, 'deviceprocess
 $connection->insert('glpi_items_deviceprocessors', ['id' => 1905, 'deviceprocessors_id' => 1901, 'itemtype' => null, 'items_id' => 0]);
 // New family ownership is exercised in the same raw populated adoption, not
 // marked complete after constructing today’s metadata schema.
-foreach (['glpi_networkequipments', 'glpi_peripherals', 'glpi_printers', 'glpi_phones'] as $subjectTable) {
+foreach (['glpi_networkequipments', 'glpi_peripherals', 'glpi_printers', 'glpi_phones', 'glpi_enclosures'] as $subjectTable) {
     $connection->insert($subjectTable, ['id' => 2100, 'name' => 'Historical component subject']);
 }
 $componentFamilies = [
     ['glpi_items_devicemotherboards', 'glpi_devicemotherboards', 'devicemotherboards_id', ['Computer'], []],
     ['glpi_items_devicememories', 'glpi_devicememories', 'devicememories_id', ['Computer', 'NetworkEquipment', 'Peripheral', 'Printer'], ['size' => 8192]],
     ['glpi_items_deviceharddrives', 'glpi_deviceharddrives', 'deviceharddrives_id', ['Computer', 'Peripheral', 'NetworkEquipment', 'Printer', 'Phone'], ['capacity' => 1048576]],
+    ['glpi_items_devicebatteries', 'glpi_devicebatteries', 'devicebatteries_id', ['Computer', 'Peripheral', 'Phone', 'Printer'], ['manufacturing_date' => '2020-02-29']],
+    ['glpi_items_devicepowersupplies', 'glpi_devicepowersupplies', 'devicepowersupplies_id', ['Computer', 'NetworkEquipment', 'Enclosure'], []],
 ];
 $componentHistorical = [];
 foreach ($componentFamilies as $familyIndex => [$bindingTable, $definitionTable, $deviceColumn, $kinds, $payload]) {
@@ -707,15 +709,19 @@ verify($connection->fetchOne('SELECT password FROM glpi_users WHERE id = 2') ===
 foreach (History::VERSIONS as $version) {
     verify(Ledger::state($connection, $version)['complete'], 'Every canonical migration is complete: ' . $version);
 }
-verify(count(History::VERSIONS) === 20
+verify(count(History::VERSIONS) === 22
     && array_slice(History::VERSIONS, 13, 4) === [\itsmng\Database\Migration\ExactDiscriminators20261010::VERSION,
         SoftwareInstallationSubjects20261011::VERSION, SoftwareLicenseSubjects20261011::VERSION,
         \itsmng\Database\Migration\ProcessorSubjects20261012::VERSION], 'Exact14, Software15/16 and Processor17 retain one ordered canonical ledger');
-verify(array_slice(History::VERSIONS, -3) === [
+verify(array_slice(History::VERSIONS, 17, 3) === [
     \itsmng\Database\Migration\MotherboardSubjects20261013::VERSION,
     \itsmng\Database\Migration\MemorySubjects20261013::VERSION,
     \itsmng\Database\Migration\HardDriveSubjects20261013::VERSION,
 ], 'Motherboard18, Memory19 and HardDrive20 extend the same ordered canonical ledger');
+verify(array_slice(History::VERSIONS, -2) === [
+    \itsmng\Database\Migration\BatterySubjects20261014::VERSION,
+    \itsmng\Database\Migration\PowerSupplySubjects20261014::VERSION,
+], 'Battery21 and PowerSupply22 append to the same ledger without rewriting earlier version order');
 foreach ($componentHistorical as $bindingTable => $sourceRows) {
     $reference = \itsmng\Database\EntityRegistry::discriminatedReferences($bindingTable)['items_id'];
     foreach ($sourceRows as $id => $sourceRow) {
@@ -725,7 +731,7 @@ foreach ($componentHistorical as $bindingTable => $sourceRows) {
             if (in_array($column, ['id', 'itemtype', 'items_id', 'serial'], true)) {
                 continue;
             }
-            verify((int)$row[$column] === (int)$value, 'Canonical full replay retains definition, capacity/size and deletion/dynamic flags');
+            verify($column === 'manufacturing_date' ? $row[$column] === $value : (int)$row[$column] === (int)$value, 'Canonical full replay retains definition, numeric/date payload and deletion/dynamic flags');
         }
         $kind = $sourceRow['itemtype'] ?: null;
         verify($row['itemtype'] === $kind && (int)$row['items_id'] === (int)$sourceRow['items_id'], 'Canonical full replay retains every selected kind and normalizes only explicit stock');

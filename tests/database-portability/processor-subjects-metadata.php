@@ -124,7 +124,7 @@ if ($mode === '--required-shapes') {
     echo json_encode($shapes, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR) . "\n";
     exit;
 }
-verify(count(EntityRegistry::tables()) === 357 && array_sum(array_map(count(...), ForeignKeys::relations())) === 1080, 'One new owning Computer association extends the audited 357-table model');
+verify(count(EntityRegistry::tables()) === 357 && array_sum(array_map(count(...), ForeignKeys::relations())) === 1087, 'One new owning Computer association extends the audited 357-table model');
 $reference = EntityRegistry::discriminatedReferences('glpi_items_deviceprocessors')['items_id'];
 verify($reference['empty_value'] === 0 && array_keys($reference['selections']) === ['Computer'], 'Stock identity and supported parent derive from the owning metadata');
 $processor = new ItemDeviceProcessor();
@@ -145,4 +145,4 @@ $processor->itemtype = 'Computer';
 $processor->validateReference();
 $processor->computer->id = 0;
 verify(isset(outcome(static fn () => $processor->validateReference())['exception']), 'Direct ORM selected parent must have a positive identifier');
-echo "Nonconnecting Processor metadata, optional normalization, frozen/current projection and 1080 owning associations passed.\n";
+echo "Nonconnecting Processor metadata, optional normalization, frozen/current projection and 1087 owning associations passed.\n";

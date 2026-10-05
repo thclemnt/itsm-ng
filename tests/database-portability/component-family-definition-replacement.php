@@ -45,6 +45,8 @@ $families = [
     [Item_DeviceMotherboard::class, []],
     [Item_DeviceMemory::class, ['size' => 8192]],
     [Item_DeviceHardDrive::class, ['capacity' => 1048576]],
+    [Item_DeviceBattery::class, ['manufacturing_date' => '2020-02-29']],
+    [Item_DevicePowerSupply::class, []],
 ];
 $tables = ['glpi_entities', 'glpi_logs', 'glpi_queuednotifications', 'itsmng_migrations'];
 foreach ($families as [$linkClass]) {

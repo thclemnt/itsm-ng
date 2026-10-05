@@ -5,6 +5,8 @@
 use itsmng\Database\Entity\ItemDeviceHardDrive;
 use itsmng\Database\Entity\ItemDeviceMemory;
 use itsmng\Database\Entity\ItemDeviceMotherboard;
+use itsmng\Database\Entity\ItemDeviceBattery;
+use itsmng\Database\Entity\ItemDevicePowerSupply;
 use itsmng\Database\Mapping\DiscriminatedBy;
 use Doctrine\ORM\Mapping\JoinColumn;
 
@@ -41,7 +43,7 @@ $same = static function (array $actual, array $expected): bool {
     }
     return true;
 };
-foreach ([ItemDeviceMotherboard::class, ItemDeviceMemory::class, ItemDeviceHardDrive::class] as $class) {
+foreach ([ItemDeviceMotherboard::class, ItemDeviceMemory::class, ItemDeviceHardDrive::class, ItemDeviceBattery::class, ItemDevicePowerSupply::class] as $class) {
     $record = new $class();
     $selections = [];
     foreach ((new ReflectionClass($class))->getProperties() as $property) {

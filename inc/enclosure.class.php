@@ -340,6 +340,12 @@ class Enclosure extends CommonDBTM
               Item_Enclosure::class,
             ]
         );
+
+        Item_Devices::cleanItemDeviceDBOnItemDelete(
+            $this->getType(),
+            $this->fields['id'],
+            (!empty($this->input['keep_devices']))
+        );
     }
 
 

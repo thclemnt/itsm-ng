@@ -47,7 +47,7 @@ $postgres = $platform instanceof PostgreSQLPlatform;
 $manager = $connection->createSchemaManager();
 $expected = (new BaselineSchema())->build($platform);
 verify((new SchemaCheck())->differences($connection, $expected) === [], 'Canonical complete schema before component reconstruction');
-$families = [
+$families = $componentSchemaFamilies ?? [
     [Item_DeviceMotherboard::class, MotherboardSubjects20261013::class, []],
     [Item_DeviceMemory::class, MemorySubjects20261013::class, ['size' => 8192]],
     [Item_DeviceHardDrive::class, HardDriveSubjects20261013::class, ['capacity' => 1048576]],
@@ -161,6 +161,9 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
             $connection->delete($table, ['id' => $id]);
         };
         $reconstruction->legacy($comment);
+        if (isset($componentSchemaExtensionProbe)) {
+            $componentSchemaExtensionProbe($connection, $table, $deviceColumn, $device, $subject, $migration, $linkClass);
+        }
         foreach ([
             ['itemtype' => 'PluginAsset'], ['itemtype' => 'computer'], ['itemtype' => 'Computer '],
             ['itemtype' => ' ', 'items_id' => 0], ['itemtype' => 'Computer', 'items_id' => 0],
@@ -169,30 +172,34 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
         ] as $invalid) {
             $rejectLegacy($invalid);
         }
-        if ($familyIndex === 2) {
-            // Both earlier family receipts are deliberately pending too. The
-            // invalid final family must refuse the canonical updater before
-            // either earlier family can replace its CHECK or earn a receipt.
+        if ($familyIndex > 0 && $familyIndex === count($families) - 1) {
+            // Earlier selected family receipts are deliberately pending too.
+            // The invalid final family must refuse the canonical updater
+            // before any earlier selected family changes its CHECK or receipt.
             $otherReceipts = [];
             $beforeJoint = $connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
-            $firstFamilyChecks = static fn (): array => [
-                'motherboard' => $postgres
-                    ? $connection->fetchAllAssociative("SELECT conname, pg_get_constraintdef(oid) AS definition FROM pg_catalog.pg_constraint WHERE conrelid=to_regclass('glpi_items_devicemotherboards') AND contype='c' ORDER BY conname")
-                    : \itsmng\Database\BooleanDomainSchema::checks($connection, 'glpi_items_devicemotherboards'),
-                'memory' => $postgres
-                    ? $connection->fetchAllAssociative("SELECT conname, pg_get_constraintdef(oid) AS definition FROM pg_catalog.pg_constraint WHERE conrelid=to_regclass('glpi_items_devicememories') AND contype='c' ORDER BY conname")
-                    : \itsmng\Database\BooleanDomainSchema::checks($connection, 'glpi_items_devicememories'),
-            ];
+            $earlierFamilies = array_slice($families, 0, $familyIndex);
+            $firstFamilyChecks = static function () use ($earlierFamilies, $postgres, $connection): array {
+                $checks = [];
+                foreach ($earlierFamilies as [$earlierLink]) {
+                    $earlierTable = $earlierLink::getTable();
+                    $checks[$earlierTable] = $postgres
+                        ? $connection->fetchAllAssociative('SELECT conname, pg_get_constraintdef(oid) AS definition FROM pg_catalog.pg_constraint WHERE conrelid=to_regclass(?) AND contype=\'c\' ORDER BY conname', [$connection->quoteIdentifier($earlierTable)])
+                        : \itsmng\Database\BooleanDomainSchema::checks($connection, $earlierTable);
+                }
+                return $checks;
+            };
             $beforeJointChecks = $firstFamilyChecks();
             try {
-                foreach ([MotherboardSubjects20261013::VERSION, MemorySubjects20261013::VERSION] as $earlier) {
+                foreach ($earlierFamilies as [, $earlierMigration]) {
+                    $earlier = $earlierMigration::VERSION;
                     $receipt = $connection->fetchAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' WHERE version=?', [$earlier]);
                     verify($receipt !== false && (Ledger::state($connection, $earlier)['complete'] ?? false), 'Capture each actual earlier completed family receipt before declaring it pending');
                     $otherReceipts[$earlier] = $receipt;
                     $connection->delete(LegacyToOrm::LEDGER, ['version' => $earlier]);
                 }
                 $rejectLegacy(['items_id' => $subject + 99], canonical: true);
-                verify($firstFamilyChecks() === $beforeJointChecks, 'Joint updater audits all three pending families before earlier CHECK replacement');
+                verify($firstFamilyChecks() === $beforeJointChecks, 'Joint updater audits all selected pending families before earlier CHECK replacement');
                 foreach (array_keys($otherReceipts) as $earlier) {
                     verify(Ledger::state($connection, $earlier) === null, 'Invalid later source creates no earlier family receipt');
                 }
@@ -371,7 +378,7 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
                 }
                 verify($row['locations_id'] === null && $row['states_id'] === null, 'Historical optional zero selections normalize to NULL without selecting persisted target0');
                 foreach ($payload as $field => $value) {
-                    verify((int)$row[$field] === $value, 'Retry preserves family-specific size/capacity');
+                    verify(is_int($value) ? (int)$row[$field] === $value : $row[$field] === $value, 'Retry preserves family-specific numeric/date/null payload');
                 }
                 if ($kind !== null) {
                     verify(Type::getType('boolean')->convertToPHPValue($row['is_deleted'], $platform) === (bool)$original['is_deleted']
