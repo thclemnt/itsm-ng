@@ -49,12 +49,44 @@ class Item_SoftwareVersion extends DbTestCase
         $this->string(\Item_SoftwareVersion::getTypeName(10))->isIdenticalTo('Installations');
     }
 
-    public function testPrepareInputForAdd()
+    /** Public fixtures belong to this method's rollback frame, never to shared dataset links. */
+    private function installationFixtures(array $entities = ['_test_root_entity']): array
     {
         $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $suffix = bin2hex(random_bytes(6));
+        $root = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $software = $this->createItem(\Software::class, [
+            'name' => 'Installation fixture software ' . $suffix,
+            'entities_id' => $root,
+            'is_recursive' => 1,
+        ]);
+        $versions = [];
+        foreach ([1, 2] as $number) {
+            $versions[] = $this->createItem(\SoftwareVersion::class, [
+                'name' => 'Installation fixture version ' . $number . ' ' . $suffix,
+                'softwares_id' => $software->getID(),
+                'entities_id' => $root,
+                'is_recursive' => 1,
+            ]);
+        }
+        $computers = [];
+        foreach ($entities as $index => $entity) {
+            $computer = $this->createItem(\Computer::class, [
+                'name' => 'Installation fixture computer ' . $index . ' ' . $suffix,
+                'entities_id' => (int)getItemByTypeName('Entity', $entity, true),
+            ]);
+            $this->boolean($computer->can($computer->getID(), UPDATE))->isTrue();
+            $computers[] = $computer;
+        }
+        return [$software, $versions, $computers];
+    }
 
-        $computer1 = getItemByTypeName('Computer', '_test_pc01');
-        $ver = getItemByTypeName('SoftwareVersion', '_test_softver_1', true);
+    public function testPrepareInputForAdd()
+    {
+        [, $versions, $computers] = $this->installationFixtures();
+        $computer1 = $computers[0];
+        $ver = $versions[0]->getID();
 
         // Do some installations
         $ins = new \Item_SoftwareVersion();
@@ -74,7 +106,7 @@ class Item_SoftwareVersion extends DbTestCase
            'items_id'              => $computer1->getID(),
            'itemtype'              => 'Computer',
            'name'                  => 'A name',
-           'entities_id'           => 1,
+           'entities_id'           => $computer1->getEntityID(),
            'is_recursive'          => 0,
            'is_template_item'      => $computer1->getField('is_template'),
            'is_deleted_item'       => $computer1->getField('is_deleted')
@@ -86,10 +118,9 @@ class Item_SoftwareVersion extends DbTestCase
 
     public function testPrepareInputForUpdate()
     {
-        $this->login();
-
-        $computer1 = getItemByTypeName('Computer', '_test_pc01');
-        $ver = getItemByTypeName('SoftwareVersion', '_test_softver_1', true);
+        [, $versions, $computers] = $this->installationFixtures();
+        $computer1 = $computers[0];
+        $ver = $versions[0]->getID();
 
         // Do some installations
         $ins = new \Item_SoftwareVersion();
@@ -120,12 +151,13 @@ class Item_SoftwareVersion extends DbTestCase
 
     public function testCountInstall()
     {
-        $this->login();
-
-        $computer1 = getItemByTypeName('Computer', '_test_pc01', true);
-        $computer11 = getItemByTypeName('Computer', '_test_pc11', true);
-        $computer12 = getItemByTypeName('Computer', '_test_pc12', true);
-        $ver = getItemByTypeName('SoftwareVersion', '_test_softver_1', true);
+        [, $versions, $computers] = $this->installationFixtures([
+            '_test_root_entity', '_test_child_1', '_test_child_1',
+        ]);
+        $computer1 = $computers[0]->getID();
+        $computer11 = $computers[1]->getID();
+        $computer12 = $computers[2]->getID();
+        $ver = $versions[0]->getID();
 
         // Do some installations
         $ins = new \Item_SoftwareVersion();
@@ -161,10 +193,14 @@ class Item_SoftwareVersion extends DbTestCase
 
     public function testUpdateDatasFromComputer()
     {
-        $c00 = 1566671;
-        $computer1 = getItemByTypeName('Computer', '_test_pc01');
-        $ver1 = getItemByTypeName('SoftwareVersion', '_test_softver_1', true);
-        $ver2 = getItemByTypeName('SoftwareVersion', '_test_softver_2', true);
+        global $DB;
+
+        [, $versions, $computers] = $this->installationFixtures();
+        $computer1 = $computers[0];
+        $ver1 = $versions[0]->getID();
+        $ver2 = $versions[1]->getID();
+        $c00 = (int)$DB->getDoctrineConnection()->fetchOne('SELECT COALESCE(MAX(id), 0) + 1 FROM glpi_computers');
+        $this->boolean((new \Computer())->getFromDB($c00))->isFalse();
 
         // Do some installations
         $softver = new \Item_SoftwareVersion();
@@ -211,11 +247,9 @@ class Item_SoftwareVersion extends DbTestCase
 
     public function testCountForSoftware()
     {
-        $soft1 = getItemByTypeName('Software', '_test_soft');
-        $ver1 = getItemByTypeName('SoftwareVersion', '_test_softver_1');
-        $computer1 = getItemByTypeName('Computer', '_test_pc01');
-
-        $this->Login();
+        [$soft1, $versions, $computers] = $this->installationFixtures();
+        $ver1 = $versions[0];
+        $computer1 = $computers[0];
 
         $this->integer(
             (int)\Item_SoftwareVersion::countForSoftware($soft1->fields['id'])
