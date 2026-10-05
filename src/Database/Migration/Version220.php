@@ -82,6 +82,9 @@ final class Version220 implements ReleaseMigration
         \itsmng\Database\CheckConstraintSupport::assertSupported($connection);
         \itsmng\Database\LegacyAdoptionEligibility::assertConnection($connection);
         $this->assertSource($connection);
+        if ((Ledger::state($connection, ExactDiscriminators::PHASE)['complete'] ?? false) === true) {
+            (new ExactDiscriminators())->verify($connection);
+        }
         $prerequisite = (new DomainsPluginAdoption())->plan($connection);
         if ($prerequisite) {
             return ['complete' => false, 'domain_prerequisite' => $prerequisite,
@@ -224,6 +227,9 @@ final class Version220 implements ReleaseMigration
         // ledger bootstrap or nontransactional canonical DDL can occur.
         \itsmng\Database\LegacyAdoptionEligibility::assertConnection($connection);
         $this->assertSource($connection);
+        if ((Ledger::state($connection, ExactDiscriminators::PHASE)['complete'] ?? false) === true) {
+            (new ExactDiscriminators())->verify($connection);
+        }
         (new DomainsPluginAdoption())->apply($connection, fn () => $this->canonicalPlan($connection), $progress);
         $domainDocuments = new DomainDocuments();
         // All stored subject spellings are audited before any canonical DDL,

@@ -428,6 +428,57 @@ try {
         $foreignConnection->rollBack();
         $foreignConnection->close();
     }
+    // Resume the real Toolbox installation entrypoint at its final publication
+    // boundary. Both a throwing hook and a veto must leave it retryable.
+    foreach (['throw', 'veto'] as $installFailure) {
+        $pending();
+        $baselineVersion = \itsmng\Database\Migration\V220\Baseline::PHASE;
+        $installState = Ledger::state($connection, $baselineVersion);
+        $installState['origin'] = 'installed';
+        $installState['installation_complete'] = false;
+        Ledger::save($connection, $baselineVersion, $installState);
+        foreach (['version', 'itsmversion'] as $field) {
+            $connection->update('glpi_configs', ['value' => '2.1.6'], ['context' => 'core', 'name' => $field]);
+        }
+        $connection->update('glpi_configs', ['value' => 'fr_FR'], ['context' => 'core', 'name' => 'language']);
+        $installConfig = $connection->fetchAllAssociative("SELECT * FROM glpi_configs WHERE context='core' ORDER BY id");
+        $installPhases = array_diff_key(Ledger::states($connection), [$version => true]);
+        $savedInstallHook = $PLUGIN_HOOKS['pre_item_update'] ?? null;
+        $PLUGIN_HOOKS['pre_item_update']['upgrade_fixture']['Config'] = static function (Config $config) use ($installFailure): void {
+            if ($config->fields['name'] === 'itsmversion') {
+                if ($installFailure === 'throw') {
+                    throw new RuntimeException('Injected install publication failure');
+                }
+                $config->input = false;
+            }
+        };
+        try {
+            Toolbox::createSchema('en_GB', $DB);
+            throw new LogicException('Installation publication failure was ignored');
+        } catch (RuntimeException $error) {
+            verify(str_contains($error->getMessage(), $installFailure === 'throw' ? 'Injected install publication failure' : 'publication was rejected for itsmversion'),
+                'Actual Toolbox installation surfaces its configuration lifecycle ' . $installFailure);
+            verify(History::isInstalling($connection) && (Ledger::state($connection, $version)['complete'] ?? false) !== true
+                && array_diff_key(Ledger::states($connection), [$version => true]) === $installPhases,
+                'Failed install publication cannot close its installation marker or release receipt');
+            verify($connection->fetchAllAssociative("SELECT * FROM glpi_configs WHERE context='core' ORDER BY id") === $installConfig,
+                'Failed installation publication rolls back earlier language, timezone and release alias writes together');
+        } finally {
+            if ($savedInstallHook === null) {
+                unset($PLUGIN_HOOKS['pre_item_update']);
+            } else {
+                $PLUGIN_HOOKS['pre_item_update'] = $savedInstallHook;
+            }
+        }
+        Toolbox::createSchema('en_GB', $DB);
+        verify(!History::isInstalling($connection) && History::pendingVersions($connection) === []
+            && $connection->fetchOne("SELECT value FROM glpi_configs WHERE context='core' AND name='language'") === 'en_GB'
+            && array_diff_assoc($upgrade->release(), ['version' => ITSM_VERSION, 'itsmversion' => ITSM_VERSION, 'dbversion' => ITSM_SCHEMA_VERSION, 'itsmdbversion' => ITSM_SCHEMA_VERSION]) === [],
+            'Installation retry publishes selected language and every release alias before closing its markers');
+        $installed = $snapshot();
+        Toolbox::createSchema('en_GB', $DB);
+        verify($snapshot() === $installed, 'Completed installation publication retry preserves phase journals and creates no duplicate audit rows');
+    }
     $upgrade->apply();
     $beforeRetry = $snapshot();
     [$status, $output] = $cli(['db:update', '--force']);

@@ -65,7 +65,12 @@ Changing version labels alone does not convert data or profile rights. Experimen
 ORM installations, including interrupted ones, retain their original
 internal phase checkpoints in `itsmng_migrations`; these are not public release
 versions. `db:migrate --apply` validates and completes the transition before adding
-the 2.2.0 release receipt. No journal or data is replaced to manufacture provenance.
+the 2.2.0 release receipt. Bare experimental completion flags without retained
+post-DDL CHECK/projection policy cannot establish native definitions and refuse
+explicitly; restore the genuine 2.1.3 source for the supported transition. No journal
+or data is replaced to manufacture provenance. Fresh-install language/timezone and
+release aliases publish inside the owned final transaction before its completion
+markers, so a failed configuration callback leaves installation retryable.
 Original keys are required;
 missing or invalid key paths never authorize regeneration. Customized accounts,
 rights, plugins, notifications and audit must survive adoption. Current inspection

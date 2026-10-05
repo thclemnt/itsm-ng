@@ -2692,7 +2692,7 @@ class Toolbox
             $database = new DB();
         }
 
-        // Set global $DB as it is used in "Config::setConfigurationValues()" just after schema creation
+        // Config lifecycle callbacks use the selected writer inside History publication.
         $DB = $database;
 
         if ($replace && $DB->getProvider() === 'mysql' && !\itsmng\Database\Migration\History::isInstalling($DB->getDoctrineConnection())) {
@@ -2707,31 +2707,6 @@ class Toolbox
                 Html::glpi_flush();
             }
         );
-
-        // update default language
-        Config::setConfigurationValues(
-            'core',
-            [
-              'language'      => $lang,
-              'version'       => ITSM_VERSION,
-              'dbversion'     => ITSM_SCHEMA_VERSION,
-              'use_timezones' => $DB->areTimezonesAvailable()
-            ]
-        );
-
-        // set ITSM-NG version
-        Config::setConfigurationValues(
-            'core',
-            [
-              'itsmversion'       => ITSM_VERSION,
-              'itsmdbversion'     => ITSM_SCHEMA_VERSION
-            ]
-        );
-
-        if (defined('GLPI_SYSTEM_CRON')) {
-            // Downstream packages may provide a good system cron
-            \itsmng\Database\InitialData::enableSystemCron($DB);
-        }
     }
 
 

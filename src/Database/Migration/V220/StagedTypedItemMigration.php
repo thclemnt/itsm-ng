@@ -40,6 +40,9 @@ abstract class StagedTypedItemMigration extends TypedItemMigration
             throw new \InvalidArgumentException('Staged typed item inspection belongs to a different table.');
         }
         if ((Ledger::state($connection, $this->phase())['complete'] ?? false) === true) {
+            if (!isset(ExactDiscriminators::definitions()['tables'][$this->table()])) {
+                $this->verify($connection);
+            }
             return [];
         }
         $manager = $connection->createSchemaManager();
@@ -105,7 +108,11 @@ abstract class StagedTypedItemMigration extends TypedItemMigration
                 $sql = $this->plan($connection)[$this->table()][$phase];
                 foreach ($sql as $statement) {
                     $connection->executeStatement($statement);
+                    $policy = in_array($phase, ['projection', 'constraints'], true) ? $this->nativePolicy($connection) : null;
                     $progress && $progress($phase, $statement);
+                    if ($policy !== null && $policy !== $this->nativePolicy($connection)) {
+                        throw new \RuntimeException('Typed subject native policy changed before checkpoint: ' . $this->table());
+                    }
                 }
                 $state = $this->journalPhase($state, $phase);
                 Ledger::save($connection, $this->phase(), $state);
@@ -135,10 +142,34 @@ abstract class StagedTypedItemMigration extends TypedItemMigration
         static::configureTable($table, $platform);
     }
 
+    public function verify(Connection $connection): void
+    {
+        parent::verify($connection);
+        // The exact-discriminator owner supersedes these earlier declarations.
+        if (isset(ExactDiscriminators::definitions()['tables'][$this->table()])) {
+            return;
+        }
+        $policy = Ledger::state($connection, $this->phase())['policy'] ?? null;
+        if (!is_array($policy)) {
+            throw new \RuntimeException('Experimental typed-subject receipt lacks retained post-DDL native policy: ' . $this->table()
+                . '. Restore the genuine 2.1.3 source and apply the supported transition; no receipt or data was rewritten.');
+        }
+        if ($policy !== $this->nativePolicy($connection)) {
+            throw new \RuntimeException('Frozen subject native policy changed after authoritative DDL: ' . $this->table());
+        }
+    }
+
+    private function nativePolicy(Connection $connection): array
+    {
+        return ExactDiscriminators::nativePolicy($connection, $this->table(), [
+            'column' => 'items_id', 'constraint' => static::constraintName($this->table()),
+        ]);
+    }
+
     /** Data-bearing appended stages can commit restored rows with their receipt. */
     protected function complete(Connection $connection): void
     {
-        Ledger::save($connection, $this->phase(), ['complete' => true]);
+        Ledger::save($connection, $this->phase(), ['complete' => true, 'policy' => $this->nativePolicy($connection)]);
     }
 
     protected function journalPhase(array $state, string $phase): array

@@ -86,7 +86,14 @@ final class History
         $connection = $database->getDoctrineConnection();
         $this->locked($connection, function () use ($database, $connection, $language, $progress): void {
             (new Version220())->install($database, $language, $progress);
-            $this->replay($connection, $progress, null);
+            $this->replay($connection, $progress, static function () use ($database, $language): void {
+                \itsmng\Database\ReleasePublication::publish($database, [
+                    'language' => $language, 'use_timezones' => $database->areTimezonesAvailable(),
+                ]);
+                if (defined('GLPI_SYSTEM_CRON')) {
+                    \itsmng\Database\InitialData::enableSystemCron($database);
+                }
+            });
             $database->clearSchemaCache();
         });
     }

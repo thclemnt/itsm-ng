@@ -914,5 +914,77 @@ verify((new SchemaCheck())->differences($connection) === [], 'Retried actual fre
 foreach (History::versions() as $version) {
     verify(Ledger::state($connection, $version)['complete'], 'Retried actual install completes every appended history version: ' . $version);
 }
+// Empty data cannot prove a named CHECK or generated projection. Compare the
+// actual native definition with output retained immediately after owned DDL.
+$emptySubject = 'glpi_items_tickets';
+verify((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $emptySubject) === 0, 'Owned fresh subject corruption fixture is empty');
+$exact = new \itsmng\Database\Migration\V220\ExactDiscriminators();
+$definition = $exact::definitions()['tables'][$emptySubject];
+$policy = $exact::nativePolicy($connection, $emptySubject, $definition);
+$nativeLedger = Ledger::states($connection);
+$checkName = $platform->quoteIdentifier($definition['constraint']);
+$checkSql = $postgres ? $policy['check']['definition'] : 'CHECK (' . $policy['check']['clause'] . ')';
+$dropCheck = 'ALTER TABLE ' . $emptySubject . ' DROP ' . ($platform instanceof \Doctrine\DBAL\Platforms\MySQLPlatform ? 'CHECK ' : 'CONSTRAINT ') . $checkName;
+$addCheck = 'ALTER TABLE ' . $emptySubject . ' ADD CONSTRAINT ' . $checkName . ' ';
+$projectionIndexes = $postgres ? $connection->fetchFirstColumn("SELECT pg_get_indexdef(i.indexrelid) FROM pg_catalog.pg_index i WHERE i.indrelid=to_regclass(?) AND EXISTS (SELECT 1 FROM pg_catalog.pg_depend d JOIN pg_catalog.pg_attribute a ON a.attrelid=d.refobjid AND a.attnum=d.refobjsubid WHERE d.classid='pg_class'::regclass AND d.objid=i.indexrelid AND d.refobjid=i.indrelid AND a.attname=?) ORDER BY i.indexrelid", [$emptySubject, 'items_id']) : [];
+$projectionComment = $manager->introspectTable($emptySubject)->getColumn('items_id')->getComment();
+$replaceProjection = static function (string $expression) use ($connection, $platform, $postgres, $emptySubject, $projectionIndexes, $projectionComment): void {
+    $declaration = 'BIGINT GENERATED ALWAYS AS (' . $expression . ') STORED';
+    if ($postgres) {
+        verify((int)$connection->fetchOne("SELECT COUNT(*) FROM pg_catalog.pg_constraint f JOIN pg_catalog.pg_attribute a ON a.attrelid=f.confrelid AND a.attnum=ANY(f.confkey) WHERE f.contype='f' AND f.confrelid=to_regclass(?) AND a.attname='items_id'", [$emptySubject]) === 0, 'No incoming owner before disposable projection alteration');
+        $connection->executeStatement('ALTER TABLE ' . $emptySubject . ' DROP COLUMN items_id, ADD COLUMN items_id ' . $declaration);
+        foreach ($projectionIndexes as $sql) {
+            $connection->executeStatement($sql);
+        }
+        if ($projectionComment !== null && $projectionComment !== '') {
+            $connection->executeStatement($platform->getCommentOnColumnSQL($emptySubject, 'items_id', $projectionComment));
+        }
+    } else {
+        if ($projectionComment !== null && $projectionComment !== '') {
+            $declaration .= ' ' . $platform->getInlineColumnCommentSQL($projectionComment);
+        }
+        $connection->executeStatement('ALTER TABLE ' . $emptySubject . ' MODIFY COLUMN items_id ' . $declaration);
+    }
+};
+foreach (['check', 'projection'] as $corruption) {
+    try {
+        if ($corruption === 'check') {
+            $connection->executeStatement($dropCheck);
+            $connection->executeStatement($addCheck . 'CHECK (TRUE)');
+        } else {
+            $replaceProjection('0');
+        }
+        try {
+            (new Version220())->verify($connection);
+            throw new LogicException('Changed native policy was accepted on an empty table');
+        } catch (RuntimeException $error) {
+            verify(str_contains($error->getMessage(), 'native policy changed'), 'Frozen verification rejects a changed native ' . $corruption . ' despite completed phase flags and empty valid data');
+            verify(Ledger::states($connection) === $nativeLedger && (int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $emptySubject) === 0, 'Physical refusal preserves original journals and empty data');
+        }
+    } finally {
+        if ($corruption === 'check') {
+            $connection->executeStatement($dropCheck);
+            $connection->executeStatement($addCheck . $checkSql);
+        } else {
+            $replaceProjection($policy['projection']);
+        }
+    }
+}
+(new Version220())->verify($connection);
+verify(Ledger::states($connection) === $nativeLedger, 'Restored native policies verify without changing receipts');
+$bareReceipt = $nativeLedger[$exact::PHASE];
+unset($bareReceipt['policy']);
+Ledger::save($connection, $exact::PHASE, $bareReceipt);
+try {
+    try {
+        (new Version220())->plan($connection);
+        throw new LogicException('Bare experimental completion was treated as native policy proof');
+    } catch (RuntimeException $error) {
+        verify(str_contains($error->getMessage(), 'lacks retained post-DDL native policy') && Ledger::state($connection, $exact::PHASE) === $bareReceipt,
+            'Unsupported bare experimental receipt refuses explicitly without inventing native proof');
+    }
+} finally {
+    Ledger::save($connection, $exact::PHASE, $nativeLedger[$exact::PHASE]);
+}
 $checkpoint('Actual fresh-install interruption and retry');
 echo $database->getProvider() . ": frozen baseline/seed replay, conflicting and interrupted DDL, seed rollback, populated adoption, invalid booleans/references/project/appliance/OS subjects before DDL, separate owners, nested duplicate preservation and project roles, dynamic licensed OS assignments, Domain documents, projections, preserved account/audit data, sequence synchronization, appended fresh-install retry and idempotency passed.\n";

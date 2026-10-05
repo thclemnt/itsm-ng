@@ -119,7 +119,11 @@ Shared typed/reference producers retain their explicit frozen domain policies.
 
 The existing `itsmng_migrations` ledger stores the release receipt and internal
 checkpoints. Experimental installations retain their original checkpoint keys and
-captured DDL without copying or rewriting journals. They earn the single 2.2.0
+captured DDL without copying or rewriting journals. Native CHECK and generated
+expression output captured after owned DDL is retained and compared physically.
+Old experimental bare completion flags lack that proof and refuse explicitly;
+restore the genuine 2.1.3 source to use the supported transition. Eligible journals
+earn the single 2.2.0
 receipt only after the pending conversion, final schema inspection and identifier
 synchronization succeed. Each release verifies its own frozen postconditions before
 an `applied` checkpoint; the ordered history checks current mappings after the whole
@@ -127,7 +131,9 @@ chain. A later release can therefore replace earlier columns without making an
 interrupted MySQL upgrade recheck an obsolete target. Public completion and release
 configuration commit together under the existing owned transaction frame. Each
 Config lifecycle write must retain that exact frame and configured writer before
-the next field or completion receipt can be written.
+the next field or completion receipt can be written. Fresh installation publishes
+its language, timezone setting and all four release aliases in that same boundary,
+before closing `installation_complete`; Toolbox performs no later Config writes.
 Do not infer genuine historical provenance from mutable rights or version labels.
 
 Frozen definitions and seeds remain independent of future mappings. `BaselineSchema`

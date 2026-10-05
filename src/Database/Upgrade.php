@@ -50,19 +50,11 @@ final class Upgrade
             throw new \RuntimeException('The original encryption key is missing or unreadable: ' . $this->expectedSecurityKeyPath() . '. Restore it from this installation before upgrading; a new key cannot decrypt existing data.');
         }
         $connection = $this->database->getDoctrineConnection();
-        if ($connection->getDatabasePlatform() instanceof \Doctrine\DBAL\Platforms\AbstractMySQLPlatform) {
-            // Config lifecycle writes and audit records must share rollback.
-            foreach (['glpi_configs', 'glpi_logs'] as $table) {
-                $engine = $connection->fetchOne('SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$table]);
-                if (strcasecmp((string)$engine, 'InnoDB') !== 0) {
-                    throw new \RuntimeException('Canonical release publication requires ' . $table . ' to use InnoDB; found ' . $engine . '. Stop application writers and restore the supported transactional table engine before retrying the upgrade.');
-                }
-            }
-        }
+        ReleasePublication::assertStorage($connection);
         // The schema and identifier allocation have converged. Publish release
         // metadata together; a failed publication can be retried without replaying history.
         (new History())->upgrade($connection, $progress, function (): void {
-            $this->publishRelease();
+            ReleasePublication::publish($this->database);
         });
         $this->database->clearSchemaCache();
         if (isset($GLOBALS['GLPI_CACHE'])) {
@@ -70,52 +62,6 @@ final class Upgrade
         }
         if (($GLOBALS['DB'] ?? null) === $this->database) {
             \Config::loadLegacyConfiguration(false);
-        }
-    }
-
-    /** Publish under History's existing advisory lock, retaining Config hooks. */
-    private function publishRelease(): void
-    {
-        $target = ['version' => ITSM_VERSION, 'itsmversion' => ITSM_VERSION, 'dbversion' => ITSM_SCHEMA_VERSION, 'itsmdbversion' => ITSM_SCHEMA_VERSION];
-        $current = $this->release();
-        $values = [];
-        foreach ($target as $name => $value) {
-            if (($current[$name] ?? null) !== $value) {
-                $values[$name] = $value;
-            }
-        }
-        // Config's mapped writes retain its update/add hooks and audit
-        // history. An idempotent retry does not create duplicate audit entries.
-        $configuredDatabase = $GLOBALS['DB'] ?? null;
-        try {
-            $GLOBALS['DB'] = $this->database;
-            $connection = $this->database->getDoctrineConnection();
-            TransactionOwnership::assertManaged($connection);
-            $scope = $connection->captureManagedTransactionScope();
-            $level = $connection->getTransactionNestingLevel();
-            $assertOwner = function () use ($connection, $scope, $level): void {
-                if (($GLOBALS['DB'] ?? null) !== $this->database || $this->database->getDoctrineConnection() !== $connection) {
-                    throw new TransactionOwnershipMismatch('A release publication callback changed the configured writer.');
-                }
-                $scope->assertActive();
-                if ($connection->getTransactionNestingLevel() !== $level) {
-                    throw new TransactionOwnershipMismatch('A release publication callback changed the owned frame depth.');
-                }
-            };
-            foreach ($values as $name => $value) {
-                $assertOwner();
-                \Config::setConfigurationValues('core', [$name => $value]);
-                $assertOwner();
-            }
-            $assertOwner();
-            $published = $this->release();
-            foreach ($target as $name => $value) {
-                if (($published[$name] ?? null) !== $value) {
-                    throw new \RuntimeException('Canonical history is complete, but release publication was rejected for ' . $name . '. Resolve the configuration lifecycle veto and retry db:migrate --apply.');
-                }
-            }
-        } finally {
-            $GLOBALS['DB'] = $configuredDatabase;
         }
     }
 

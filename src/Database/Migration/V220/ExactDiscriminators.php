@@ -40,6 +40,15 @@ final class ExactDiscriminators
     public function verify(Connection $connection): void
     {
         $this->inspectPlan($connection, verify: true);
+        $policy = Ledger::state($connection, self::PHASE)['policy'] ?? null;
+        if (!is_array($policy) || array_keys($policy) !== array_keys(self::definitions()['tables'])) {
+            throw new \RuntimeException('The experimental exact-subject receipt lacks retained post-DDL native policy. Its CHECK and generated expressions cannot be certified from completion flags. Restore the genuine 2.1.3 source and apply the supported transition; no receipt or data was rewritten.');
+        }
+        foreach (self::definitions()['tables'] as $table => $definition) {
+            if ($policy[$table] !== self::nativePolicy($connection, $table, $definition)) {
+                throw new \RuntimeException('Frozen subject native policy changed after authoritative DDL: ' . $table);
+            }
+        }
     }
 
     private function inspectPlan(Connection $connection, bool $preAdoption = false, ?PendingSubjectShape $pendingShape = null, bool $verify = false): array
@@ -234,7 +243,7 @@ final class ExactDiscriminators
             if ($remaining['deferred']) {
                 throw new \RuntimeException('Exact subject history remained deferred; completion was not recorded.');
             }
-            Ledger::save($connection, self::PHASE, ['complete' => true]);
+            Ledger::save($connection, self::PHASE, ['complete' => true, 'policy' => $state['policy']]);
         };
         $mysql ? $apply() : $connection->transactional($apply);
     }
@@ -342,7 +351,8 @@ final class ExactDiscriminators
         return ['comment' => (string)$table->getColumn('items_id')->getComment(), 'indexes' => $indexes, 'foreign_keys' => $foreignKeys, 'native' => $native];
     }
 
-    private static function nativePolicy(Connection $connection, string $table, array $definition, ?array $catalog = null): array
+    /** Native output, captured only after owned DDL; never inferred from a completion flag. */
+    public static function nativePolicy(Connection $connection, string $table, array $definition, ?array $catalog = null): array
     {
         $platform = $connection->getDatabasePlatform();
         if ($platform instanceof AbstractMySQLPlatform) {
