@@ -1,3 +1,17 @@
+# Architecture successor SOURCE checkpoint
+
+The separately composed architecture successor retains accepted base
+`8ae2459b3585d4e0cd5d6e896bf4e911cb52a2d2` and every original reviewed
+property, Calendar, VLAN, writer-capture and energy stage, plus the native date
+fixture and VLAN per-read admission followup. See
+[architecture-successor-source.md](architecture-successor-source.md) for exact
+source boundaries, the 234-to-243 static contract discovery and required gates.
+The 22-version/1,087-FK schema is a source expectation, not a native result.
+All previous baseline/seeds/versions 1-20 inputs remain byte-identical. This
+combined checkout has no PHP/compiler/native/full/application/browser/CI result.
+The objective remains OPEN; 465 timestamp properties and wider domain/plugin
+work are explicitly pending. The complete earlier checkpoint follows unchanged.
+
 # 2026-10-05: current installation and upgrade proofs; full validation open
 
 The modernization goal remains **OPEN**. Native persistent goals are unavailable;
