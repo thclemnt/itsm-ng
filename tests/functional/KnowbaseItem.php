@@ -77,7 +77,7 @@ class KnowbaseItem extends DbTestCase
             $_SESSION['glpilist_limit'] = 20;
             $_GET = [];
             $CFG_GLPI['use_slave_for_search'] = 0;
-            $this->boolean(\Session::haveRight('knowbase', \KnowbaseItem::KNOWBASEADMIN))->isFalse();
+            $this->boolean((bool)\Session::haveRight('knowbase', \KnowbaseItem::KNOWBASEADMIN))->isFalse();
             $this->object(\DBConnection::getReadConnection())->isIdenticalTo($DB);
             $render = static function () use ($category): string {
                 ob_start();
