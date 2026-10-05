@@ -67,6 +67,28 @@ final class IncomingProjectionReferences
 
     public function has(string $schema, string $table): bool
     {
+        if ($this->connection->getDatabasePlatform() instanceof AbstractMySQLPlatform) {
+            $this->references ??= [];
+            if (!array_key_exists($table, $this->references[$schema] ?? [])) {
+                // Scope the referenced target only. A consumer in another
+                // database still owns its incoming reference to this projection.
+                $rows = $this->connection->fetchAllAssociative(
+                    'SELECT referenced_table_schema AS referenced_schema, referenced_table_name AS referenced_table '
+                    . 'FROM information_schema.key_column_usage WHERE referenced_table_schema = ? '
+                    . 'AND referenced_table_name = ? AND referenced_column_name = ?',
+                    [$schema, $table, 'items_id']
+                );
+                $this->references[$schema][$table] = false;
+                foreach ($rows as $reference) {
+                    // Catalogue collation must not merge distinct native names.
+                    if ($reference['referenced_schema'] === $schema && $reference['referenced_table'] === $table) {
+                        $this->references[$schema][$table] = true;
+                        break;
+                    }
+                }
+            }
+            return $this->references[$schema][$table];
+        }
         if ($this->references === null) {
             // PostgreSQL constraint names need not be unique within a schema.
             // Resolve the referenced relation and attributes by their native IDs.
