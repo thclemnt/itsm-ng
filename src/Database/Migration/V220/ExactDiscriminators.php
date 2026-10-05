@@ -85,7 +85,7 @@ final class ExactDiscriminators
         $schema = (string)$connection->fetchOne($mysql ? 'SELECT DATABASE()' : 'SELECT current_schema()');
         $manager = $connection->createSchemaManager();
         $catalog = $mysql ? BooleanDomainSchema::catalog($connection) : null;
-        $incomingSnapshots = $mysql ? IncomingProjectionReferences::mysqlSnapshots($connection, array_keys(self::definitions()['tables'])) : null;
+        $incomingSnapshots = $mysql && !$verify ? IncomingProjectionReferences::mysqlSnapshots($connection, array_keys(self::definitions()['tables'])) : null;
         $incoming = new IncomingProjectionReferences($connection);
         $tables = $deferred = $problems = [];
         foreach (self::definitions()['tables'] as $table => $definition) {
@@ -162,6 +162,20 @@ final class ExactDiscriminators
                     $problems[] = 'Exact subject policy requires deterministic PostgreSQL discriminator collation: ' . $table;
                 }
             }
+            if ($mysql) {
+                $check = $catalog['checks'][$table][$definition['constraint']] ?? null;
+                if ($check === null || $check['enforced'] !== 'YES') {
+                    $problems[] = 'Missing or unenforced owned subject CHECK: ' . $table . '.' . $definition['constraint'];
+                    continue;
+                }
+            }
+            if ($verify) {
+                // Verification executes no replacement DDL and has no retry
+                // preservation journal. Its data/FK/enforcement checks above
+                // remain mandatory; verify() separately compares the actual
+                // projection/CHECK against retained authoritative native policy.
+                continue;
+            }
             $preserve = self::preservation($connection, $actual, $catalog['checks'] ?? null, $incomingSnapshots[$table] ?? null);
             if (isset($state['preservation'][$table]) && $state['preservation'][$table] !== $preserve) {
                 $problems[] = 'Exact subject retry ownership/index/comment changed: ' . $table;
@@ -172,11 +186,6 @@ final class ExactDiscriminators
             }
             $statement = null;
             if ($mysql) {
-                $check = $catalog['checks'][$table][$definition['constraint']] ?? null;
-                if ($check === null || $check['enforced'] !== 'YES') {
-                    $problems[] = 'Missing or unenforced owned subject CHECK: ' . $table . '.' . $definition['constraint'];
-                    continue;
-                }
                 $declaration = self::projectionSql($connection, $definition);
                 $comment = $preserve['comment'];
                 if ($comment !== '') {
