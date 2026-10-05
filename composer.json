@@ -116,7 +116,10 @@
     "scripts": {
         "test:db": "php vendor/bin/atoum -p 'php -d memory_limit=512M' --debug --force-terminal --use-dot-report --bootstrap-file tests/bootstrap.php --no-code-coverage --max-children-number 1 -f tests/database/DBmysql.php",
         "test:migration": "php vendor/bin/atoum -p 'php -d memory_limit=512M' --debug --force-terminal --use-dot-report --bootstrap-file tests/bootstrap-app.php --fail-if-skipped-methods --no-code-coverage --max-children-number 1 -f tests/database/OrmMigration.php",
-        "test:function": "php vendor/bin/atoum -p 'php -d memory_limit=512M' --debug --force-terminal --use-dot-report --bootstrap-file tests/bootstrap.php --no-code-coverage --max-children-number 1 -d tests/functional/",
+        "test:function": [
+            "Composer\\Config::disableProcessTimeout",
+            "php vendor/bin/atoum -p 'php -d memory_limit=512M' --debug --force-terminal --use-dot-report --bootstrap-file tests/bootstrap.php --no-code-coverage --max-children-number 1 -d tests/functional/"
+        ],
         "test:units": "php vendor/bin/atoum -p 'php -d memory_limit=512M' --debug --force-terminal --use-dot-report --bootstrap-file tests/bootstrap.php --no-code-coverage --max-children-number 1 --glob 'tests/units/*.php' 'tests/units/Glpi'",
         "test:units:isolated": "php vendor/bin/atoum -p 'php -d memory_limit=512M' --debug --force-terminal --use-dot-report --bootstrap-file vendor/autoload.php --fail-if-skipped-methods --no-code-coverage --max-children-number 1 -d tests/units/itsmng",
         "test:web": "php vendor/bin/atoum -p 'php -d memory_limit=512M' --debug --force-terminal --use-dot-report --bootstrap-file tests/bootstrap.php --no-code-coverage --max-children-number 1 -d tests/web",
