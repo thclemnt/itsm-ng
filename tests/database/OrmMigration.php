@@ -72,6 +72,14 @@ class OrmMigration extends \GLPITestCase
     {
         global $DB;
         $connection = $DB->getDoctrineConnection();
+        $this->integer((int)$connection->fetchOne(
+            'SELECT COUNT(*) FROM glpi_configs WHERE context = ? AND name = ?',
+            ['phpunit', 'dataset']
+        ))->isIdenticalTo(0, 'Migration bootstrap must preserve the public installation without ordinary fixtures');
+        $this->integer((int)$connection->fetchOne(
+            'SELECT COUNT(*) FROM glpi_plugins WHERE directory = ?',
+            ['tester']
+        ))->isIdenticalTo(0, 'Migration bootstrap must not register the ordinary test plugin');
         $this->array((new SchemaCheck())->differences($connection))->isEmpty();
         $this->array(History::pendingVersions($connection))->isEmpty();
         $this->boolean(History::isInstalling($connection))->isFalse();
