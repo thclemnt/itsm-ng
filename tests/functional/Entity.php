@@ -426,6 +426,89 @@ class Entity extends DbTestCase
     }
 
 
+    public function testEntityIdentifierLookups(): void
+    {
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $child = (int)getItemByTypeName('Entity', '_test_child_1', true);
+        $sibling = (int)getItemByTypeName('Entity', '_test_child_2', true);
+
+        foreach ([
+            'ldap_dn' => 'getEntityIDByDN',
+            'tag' => 'getEntityIDByTag',
+            'mail_domain' => 'getEntityIDByDomain',
+            'completename' => 'getEntityIDByCompletename',
+        ] as $field => $method) {
+            $value = "_identifier_" . $field . "_O'Reilly\\branch_%";
+            $this->integer(\Entity::$method(addslashes($value)))->isIdenticalTo(-1);
+            $connection->update('glpi_entities', [$field => $value], ['id' => $child]);
+            $this->integer(\Entity::$method(addslashes($value)))->isIdenticalTo($child);
+            // A second exact match is ambiguous, not an arbitrary first result.
+            $connection->update('glpi_entities', [$field => $value], ['id' => $sibling]);
+            $this->integer(\Entity::$method(addslashes($value)))->isIdenticalTo(-1);
+            $connection->update('glpi_entities', [$field => $value . '_root'], ['id' => 0]);
+            $this->integer(\Entity::$method(addslashes($value . '_root')))->isIdenticalTo(0);
+        }
+    }
+
+    public function testEntityIdentifierNullAndEmptyValues(): void
+    {
+        global $DB;
+        $connection = $DB->getDoctrineConnection();
+        $child = (int)getItemByTypeName('Entity', '_test_child_1', true);
+        $sibling = (int)getItemByTypeName('Entity', '_test_child_2', true);
+        // Own the null population; DbTestCase rolls back these fixture changes.
+        $connection->executeStatement('UPDATE glpi_entities SET tag = ?', ['_identifier_non_null']);
+        $this->integer(\Entity::getEntityIDByTag(null))->isIdenticalTo(-1);
+        $connection->update('glpi_entities', ['tag' => null], ['id' => $child]);
+        foreach ([null, 'NULL', 'null', 'NuLl'] as $value) {
+            $this->integer(\Entity::getEntityIDByTag($value))->isIdenticalTo($child);
+        }
+        $connection->update('glpi_entities', ['tag' => null], ['id' => $sibling]);
+        $this->integer(\Entity::getEntityIDByTag(null))->isIdenticalTo(-1);
+        $connection->update('glpi_entities', ['tag' => ''], ['id' => $child]);
+        $this->integer(\Entity::getEntityIDByTag(''))->isIdenticalTo($child);
+        $this->integer(\Entity::getEntityIDByTag(null))->isIdenticalTo($sibling);
+    }
+
+    public function testEntityIdentifierProjectionPreservesManagedState(): void
+    {
+        global $DB;
+        $child = (int)getItemByTypeName('Entity', '_test_child_1', true);
+        $em = \itsmng\Database\Orm::create($DB);
+        $connection = $em->getConnection();
+        $this->object($connection)->isIdenticalTo($DB->getDoctrineConnection());
+        $connection->update('glpi_entities', ['tag' => '_identifier_before'], ['id' => $child]);
+        $listener = new class {
+            public int $loaded = 0;
+
+            public function postLoad(): void
+            {
+                ++$this->loaded;
+            }
+        };
+        $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+        try {
+            $settings = new \itsmng\Database\Repository\EntityConfigurationRepository($em);
+            $this->integer($settings->uniqueIdentifier('tag', '_identifier_before'))->isIdenticalTo($child);
+            $this->integer($listener->loaded)->isIdenticalTo(0);
+            $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+
+            $managed = $em->find(\itsmng\Database\Entity\Entity::class, $child);
+            $this->integer($listener->loaded)->isIdenticalTo(1);
+            $connection->update('glpi_entities', ['tag' => '_identifier_after'], ['id' => $child]);
+            // Read current database values without refreshing or detaching another caller's object.
+            $this->integer($settings->uniqueIdentifier('tag', '_identifier_before'))->isIdenticalTo(-1);
+            $this->integer($settings->uniqueIdentifier('tag', '_identifier_after'))->isIdenticalTo($child);
+            $this->string($managed->tag)->isIdenticalTo('_identifier_before');
+            $this->boolean($em->contains($managed))->isTrue();
+            $this->integer($listener->loaded)->isIdenticalTo(1);
+        } finally {
+            $em->getEventManager()->removeEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+            $em->clear();
+        }
+    }
+
     public function testGetUsedConfigProjectionValues(): void
     {
         global $DB;

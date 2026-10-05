@@ -25,8 +25,11 @@ final class EntityConfigurationRepository
 
     public function uniqueIdentifier(string $field, mixed $value): int
     {
-        $rows = (new RecordRepository($this->em))->matching('glpi_entities', [$field => $value], limit: 2);
-        return count($rows) === 1 ? (int)$rows[0]['id'] : -1;
+        $query = $this->em->createQueryBuilder()->select('r.id')->from(Entity::class, 'r');
+        $criteria = new RecordCriteria($query, $this->em->getClassMetadata(Entity::class));
+        $ids = $query->where($criteria->where([$field => $value]))->setMaxResults(2)
+            ->getQuery()->getSingleColumnResult();
+        return count($ids) === 1 ? (int)$ids[0] : -1;
     }
 
     public function notificationValues(string $field): array
