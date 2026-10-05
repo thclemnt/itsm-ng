@@ -543,7 +543,9 @@ class TicketRecurrent extends DbTestCase
         $ticketRecurrent->testTimestamp = $now;
         if ($now !== null) {
             global $DB;
-            $ticketRecurrent->calendarEntityManager = new class($DB->getDoctrineConnection(), \itsmng\Database\Orm::configuration()) extends \Doctrine\ORM\EntityManager {
+            $connection = $DB->getDoctrineConnection();
+            $configuration = \itsmng\Database\Orm::configuration($connection->getDatabasePlatform());
+            $ticketRecurrent->calendarEntityManager = new class($connection, $configuration) extends \Doctrine\ORM\EntityManager {
                 public int $queryCount = 0;
 
                 public function createQuery(string $dql = ''): \Doctrine\ORM\Query
