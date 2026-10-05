@@ -164,7 +164,10 @@ class NativeConstraintRefusal extends \atoum\atoum\test
         };
         $converter = (new \itsmng\Database\Driver\Postgres\Driver())->getExceptionConverter();
         $query = new Query('DELETE FROM owned_parent WHERE id = ?', [1], [ParameterType::INTEGER]);
-        foreach (['23503' => 'violates foreign key constraint', '23001' => 'violates RESTRICT setting of foreign key constraint'] as $state => $phrase) {
+        foreach ([
+            ['23503', 'violates foreign key constraint'],
+            ['23001', 'violates RESTRICT setting of foreign key constraint'],
+        ] as [$state, $phrase]) {
             $primary = 'update or delete on table "parent" ' . $phrase . ' "selected_fk" on table "child"';
             $error = $converter->convert($nativeError($state, $primary), $query);
             $this->boolean(ComponentNativeAdmission::matchesPostgresParentForeign($error, $primary, 'child', 'selected_fk', 'parent'))->isTrue('Selected native parent FK cause recognizes this exact server form');
