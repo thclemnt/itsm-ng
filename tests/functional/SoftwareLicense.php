@@ -230,13 +230,14 @@ class SoftwareLicense extends DbTestCase
      *
      * @return \Software
      */
-    private function createSoft()
+    private function createSoft(int $entity = 0, bool $recursive = false)
     {
         $software     = new \Software();
         $softwares_id = $software->add([
            'name'         => 'Software ' .$this->getUniqueString(),
            'is_template'  => 0,
-           'entities_id'  => 0
+           'entities_id'  => $entity,
+           'is_recursive' => $recursive ? 1 : 0
         ]);
         $this->integer((int)$softwares_id)->isGreaterThan(0);
         $this->boolean($software->getFromDB($softwares_id))->isTrue();
@@ -290,20 +291,23 @@ class SoftwareLicense extends DbTestCase
     public function testComputeValidityIndicator()
     {
         $this->login();
+        $this->setEntity('_test_root_entity', true);
 
         $license = new \SoftwareLicense();
 
-        $software = $this->createSoft();
+        $software = $this->createSoft((int)$_SESSION['glpiactive_entity'], true);
 
         $input   = [
            'softwares_id' => $software->getID(),
            'expire'       => '2017-01-01 00:00:00',
            'name'         => 'Test licence ' . $this->getUniqueString(),
            'number'       => 3,
-           'entities_id'  => 0
+           'entities_id'  => $software->getEntityID(),
+           'is_recursive' => 1
         ];
         $lic_id = $license->add($input);
         $this->integer((int)$lic_id)->isGreaterThan(0);
+        $this->boolean($license->can($license->getID(), UPDATE))->isTrue();
         $this->boolean($license->getFromDB($lic_id))->isTrue();
 
         $license_computer = new \Item_SoftwareLicense();
@@ -323,7 +327,7 @@ class SoftwareLicense extends DbTestCase
         $this->variable(\SoftwareLicense::computeValidityIndicator($lic_id, -1))->isEqualTo(1);
         $this->variable(\SoftwareLicense::computeValidityIndicator($lic_id, 0))->isEqualTo(0);
 
-        $input_comp['computers_id'] = $comp2->getID();
+        $input_comp['items_id'] = $comp2->getID();
         $this->integer((int)$license_computer->add($input_comp))->isGreaterThan(0);
 
         $this->variable(\SoftwareLicense::computeValidityIndicator($lic_id, 2))->isEqualTo(1);
@@ -356,20 +360,23 @@ class SoftwareLicense extends DbTestCase
     public function testUpdateValidityIndicator()
     {
         $this->login();
+        $this->setEntity('_test_root_entity', true);
 
         $license = new \SoftwareLicense();
         $comp1  = getItemByTypeName('Computer', '_test_pc01');
 
-        $software = $this->createSoft();
+        $software = $this->createSoft((int)$_SESSION['glpiactive_entity'], true);
         $input   = [
            'softwares_id' => $software->getID(),
            'expire'       => '2017-01-01 00:00:00',
            'name'         => 'Test licence ' . $this->getUniqueString(),
            'number'       => 3,
-           'entities_id'  => 0
+           'entities_id'  => $software->getEntityID(),
+           'is_recursive' => 1
         ];
         $lic_id = $license->add($input);
         $this->integer((int)$lic_id)->isGreaterThan(0);
+        $this->boolean($license->can($license->getID(), UPDATE))->isTrue();
         $this->boolean($license->getFromDB($lic_id))->isTrue();
 
         $this->createLicenseInstall(

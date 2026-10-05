@@ -74,10 +74,10 @@ class Item_SoftwareVersion extends DbTestCase
            'items_id'              => $computer1->getID(),
            'itemtype'              => 'Computer',
            'name'                  => 'A name',
-           'is_template_item'      => $computer1->getField('is_template'),
-           'is_deleted_item'       => $computer1->getField('is_deleted'),
            'entities_id'           => 1,
-           'is_recursive'          => 0
+           'is_recursive'          => 0,
+           'is_template_item'      => $computer1->getField('is_template'),
+           'is_deleted_item'       => $computer1->getField('is_deleted')
         ];
 
         $this->setEntity('_test_root_entity', true);
@@ -109,9 +109,9 @@ class Item_SoftwareVersion extends DbTestCase
            'items_id'              => $computer1->getID(),
            'itemtype'              => 'Computer',
            'name'                  => 'Another name',
+           'entities_id'           => $computer1->getEntityID(),
            'is_template_item'      => $computer1->getField('is_template'),
-           'is_deleted_item'       => $computer1->getField('is_deleted'),
-           'entities_id'           => $computer1->getEntityID()
+           'is_deleted_item'       => $computer1->getField('is_deleted')
         ];
 
         $this->array($ins->prepareInputForUpdate($input))->isIdenticalTo($expected);

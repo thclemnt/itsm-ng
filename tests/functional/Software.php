@@ -318,13 +318,14 @@ class Software extends DbTestCase
      *
      * @return \Software
      */
-    private function createSoft()
+    private function createSoft(int $entity = 0, bool $recursive = false)
     {
         $software     = new \Software();
         $softwares_id = $software->add([
            'name'         => 'Software ' .$this->getUniqueString(),
            'is_template'  => 0,
-           'entities_id'  => 0
+           'entities_id'  => $entity,
+           'is_recursive' => $recursive ? 1 : 0
         ]);
         $this->integer((int)$softwares_id)->isGreaterThan(0);
         $this->boolean($software->getFromDB($softwares_id))->isTrue();
@@ -334,17 +335,21 @@ class Software extends DbTestCase
 
     public function testUpdateValidityIndicatorIncreaseDecrease()
     {
-        $software = $this->createSoft();
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $software = $this->createSoft((int)$_SESSION['glpiactive_entity'], true);
 
         //create a license with 3 installations
         $license = new \SoftwareLicense();
         $license_id = $license->add([
            'name'         => 'a_software_license',
            'softwares_id' => $software->getID(),
-           'entities_id'  => 0,
+           'entities_id'  => $software->getEntityID(),
+           'is_recursive' => 1,
            'number'       => 3
         ]);
         $this->integer((int)$license_id)->isGreaterThan(0);
+        $this->boolean($license->can($license->getID(), UPDATE))->isTrue();
 
         //attach 2 licenses
         $license_computer = new \Item_SoftwareLicense();
