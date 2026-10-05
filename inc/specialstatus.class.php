@@ -87,6 +87,15 @@ class SpecialStatus extends CommonTreeDropdown
 
     public function statusForm()
     {
+        // Admit every requested operation before the first write, including
+        // requests that submit more than one action.
+        if (isset($_POST["update"])) {
+            Session::checkRight(static::$rightname, UPDATE);
+        }
+        if (isset($_POST["delete"]) || isset($_POST["force"])) {
+            Session::checkRight(static::$rightname, PURGE);
+        }
+
         global $DB, $CFG_GLPI;
         $criteria = "SELECT * FROM glpi_specialstatuses";
         $iterators = $DB->request($criteria);
@@ -150,6 +159,7 @@ class SpecialStatus extends CommonTreeDropdown
         }
 
         echo "<form aria-label='Informations' method='post' action='./specialstatus.php' method='post'>";
+        echo '<fieldset' . (static::canUpdate() ? '' : ' disabled') . '>';
         echo "<table style='width:40%' class='tab_cadre' cellpadding='5' aria-label='Special Status'>";
         echo "<tr><th colspan='5'>" . __("Special Status") . "</th></tr>";
         echo "<tr class='tab_bg_1'>";
@@ -174,21 +184,28 @@ class SpecialStatus extends CommonTreeDropdown
             } else {
                 echo "<td><input type='color' id='color_" . $data["id"] . "' name='color_" . $data["id"] . "' value='" . $data["color"] . "'>";
                 echo "<td>";
-                echo "<a class='planning_link planning_add_filter' href='javascript:specialstatus.showStatusModal(" . $data["id"] . ");'>";
-                echo "<i style='color:#772317' class='fa fa-trash-alt pointer fa-2x' title='" . __("Delete") . "'></i>";
-                echo "</a>";
+                if (static::canPurge()) {
+                    echo "<a class='planning_link planning_add_filter' href='javascript:specialstatus.showStatusModal(" . $data["id"] . ");'>";
+                    echo "<i style='color:#772317' class='fa fa-trash-alt pointer fa-2x' title='" . __("Delete") . "'></i>";
+                    echo "</a>";
+                }
             }
             echo "</td></tr>";
         }
         echo "<tr class='tab_bg_1'><td class='center' colspan='5'>";
-        echo "<input type='submit' name='update' value='" . _sx('button', 'Save') . "' class='btn btn-secondary'>";
+        if (static::canUpdate()) {
+            echo "<input type='submit' name='update' value='" . _sx('button', 'Save') . "' class='btn btn-secondary'>";
+        }
         echo "</td></tr>";
         echo "</table>";
+        echo '</fieldset>';
         Html::closeForm();
     }
 
     public static function deleteStatus($id)
     {
+        Session::checkRight(static::$rightname, PURGE);
+
         $tab = Ticket::getAllStatusArray(false, true);
         global $DB, $CFG_GLPI;
 
@@ -224,6 +241,8 @@ class SpecialStatus extends CommonTreeDropdown
 
     public function addStatus()
     {
+        Session::checkRight(static::$rightname, CREATE);
+
         global $DB;
 
         if (isset($_POST["update"])) {

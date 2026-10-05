@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
-import { closeApiSession, initApiSession, type ApiSession } from '../helpers.mjs';
+import { closeApiSession, createItem, getItem, initApiSession, type ApiSession } from '../helpers.mjs';
 
 interface Seed {
   guard: string; prefix: string; users: Record<string, number>; names: Record<string, string>;
@@ -323,3 +323,129 @@ for (const [boundary, date] of [['undated', null], ['expired', '2000-01-01 00:00
     }
   });
 }
+
+
+test('status configuration requires its own mutation rights even with a valid browser CSRF token', async ({ page, context, request }) => {
+  let admin: ApiSession | undefined;
+  let rightId: number | undefined;
+  let primaryError: unknown;
+  try {
+    admin = await initApiSession(request);
+    const headers = { 'App-Token': process.env.PLAYWRIGHT_APP_TOKEN!, 'Session-Token': admin.sessionToken };
+    const statuses = async (): Promise<Array<Record<string, any>>> => {
+      const response = await request.get(`${admin!.apiUrl}SpecialStatus/`, {
+        headers, params: { range: '0-9999', sort: 'id', get_hateoas: false },
+      });
+      expect(response.status(), 'The administrator snapshot must contain the complete status collection.').toBe(200);
+      const rows = await response.json();
+      expect(Array.isArray(rows) && rows.length > 0, 'Refusal controls require real stored statuses.').toBe(true);
+      return rows;
+    };
+    const ticketCodes = async (): Promise<Array<[number, number]>> => {
+      const rows: Array<[number, number]> = [];
+      expect(seed.owned.Ticket.length, 'The fixture must have actual stored ticket owners.').toBeGreaterThan(0);
+      for (const id of seed.owned.Ticket) {
+        const ticket = await getItem<{ status: number | string }>(request, admin!, 'Ticket', id);
+        rows.push([id, Number(ticket.status)]);
+      }
+      return rows;
+    };
+    const beforeStatuses = await statuses();
+    const beforeTickets = await ticketCodes();
+    const unchanged = async () => {
+      expect(await statuses(), 'Refusal preserves every stored status field and the complete collection.').toEqual(beforeStatuses);
+      expect(await ticketCodes(), 'Refusal must not remap the actual owned ticket status codes.').toEqual(beforeTickets);
+    };
+    await loginOwned(page, 'direct');
+    expect(Number((await session(context)).glpiactiveprofile.status_ticket || 0)).toBe(0);
+    for (const route of ['/front/specialstatus.php', '/front/specialstatus.form.php']) {
+      await page.goto(route);
+      await expect(page.getByText("You don't have permission to perform this action.", { exact: true })).toBeVisible();
+      await expect(page.locator('table[aria-label="Special Status"]')).toHaveCount(0);
+    }
+    await unchanged();
+    // This profile belongs to this existing fixture and has no status grant.
+    // Use the real administrator API/lifecycle; do not forge browser session rights.
+    rightId = await createItem(request, admin, 'ProfileRight', {
+      profiles_id: seed.profile, name: 'status_ticket', rights: 1, // READ
+    });
+    await loginOwned(page, 'direct');
+    expect(Number((await session(context)).glpiactiveprofile.status_ticket)).toBe(1);
+    await page.goto('/front/specialstatus.php');
+    await expect(page.locator('table[aria-label="Special Status"]')).toBeVisible();
+    await expect(page.locator('input[name^="weight_"]').first()).toBeDisabled();
+    await expect(page.locator('input[name="update"]')).toHaveCount(0);
+    await expect(page.locator('a[href*="specialstatus.showStatusModal"]')).toHaveCount(0);
+
+    const update: Record<string, string> = { update: '1' };
+    for (const row of beforeStatuses) {
+      update[`weight_${row.id}`] = String(row.weight);
+      update[`is_active_${row.id}`] = String(Number(row.is_active));
+      if (row.color !== null) update[`color_${row.id}`] = String(row.color);
+    }
+    // A real changed weight makes a missing admission guard observable.
+    update[`weight_${beforeStatuses[0].id}`] = String(Number(beforeStatuses[0].weight) + 13);
+    const refusedPost = async (route: string, values: Record<string, string>) => {
+      await page.goto('/front/specialstatus.php');
+      const token = await page.locator('form[aria-label="Informations"] input[name="_glpi_csrf_token"]').inputValue();
+      expect(token.length).toBeGreaterThan(0);
+      expect((await session(context))._glpi_csrf_token, 'Send the actual unexpired token held by this browser session.').toBe(token);
+      const response = await context.request.post(route, {
+        form: { ...values, _glpi_csrf_token: token }, headers: { Referer: page.url() },
+      });
+      expect(response.status(), 'Admission refusal must not fail with a server error.').toBeLessThan(500);
+      const body = await response.text();
+      expect(body).toContain("You don't have permission to perform this action.");
+      expect(body, 'This must be a permission refusal, not an invalid-token shortcut.').not.toContain('CSRF token is invalid');
+      // Bootstrap consumes the submitted token; the rendered header may then
+      // issue a replacement. The original token must no longer be current.
+      expect((await session(context))._glpi_csrf_token).not.toBe(token);
+      await unchanged();
+    };
+    await refusedPost('/front/specialstatus.php', update);
+    await refusedPost('/front/specialstatus.form.php', {
+      update: '1', name: seed.prefix + 'forbidden-status', weight: '1', is_active: '1', color: '#123456',
+    });
+    await refusedPost('/front/specialstatus.php', { delete: String(beforeStatuses[0].id) });
+    const beforeConfirmation = await session(context);
+    const confirmation = await context.request.get('/ajax/specialstatus.php', {
+      params: { status: '1', id: String(beforeStatuses[0].id) },
+    });
+    expect(confirmation.status()).toBeLessThan(500);
+    expect(await confirmation.text()).toContain("You don't have permission to perform this action.");
+    expect((await session(context)).id, 'Refused AJAX confirmation must not select a later purge target.').toEqual(beforeConfirmation.id);
+    await unchanged();
+    await refusedPost('/front/specialstatus.php', { force: '1' });
+
+    // UPDATE is granted independently of PURGE. A mixed request must refuse
+    // before its permitted UPDATE can change statuses or remap ticket owners.
+    const granted = await request.put(`${admin.apiUrl}ProfileRight/${rightId}`, {
+      headers, data: { input: { id: rightId, rights: 3 } }, // READ | UPDATE
+    });
+    expect(granted.ok(), 'Real administrator lifecycle persists the separate UPDATE grant.').toBe(true);
+    await loginOwned(page, 'direct');
+    expect(Number((await session(context)).glpiactiveprofile.status_ticket)).toBe(3);
+    await page.goto('/front/specialstatus.php');
+    await expect(page.locator('input[name^="weight_"]').first()).toBeEnabled();
+    await expect(page.locator('input[name="update"]')).toBeVisible();
+    await expect(page.locator('a[href*="specialstatus.showStatusModal"]')).toHaveCount(0);
+    await refusedPost('/front/specialstatus.php', { ...update, force: '1' });
+  } catch (error) {
+    primaryError = error;
+  } finally {
+    const failures: unknown[] = primaryError ? [primaryError] : [];
+    if (admin && rightId !== undefined) {
+      try {
+        const removed = await request.delete(`${admin.apiUrl}ProfileRight/${rightId}`, {
+          headers: { 'App-Token': process.env.PLAYWRIGHT_APP_TOKEN!, 'Session-Token': admin.sessionToken },
+          params: { force_purge: true },
+        });
+        expect(removed.ok(), 'Purge only this test-created status grant through the actual administrator API.').toBe(true);
+      } catch (error) { failures.push(error); }
+    }
+    if (admin) {
+      try { await closeApiSession(request, admin); } catch (error) { failures.push(error); }
+    }
+    if (failures.length) throw new AggregateError(failures, 'Status permission flow or owned grant cleanup failed');
+  }
+});
