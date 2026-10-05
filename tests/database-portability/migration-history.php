@@ -380,7 +380,9 @@ try {
     $history->upgrade($connection);
     throw new LogicException('Required orphan was accepted');
 } catch (RuntimeException $error) {
-    verify(str_contains($error->getMessage(), 'Orphaned required reference: glpi_useremails.users_id'), 'Invalid reference reports its concrete owning field');
+    verify(str_contains($error->getMessage(), 'Orphaned required reference: glpi_useremails.users_id')
+        && str_contains($error->getMessage(), 'target: glpi_users.id') && str_contains($error->getMessage(), '"source_id":')
+        && str_contains($error->getMessage(), '1999999999'), 'Invalid reference reports its concrete owner, missing parent and bounded source row sample');
 }
 verify(Ledger::state($connection, References::PHASE) === null, 'Invalid data creates no adoption journal');
 $connection->delete('glpi_useremails', ['email' => 'history-orphan@example.invalid']);

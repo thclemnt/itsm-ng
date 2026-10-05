@@ -127,9 +127,15 @@ final class References
                 if (isset($handled[$table][$column]) || !isset($columns[strtolower($table)][strtolower($column)])) {
                     continue; // Domain helpers audit sentinel conversions and future typed columns.
                 }
-                $count = $connection->fetchOne('SELECT COUNT(*) FROM ' . $quote($table) . ' c LEFT JOIN ' . $quote($target) . ' p ON c.' . $quote($column) . ' = p.id WHERE c.' . $quote($column) . ' IS NOT NULL AND p.id IS NULL');
+                $source = ' FROM ' . $quote($table) . ' c LEFT JOIN ' . $quote($target) . ' p ON c.' . $quote($column) . ' = p.id WHERE c.' . $quote($column) . ' IS NOT NULL AND p.id IS NULL';
+                $count = $connection->fetchOne('SELECT COUNT(*)' . $source);
                 if ($count) {
-                    throw new \RuntimeException('Orphaned required reference: ' . $table . '.' . $column . ' (' . $count . ')');
+                    $identity = isset($columns[strtolower($table)]['id']) ? 'id' : $column;
+                    $samples = $connection->fetchAllAssociative('SELECT c.' . $quote($identity) . ' AS source_id, c.' . $quote($column)
+                        . ' AS missing_id' . $source . ' ORDER BY c.' . $quote($identity) . ' LIMIT 5');
+                    throw new \RuntimeException('Orphaned required reference: ' . $table . '.' . $column . ' (' . $count . '); target: ' . $target . '.id; samples: '
+                        . json_encode($samples, JSON_THROW_ON_ERROR)
+                        . '. Reconcile the original source ownership using installation records or backups before retrying. No row was deleted, relinked or reconstructed.');
                 }
             }
         }

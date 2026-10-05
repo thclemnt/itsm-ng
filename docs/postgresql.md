@@ -83,6 +83,32 @@ zero and valid nullable payloads remain. PostgreSQL converts declared flags to
 native boolean without accepting arbitrary truthy values. MySQL/MariaDB retain
 native storage and enforced domains. Do not disable constraints for invalid data.
 
+The released 2.1.3 source at `5ecdf8e2a29` contains a known inconsistent
+marketplace seed. Historical commit `ef30493fad` removed notification `71` and
+notification template `28`, but left these three child rows in `install/empty_data.php`:
+
+| Source row | Missing owner |
+| --- | --- |
+| `glpi_notifications_notificationtemplates.id = 71` | `notifications_id = 71` and `notificationtemplates_id = 28` |
+| `glpi_notificationtargets.id = 139` | `notifications_id = 71` |
+| `glpi_notificationtemplatetranslations.id = 28` | `notificationtemplates_id = 28` |
+
+The released installer checks SQL execution errors, but these tables have no
+historical foreign keys, so inserting those rows succeeds. A successful genuine
+2.1.3 installation therefore does not prove referential validity. Migration
+preflight correctly refuses these orphaned owners before DDL, giving the source
+field, missing parent, count and up to five row samples. Later development commit
+`01aeb375df` removes the three seed children; it is not part of 2.1.3 and is not
+an authorized data repair for an existing installation. This transition neither
+deletes the children nor invents their missing parents.
+
+Keep an untouched released-source clone as the refusal fixture. Any separate
+successful-upgrade fixture that adds explicitly synthetic test owners must be
+labelled **released 2.1.3 with a test-only source repair**, with its exact changes
+recorded. It cannot establish an unmodified released-source upgrade or a genuine
+restoration of those retired marketplace objects. Real installations need an
+explicit source-ownership decision based on their own records.
+
 PostgreSQL migration DDL is transactional. MySQL DDL can commit before error;
 retry resumes the existing journal and validates captured state. Never fabricate
 completion receipts, reinstall over populated data or run ORM schema synchronization.
