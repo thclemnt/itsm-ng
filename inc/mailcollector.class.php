@@ -994,10 +994,11 @@ class MailCollector extends CommonDBTM
             $job = new Ticket();
             $tu  = new Ticket_User();
             $st  = new Supplier_Ticket();
+            $ticket_exists = $job->getFromDB($tkt['tickets_id']);
 
             // Check if ticket  exists and users_id exists in GLPI
             if (
-                $job->getFromDB($tkt['tickets_id'])
+                $ticket_exists
                 && ($job->fields['status'] != CommonITILObject::CLOSED)
                 && ($CFG_GLPI['use_anonymous_followups']
                     || ($tkt['_users_id_requester'] > 0)
@@ -1042,8 +1043,11 @@ class MailCollector extends CommonDBTM
                     );
                 }
             } else {
-                // => to handle link in Ticket->post_addItem()
-                $tkt['_linkedto'] = $tkt['tickets_id'];
+                // Existing closed/ineligible tickets can still be linked to a
+                // new ticket. A stale subject number cannot own a relation.
+                if ($ticket_exists) {
+                    $tkt['_linkedto'] = $tkt['tickets_id'];
+                }
                 unset($tkt['tickets_id']);
             }
         }
