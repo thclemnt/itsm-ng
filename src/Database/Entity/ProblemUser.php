@@ -10,7 +10,8 @@ use itsmng\Database\Mapping\ReferencePolicy;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'glpi_problems_users')]
-#[ORM\UniqueConstraint(name: 'problems_users_unicity', columns: ['problems_id', 'type', 'actor_key', 'actor_email_key'])]
+#[\itsmng\Database\Mapping\SchemaIndex('unicity', ['problems_id', 'type', 'actor_key', 'actor_email_key'], unique: true, postgresqlName: 'glpi_problems_users_unicity')]
+#[\itsmng\Database\Mapping\SchemaIndex('glpi_problems_users_actor_parent', ['problems_id'])]
 class ProblemUser
 {
     #[ORM\ManyToOne(targetEntity: Problem::class)]

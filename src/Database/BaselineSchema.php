@@ -11,6 +11,7 @@ use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
+use Doctrine\ORM\Mapping\ClassMetadata;
 use itsmng\Database\Mapping\ReferenceKind;
 
 /** Current required schema for read-only inspection; installation replays frozen history. */
@@ -52,9 +53,6 @@ final class BaselineSchema
             foreach ($relations as $column => $target) {
                 $schema->getTable($tableName)->getColumn($column)->setNotnull(false)->setDefault(null);
             }
-        }
-        foreach (array_keys(Migration\ActorUniqueness::TABLES) as $table) {
-            Migration\ActorUniqueness::addToTable($schema->getTable($table), $platform);
         }
         Migration\DisplayPreferenceOwnership::addToTable($schema->getTable('glpi_displaypreferences'), $platform);
         Migration\KanbanOwnership::addToTable($schema->getTable('glpi_items_kanbans'), $platform);
@@ -105,10 +103,13 @@ final class BaselineSchema
                 $ownedKeys = [];
                 foreach ($entity->fieldMappings as $property => $field) {
                     $name = trim($field->columnName, '`"');
-                    // Only explicit index-owned reference keys replace existing
-                    // definitions. Other generated subjects keep their own builder.
+                    // An explicitly index-owned read-only generated property owns
+                    // its native declaration. Other compatibility subjects retain
+                    // their platform-aware builders below.
                     if (in_array($name, $ownedIndexColumns, true)
-                        && (new \ReflectionProperty($entity->name, $property))->getAttributes(Mapping\ReferenceKey::class)) {
+                        && $field->notInsertable && $field->notUpdatable
+                        && $field->generated === ClassMetadata::GENERATED_ALWAYS
+                        && $field->columnDefinition !== null) {
                         $ownedKeys[] = $name;
                         continue;
                     }
