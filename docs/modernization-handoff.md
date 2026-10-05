@@ -22,6 +22,12 @@ in 15.429 seconds on PostgreSQL and 17.638 seconds on MariaDB. The revised compo
 checks exact pre-call lifecycle state including property presence; stored graph,
 audit, queue, caller frame and retry assertions remain. Complete ordered suites
 at this head are **RUNNING** on both providers; their final results are pending.
+The review branch at `5afd9769aa` differs only in documentation and test cleanup;
+application source matches the frozen runtime. Two disconnected component metadata
+CLIs were folded into the existing ItemDeviceProcessor Atoum class: seven methods,
+1,702 assertions and no skips passed through the normal runtime autoload. Existing
+behavior methods and every native contract remain; review discovery is 226
+contracts, while the running runtime lists 228 (a superset of the retained list).
 The runtime includes software lifecycle admission,
 typed VLAN projections, reviewed positive fixture repairs, native-policy-first
 verification and operation-local reference preflight inspection reuse. Disconnected metadata
