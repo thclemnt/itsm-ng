@@ -295,4 +295,100 @@ class RuleDictionnaryDropdownCollection extends DbTestCase
            '_ruleid' => (string)$rules_id,
         ]);
     }
+
+    public function testModelCountPreservesDistinctIdentityPairs()
+    {
+        global $DB;
+
+        $this->login();
+        $em = \itsmng\Database\Orm::create($DB);
+        $repository = new \itsmng\Database\Repository\DropdownDictionaryRepository($em);
+        $baseline = $repository->modelCount('glpi_networkequipmentmodels', 'glpi_networkequipments');
+        $name = 'dictionary-count-' . $this->getUniqueString();
+        $models = [];
+        $manufacturers = [];
+        for ($i = 0; $i < 3; ++$i) {
+            $model = $this->createItem(\NetworkEquipmentModel::class, [
+                'name' => $name,
+                'comment' => str_repeat('Shared model metadata ', 128),
+            ]);
+            $models[] = (int)$model->getID();
+        }
+        for ($i = 0; $i < 2; ++$i) {
+            $manufacturer = $this->createItem(\Manufacturer::class, ['name' => $name]);
+            $manufacturers[] = (int)$manufacturer->getID();
+        }
+        sort($models, SORT_NUMERIC);
+        sort($manufacturers, SORT_NUMERIC);
+        $this->integer($models[0])->isNotIdenticalTo($models[1]);
+        $this->integer($manufacturers[0])->isNotIdenticalTo($manufacturers[1]);
+
+        // Duplicate assets do not add a pair. Deleted/template owners still do;
+        // owners without a model and a wholly unused model add nothing.
+        foreach ([
+            [$models[0], $manufacturers[0], 0, 0],
+            [$models[0], $manufacturers[0], 0, 0],
+            [$models[0], $manufacturers[1], 0, 0],
+            [$models[0], null, 0, 0],
+            [$models[0], null, 0, 0],
+            [$models[1], $manufacturers[0], 0, 1],
+            [$models[1], $manufacturers[1], 1, 0],
+            [$models[1], null, 0, 0],
+            [null, $manufacturers[0], 0, 0],
+            [null, null, 0, 0],
+        ] as [$model, $manufacturer, $deleted, $template]) {
+            $this->createItem(\NetworkEquipment::class, [
+                'name' => $name,
+                'entities_id' => 0,
+                'networkequipmentmodels_id' => $model,
+                'manufacturers_id' => $manufacturer,
+                'is_deleted' => $deleted,
+                'is_template' => $template,
+            ]);
+        }
+
+        $this->integer($repository->modelCount('glpi_networkequipmentmodels', 'glpi_networkequipments'))
+            ->isIdenticalTo($baseline + 6);
+        $pairs = [];
+        $all_rows = 0;
+        foreach ($repository->modelRows('glpi_networkequipmentmodels', 'glpi_networkequipments', 0) as $row) {
+            ++$all_rows;
+            if (in_array((int)$row['id'], $models, true)) {
+                $pairs[] = [(int)$row['id'], $row['idmanu'] === null ? null : (int)$row['idmanu']];
+            }
+        }
+        $this->integer($all_rows)->isIdenticalTo($baseline + 6);
+        $this->array($pairs)->isIdenticalTo([
+            [$models[0], null],
+            [$models[0], $manufacturers[0]],
+            [$models[0], $manufacturers[1]],
+            [$models[1], null],
+            [$models[1], $manufacturers[0]],
+            [$models[1], $manufacturers[1]],
+        ]);
+        $em->close();
+    }
+
+    public function testModelCountRetainsSuppliedConnection()
+    {
+        global $DB;
+
+        $this->login();
+        $em = \itsmng\Database\Orm::create($DB);
+        $connection = $em->getConnection();
+        $repository = new \itsmng\Database\Repository\DropdownDictionaryRepository($em);
+        $expected = $repository->modelCount('glpi_networkequipmentmodels', 'glpi_networkequipments');
+        $depth = $connection->getTransactionNestingLevel();
+        $original = $DB;
+        try {
+            $DB = null;
+            $this->integer($repository->modelCount('glpi_networkequipmentmodels', 'glpi_networkequipments'))
+                ->isIdenticalTo($expected);
+            $this->object($em->getConnection())->isIdenticalTo($connection);
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+        } finally {
+            $DB = $original;
+            $em->close();
+        }
+    }
 }

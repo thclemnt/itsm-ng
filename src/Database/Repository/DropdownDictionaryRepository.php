@@ -62,11 +62,13 @@ final class DropdownDictionaryRepository
 
     public function modelCount(string $model, string $owner): int
     {
-        $count = 0;
-        foreach ($this->modelQuery($model, $owner)->getQuery()->toIterable() as $row) {
-            ++$count;
-        }
-        return $count;
+        // DQL has no composite DISTINCT count. Let ORM resolve the same joins,
+        // then aggregate their identity pairs without fetching labels or comments.
+        // Keep the joined manufacturer identity: NULL is one real partition.
+        $pairs = $this->modelQuery($model, $owner)
+            ->select('DISTINCT m.id AS id', 'f.id AS idmanu')
+            ->resetDQLPart('orderBy')->getQuery();
+        return (int)$this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM (' . $pairs->getSQL() . ') AS dictionary_pairs');
     }
 
     public function modelRows(string $model, string $owner, int $offset): iterable
