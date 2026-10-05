@@ -106,17 +106,49 @@ try {
         $events[] = [$model->getID(), $model->fields['networkports_id'], $model->fields['vlans_id'], $model->fields['tagged']];
     };
     $service = new VlanMembershipService($DB);
-    // Characterize the existing SAME/VIEW/dynamic-parent admission, rather than inventing a port UPDATE requirement.
+    // SAME on the port requires its networking UPDATE and its loaded Computer's
+    // UPDATE. VIEW on the VLAN requires dropdown READ, with no dropdown UPDATE.
     $_SESSION['glpiactiveprofile']['computer'] = READ;
     $_SESSION['glpiactiveprofile']['networking'] = READ;
     $_SESSION['glpiactiveprofile']['dropdown'] = READ;
     $input = ['networkports_id' => $port, 'vlans_id' => $vlan, 'tagged' => 0];
+    $roleFacts = static fn (): array => $connection->fetchAllAssociative('SELECT * FROM '
+        . $connection->quoteIdentifier(NetworkPort_Vlan::getTable()) . ' ORDER BY id');
+    $beforeRoleProbes = $roleFacts();
     $relation = new NetworkPort_Vlan();
-    verify(NetworkPort_Vlan::$checkItem_2_Rights === CommonDBConnexity::HAVE_VIEW_RIGHT_ON_ITEM && NetworkPort::canUpdate(), 'Actual declared VLAN view role and dynamic port static policy remain unchanged');
-    verify($relation->can(-1, CREATE, $input) && $relation->canCreateItem(), 'Existing visible read-only parent combination retains actual relation admission');
-    verify(!$relation->canRelationItem('canUpdateItem', 'canUpdate', true, true), 'Force-both still asks the dynamic port parent for its actual update policy');
+    verify(NetworkPort_Vlan::$checkItem_2_Rights === CommonDBConnexity::HAVE_VIEW_RIGHT_ON_ITEM
+        && !NetworkPort::canUpdate(), 'Declared VLAN VIEW does not supply the port networking UPDATE right');
+    verify(!$relation->can(-1, CREATE, $input) && !$relation->canCreateItem()
+        && !(new NetworkPort_Vlan())->can(-1, UPDATE, $input), 'Visible read-only owners cannot create or update a membership');
+    verify(!$relation->canRelationItem('canUpdateItem', 'canUpdate', true, true), 'Force-both retains the actual port and parent write requirements');
+    $response = null;
+    try {
+        $api->createMembership(['networkports_id' => $port, 'vlans_id' => $apiVlan, 'tagged' => true]);
+    } catch (VlanMembershipApiResponse $error) {
+        $response = $error;
+    }
+    verify($response !== null && $response->getCode() === 400, 'Actual API refuses mutation for read-only owners');
+    verify($roleFacts() === $beforeRoleProbes && $events === [], 'Read-only framework and API refusals preserve every membership and lifecycle callback');
+
+    $_SESSION['glpiactiveprofile']['networking'] = READ | UPDATE;
+    verify(NetworkPort::canUpdate(), 'Dynamic port static admission still defers the loaded parent policy');
+    verify(!(new NetworkPort_Vlan())->can(-1, CREATE, $input)
+        && !(new NetworkPort_Vlan())->can(-1, UPDATE, $input), 'Port networking UPDATE cannot replace loaded Computer UPDATE');
+    verify($roleFacts() === $beforeRoleProbes && $events === [], 'Missing Computer UPDATE preserves every membership and lifecycle callback');
+
+    $_SESSION['glpiactiveprofile']['computer'] = READ | UPDATE;
+    $_SESSION['glpiactiveprofile']['networking'] = READ;
+    verify(!NetworkPort::canUpdate() && !(new NetworkPort_Vlan())->can(-1, CREATE, $input)
+        && !(new NetworkPort_Vlan())->can(-1, UPDATE, $input), 'Computer UPDATE cannot replace port networking UPDATE');
+    verify($roleFacts() === $beforeRoleProbes && $events === [], 'Missing port networking UPDATE preserves every membership and lifecycle callback');
+
+    $_SESSION['glpiactiveprofile']['networking'] = READ | UPDATE;
+    $relation = new NetworkPort_Vlan();
+    verify(NetworkPort::canUpdate() && !Session::haveRight('dropdown', UPDATE), 'Both owner writes are admitted while the VLAN retains READ only');
+    verify($relation->can(-1, CREATE, $input) && $relation->canCreateItem(), 'Declared SAME and VIEW roles admit the correct owner write combination');
+    verify($relation->canRelationItem('canUpdateItem', 'canUpdate', true, true), 'Force-both preserves the secondary VIEW role with both owner writes present');
     $formInput = $input;
-    verify((new NetworkPort_Vlan())->can(-1, UPDATE, $formInput), 'The actual front form UPDATE guard retains its framework role policy');
+    verify((new NetworkPort_Vlan())->can(-1, UPDATE, $formInput), 'The actual front form UPDATE guard admits the declared owner write roles');
     // The PHP form exits through Html::back; this invokes its actual guard/helper pipeline without claiming HTTP verification.
     $id = (new NetworkPort_Vlan())->assignVlan($formInput['networkports_id'], $formInput['vlans_id'], $formInput['tagged']);
     verify($id > 0 && $read($id)['tagged'] === 0, 'Admitted form helper persists its requested untagged pair');
