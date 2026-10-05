@@ -70,8 +70,10 @@ read routing is not live replica validation.
 An empty authorized entity scope grants no rows; unrestricted scope must be
 explicit and retain the caller's authorization.
 
-Commands preserve the selected writer across preparation and callbacks, refuse
-slaves, and respect physical transaction ownership. Shared DBAL/legacy frames use
+Commands must preserve the selected writer across preparation and callbacks, refuse
+slaves, and respect physical transaction ownership. This is not yet universal: public
+callback paths, including Contract alerts and dictionary operations, need an explicit
+physical-frame audit and correction. Shared DBAL/legacy frames use
 savepoints; logical nesting alone does not prove ownership of a caller transaction.
 Managed MySQL/MariaDB sessions require strict SQL modes and, where available,
 traditional current locking reads. Relevant locking projections check admission
@@ -110,7 +112,11 @@ current entities and runtime parsing of the old MySQL dump.
 Historical producers, snapshots and seeds are immutable. Their repeated definitions
 preserve replay semantics rather than form runtime registries. Append migrations
 when current ownership changes. `BaselineSchema` projects current requirements
-for read-only inspection, not installation. Comparison includes boolean CHECK
+for read-only inspection, not installation. Its current ordinary-column projection
+still skips existing frozen-baseline columns, and DisplayPreference, Kanban and
+operating-system indexes still use migration builders. Sole entity-derived authority
+for every current column/index is unfinished; schema-check success does not prove it.
+Comparison includes boolean CHECK
 enforcement and declared timestamp touch; other platform expressions, triggers
 and CHECKs have comparison limits. Do not weaken comparison to hide drift.
 
@@ -131,6 +137,12 @@ diagnostics do not establish readiness for identity adoption. Stable identity
 requires every mutable profile/rule/template/search/integration owner, explicit
 roles, permissions, notifications/dates/history and clone/purge behavior. Problem
 and Change are separate status domains. Preserve historical audit interpretation.
+The preflight intentionally inspects all Ticket owners, including deleted and
+cross-entity records, as a private trusted adoption tool, not a public scoped list.
+Any future exposure requires explicit global configuration authority. Matching
+before/after configuration fingerprints establish observed consistency only: they
+do not exclude ABA changes or concurrent Ticket writes and grant no write/adoption
+authority.
 
 The existing SpecialStatus front/AJAX management paths still lack explicit
 mutation-right admission. Their nontransactional ordinal remapper bypasses Ticket
