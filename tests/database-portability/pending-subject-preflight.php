@@ -96,17 +96,27 @@ $rebuild = static function (string $mode = 'generated') use ($connection, $manag
         $connection->executeStatement(DocumentSubjects::checkSql($table));
     }
 };
-$refuse = static function (string $fragment) use ($connection, $history, $facts): void {
+$refuse = static function (
+    string $fragment,
+    ?callable $operation = null,
+    string $prefix = "Exact subject preflight failed before DDL or receipt:\n"
+) use ($connection, $history, $facts): void {
     $before = $facts();
     $rejected = false;
+    $diagnostic = 'No exception';
     try {
-        $history->upgrade($connection);
+        ($operation ?? static fn () => $history->upgrade($connection))();
     } catch (RuntimeException $error) {
         $rejected = $error::class === RuntimeException::class
-            && str_starts_with($error->getMessage(), "Exact subject preflight failed before DDL or receipt:\n")
+            && str_starts_with($error->getMessage(), $prefix)
             && str_contains($error->getMessage(), $fragment);
+        // Bounded, single-line application diagnostics; native query text is not evidence.
+        $diagnostic = $error::class === RuntimeException::class
+            ? substr(preg_replace('/[^\x20-\x7E]/', ' ', $error->getMessage()), 0, 512)
+            : $error::class . ' (native diagnostic withheld)';
     }
-    verify($rejected && $facts() === $before, 'Exact refusal preserves rows, native schema/checks and entire ledger: ' . $fragment);
+    verify($facts() === $before, 'Refusal preserves rows, native schema/checks and entire ledger: ' . $fragment);
+    verify($rejected, 'Expected refusal diagnostics: ' . $fragment . '; caught: ' . $diagnostic);
 };
 
 try {
@@ -200,7 +210,14 @@ try {
     foreach ($platform->getAlterTableSQL($manager->createComparator()->compareTables($manager->introspectTable($table), $without)) as $sql) {
         $connection->executeStatement($sql);
     }
-    $refuse('Missing subject identity columns: ' . $table);
+    // History first owns admission of every frozen baseline column. A manual
+    // removal cannot bypass that boundary to reach its later subject preflight.
+    $refuse('Missing column: ' . $table . '.items_id', prefix:
+        'This schema predates or differs from the frozen ITSM-NG adoption baseline. Upgrade older releases using their matching historical application to the ITSM-NG 2.1.3 schema before switching to this application, then run db:migrate --apply.' . "\n");
+    // Physical proof bypasses neither missing columns nor the exact audit, even
+    // with a pending producer. No completion receipt is invented for this probe.
+    $refuse('Missing subject identity columns: ' . $table,
+        static fn () => (new ExactDiscriminators())->verify($connection));
 
     foreach (['columns', 'copy', 'projection'] as $phase) {
         $ordinary = $phase === 'copy';
