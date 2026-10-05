@@ -514,13 +514,9 @@ final class DbUtils
             return false;
         }
 
-        $result = $DB->query("SHOW INDEX FROM `$table`");
-
-        if ($result && $DB->numrows($result)) {
-            while ($data = $DB->fetchAssoc($result)) {
-                if ($data["Key_name"] == $field) {
-                    return true;
-                }
+        foreach ($DB->getDoctrineConnection()->createSchemaManager()->listTableIndexes($table) as $index) {
+            if ($index->getName() === $field) {
+                return true;
             }
         }
         return false;
@@ -1737,99 +1733,33 @@ final class DbUtils
                 );
 
                 $mask = $mask[0];
-                $pos  = strpos($autoNum, $mask) + 1;
-
-                //got substring position, add extra escapements
-                $autoNum = str_replace(
-                    ['_', '%'],
-                    ['\\_', '\\%'],
-                    $autoNum
-                );
-                $len  = Toolbox::strlen($mask);
-                $like = str_replace('#', '_', $autoNum);
-
-                if ($global == 1) {
-                    $types = [
-                       'Computer',
-                       'Monitor',
-                       'NetworkEquipment',
-                       'Peripheral',
-                       'Phone',
-                       'Printer'
-                    ];
-
-                    $subqueries = [];
-                    foreach ($types as $t) {
-                        $table = $this->getTableForItemType($t);
-                        $criteria = [
-                           'SELECT' => ["$field AS code"],
-                           'FROM'   => $table,
-                           'WHERE'  => [
-                              $field         => ['LIKE', $like],
-                              'is_deleted'   => 0,
-                              'is_template'  => 0
-                           ]
-                        ];
-
-                        if (
-                            $CFG_GLPI["use_autoname_by_entity"]
-                            && ($entities_id >= 0)
-                        ) {
-                            $criteria['WHERE']['entities_id'] = $entities_id;
-                        }
-
-                        $subqueries[] = new \QuerySubQuery($criteria);
-                    }
-
-                    $criteria = [
-                       'SELECT' => [
-                          new \QueryExpression(
-                              "CAST(SUBSTRING(" . $DB->quoteName('code') . ", $pos, $len) AS " .
-                              "unsigned) AS " . $DB->quoteName('no')
-                          )
-                       ],
-                       'FROM'   => new \QueryUnion($subqueries, false, 'codes')
-                    ];
+                // SQL SUBSTRING counts characters, including multibyte prefixes.
+                $pos = Toolbox::strpos($autoNum, $mask) + 1;
+                $len = Toolbox::strlen($mask);
+                // Bind the pattern with an explicit escape: %, _ and ! in the
+                // template are literals; only # contributes a wildcard.
+                $like = strtr($autoNum, ['!' => '!!', '%' => '!%', '_' => '!_', '#' => '_']);
+                $numbers = new \itsmng\Database\Repository\AutoNameRepository(\itsmng\Database\Orm::create($DB));
+                $entity = $CFG_GLPI['use_autoname_by_entity'] && $entities_id >= 0 ? (int)$entities_id : null;
+                if ($itemtype === 'Infocom') {
+                    $maximum = $numbers->financialMaximum($field, $like, $pos, $len);
+                } elseif ($global) {
+                    $maximum = $numbers->globalAssetMaximum($field, $like, $pos, $len, $entity);
                 } else {
                     $table = $this->getTableForItemType($itemtype);
-                    $criteria = [
-                       'SELECT' => [
-                          new \QueryExpression(
-                              "CAST(SUBSTRING(" . $DB->quoteName($field) . ", $pos, $len) AS " .
-                              "unsigned) AS " . $DB->quoteName('no')
-                          )
-                       ],
-                       'FROM'   => $table,
-                       'WHERE'  => [
-                          $field   => ['LIKE', $like]
-                       ]
-                    ];
-
-                    if ($itemtype != 'Infocom') {
-                        $criteria['WHERE']['is_deleted'] = 0;
-                        $criteria['WHERE']['is_template'] = 0;
-
-                        if (
-                            $CFG_GLPI["use_autoname_by_entity"]
-                            && ($entities_id >= 0)
-                        ) {
-                            $criteria['WHERE']['entities_id'] = $entities_id;
-                        }
+                    $class = \itsmng\Database\EntityRegistry::tables()[$table] ?? null;
+                    if ($class !== null) {
+                        $maximum = $numbers->assetMaximum($class, $field, $like, $pos, $len, $entity);
+                    } elseif (isPluginItemType($itemtype)) {
+                        $maximum = $numbers->pluginAssetMaximum($table, $field, $like, $pos, $len, $entity);
+                    } else {
+                        throw new \InvalidArgumentException('Automatic numbering requires a mapped item type.');
                     }
                 }
-
-                $subquery = new \QuerySubQuery($criteria, 'Num');
-                $iterator = $DB->request([
-                   'SELECT' => ['MAX' => 'Num.no AS lastNo'],
-                   'FROM'   => $subquery
-                ]);
-
-                if (count($iterator)) {
-                    $result = $iterator->next();
-                    $newNo = $result['lastNo'] + 1;
-                } else {
-                    $newNo = 0;
-                }
+                // Retain the public increment/formatting behavior, including the
+                // historical floating-point result above PHP_INT_MAX.
+                $newNo = ($maximum ?? 0) + 1;
+                $autoNum = str_replace(['_', '%'], ['\\_', '\\%'], $autoNum);
 
                 $objectName = str_replace(
                     [

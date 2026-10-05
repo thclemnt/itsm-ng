@@ -583,14 +583,18 @@ class DbUtils extends DbTestCase
 
     public function testIsIndex()
     {
+        global $DB;
+        // PostgreSQL index names occupy a schema-wide namespace.
+        $locationIndex = $DB->getProvider() === 'pgsql' ? 'glpi_users_locations_id' : 'locations_id';
+        $loginIndex = $DB->getProvider() === 'pgsql' ? 'glpi_users_unicityloginauth' : 'unicityloginauth';
         $this
            ->if($this->newTestedInstance)
            ->then
               ->boolean($this->testedInstance->isIndex('glpi_configs', 'fakeField'))->isFalse()
               ->boolean($this->testedInstance->isIndex('glpi_configs', 'name'))->isFalse()
               ->boolean($this->testedInstance->isIndex('glpi_configs', 'value'))->isFalse()
-              ->boolean($this->testedInstance->isIndex('glpi_users', 'locations_id'))->isTrue()
-              ->boolean($this->testedInstance->isIndex('glpi_users', 'unicityloginauth'))->isTrue()
+              ->boolean($this->testedInstance->isIndex('glpi_users', $locationIndex))->isTrue()
+              ->boolean($this->testedInstance->isIndex('glpi_users', $loginIndex))->isTrue()
            ->when(
                function () {
                    $this->boolean($this->testedInstance->isIndex('fakeTable', 'id'))->isFalse();
@@ -599,11 +603,13 @@ class DbUtils extends DbTestCase
               ->withType(E_USER_WARNING)
               ->exists();
 
+        $this->boolean($this->testedInstance->isIndex('glpi_users', strtoupper($loginIndex)))->isFalse();
+
         //keep testing old method from db.function
         $this->boolean(isIndex('glpi_configs', 'fakeField'))->isFalse();
         $this->boolean(isIndex('glpi_configs', 'name'))->isFalse();
-        $this->boolean(isIndex('glpi_users', 'locations_id'))->isTrue();
-        $this->boolean(isIndex('glpi_users', 'unicityloginauth'))->isTrue();
+        $this->boolean(isIndex('glpi_users', $locationIndex))->isTrue();
+        $this->boolean(isIndex('glpi_users', $loginIndex))->isTrue();
 
         $this->when(
             function () {
@@ -617,6 +623,10 @@ class DbUtils extends DbTestCase
 
     public function testGetEntityRestrict()
     {
+        global $DB;
+        // Independent expected SQL differs only in the provider identifier delimiter.
+        $expectedSql = static fn (string $sql): string => $DB->getProvider() === 'pgsql'
+            ? str_replace('`', '"', $sql) : $sql;
         $this->login();
         $this->newTestedInstance();
 
@@ -628,140 +638,140 @@ class DbUtils extends DbTestCase
         $it = new \DBmysqlIterator(null);
 
         $it->execute('glpi_computers', $this->testedInstance->getEntitiesRestrictCriteria('glpi_computers'));
-        $this->string($it->getSql())->isIdenticalTo('SELECT * FROM `glpi_computers`');
+        $this->string($it->getSql())->isIdenticalTo($expectedSql('SELECT * FROM `glpi_computers`'));
 
         //keep testing old method from db.function
         $this->string(getEntitiesRestrictRequest('AND', 'glpi_computers'))->isEmpty();
         $it->execute('glpi_computers', getEntitiesRestrictCriteria('glpi_computers'));
-        $this->string($it->getSql())->isIdenticalTo('SELECT * FROM `glpi_computers`');
+        $this->string($it->getSql())->isIdenticalTo($expectedSql('SELECT * FROM `glpi_computers`'));
 
         // See all
         $this->setEntity('_test_root_entity', true);
 
         $this->string($this->testedInstance->getEntitiesRestrictRequest('WHERE', 'glpi_computers'))
-           ->isIdenticalTo("WHERE ( `glpi_computers`.`entities_id` IN ('1', '2', '3')  ) ");
+           ->isIdenticalTo($expectedSql("WHERE ( `glpi_computers`.`entities_id` IN ('1', '2', '3')  ) "));
         $it->execute('glpi_computers', $this->testedInstance->getEntitiesRestrictCriteria('glpi_computers'));
         $this->string($it->getSql())
-           ->isIdenticalTo('SELECT * FROM `glpi_computers` WHERE `glpi_computers`.`entities_id` IN (\'1\', \'2\', \'3\')');
+           ->isIdenticalTo($expectedSql('SELECT * FROM `glpi_computers` WHERE `glpi_computers`.`entities_id` IN (\'1\', \'2\', \'3\')'));
 
         //keep testing old method from db.function
         $this->string(getEntitiesRestrictRequest('WHERE', 'glpi_computers'))
-           ->isIdenticalTo("WHERE ( `glpi_computers`.`entities_id` IN ('1', '2', '3')  ) ");
+           ->isIdenticalTo($expectedSql("WHERE ( `glpi_computers`.`entities_id` IN ('1', '2', '3')  ) "));
         $it->execute('glpi_computers', getEntitiesRestrictCriteria('glpi_computers'));
         $this->string($it->getSql())
-           ->isIdenticalTo('SELECT * FROM `glpi_computers` WHERE (`glpi_computers`.`entities_id` IN (\'1\', \'2\', \'3\'))');
+           ->isIdenticalTo($expectedSql('SELECT * FROM `glpi_computers` WHERE (`glpi_computers`.`entities_id` IN (\'1\', \'2\', \'3\'))'));
 
         // Root entity
         $this->setEntity('_test_root_entity', false);
 
         $this->string($this->testedInstance->getEntitiesRestrictRequest('WHERE', 'glpi_computers'))
-           ->isIdenticalTo("WHERE ( `glpi_computers`.`entities_id` IN ('1')  ) ");
+           ->isIdenticalTo($expectedSql("WHERE ( `glpi_computers`.`entities_id` IN ('1')  ) "));
         $it->execute('glpi_computers', $this->testedInstance->getEntitiesRestrictCriteria('glpi_computers'));
         $this->string($it->getSql())
-           ->isIdenticalTo('SELECT * FROM `glpi_computers` WHERE `glpi_computers`.`entities_id` IN (\'1\')');
+           ->isIdenticalTo($expectedSql('SELECT * FROM `glpi_computers` WHERE `glpi_computers`.`entities_id` IN (\'1\')'));
 
         //keep testing old method from db.function
         $this->string(getEntitiesRestrictRequest('WHERE', 'glpi_computers'))
-           ->isIdenticalTo("WHERE ( `glpi_computers`.`entities_id` IN ('1')  ) ");
+           ->isIdenticalTo($expectedSql("WHERE ( `glpi_computers`.`entities_id` IN ('1')  ) "));
         $it->execute('glpi_computers', getEntitiesRestrictCriteria('glpi_computers'));
         $this->string($it->getSql())
-           ->isIdenticalTo('SELECT * FROM `glpi_computers` WHERE (`glpi_computers`.`entities_id` IN (\'1\'))');
+           ->isIdenticalTo($expectedSql('SELECT * FROM `glpi_computers` WHERE (`glpi_computers`.`entities_id` IN (\'1\'))'));
 
         // Child
         $this->setEntity('_test_child_1', false);
 
         $this->string($this->testedInstance->getEntitiesRestrictRequest('WHERE', 'glpi_computers'))
-           ->isIdenticalTo("WHERE ( `glpi_computers`.`entities_id` IN ('2')  ) ");
+           ->isIdenticalTo($expectedSql("WHERE ( `glpi_computers`.`entities_id` IN ('2')  ) "));
         $it->execute('glpi_computers', $this->testedInstance->getEntitiesRestrictCriteria('glpi_computers'));
         $this->string($it->getSql())
-           ->isIdenticalTo('SELECT * FROM `glpi_computers` WHERE `glpi_computers`.`entities_id` IN (\'2\')');
+           ->isIdenticalTo($expectedSql('SELECT * FROM `glpi_computers` WHERE `glpi_computers`.`entities_id` IN (\'2\')'));
 
         //keep testing old method from db.function
         $this->string(getEntitiesRestrictRequest('WHERE', 'glpi_computers'))
-           ->isIdenticalTo("WHERE ( `glpi_computers`.`entities_id` IN ('2')  ) ");
+           ->isIdenticalTo($expectedSql("WHERE ( `glpi_computers`.`entities_id` IN ('2')  ) "));
         $it->execute('glpi_computers', getEntitiesRestrictCriteria('glpi_computers'));
         $this->string($it->getSql())
-           ->isIdenticalTo('SELECT * FROM `glpi_computers` WHERE (`glpi_computers`.`entities_id` IN (\'2\'))');
+           ->isIdenticalTo($expectedSql('SELECT * FROM `glpi_computers` WHERE (`glpi_computers`.`entities_id` IN (\'2\'))'));
 
         // Child without table
         $this->string($this->testedInstance->getEntitiesRestrictRequest('WHERE'))
-           ->isIdenticalTo("WHERE ( `entities_id` IN ('2')  ) ");
+           ->isIdenticalTo($expectedSql("WHERE ( `entities_id` IN ('2')  ) "));
         $it->execute('glpi_computers', $this->testedInstance->getEntitiesRestrictCriteria());
         $this->string($it->getSql())
-           ->isIdenticalTo('SELECT * FROM `glpi_computers` WHERE `entities_id` IN (\'2\')');
+           ->isIdenticalTo($expectedSql('SELECT * FROM `glpi_computers` WHERE `entities_id` IN (\'2\')'));
 
         //keep testing old method from db.function
         $this->string(getEntitiesRestrictRequest('WHERE'))
-           ->isIdenticalTo("WHERE ( `entities_id` IN ('2')  ) ");
+           ->isIdenticalTo($expectedSql("WHERE ( `entities_id` IN ('2')  ) "));
         $it->execute('glpi_computers', getEntitiesRestrictCriteria());
         $this->string($it->getSql())
-           ->isIdenticalTo('SELECT * FROM `glpi_computers` WHERE (`entities_id` IN (\'2\'))');
+           ->isIdenticalTo($expectedSql('SELECT * FROM `glpi_computers` WHERE (`entities_id` IN (\'2\'))'));
 
         // Child + parent
         $this->setEntity('_test_child_2', false);
 
         $this->string($this->testedInstance->getEntitiesRestrictRequest('WHERE', 'glpi_computers', '', '', true))
-           ->isIdenticalTo("WHERE ( `glpi_computers`.`entities_id` IN ('3')  OR (`glpi_computers`.`is_recursive`='1' AND `glpi_computers`.`entities_id` IN (0, 1)) ) ");
+           ->isIdenticalTo($expectedSql("WHERE ( `glpi_computers`.`entities_id` IN ('3')  OR (`glpi_computers`.`is_recursive`='1' AND `glpi_computers`.`entities_id` IN (0, 1)) ) "));
         $it->execute('glpi_computers', $this->testedInstance->getEntitiesRestrictCriteria('glpi_computers', '', '', true));
         $this->string($it->getSql())
-           ->isIdenticalTo('SELECT * FROM `glpi_computers` WHERE (`glpi_computers`.`entities_id` IN (\'3\') OR (`glpi_computers`.`is_recursive` = \'1\' AND `glpi_computers`.`entities_id` IN (\'0\', \'1\')))');
+           ->isIdenticalTo($expectedSql('SELECT * FROM `glpi_computers` WHERE (`glpi_computers`.`entities_id` IN (\'3\') OR (`glpi_computers`.`is_recursive` = \'1\' AND `glpi_computers`.`entities_id` IN (\'0\', \'1\')))'));
 
         //keep testing old method from db.function
         $this->string(getEntitiesRestrictRequest('WHERE', 'glpi_computers', '', '', true))
-           ->isIdenticalTo("WHERE ( `glpi_computers`.`entities_id` IN ('3')  OR (`glpi_computers`.`is_recursive`='1' AND `glpi_computers`.`entities_id` IN (0, 1)) ) ");
+           ->isIdenticalTo($expectedSql("WHERE ( `glpi_computers`.`entities_id` IN ('3')  OR (`glpi_computers`.`is_recursive`='1' AND `glpi_computers`.`entities_id` IN (0, 1)) ) "));
         $it->execute('glpi_computers', getEntitiesRestrictCriteria('glpi_computers', '', '', true));
         $this->string($it->getSql())
-           ->isIdenticalTo('SELECT * FROM `glpi_computers` WHERE ((`glpi_computers`.`entities_id` IN (\'3\') OR (`glpi_computers`.`is_recursive` = \'1\' AND `glpi_computers`.`entities_id` IN (\'0\', \'1\'))))');
+           ->isIdenticalTo($expectedSql('SELECT * FROM `glpi_computers` WHERE ((`glpi_computers`.`entities_id` IN (\'3\') OR (`glpi_computers`.`is_recursive` = \'1\' AND `glpi_computers`.`entities_id` IN (\'0\', \'1\'))))'));
 
         //Child + parent on glpi_entities
         $it->execute('glpi_entities', $this->testedInstance->getEntitiesRestrictCriteria('glpi_entities', '', '', true));
         $this->string($it->getSql())
-           ->isIdenticalTo('SELECT * FROM `glpi_entities` WHERE (`glpi_entities`.`id` IN (\'3\', \'0\', \'1\'))');
+           ->isIdenticalTo($expectedSql('SELECT * FROM `glpi_entities` WHERE (`glpi_entities`.`id` IN (\'3\', \'0\', \'1\'))'));
 
         //keep testing old method from db.function
         $it->execute('glpi_entities', getEntitiesRestrictCriteria('glpi_entities', '', '', true));
         $this->string($it->getSql())
-           ->isIdenticalTo('SELECT * FROM `glpi_entities` WHERE ((`glpi_entities`.`id` IN (\'3\', \'0\', \'1\')))');
+           ->isIdenticalTo($expectedSql('SELECT * FROM `glpi_entities` WHERE ((`glpi_entities`.`id` IN (\'3\', \'0\', \'1\')))'));
 
         //Child + parent -- automatic recusrivity detection
         $it->execute('glpi_computers', $this->testedInstance->getEntitiesRestrictCriteria('glpi_computers', '', '', 'auto'));
         $this->string($it->getSql())
-           ->isIdenticalTo('SELECT * FROM `glpi_computers` WHERE (`glpi_computers`.`entities_id` IN (\'3\') OR (`glpi_computers`.`is_recursive` = \'1\' AND `glpi_computers`.`entities_id` IN (\'0\', \'1\')))');
+           ->isIdenticalTo($expectedSql('SELECT * FROM `glpi_computers` WHERE (`glpi_computers`.`entities_id` IN (\'3\') OR (`glpi_computers`.`is_recursive` = \'1\' AND `glpi_computers`.`entities_id` IN (\'0\', \'1\')))'));
 
         //keep testing old method from db.function
         $it->execute('glpi_computers', getEntitiesRestrictCriteria('glpi_computers', '', '', 'auto'));
         $this->string($it->getSql())
-           ->isIdenticalTo('SELECT * FROM `glpi_computers` WHERE ((`glpi_computers`.`entities_id` IN (\'3\') OR (`glpi_computers`.`is_recursive` = \'1\' AND `glpi_computers`.`entities_id` IN (\'0\', \'1\'))))');
+           ->isIdenticalTo($expectedSql('SELECT * FROM `glpi_computers` WHERE ((`glpi_computers`.`entities_id` IN (\'3\') OR (`glpi_computers`.`is_recursive` = \'1\' AND `glpi_computers`.`entities_id` IN (\'0\', \'1\'))))'));
 
         // Child + parent without table
         $this->string($this->testedInstance->getEntitiesRestrictRequest('WHERE', '', '', '', true))
-           ->isIdenticalTo("WHERE ( `entities_id` IN ('3')  OR (`is_recursive`='1' AND `entities_id` IN (0, 1)) ) ");
+           ->isIdenticalTo($expectedSql("WHERE ( `entities_id` IN ('3')  OR (`is_recursive`='1' AND `entities_id` IN (0, 1)) ) "));
         $it->execute('glpi_computers', $this->testedInstance->getEntitiesRestrictCriteria('', '', '', true));
         $this->string($it->getSql())
-           ->isIdenticalTo('SELECT * FROM `glpi_computers` WHERE (`entities_id` IN (\'3\') OR (`is_recursive` = \'1\' AND `entities_id` IN (\'0\', \'1\')))');
+           ->isIdenticalTo($expectedSql('SELECT * FROM `glpi_computers` WHERE (`entities_id` IN (\'3\') OR (`is_recursive` = \'1\' AND `entities_id` IN (\'0\', \'1\')))'));
 
         $it->execute('glpi_entities', $this->testedInstance->getEntitiesRestrictCriteria('glpi_entities', '', 3, true));
         $this->string($it->getSql())
-           ->isIdenticalTo('SELECT * FROM `glpi_entities` WHERE (`glpi_entities`.`id` IN (\'3\', \'0\', \'1\'))');
+           ->isIdenticalTo($expectedSql('SELECT * FROM `glpi_entities` WHERE (`glpi_entities`.`id` IN (\'3\', \'0\', \'1\'))'));
 
         $it->execute('glpi_entities', $this->testedInstance->getEntitiesRestrictCriteria('glpi_entities', '', 7, true));
         $this->string($it->getSql())
-           ->isIdenticalTo('SELECT * FROM `glpi_entities` WHERE `glpi_entities`.`id` = \'7\'');
+           ->isIdenticalTo($expectedSql('SELECT * FROM `glpi_entities` WHERE `glpi_entities`.`id` = \'7\''));
 
         //keep testing old method from db.function
         $this->string(getEntitiesRestrictRequest('WHERE', '', '', '', true))
-           ->isIdenticalTo("WHERE ( `entities_id` IN ('3')  OR (`is_recursive`='1' AND `entities_id` IN (0, 1)) ) ");
+           ->isIdenticalTo($expectedSql("WHERE ( `entities_id` IN ('3')  OR (`is_recursive`='1' AND `entities_id` IN (0, 1)) ) "));
         $it->execute('glpi_computers', getEntitiesRestrictCriteria('', '', '', true));
         $this->string($it->getSql())
-           ->isIdenticalTo('SELECT * FROM `glpi_computers` WHERE ((`entities_id` IN (\'3\') OR (`is_recursive` = \'1\' AND `entities_id` IN (\'0\', \'1\'))))');
+           ->isIdenticalTo($expectedSql('SELECT * FROM `glpi_computers` WHERE ((`entities_id` IN (\'3\') OR (`is_recursive` = \'1\' AND `entities_id` IN (\'0\', \'1\'))))'));
 
         $it->execute('glpi_entities', getEntitiesRestrictCriteria('glpi_entities', '', 3, true));
         $this->string($it->getSql())
-           ->isIdenticalTo('SELECT * FROM `glpi_entities` WHERE ((`glpi_entities`.`id` IN (\'3\', \'0\', \'1\')))');
+           ->isIdenticalTo($expectedSql('SELECT * FROM `glpi_entities` WHERE ((`glpi_entities`.`id` IN (\'3\', \'0\', \'1\')))'));
 
         $it->execute('glpi_entities', getEntitiesRestrictCriteria('glpi_entities', '', 7, true));
         $this->string($it->getSql())
-           ->isIdenticalTo('SELECT * FROM `glpi_entities` WHERE (`glpi_entities`.`id` = \'7\')');
+           ->isIdenticalTo($expectedSql('SELECT * FROM `glpi_entities` WHERE (`glpi_entities`.`id` = \'7\')'));
     }
 
     /**
@@ -1206,6 +1216,10 @@ class DbUtils extends DbTestCase
      */
     public function testGetDateCriteria()
     {
+        global $DB;
+        $expectedEnd = $DB->getProvider() === 'pgsql'
+            ? "(CAST('2018-11-09' AS timestamp with time zone) + (1 || ' DAY')::interval)"
+            : "DATE_ADD('2018-11-09', INTERVAL 1 DAY)";
         $this->newTestedInstance();
 
         $this->array(
@@ -1228,7 +1242,10 @@ class DbUtils extends DbTestCase
 
         $this->string(
             $result[0]['date'][1]->getValue()
-        )->isIdenticalTo("DATE_ADD('2018-11-09', INTERVAL 1 DAY)");
+        )->isIdenticalTo($expectedEnd);
+
+        $nativeEnd = $DB->getDoctrineConnection()->fetchOne('SELECT ' . $result[0]['date'][1]->getValue());
+        $this->string(substr((string)$nativeEnd, 0, 10))->isIdenticalTo('2018-11-10');
 
         $result = $this->testedInstance->getDateCriteria('date', '2018-11-08', '2018-11-09');
         $this->array($result)->hasSize(2);
@@ -1241,7 +1258,7 @@ class DbUtils extends DbTestCase
 
         $this->string(
             $result[1]['date'][1]->getValue()
-        )->isIdenticalTo("DATE_ADD('2018-11-09', INTERVAL 1 DAY)");
+        )->isIdenticalTo($expectedEnd);
     }
 
     protected function autoNameProvider()
@@ -1333,5 +1350,124 @@ class DbUtils extends DbTestCase
                       $entities_id
                   )
               )->isIdenticalTo($expected);
+    }
+
+    protected function autoNameNumericPrefixProvider(): array
+    {
+        // Independent native MariaDB unsigned-conversion values, including both
+        // overflow limits. Public masks stop at ten characters, but the DQL
+        // expression must not silently implement a different wider conversion.
+        return [
+            ['', '0'], ['0000', '0'], ['12x3', '12'], ['x123', '0'],
+            [' 123', '123'], ['+123', '123'], ['-123', '18446744073709551493'],
+            ['1.5', '1'], ['1e2', '1'], ['12345678901234567890', '12345678901234567890'],
+            ['18446744073709551615', '18446744073709551615'],
+            ['18446744073709551616', '18446744073709551615'],
+            ['-18446744073709551616', '9223372036854775808'],
+            ['٠١٢٣', '0'], ['１２３４', '0'], ['12_3', '12'], ["\t123", '123'],
+        ];
+    }
+
+    /** @dataProvider autoNameNumericPrefixProvider */
+    public function testAutoNameNumericPrefix(string $value, string $expected): void
+    {
+        global $DB;
+        $em = \itsmng\Database\Orm::create($DB);
+        $record = new \itsmng\Database\Entity\Computer();
+        $record->entities = $em->getReference(\itsmng\Database\Entity\Entity::class, 0);
+        $record->name = 'Number conversion ' . $this->getUniqueString();
+        $record->serial = $value;
+        $em->persist($record);
+        $em->flush();
+        $query = $em->createQuery('SELECT AUTO_NAME_NUMBER(c.serial) FROM ' . $record::class . ' c WHERE c.id = :id')
+            ->setParameter('id', $record->id, \Doctrine\DBAL\Types\Types::BIGINT);
+        $this->string((string)$query->getSingleScalarResult())->isIdenticalTo($expected);
+
+        // Exercise public generation, not only the custom numeric function.
+        // Fresh unique prefixes isolate every provider row in the shared frame.
+        $prefix = 'Number-' . $this->getUniqueString() . '-';
+        $record->name = $prefix . $value;
+        $em->flush();
+        if (\Toolbox::strlen($value) === 4) {
+            $next = str_pad((string)($expected + 1), 4, '0', STR_PAD_LEFT);
+            $this->string((new \DbUtils())->autoName('&lt;' . $prefix . '####&gt;', 'name', true, 'Computer'))
+                ->isIdenticalTo($prefix . $next);
+        }
+        $record->serial = null;
+        $em->flush();
+        $this->variable($query->getSingleScalarResult())->isNull();
+    }
+
+    public function testAutoNameScopesPatternsAndFinancialNumbers(): void
+    {
+        global $DB, $CFG_GLPI;
+        $savedConfiguration = $CFG_GLPI['use_autoname_by_entity'];
+        $em = \itsmng\Database\Orm::create($DB);
+        $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $otherEntity = (int)getItemByTypeName('Entity', '_test_child_1', true);
+        $utils = new \DbUtils();
+        // Quotes, multibyte characters, wildcard literals and the explicit LIKE
+        // escape must all retain their character positions and literal meaning.
+        $prefix = "É_case_\\'%!" . $this->getUniqueString() . '-';
+        $asset = static function (string $class, ?string $name, int $scope, bool $deleted = false, bool $template = false) use ($em): object {
+            $record = new $class();
+            $record->entities = $em->getReference(\itsmng\Database\Entity\Entity::class, $scope);
+            $record->name = $name;
+            $record->is_deleted = $deleted;
+            $record->is_template = $template;
+            $em->persist($record);
+            return $record;
+        };
+        try {
+            $CFG_GLPI['use_autoname_by_entity'] = 1;
+            $computer = $asset(\itsmng\Database\Entity\Computer::class, $prefix . '0007', $entity);
+            $otherComputer = $asset(\itsmng\Database\Entity\Computer::class, $prefix . '0099', $otherEntity);
+            $asset(\itsmng\Database\Entity\Computer::class, $prefix . '0999', $entity, true);
+            $asset(\itsmng\Database\Entity\Computer::class, $prefix . '9999', $entity, false, true);
+            $asset(\itsmng\Database\Entity\Computer::class, null, $entity);
+            $asset(\itsmng\Database\Entity\Computer::class, str_replace('_', 'x', $prefix) . '0888', $entity);
+            $asset(\itsmng\Database\Entity\Computer::class, str_replace('%', 'x', $prefix) . '0777', $entity);
+            // An ASCII case change retains native case-insensitive matching.
+            $asset(\itsmng\Database\Entity\Monitor::class, str_replace('a', 'A', $prefix) . '0011', $entity);
+            $asset(\itsmng\Database\Entity\Printer::class, $prefix . '0012', $entity);
+            $em->flush();
+            $mask = '&lt;' . $prefix . '####&gt;';
+            $this->string($utils->autoName($mask, 'name', true, 'Computer', $entity))->isIdenticalTo($prefix . '0008');
+            $this->string($utils->autoName($mask, 'name', true, 'Computer', $otherEntity))->isIdenticalTo($prefix . '0100');
+            $this->string($utils->autoName($mask, 'name', true, 'Computer', 0))->isIdenticalTo($prefix . '0001');
+            $this->string($utils->autoName($mask, 'name', true, 'Computer', -1))->isIdenticalTo($prefix . '0100');
+            $this->string($utils->autoName('&lt;\\g' . $prefix . '####&gt;', 'name', true, 'Computer', $entity))
+                ->isIdenticalTo($prefix . '0013');
+            $this->string(\autoName($mask, 'name', true, 'Computer', $entity))->isIdenticalTo($prefix . '0008');
+            $CFG_GLPI['use_autoname_by_entity'] = 0;
+            $this->string($utils->autoName($mask, 'name', true, 'Computer', $entity))->isIdenticalTo($prefix . '0100');
+            $CFG_GLPI['use_autoname_by_entity'] = 1;
+
+            // Run the explicitly unmapped plugin DBAL reader against this real
+            // physical asset fixture; no plugin DDL belongs in DbTestCase.
+            $numbers = new \itsmng\Database\Repository\AutoNameRepository($em);
+            $pattern = strtr($prefix, ['!' => '!!', '%' => '!%', '_' => '!_']) . '____';
+            $this->string($numbers->pluginAssetMaximum('glpi_computers', 'name', $pattern, \Toolbox::strlen($prefix) + 1, 4, $entity))
+                ->isIdenticalTo('7');
+            $this->string($numbers->pluginAssetMaximum('glpi_computers', 'name', $pattern, \Toolbox::strlen($prefix) + 1, 4, null))
+                ->isIdenticalTo('99');
+
+            $financial = new \itsmng\Database\Entity\Infocom();
+            $financial->entities = $em->getReference(\itsmng\Database\Entity\Entity::class, $otherEntity);
+            $financial->itemtype = 'Computer';
+            $financial->items_id = $otherComputer->id;
+            $financial->immo_number = $prefix . '0042';
+            $em->persist($financial);
+            $em->flush();
+            $this->string($utils->autoName($mask, 'immo_number', true, 'Infocom', $entity))->isIdenticalTo($prefix . '0043');
+            $this->string($utils->autoName('&lt;\\g' . $prefix . '####&gt;', 'immo_number', true, 'Infocom', $entity))
+                ->isIdenticalTo($prefix . '0043');
+            // Previewing a number never reserves it or mutates any owned record.
+            $this->string($utils->autoName($mask, 'name', true, 'Computer', $entity))->isIdenticalTo($prefix . '0008');
+            $this->string($computer->name)->isIdenticalTo($prefix . '0007');
+            $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
+        } finally {
+            $CFG_GLPI['use_autoname_by_entity'] = $savedConfiguration;
+        }
     }
 }

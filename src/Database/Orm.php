@@ -61,6 +61,7 @@ final class Orm
         $config->addCustomNumericFunction('BIT_COUNT', Query\BitCount::class);
         $config->addCustomNumericFunction('EPOCH_SECONDS', Query\EpochSeconds::class);
         $config->addCustomNumericFunction('CURRENT_EPOCH_SECONDS', Query\CurrentEpochSeconds::class);
+        $config->addCustomNumericFunction('AUTO_NAME_NUMBER', Query\AutoNameNumber::class);
         $config->setMetadataDriverImpl(new AttributeDriver([__DIR__ . '/Entity'], $platform));
         // Serialization keeps mutable metadata (e.g. assigned-ID imports) local
         // to each metadata factory, rather than leaking changes between units of work.
