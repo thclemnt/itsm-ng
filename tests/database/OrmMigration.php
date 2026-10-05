@@ -13,6 +13,7 @@ use itsmng\Database\Migration\Ledger;
 use itsmng\Database\Migration\V220\Baseline;
 use itsmng\Database\Migration\V220\Seeds;
 use itsmng\Database\Orm;
+use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\Repository\RecordWriter;
 use itsmng\Database\SchemaCheck;
 use itsmng\Database\Upgrade;
@@ -126,7 +127,7 @@ class OrmMigration extends \GLPITestCase
         (new Seeds())->apply($connection);
         $manager = $connection->createSchemaManager();
         $manager->dropTable(Ledger::TABLE);
-        $legacyId = 2147483640;
+        $legacyId = 2147483647;
         $audit = "Historical O'Reilly \\path 日本語";
         $connection->insert('glpi_computers', ['id' => $legacyId, 'name' => 'Imported computer', 'entities_id' => 0, 'computermodels_id' => 0]);
         $connection->insert('glpi_certificates', ['id' => 100, 'name' => 'Imported certificate']);
@@ -186,6 +187,8 @@ class OrmMigration extends \GLPITestCase
             $this->string(hash_file('sha256', $directory . '/glpicrypt.key'))->isIdenticalTo($hash);
             $id = (new RecordWriter(Orm::create($database)))->insert('glpi_computers', ['name' => 'After upgrade']);
             $this->integer($id)->isGreaterThan($legacyId);
+            $row = (new RecordRepository(Orm::create($database)))->find('glpi_computers', 'id', $id);
+            $this->integer($row['id'])->isIdenticalTo($id);
         } finally {
             foreach (['config_db.php', 'glpicrypt.key'] as $file) {
                 if (is_file($directory . '/' . $file)) {
