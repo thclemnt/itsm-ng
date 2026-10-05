@@ -57,11 +57,13 @@ class CommonITILValidation extends DbTestCase
            'name'   => 'approval'
         ]);
         $this->integer($uid3)->isGreaterThan(0);
+        $profileId = getItemByTypeName('Profile', 'Admin', true);
+        $this->integer($profileId)->isGreaterThan(0);
         $profile = new \Profile_User();
         $this->integer(
             (int)$profile->add([
               'users_id'     => $uid3,
-              'profiles_id'  => getItemByTypeName('Profile', 'admin', true),
+              'profiles_id'  => $profileId,
               'entities_id'  => 0
          ])
         )->isGreaterThan(0);
