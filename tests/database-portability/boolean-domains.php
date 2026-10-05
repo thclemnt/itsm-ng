@@ -11,6 +11,7 @@ use itsmng\Database\Migration\V220\BooleanDomains;
 use itsmng\Database\Migration\V220\Booleans;
 use itsmng\Database\Migration\History;
 use itsmng\Database\Migration\V220\DomainIntegration;
+use itsmng\Database\Migration\V220\ExactDiscriminators;
 use itsmng\Database\Migration\Ledger;
 use itsmng\Database\Migration\V220\References;
 use itsmng\Database\Orm;
@@ -247,6 +248,11 @@ $id = (new FixtureRecords($DB))->create($table, ['name' => 'Historical invalid b
 $priorStates = Ledger::states($connection);
 try {
     $connection->delete(Ledger::TABLE, ['version' => $version]);
+    $verificationLedger = Ledger::states($connection);
+    $verificationCatalog = BooleanDomainSchema::catalog($connection);
+    (new ExactDiscriminators())->verify($connection);
+    verify(Ledger::states($connection) === $verificationLedger && BooleanDomainSchema::catalog($connection) === $verificationCatalog,
+        'Completed exact-subject physical verification remains read-only while an earlier boolean checkpoint is pending');
     if ($mysql) {
         $connection->executeStatement($drop);
         $connection->executeStatement('UPDATE glpi_suppliers SET is_recursive = 2 WHERE id = ?', [$id]);
@@ -256,7 +262,7 @@ try {
                 $attempt();
                 throw new LogicException('Historical bad flag accepted');
             } catch (RuntimeException $error) {
-                verify(str_contains($error->getMessage(), 'glpi_suppliers.is_recursive') && str_contains($error->getMessage(), '1 rows'), 'Historical bad-data diagnostic includes count and owning property');
+                verify(str_contains($error->getMessage(), 'glpi_suppliers.is_recursive') && str_contains($error->getMessage(), '1 rows'), 'Historical bad-data diagnostic includes count and owning property: ' . $error->getMessage());
             }
             verify(BooleanDomainSchema::catalog($connection) === $before && Ledger::state($connection, $version) === null, 'Complete preflight refuses before native DDL or receipt');
         }
@@ -300,7 +306,7 @@ try {
             (new History())->upgrade($connection);
             throw new LogicException('Completed-converter storage drift accepted');
         } catch (RuntimeException $error) {
-            verify(str_contains($error->getMessage(), 'Unsupported boolean storage: glpi_suppliers.is_recursive'), 'Completed converter cannot defer drift to a skipped phase');
+            verify(str_contains($error->getMessage(), 'Unsupported boolean storage: glpi_suppliers.is_recursive'), 'Completed converter cannot defer drift to a skipped phase: ' . $error->getMessage());
         }
         verify(BooleanDomainSchema::catalog($connection) === $before && Ledger::state($connection, $version) === null, 'PG drift refuses before any migration DDL or new receipt');
         $connection->executeStatement('ALTER TABLE glpi_suppliers ALTER COLUMN is_recursive DROP DEFAULT, ALTER COLUMN is_recursive TYPE BOOLEAN USING (is_recursive = 1), ALTER COLUMN is_recursive SET DEFAULT FALSE');
@@ -324,7 +330,7 @@ try {
             (new History())->upgrade($connection);
             throw new LogicException('Completed producer allowed a missing boolean field');
         } catch (RuntimeException $error) {
-            verify(str_contains($error->getMessage(), 'Missing boolean column: glpi_domains.is_helpdesk_visible'), 'Completed producer drift is actionable before DDL');
+            verify(str_contains($error->getMessage(), 'Missing boolean column: glpi_domains.is_helpdesk_visible'), 'Completed producer drift is actionable before DDL: ' . $error->getMessage());
         }
         verify(BooleanDomainSchema::catalog($connection) === $before && Ledger::state($connection, $version) === null, 'Missing completed producer refuses without native or ledger writes');
     } finally {

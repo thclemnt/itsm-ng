@@ -73,7 +73,10 @@ final class ExactDiscriminators
         // canonical phases converge. Those markers are not replay prerequisites.
         $prerequisites = array_diff(self::definitions()['prerequisites'], self::definitions()['adoption_markers']);
         $priorPending = array_filter($prerequisites, static fn ($version) => ($states[$version]['complete'] ?? false) !== true);
-        if ($priorPending && !$preAdoption) {
+        // Prerequisites order pending DDL. Physical verification must still
+        // inspect a completed owner while another checkpoint is being retried;
+        // release-wide Postconditions separately requires every phase complete.
+        if ($priorPending && !$preAdoption && !$verify) {
             throw new \RuntimeException('Complete the preceding canonical migration history before exact subject adoption.');
         }
         $platform = $connection->getDatabasePlatform();
