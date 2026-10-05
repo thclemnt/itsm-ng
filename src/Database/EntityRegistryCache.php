@@ -25,7 +25,9 @@ final class EntityRegistryCache
             throw new \RuntimeException($message);
         });
         try {
-            $files = [$sourceRoot . '/composer.lock'];
+            // Release archives may omit Composer manifests; InstalledVersions
+            // below still identifies the dependencies actually shipped.
+            $files = is_file($sourceRoot . '/composer.lock') ? [$sourceRoot . '/composer.lock'] : [];
             $sources = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator(
                 $sourceRoot . '/src/Database',
                 \FilesystemIterator::SKIP_DOTS,

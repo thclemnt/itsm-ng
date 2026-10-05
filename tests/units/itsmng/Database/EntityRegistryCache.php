@@ -106,6 +106,17 @@ class EntityRegistryCache extends \atoum\atoum\test
             ->isInstanceOf(\LogicException::class)->hasMessage('Invalid authoritative mapping');
     }
 
+    public function testPackagedReleaseWithoutComposerManifestStillCaches(): void
+    {
+        unlink($this->root . '/composer.lock');
+        $cache = new Psr16Cache(new ArrayAdapter());
+        $builds = 0;
+        $build = static function () use (&$builds): array { return ['generation' => ++$builds]; };
+        (new RegistryCache($cache, $this->root))->load($build);
+        (new RegistryCache($cache, $this->root))->load($build);
+        $this->integer($builds)->isIdenticalTo(1);
+    }
+
     public function testCacheFailuresAndMissingSourceUseAuthoritativeMapping(): void
     {
         $cache = new class (new ArrayAdapter()) extends Psr16Cache {
@@ -122,7 +133,7 @@ class EntityRegistryCache extends \atoum\atoum\test
         $builds = 0;
         $build = static function () use (&$builds): array { return ['generation' => ++$builds]; };
         $this->array((new RegistryCache($cache, $this->root))->load($build))->isIdenticalTo(['generation' => 1]);
-        unlink($this->root . '/composer.lock');
+        rename($this->root . '/src/Database', $this->root . '/src/UnavailableDatabase');
         $this->array((new RegistryCache($cache, $this->root))->load($build))->isIdenticalTo(['generation' => 2]);
     }
 
