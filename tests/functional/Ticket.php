@@ -1984,15 +1984,11 @@ class Ticket extends DbTestCase
                 }
                 public static function getTable($classname = null)
                 {
-                    return \Ticket::getTable($classname);
-                }
-                public static function getForeignKeyField()
-                {
-                    return \Ticket::getForeignKeyField();
+                    return \Ticket::getTable();
                 }
                 public function getAssociatedDocumentsCriteria($bypass_rights = false): array
                 {
-                    return ['id' => 0];
+                    return [\Document_Item::getTableField('id') => 0];
                 }
             };
             $custom->fields = $ticket->fields;
