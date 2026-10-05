@@ -39,6 +39,121 @@ use DbTestCase;
 
 class Knowbase extends DbTestCase
 {
+    public function testCategoryTreeProjectionPreservesVisibilityTranslationsAndCurrentReads(): void
+    {
+        global $DB, $CFG_GLPI;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $session = $_SESSION;
+        $config = $CFG_GLPI;
+        try {
+            $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $author = (int)getItemByTypeName('User', 'itsm', true);
+            $this->integer($entity)->isGreaterThan(0);
+            $this->integer($author)->isGreaterThan(0);
+            $this->boolean($author !== (int)\Session::getLoginUserID())->isTrue();
+            $this->boolean(in_array(0, $_SESSION['glpiactiveentities'], false))->isFalse();
+            $parent = $this->createItem(\KnowbaseItemCategory::class, ['name' => 'Projected parent']);
+            $children = [];
+            foreach (['Alpha child', 'Beta fallback', 'Hidden child'] as $name) {
+                $children[] = $this->createItem(\KnowbaseItemCategory::class, [
+                    'name' => $name, 'knowbaseitemcategories_id' => $parent->getID(),
+                ]);
+            }
+            foreach ($children as $index => $child) {
+                $article = $this->createItem(\KnowbaseItem::class, [
+                    'name' => 'Tree article ' . $index, 'users_id' => $author,
+                    'knowbaseitemcategories_id' => $child->getID(), 'is_faq' => 0,
+                ]);
+                $this->createItem(\Entity_KnowbaseItem::class, [
+                    'knowbaseitems_id' => $article->getID(), 'entities_id' => $index === 2 ? 0 : $entity,
+                    'is_recursive' => 0,
+                ]);
+            }
+            $connection = $DB->getDoctrineConnection();
+            foreach ([[$parent->getID(), 'fr_FR', 'Translated parent'],
+                [$children[0]->getID(), 'fr_FR', 'Zulu translated child'],
+                [$children[1]->getID(), 'de_DE', 'Wrong language']] as [$id, $language, $value]) {
+                $connection->insert('glpi_dropdowntranslations', [
+                    'items_id' => $id, 'itemtype' => 'KnowbaseItemCategory',
+                    'field' => 'name', 'language' => $language, 'value' => $value,
+                ]);
+            }
+            $_SESSION['glpiactiveprofile']['knowbase'] = READ;
+            $_SESSION['glpilanguage'] = 'fr_FR';
+            $_SESSION['glpi_dropdowntranslations']['KnowbaseItemCategory']['name'] = 'name';
+            $CFG_GLPI['translate_dropdowns'] = 1;
+            $owned = array_map(static fn ($item): string => (string)$item->getID(), [$parent, ...$children]);
+            $nodes = static function () use ($owned): array {
+                return array_values(array_filter(\Knowbase::getJstreeCategoryList(),
+                    static fn (array $node): bool => in_array($node['id'], $owned, true)));
+            };
+            $tree = $nodes();
+            $this->array(array_column($tree, 'id'))->isIdenticalTo([
+                (string)$children[0]->getID(), (string)$children[1]->getID(), (string)$parent->getID(),
+            ]);
+            $this->string($tree[0]['text'])->contains('Zulu translated child')->contains('(1)');
+            $this->string($tree[1]['text'])->contains('Beta fallback')->notContains('Wrong language');
+            $this->string($tree[2]['text'])->isIdenticalTo('Translated parent');
+            $this->string($tree[0]['parent'])->isIdenticalTo((string)$parent->getID());
+            $this->string($tree[2]['parent'])->isIdenticalTo('0');
+            $root = array_values(array_filter(\Knowbase::getJstreeCategoryList(),
+                static fn (array $node): bool => $node['id'] === '0'));
+            $this->array($root)->hasSize(1);
+            $this->string($root[0]['parent'])->isIdenticalTo('#');
+
+            // A translated label does not change ordering by the original category name.
+            // Each existing translation gate independently retains untranslated labels.
+            $CFG_GLPI['translate_dropdowns'] = 0;
+            $this->string($nodes()[0]['text'])->contains('Alpha child')->notContains('Zulu');
+            $CFG_GLPI['translate_dropdowns'] = 1;
+            unset($_SESSION['glpi_dropdowntranslations']['KnowbaseItemCategory']['name']);
+            $this->string($nodes()[0]['text'])->contains('Alpha child')->notContains('Zulu');
+            $_SESSION['glpi_dropdowntranslations']['KnowbaseItemCategory']['name'] = 'name';
+
+            $manager = \itsmng\Database\Orm::create($DB);
+            $repository = new \itsmng\Database\Repository\KnowledgeBaseRepository($manager);
+            $loads = new class {
+                public int $count = 0;
+                public function postLoad(\Doctrine\ORM\Event\PostLoadEventArgs $event): void
+                {
+                    if ($event->getObject() instanceof \itsmng\Database\Entity\KnowbaseItemCategory
+                        || $event->getObject() instanceof \itsmng\Database\Entity\DropdownTranslation) {
+                        ++$this->count;
+                    }
+                }
+            };
+            $manager->getEventManager()->addEventListener(['postLoad'], $loads);
+            $access = \itsmng\Database\KnowledgeBaseAccess::current();
+            $rows = array_column($repository->categoryTree($access, 'fr_FR')['categories'], null, 'id');
+            $this->integer($rows[$children[0]->getID()]['knowbaseitemcategories_id'])->isIdenticalTo((int)$parent->getID());
+            $this->variable($rows[$parent->getID()]['knowbaseitemcategories_id'])->isNull();
+            $this->integer($rows[$children[0]->getID()]['items_count'])->isIdenticalTo(1);
+            $this->integer($rows[$children[2]->getID()]['items_count'])->isIdenticalTo(0);
+            $this->integer($loads->count)->isIdenticalTo(0);
+            $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
+            $managed = $manager->find(\itsmng\Database\Entity\KnowbaseItemCategory::class, (int)$children[0]->getID());
+            $this->integer($loads->count)->isIdenticalTo(1, 'The observer detects a real category load');
+            $this->boolean($DB->update('glpi_knowbaseitemcategories', ['name' => 'Current alpha'],
+                ['id' => $children[0]->getID()]))->isTrue();
+            foreach ([null, '', '0'] as $emptyTranslation) {
+                $connection->update('glpi_dropdowntranslations', ['value' => $emptyTranslation], [
+                    'items_id' => $children[0]->getID(), 'itemtype' => 'KnowbaseItemCategory',
+                    'field' => 'name', 'language' => 'fr_FR',
+                ]);
+                $current = array_column($repository->categoryTree($access, 'fr_FR')['categories'], null, 'id');
+                $this->string($current[$children[0]->getID()]['name'])->isIdenticalTo('Current alpha');
+            }
+            $this->string($managed->name)->isIdenticalTo('Alpha child');
+            $this->integer($loads->count)->isIdenticalTo(1);
+            $this->boolean($manager->contains($managed))->isTrue();
+            $manager->clear();
+        } finally {
+            $_SESSION = $session;
+            $CFG_GLPI = $config;
+        }
+    }
+
     public function testGetJstreeCategoryList()
     {
 

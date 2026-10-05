@@ -10,6 +10,8 @@ use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
 use itsmng\Database\Entity\DocumentItem;
+use itsmng\Database\Entity\DropdownTranslation;
+use itsmng\Database\Entity\KnowbaseItemCategory;
 use itsmng\Database\Entity\EntityKnowbaseItem;
 use itsmng\Database\Entity\GroupKnowbaseItem;
 use itsmng\Database\Entity\KnowbaseItem;
@@ -303,6 +305,43 @@ final class KnowledgeBaseRepository
             $counts[(int)$row['category_id']] = (int)$row['articles'];
         }
         return $counts;
+    }
+
+    /** Current tree presentation, without loading category or translation entities. */
+    public function categoryTree(KnowledgeBaseAccess $access, ?string $language = null): array
+    {
+        $counts = $this->categoryCounts($access);
+        $query = $this->em->createQueryBuilder()
+            ->select('c.id', 'c.name', 'IDENTITY(c.knowbaseitemcategories) AS knowbaseitemcategories_id')
+            ->from(KnowbaseItemCategory::class, 'c')
+            ->orderBy('c.level', 'DESC')->addOrderBy('c.name')->addOrderBy('c.id');
+        if ($language !== null) {
+            // Match getTranslatedValue's first-row choice, including historical duplicates.
+            $query->leftJoin(DropdownTranslation::class, 'translation', 'WITH',
+                'translation.items_id = c.id AND translation.itemtype = :type '
+                . 'AND translation.field = :field AND translation.language = :language '
+                . 'AND NOT EXISTS (SELECT earlier.id FROM ' . DropdownTranslation::class . ' earlier '
+                . 'WHERE earlier.items_id = c.id AND earlier.itemtype = :type '
+                . 'AND earlier.field = :field AND earlier.language = :language AND earlier.id < translation.id)')
+                ->addSelect('translation.value AS translated_name')
+                ->setParameter('type', 'KnowbaseItemCategory', Types::STRING)
+                ->setParameter('field', 'name', Types::STRING)
+                ->setParameter('language', $language, Types::STRING);
+        }
+        $categories = $query->getQuery()->getArrayResult();
+        foreach ($categories as &$category) {
+            $category['id'] = RecordRepository::legacyScalarValue($category['id'], Types::BIGINT);
+            $category['knowbaseitemcategories_id'] = RecordRepository::legacyScalarValue(
+                $category['knowbaseitemcategories_id'], Types::BIGINT
+            );
+            if (!empty($category['translated_name'])) {
+                $category['name'] = $category['translated_name'];
+            }
+            unset($category['translated_name']);
+            $category['items_count'] = $counts[$category['id']] ?? 0;
+        }
+        unset($category);
+        return ['categories' => $categories, 'uncategorized' => $counts[0] ?? 0];
     }
 
     public function categories(KnowledgeBaseAccess $access): array

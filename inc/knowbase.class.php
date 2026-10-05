@@ -254,24 +254,12 @@ JAVASCRIPT;
 
         $cat_fk  = KnowbaseItemCategory::getForeignKeyField();
 
-        $tree = (new \itsmng\Database\Repository\KnowledgeBaseRepository(\itsmng\Database\Orm::create($DB)))
-            ->categories(\itsmng\Database\KnowledgeBaseAccess::current());
-        $cat_iterator = $tree['categories'];
-
         $inst = new KnowbaseItemCategory();
-        $categories = [];
-        foreach ($cat_iterator as $category) {
-            if (DropdownTranslation::canBeTranslated($inst)) {
-                $tname = DropdownTranslation::getTranslatedValue(
-                    $category['id'],
-                    $inst->getType()
-                );
-                if (!empty($tname)) {
-                    $category['name'] = $tname;
-                }
-            }
-            $categories[] = $category;
-        }
+        $language = DropdownTranslation::canBeTranslated($inst)
+            && Session::haveTranslations($inst->getType(), 'name') ? $_SESSION['glpilanguage'] : null;
+        $tree = (new \itsmng\Database\Repository\KnowledgeBaseRepository(\itsmng\Database\Orm::create($DB)))
+            ->categoryTree(\itsmng\Database\KnowledgeBaseAccess::current(), $language);
+        $categories = $tree['categories'];
 
         // Children precede parents, so retain visible ancestors in one pass.
         $visibleBranches = [];
