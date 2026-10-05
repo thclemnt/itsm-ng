@@ -312,11 +312,11 @@ function getOptionsForUsers(
     return $options;
 }
 
-function renderTwigTemplate($path, $vars, $root = "/templates")
+function renderTwigTemplate($path, $vars, $root = "/templates", $cache = true)
 {
     global $CFG_GLPI;
     require_once GLPI_ROOT . "/src/twig/twig.class.php";
-    $twig = Twig::load(GLPI_ROOT . $root);
+    $twig = Twig::load(GLPI_ROOT . $root, $cache);
     if (!isset($vars["root_doc"])) {
         $vars["root_doc"] = $CFG_GLPI["root_doc"];
     }

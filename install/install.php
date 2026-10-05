@@ -300,9 +300,10 @@ switch ($step) {
 }
 
 try {
+    // Keep permission diagnostics available before the cache directory is writable.
     renderTwigTemplate('install/index.twig', [
         'step' => ['number' => $step, 'progress' => $step / count($steps), 'name' => $steps_name[$step]],
-        'header_data' => $header_data] + $twig_vars);
+        'header_data' => $header_data] + $twig_vars, '/templates', false);
 } catch (\Exception $e) {
     echo $e->getMessage();
 }

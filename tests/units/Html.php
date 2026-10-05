@@ -86,6 +86,22 @@ class Html extends \GLPITestCase
         }
     }
 
+    public function testInstallerTemplatesCanRenderWithoutACompilationCache(): void
+    {
+        require_once GLPI_ROOT . '/src/twig/twig.class.php';
+        require_once GLPI_ROOT . '/src/twig/twig.utils.php';
+        \Twig::clearCache();
+        ob_start();
+        try {
+            renderTwigTemplate('install/error.twig', [], '/templates', false);
+            $output = ob_get_contents();
+        } finally {
+            ob_end_clean();
+        }
+        $this->string($output)->contains('action="install.php?step=languages"');
+        $this->boolean(is_dir(GLPI_CACHE_DIR . '/twig'))->isFalse();
+    }
+
     public function testTwigOptionalMacroArgumentsKeepTheirNullDefaults(): void
     {
         require_once GLPI_ROOT . '/src/twig/twig.class.php';
