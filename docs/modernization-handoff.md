@@ -13,18 +13,60 @@ ownership rather than expand compatibility workarounds.
 
 ## Current source and evidence
 
-The reviewed application checkpoint is `297787177b8b7c365c1eb81004468ab20d2eb8e9`.
+The executed application checkpoint is `ecaa1c11908daccd3abebe09d73626452931dc3b`.
 Each result applies to its executed source; subsequent changes do not inherit it:
 
-- Ordinary units at `297787177b`: PostgreSQL and MariaDB each passed 30 classes,
-  211 methods and 8,745 assertions. Provider expectations and generated profile-right
-  identifiers are corrected without relaxing application assertions.
-- Read-only schema inspections at that checkpoint found 358 tables (including the
+- Ordinary units at `ecaa1c1190`: PostgreSQL and MariaDB each passed 30 classes,
+  216 methods and 8,821 assertions, with no skipped methods.
+- Isolated units at that checkpoint passed 16 classes, 60 methods and 3,006
+  assertions, with no skipped methods. Five purely unit-level CLI contracts were
+  transferred to the ordinary framework; native integration controls remain.
+- Fresh complete installation and read-only schema inspections at `0b21850674`
+  found 358 tables (including the
   ledger), 1,087 enforced foreign keys, no pending history and no schema differences
   on PostgreSQL 15.19 and MariaDB 10.11.18.
-- Isolated units at `593d34e90f`: 9 classes, 40 methods and 2,036 assertions passed.
-  This checkpoint adds a cache of the immutable, metadata-derived registry using
-  the existing application cache. No connection, session or live metadata is cached.
+- The full native suites at `ecaa1c1190` discover 230 contracts. MariaDB completed
+  with 32 passing contracts: a component reconstruction exceeded the unchanged
+  300-second limit and left history pending, so subsequent application contracts
+  stopped at the admission guard. This is a failed run, not evidence that every
+  downstream subsystem is defective. PostgreSQL completed with 212 passing
+  contracts and 18 failures. Its ordered schema-check passed, and subsequent
+  read-only inspection found 358 tables, 1,087 foreign keys, no pending release
+  and no schema differences. Both providers
+  also exposed independent timestamp, permission and offline-metadata failures.
+  Source repairs require native reruns; neither full suite is green.
+- Isolated units at `ac2976e68c` passed 18 classes, 63 methods and 30,052 assertions
+  with no skips, including the transferred actor and timestamp metadata controls.
+  This is pure metadata/framework evidence, not native integration evidence.
+- Focused application tests exposed actual numbering-binding defects and a queue
+  fixture that assumed public creation could retain a nonzero retry counter.
+  After correcting that fixture, public acknowledgement passed on both providers.
+  Atoum accepts a whole-method `*`, not a prefix wildcard; the initial filter
+  skipped five new timeline methods. Explicit reruns covered them and exposed
+  an incorrect privacy expectation: Ticket, Change and Problem tasks all declare
+  `is_private`. The source correction checks exact visible/hidden identities;
+  its successful native rerun is the focused candidate below. The preceding
+  failed runs are retained.
+- The reviewed corrective candidate `e3f96eda1d18519744f041716ea1c34e1d0afc7a`
+  passed 9 application test classes, all 44 selected methods and 9,788 assertions
+  on each provider, with no skips. Selection names every new timeline method
+  explicitly. Coverage includes the complete DbUtils class, timeline visibility,
+  documents/validations/DST/overrides, original rendering, recipient acknowledgement,
+  cron selection/status, Calendar/asset relation permissions, new-item plugin
+  vetoes and default/forced ITIL purge lifecycle controls. PHP syntax checks passed.
+  This focused result does not establish passing full native/application suites.
+  Two pure timestamp CLI scripts are now ordinary isolated tests: current source
+  discovers 228 integration contracts, not the 230 executed by the first full run.
+
+Native reconstruction contracts must use clean installation databases, separately
+from ordinary unit datasets. The latter activate the tester plugin through their
+own bootstrap plugin paths. A focused native run on that dataset instead used the
+ordinary application plugin path, emitted missing-plugin warnings before login
+headers, and failed strict Calendar/HTTP entrypoint controls. Preserve those
+failures, rerun on clean targets, and do not suppress warnings or weaken login
+assertions. The MariaDB missing-subject preflight also exceeded its unchanged
+300-second budget and requires performance attribution independently of this
+setup problem.
 - Component functional suites at `60c0d8a809` passed all six methods and 2,956
   assertions on each provider. The original POST fixture now declares the actual
   parent entity; production ownership guards and original assertions are intact.
@@ -57,24 +99,53 @@ slightly faster too. SQL statement counts stayed identical across all nine read
 flows. Separate cold/warm traces confirm metadata discovery disappears on a cache
 hit, while source hashing and deserialization still have a cost. Search CPU fell
 from 657 to 454 ms and its peak memory from 24 to 14 MiB. Substantial slowdown
-remains; traced DQL compilation, autoload searches and template compilation are
-the next measured targets. This serial local comparison excludes browser rendering and production
-concurrency; shipped dependency versions differ between releases. Retain the
-original 2.1.3 database and encryption key for a separate populated upgrade clone.
-That clone now contains all 355 original tables with identical native row bags and
-the original key; no 2.2.0 upgrade result exists yet.
+remains. Subsequent controlled pairs optimized DQL parsing, autoload lookup,
+normal Twig compiled-template caching and user-label scalar projections. The
+dataset stayed unchanged within each pair. On the latest
+121-ticket/100-match/970-history fixture, adding only the user-label projection
+(`64a7657534` to `a2b17786a6`) reduced median list/search requests from
+410.32/419.27 ms to 272.63/265.94 ms. SQL counts and peak memory remained identical
+across nine read flows. Other action changes were variable and are not attributed
+to this optimization. This serial local comparison excludes browser rendering,
+production concurrency and PostgreSQL throughput; shipped dependency versions
+differ between releases.
+
+Broader profiles found Ticket/Change/Problem tab counts constructing timelines
+whose content is immediately discarded. A reviewed scalar-count implementation
+preserves visibility, duplicate document keys, validation events, local timestamp
+collisions and custom overrides; native tests and matched timing are pending.
+Dropdown choices, non-tree labels and inherited entity settings are the next
+profiling targets. Full reads used for permissions or hooks are not automatically
+projection candidates. Profiled inclusive durations are not request latency.
+
+A separate genuine 2.1.3 populated clone was verified against all 355 original
+table row bags and its original encryption key before adoption. Public `db:update`
+at `0b21850674` completed to 2.2.0 with 358 tables, 1,087 foreign keys, no pending
+history and no schema differences. Selected original ticket/followup fields,
+signed-maximum legacy identifiers, distinct certificate links, nullable stock
+payload and allocator metadata were checked. Per-table counts are not exhaustive
+field-by-field preservation proof. The Domain phase adds exactly one validated
+domaintype right per profile; the original profile-right row bag is unchanged.
+The genuine release's three orphan marketplace defaults are archived losslessly
+in the existing ledger before removal, with strict whole-row and ownership
+admission. A second public update at `ca04024d0a` left all 358 native row bags,
+table definitions, triggers, allocator positions, release keys and the key hash
+unchanged. This positive adoption/retry evidence does not replace adversarial
+interruption and invalid-data contracts, whose full run remains pending.
 
 Earlier published `53cf6297473bc31400a0777ff905bd79f1e65698` has independent fresh
 installation and populated ORM-checkpoint upgrade results on both providers.
 Those historical results remain evidence for that source only; they do not prove
 an upgrade from the genuine upstream 2.1.3 release.
 
-The release migration redesign is source work pending execution. It exposes one
+The release migration redesign exposes one
 2.1.3-to-2.2.0 transition, with frozen conversion helpers under `Migration/V220`.
 Fresh installation replays the frozen DBAL baseline and seeds through that same
 transition. Internal phase keys support recovery of experimental installations;
 they are not public release versions. The 2.2.0 completion receipt requires full
-schema and sequence convergence. Historical install/update scripts, original-key
+schema and sequence convergence. Fresh replay and genuine populated adoption have
+the bounded native evidence above; the full interrupted/corrupted-history suite
+has not passed. Historical install/update scripts, original-key
 checks and provenance gates remain intact. Subsequent ORM schema changes must
 append migrations after this transition. The old count of 22 internal versions
 is not the release architecture or an acceptance criterion for this redesign.
