@@ -437,10 +437,18 @@ class Contract extends DbTestCase
                 'notificationtemplates_id' => $template->getID(),
                 'mode' => \Notification_NotificationTemplate::MODE_AJAX,
             ]);
+            $recipients = $this->createItem(\Group::class, [
+                'name' => 'Contract frame recipients ' . $this->getUniqueString(),
+                'entities_id' => 0,
+            ]);
+            $this->createItem(\Group_User::class, [
+                'groups_id' => $recipients->getID(),
+                'users_id' => getItemByTypeName('User', TU_USER, true),
+            ]);
             $this->createItem(\NotificationTarget::class, [
                 'notifications_id' => $notification->getID(),
-                'type' => \Notification::USER_TYPE,
-                'items_id' => getItemByTypeName('User', TU_USER, true),
+                'type' => \Notification::GROUP_TYPE,
+                'items_id' => $recipients->getID(),
             ]);
             $CFG_GLPI['use_notifications'] = true;
             $CFG_GLPI['notifications_mailing'] = false;
