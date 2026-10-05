@@ -24,7 +24,7 @@ class Stat extends \DbTestCase
     {
         global $DB;
         $this->login();
-        $entity = (int)(new \Entity())->add(['name' => 'Statistics metadata scope', 'entities_id' => 0]);
+        $entity = (int)(new \Entity())->add(['name' => 'Statistics metadata scope ' . $type, 'entities_id' => 0]);
         $this->integer($entity)->isGreaterThan(0);
         $_SESSION['glpishowallentities'] = false;
         $_SESSION['glpiactiveentities'] = [$entity];
