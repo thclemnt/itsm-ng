@@ -1785,6 +1785,21 @@ class Ticket extends DbTestCase
         }
     }
 
+    private function checkTimelineDocumentCount(\CommonITILObject $item, int $expected, bool $bypassRights = false): void
+    {
+        global $DB;
+        $manager = \itsmng\Database\Orm::create($DB);
+        try {
+            // Exercise the DQL directly: the model's compatibility fallback cannot mask failure.
+            $count = (new \itsmng\Database\Repository\DocumentRepository($manager))->countTimelineDocuments(
+                $item->getType(), (int)$item->getID(), $item::getAssociatedDocumentAccess($bypassRights)
+            );
+            $this->integer($count)->isEqualTo($expected);
+        } finally {
+            $manager->clear();
+        }
+    }
+
     public function testTimelineCountVisibility()
     {
         global $DB;
@@ -1881,12 +1896,16 @@ class Ticket extends DbTestCase
             $this->boolean($DB->update('glpi_documents_items', [
                 'date' => null, 'date_creation' => '2020-01-01 12:00:00', 'users_id' => null,
             ], ['id' => $bindings]))->isTrue();
+            $this->checkTimelineDocumentCount($item, 1);
             $this->integer($item->getTimelineItemCount())->isEqualTo(1)->isEqualTo(count($item->getTimelineItems()));
             $this->boolean($DB->update('glpi_documents_items', ['date' => '2020-01-02 12:00:00'], ['id' => $bindings[1]]))->isTrue();
+            $this->checkTimelineDocumentCount($item, 2);
             $this->integer($item->getTimelineItemCount())->isEqualTo(2)->isEqualTo(count($item->getTimelineItems()));
             $this->boolean($DB->update('glpi_documents_items', ['date' => null, 'date_creation' => null], ['id' => $bindings]))->isTrue();
+            $this->checkTimelineDocumentCount($item, 1);
             $this->integer($item->getTimelineItemCount())->isEqualTo(1)->isEqualTo(count($item->getTimelineItems()));
             $this->boolean($DB->update('glpi_documents_items', ['timeline_position' => \CommonITILObject::NO_TIMELINE], ['id' => $bindings[1]]))->isTrue();
+            $this->checkTimelineDocumentCount($item, 1);
             $this->integer($item->getTimelineItemCount())->isEqualTo(1)->isEqualTo(count($item->getTimelineItems()));
 
             if ($type !== 'Problem') {
@@ -1956,8 +1975,24 @@ class Ticket extends DbTestCase
             $this->integer((int)$binding->add([
                 'itemtype' => 'Ticket', 'items_id' => $ticket->getID(), 'documents_id' => $document->getID(),
             ]))->isGreaterThan(0);
+            $this->checkTimelineDocumentCount($ticket, 3);
             $this->integer($ticket->getTimelineItemCount())->isEqualTo(5)->isEqualTo(count($ticket->getTimelineItems()));
+            $custom = new class extends \Ticket {
+                public static function getType()
+                {
+                    return 'Ticket';
+                }
+                public function getAssociatedDocumentsCriteria($bypass_rights = false): array
+                {
+                    return ['id' => 0];
+                }
+            };
+            $custom->fields = $ticket->fields;
+            $this->integer($custom->getTimelineItemCount())->isEqualTo(2)->isEqualTo(count($custom->getTimelineItems()));
+
             $_SESSION['glpiactiveprofile']['followup'] &= ~\ITILFollowup::SEEPRIVATE;
+            $this->checkTimelineDocumentCount($ticket, 2);
+            $this->checkTimelineDocumentCount($ticket, 3, true);
             $this->integer($ticket->getTimelineItemCount())->isEqualTo(3)->isEqualTo(count($ticket->getTimelineItems()));
             foreach ([0, 1] as $enabled) {
                 $_SESSION['glpishow_count_on_tabs'] = $enabled;
@@ -1967,6 +2002,7 @@ class Ticket extends DbTestCase
                 $_SESSION['glpiactiveprofile'][$right] = 0;
             }
             $_SESSION['glpiactiveprofile']['ticket'] = \Ticket::READDOCUMENT;
+            $this->checkTimelineDocumentCount($ticket, 1);
             $this->integer($ticket->getTimelineItemCount())->isEqualTo(1)->isEqualTo(count($ticket->getTimelineItems()));
         } finally {
             $_SESSION['glpiactiveprofile'] = $profile;
@@ -2006,10 +2042,12 @@ class Ticket extends DbTestCase
             $this->boolean($DB->update($validation->getTable(), [
                 'submission_date' => '2026-10-25 00:30:00', 'validation_date' => '2026-10-25 01:30:00',
             ], ['id' => $validation->getID()]))->isTrue();
+            $this->checkTimelineDocumentCount($ticket, 2);
             $this->integer($ticket->getTimelineItemCount())->isEqualTo(4)->isEqualTo(count($ticket->getTimelineItems()));
             // Both instants are 02:30 in Paris's repeated hour. MySQL's fixed-offset
             // control needs no populated timezone tables and keeps the keys distinct.
             $connection->executeStatement($postgres ? "SET TIME ZONE 'Europe/Paris'" : "SET time_zone = '+02:00'");
+            $this->checkTimelineDocumentCount($ticket, $postgres ? 1 : 2);
             $this->integer($ticket->getTimelineItemCount())->isEqualTo($postgres ? 2 : 4)->isEqualTo(count($ticket->getTimelineItems()));
         } finally {
             $connection->executeStatement($postgres ? 'SELECT set_config(?, ?, false)' : 'SET time_zone = ?', $postgres ? ['TimeZone', $timezone] : [$timezone]);

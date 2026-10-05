@@ -64,6 +64,17 @@ final class DocumentRepository
             ->setParameter('document', $document, Types::INTEGER)->setMaxResults(1)->getQuery()->getOneOrNullResult() !== null;
     }
 
+    /** Count rendered document/date identities without loading attachment content. */
+    public function countTimelineDocuments(string $type, int $item, ITILDocumentAccess $access): int
+    {
+        // Calendar text matches the timeline keys, including repeated DST-fold hours.
+        $query = $this->itilBindings($type, $item, $access)
+            ->select("DISTINCT IDENTITY(d.documents) AS document_id, TEMPORAL_TEXT(COALESCE(d.date, d.date_creation), 'datetime') AS event_date")
+            ->andWhere('d.timeline_position > :inline')
+            ->setParameter('inline', \CommonITILObject::NO_TIMELINE, Types::INTEGER);
+        return count($query->getQuery()->getScalarResult());
+    }
+
     /** Template attachments retain one row per visible timeline binding. */
     public function notificationDocuments(string $type, int $item, ITILDocumentAccess $access): array
     {

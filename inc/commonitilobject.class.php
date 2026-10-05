@@ -7821,7 +7821,8 @@ abstract class CommonITILObject extends CommonDBTM
 
         // Plugins may provide additional events or an entirely different timeline.
         if (!in_array(static::getType(), ['Ticket', 'Change', 'Problem'], true)
-            || (new ReflectionMethod($this, 'getTimelineItems'))->getDeclaringClass()->getName() !== self::class) {
+            || (new ReflectionMethod($this, 'getTimelineItems'))->getDeclaringClass()->getName() !== self::class
+            || (new ReflectionMethod($this, 'getAssociatedDocumentsCriteria'))->getDeclaringClass()->getName() !== self::class) {
             return count($this->getTimelineItems());
         }
 
@@ -7840,15 +7841,14 @@ abstract class CommonITILObject extends CommonDBTM
                 $count += $records->countMatching($task_class::getTable(), $selection['tasks']);
             }
             if ($selection['documents'] !== null) {
-                $count += $events->countDocuments($selection['documents']);
+                $count += (new \itsmng\Database\Repository\DocumentRepository($manager))->countTimelineDocuments(
+                    static::getType(), (int)$this->getID(), static::getAssociatedDocumentAccess()
+                );
             }
             if ($selection['validations'] !== null) {
                 $count += $events->countValidations($validation_class::getTable(), $selection['validations']);
             }
             return $count;
-        } catch (\itsmng\Database\UnsupportedCriteria $unsupported) {
-            // Keep custom document selectors supported by the model's existing fallback.
-            return count($this->getTimelineItems());
         } finally {
             $manager->clear();
         }
@@ -9061,6 +9061,20 @@ abstract class CommonITILObject extends CommonDBTM
         return $excluded;
     }
 
+    /** The attachment selector and mapped document reads share this access policy. */
+    public static function getAssociatedDocumentAccess($bypass_rights = false): \itsmng\Database\ITILDocumentAccess
+    {
+        $task_class = static::getType() . 'Task';
+        return new \itsmng\Database\ITILDocumentAccess(
+            (int)Session::getLoginUserID(),
+            $bypass_rights || ITILFollowup::canView(),
+            $bypass_rights || Session::haveRight(ITILFollowup::$rightname, ITILFollowup::SEEPRIVATE),
+            ITILSolution::canView(),
+            $bypass_rights || $task_class::canView(),
+            $bypass_rights || Session::haveRight($task_class::$rightname, CommonITILTask::SEEPRIVATE),
+        );
+    }
+
     /**
      * Returns criteria that can be used to get documents related to current instance.
      *
@@ -9069,6 +9083,7 @@ abstract class CommonITILObject extends CommonDBTM
     public function getAssociatedDocumentsCriteria($bypass_rights = false): array
     {
         $task_class = $this->getType() . 'Task';
+        $access = static::getAssociatedDocumentAccess($bypass_rights);
 
         $or_crits = [
            // documents associated to ITIL item directly
@@ -9079,14 +9094,14 @@ abstract class CommonITILObject extends CommonDBTM
         ];
 
         // documents associated to followups
-        if ($bypass_rights || ITILFollowup::canView()) {
+        if ($access->followups) {
             $fup_crits = [
                ITILFollowup::getTableField('itemtype') => $this->getType(),
                ITILFollowup::getTableField('items_id') => $this->getID(),
             ];
-            if (!$bypass_rights && !Session::haveRight(ITILFollowup::$rightname, ITILFollowup::SEEPRIVATE)) {
+            if (!$access->privateFollowups) {
                 $fup_crits[] = [
-                   'OR' => ['is_private' => 0, 'users_id' => Session::getLoginUserID()],
+                   'OR' => ['is_private' => 0, 'users_id' => $access->user],
                 ];
             }
             $or_crits[] = [
@@ -9102,7 +9117,7 @@ abstract class CommonITILObject extends CommonDBTM
         }
 
         // documents associated to solutions
-        if (ITILSolution::canView()) {
+        if ($access->solutions) {
             $or_crits[] = [
                Document_Item::getTableField('itemtype') => ITILSolution::getType(),
                Document_Item::getTableField('items_id') => new QuerySubQuery(
@@ -9119,13 +9134,13 @@ abstract class CommonITILObject extends CommonDBTM
         }
 
         // documents associated to tasks
-        if ($bypass_rights || $task_class::canView()) {
+        if ($access->tasks) {
             $tasks_crit = [
                $this->getForeignKeyField() => $this->getID(),
             ];
-            if (!$bypass_rights && !Session::haveRight($task_class::$rightname, CommonITILTask::SEEPRIVATE)) {
+            if (!$access->privateTasks) {
                 $tasks_crit[] = [
-                   'OR' => ['is_private' => 0, 'users_id' => Session::getLoginUserID()],
+                   'OR' => ['is_private' => 0, 'users_id' => $access->user],
                 ];
             }
             $or_crits[] = [

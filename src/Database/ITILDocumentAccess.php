@@ -22,14 +22,6 @@ final readonly class ITILDocumentAccess
         if (!in_array($itemtype, ['Ticket', 'Change', 'Problem'], true)) {
             throw new \InvalidArgumentException('Unsupported ITIL document type');
         }
-        $task = $itemtype . 'Task';
-        return new self(
-            (int)\Session::getLoginUserID(),
-            \ITILFollowup::canView(),
-            \Session::haveRight(\ITILFollowup::$rightname, \ITILFollowup::SEEPRIVATE),
-            \ITILSolution::canView(),
-            $task::canView(),
-            \Session::haveRight($task::$rightname, \CommonITILTask::SEEPRIVATE),
-        );
+        return $itemtype::getAssociatedDocumentAccess();
     }
 }
