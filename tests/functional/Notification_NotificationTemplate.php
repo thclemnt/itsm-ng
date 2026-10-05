@@ -39,6 +39,51 @@ use DbTestCase;
 
 class Notification_NotificationTemplate extends DbTestCase
 {
+    public function testOptionalAttachmentSelection(): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity('_test_root_entity', false);
+        $session = $_SESSION;
+        $manager = \itsmng\Database\Orm::create($DB);
+        $depth = $manager->getConnection()->getTransactionNestingLevel();
+        try {
+            $parent = new \itsmng\Database\Entity\Notification();
+            $parent->entities = $manager->find(\itsmng\Database\Entity\Entity::class, $_SESSION['glpiactive_entity']);
+            $parent->name = 'Optional template ' . bin2hex(random_bytes(8));
+            $parent->itemtype = 'Ticket';
+            $parent->event = 'new';
+            $this->object($parent->entities)->isInstanceOf(\itsmng\Database\Entity\Entity::class);
+            $manager->persist($parent);
+            $manager->flush();
+            $this->boolean((new \Notification())->can($parent->id, UPDATE))->isTrue();
+            $missing = (int)$manager->createQuery('SELECT MAX(t.id) FROM itsmng\\Database\\Entity\\NotificationTemplate t')->getSingleScalarResult() + 100;
+            foreach ([null, '', 0, '0'] as $selection) {
+                $input = ['notifications_id' => $parent->id, 'notificationtemplates_id' => $selection,
+                    'mode' => \Notification_NotificationTemplate::MODE_MAIL];
+                $this->boolean((new \Notification_NotificationTemplate())->can(-1, CREATE, $input))->isTrue();
+                $input['notifications_id'] = 0;
+                $this->boolean((new \Notification_NotificationTemplate())->can(-1, CREATE, $input))->isFalse();
+            }
+            $input = ['notifications_id' => $parent->id, 'notificationtemplates_id' => $missing,
+                'mode' => \Notification_NotificationTemplate::MODE_MAIL];
+            $this->boolean((new \Notification_NotificationTemplate())->can(-1, CREATE, $input))->isFalse();
+
+            // Zero is a valid identity for the actual root entity, not an empty selection.
+            $relation = new \Entity_RSSFeed();
+            $relation->fields['entities_id'] = 0;
+            $root = null;
+            $this->boolean($relation->canConnexityItem('canUpdateItem', 'canUpdate',
+                \CommonDBConnexity::DONT_CHECK_ITEM_RIGHTS, 'Entity', 'entities_id', $root))->isTrue();
+            $this->object($root)->isInstanceOf(\Entity::class);
+            $this->integer((int)$root->getID())->isEqualTo(0);
+            $this->integer($manager->getConnection()->getTransactionNestingLevel())->isEqualTo($depth);
+        } finally {
+            $_SESSION = $session;
+            $manager->clear();
+        }
+    }
+
     public function testGetTypeName()
     {
         $this->string(\Notification_NotificationTemplate::getTypeName(0))->isIdenticalTo('Templates');

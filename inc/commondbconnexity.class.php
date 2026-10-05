@@ -494,8 +494,8 @@ abstract class CommonDBConnexity extends CommonDBTM
 
     /**
      * Factorization of canCreateItem, canViewItem, canUpateItem and canDeleteItem. It checks the
-     * ability to create, view, update or delete the item. If we cannot check the item (none is
-     * existing), then we can do the action of the current connexity
+     * ability to create, view, update or delete the item. If no item exists, the child or
+     * relation decides whether an empty attachment is valid.
      *
      * @param string          $methodItem    the method to check (canCreateItem, canViewItem,
                                              canUpdateItem or canDeleteItem)
@@ -526,23 +526,26 @@ abstract class CommonDBConnexity extends CommonDBTM
                 $item = $this->getConnexityItem($itemtype, $items_id);
             }
         }
-        if ($item_right != self::DONT_CHECK_ITEM_RIGHTS) {
-            if ($connexityItem !== false) {
-                if ($item_right == self::HAVE_VIEW_RIGHT_ON_ITEM) {
-                    $methodNotItem = 'canView';
-                    $methodItem    = 'canViewItem';
-                }
-                // here, we can check item's global rights
-                if (preg_match('/^itemtype/', $itemtype)) {
-                    if (!$connexityItem->$methodNotItem()) {
-                        return false;
-                    }
-                }
-                return $connexityItem->$methodItem();
-            } else {
-                // if we cannot get the parent, then we throw an exception
-                throw new CommonDBConnexityItemNotFound();
+        if ($connexityItem === false) {
+            // Skipping endpoint grants does not skip attachment validation. Only
+            // an empty selection belongs to the relation/child's attachment policy.
+            if (!in_array($this->fields[$items_id] ?? null, [null, '', 0, '0'], true)) {
+                return false;
             }
+            throw new CommonDBConnexityItemNotFound();
+        }
+        if ($item_right != self::DONT_CHECK_ITEM_RIGHTS) {
+            if ($item_right == self::HAVE_VIEW_RIGHT_ON_ITEM) {
+                $methodNotItem = 'canView';
+                $methodItem    = 'canViewItem';
+            }
+            // here, we can check item's global rights
+            if (preg_match('/^itemtype/', $itemtype)) {
+                if (!$connexityItem->$methodNotItem()) {
+                    return false;
+                }
+            }
+            return $connexityItem->$methodItem();
         }
         return true;
     }

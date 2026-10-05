@@ -42,6 +42,79 @@ use User;
 
 class Ticket extends DbTestCase
 {
+    public function anonymousActorProvider(): array
+    {
+        return ['nullable recipient' => [null], 'legacy zero recipient' => [0]];
+    }
+
+    /** @dataProvider anonymousActorProvider */
+    public function testAnonymousActorAttachment(?int $recipient): void
+    {
+        global $DB;
+        $this->login();
+        $this->setEntity('_test_root_entity', false);
+        $session = $_SESSION;
+        $manager = \itsmng\Database\Orm::create($DB);
+        $records = new \itsmng\Database\Repository\RecordRepository($manager);
+        $depth = $manager->getConnection()->getTransactionNestingLevel();
+        try {
+            $parent = new \itsmng\Database\Entity\Ticket();
+            $parent->entities = $manager->find(\itsmng\Database\Entity\Entity::class, $_SESSION['glpiactive_entity']);
+            $parent->name = 'Anonymous actor ' . bin2hex(random_bytes(8));
+            $parent->status = \Ticket::ASSIGNED;
+            $parent->recipient = $manager->find(\itsmng\Database\Entity\User::class, getItemByTypeName('User', 'normal', true));
+            $this->object($parent->entities)->isInstanceOf(\itsmng\Database\Entity\Entity::class);
+            $this->object($parent->recipient)->isInstanceOf(\itsmng\Database\Entity\User::class);
+            $this->integer($parent->recipient->id)->isNotEqualTo(\Session::getLoginUserID());
+            $assignment = new \itsmng\Database\Entity\TicketUser();
+            $assignment->tickets = $parent;
+            $assignment->actor = $manager->find(\itsmng\Database\Entity\User::class, \Session::getLoginUserID());
+            $assignment->type = \CommonITILActor::ASSIGN;
+            $manager->persist($parent);
+            $manager->persist($assignment);
+            $manager->flush();
+
+            $_SESSION['glpiactiveprofile']['ticket'] = \Ticket::OWN | \Ticket::READASSIGN;
+            $_SESSION['glpiactiveprofile']['user'] = 0;
+            $this->boolean(\Session::haveRight('ticket', UPDATE))->isFalse();
+            $this->boolean((new \Ticket())->can($parent->id, UPDATE))->isTrue();
+            $this->boolean(\User::canView())->isFalse();
+            $input = ['tickets_id' => $parent->id, 'users_id' => $recipient,
+                'type' => \CommonITILActor::OBSERVER, 'alternative_email' => 'anonymous-' . $parent->id . '@example.invalid',
+                '_disablenotif' => true];
+            $relation = new \Ticket_User();
+            $this->boolean($relation->can(-1, CREATE, $input))->isTrue();
+            $id = (int)$relation->add($input);
+            $this->integer($id)->isGreaterThan(0);
+            $row = $records->find('glpi_tickets_users', 'id', $id);
+            $this->variable($row['users_id'])->isNull();
+            $this->string($row['alternative_email'])->isIdenticalTo($input['alternative_email']);
+            $this->boolean((new \Ticket_User())->can($id, READ))->isTrue();
+
+            $before = $records->countMatching('glpi_tickets_users', ['tickets_id' => $parent->id]);
+            $missing = (int)$manager->createQuery('SELECT MAX(u.id) FROM itsmng\\Database\\Entity\\User u')->getSingleScalarResult() + 100;
+            foreach ([null, 0, $missing] as $invalid) {
+                $proposal = $input;
+                $proposal['users_id'] = $invalid;
+                if ($invalid !== $missing) {
+                    unset($proposal['alternative_email']);
+                }
+                $this->boolean((new \Ticket_User())->can(-1, CREATE, $proposal))->isFalse();
+            }
+            $_SESSION['glpiactiveprofile']['ticket'] = \Ticket::READASSIGN;
+            $this->boolean((new \Ticket_User())->can(-1, CREATE, $input))->isFalse();
+            $_SESSION['glpiactiveprofile']['ticket'] = \Ticket::OWN | \Ticket::READASSIGN;
+            $this->setEntity(0, false);
+            $this->boolean((new \Ticket())->can($parent->id, UPDATE))->isFalse();
+            $this->boolean((new \Ticket_User())->can(-1, CREATE, $input))->isFalse();
+            $this->integer($records->countMatching('glpi_tickets_users', ['tickets_id' => $parent->id]))->isEqualTo($before);
+            $this->integer($manager->getConnection()->getTransactionNestingLevel())->isEqualTo($depth);
+        } finally {
+            $_SESSION = $session;
+            $manager->clear();
+        }
+    }
+
     public function ticketProvider()
     {
         return [

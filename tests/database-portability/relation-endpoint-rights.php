@@ -114,6 +114,13 @@ try {
     $_SESSION['glpiactiveprofile']['computer'] = 0;
     verify(!$projectRelation->canCreateItem() && !$projectRelation->canViewItem(), 'The declared view-only endpoint still requires real visibility');
 
+    foreach ([0, $computer] as $identity) {
+        $wrongKind = $projectInput;
+        $wrongKind['itemtype'] = 'Ticket';
+        $wrongKind['items_id'] = $identity;
+        verify(!(new Item_Project())->can(-1, CREATE, $wrongKind), 'An unsupported mapped endpoint kind cannot become an empty or loaded attachment');
+    }
+
     // Ticket OWN is a specialized write policy, not the global UPDATE bit.
     $_SESSION = $savedSession;
     $_SESSION['glpiactiveentities'] = [0];
@@ -156,6 +163,17 @@ try {
     $invalidAnonymous = ['tickets_id' => $ticket, 'users_id' => null, 'type' => CommonITILActor::REQUESTER];
     verify(!(new Ticket_User())->can(-1, CREATE, $invalidAnonymous), 'A missing mandatory recipient without alternate email remains refused');
 
+    $zeroAnonymous = $anonymousInput;
+    $zeroAnonymous['users_id'] = 0;
+    $zeroAnonymous['alternative_email'] = 'relation-zero-anonymous@example.invalid';
+    $zeroRelation = new Ticket_User();
+    verify($zeroRelation->can(-1, CREATE, $zeroAnonymous), 'Legacy zero anonymous-email attachment remains accepted');
+    $zeroId = $zeroRelation->add($zeroAnonymous);
+    verify($zeroId > 0 && $records()->find('glpi_tickets_users', 'id', $zeroId)['users_id'] === null, 'Legacy zero public actor converges on its nullable recipient');
+    $missingRecipient = $anonymousInput;
+    $missingRecipient['users_id'] = (int)$connection->fetchOne('SELECT MAX(id) FROM glpi_users') + 100;
+    verify(!(new Ticket_User())->can(-1, CREATE, $missingRecipient), 'Alternative email cannot excuse a supplied nonzero missing recipient');
+
     // Optional creation-form attachment does not authorize an invalid database insert.
     $_SESSION = $savedSession;
     $_SESSION['glpiactiveentities'] = [0];
@@ -168,6 +186,14 @@ try {
     $missingParent = $optional;
     $missingParent['notifications_id'] = 0;
     verify(!(new Notification_NotificationTemplate())->can(-1, CREATE, $missingParent), 'The same form retains its required notification attachment');
+    $invalidTemplate = $optional;
+    $invalidTemplate['notificationtemplates_id'] = (int)$connection->fetchOne('SELECT MAX(id) FROM glpi_notificationtemplates') + 100;
+    verify(!(new Notification_NotificationTemplate())->can(-1, CREATE, $invalidTemplate), 'An optional creation form cannot excuse a supplied nonzero missing template');
+    $rootRelation = new Entity_RSSFeed();
+    $rootRelation->fields['entities_id'] = 0;
+    $rootItem = null;
+    verify($rootRelation->canConnexityItem('canUpdateItem', 'canUpdate', CommonDBConnexity::DONT_CHECK_ITEM_RIGHTS, 'Entity', 'entities_id', $rootItem)
+        && $rootItem instanceof Entity && (int)$rootItem->getID() === 0, 'An actual root entity identity zero resolves before empty-selection handling');
     verify($connection->getTransactionNestingLevel() === $depth + 1, 'Public controls preserve the owned transaction');
 } finally {
     $connection->rollBack();
