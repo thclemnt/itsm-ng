@@ -20,16 +20,16 @@ failure to tracking properties absent before/after refusal; graph, audit, queue
 and persisted fields were unchanged. At `9567cdf8a9`, Software current reads passed
 in 15.429 seconds on PostgreSQL and 17.638 seconds on MariaDB. The revised compound
 checks exact pre-call lifecycle state including property presence; stored graph,
-audit, queue, caller frame and retry assertions remain. The complete ordered PostgreSQL suite at this head passed **228/228**. Its
-read-only final inspection found 358 tables/1,087 FKs, no pending/installing
-release and no schema differences. MariaDB is **RUNNING**; its final result and
-inspection remain pending.
+audit, queue, caller frame and retry assertions remain. The complete ordered suites at this head passed **228/228 on PostgreSQL 15.19
+and MariaDB 10.11.18**. Both read-only final inspections found 358 tables/1,087
+FKs, no pending/installing release and no schema differences. The history control
+passed within the unchanged 300-second budget in both full execution orders.
 The review branch at `5afd9769aa` differs only in documentation and test cleanup;
 application source matches the frozen runtime. Two disconnected component metadata
 CLIs were folded into the existing ItemDeviceProcessor Atoum class: seven methods,
 1,702 assertions and no skips passed through the normal runtime autoload. Existing
 behavior methods and every native contract remain; review discovery is 226
-contracts, while the running runtime lists 228 (a superset of the retained list).
+contracts, while the executed runtime listed 228 (a superset of the retained list).
 The complete disconnected review unit group at `bf415b4986` passed 18 classes,
 65 methods and 30,540 assertions with no skips through the normal runtime
 autoload; exercised application bodies match the frozen runtime.
@@ -76,7 +76,7 @@ Results apply to the exact executed source, not subsequent changes:
   **227/228**. Pending-subject diagnostics failed on both; PostgreSQL also failed
   the Software fixture. Both post-run inspections found 358 tables/1,087 FKs,
   no pending history or installation, and no schema differences. Focused repairs
-  passed at the heads above; the complete current MariaDB result remains pending.
+  passed at the heads above; complete current results are recorded above.
 - The isolated History class at `976df615ac` passed three methods and 46 assertions
   with no skips through the normal runtime autoload. Its eight new assertions
   check disconnected MySQL/PostgreSQL metadata and frozen DDL independence.
@@ -85,7 +85,8 @@ Earlier failed fixtures and reconstruction cascades remain in private evidence.
 
 The supplied historical `Changed column: glpi_certificates_items.items_id` failure
 remains **unreproduced, not diagnosed away**. Fresh checks at `4fba97caa2` and ordered schema-check contracts at `9b5b30d1aa`
-passed on both engines; newer complete runs remain necessary.
+passed on both engines; both complete suites and final inspections at
+`9567cdf8a9` passed as recorded above.
 Do not weaken the comparison or assume a stale fixture.
 Source review at `897c5c9bd6` found both expected schema and migration specify
 signed nullable BIGINT, no scalar default and the preserved relation comment.
@@ -166,11 +167,12 @@ field-preservation evidence.
 
 ## Remaining work and next validated batches
 
-1. Close the current ordered suites and post-run native inspection on both
-   providers. Keep the unchanged history budget and all adoption, invalid-data,
-   retry, sequence and native-policy assertions. Consolidate suitable coverage
-   into proper application/integration owners without hiding failures or sharing
-   mutable fixture state between independent cases.
+1. Preserve the current passing two-provider ordered results and final schema
+   inspections. Reproduce the unresolved historical certificate mismatch at its
+   exact handoff source with bound expected/actual native definitions. Keep the
+   unchanged history budget and all adoption, invalid-data, retry, sequence and
+   native-policy assertions. Consolidate suitable coverage into proper framework
+   owners without hiding failures or sharing mutable fixtures.
 2. Continue measured caller-owned projections/batching for remaining display-only
    hot paths, retaining full models where authorization or lifecycle needs them.
    Test actual values, scope, plugin/subclass behavior and fresh reads between
