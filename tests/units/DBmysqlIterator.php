@@ -42,11 +42,30 @@ use Monolog\Handler\TestHandler;
 class DBmysqlIterator extends DbTestCase
 {
     private $it;
+    private $configuredDatabase;
 
     public function beforeTestMethod($method)
     {
+        global $DB;
+        $this->configuredDatabase = $DB;
         parent::beforeTestMethod($method);
+
+        if (!in_array($method, ['testSqlError', 'testRows', 'testKey'], true)) {
+            // The legacy fixtures below include MySQL expressions and nested queries.
+            // Select their dialect explicitly without opening a second connection.
+            $this->mockGenerator->orphanize('__construct');
+            $DB = new \mock\DBmysql();
+            $this->calling($DB)->query = false;
+        }
         $this->it = new \DBmysqlIterator(null);
+    }
+
+    public function afterTestMethod($method)
+    {
+        global $DB;
+        // DbTestCase must roll back the configured writer that began the frame.
+        $DB = $this->configuredDatabase;
+        parent::afterTestMethod($method);
     }
 
     public function testQuery()
@@ -65,6 +84,9 @@ class DBmysqlIterator extends DbTestCase
     {
         global $DB;
 
+        $expected = $DB->getProvider() === 'pgsql'
+            ? 'relation "fakeTable" does not exist'
+            : "fakeTable' doesn't exist";
         $this->exception(
             function () use ($DB) {
                 $DB->request('fakeTable');
@@ -72,7 +94,7 @@ class DBmysqlIterator extends DbTestCase
         )
            ->isInstanceOf('GlpitestSQLerror')
            ->message
-              ->contains("fakeTable' doesn't exist");
+              ->contains($expected);
     }
 
 
@@ -1285,5 +1307,95 @@ class DBmysqlIterator extends DbTestCase
            'WHERE'  => ['groups_id' => new \QueryExpression('glpi_groups.id')]
         ])];
         $this->string($this->it->analyseCrit($crit))->isIdenticalTo("(SELECT COUNT(`users_id`) FROM `glpi_groups_users` WHERE `groups_id` = glpi_groups.id)");
+    }
+
+    protected function providerCompilationProvider()
+    {
+        return [
+            [
+                ['FROM' => 'foo', 'COUNT' => 'cpt', 'SELECT' => 'bar', 'DISTINCT' => true],
+                'SELECT COUNT(DISTINCT `bar`) AS cpt FROM `foo`',
+                'SELECT COUNT(DISTINCT "bar") AS "cpt" FROM "foo"',
+            ],
+            [
+                ['FROM' => 'foo', 'WHERE' => ['bar' => ['LIKE', 'a%'], 'baz' => ['NOT LIKE', 'b%']]],
+                "SELECT * FROM `foo` WHERE `bar` LIKE 'a%' AND `baz` NOT LIKE 'b%'",
+                'SELECT * FROM "foo" WHERE "bar" ILIKE \'a%\' AND "baz" NOT ILIKE \'b%\'',
+            ],
+            [
+                ['FROM' => 'foo', 'WHERE' => ['bar' => ['REGEXP', '^a'], 'baz' => ['NOT REGEX', '^b']]],
+                "SELECT * FROM `foo` WHERE `bar` REGEXP '^a' AND `baz` NOT REGEX '^b'",
+                'SELECT * FROM "foo" WHERE "bar" ~ \'^a\' AND "baz" !~ \'^b\'',
+            ],
+            [
+                ['FROM' => 'foo', 'WHERE' => ['bar' => ['&', 1], 'baz' => ['|', 2]]],
+                "SELECT * FROM `foo` WHERE `bar` & '1' AND `baz` | '2'",
+                'SELECT * FROM "foo" WHERE ("bar" & \'1\') <> 0 AND ("baz" | \'2\') <> 0',
+            ],
+            [
+                [
+                    'SELECT' => ['f.id AS fid', 'b.name'],
+                    'FROM' => 'foo AS f',
+                    'LEFT JOIN' => ['bar AS b' => ['ON' => ['f' => 'bar_id', 'b' => 'id']]],
+                    'WHERE' => ['f.id' => new \QueryParam('id')],
+                    'ORDER' => ['b.name ASC', 'f.id DESC'],
+                    'LIMIT' => 10,
+                    'START' => 5,
+                ],
+                'SELECT `f`.`id` AS `fid`, `b`.`name` FROM `foo` AS `f` LEFT JOIN `bar` AS `b` ON (`f`.`bar_id` = `b`.`id`) WHERE `f`.`id` = :id ORDER BY `b`.`name` ASC, `f`.`id` DESC LIMIT 10 OFFSET 5',
+                'SELECT "f"."id" AS "fid", "b"."name" FROM "foo" AS "f" LEFT JOIN "bar" AS "b" ON ("f"."bar_id" = "b"."id") WHERE "f"."id" = :id ORDER BY "b"."name" ASC, "f"."id" DESC LIMIT 10 OFFSET 5',
+            ],
+        ];
+    }
+
+    /**
+     * @dataProvider providerCompilationProvider
+     */
+    public function testProviderCompilation(array $criteria, string $mysqlExpected, string $pgsqlExpected)
+    {
+        $this->mockGenerator->orphanize('__construct');
+        $mysql = new \mock\DBmysql();
+        $this->mockGenerator->orphanize('__construct');
+        $pgsql = new \mock\DBpgsql();
+        foreach ([[$mysql, $mysqlExpected], [$pgsql, $pgsqlExpected]] as [$db, $expected]) {
+            $iterator = new \DBmysqlIterator($db);
+            $iterator->buildQuery($criteria);
+            $this->string($iterator->getSql())->isIdenticalTo($expected);
+        }
+    }
+
+    public function testProviderNestedQueries()
+    {
+        global $DB;
+        $savedDatabase = $DB;
+        $this->mockGenerator->orphanize('__construct');
+        $mysql = new \mock\DBmysql();
+        $this->mockGenerator->orphanize('__construct');
+        $pgsql = new \mock\DBpgsql();
+        $cases = [
+            [
+                $mysql,
+                "SELECT * FROM `foo` WHERE `bar` IN (SELECT `id` FROM `baz` WHERE `z` = 'f')",
+                'SELECT * FROM ((SELECT * FROM `table1`) UNION ALL (SELECT * FROM `table2`)) AS `allrows`',
+            ],
+            [
+                $pgsql,
+                'SELECT * FROM "foo" WHERE "bar" IN (SELECT "id" FROM "baz" WHERE "z" = \'f\')',
+                'SELECT * FROM ((SELECT * FROM "table1") UNION ALL (SELECT * FROM "table2")) AS "allrows"',
+            ],
+        ];
+        try {
+            foreach ($cases as [$DB, $subqueryExpected, $unionExpected]) {
+                $subquery = new \QuerySubQuery(['SELECT' => 'id', 'FROM' => 'baz', 'WHERE' => ['z' => 'f']]);
+                $iterator = new \DBmysqlIterator($DB);
+                $iterator->buildQuery(['FROM' => 'foo', 'WHERE' => ['bar' => $subquery]]);
+                $this->string($iterator->getSql())->isIdenticalTo($subqueryExpected);
+                $union = new \QueryUnion([['FROM' => 'table1'], ['FROM' => 'table2']], false, 'allrows');
+                $iterator->buildQuery(['FROM' => $union]);
+                $this->string($iterator->getSql())->isIdenticalTo($unionExpected);
+            }
+        } finally {
+            $DB = $savedDatabase;
+        }
     }
 }

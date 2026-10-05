@@ -73,23 +73,25 @@ class DB extends \GLPITestCase
     protected function dataName()
     {
         return [
-           ['field', '`field`'],
-           ['`field`', '`field`'],
-           ['*', '*'],
-           ['table.field', '`table`.`field`'],
-           ['table.*', '`table`.*'],
-           ['field AS f', '`field` AS `f`'],
-           ['field as f', '`field` AS `f`'],
-           ['table.field as f', '`table`.`field` AS `f`'],
+           ['field', '`field`', '"field"'],
+           ['`field`', '`field`', '"field"'],
+           ['*', '*', '*'],
+           ['table.field', '`table`.`field`', '"table"."field"'],
+           ['table.*', '`table`.*', '"table".*'],
+           ['field AS f', '`field` AS `f`', '"field" AS "f"'],
+           ['field as f', '`field` AS `f`', '"field" AS "f"'],
+           ['table.field as f', '`table`.`field` AS `f`', '"table"."field" AS "f"'],
         ];
     }
 
     /**
      * @dataProvider dataName
      */
-    public function testQuoteName($raw, $quoted)
+    public function testQuoteName($raw, $mysqlExpected, $pgsqlExpected)
     {
-        $this->string(\DB::quoteName($raw))->isIdenticalTo($quoted);
+        global $DB;
+        $expected = $DB->getProvider() === 'pgsql' ? $pgsqlExpected : $mysqlExpected;
+        $this->string(\DB::quoteName($raw))->isIdenticalTo($expected);
     }
 
     protected function dataValue()
@@ -126,25 +128,29 @@ class DB extends \GLPITestCase
                  'field'  => 'value',
                  'other'  => 'doe'
               ],
-              'INSERT INTO `table` (`field`, `other`) VALUES (\'value\', \'doe\')'
+              'INSERT INTO `table` (`field`, `other`) VALUES (\'value\', \'doe\')',
+              'INSERT INTO "table" ("field", "other") VALUES (\'value\', \'doe\')'
            ], [
               '`table`', [
                  '`field`'  => 'value',
                  '`other`'  => 'doe'
               ],
-              'INSERT INTO `table` (`field`, `other`) VALUES (\'value\', \'doe\')'
+              'INSERT INTO `table` (`field`, `other`) VALUES (\'value\', \'doe\')',
+              'INSERT INTO "table" ("field", "other") VALUES (\'value\', \'doe\')'
            ], [
               'table', [
                  'field'  => new \QueryParam(),
                  'other'  => new \QueryParam()
               ],
-              'INSERT INTO `table` (`field`, `other`) VALUES (?, ?)'
+              'INSERT INTO `table` (`field`, `other`) VALUES (?, ?)',
+              'INSERT INTO "table" ("field", "other") VALUES (?, ?)'
            ], [
               'table', [
                  'field'  => new \QueryParam('field'),
                  'other'  => new \QueryParam('other')
               ],
-              'INSERT INTO `table` (`field`, `other`) VALUES (:field, :other)'
+              'INSERT INTO `table` (`field`, `other`) VALUES (:field, :other)',
+              'INSERT INTO "table" ("field", "other") VALUES (:field, :other)'
            ]
         ];
     }
@@ -152,8 +158,10 @@ class DB extends \GLPITestCase
     /**
      * @dataProvider dataInsert
      */
-    public function testBuildInsert($table, $values, $expected)
+    public function testBuildInsert($table, $values, $mysqlExpected, $pgsqlExpected)
     {
+        global $DB;
+        $expected = $DB->getProvider() === 'pgsql' ? $pgsqlExpected : $mysqlExpected;
         $this
            ->if($this->newTestedInstance)
            ->then
@@ -170,42 +178,48 @@ class DB extends \GLPITestCase
               ], [
                  'id'  => 1
               ],
-              'UPDATE `table` SET `field` = \'value\', `other` = \'doe\' WHERE `id` = \'1\''
+              'UPDATE `table` SET `field` = \'value\', `other` = \'doe\' WHERE `id` = \'1\'',
+              'UPDATE "table" SET "field" = \'value\', "other" = \'doe\' WHERE "id" = \'1\''
            ], [
               'table', [
                  'field'  => 'value'
               ], [
                  'id'  => [1, 2]
               ],
-              'UPDATE `table` SET `field` = \'value\' WHERE `id` IN (\'1\', \'2\')'
+              'UPDATE `table` SET `field` = \'value\' WHERE `id` IN (\'1\', \'2\')',
+              'UPDATE "table" SET "field" = \'value\' WHERE "id" IN (\'1\', \'2\')'
            ], [
               'table', [
                  'field'  => 'value'
               ], [
                  'NOT'  => ['id' => [1, 2]]
               ],
-              'UPDATE `table` SET `field` = \'value\' WHERE  NOT (`id` IN (\'1\', \'2\'))'
+              'UPDATE `table` SET `field` = \'value\' WHERE  NOT (`id` IN (\'1\', \'2\'))',
+              'UPDATE "table" SET "field" = \'value\' WHERE  NOT ("id" IN (\'1\', \'2\'))'
            ], [
               'table', [
                  'field'  => new \QueryParam()
               ], [
                  'NOT' => ['id' => [new \QueryParam(), new \QueryParam()]]
               ],
-              'UPDATE `table` SET `field` = ? WHERE  NOT (`id` IN (?, ?))'
+              'UPDATE `table` SET `field` = ? WHERE  NOT (`id` IN (?, ?))',
+              'UPDATE "table" SET "field" = ? WHERE  NOT ("id" IN (?, ?))'
            ], [
               'table', [
                  'field'  => new \QueryParam('field')
               ], [
                  'NOT' => ['id' => [new \QueryParam('idone'), new \QueryParam('idtwo')]]
               ],
-              'UPDATE `table` SET `field` = :field WHERE  NOT (`id` IN (:idone, :idtwo))'
+              'UPDATE `table` SET `field` = :field WHERE  NOT (`id` IN (:idone, :idtwo))',
+              'UPDATE "table" SET "field" = :field WHERE  NOT ("id" IN (:idone, :idtwo))'
            ], [
               'table', [
                  'field'  => new \QueryExpression(\DB::quoteName('field') . ' + 1')
               ], [
                  'id'  => [1, 2]
               ],
-              'UPDATE `table` SET `field` = `field` + 1 WHERE `id` IN (\'1\', \'2\')'
+              'UPDATE `table` SET `field` = `field` + 1 WHERE `id` IN (\'1\', \'2\')',
+              'UPDATE "table" SET "field" = "field" + 1 WHERE "id" IN (\'1\', \'2\')'
            ]
         ];
     }
@@ -213,8 +227,10 @@ class DB extends \GLPITestCase
     /**
      * @dataProvider dataUpdate
      */
-    public function testBuildUpdate($table, $values, $where, $expected)
+    public function testBuildUpdate($table, $values, $where, $mysqlExpected, $pgsqlExpected)
     {
+        global $DB;
+        $expected = $DB->getProvider() === 'pgsql' ? $pgsqlExpected : $mysqlExpected;
         $this
           ->if($this->newTestedInstance)
           ->then
@@ -240,27 +256,32 @@ class DB extends \GLPITestCase
               'table', [
                  'id'  => 1
               ],
-              'DELETE `table` FROM `table` WHERE `id` = \'1\''
+              'DELETE `table` FROM `table` WHERE `id` = \'1\'',
+              'DELETE FROM "table" WHERE "id" = \'1\''
            ], [
               'table', [
                  'id'  => [1, 2]
               ],
-              'DELETE `table` FROM `table` WHERE `id` IN (\'1\', \'2\')'
+              'DELETE `table` FROM `table` WHERE `id` IN (\'1\', \'2\')',
+              'DELETE FROM "table" WHERE "id" IN (\'1\', \'2\')'
            ], [
               'table', [
                  'NOT'  => ['id' => [1, 2]]
               ],
-              'DELETE `table` FROM `table` WHERE  NOT (`id` IN (\'1\', \'2\'))'
+              'DELETE `table` FROM `table` WHERE  NOT (`id` IN (\'1\', \'2\'))',
+              'DELETE FROM "table" WHERE  NOT ("id" IN (\'1\', \'2\'))'
            ], [
               'table', [
                  'NOT'  => ['id' => [new \QueryParam(), new \QueryParam()]]
               ],
-              'DELETE `table` FROM `table` WHERE  NOT (`id` IN (?, ?))'
+              'DELETE `table` FROM `table` WHERE  NOT (`id` IN (?, ?))',
+              'DELETE FROM "table" WHERE  NOT ("id" IN (?, ?))'
            ], [
               'table', [
                  'NOT'  => ['id' => [new \QueryParam('idone'), new \QueryParam('idtwo')]]
               ],
-              'DELETE `table` FROM `table` WHERE  NOT (`id` IN (:idone, :idtwo))'
+              'DELETE `table` FROM `table` WHERE  NOT (`id` IN (:idone, :idtwo))',
+              'DELETE FROM "table" WHERE  NOT ("id" IN (:idone, :idtwo))'
            ]
         ];
     }
@@ -268,8 +289,10 @@ class DB extends \GLPITestCase
     /**
      * @dataProvider dataDelete
      */
-    public function testBuildDelete($table, $where, $expected)
+    public function testBuildDelete($table, $where, $mysqlExpected, $pgsqlExpected)
     {
+        global $DB;
+        $expected = $DB->getProvider() === 'pgsql' ? $pgsqlExpected : $mysqlExpected;
         $this
           ->if($this->newTestedInstance)
           ->then
@@ -278,6 +301,10 @@ class DB extends \GLPITestCase
 
     public function testBuildDeleteWException()
     {
+        global $DB;
+        $expected = $DB->getProvider() === 'pgsql'
+            ? 'Cannot run a DELETE query without WHERE clause!'
+            : 'Cannot run an DELETE query without WHERE clause!';
         $this->exception(
             function () {
                 $this
@@ -285,7 +312,7 @@ class DB extends \GLPITestCase
                    ->then
                       ->string($this->testedInstance->buildDelete('table', []))->isIdenticalTo('');
             }
-        )->hasMessage('Cannot run an DELETE query without WHERE clause!');
+        )->hasMessage($expected);
     }
 
     public function testListTables()
