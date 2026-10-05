@@ -118,12 +118,24 @@ class Search extends DbTestCase
     {
         global $DB;
         $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)\Session::getActiveEntity();
         $name = 'Catalogue scope ' . $this->getUniqueString();
         $ticket = new \Ticket();
         for ($i = 0; $i < 2; $i++) {
-            $this->integer((int)$ticket->add(['name' => $name . ' ' . $i, 'content' => $name]))->isGreaterThan(0);
+            $id = (int)$ticket->add([
+                'name' => $name . ' ' . $i, 'content' => $name, 'entities_id' => $entity,
+                '_users_id_requester' => \Session::getLoginUserID(),
+            ]);
+            $this->integer($id)->isGreaterThan(0);
+            $this->boolean($ticket->getFromDB($id))->isTrue();
+            $this->integer((int)$ticket->getEntityID())->isIdenticalTo($entity);
+            $this->boolean($ticket->canViewItem())->isTrue();
         }
-        $params = ['criteria' => [['field' => 1, 'searchtype' => 'contains', 'value' => $name]]];
+        $params = [
+            'is_deleted' => 0, 'start' => 0, 'search' => 'Search',
+            'criteria' => [['field' => 1, 'searchtype' => 'contains', 'value' => $name]],
+        ];
         $before = $this->doSearch('Ticket', $params, [12]);
         $this->integer($before['data']['count'])->isIdenticalTo(2);
         foreach ($before['data']['rows'] as $row) {
