@@ -53,14 +53,20 @@ class NotificationAjax extends DbTestCase
                 'mode' => 'ajax', 'recipient' => (string)$recipient,
                 'entities_id' => 0, 'itemtype' => 'NotificationAjax',
                 'name' => 'browser-clock-' . $this->getUniqueString(),
-                'body_text' => 'Preserve this rendered body', 'sent_try' => 4,
+                'body_text' => 'Preserve this rendered body',
                 'create_time' => '2010-01-01 00:00:00',
                 'send_time' => '2037-01-01 00:00:00', 'sent_time' => null,
             ]);
             $id = (int)$message->getID();
             $connection = $DB->getDoctrineConnection();
             $native = static fn (): array => $connection->fetchAssociative('SELECT * FROM glpi_queuednotifications WHERE id = ?', [$id]);
+            // The queue's public add lifecycle always starts with zero tries.
+            // Establish an existing retry count through its public update before
+            // removing queue-administration rights for the recipient operation.
+            $this->integer((int)$native()['sent_try'])->isIdenticalTo(0);
+            $this->boolean($message->update(['id' => $id, 'sent_try' => 4]))->isTrue();
             $before = $native();
+            $this->integer((int)$before['sent_try'])->isIdenticalTo(4);
             // Presentation belongs to the recipient, independent of queue
             // administration rights, active entity and the scheduled mail clock.
             $_SESSION['glpiactiveprofile']['queuednotification'] = 0;
