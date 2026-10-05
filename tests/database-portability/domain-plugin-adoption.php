@@ -24,6 +24,7 @@ define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
 require __DIR__ . '/fixtures/domains-plugin-2.1.0/Export.php';
 require __DIR__ . '/fixtures/LegacyReleaseFormat.php';
+require __DIR__ . '/fixtures/DomainAdoptionTimestampTrial.php';
 set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
     exit(1);
@@ -246,11 +247,25 @@ try {
     $connection->update('glpi_entities', ['send_domains_alert_expired_delay' => 31], ['id' => 0]);
     refused(fn () => $migration->plan($connection), 'entity alert policy conflict');
     $connection->update('glpi_entities', ['send_domains_alert_expired_delay' => 30], ['id' => 0]);
-    $connection->update('glpi_plugin_domains_domains', ['date_creation' => '2040-01-01'], ['id' => 100010]);
-    if (!$postgres) {
-        refused(fn () => $migration->plan($connection), 'exceeds native TIMESTAMP');
+    $timestampTrial = new DomainAdoptionTimestampTrial($connection);
+    $beforeDates = $timestampTrial->snapshot();
+    foreach (['2040-01-01', '2107-01-01'] as $futureDate) {
+        $connection->update('glpi_plugin_domains_domains', ['date_creation' => $futureDate], ['id' => 100010]);
+        $sourceDates = $timestampTrial->snapshot();
+        $supported = $timestampTrial->supports($futureDate);
+        verify($timestampTrial->snapshot() === $sourceDates, 'Native date capability trial rolls back every source/core row and leaves the ledger absent: ' . $futureDate);
+        if ($futureDate === '2107-01-01') {
+            verify($supported === $postgres, 'Beyond the unsigned TIMESTAMP limit, only PostgreSQL stores the exact calendar value');
+        }
+        if ($supported) {
+            $timestampTrial->verifyPlannedDates($migration->plan($connection), $futureDate);
+        } else {
+            refused(fn () => $migration->plan($connection), 'exceeds native TIMESTAMP');
+        }
+        verify($timestampTrial->snapshot() === $sourceDates, 'Date planning/refusal and accepted-value storage trial preserve exact source/core bags, native DDL and ledger absence: ' . $futureDate);
+        $connection->update('glpi_plugin_domains_domains', ['date_creation' => '2026-01-01'], ['id' => 100010]);
+        verify($timestampTrial->snapshot() === $beforeDates, 'Future-date fixture restores the complete original historical installation: ' . $futureDate);
     }
-    $connection->update('glpi_plugin_domains_domains', ['date_creation' => '2026-01-01'], ['id' => 100010]);
     $incoming = new Doctrine\DBAL\Schema\Table('glpi_plugin_test_document_owner');
     $incoming->addColumn('id', 'integer');
     $incoming->addColumn('binding_id', 'integer');
