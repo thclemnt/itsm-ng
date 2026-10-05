@@ -82,6 +82,50 @@ class EntityRegistryCache extends \atoum\atoum\test
         $this->integer($builds)->isIdenticalTo(5);
     }
 
+    public function testDamagedCacheIsAMissAndDoesNotMaskMappingFailures(): void
+    {
+        $pool = new ArrayAdapter(storeSerialized: false);
+        $cache = new Psr16Cache($pool);
+        $builds = 0;
+        $build = static function () use (&$builds): array { return ['generation' => ++$builds]; };
+        $registry = new RegistryCache($cache, $this->root);
+        $registry->load($build);
+        $key = array_key_first($pool->getValues());
+        foreach (['a:0:{}', '1:' . str_repeat('0', 64) . ':a:0:{}', '1:' . hash('sha256', 'truncated') . ':truncated'] as $damaged) {
+            $cache->set($key, $damaged);
+            $value = $registry->load($build);
+            $this->integer($value['generation'])->isIdenticalTo($builds);
+        }
+        $this->integer($builds)->isIdenticalTo(4);
+        $unrecognized = serialize(['unexpected' => new RegistryCacheWakeupProbe()]);
+        $cache->set($key, '1:' . hash('sha256', $unrecognized) . ':' . $unrecognized);
+        $this->array($registry->load($build))->isIdenticalTo(['generation' => 5]);
+        $this->integer(RegistryCacheWakeupProbe::$wakeups)->isIdenticalTo(0);
+        $cache->clear();
+        $this->exception(static fn () => $registry->load(static fn () => throw new \LogicException('Invalid authoritative mapping')))
+            ->isInstanceOf(\LogicException::class)->hasMessage('Invalid authoritative mapping');
+    }
+
+    public function testCacheFailuresAndMissingSourceUseAuthoritativeMapping(): void
+    {
+        $cache = new class (new ArrayAdapter()) extends Psr16Cache {
+            public function get($key, $default = null): mixed
+            {
+                throw new \RuntimeException('Cache unavailable');
+            }
+
+            public function set($key, $value, $ttl = null): bool
+            {
+                throw new \RuntimeException('Cache unavailable');
+            }
+        };
+        $builds = 0;
+        $build = static function () use (&$builds): array { return ['generation' => ++$builds]; };
+        $this->array((new RegistryCache($cache, $this->root))->load($build))->isIdenticalTo(['generation' => 1]);
+        unlink($this->root . '/composer.lock');
+        $this->array((new RegistryCache($cache, $this->root))->load($build))->isIdenticalTo(['generation' => 2]);
+    }
+
     public function testRealRegistryColdAndWarmProjectionsAreIdentical(): void
     {
         $previous = $GLOBALS['GLPI_CACHE'] ?? null;
@@ -106,5 +150,15 @@ class EntityRegistryCache extends \atoum\atoum\test
             $GLOBALS['GLPI_CACHE'] = $previous;
             $model->setValue(null, $previousModel);
         }
+    }
+}
+
+final class RegistryCacheWakeupProbe
+{
+    public static int $wakeups = 0;
+
+    public function __wakeup(): void
+    {
+        ++self::$wakeups;
     }
 }
