@@ -80,27 +80,32 @@ final class RecordRepository
         return array_map('intval', array_column($query->getQuery()->getScalarResult(), 'record_id'));
     }
 
+    /** Scalar conversion shared by complete model rows and domain projections. */
+    public static function legacyScalarValue(mixed $value, string $type): mixed
+    {
+        if ($value instanceof \BackedEnum) {
+            $value = $value->value;
+        }
+        if ($value === null) {
+            return null;
+        }
+        return match ($type) {
+            'boolean' => (int)$value,
+            'bigint' => filter_var($value, FILTER_VALIDATE_INT) !== false ? (int)$value : $value,
+            'date' => $value->format('Y-m-d'),
+            'datetime', 'datetimetz' => $value->format('Y-m-d H:i:s'),
+            'time' => $value->format('H:i:s'),
+            'json' => json_encode($value, JSON_THROW_ON_ERROR),
+            default => $value,
+        };
+    }
+
     public function toRow(object $record): array
     {
         $metadata = $this->em->getClassMetadata($record::class);
         $row = [];
         foreach ($metadata->fieldMappings as $property => $mapping) {
-            $value = $record->$property;
-            if ($value instanceof \BackedEnum) {
-                $value = $value->value;
-            }
-            if ($value !== null) {
-                $value = match ($mapping->type) {
-                    'boolean' => (int)$value,
-                    'bigint' => filter_var($value, FILTER_VALIDATE_INT) !== false ? (int)$value : $value,
-                    'date' => $value->format('Y-m-d'),
-                    'datetime', 'datetimetz' => $value->format('Y-m-d H:i:s'),
-                    'time' => $value->format('H:i:s'),
-                    'json' => json_encode($value, JSON_THROW_ON_ERROR),
-                    default => $value,
-                };
-            }
-            $row[$mapping->columnName] = $value;
+            $row[$mapping->columnName] = self::legacyScalarValue($record->$property, $mapping->type);
         }
         foreach ($metadata->associationMappings as $property => $mapping) {
             if (!$mapping->isToOneOwningSide()) {

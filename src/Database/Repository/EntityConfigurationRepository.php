@@ -79,24 +79,9 @@ final class EntityConfigurationRepository
             }
             $row = [];
             foreach ($columns as $index => $column) {
-                $value = $result['setting' . $index];
                 $mapping = $metadata->fieldMappings[$metadata->getFieldName($column)] ?? null;
-                if ($value instanceof \BackedEnum) {
-                    $value = $value->value;
-                }
-                if ($value !== null) {
-                    // Preserve the model row's scalar types; owning references are identifiers.
-                    $value = match ($mapping?->type ?? Types::BIGINT) {
-                        Types::BOOLEAN => (int)$value,
-                        Types::BIGINT => filter_var($value, FILTER_VALIDATE_INT) !== false ? (int)$value : $value,
-                        Types::DATE_MUTABLE => $value->format('Y-m-d'),
-                        Types::DATETIME_MUTABLE, Types::DATETIMETZ_MUTABLE => $value->format('Y-m-d H:i:s'),
-                        Types::TIME_MUTABLE => $value->format('H:i:s'),
-                        Types::JSON => json_encode($value, JSON_THROW_ON_ERROR),
-                        default => $value,
-                    };
-                }
-                $row[$column] = $value;
+                // Owning references are identifiers; scalar fields retain their mapped type.
+                $row[$column] = RecordRepository::legacyScalarValue($result['setting' . $index], $mapping?->type ?? Types::BIGINT);
             }
             $row = EntityConfigurationReferences::legacyRow($row);
             if (isset($row[$reference]) && (is_numeric($default) ? $row[$reference] != \Entity::CONFIG_PARENT : (bool)$row[$reference])) {
