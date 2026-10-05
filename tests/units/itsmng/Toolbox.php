@@ -11,6 +11,7 @@ require_once GLPI_ROOT . '/inc/toolbox.class.php';
 
 use InvalidArgumentException;
 
+/** @namespace tests\units\isolated */
 class Toolbox extends \atoum\atoum\test
 {
     public function testDeepEscapingPreservesExactTypesStringsKeysAndIdentities(): void
