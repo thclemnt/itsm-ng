@@ -37,6 +37,7 @@ require_once __DIR__ . '/fixtures/ExactSubjectHistoricalFixture.php';
 $nativeExact = new ExactSubjectHistoricalFixture($connection, ['glpi_appliances_items', 'glpi_appliances_items_relations'], captureTableDeclarations: false, preserveLedger: true);
 $nativeExactFailure = null;
 try {
+    $retainedExactPolicy = Ledger::state($connection, \itsmng\Database\Migration\V220\ExactDiscriminators::PHASE)['policy'];
     $nativeExact->beginOwnedAlteration();
     $platform = $connection->getDatabasePlatform();
     $postgres = $platform instanceof PostgreSQLPlatform;
@@ -68,7 +69,12 @@ try {
             $drop($table, $name);
             $connection->executeStatement('ALTER TABLE ' . $table . ' ADD CONSTRAINT ' . $name . ' CHECK (1 = 1)' . ($mysql ? ' NOT ENFORCED' : ''));
             $connection->executeStatement('ALTER TABLE ' . $table . ' ADD CONSTRAINT ' . $other . " CHECK (itemtype <> '')");
-            $connection->delete(Ledger::TABLE, ['version' => $migration::PHASE]);
+            // Preserve the real exact owner's projection proof while deliberately
+            // withdrawing CHECK completion for this owned constraint-repair fixture.
+            $pending = ['complete' => false, 'phase' => 'projection',
+                'items_comment' => $connection->createSchemaManager()->introspectTable($table)->getColumn('items_id')->getComment() ?? '',
+                'policy' => ['projection' => $retainedExactPolicy[$table]['projection']]];
+            Ledger::save($connection, $migration::PHASE, $pending);
             $before = $connection->fetchAllAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' ORDER BY version');
             $plan = $migration->plan($connection);
             verify(count($plan[$table]['constraints']) >= 2, 'A same-name permissive or unenforced CHECK must be replaced');
@@ -84,7 +90,7 @@ try {
                 } catch (RuntimeException $error) {
                     verify(str_contains($error->getMessage(), 'Canonical and legacy typed item references disagree') || str_contains($error->getMessage(), 'Invalid canonical typed item references'), 'Preflight reports the inconsistent owning selection');
                 }
-                verify($exists($table, $name) && Ledger::state($connection, $migration::PHASE) === null, 'Invalid preflight alters neither existing CHECK nor ledger');
+                verify($exists($table, $name) && Ledger::state($connection, $migration::PHASE) === $pending, 'Invalid preflight alters neither existing CHECK nor ledger');
             } finally {
                 $connection->rollBack();
             }
@@ -99,7 +105,7 @@ try {
                 verify($error->getMessage() === 'Injected interruption after owned CHECK DROP', 'Real DDL interruption is surfaced');
             }
             verify($exists($table, $name) === $postgres, 'PostgreSQL rolls back DROP; MySQL retains the committed constraint gap');
-            verify($postgres ? Ledger::state($connection, $migration::PHASE) === null : !Ledger::state($connection, $migration::PHASE)['complete'], 'Interruption retains the proper retry state');
+            verify($postgres ? Ledger::state($connection, $migration::PHASE) === $pending : !Ledger::state($connection, $migration::PHASE)['complete'], 'Interruption retains the proper retry state');
             verify($exists($table, $other), 'Migration never drops an unrelated CHECK');
             $migration->apply($connection);
             verify($exists($table, $name) && $exists($table, $other) && Ledger::state($connection, $migration::PHASE)['complete'], 'Retry installs its owned CHECK and preserves the unrelated CHECK');

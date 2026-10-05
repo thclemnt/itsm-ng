@@ -295,7 +295,7 @@ final class DomainDocuments extends StagedTypedItemMigration implements PendingS
                     $receipt['documents_restored'] = true;
                     Ledger::save($connection, $version, $receipt);
                 }
-                Ledger::save($connection, self::PHASE, ['complete' => true]);
+                parent::complete($connection);
             });
         } finally {
             if (!$postgres) {

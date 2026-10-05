@@ -279,6 +279,63 @@ try {
             verify($error->getMessage() === 'Injected processor phase interruption', 'Real migration surfaces injected phase failure');
         }
         verify($postgres ? Ledger::state($connection, $version) === null : !Ledger::state($connection, $version)['complete'], 'Rollback or incomplete MySQL DDL journal remains recoverable');
+        if (!$postgres && in_array($interruption, ['projection', 'constraints'], true)) {
+            $checkpoint = Ledger::state($connection, $version);
+            verify(is_string($checkpoint['policy']['projection'] ?? null), 'Projection DDL retains its native proof before the interruption callback');
+            $checkpointRows = $connection->fetchAllAssociative('SELECT * FROM ' . $tableName . ' ORDER BY id');
+            $checkpointLedger = $connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version');
+            $assertRefused = static function (string $diagnostic) use ($migration, $connection, $tableName, $checkpointRows): void {
+                $before = $connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version');
+                foreach (['plan', 'apply'] as $method) {
+                    try {
+                        $migration->$method($connection);
+                        throw new LogicException('Unproved or changed native retry policy was accepted');
+                    } catch (RuntimeException $error) {
+                        verify(str_contains($error->getMessage(), $diagnostic), 'Actual staged retry refuses ' . $diagnostic);
+                    }
+                    verify($connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version') === $before
+                        && $connection->fetchAllAssociative('SELECT * FROM ' . $tableName . ' ORDER BY id') === $checkpointRows,
+                        'Refused staged preview/apply preserves native source rows and every journal');
+                }
+            };
+            if ($interruption === 'projection') {
+                $replaceProjection = static function (string $expression) use ($connection, $tableName, $platform, $comment): void {
+                    $connection->executeStatement('ALTER TABLE ' . $tableName . ' MODIFY COLUMN items_id BIGINT GENERATED ALWAYS AS (' . $expression . ') STORED '
+                        . $platform->getInlineColumnCommentSQL($comment));
+                };
+                try {
+                    $replaceProjection('(' . $checkpoint['policy']['projection'] . ') + 0');
+                    $assertRefused('checkpoint native policy changed');
+                } finally {
+                    $replaceProjection($checkpoint['policy']['projection']);
+                }
+                $withoutProof = $checkpoint;
+                unset($withoutProof['policy']);
+                Ledger::save($connection, $version, $withoutProof);
+                try {
+                    $assertRefused('no retained authoritative projection proof');
+                } finally {
+                    Ledger::save($connection, $version, $checkpoint);
+                }
+            } else {
+                $name = $tableName . '_typed_item_kind';
+                $drop = 'ALTER TABLE ' . $tableName . ' DROP ' . ($platform instanceof MySQLPlatform ? 'CHECK ' : 'CONSTRAINT ') . $name;
+                try {
+                    if ($checkpoint['policy']['check'] !== null) {
+                        $connection->executeStatement($drop);
+                    }
+                    $connection->executeStatement('ALTER TABLE ' . $tableName . ' ADD CONSTRAINT ' . $name . ' CHECK (TRUE)');
+                    $assertRefused('checkpoint native policy changed');
+                } finally {
+                    $connection->executeStatement($drop);
+                    if ($checkpoint['policy']['check'] !== null) {
+                        $connection->executeStatement('ALTER TABLE ' . $tableName . ' ADD CONSTRAINT ' . $name . ' CHECK (' . $checkpoint['policy']['check']['clause'] . ')');
+                    }
+                }
+            }
+            verify($connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version') === $checkpointLedger,
+                'Owned corruption cleanup restores the authentic interrupted journal before successful resume');
+        }
         $migration->apply($connection);
         $rows = $connection->fetchAllAssociative('SELECT * FROM ' . $tableName . ' ORDER BY id');
         verify(count($rows) === 4 && (int)$rows[0]['items_id'] === $computer && (int)$rows[0]['computers_id'] === $computer && (int)$rows[0]['deviceprocessors_id'] === $device, 'Retry preserves wide component and Computer identities');

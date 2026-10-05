@@ -264,7 +264,7 @@ if (!$platform instanceof PostgreSQLPlatform) {
         $connection->delete(Ledger::TABLE, ['version' => $version]);
         $receipts = Ledger::states($connection);
         $preview = (new History())->plan($connection);
-        verify($preview['pending'] === [$version] && count($preview['identifier_sequences']) === 2, 'Actual canonical history discovers new repair after completed old adoption, including real core-FK identity');
+        verify($preview['phases'] === [$version] && count($preview['identifier_sequences']) === 2, 'Actual canonical history discovers new repair after completed old adoption, including real core-FK identity');
         verify(Ledger::states($connection) === $receipts && $state($computer) === $narrow && $state($child) === $childBefore, 'Canonical preview neither journals nor mutates sequences');
         try {
             (new History())->upgrade($connection, static function (string $step): void {

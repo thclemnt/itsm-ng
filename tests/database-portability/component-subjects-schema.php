@@ -347,7 +347,7 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
             }
             $ledger = $connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version');
             $preview = (new History())->plan($connection);
-            verify(in_array($version, $preview['pending'], true) && $connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version') === $ledger, 'Canonical joint preview sees the family and remains read-only');
+            verify(in_array($version, $preview['phases'], true) && $connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version') === $ledger, 'Canonical joint preview sees the family and remains read-only');
             try {
                 $migration->apply($connection, static function (string $phase, string $sql) use ($interruption, $postgres, $manager, $table, $migration, $connection, $columns): void {
                     $drop = $interruption === 'missing_projection' && $phase === 'projection' && str_contains($sql, 'DROP items_id');

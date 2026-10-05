@@ -206,7 +206,7 @@ try {
     $late = $receipt;
     $late['deferred_documents'][] = $second;
     Ledger::save($connection, $migration::GENERAL_RECEIPT, $late);
-    Ledger::save($connection, $migration::PHASE, ['complete' => false, 'phase' => 'constraints', 'projection_expanded' => true, 'items_comment' => $manager->introspectTable($table)->getColumn('items_id')->getComment()]);
+    Ledger::save($connection, $migration::PHASE, ['complete' => false, 'phase' => 'constraints', 'projection_expanded' => true, 'items_comment' => $manager->introspectTable($table)->getColumn('items_id')->getComment(), 'policy' => Ledger::state($connection, $migration::PHASE)['policy']]);
     if ($postgres) {
         $connection->executeStatement("CREATE FUNCTION itsm_domain_document_restore_probe() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN IF NEW.id = 4294976203 THEN RAISE EXCEPTION ''Injected deferred restore failure''; END IF; RETURN NEW; END'");
         $connection->executeStatement('CREATE TRIGGER itsm_domain_document_restore_probe BEFORE INSERT ON ' . $table . ' FOR EACH ROW EXECUTE FUNCTION itsm_domain_document_restore_probe()');
