@@ -85,6 +85,13 @@ The supplied historical `Changed column: glpi_certificates_items.items_id` failu
 remains **unreproduced, not diagnosed away**. Fresh checks at `4fba97caa2` and ordered schema-check contracts at `9b5b30d1aa`
 passed on both engines; newer complete runs remain necessary.
 Do not weaken the comparison or assume a stale fixture.
+Source review at `897c5c9bd6` found both expected schema and migration specify
+signed nullable BIGINT, no scalar default and the preserved relation comment.
+Related MySQL-only commit `62d5feb74f` cannot explain the PostgreSQL report; the
+SchemaCheck changed-column comparison is unchanged. Historical reproduction still
+needs exact-source/locked-dependency expected and actual Column properties, native
+DDL/comments/generated expression, executed projection SQL and database binding
+before/after the infrastructure fixture. Current convergence is not that diagnosis.
 
 ## Controlled performance evidence
 
