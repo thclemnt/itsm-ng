@@ -42,6 +42,9 @@ jobs:
       - name: Run composer install
         run: export NODE_OPTIONS=--openssl-legacy-provider && php bin/console dependencies install
 
+      - name: Run isolated Doctrine and domain unit tests
+        run: composer test:units:isolated
+
       - name: Start MySQL
         run: |
           sudo apt autoremove --purge mysql*

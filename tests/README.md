@@ -56,10 +56,14 @@ There are multiple directories for tests:
 - `tests/LDAP` for LDAP connection tests;
 - `tests/web` for API tests.
 
-You can choose to run tests on a whole directory, on any file, or on any \<class::method>. You have to specify a bootstrap file each time:
+Run both unit groups with their Composer commands. `test:units` runs application tests with `tests/bootstrap.php`; `test:units:isolated` runs Doctrine and domain units in `tests/units/itsmng` with only the Composer autoloader. The application command and CI action exclude the isolated group.
+
+For a specific application test file or \<class::method>, specify the application bootstrap:
 
 ```bash
-$ atoum -bf tests/bootstrap.php -mcn 1 -d tests/units/
+$ composer test:units
+[...]
+$ composer test:units:isolated
 [...]
 $ atoum -bf tests/bootstrap.php -f tests/units/Html.php
 [...]
