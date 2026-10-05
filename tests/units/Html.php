@@ -497,103 +497,94 @@ class Html extends \GLPITestCase
            'other.css',
            'other-min.css'
         ];
-        $dir = str_replace(realpath(GLPI_ROOT), '', realpath(GLPI_TMP_DIR));
-        $base_expected = '<link rel="stylesheet" type="text/css" href="'.
-           $CFG_GLPI['root_doc'] . $dir .'/%url?v='. ITSM_VERSION .'" %attrs>';
-        $base_attrs = 'media="all"';
+        $this->withTemporaryWebResources($fake_files, function (string $dir) use ($CFG_GLPI): void {
+            $base_expected = '<link rel="stylesheet" type="text/css" href="'.
+               $CFG_GLPI['root_doc'] . $dir .'/%url?v='. ITSM_VERSION .'" %attrs>';
+            $base_attrs = 'media="all"';
 
-        //create test files
-        foreach ($fake_files as $fake_file) {
-            touch(GLPI_TMP_DIR . '/' . $fake_file);
-        }
+            //expect minified file
+            $expected = str_replace(
+                ['%url', '%attrs'],
+                ['file.min.css', $base_attrs],
+                $base_expected
+            );
+            $this->string(\Html::css($dir . '/file.css'))->isIdenticalTo($expected);
 
-        //expect minified file
-        $expected = str_replace(
-            ['%url', '%attrs'],
-            ['file.min.css', $base_attrs],
-            $base_expected
-        );
-        $this->string(\Html::css($dir . '/file.css'))->isIdenticalTo($expected);
+            //explicitely require not minified file
+            $expected = str_replace(
+                ['%url', '%attrs'],
+                ['file.css', $base_attrs],
+                $base_expected
+            );
+            $this->string(\Html::css($dir . '/file.css', [], false))->isIdenticalTo($expected);
 
-        //explicitely require not minified file
-        $expected = str_replace(
-            ['%url', '%attrs'],
-            ['file.css', $base_attrs],
-            $base_expected
-        );
-        $this->string(\Html::css($dir . '/file.css', [], false))->isIdenticalTo($expected);
+            //activate debug mode: expect not minified file
+            $_SESSION['glpi_use_mode'] = \Session::DEBUG_MODE;
+            $expected = str_replace(
+                ['%url', '%attrs'],
+                ['file.css', $base_attrs],
+                $base_expected
+            );
+            $this->string(\Html::css($dir . '/file.css'))->isIdenticalTo($expected);
+            $_SESSION['glpi_use_mode'] = \Session::NORMAL_MODE;
 
-        //activate debug mode: expect not minified file
-        $_SESSION['glpi_use_mode'] = \Session::DEBUG_MODE;
-        $expected = str_replace(
-            ['%url', '%attrs'],
-            ['file.css', $base_attrs],
-            $base_expected
-        );
-        $this->string(\Html::css($dir . '/file.css'))->isIdenticalTo($expected);
-        $_SESSION['glpi_use_mode'] = \Session::NORMAL_MODE;
+            //expect original file
+            $expected = str_replace(
+                ['%url', '%attrs'],
+                ['nofile.css', $base_attrs],
+                $base_expected
+            );
+            $this->string(\Html::css($dir . '/nofile.css'))->isIdenticalTo($expected);
 
-        //expect original file
-        $expected = str_replace(
-            ['%url', '%attrs'],
-            ['nofile.css', $base_attrs],
-            $base_expected
-        );
-        $this->string(\Html::css($dir . '/nofile.css'))->isIdenticalTo($expected);
+            //expect original file
+            $expected = str_replace(
+                ['%url', '%attrs'],
+                ['other.css', $base_attrs],
+                $base_expected
+            );
+            $this->string(\Html::css($dir . '/other.css'))->isIdenticalTo($expected);
 
-        //expect original file
-        $expected = str_replace(
-            ['%url', '%attrs'],
-            ['other.css', $base_attrs],
-            $base_expected
-        );
-        $this->string(\Html::css($dir . '/other.css'))->isIdenticalTo($expected);
+            //expect original file
+            $expected = str_replace(
+                ['%url', '%attrs'],
+                ['other-min.css', $base_attrs],
+                $base_expected
+            );
+            $this->string(\Html::css($dir . '/other-min.css'))->isIdenticalTo($expected);
 
-        //expect original file
-        $expected = str_replace(
-            ['%url', '%attrs'],
-            ['other-min.css', $base_attrs],
-            $base_expected
-        );
-        $this->string(\Html::css($dir . '/other-min.css'))->isIdenticalTo($expected);
+            //expect minified file, print media
+            $expected = str_replace(
+                ['%url', '%attrs'],
+                ['file.min.css', 'media="print"'],
+                $base_expected
+            );
+            $this->string(\Html::css($dir . '/file.css', ['media' => 'print']))->isIdenticalTo($expected);
 
-        //expect minified file, print media
-        $expected = str_replace(
-            ['%url', '%attrs'],
-            ['file.min.css', 'media="print"'],
-            $base_expected
-        );
-        $this->string(\Html::css($dir . '/file.css', ['media' => 'print']))->isIdenticalTo($expected);
+            //expect minified file, screen media
+            $expected = str_replace(
+                ['%url', '%attrs'],
+                ['file.min.css', $base_attrs],
+                $base_expected
+            );
+            $this->string(\Html::css($dir . '/file.css', ['media' => '']))->isIdenticalTo($expected);
 
-        //expect minified file, screen media
-        $expected = str_replace(
-            ['%url', '%attrs'],
-            ['file.min.css', $base_attrs],
-            $base_expected
-        );
-        $this->string(\Html::css($dir . '/file.css', ['media' => '']))->isIdenticalTo($expected);
+            //expect minified file and specific version
+            $fake_version = '0.0.1';
+            $expected = str_replace(
+                ['%url', '%attrs', ITSM_VERSION],
+                ['file.min.css', $base_attrs, $fake_version],
+                $base_expected
+            );
+            $this->string(\Html::css($dir . '/file.css', ['version' => $fake_version]))->isIdenticalTo($expected);
 
-        //expect minified file and specific version
-        $fake_version = '0.0.1';
-        $expected = str_replace(
-            ['%url', '%attrs', ITSM_VERSION],
-            ['file.min.css', $base_attrs, $fake_version],
-            $base_expected
-        );
-        $this->string(\Html::css($dir . '/file.css', ['version' => $fake_version]))->isIdenticalTo($expected);
-
-        //expect minified file with added attributes
-        $expected = str_replace(
-            ['%url', '%attrs'],
-            ['file.min.css', 'attribute="one" ' . $base_attrs],
-            $base_expected
-        );
-        $this->string($expected, \Html::css($dir . '/file.css', ['attribute' => 'one']))->isIdenticalTo($expected);
-
-        //remove test files
-        foreach ($fake_files as $fake_file) {
-            unlink(GLPI_TMP_DIR . '/' . $fake_file);
-        }
+            //expect minified file with added attributes
+            $expected = str_replace(
+                ['%url', '%attrs'],
+                ['file.min.css', 'attribute="one" ' . $base_attrs],
+                $base_expected
+            );
+            $this->string(\Html::css($dir . '/file.css', ['attribute' => 'one']))->isIdenticalTo($expected);
+        });
     }
 
     public function testScript()
@@ -607,77 +598,101 @@ class Html extends \GLPITestCase
            'other.js',
            'other-min.js'
         ];
-        $dir = str_replace(realpath(GLPI_ROOT), '', realpath(GLPI_TMP_DIR));
-        $base_expected = '<script type="text/javascript" src="'.
-           $CFG_GLPI['root_doc'] . $dir .'/%url?v='. ITSM_VERSION .'"></script>';
+        $this->withTemporaryWebResources($fake_files, function (string $dir) use ($CFG_GLPI): void {
+            $base_expected = '<script type="text/javascript" src="'.
+               $CFG_GLPI['root_doc'] . $dir .'/%url?v='. ITSM_VERSION .'"></script>';
 
-        //create test files
-        foreach ($fake_files as $fake_file) {
-            touch(GLPI_TMP_DIR . '/' . $fake_file);
-        }
+            //expect minified file
+            $expected = str_replace(
+                '%url',
+                'file.min.js',
+                $base_expected
+            );
+            $this->string(\Html::script($dir . '/file.js'))->isIdenticalTo($expected);
 
-        //expect minified file
-        $expected = str_replace(
-            '%url',
-            'file.min.js',
-            $base_expected
-        );
-        $this->string(\Html::script($dir . '/file.js'))->isIdenticalTo($expected);
+            //explicitely require not minified file
+            $expected = str_replace(
+                '%url',
+                'file.js',
+                $base_expected
+            );
+            $this->string(\Html::script($dir . '/file.js', [], false))->isIdenticalTo($expected);
 
-        //explicitely require not minified file
-        $expected = str_replace(
-            '%url',
-            'file.js',
-            $base_expected
-        );
-        $this->string(\Html::script($dir . '/file.js', [], false))->isIdenticalTo($expected);
+            //activate debug mode: expect not minified file
+            $_SESSION['glpi_use_mode'] = \Session::DEBUG_MODE;
+            $expected = str_replace(
+                '%url',
+                'file.js',
+                $base_expected
+            );
+            $this->string(\Html::script($dir . '/file.js'))->isIdenticalTo($expected);
+            $_SESSION['glpi_use_mode'] = \Session::NORMAL_MODE;
 
-        //activate debug mode: expect not minified file
-        $_SESSION['glpi_use_mode'] = \Session::DEBUG_MODE;
-        $expected = str_replace(
-            '%url',
-            'file.js',
-            $base_expected
-        );
-        $this->string($expected, \Html::script($dir . '/file.js'))->isIdenticalTo($expected);
-        $_SESSION['glpi_use_mode'] = \Session::NORMAL_MODE;
+            //expect original file
+            $expected = str_replace(
+                '%url',
+                'nofile.js',
+                $base_expected
+            );
+            $this->string(\Html::script($dir . '/nofile.js'))->isIdenticalTo($expected);
 
-        //expect original file
-        $expected = str_replace(
-            '%url',
-            'nofile.js',
-            $base_expected
-        );
-        $this->string(\Html::script($dir . '/nofile.js'))->isIdenticalTo($expected);
+            //expect original file
+            $expected = str_replace(
+                '%url',
+                'other.js',
+                $base_expected
+            );
+            $this->string(\Html::script($dir . '/other.js'))->isIdenticalTo($expected);
 
-        //expect original file
-        $expected = str_replace(
-            '%url',
-            'other.js',
-            $base_expected
-        );
-        $this->string(\Html::script($dir . '/other.js'))->isIdenticalTo($expected);
+            //expect original file
+            $expected = str_replace(
+                '%url',
+                'other-min.js',
+                $base_expected
+            );
+            $this->string(\Html::script($dir . '/other-min.js'))->isIdenticalTo($expected);
 
-        //expect original file
-        $expected = str_replace(
-            '%url',
-            'other-min.js',
-            $base_expected
-        );
-        $this->string(\Html::script($dir . '/other-min.js'))->isIdenticalTo($expected);
+            //expect minified file and specific version
+            $fake_version = '0.0.1';
+            $expected = str_replace(
+                ['%url', ITSM_VERSION],
+                ['file.min.js', $fake_version],
+                $base_expected
+            );
+            $this->string(\Html::script($dir . '/file.js', ['version' => $fake_version]))->isIdenticalTo($expected);
+        });
+    }
 
-        //expect minified file and specific version
-        $fake_version = '0.0.1';
-        $expected = str_replace(
-            ['%url', ITSM_VERSION],
-            ['file.min.js', $fake_version],
-            $base_expected
-        );
-        $this->string(\Html::script($dir . '/file.js', ['version' => $fake_version]))->isIdenticalTo($expected);
-
-        //remove test files
-        foreach ($fake_files as $fake_file) {
-            unlink(GLPI_TMP_DIR . '/' . $fake_file);
+    /** Html resource URLs are relative to the application tree, not GLPI_TMP_DIR. */
+    private function withTemporaryWebResources(array $files, callable $test): void
+    {
+        $dir = '/tests/units/.html-resources-' . bin2hex(random_bytes(8));
+        $path = GLPI_ROOT . $dir;
+        $hadMode = array_key_exists('glpi_use_mode', $_SESSION);
+        $mode = $_SESSION['glpi_use_mode'] ?? null;
+        $created = false;
+        try {
+            $created = mkdir($path, 0700);
+            $this->boolean($created)->isTrue();
+            foreach ($files as $file) {
+                $this->boolean(touch($path . '/' . $file))->isTrue();
+            }
+            $_SESSION['glpi_use_mode'] = \Session::NORMAL_MODE;
+            $test($dir);
+        } finally {
+            if ($hadMode) {
+                $_SESSION['glpi_use_mode'] = $mode;
+            } else {
+                unset($_SESSION['glpi_use_mode']);
+            }
+            if ($created) {
+                foreach ($files as $file) {
+                    if (is_file($path . '/' . $file)) {
+                        unlink($path . '/' . $file);
+                    }
+                }
+                rmdir($path);
+            }
         }
     }
 

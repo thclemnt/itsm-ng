@@ -583,29 +583,50 @@ class Toolbox extends \GLPITestCase
 
     public function testSaveAndDeletePicture()
     {
-        // Save an image twice
-        $test_file = __DIR__ . '/../files/test.png';
-        copy(__DIR__ . '/../../pics/add_dropdown.png', $test_file); // saved image will be removed from FS
-        $first_pict = \Toolbox::savePicture($test_file);
-        $this->string($first_pict)->matches('#[^/]+/.+\.png#'); // generated random name inside subdir
+        $test_file = GLPI_TMP_DIR . '/picture-unit-' . bin2hex(random_bytes(8)) . '.png';
+        $first_pict = $second_pict = null;
+        $existingDirectories = glob(GLPI_PICTURE_DIR . '/*', GLOB_ONLYDIR) ?: [];
+        try {
+            // Save an image twice
+            $this->boolean(copy(__DIR__ . '/../../pics/add_dropdown.png', $test_file))->isTrue(); // savePicture moves its source
+            $first_pict = \Toolbox::savePicture($test_file);
+            $this->string($first_pict)->matches('#[^/]+/.+\.png#'); // generated random name inside subdir
 
-        copy(__DIR__ . '/../../pics/add_dropdown.png', $test_file); // saved image will be removed from FS
-        $second_pict = \Toolbox::savePicture($test_file);
-        $this->string($second_pict)->matches('#[^/]+/.+\.png#'); // generated random name inside subdir
+            $this->boolean(copy(__DIR__ . '/../../pics/add_dropdown.png', $test_file))->isTrue(); // savePicture moves its source
+            $second_pict = \Toolbox::savePicture($test_file);
+            $this->string($second_pict)->matches('#[^/]+/.+\.png#'); // generated random name inside subdir
 
-        // Check that second saving of same image is not overriding first saved image.
-        $this->string($first_pict)->isNotEqualTo($second_pict);
+            // Check that second saving of same image is not overriding first saved image.
+            $this->string($first_pict)->isNotEqualTo($second_pict);
 
-        // Delete saved images
-        $this->boolean(\Toolbox::deletePicture($first_pict))->isTrue();
-        $this->boolean(\Toolbox::deletePicture($second_pict))->isTrue();
+            // Delete saved images
+            $this->boolean(\Toolbox::deletePicture($first_pict))->isTrue();
+            $this->boolean(\Toolbox::deletePicture($second_pict))->isTrue();
 
-        // Save not an image
-        $this->boolean(\Toolbox::savePicture(__DIR__ . '/../notanimage.jpg'))->isFalse();
+            // Save not an image
+            $this->boolean(\Toolbox::savePicture(__DIR__ . '/../notanimage.jpg'))->isFalse();
 
-        // Save and delete unexisting files
-        $this->boolean(\Toolbox::savePicture('notafile.jpg'))->isFalse();
-        $this->boolean(\Toolbox::deletePicture('notafile.jpg'))->isFalse();
+            // Save and delete unexisting files
+            $this->boolean(\Toolbox::savePicture('notafile.jpg'))->isFalse();
+            $this->boolean(\Toolbox::deletePicture('notafile.jpg'))->isFalse();
+        } finally {
+            if (is_file($test_file)) {
+                unlink($test_file);
+            }
+            foreach ([$first_pict, $second_pict] as $picture) {
+                if (!is_string($picture)) {
+                    continue;
+                }
+                if (is_file(GLPI_PICTURE_DIR . '/' . $picture)) {
+                    \Toolbox::deletePicture($picture);
+                }
+                $directory = dirname(GLPI_PICTURE_DIR . '/' . $picture);
+                if (preg_match('#^[a-f0-9]{2}/[^/]+\.png$#', $picture) && !in_array($directory, $existingDirectories, true)
+                    && is_dir($directory) && count(scandir($directory)) === 2) {
+                    rmdir($directory);
+                }
+            }
+        }
     }
 
     protected function getPictureUrlProvider()
