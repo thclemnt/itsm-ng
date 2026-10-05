@@ -785,126 +785,32 @@ abstract class API extends CommonGLPI
                     ]);
 
                     while ($data = $netp_iterator->next()) {
-                        if (isset($data['netport_id'])) {
-                            // append network name
-                            $concat_expr = new QueryExpression(
-                                "GROUP_CONCAT(CONCAT(" . $DB->quoteName('ipadr.id') . ", " . $DB->quoteValue(Search::SHORTSEP) . " , " . $DB->quoteName('ipadr.name') . ")
-                        SEPARATOR " . $DB->quoteValue(Search::LONGSEP) . ") AS " . $DB->quoteName('ipadresses')
-                            );
-                            $netn_iterator = $DB->request([
-                               'SELECT'    => [
-                                  $concat_expr,
-                                  'netn.id AS networknames_id',
-                                  'netn.name AS networkname',
-                                  'netn.fqdns_id',
-                                  'fqdn.name AS fqdn_name',
-                                  'fqdn.fqdn'
-                               ],
-                               'FROM'      => [
-                                  'glpi_networknames AS netn'
-                               ],
-                               'LEFT JOIN' => [
-                                  'glpi_ipaddresses AS ipadr'               => [
-                                     'ON' => [
-                                        'ipadr'  => 'items_id',
-                                        'netn'   => 'id',
-                                        [
-                                           'AND' => ['ipadr.itemtype' => 'NetworkName']
-                                        ]
-                                     ]
-                                  ],
-                                  'glpi_fqdns AS fqdn'                      => [
-                                     'ON' => [
-                                        'fqdn'   => 'id',
-                                        'netn'   => 'fqdns_id'
-                                     ]
-                                  ],
-                                  'glpi_ipaddresses_ipnetworks AS ipadnet'  => [
-                                     'ON' => [
-                                        'ipadnet'   => 'ipaddresses_id',
-                                        'ipadr'     => 'id'
-                                     ]
-                                  ],
-                                  'glpi_ipnetworks AS ipnet'                => [
-                                     'ON' => [
-                                        'ipnet'     => 'id',
-                                        'ipadnet'   => 'ipnetworks_id'
-                                     ]
-                                  ]
-                               ],
-                               'WHERE'     => [
-                                  'netn.itemtype'   => 'NetworkPort',
-                                  'netn.items_id'   => $data['netport_id']
-                               ],
-                               'GROUPBY'   => [
-                                  'netn.id',
-                                  'netn.name',
-                                  'netn.fqdns_id',
-                                  'fqdn.name',
-                                  'fqdn.fqdn'
-                               ]
-                            ]);
-
-                            if (count($netn_iterator)) {
-                                $data_netn = $netn_iterator->next();
-
-                                $raw_ipadresses = explode(Search::LONGSEP, (string) $data_netn['ipadresses']);
-                                $ipadresses = [];
-                                foreach ($raw_ipadresses as $ipadress) {
-                                    $ipadress = explode(Search::SHORTSEP, $ipadress);
-
-                                    //find ip network attached to these ip
-                                    $ipnetworks = [];
-                                    $ipnet_iterator = $DB->request([
-                                       'SELECT'       => [
-                                          'ipnet.id',
-                                          'ipnet.completename',
-                                          'ipnet.name',
-                                          'ipnet.address',
-                                          'ipnet.netmask',
-                                          'ipnet.gateway',
-                                          'ipnet.ipnetworks_id',
-                                          'ipnet.comment'
-                                       ],
-                                       'FROM'         => 'glpi_ipnetworks AS ipnet',
-                                       'INNER JOIN'   => [
-                                          'glpi_ipaddresses_ipnetworks AS ipadnet' => [
-                                             'ON' => [
-                                                'ipadnet'   => 'ipnetworks_id',
-                                                'ipnet'     => 'id'
-                                             ]
-                                          ]
-                                       ],
-                                       'WHERE'        => [
-                                          'ipadnet.ipaddresses_id'  => $ipadress[0]
-                                       ]
-                                    ]);
-                                    while ($data_ipnet = $ipnet_iterator->next()) {
-                                        $ipnetworks[] = $data_ipnet;
-                                    }
-
-                                    $ipadresses[] = [
-                                       'id'        => $ipadress[0],
-                                       'name'      => $ipadress[1],
-                                       'IPNetwork' => $ipnetworks
-                                    ];
-                                }
-
-                                $data['NetworkName'] = [
-                                   'id'         => $data_netn['networknames_id'],
-                                   'name'       => $data_netn['networkname'],
-                                   'fqdns_id'   => $data_netn['fqdns_id'],
-                                   'FQDN'       => [
-                                      'id'   => $data_netn['fqdns_id'],
-                                      'name' => $data_netn['fqdn_name'],
-                                      'fqdn' => $data_netn['fqdn']
-                                   ],
-                                   'IPAddress' => $ipadresses
-                                ];
-                            }
-                        }
-
                         $fields['_networkports'][$networkport_type][] = $data;
+                    }
+                }
+                $ports = [];
+                foreach ($fields['_networkports'] as $instantiations) {
+                    foreach ($instantiations as $port) {
+                        if (isset($port['netport_id'])) {
+                            $ports[] = (int)$port['netport_id'];
+                        }
+                    }
+                }
+                if ($ports !== []) {
+                    $em = \itsmng\Database\Orm::create($DB);
+                    try {
+                        $names = (new \itsmng\Database\Repository\NetworkNameRepository($em))->apiDetailsForPorts($ports);
+                        foreach ($fields['_networkports'] as &$instantiations) {
+                            foreach ($instantiations as &$port) {
+                                if (isset($port['netport_id'], $names[(int)$port['netport_id']])) {
+                                    $port['NetworkName'] = $names[(int)$port['netport_id']];
+                                }
+                            }
+                            unset($port);
+                        }
+                        unset($instantiations);
+                    } finally {
+                        $em->clear();
                     }
                 }
             }

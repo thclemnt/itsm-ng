@@ -40,6 +40,8 @@ use Itsmng\Tests\Web\Deprecated\TicketFollowup;
 use GuzzleHttp;
 use GuzzleHttp\Exception\ClientException;
 use ITILFollowup;
+use itsmng\Database\Entity as OrmEntity;
+use itsmng\Database\Orm;
 
 /* Test for inc/api/api.class.php */
 
@@ -262,6 +264,154 @@ class APIRest extends APIBaseClass
             unset($page['headers']);
             $this->array($page)->isIdenticalTo(array_slice($ordered, 2, 2));
             $this->string($headers['Content-Range'][0])->isIdenticalTo('2-3/' . count($expected));
+        }
+    }
+
+    /**
+     * @tags api
+     * @covers API::getItem
+     */
+    public function testNetworkPortAddressExpansion()
+    {
+        global $DB;
+
+        $computer = $this->createComputer();
+        $em = Orm::create($DB);
+        $entity = $em->getReference(OrmEntity\Entity::class, (int)$computer->getEntityID());
+        $ports = $subtypes = $names = $addresses = $networks = $links = [];
+        try {
+            for ($number = 1; $number <= 2; ++$number) {
+                $port = new OrmEntity\NetworkPort();
+                $port->entities = $entity;
+                $port->itemtype = 'Computer';
+                $port->items_id = (int)$computer->getID();
+                $port->instantiation_type = 'NetworkPortEthernet';
+                $port->logical_number = $number;
+                $port->name = 'Expansion port ' . $number;
+                $em->persist($ports[] = $port);
+                $subtype = new OrmEntity\NetworkPortEthernet();
+                $subtype->networkports_id = $port;
+                $em->persist($subtypes[] = $subtype);
+            }
+            $em->flush();
+            foreach ([$ports[0], $ports[0], $ports[1]] as $index => $port) {
+                $name = new OrmEntity\NetworkName();
+                $name->entities = $entity;
+                $name->itemtype = 'NetworkPort';
+                $name->items_id = $port->id;
+                $name->name = ['Selected "name"', 'Later name', 'Empty address collection'][$index];
+                $em->persist($names[] = $name);
+            }
+            $em->flush();
+            foreach (['10.42.1.9', '198.51.100.9'] as $ip) {
+                $address = new OrmEntity\IPAddress();
+                $address->entities = $entity;
+                $address->itemtype = 'NetworkName';
+                $address->items_id = $names[0]->id;
+                $address->name = $ip;
+                $address->version = 4;
+                $address->binary_2 = 65535;
+                $address->binary_3 = (int)ip2long($ip);
+                $em->persist($addresses[] = $address);
+            }
+            foreach (['255.255.0.0' => '10.42.0.0', '255.255.255.0' => '10.42.1.0'] as $mask => $address) {
+                $network = new OrmEntity\IPNetwork();
+                $network->entities = $entity;
+                $network->name = 'Overlapping network ' . $mask;
+                $network->completename = $network->name;
+                $network->address = $address;
+                $network->netmask = $mask;
+                $network->gateway = '10.42.1.1';
+                $network->comment = 'Expanded "membership"';
+                $network->version = 4;
+                $network->address_2 = $network->gateway_2 = 65535;
+                $network->address_3 = (int)ip2long($address);
+                $network->netmask_2 = 4294967295;
+                $network->netmask_3 = (int)ip2long($mask);
+                $network->gateway_3 = (int)ip2long($network->gateway);
+                $em->persist($networks[] = $network);
+            }
+            $em->flush();
+            foreach ($networks as $network) {
+                $link = new OrmEntity\IPAddressIPNetwork();
+                $link->ipaddresses = $addresses[0];
+                $link->ipnetworks = $network;
+                $em->persist($links[] = $link);
+            }
+            $em->flush();
+
+            $read = Orm::create($DB);
+            try {
+                $repository = new \itsmng\Database\Repository\NetworkNameRepository($read);
+                $this->array($repository->apiDetailsForPorts([]))->isEmpty();
+                $details = $repository->apiDetailsForPorts([$ports[0]->id, $ports[1]->id]);
+                $this->integer($read->getUnitOfWork()->size())->isIdenticalTo(0);
+                $this->array($details[$ports[0]->id]['IPAddress'])->hasSize(2);
+
+                $data = $this->query('getItem', [
+                    'itemtype' => 'Computer',
+                    'id' => $computer->getID(),
+                    'headers' => ['Session-Token' => $this->session_token],
+                    'query' => ['with_networkports' => true],
+                ]);
+                $public = [];
+                foreach ($data['_networkports']['NetworkPortEthernet'] as $port) {
+                    $public[(int)$port['netport_id']] = $port;
+                }
+                $this->integer((int)$public[$ports[0]->id]['logical_number'])->isIdenticalTo(1);
+                $this->array($public[$ports[0]->id])->hasKey('speed')->hasKey('mac');
+                $name = $public[$ports[0]->id]['NetworkName'];
+                $this->integer($name['id'])->isIdenticalTo($names[0]->id);
+                $this->string($name['name'])->isIdenticalTo('Selected "name"');
+                $this->array($name['IPAddress'])->hasSize(2);
+                $this->array(array_column($name['IPAddress'], 'id'))->isIdenticalTo(
+                    [(string)$addresses[0]->id, (string)$addresses[1]->id]
+                );
+                $this->array($name['IPAddress'][0]['IPNetwork'])->hasSize(2);
+                foreach ($networks as $index => $network) {
+                    $this->array($name['IPAddress'][0]['IPNetwork'][$index])->isIdenticalTo([
+                        'id' => $network->id,
+                        'completename' => $network->completename,
+                        'name' => $network->name,
+                        'address' => $network->address,
+                        'netmask' => $network->netmask,
+                        'gateway' => $network->gateway,
+                        'ipnetworks_id' => null,
+                        'comment' => $network->comment,
+                    ]);
+                }
+                $this->array($name['IPAddress'][1]['IPNetwork'])->isEmpty();
+                $this->array($public[$ports[1]->id]['NetworkName']['IPAddress'])->isEmpty();
+                $this->variable($name['fqdns_id'])->isNull();
+                $this->array($name['FQDN'])->isIdenticalTo(['id' => null, 'name' => null, 'fqdn' => null]);
+
+                $names[0]->name = 'Current committed name';
+                $networks[0]->gateway = '10.42.1.2';
+                $networks[0]->gateway_3 = (int)ip2long($networks[0]->gateway);
+                $em->flush();
+                $current = $repository->apiDetailsForPorts([$ports[0]->id]);
+                $this->string($current[$ports[0]->id]['name'])->isIdenticalTo($names[0]->name);
+                $this->string($current[$ports[0]->id]['IPAddress'][0]['IPNetwork'][0]['gateway'])->isIdenticalTo($networks[0]->gateway);
+                $this->integer($read->getUnitOfWork()->size())->isIdenticalTo(0);
+            } finally {
+                $read->clear();
+            }
+        } finally {
+            // Respect real owning FK order, including scalar compatibility parent identities.
+            foreach ([$links, $addresses, $names, $subtypes, $ports, $networks] as $owned) {
+                foreach ($owned as $row) {
+                    $em->remove($row);
+                }
+                $em->flush();
+            }
+            $em->clear();
+            $this->query('deleteItems', [
+                'itemtype' => 'Computer',
+                'id' => $computer->getID(),
+                'verb' => 'DELETE',
+                'headers' => ['Session-Token' => $this->session_token],
+                'query' => ['force_purge' => true],
+            ]);
         }
     }
 

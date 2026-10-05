@@ -16,6 +16,80 @@ final class NetworkNameRepository
     {
     }
 
+    /**
+     * Expand API ports without encoding address identities in a concatenated string.
+     * Parent admission belongs to the caller; retain the historical unfiltered child view.
+     * The first name is deterministic, and every address contains its complete membership list.
+     */
+    public function apiDetailsForPorts(array $ports): array
+    {
+        $ports = array_values(array_unique(array_map('intval', $ports)));
+        if ($ports === []) {
+            return [];
+        }
+        $rows = $this->em->createQueryBuilder()
+            ->select('n.id', 'n.items_id AS port_id', 'n.name', 'fqdnRecord.id AS fqdns_id',
+                'fqdnRecord.name AS fqdn_name', 'fqdnRecord.fqdn AS fqdn')
+            ->from(Entity\NetworkName::class, 'n')->leftJoin('n.fqdns_id', 'fqdnRecord')
+            ->where('n.itemtype = :type AND n.items_id IN (:ports)')
+            ->setParameter('type', 'NetworkPort', Types::STRING)
+            ->setParameter('ports', $ports, ArrayParameterType::INTEGER)
+            ->orderBy('n.items_id')->addOrderBy('n.id')->getQuery()->getArrayResult();
+        $details = [];
+        $namePorts = [];
+        foreach ($rows as $row) {
+            $port = (int)$row['port_id'];
+            if (isset($details[$port])) {
+                continue;
+            }
+            $namePorts[(int)$row['id']] = $port;
+            $details[$port] = [
+                'id' => $row['id'],
+                'name' => $row['name'],
+                'fqdns_id' => $row['fqdns_id'],
+                'FQDN' => ['id' => $row['fqdns_id'], 'name' => $row['fqdn_name'], 'fqdn' => $row['fqdn']],
+                'IPAddress' => [],
+            ];
+        }
+        if ($namePorts === []) {
+            return [];
+        }
+        $addresses = $this->em->createQueryBuilder()
+            ->select('a.id', 'a.items_id AS name_id', 'a.name')
+            ->from(Entity\IPAddress::class, 'a')
+            ->where('a.itemtype = :type AND a.items_id IN (:names)')
+            ->setParameter('type', 'NetworkName', Types::STRING)
+            ->setParameter('names', array_keys($namePorts), ArrayParameterType::INTEGER)
+            ->orderBy('a.items_id')->addOrderBy('a.id')->getQuery()->getArrayResult();
+        $networks = [];
+        if ($addresses !== []) {
+            $memberships = $this->em->createQueryBuilder()
+                ->select('addressRecord.id AS address_id', 'network.id', 'network.completename',
+                    'network.name', 'network.address', 'network.netmask', 'network.gateway',
+                    'parentNetwork.id AS ipnetworks_id', 'network.comment')
+                ->from(Entity\IPAddressIPNetwork::class, 'link')->innerJoin('link.ipnetworks', 'network')
+                ->innerJoin('link.ipaddresses', 'addressRecord')->leftJoin('network.parent', 'parentNetwork')
+                ->where('addressRecord.id IN (:addresses)')
+                ->setParameter('addresses', array_column($addresses, 'id'), ArrayParameterType::INTEGER)
+                ->orderBy('address_id')->addOrderBy('network.id')->addOrderBy('link.id')
+                ->getQuery()->getArrayResult();
+            foreach ($memberships as $network) {
+                $address = (int)$network['address_id'];
+                unset($network['address_id']);
+                $networks[$address][] = $network;
+            }
+        }
+        foreach ($addresses as $address) {
+            $details[$namePorts[(int)$address['name_id']]]['IPAddress'][] = [
+                // The previous public representation exposed concatenated identifiers as strings.
+                'id' => (string)$address['id'],
+                'name' => $address['name'],
+                'IPNetwork' => $networks[(int)$address['id']] ?? [],
+            ];
+        }
+        return $details;
+    }
+
     private function names(string $type, int $id, ?array $entities): QueryBuilder
     {
         $query = $this->em->createQueryBuilder()->from(Entity\NetworkName::class, 'n')
