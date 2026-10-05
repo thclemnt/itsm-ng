@@ -219,6 +219,109 @@ class Search extends DbTestCase
     }
 
 
+    public function testUnionReusesUnrelatedHooksByCriterionOccurrence(): void
+    {
+        $this->login();
+        $probe = new class extends \Computer {
+            public static int $calls = 0;
+            public static function getTable($classname = null)
+            {
+                return \Computer::getTable();
+            }
+            public static function addWhere($link, $not, $itemtype, $id, $searchtype, $value)
+            {
+                $call = ++self::$calls;
+                return " {$link} ({$call} = {$call}) ";
+            }
+        };
+        $type = $probe::class;
+        $leaf = ['meta' => true, 'itemtype' => $type, 'field' => 1,
+            'searchtype' => 'contains', 'value' => 'same', 'link' => 'AND'];
+        $criteria = [
+            ['criteria' => [$leaf, $leaf], 'link' => 'AND'],
+            ['field' => 6, 'searchtype' => 'contains', 'value' => 'inventory', 'link' => 'AND'],
+        ];
+        $data = ['itemtype' => 'ReservationItem'];
+        $options = \itsmng\Search\SearchOption::getOptions('ReservationItem');
+        $predicates = [];
+        try {
+            $original = \itsmng\Search\Provider\CriteriaBuilder::constructCriteriaSQL(
+                $criteria, $data, $options, false, null, $predicates
+            );
+            $this->integer($probe::$calls)->isIdenticalTo(2);
+            $this->string($original)->contains('(1 = 1)')->contains('(2 = 2)');
+            foreach ([new \Computer(), new \Software()] as $asset) {
+                $member = new \itsmng\Search\Provider\UnionMember('reservation_types', $asset);
+                $sql = \itsmng\Search\Provider\CriteriaBuilder::constructCriteriaSQL(
+                    $criteria, $data, $options, false, $member, $predicates
+                );
+                $this->integer($probe::$calls)->isIdenticalTo(2);
+                // Identical leaves retain their distinct original hook results.
+                $this->string($sql)->contains('(1 = 1)')->contains('(2 = 2)');
+            }
+        } finally {
+            unset(\Search::$search[$type]);
+        }
+    }
+
+
+    public function testReservationUnionUsesOwnedInventoryFields(): void
+    {
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)\Session::getActiveEntity();
+        $prefix = 'Reservation inventory ' . $this->getUniqueString();
+        $inventory = 'inventory-' . $this->getUniqueString();
+        $reservationIds = [];
+        foreach (['Computer', 'Software'] as $type) {
+            $asset = new $type();
+            $input = ['name' => $prefix . ' ' . $type, 'entities_id' => $entity];
+            if ($type === 'Computer') {
+                $input['otherserial'] = $inventory;
+            }
+            $id = (int)$asset->add($input);
+            $this->integer($id)->isGreaterThan(0);
+            $this->boolean($asset->can($id, READ))->isTrue();
+            $reservation = new \ReservationItem();
+            $reservationId = (int)$reservation->add([
+                'itemtype' => $type, 'items_id' => $id, 'entities_id' => $entity, 'is_active' => 1,
+            ]);
+            $this->integer($reservationId)->isGreaterThan(0);
+            $reservationIds[$type] = $reservationId;
+        }
+        $base = ['field' => 1, 'searchtype' => 'contains', 'value' => $prefix];
+        foreach ([
+            [null, ['Computer', 'Software']],
+            [['field' => 6, 'searchtype' => 'contains', 'value' => $inventory], ['Computer']],
+            [['field' => 6, 'searchtype' => 'notcontains', 'value' => $inventory], ['Software']],
+            [['field' => 6, 'searchtype' => 'contains', 'value' => 'NULL'], ['Software']],
+            [['field' => 6, 'searchtype' => 'contains', 'value' => '^$'], []],
+        ] as [$inventoryCriterion, $expectedTypes]) {
+            $criteria = [$base];
+            if ($inventoryCriterion !== null) {
+                // Exercise the same explicit member resolution inside groups.
+                $criteria[] = ['link' => 'AND', 'criteria' => [$inventoryCriterion]];
+            }
+            $data = $this->doSearch('ReservationItem', [
+                'is_deleted' => 0, 'start' => 0, 'criteria' => $criteria,
+            ], [1, 6]);
+            $this->integer($data['data']['count'])->isIdenticalTo(count($expectedTypes));
+            $actualTypes = [];
+            foreach ($data['data']['rows'] as $row) {
+                $actualTypes[] = $row['TYPE'];
+                $this->integer((int)$row['refID'])->isIdenticalTo($reservationIds[$row['TYPE']]);
+                if ($row['TYPE'] === 'Software') {
+                    $this->string($row['ReservationItem_6']['displayname'])->isIdenticalTo('');
+                } else {
+                    $this->string($row['ReservationItem_6']['displayname'])->contains($inventory);
+                }
+            }
+            sort($actualTypes);
+            $this->array($actualTypes)->isIdenticalTo($expectedTypes);
+        }
+    }
+
+
     public function testMetaComputerOS()
     {
         $search_params = ['is_deleted'   => 0,

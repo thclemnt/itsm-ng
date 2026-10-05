@@ -78,7 +78,7 @@ final class ProjectionBuilder
         return $sql === '' ? '' : $sql . ', ';
     }
 
-    public static function fields(string $itemtype, int $ID, bool $meta = false, $meta_type = 0): SelectList
+    public static function fields(string $itemtype, int $ID, bool $meta = false, $meta_type = 0, ?UnionMember $member = null): SelectList
     {
         global $DB, $CFG_GLPI;
         $searchopt = & SearchOption::getOptions($itemtype);
@@ -92,7 +92,8 @@ final class ProjectionBuilder
         $d = new Dialect($DB);
         $option = $searchopt[$ID];
         $alias = $table . $addtable;
-        $column = fn (string $name) => $d->column($table, $name, $alias);
+        $column = fn (string $name) => $member
+            ? $member->column($table, $name, $alias, $d) : $d->column($table, $name, $alias);
         $value = $column($field);
         $id = $column('id');
         $fields = new SelectList();

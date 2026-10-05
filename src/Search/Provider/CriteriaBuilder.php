@@ -57,10 +57,28 @@ final class CriteriaBuilder
      *
      * @return string             the sql sub string
      */
-    public static function constructCriteriaSQL($criteria = [], $data = [], $searchopt = [], $is_having = false)
+    public static function constructCriteriaSQL($criteria = [], $data = [], $searchopt = [], $is_having = false, ?UnionMember $member = null, ?array &$unionPredicates = null, array $criterionPath = [])
     {
         $sql = "";
-        foreach ($criteria as $criterion) {
+        // This cache belongs to one union construction, keyed by occurrence.
+        // Reuse unchanged plugin predicates without invoking their hooks again.
+        $where = static function (array $path, $link, $not, $type, $id, $search, $value, $meta) use ($member, &$unionPredicates) {
+            if ($unionPredicates === null) {
+                return self::addWhere($link, $not, $type, $id, $search, $value, $meta, $member);
+            }
+            $key = serialize($path);
+            $options = $member ? SearchOption::getOptions($type) : [];
+            if ($member && !$member->applies($options[$id]['table'] ?? '') && array_key_exists($key, $unionPredicates)) {
+                return $unionPredicates[$key];
+            }
+            $predicate = self::addWhere($link, $not, $type, $id, $search, $value, $meta, $member);
+            if ($unionPredicates !== null && $member === null) {
+                $unionPredicates[$key] = $predicate;
+            }
+            return $predicate;
+        };
+        foreach ($criteria as $criterionIndex => $criterion) {
+            $path = [...$criterionPath, $criterionIndex];
             if (!isset($criterion['criteria']) && (!isset($criterion['value']) || strlen($criterion['value']) <= 0)) {
                 continue;
             }
@@ -96,7 +114,7 @@ final class CriteriaBuilder
                     $LINK = $tmplink;
                 }
                 if (isset($criterion['criteria']) && count($criterion['criteria'])) {
-                    $sub_sql = CriteriaBuilder::constructCriteriaSQL($criterion['criteria'], $data, $meta_searchopt, $is_having);
+                    $sub_sql = CriteriaBuilder::constructCriteriaSQL($criterion['criteria'], $data, $meta_searchopt, $is_having, $member, $unionPredicates, $path);
                     if (strlen($sub_sql)) {
                         if ($NOT) {
                             $sql .= "{$LINK} NOT({$sub_sql})";
@@ -118,7 +136,7 @@ final class CriteriaBuilder
                         // the having part has been already managed in the first pass
                         continue;
                     }
-                    $new_where = CriteriaBuilder::addWhere($LINK, $NOT, $itemtype, $criterion['field'], $criterion['searchtype'], $criterion['value'], $meta);
+                    $new_where = $where($path, $LINK, $NOT, $itemtype, $criterion['field'], $criterion['searchtype'], $criterion['value'], $meta);
                     if ($new_where !== false) {
                         $sql .= $new_where;
                     }
@@ -178,7 +196,7 @@ final class CriteriaBuilder
                             if ($first2) {
                                 $tmplink = " ";
                             }
-                            $new_where = CriteriaBuilder::addWhere($tmplink, $NOT, $itemtype, $key2, $criterion['searchtype'], $criterion['value'], $meta);
+                            $new_where = $where([...$path, $key2], $tmplink, $NOT, $itemtype, $key2, $criterion['searchtype'], $criterion['value'], $meta);
                             if ($new_where !== false) {
                                 $first2 = false;
                                 $view_sql .= $new_where;
@@ -681,7 +699,7 @@ final class CriteriaBuilder
      *
      * @return string Where string
      **/
-    public static function addWhere($link, $nott, $itemtype, $ID, $searchtype, $val, $meta = 0)
+    public static function addWhere($link, $nott, $itemtype, $ID, $searchtype, $val, $meta = 0, ?UnionMember $member = null)
     {
         global $DB;
         $searchopt = & SearchOption::getOptions($itemtype);
@@ -1009,7 +1027,10 @@ final class CriteriaBuilder
                 }
             }
         }
-        $tocompute = "`{$table}`.`{$field}`";
+        $criterionField = $member && $member->applies($inittable)
+            ? $member->column($inittable, $field, $table, new Dialect($DB))
+            : "`{$table}`.`{$field}`";
+        $tocompute = $criterionField;
         $tocomputetrans = "`" . $table . "_trans_" . $field . "`.`value`";
         if (isset($searchopt[$ID]["computation"])) {
             $tocompute = $searchopt[$ID]["computation"];
@@ -1159,7 +1180,7 @@ final class CriteriaBuilder
             if ((!isset($searchopt[$ID]['searchequalsonfield']) || !$searchopt[$ID]['searchequalsonfield']) && ($itemtype == 'AllAssets' || $table != $itemtype::getTable())) {
                 $out = " {$link} (`{$table}`.`id`" . $SEARCH;
             } else {
-                $out = " {$link} (`{$table}`.`{$field}`" . $SEARCH;
+                $out = " {$link} (" . $criterionField . $SEARCH;
             }
             if ($searchtype == 'notequals') {
                 $nott = !$nott;

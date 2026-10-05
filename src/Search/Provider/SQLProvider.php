@@ -166,10 +166,11 @@ final class SQLProvider implements SearchProviderInterface
         }
         $WHERE = "";
         $HAVING = "";
+        $unionPredicates = isset($CFG_GLPI['union_search_type'][$data['itemtype']]) ? [] : null;
         // Add search conditions
         // If there is search items
         if (count($data['search']['criteria'])) {
-            $WHERE = CriteriaBuilder::constructCriteriaSQL($data['search']['criteria'], $data, $searchopt);
+            $WHERE = CriteriaBuilder::constructCriteriaSQL($data['search']['criteria'], $data, $searchopt, false, null, $unionPredicates);
             $HAVING = CriteriaBuilder::constructCriteriaSQL($data['search']['criteria'], $data, $searchopt, true);
             // if criteria (with meta flag) need additional join/from sql
             CriteriaBuilder::constructAdditionalSqlForMetacriteria($data['search']['criteria'], $SELECT, $FROM, $already_link_tables, $data);
@@ -200,6 +201,7 @@ final class SQLProvider implements SearchProviderInterface
                 }
             }
         }
+        $selectFields = $SELECT;
         $SELECT = 'SELECT DISTINCT ' . $SELECT->sql($dialect, $GROUPBY !== '');
         $LIMIT = "";
         $numrows = 0;
@@ -291,11 +293,25 @@ final class SQLProvider implements SearchProviderInterface
                     } else {
                         $QUERY .= " UNION ";
                     }
+                    $member = new UnionMember($itemtable, $citem);
+                    $memberFields = clone $selectFields;
+                    foreach ($data['toview'] as $val) {
+                        if ($member->applies($searchopt[$val]['table'])) {
+                            $memberFields->merge(ProjectionBuilder::fields($data['itemtype'], (int)$val, false, 0, $member));
+                        }
+                    }
+                    $memberSelect = 'SELECT DISTINCT ' . $memberFields->sql($dialect, $GROUPBY !== '');
+                    $memberWhere = CriteriaBuilder::constructCriteriaSQL($data['search']['criteria'], $data, $searchopt, false, $member, $unionPredicates);
+                    if (!empty($COMMONWHERE)) {
+                        $memberWhere = ' WHERE ' . $COMMONWHERE . ($memberWhere !== '' ? ' AND ( ' . $memberWhere . ' )' : '');
+                    } elseif ($memberWhere !== '') {
+                        $memberWhere = ' WHERE ' . $memberWhere;
+                    }
                     $tmpquery = "";
                     // AllAssets case
                     if ($data['itemtype'] == 'AllAssets') {
-                        $tmpquery = $SELECT . ', ' . $dialect->literal($ctype)
-                            . ' AS ' . $dialect->quote('TYPE') . ' ' . $FROM . $WHERE;
+                        $tmpquery = $memberSelect . ', ' . $dialect->literal($ctype)
+                            . ' AS ' . $dialect->quote('TYPE') . ' ' . $FROM . $memberWhere;
                         $tmpquery .= " AND `{$ctable}`.`id` IS NOT NULL ";
                         // Add deleted if item have it
                         if ($citem && $citem->maybeDeleted()) {
@@ -314,11 +330,11 @@ final class SQLProvider implements SearchProviderInterface
                     } else {
                         // Ref table case
                         $reftable = $data['itemtype']::getTable();
-                        $tmpquery = $SELECT . ', ' . $dialect->literal($ctype)
+                        $tmpquery = $memberSelect . ', ' . $dialect->literal($ctype)
                             . ' AS ' . $dialect->quote('TYPE') . ', '
                             . $dialect->quote($reftable . '.id') . ' AS ' . $dialect->quote('refID') . ', '
                             . $dialect->quote($ctable . '.entities_id') . ' AS ' . $dialect->quote('ENTITY')
-                            . ' ' . $FROM . $WHERE;
+                            . ' ' . $FROM . $memberWhere;
                         if ($data['item']->maybeDeleted()) {
                             $tmpquery = str_replace("`" . $CFG_GLPI["union_search_type"][$data['itemtype']] . "`.
                                                 `is_deleted`", "`{$reftable}`.`is_deleted`", $tmpquery);
@@ -329,15 +345,8 @@ final class SQLProvider implements SearchProviderInterface
                                      AND `{$reftable}`.`itemtype` = '{$ctype}')";
                         $tmpquery = str_replace("FROM `" . $CFG_GLPI["union_search_type"][$data['itemtype']] . "`", $replace, $tmpquery);
                         $tmpquery = str_replace($CFG_GLPI["union_search_type"][$data['itemtype']], $ctable, $tmpquery);
-                        $name_field = $ctype::getNameField();
-                        $tmpquery = str_replace("`{$ctable}`.`name`", "`{$ctable}`.`{$name_field}`", $tmpquery);
                     }
                     $tmpquery = str_replace("ENTITYRESTRICT", \getEntitiesRestrictRequest('', $ctable, '', '', $citem->maybeRecursive()), $tmpquery);
-                    // SOFTWARE HACK
-                    if ($ctype == 'Software') {
-                        $tmpquery = str_replace("`glpi_softwares`.`serial`", "''", $tmpquery);
-                        $tmpquery = str_replace("`glpi_softwares`.`otherserial`", "''", $tmpquery);
-                    }
                     $QUERY .= $tmpquery;
                 }
             }
