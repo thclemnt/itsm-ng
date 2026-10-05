@@ -210,21 +210,32 @@ class Item_DeviceGeneric extends DbTestCase
             $this->object($source_computer)->isInstanceOf('\Computer');
             $this->object($target_computer)->isInstanceOf('\Computer');
 
+            $entity_id = (int)$source_computer->getEntityID();
+            $this->integer((int)$target_computer->getEntityID())->isIdenticalTo($entity_id);
+            $this->boolean(\Session::haveAccessToEntity($entity_id))->isTrue();
+            $this->boolean($source_computer->can($source_computer->getID(), UPDATE))->isTrue();
+            $this->boolean($target_computer->can($target_computer->getID(), UPDATE))->isTrue();
+
             $device = new \DeviceMemory();
             $device_id = $device->add([
                 'designation'  => 'memory-' . $this->getUniqueString(),
                 'size_default' => 2048,
+                'entities_id'  => $entity_id,
             ]);
             $this->integer((int)$device_id)->isGreaterThan(0);
+            $this->boolean($device->getFromDB($device_id))->isTrue();
+            $this->boolean($device->can($device_id, UPDATE))->isTrue();
 
             $link = new \Item_DeviceMemory();
             $initial_link_id = $link->add([
                 'itemtype'          => 'Computer',
                 'items_id'          => $source_computer->getID(),
                 'devicememories_id' => $device_id,
-                'entities_id'       => 0,
+                'entities_id'       => $entity_id,
             ]);
             $this->integer((int)$initial_link_id)->isGreaterThan(0);
+            $this->boolean($link->can($initial_link_id, UPDATE))->isTrue();
+            $this->boolean($link->can($initial_link_id, DELETE))->isTrue();
 
             $link_selection_key = \Item_DeviceMemory::getForeignKeyField();
             $_POST = ['devices_id' => $device_id];
