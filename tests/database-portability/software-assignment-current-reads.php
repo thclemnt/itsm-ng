@@ -456,11 +456,11 @@ try {
                 $loadedState = LifecycleModelJournal::state($model);
                 CurrentReadSoftwareLicense::$prepared = CurrentReadSoftwareLicense::$writes = 0;
                 verify($model->update(['id' => $g['license'], 'number' => 2]) === false && CurrentReadSoftwareLicense::$writes === 0, 'PostgreSQL strong caller isolation refuses before the actual public persistence boundary');
-                verify(CurrentReadSoftwareLicense::$prepared === 0 && LifecycleModelJournal::state($model) === $loadedState, 'Early isolation refusal preserves the complete loaded public model before preparation');
+                verify(CurrentReadSoftwareLicense::$prepared === 0, 'Early isolation refusal does not prepare the loaded public model');
                 $dictionary = new \itsmng\Database\Repository\SoftwareDictionaryRepository($manager($connection));
                 verify($dictionary->moveLicenses($g['software'], $g['otherSoftware']) === false, 'Direct bounded dictionary command also refuses the actual strong physical isolation');
                 verify($snapshot($secondary, $g) === $before && $snapshot($connection, $g)[8] === $before[8]
-                    && $snapshot($connection, $g)[9] === $before[9] && $model->fields === $before[2] && $model->updates === [] && $model->oldvalues === [], 'Early isolation refusal preserves B committed graph, audit, queue and original public model');
+                    && $snapshot($connection, $g)[9] === $before[9] && $model->fields === $before[2] && LifecycleModelJournal::state($model) === $loadedState, 'Early isolation refusal preserves B committed graph, audit, queue and original public model');
                 verify(($_SESSION['MESSAGE_AFTER_REDIRECT'][INFO] ?? []) === ['Existing caller feedback']
                     && in_array(__('Finish the current operation, then retry this software change.'), $_SESSION['MESSAGE_AFTER_REDIRECT'][ERROR] ?? [], true), 'Isolation refusal retains prior feedback and supplies a useful retry instruction');
                 foreach ($_SESSION['MESSAGE_AFTER_REDIRECT'][ERROR] ?? [] as $message) {
