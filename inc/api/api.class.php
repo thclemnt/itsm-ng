@@ -1395,18 +1395,27 @@ abstract class API extends CommonGLPI
                     FROM " . $DB->quoteName($table) . "
                     $join
                     WHERE $where
-                    ORDER BY " . $DB->quoteName($params['sort']) . " " . $params['order'] . "
-                    LIMIT " . (int)$params['start'] . ", " . (int)$params['list_limit'];
-            if ($result = $DB->query($query)) {
-                while ($data = $DB->fetchAssoc($result)) {
-
-                    $found[] = $data;
-                }
+                    ORDER BY " . $DB->quoteName($params['sort']) . " " . $params['order'];
+            $query = $DB->getDoctrineConnection()->getDatabasePlatform()->modifyLimitQuery(
+                $query,
+                (int)$params['list_limit'],
+                (int)$params['start']
+            );
+            $result = $DB->query($query);
+            if ($result === false) {
+                return $this->returnError(__('Unable to retrieve the requested items.'), 500, "ERROR_SQL", false);
+            }
+            while ($data = $DB->fetchAssoc($result)) {
+                $found[] = $data;
             }
 
             // get result full row counts
             $count_query = "SELECT COUNT(*) FROM {$DB->quoteName($table)} $join WHERE $where";
-            $totalcount = $DB->fetchRow($DB->query($count_query))[0];
+            $count_result = $DB->query($count_query);
+            if ($count_result === false) {
+                return $this->returnError(__('Unable to retrieve the requested items.'), 500, "ERROR_SQL", false);
+            }
+            $totalcount = $DB->fetchRow($count_result)[0];
 
         }
 

@@ -223,6 +223,75 @@ class APIRest extends APIBaseClass
     }
 
     /**
+     * @tags api
+     * @covers API::getItems
+     */
+    public function testDropdownCollectionPagination()
+    {
+        global $DB;
+
+        $expected = [];
+        foreach ($DB->request(['FROM' => 'glpi_specialstatuses', 'ORDER' => 'id ASC']) as $row) {
+            $expected[] = ['id' => (int)$row['id']];
+        }
+        $this->integer(count($expected))->isGreaterThanOrEqualTo(4);
+
+        $params = [
+            'itemtype' => 'SpecialStatus',
+            'headers' => ['Session-Token' => $this->session_token],
+            'query' => [
+                'sort' => 'id',
+                'only_id' => true,
+                'get_hateoas' => false,
+                'range' => '0-9999',
+            ],
+        ];
+        $all = $this->query('getItems', $params);
+        $headers = $all['headers'];
+        unset($all['headers']);
+        $this->array($all)->isIdenticalTo($expected);
+        $this->string($headers['Content-Range'][0])->isIdenticalTo(
+            '0-' . (count($expected) - 1) . '/' . count($expected)
+        );
+
+        foreach (['ASC' => $expected, 'DESC' => array_reverse($expected)] as $order => $ordered) {
+            $params['query']['order'] = $order;
+            $params['query']['range'] = '2-3';
+            $page = $this->query('getItems', $params, 206);
+            $headers = $page['headers'];
+            unset($page['headers']);
+            $this->array($page)->isIdenticalTo(array_slice($ordered, 2, 2));
+            $this->string($headers['Content-Range'][0])->isIdenticalTo('2-3/' . count($expected));
+        }
+    }
+
+    /**
+     * @tags api
+     * @covers API::getItems
+     */
+    public function testDropdownCollectionQueryFailure()
+    {
+        // A nonexistent filter field makes the physical SELECT fail on both providers.
+        // The API must report an error rather than a successful empty collection.
+        $response = $this->doHttpRequest('GET', 'SpecialStatus/', [
+            'http_errors' => false,
+            'headers' => ['Session-Token' => $this->session_token],
+            'query' => [
+                'get_hateoas' => false,
+                'searchText' => ['_missing_api_collection_field' => 'diagnostic'],
+            ],
+        ]);
+        $this->integer($response->getStatusCode())->isIdenticalTo(500);
+        $body = json_decode((string)$response->getBody(), true);
+        $this->array($body)->hasSize(2);
+        $this->string($body[0])->isIdenticalTo('ERROR_SQL');
+        $this->string($body[1])->isNotEmpty()
+            ->notContains('_missing_api_collection_field')
+            ->notContains('SELECT ')
+            ->notContains('SQLSTATE');
+    }
+
+    /**
      * @tags   api
      * @covers API::cors
     **/
