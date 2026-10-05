@@ -329,10 +329,15 @@ final class KnowledgeBaseRepository
                 ->setParameter('language', $language, Types::STRING);
         }
         $categories = $query->getQuery()->getArrayResult();
+        $metadata = $this->em->getClassMetadata(KnowbaseItemCategory::class);
+        $parentMetadata = $this->em->getClassMetadata($metadata->getAssociationTargetClass('knowbaseitemcategories'));
         foreach ($categories as &$category) {
-            $category['id'] = RecordRepository::legacyScalarValue($category['id'], Types::BIGINT);
+            $category['id'] = RecordRepository::legacyScalarValue(
+                $category['id'], $metadata->getTypeOfField($metadata->getSingleIdentifierFieldName())
+            );
             $category['knowbaseitemcategories_id'] = RecordRepository::legacyScalarValue(
-                $category['knowbaseitemcategories_id'], Types::BIGINT
+                $category['knowbaseitemcategories_id'],
+                $parentMetadata->getTypeOfField($parentMetadata->getSingleIdentifierFieldName())
             );
             if (!empty($category['translated_name'])) {
                 $category['name'] = $category['translated_name'];
