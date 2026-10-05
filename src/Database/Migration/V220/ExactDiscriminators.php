@@ -42,6 +42,9 @@ final class ExactDiscriminators
         CheckConstraintSupport::assertSupported($connection);
         $policy = Ledger::state($connection, self::PHASE)['policy'] ?? null;
         if (!is_array($policy) || array_keys($policy) !== array_keys(self::definitions()['tables'])) {
+            // Incomplete historical owners still need physical diagnostics;
+            // a successful inspection cannot replace missing retained proof.
+            $this->inspectPlan($connection, verify: true);
             throw new \RuntimeException('The experimental exact-subject receipt lacks retained post-DDL native policy. Its CHECK and generated expressions cannot be certified from completion flags. Restore the genuine 2.1.3 source and apply the supported transition; no receipt or data was rewritten.');
         }
         foreach (self::definitions()['tables'] as $table => $definition) {
