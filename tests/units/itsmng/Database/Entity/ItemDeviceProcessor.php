@@ -4,17 +4,99 @@
 
 namespace tests\units\itsmng\Database\Entity;
 
+use Doctrine\DBAL\Platforms\MySQLPlatform;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Mapping\JoinColumn;
-use itsmng\Database\Entity\ItemDeviceProcessor as Processor;
+use itsmng\Database\BaselineSchema;
+use itsmng\Database\EntityRegistry;
+use itsmng\Database\Entity\ItemDeviceBattery;
 use itsmng\Database\Entity\ItemDeviceHardDrive;
 use itsmng\Database\Entity\ItemDeviceMemory;
 use itsmng\Database\Entity\ItemDeviceMotherboard;
-use itsmng\Database\Entity\ItemDeviceBattery;
 use itsmng\Database\Entity\ItemDevicePowerSupply;
+use itsmng\Database\Entity\ItemDeviceProcessor as Processor;
+use itsmng\Database\ForeignKeys;
 use itsmng\Database\Mapping\DiscriminatedBy;
+use itsmng\Database\Mapping\DiscriminatorKey;
+use itsmng\Database\Mapping\EntityScopeOwner;
+use itsmng\Database\Migration\V220\Baseline;
+use itsmng\Database\Migration\V220\BatterySubjects;
+use itsmng\Database\Migration\V220\HardDriveSubjects;
+use itsmng\Database\Migration\V220\MemorySubjects;
+use itsmng\Database\Migration\V220\MotherboardSubjects;
+use itsmng\Database\Migration\V220\PowerSupplySubjects;
+use itsmng\Database\Migration\V220\ProcessorSubjects;
+use itsmng\Database\Orm;
+use tests\fixtures\DisconnectedSchemaConnection;
+
+require_once dirname(__DIR__, 4) . '/fixtures/DisconnectedSchemaConnection.php';
 
 class ItemDeviceProcessor extends \atoum\atoum\test
 {
+    public function testComponentMetadataOwnsScopeForeignKeysAndFrozenStockDeclarations(): void
+    {
+        $families = [
+            [Processor::class, ProcessorSubjects::class, ['Computer']],
+            [ItemDeviceMotherboard::class, MotherboardSubjects::class, ['Computer']],
+            [ItemDeviceMemory::class, MemorySubjects::class, ['Computer', 'NetworkEquipment', 'Peripheral', 'Printer']],
+            [ItemDeviceHardDrive::class, HardDriveSubjects::class, ['Computer', 'Peripheral', 'NetworkEquipment', 'Printer', 'Phone']],
+            [ItemDeviceBattery::class, BatterySubjects::class, ['Computer', 'Peripheral', 'Phone', 'Printer']],
+            [ItemDevicePowerSupply::class, PowerSupplySubjects::class, ['Computer', 'NetworkEquipment', 'Enclosure']],
+        ];
+        foreach ([new MySQLPlatform(), new PostgreSQLPlatform()] as $platform) {
+            $connection = new DisconnectedSchemaConnection($platform);
+            try {
+                $this->object($connection->getDatabasePlatform())->isIdenticalTo($platform);
+                $em = new EntityManager($connection, Orm::configuration($platform));
+                $schema = (new BaselineSchema())->build($platform);
+                $historical = (new Baseline())->build($platform);
+                $historicalSql = $historical->toSql($platform);
+                foreach ($families as [$class, $migration, $kinds]) {
+                    $metadata = $em->getClassMetadata($class);
+                    $table = $schema->getTable($metadata->getTableName());
+                    $scopeOwners = array_filter($metadata->associationMappings, static fn ($association): bool =>
+                        (new \ReflectionProperty($class, $association->fieldName))->getAttributes(EntityScopeOwner::class) !== []);
+                    $this->boolean(count($scopeOwners) === 1)->isTrue('Exactly one property owns the component binding entity scope');
+                    $scopeOwner = reset($scopeOwners);
+                    $this->boolean($scopeOwner->isToOneOwningSide() && count($scopeOwner->joinColumns) === 1 && !$scopeOwner->joinColumns[0]->nullable)->isTrue('Cached entity scope belongs to a required owning definition association');
+                    $definition = $em->getClassMetadata($scopeOwner->targetEntity);
+                    $this->boolean($definition->hasField('designation') && $definition->hasAssociation('entities') && $definition->hasField('is_recursive'))->isTrue('The owning definition supplies its real entity and recursion scope');
+                    $this->boolean(EntityRegistry::entityScopeOwner($table->getName()) === ['column' => $scopeOwner->joinColumns[0]->name, 'target' => $definition->getTableName()])->isTrue('Forwarding and replacement compatibility roles derive from the same property declaration');
+                    $this->boolean((new \ReflectionProperty($class, 'entities'))->getAttributes(EntityScopeOwner::class) === [])->isTrue('The cached entity projection does not own itself');
+                    foreach ($metadata->associationMappings as $association) {
+                        $property = new \ReflectionProperty($class, $association->fieldName);
+                        if ($property->getAttributes(DiscriminatedBy::class) !== []) {
+                            $this->boolean($property->getAttributes(EntityScopeOwner::class) === [])->isTrue('An attached asset remains distinct from the definition scope owner');
+                        }
+                    }
+                    $key = (new \ReflectionProperty($class, 'items_id'))->getAttributes(DiscriminatorKey::class)[0]->newInstance();
+                    $reference = EntityRegistry::discriminatedReferences($table->getName())['items_id'];
+                    $this->boolean(array_keys($reference['selections']) === $kinds && $reference['empty_value'] === 0)->isTrue('Supported application kinds and stock policy belong to the entity properties');
+                    $this->boolean($key->exactDiscriminator && $key->emptyValue === 0 && !$table->getColumn('items_id')->getNotnull() && $table->getColumn('items_id')->getDefault() === null)->isTrue('Exact nullable stock projection is an explicit property policy');
+                    $frozen = clone $historical->getTable($table->getName());
+                    $migration::configureTable($frozen, $platform);
+                    $unquote = static fn (string $sql): string => str_replace(['`', '"'], '', $sql);
+                    $this->boolean($unquote($frozen->getColumn('items_id')->getColumnDefinition()) === $unquote($key->declaration($platform, $metadata, 'items_id')))->isTrue('Current and frozen generated CASE shapes match for every kind');
+                    $this->boolean(count($table->getForeignKeys()) === 4 + count($kinds))->isTrue('Every new subject has a real FK alongside device/entity/location/state ownership');
+                    foreach ($reference['selections'] as $kind => $selection) {
+                        $name = ForeignKeys::name($table->getName(), $selection['column']);
+                        $this->boolean($table->hasForeignKey($name) && trim($table->getForeignKey($name)->getForeignTableName(), '`"') === $selection['target'])->isTrue('Every discriminator branch points to its actual target table');
+                        $this->boolean($table->getColumn($selection['column'])->getNotnull() === false)->isTrue('An unselected association is nullable');
+                    }
+                    $this->boolean(str_contains($key->subjectCheckSql($platform, $metadata, 'items_id'), 'IS NULL') && str_contains($key->subjectCheckSql($platform, $metadata, 'items_id'), '>= 1'))->isTrue('Native CHECK contains stock and positive selected-owner branches');
+                }
+                $this->array($historical->toSql($platform))->isIdenticalTo($historicalSql, 'Configuring frozen component copies leaves the original baseline unchanged');
+                $this->boolean($connection->isConnected())->isFalse();
+            } finally {
+                $connection->close();
+                unset($em, $schema, $historical, $metadata, $definition);
+            }
+        }
+        $this->integer(count(EntityRegistry::tables()))->isIdenticalTo(357);
+        $this->integer(array_sum(array_map(count(...), ForeignKeys::relations())))->isIdenticalTo(1087);
+    }
+
     public function componentTypes(): array
     {
         return array_map(static fn ($class): array => [$class], [Processor::class, ItemDeviceMotherboard::class, ItemDeviceMemory::class, ItemDeviceHardDrive::class, ItemDeviceBattery::class, ItemDevicePowerSupply::class]);
