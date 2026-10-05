@@ -46,7 +46,7 @@ $connection = $DB->getDoctrineConnection();
 $manager = $connection->createSchemaManager();
 $platform = $connection->getDatabasePlatform();
 $upgrade = new Upgrade($DB);
-$version = History::VERSIONS[array_key_last(History::VERSIONS)];
+$version = History::versions()[array_key_last(History::versions())];
 $originalLedger = $connection->fetchAllAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' ORDER BY version');
 $originalRelease = $upgrade->release();
 $originalLocks = $connection->fetchAllAssociative("SELECT name, value FROM glpi_configs WHERE context = 'core' AND name IN ('lock_use_lock_item', 'lock_lockprofile_id')");
@@ -332,6 +332,101 @@ try {
         } finally {
             $connection->executeStatement('ALTER TABLE glpi_configs ENGINE=InnoDB');
         }
+    }
+    // A real Config post-update hook can replace the physical frame at the same
+    // depth. Publication must stop before the next release field or receipt.
+    foreach (['commit', 'rollback'] as $replacementMode) {
+        $pending();
+        foreach (['version', 'itsmversion', 'dbversion', 'itsmdbversion'] as $field) {
+            $connection->update('glpi_configs', ['value' => str_contains($field, 'dbversion') ? '2.1.3' : '2.1.6'], ['context' => 'core', 'name' => $field]);
+        }
+        $phaseRows = array_diff_key(Ledger::states($connection), [$version => true]);
+        $replacementScopes = [];
+        $replacementDepth = 0;
+        $calls = [];
+        $savedPostHook = $PLUGIN_HOOKS['item_update'] ?? null;
+        $PLUGIN_HOOKS['item_update']['upgrade_fixture']['Config'] = static function (Config $config) use ($connection, $replacementMode, &$replacementScopes, &$replacementDepth, &$calls): void {
+            $calls[] = $config->fields['name'];
+            if (count($calls) !== 1) {
+                return;
+            }
+            $replacementDepth = $connection->getTransactionNestingLevel();
+            while ($connection->getTransactionNestingLevel() > 0) {
+                $replacementMode === 'commit' ? $connection->commit() : $connection->rollBack();
+            }
+            for ($index = 0; $index < $replacementDepth; ++$index) {
+                $connection->beginTransaction();
+                $replacementScopes[] = $connection->captureManagedTransactionScope();
+            }
+            $connection->insert('glpi_configs', ['context' => 'core', 'name' => 'upgrade_owned_frame_marker', 'value' => 'replacement survives']);
+        };
+        try {
+            $upgrade->apply();
+            throw new LogicException('Config callback replacement frame was accepted');
+        } catch (\itsmng\Database\MutationCleanupFailure $error) {
+            verify($calls === ['version'] && $replacementDepth > 0, 'Actual first Config lifecycle callback stops all later release writes');
+            foreach ($replacementScopes as $scope) {
+                $scope->assertActive();
+            }
+            verify($connection->getTransactionNestingLevel() === $replacementDepth
+                && $connection->fetchOne("SELECT value FROM glpi_configs WHERE context='core' AND name='upgrade_owned_frame_marker'") === 'replacement survives',
+                'Failure cleanup neither commits nor rolls back the callback replacement frame');
+            verify($connection->fetchOne("SELECT value FROM glpi_configs WHERE context='core' AND name='itsmversion'") === '2.1.6'
+                && (Ledger::state($connection, $version)['complete'] ?? false) !== true
+                && array_diff_key(Ledger::states($connection), [$version => true]) === $phaseRows,
+                'Replacement callback cannot publish later aliases or completion and preserves original phase journals');
+        } finally {
+            if ($savedPostHook === null) {
+                unset($PLUGIN_HOOKS['item_update']);
+            } else {
+                $PLUGIN_HOOKS['item_update'] = $savedPostHook;
+            }
+            foreach (array_reverse($replacementScopes) as $scope) {
+                $scope->assertActive();
+                $connection->rollBack();
+            }
+        }
+    }
+    // A separate configured writer must remain untouched when a real Config
+    // post hook redirects globals. Stop before another release field is routed.
+    $pending();
+    foreach (['version', 'itsmversion'] as $field) {
+        $connection->update('glpi_configs', ['value' => '2.1.6'], ['context' => 'core', 'name' => $field]);
+    }
+    $writerBefore = $upgrade->release();
+    $foreignDatabase = DBConnection::createConnection($DB->getProvider(), $DB->dbhost, $DB->dbuser, rawurldecode($DB->dbpassword), $DB->dbdefault);
+    verify($foreignDatabase->connected, 'Separate publication writer fixture connects');
+    $foreignConnection = $foreignDatabase->getDoctrineConnection();
+    $foreignConnection->beginTransaction();
+    $foreignScope = $foreignConnection->captureManagedTransactionScope();
+    $foreignConnection->insert('glpi_configs', ['context' => 'core', 'name' => 'upgrade_foreign_writer_marker', 'value' => 'foreign survives']);
+    $calls = [];
+    $savedPostHook = $PLUGIN_HOOKS['item_update'] ?? null;
+    $selectedDatabase = $DB;
+    $PLUGIN_HOOKS['item_update']['upgrade_fixture']['Config'] = static function (Config $config) use ($foreignDatabase, &$calls): void {
+        $calls[] = $config->fields['name'];
+        $GLOBALS['DB'] = $foreignDatabase;
+    };
+    try {
+        $upgrade->apply();
+        throw new LogicException('Config callback writer replacement was accepted');
+    } catch (\itsmng\Database\TransactionOwnershipMismatch $error) {
+        $foreignScope->assertActive();
+        verify($calls === ['version'] && $GLOBALS['DB'] === $selectedDatabase
+            && $foreignConnection->fetchOne("SELECT value FROM glpi_configs WHERE context='core' AND name='upgrade_foreign_writer_marker'") === 'foreign survives',
+            'Writer swap stops subsequent lifecycle writes, restores globals and preserves the foreign transaction');
+        verify($upgrade->release() === $writerBefore && (Ledger::state($connection, $version)['complete'] ?? false) !== true,
+            'Writer swap rolls back owned release changes without publishing completion');
+    } finally {
+        $GLOBALS['DB'] = $selectedDatabase;
+        if ($savedPostHook === null) {
+            unset($PLUGIN_HOOKS['item_update']);
+        } else {
+            $PLUGIN_HOOKS['item_update'] = $savedPostHook;
+        }
+        $foreignScope->assertActive();
+        $foreignConnection->rollBack();
+        $foreignConnection->close();
     }
     $upgrade->apply();
     $beforeRetry = $snapshot();

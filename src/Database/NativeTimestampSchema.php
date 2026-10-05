@@ -46,13 +46,25 @@ final class NativeTimestampSchema
     public static function differences(Connection $connection, Schema $expected, ?iterable $metadata = null): array
     {
         $declarations = $metadata === null ? EntityRegistry::nativeTimestamps() : self::declarations($metadata);
-        $platform = $connection->getDatabasePlatform();
-        $differences = [];
+        $touches = [];
         foreach ($declarations as $table => $fields) {
             foreach ($fields as $column => $timestamp) {
-                if ($timestamp->touchTrigger === null || !$expected->hasTable($table) || !$expected->getTable($table)->hasColumn($column)) {
-                    continue;
+                if ($timestamp->touchTrigger !== null && $expected->hasTable($table) && $expected->getTable($table)->hasColumn($column)) {
+                    $touches[$table][$column] = ['trigger' => $timestamp->touchTrigger,
+                        'body' => $timestamp->touchBody($connection->getDatabasePlatform(), $column)];
                 }
+            }
+        }
+        return self::touchDifferences($connection, $touches);
+    }
+
+    /** Native inspection shared by current declarations and explicit frozen release inputs. */
+    public static function touchDifferences(Connection $connection, array $touches): array
+    {
+        $platform = $connection->getDatabasePlatform();
+        $differences = [];
+        foreach ($touches as $table => $fields) {
+            foreach ($fields as $column => $touch) {
                 if ($platform instanceof AbstractMySQLPlatform) {
                     $extra = $connection->fetchOne('SELECT EXTRA FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$table, $column]);
                     // A missing column has its own structural diagnostic.
@@ -65,7 +77,7 @@ final class NativeTimestampSchema
                         . 'p.pronamespace = c.relnamespace AS local_function, l.lanname '
                         . 'FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_proc p ON p.oid = t.tgfoid '
                         . 'JOIN pg_language l ON l.oid = p.prolang '
-                        . 'WHERE t.tgrelid = to_regclass(?) AND t.tgname = ? AND NOT t.tgisinternal', [$platform->quoteIdentifier($table), $timestamp->touchTrigger]);
+                        . 'WHERE t.tgrelid = to_regclass(?) AND t.tgname = ? AND NOT t.tgisinternal', [$platform->quoteIdentifier($table), $touch['trigger']]);
                     $true = static fn ($value): bool => in_array($value, [true, 1, '1', 't', 'true'], true);
                     $false = static fn ($value): bool => in_array($value, [false, 0, '0', 'f', 'false'], true);
                     $normalize = static fn (string $body): string => preg_replace('/\s+/', ' ', trim($body));
@@ -73,8 +85,8 @@ final class NativeTimestampSchema
                         !$trigger || (int)$trigger['tgtype'] !== 19 || !in_array($trigger['tgenabled'], ['O', 'A'], true)
                         || (int)$trigger['tgnargs'] !== 0 || !$true($trigger['all_columns']) || !$true($trigger['no_when']) || !$true($trigger['local_function'])
                         || !$false($trigger['prosecdef']) || !$true($trigger['no_settings']) || $trigger['lanname'] !== 'plpgsql'
-                        || $trigger['proname'] !== $timestamp->touchTrigger
-                        || $normalize($trigger['prosrc']) !== $normalize($timestamp->touchBody($platform, $column))
+                        || $trigger['proname'] !== $touch['trigger']
+                        || $normalize($trigger['prosrc']) !== $normalize($touch['body'])
                     ) {
                         $differences[] = 'Expected automatic timestamp touch: ' . $table . '.' . $column;
                     }

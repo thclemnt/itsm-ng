@@ -174,6 +174,45 @@ final class References
         return $state;
     }
 
+    /** Every owner inspects actual definitions/data, without this phase's receipt shortcut. */
+    public function verify(Connection $connection): void
+    {
+        $this->auditRequiredReferences($connection);
+        if ((new WideIdentifiers())->plan($connection)
+            || (new ForeignKeys(IdentifierColumns::history()['relations']))->plan($connection)) {
+            throw new \RuntimeException('Frozen identifier/reference conversion did not converge.');
+        }
+        foreach (self::stages() as $stage) {
+            // DomainDocuments owns the final expanded document subject set.
+            if ($stage instanceof DocumentSubjects) {
+                continue;
+            }
+            if ($stage instanceof NormalizeOptionalReferences) {
+                if ($stage->plan($connection)) {
+                    throw new \RuntimeException('Frozen optional model references retain zero sentinels.');
+                }
+            } elseif ($stage instanceof TypedItemMigration) {
+                $stage->verify($connection);
+            } else {
+                $plan = $stage->plan($connection);
+                $pending = $stage instanceof OidcReferences ? (bool)$plan : false;
+                foreach ($plan as $key => $value) {
+                    if (is_string($key) && ($key === 'sql' || str_ends_with($key, '_sql')
+                        || in_array($key, ['copy_legacy', 'root_rows', 'rows', 'ticket_calendars', 'always_open'], true))) {
+                        $pending = $pending || (bool)$value;
+                    }
+                }
+                $counts = $plan['counts'] ?? [];
+                array_walk_recursive($counts, static function ($count) use (&$pending): void {
+                    $pending = $pending || $count > 0;
+                });
+                if ($pending) {
+                    throw new \RuntimeException('Frozen reference conversion did not converge: ' . $stage::class);
+                }
+            }
+        }
+    }
+
     public function apply(Connection $connection, ?callable $progress = null): void
     {
         if (PHP_INT_SIZE < 8) {

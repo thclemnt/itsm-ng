@@ -707,10 +707,10 @@ $before = $connection->fetchAllAssociative('SELECT version, state FROM ' . Ledge
 $history->upgrade($connection);
 verify($connection->fetchAllAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' ORDER BY version') === $before, 'Completed history retry leaves the ledger unchanged');
 verify($connection->fetchOne('SELECT password FROM glpi_users WHERE id = 2') === $password, 'Completed retry does not reapply seed account values');
-foreach (History::VERSIONS as $version) {
+foreach (History::versions() as $version) {
     verify(Ledger::state($connection, $version)['complete'], 'Every canonical migration is complete: ' . $version);
 }
-verify(History::VERSIONS === ['2.2.0'] && Version220::pendingPhases(Ledger::states($connection)) === [],
+verify(History::versions() === ['2.2.0'] && Version220::pendingPhases(Ledger::states($connection)) === [],
     'The complete transition publishes one ORM release, with no unfinished internal phases');
 
 // Already experimental installations keep their real phase journals. The release
@@ -724,13 +724,76 @@ try {
     $history->upgrade($connection, onComplete: static fn () => throw new RuntimeException('Injected release publication failure'));
     throw new LogicException('Publication failure was not surfaced');
 } catch (RuntimeException $error) {
-    verify($error->getMessage() === 'Injected release publication failure' && Ledger::states($connection) === $experimental,
+    verify($error->getMessage() === 'Injected release publication failure'
+        && array_diff_key(Ledger::states($connection), [Version220::VERSION => true]) === $experimental
+        && (Ledger::state($connection, Version220::VERSION)['complete'] ?? false) !== true,
         'Publication failure preserves original phase journals without inventing release completion');
 }
 $history->upgrade($connection);
 verify(Ledger::state($connection, Version220::VERSION) === ['complete' => true]
     && array_diff_key(Ledger::states($connection), [Version220::VERSION => true]) === $experimental,
     'Validated experimental adoption adds only the real 2.2.0 receipt and preserves every existing checkpoint');
+// Later ORM releases may replace a predecessor's shape. A MySQL retry must
+// resume its committed progress without rechecking that obsolete target.
+$releaseEvents = new ArrayObject();
+$failLaterRelease = true;
+$makeRelease = static function (string $version, Closure $plan, Closure $apply, Closure $check) use ($releaseEvents): \itsmng\Database\Migration\ReleaseMigration {
+    return new class ($version, $plan, $apply, $check, $releaseEvents) implements \itsmng\Database\Migration\ReleaseMigration {
+        public function __construct(private string $name, private Closure $preview, private Closure $mutation, private Closure $check, private ArrayObject $events) {}
+        public function version(): string { return $this->name; }
+        public function plan(\Doctrine\DBAL\Connection $connection): array { ($this->preview)(); return []; }
+        public function apply(\Doctrine\DBAL\Connection $connection, ?callable $progress = null): void { $this->events[] = $this->name . ':apply'; ($this->mutation)(); }
+        public function verify(\Doctrine\DBAL\Connection $connection): void { $this->events[] = $this->name . ':verify'; ($this->check)(); }
+    };
+};
+$firstRelease = $makeRelease('fixture-next-a', static function (): void {},
+    static fn () => $connection->executeStatement('ALTER TABLE glpi_profiles RENAME COLUMN helpdesk_hardware TO fixture_first_shape'),
+    static fn () => verify(isset($manager->listTableColumns('glpi_profiles')['fixture_first_shape']), 'First release verifies its own frozen target'));
+$secondRelease = $makeRelease('fixture-next-b',
+    static fn () => verify(isset($manager->listTableColumns('glpi_profiles')['fixture_first_shape']), 'Dependent preview requires its predecessor'),
+    static function () use ($connection, $manager, &$failLaterRelease): void {
+        if (isset($manager->listTableColumns('glpi_profiles')['fixture_first_shape'])) {
+            $connection->executeStatement('ALTER TABLE glpi_profiles RENAME COLUMN fixture_first_shape TO fixture_second_shape');
+        }
+        if ($failLaterRelease) {
+            $failLaterRelease = false;
+            throw new RuntimeException('Injected later release interruption');
+        }
+        $connection->executeStatement('ALTER TABLE glpi_profiles RENAME COLUMN fixture_second_shape TO helpdesk_hardware');
+    },
+    static fn () => verify(isset($manager->listTableColumns('glpi_profiles')['helpdesk_hardware']), 'Later release supplies the current shape'));
+$futureHistory = new History([new Version220(), $firstRelease, $secondRelease]);
+try {
+    verify($futureHistory->plan($connection)['deferred_releases'] === ['fixture-next-b'], 'Read-only preview defers a structurally dependent release');
+    try {
+        $futureHistory->upgrade($connection);
+        throw new LogicException('Later release interruption was ignored');
+    } catch (RuntimeException $error) {
+        verify($error->getMessage() === 'Injected later release interruption', 'Later release failure preserves the original error');
+        verify((Ledger::state($connection, 'fixture-next-a')['complete'] ?? false) !== true
+            && Ledger::state($connection, 'fixture-next-b') === null, 'No public release completion precedes full-chain convergence');
+        verify($postgres || Ledger::state($connection, 'fixture-next-a') === ['complete' => false, 'applied' => true], 'MySQL retains verified predecessor progress');
+    }
+    $futureHistory->upgrade($connection, onComplete: static function () use ($connection): void {
+        verify(Ledger::state($connection, 'fixture-next-a')['complete'] === false
+            && Ledger::state($connection, 'fixture-next-b')['complete'] === false, 'Publication callback runs before either new completion receipt');
+    });
+    $events = $releaseEvents->getArrayCopy();
+    verify(count(array_filter($events, static fn ($event) => $event === 'fixture-next-a:verify')) === ($postgres ? 2 : 1), 'MySQL retry does not reverify the obsolete predecessor schema');
+    verify(Ledger::state($connection, 'fixture-next-a')['complete'] && Ledger::state($connection, 'fixture-next-b')['complete'], 'Ordered chain publishes both releases after current convergence');
+    $futureHistory->upgrade($connection);
+    verify($releaseEvents->getArrayCopy() === $events, 'Completed historical targets are not revalidated after later shape changes');
+} finally {
+    foreach (['fixture_first_shape', 'fixture_second_shape'] as $column) {
+        if (isset($manager->listTableColumns('glpi_profiles')[$column])) {
+            $connection->executeStatement('ALTER TABLE glpi_profiles RENAME COLUMN ' . $column . ' TO helpdesk_hardware');
+        }
+    }
+    foreach (['fixture-next-a', 'fixture-next-b'] as $version) {
+        $connection->delete(Ledger::TABLE, ['version' => $version]);
+    }
+}
+
 foreach ($componentHistorical as $bindingTable => $sourceRows) {
     $reference = \itsmng\Database\EntityRegistry::discriminatedReferences($bindingTable)['items_id'];
     foreach ($sourceRows as $id => $sourceRow) {
@@ -848,7 +911,7 @@ if ($postgres) {
 $history->install($database, 'en_GB');
 verify(!History::isInstalling($connection) && Ledger::state($connection, Baseline::PHASE)['installation_complete'], 'Retried real installation closes its explicit installation marker');
 verify((new SchemaCheck())->differences($connection) === [], 'Retried actual fresh installation converges on the same required schema');
-foreach (History::VERSIONS as $version) {
+foreach (History::versions() as $version) {
     verify(Ledger::state($connection, $version)['complete'], 'Retried actual install completes every appended history version: ' . $version);
 }
 $checkpoint('Actual fresh-install interruption and retry');

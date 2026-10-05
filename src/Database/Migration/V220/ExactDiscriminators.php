@@ -36,10 +36,16 @@ final class ExactDiscriminators
         return $plan;
     }
 
-    private function inspectPlan(Connection $connection, bool $preAdoption = false, ?PendingSubjectShape $pendingShape = null): array
+    /** Native FK/CHECK ownership and exact stored selections, independent of receipts. */
+    public function verify(Connection $connection): void
+    {
+        $this->inspectPlan($connection, verify: true);
+    }
+
+    private function inspectPlan(Connection $connection, bool $preAdoption = false, ?PendingSubjectShape $pendingShape = null, bool $verify = false): array
     {
         CheckConstraintSupport::assertSupported($connection);
-        $state = Ledger::state($connection, self::PHASE);
+        $state = $verify ? null : Ledger::state($connection, self::PHASE);
         if (($state['complete'] ?? false) === true) {
             return ['complete' => true, 'tables' => [], 'deferred' => []];
         }

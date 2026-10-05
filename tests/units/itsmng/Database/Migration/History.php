@@ -13,6 +13,40 @@ use itsmng\Database\Migration\V220\Baseline;
 
 class History extends \atoum\atoum\test
 {
+    public function testPreviewDefersDependentReleasesAndSkipsAppliedTargets(): void
+    {
+        $connection = new ReleaseJournalFixtureConnection();
+        $calls = new \ArrayObject();
+        $first = $this->release('fixture-first', $calls);
+        $second = $this->release('fixture-second', $calls);
+        $history = new Releases([$first, $second]);
+        $plan = $history->plan($connection);
+        $this->array($plan['pending'])->isIdenticalTo(['fixture-first', 'fixture-second']);
+        $this->array($plan['deferred_releases'])->isIdenticalTo(['fixture-second']);
+        $this->array($calls->getArrayCopy())->isIdenticalTo(['fixture-first']);
+        $connection->states['fixture-first'] = ['complete' => false, 'applied' => true];
+        $calls->exchangeArray([]);
+        $plan = $history->plan($connection);
+        $this->string($plan['planned_release'])->isIdenticalTo('fixture-second');
+        $this->array($plan['pending'])->isIdenticalTo(['fixture-first', 'fixture-second']);
+        $this->array($calls->getArrayCopy())->isIdenticalTo(['fixture-second']);
+        $connection->states['fixture-first'] = $connection->states['fixture-second'] = ['complete' => true];
+        $calls->exchangeArray([]);
+        $this->boolean($history->plan($connection)['complete'])->isTrue();
+        $this->array($calls->getArrayCopy())->isEmpty();
+    }
+
+    private function release(string $version, \ArrayObject $calls): \itsmng\Database\Migration\ReleaseMigration
+    {
+        return new class ($version, $calls) implements \itsmng\Database\Migration\ReleaseMigration {
+            public function __construct(private string $name, private \ArrayObject $calls) {}
+            public function version(): string { return $this->name; }
+            public function plan(Connection $connection): array { $this->calls[] = $this->name; return []; }
+            public function apply(Connection $connection, ?callable $progress = null): void { throw new \LogicException('Preview wrote a release.'); }
+            public function verify(Connection $connection): void { throw new \LogicException('Preview inspected an unapplied target.'); }
+        };
+    }
+
     public function testExperimentalCheckpointsDoNotPublishAnOrmRelease(): void
     {
         $connection = new ReleaseJournalFixtureConnection();

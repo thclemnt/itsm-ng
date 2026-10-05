@@ -5,18 +5,43 @@
 namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use itsmng\Database\CheckConstraintSupport;
+use itsmng\Database\OwnedMutationFrame;
+use itsmng\Database\SchemaCheck;
+use itsmng\Database\SequenceSynchronizer;
+use itsmng\Database\Migration\V220\Baseline;
 
-/** Public ORM release history; helper checkpoints are not application releases. */
+/** Ordered ORM releases; internal checkpoints are not application releases. */
 final class History
 {
-    public const VERSIONS = [Version220::VERSION];
+    /** Append subsequent ORM releases here, in dependency order. */
+    private const MIGRATIONS = [Version220::class];
 
-    /** Readiness is read-only and also refuses an incomplete transition journal. */
+    /** @var list<ReleaseMigration> */
+    private array $migrations;
+
+    /** An explicit chain also permits focused release-order contracts. */
+    public function __construct(?array $migrations = null)
+    {
+        $this->migrations = $migrations ?? array_map(static fn (string $class): ReleaseMigration => new $class(), self::MIGRATIONS);
+    }
+
+    public static function versions(): array
+    {
+        return array_map(static fn (ReleaseMigration $migration): string => $migration->version(), (new self())->migrations);
+    }
+
     public static function pendingVersions(Connection $connection): array
     {
         $states = Ledger::states($connection);
-        $complete = ($states[Version220::VERSION]['complete'] ?? false) === true;
-        return $complete && Version220::pendingPhases($states) === [] ? [] : self::VERSIONS;
+        return array_values(array_filter(self::versions(), static fn (string $version): bool => !self::complete($version, $states)));
+    }
+
+    private static function complete(string $version, array $states): bool
+    {
+        return ($states[$version]['complete'] ?? false) === true
+            && ($version !== Version220::VERSION || Version220::pendingPhases($states) === []);
     }
 
     public static function isInstalling(Connection $connection): bool
@@ -26,10 +51,31 @@ final class History
 
     public function plan(Connection $connection): array
     {
-        return (new Version220())->plan($connection);
+        $states = Ledger::states($connection);
+        $pending = [];
+        $details = [];
+        $deferred = [];
+        foreach ($this->migrations as $migration) {
+            $version = $migration->version();
+            if (self::complete($version, $states)) {
+                continue;
+            }
+            $pending[] = $version;
+            if (($states[$version]['applied'] ?? false) === true) {
+                continue;
+            }
+            if ($details) {
+                $deferred[] = $version;
+                continue;
+            }
+            // Later plans can require tables introduced by this one. A read-only
+            // preview reports that dependency without executing its predecessor.
+            $details = $migration->plan($connection);
+            $details['planned_release'] = $version;
+        }
+        return ['complete' => !$pending, 'pending' => $pending, 'deferred_releases' => $deferred] + $details;
     }
 
-    /** Frozen installation input, also used by the interrupted-install contract. */
     public function baseline(Connection $connection, ?callable $progress = null): void
     {
         (new Version220())->baseline($connection, $progress);
@@ -37,11 +83,87 @@ final class History
 
     public function install(\DBAdapter $database, string $language, ?callable $progress = null): void
     {
-        (new Version220())->install($database, $language, $progress);
+        $connection = $database->getDoctrineConnection();
+        $this->locked($connection, function () use ($database, $connection, $language, $progress): void {
+            (new Version220())->install($database, $language, $progress);
+            $this->replay($connection, $progress, null);
+            $database->clearSchemaCache();
+        });
     }
 
     public function upgrade(Connection $connection, ?callable $progress = null, ?callable $onComplete = null): void
     {
-        (new Version220())->upgrade($connection, $progress, $onComplete);
+        $this->locked($connection, fn () => $this->replay($connection, $progress, $onComplete));
+    }
+
+    private function replay(Connection $connection, ?callable $progress, ?callable $onComplete): void
+    {
+        CheckConstraintSupport::assertSupported($connection);
+        $states = Ledger::states($connection);
+        foreach ($this->migrations as $migration) {
+            $version = $migration->version();
+            if (self::complete($version, $states) || ($states[$version]['applied'] ?? false) === true) {
+                continue;
+            }
+            $migration->apply($connection, $progress);
+            $migration->verify($connection);
+            // MySQL later DDL may commit before a subsequent release fails. Its
+            // verified predecessor must not be revalidated against that newer
+            // partial schema. This is progress, not release publication.
+            Ledger::save($connection, $version, ['complete' => false, 'applied' => true]);
+        }
+        $differences = (new SchemaCheck())->differences($connection);
+        if ($differences) {
+            throw new \RuntimeException("Migration history did not converge:\n" . implode("\n", $differences));
+        }
+        SequenceSynchronizer::synchronize($connection);
+        $frame = OwnedMutationFrame::begin($connection);
+        try {
+            if ($onComplete !== null) {
+                $onComplete();
+                $frame->assertActive();
+            }
+            foreach ($this->migrations as $migration) {
+                if ((Ledger::state($connection, $migration->version())['complete'] ?? false) !== true) {
+                    Ledger::save($connection, $migration->version(), ['complete' => true]);
+                }
+            }
+            $baseline = Ledger::state($connection, Baseline::PHASE);
+            if (($baseline['origin'] ?? null) === 'installed' && ($baseline['installation_complete'] ?? false) !== true) {
+                $baseline['installation_complete'] = true;
+                Ledger::save($connection, Baseline::PHASE, $baseline);
+            }
+            $frame->commit();
+        } catch (\Throwable $error) {
+            try {
+                $frame->rollBack();
+            } catch (\Throwable $cleanup) {
+                throw new \itsmng\Database\MutationRollbackFailure($error, $cleanup);
+            }
+            throw $error;
+        }
+    }
+
+    private function locked(Connection $connection, callable $operation): void
+    {
+        if ($connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
+            OwnedMutationFrame::run($connection, static function () use ($connection, $operation): void {
+                $connection->executeStatement("SELECT pg_advisory_xact_lock(hashtext('itsmng_migration_history'))");
+                $operation();
+            });
+            return;
+        }
+        if ($connection->isTransactionActive()) {
+            throw new \RuntimeException('Run migration history outside a MySQL application transaction.');
+        }
+        $lock = 'itsmng_history_' . sha1($connection->getDatabase());
+        if ((int)$connection->fetchOne('SELECT GET_LOCK(?, 0)', [$lock]) !== 1) {
+            throw new \RuntimeException('Another migration history operation is running.');
+        }
+        try {
+            $operation();
+        } finally {
+            $connection->fetchOne('SELECT RELEASE_LOCK(?)', [$lock]);
+        }
     }
 }

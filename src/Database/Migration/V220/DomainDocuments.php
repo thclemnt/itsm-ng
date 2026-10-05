@@ -97,7 +97,8 @@ final class DomainDocuments extends StagedTypedItemMigration implements PendingS
         // A crash after DDL but before its phase checkpoint safely repeats the
         // same frozen declaration. Deferred Domain rows are restored only after
         // projection, CHECK and FK phases have all succeeded.
-        return (Ledger::state($connection, self::PHASE)['projection_expanded'] ?? false) !== true;
+        $state = Ledger::state($connection, self::PHASE);
+        return ($state['complete'] ?? false) !== true && ($state['projection_expanded'] ?? false) !== true;
     }
 
     protected function journalPhase(array $state, string $phase): array

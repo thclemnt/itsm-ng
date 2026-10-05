@@ -4,7 +4,6 @@
 
 namespace itsmng\Database;
 
-use itsmng\Database\Migration\V220\Baseline;
 use itsmng\Database\Migration\History;
 
 /** Supported upgrade entrypoints share canonical history and release publication. */
@@ -62,10 +61,8 @@ final class Upgrade
         }
         // The schema and identifier allocation have converged. Publish release
         // metadata together; a failed publication can be retried without replaying history.
-        (new History())->upgrade($connection, $progress, function () use ($connection): void {
-            $connection->transactional(function (): void {
-                $this->publishRelease();
-            });
+        (new History())->upgrade($connection, $progress, function (): void {
+            $this->publishRelease();
         });
         $this->database->clearSchemaCache();
         if (isset($GLOBALS['GLPI_CACHE'])) {
@@ -92,7 +89,25 @@ final class Upgrade
         $configuredDatabase = $GLOBALS['DB'] ?? null;
         try {
             $GLOBALS['DB'] = $this->database;
-            \Config::setConfigurationValues('core', $values);
+            $connection = $this->database->getDoctrineConnection();
+            TransactionOwnership::assertManaged($connection);
+            $scope = $connection->captureManagedTransactionScope();
+            $level = $connection->getTransactionNestingLevel();
+            $assertOwner = function () use ($connection, $scope, $level): void {
+                if (($GLOBALS['DB'] ?? null) !== $this->database || $this->database->getDoctrineConnection() !== $connection) {
+                    throw new TransactionOwnershipMismatch('A release publication callback changed the configured writer.');
+                }
+                $scope->assertActive();
+                if ($connection->getTransactionNestingLevel() !== $level) {
+                    throw new TransactionOwnershipMismatch('A release publication callback changed the owned frame depth.');
+                }
+            };
+            foreach ($values as $name => $value) {
+                $assertOwner();
+                \Config::setConfigurationValues('core', [$name => $value]);
+                $assertOwner();
+            }
+            $assertOwner();
             $published = $this->release();
             foreach ($target as $name => $value) {
                 if (($published[$name] ?? null) !== $value) {
@@ -114,31 +129,7 @@ final class Upgrade
     {
         $connection = $this->database->getDoctrineConnection();
         LegacyAdoptionEligibility::assertConnection($connection);
-        $platform = $connection->getDatabasePlatform();
-        $historical = (new Baseline())->build($platform);
-        $required = (new BaselineSchema())->build($platform, false);
-        $actual = $connection->createSchemaManager()->introspectSchema();
-        $missing = [];
-        foreach ($historical->getTables() as $table) {
-            if (!$actual->hasTable($table->getName())) {
-                $missing[] = 'Missing table: ' . $table->getName();
-                continue;
-            }
-            // Legitimate adoption stages remove historical columns. Later added
-            // columns must not become prerequisites for replaying those stages.
-            foreach ($table->getColumns() as $column) {
-                if ($required->getTable($table->getName())->hasColumn($column->getName()) && !$actual->getTable($table->getName())->hasColumn($column->getName())) {
-                    $missing[] = 'Missing column: ' . $table->getName() . '.' . $column->getName();
-                }
-            }
-        }
-        if ($missing) {
-            throw new \RuntimeException($this->prerequisiteMessage(implode("\n", $missing)));
-        }
-    }
-
-    private function prerequisiteMessage(string $detail): string
-    {
-        return 'This schema predates or differs from the frozen ITSM-NG adoption baseline. Upgrade older releases using their matching historical application to the ITSM-NG 2.1.3 schema before switching to this application, then run db:migrate --apply. Historical MySQL scripts cannot run against the canonical ORM schema.' . "\n" . $detail;
+        // Every pending release admits its own frozen source. Current mappings
+        // may describe tables/columns introduced or removed by later releases.
     }
 }

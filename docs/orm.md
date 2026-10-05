@@ -121,7 +121,13 @@ The existing `itsmng_migrations` ledger stores the release receipt and internal
 checkpoints. Experimental installations retain their original checkpoint keys and
 captured DDL without copying or rewriting journals. They earn the single 2.2.0
 receipt only after the pending conversion, final schema inspection and identifier
-synchronization succeed. Completion and release publication commit together.
+synchronization succeed. Each release verifies its own frozen postconditions before
+an `applied` checkpoint; the ordered history checks current mappings after the whole
+chain. A later release can therefore replace earlier columns without making an
+interrupted MySQL upgrade recheck an obsolete target. Public completion and release
+configuration commit together under the existing owned transaction frame. Each
+Config lifecycle write must retain that exact frame and configured writer before
+the next field or completion receipt can be written.
 Do not infer genuine historical provenance from mutable rights or version labels.
 
 Frozen definitions and seeds remain independent of future mappings. `BaselineSchema`

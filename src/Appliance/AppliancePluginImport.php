@@ -30,7 +30,7 @@ final class AppliancePluginImport
     public function plan(): ApplianceImportPlan
     {
         $connection = $this->database->getDoctrineConnection();
-        foreach (History::VERSIONS as $version) {
+        foreach (History::versions() as $version) {
             if ((Ledger::state($connection, $version)['complete'] ?? false) !== true) {
                 throw new \RuntimeException('Appliance import requires completed canonical history; run db:migrate for a supported core upgrade. '
                     . 'Current ORM import cannot convert a legacy schema: plugin identities rejected by adoption need a compatible historical migration before switching source. Pending: ' . $version);

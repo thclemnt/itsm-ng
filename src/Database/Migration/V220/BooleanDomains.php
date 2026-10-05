@@ -28,6 +28,19 @@ final class BooleanDomains
         if ((Ledger::state($connection, self::PHASE)['complete'] ?? false) === true) {
             return ['sql' => [], 'deferred_columns' => []];
         }
+        return $this->inspect($connection, $preAdoption);
+    }
+
+    public function verify(Connection $connection): void
+    {
+        $plan = $this->inspect($connection, false);
+        if ($plan['sql'] || $plan['deferred_columns']) {
+            throw new \RuntimeException('Frozen boolean domains did not converge.');
+        }
+    }
+
+    private function inspect(Connection $connection, bool $preAdoption): array
+    {
         $states = $preAdoption ? Ledger::states($connection) : [];
         $pending = static fn (?string $version): bool => $preAdoption && $version !== null
             && ($states[$version]['complete'] ?? false) !== true;

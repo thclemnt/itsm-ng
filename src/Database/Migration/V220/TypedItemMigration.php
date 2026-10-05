@@ -130,6 +130,16 @@ abstract class TypedItemMigration
         return 'ALTER TABLE ' . $table . ' ADD CONSTRAINT ' . static::constraintName($table) . ' CHECK (' . self::validReferenceSql(null, $platform) . ')';
     }
 
+    /** Physical postconditions bypass staged completion shortcuts. */
+    public function verify(Connection $connection): void
+    {
+        foreach (self::planInspectedTable($connection, null) as $table => $plan) {
+            if ($plan['sql'] || $plan['key_sql'] || $plan['constraint_sql'] || $plan['copy_legacy']) {
+                throw new \RuntimeException('Frozen typed subject conversion did not converge: ' . $table);
+            }
+        }
+    }
+
     public function plan(Connection $connection, ?IncomingProjectionReferences $incomingReferences = null): array
     {
         return $this->planInspectedTable($connection, null, $incomingReferences);

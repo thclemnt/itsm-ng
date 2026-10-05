@@ -27,7 +27,7 @@ final class DomainPluginImport
     {
         $connection = $this->database->getDoctrineConnection();
         $states = Ledger::states($connection);
-        foreach (History::VERSIONS as $version) {
+        foreach (History::versions() as $version) {
             if (($states[$version]['complete'] ?? false) !== true) {
                 throw new \RuntimeException('Domains import requires completed canonical history; run db:migrate. Pending: ' . $version);
             }

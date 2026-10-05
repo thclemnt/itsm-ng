@@ -29,17 +29,20 @@ use itsmng\Database\Migration\V220\References;
 use itsmng\Database\Migration\V220\Seeds;
 use itsmng\Database\Migration\V220\SoftwareInstallationSubjects;
 use itsmng\Database\Migration\V220\SoftwareLicenseSubjects;
-use itsmng\Database\SchemaCheck;
-use itsmng\Database\SequenceSynchronizer;
 
 /**
  * The single frozen 2.1.3 data-format to 2.2.0 ORM transition.
  * Frozen helpers in V220 and their phase IDs are internal checkpoints, not releases.
  * Retaining those keys lets interrupted MySQL installations resume their captured DDL.
  */
-final class Version220
+final class Version220 implements ReleaseMigration
 {
     public const VERSION = '2.2.0';
+
+    public function version(): string
+    {
+        return self::VERSION;
+    }
 
     /** Internal checkpoints in the existing ledger, never separately published versions. */
     public const PHASES = [
@@ -78,21 +81,51 @@ final class Version220
     {
         \itsmng\Database\CheckConstraintSupport::assertSupported($connection);
         \itsmng\Database\LegacyAdoptionEligibility::assertConnection($connection);
+        $this->assertSource($connection);
         $prerequisite = (new DomainsPluginAdoption())->plan($connection);
         if ($prerequisite) {
-            return ['complete' => false, 'pending' => History::pendingVersions($connection), 'domain_prerequisite' => $prerequisite,
+            return ['complete' => false, 'domain_prerequisite' => $prerequisite,
                 'canonical_preflight' => 'Deferred canonical audits: the frozen source graph must first be remapped in a rollback validation transaction; this preview is read-only.'];
         }
         return $this->canonicalPlan($connection);
     }
 
+    /** Admit the original shape and this transition's own resumable removals only. */
+    private function assertSource(Connection $connection): void
+    {
+        $historical = (new Baseline())->build($connection->getDatabasePlatform());
+        $actual = $connection->createSchemaManager()->introspectSchema();
+        $retired = [
+            'glpi_slas' => ['calendars_id'], 'glpi_olas' => ['calendars_id'],
+            'glpi_projects' => ['projecttemplates_id'],
+            'glpi_planningexternalevents' => ['users_id_guests'],
+            'glpi_networkportaggregates' => ['networkports_id_list'],
+        ];
+        $missing = [];
+        foreach ($historical->getTables() as $table) {
+            $name = $table->getName();
+            if (!$actual->hasTable($name)) {
+                $missing[] = 'Missing table: ' . $name;
+                continue;
+            }
+            foreach ($table->getColumns() as $column) {
+                if (!in_array($column->getName(), $retired[$name] ?? [], true)
+                    && !$actual->getTable($name)->hasColumn($column->getName())) {
+                    $missing[] = 'Missing column: ' . $name . '.' . $column->getName();
+                }
+            }
+        }
+        if ($missing) {
+            throw new \RuntimeException('This schema predates or differs from the frozen ITSM-NG adoption baseline. Upgrade older releases using their matching historical application to the ITSM-NG 2.1.3 schema before switching to this application, then run db:migrate --apply.' . "\n" . implode("\n", $missing));
+        }
+    }
+
     /** All pending canonical audits, without recursively planning a source prerequisite. */
     private function canonicalPlan(Connection $connection): array
     {
-        $pending = History::pendingVersions($connection);
         $booleans = (new Booleans())->plan($connection);
         $domainDocuments = new DomainDocuments();
-        return ['complete' => !$pending, 'pending' => $pending, 'phases' => self::pendingPhases(Ledger::states($connection)), 'legacy' => (new References())->plan($connection), 'booleans' => $booleans, 'project_assets' => (new ProjectAssets())->plan($connection), 'category_flags' => (new CategoryFlags())->plan($connection), 'appliance_assets' => (new ApplianceAssets())->plan($connection), 'appliance_recipients' => (new ApplianceRecipients())->plan($connection), 'operating_system_subjects' => (new OperatingSystemSubjects())->plan($connection), 'domain_documents' => $domainDocuments->plan($connection), 'domain_integration' => (new DomainIntegration())->plan($connection), 'identifier_sequences' => (new IdentifierSequences())->plan($connection), 'boolean_domains' => (new BooleanDomains())->plan($connection, true), 'exact_subject_discriminators' => (new ExactDiscriminators())->plan($connection, true, $domainDocuments), 'software_installation_subjects' => (new SoftwareInstallationSubjects())->plan($connection), 'software_license_subjects' => (new SoftwareLicenseSubjects())->plan($connection), 'processor_subjects' => (new ProcessorSubjects())->plan($connection), 'motherboard_subjects' => (new MotherboardSubjects())->plan($connection), 'memory_subjects' => (new MemorySubjects())->plan($connection), 'hard_drive_subjects' => (new HardDriveSubjects())->plan($connection), 'battery_subjects' => (new BatterySubjects())->plan($connection), 'power_supply_subjects' => (new PowerSupplySubjects())->plan($connection)];
+        return ['phases' => self::pendingPhases(Ledger::states($connection)), 'legacy' => (new References())->plan($connection), 'booleans' => $booleans, 'project_assets' => (new ProjectAssets())->plan($connection), 'category_flags' => (new CategoryFlags())->plan($connection), 'appliance_assets' => (new ApplianceAssets())->plan($connection), 'appliance_recipients' => (new ApplianceRecipients())->plan($connection), 'operating_system_subjects' => (new OperatingSystemSubjects())->plan($connection), 'domain_documents' => $domainDocuments->plan($connection), 'domain_integration' => (new DomainIntegration())->plan($connection), 'identifier_sequences' => (new IdentifierSequences())->plan($connection), 'boolean_domains' => (new BooleanDomains())->plan($connection, true), 'exact_subject_discriminators' => (new ExactDiscriminators())->plan($connection, true, $domainDocuments), 'software_installation_subjects' => (new SoftwareInstallationSubjects())->plan($connection), 'software_license_subjects' => (new SoftwareLicenseSubjects())->plan($connection), 'processor_subjects' => (new ProcessorSubjects())->plan($connection), 'motherboard_subjects' => (new MotherboardSubjects())->plan($connection), 'memory_subjects' => (new MemorySubjects())->plan($connection), 'hard_drive_subjects' => (new HardDriveSubjects())->plan($connection), 'battery_subjects' => (new BatterySubjects())->plan($connection), 'power_supply_subjects' => (new PowerSupplySubjects())->plan($connection)];
     }
 
     public static function isInstalling(Connection $connection): bool
@@ -169,135 +202,89 @@ final class Version220
         }
     }
 
+    /** Frozen empty-database inputs; History owns the enclosing lock and replay. */
     public function install(\DBAdapter $database, string $language, ?callable $progress = null): void
     {
         $connection = $database->getDoctrineConnection();
-        \itsmng\Database\CheckConstraintSupport::assertSupported($connection);
-        $this->locked($connection, function () use ($database, $connection, $language, $progress): void {
-            $this->baseline($connection, $progress);
-            \Session::loadLanguage($language, false);
-            try {
-                (new Seeds())->apply($connection, static fn (string $text): string => __($text), $progress === null ? null : static fn () => $progress('Seed row'));
-            } finally {
-                \Session::loadLanguage('', false);
-            }
-            $database->synchronizeSequences();
-            $this->upgrade($connection, $progress);
-            $database->clearSchemaCache();
-            $database->synchronizeSequences();
-        });
+        $this->baseline($connection, $progress);
+        \Session::loadLanguage($language, false);
+        try {
+            (new Seeds())->apply($connection, static fn (string $text): string => __($text), $progress === null ? null : static fn () => $progress('Seed row'));
+        } finally {
+            \Session::loadLanguage('', false);
+        }
+        $database->synchronizeSequences();
     }
 
     /** Adopt validated existing data; never replay installation seeds onto it. */
-    public function upgrade(Connection $connection, ?callable $progress = null, ?callable $onComplete = null): void
+    public function apply(Connection $connection, ?callable $progress = null): void
     {
         \itsmng\Database\CheckConstraintSupport::assertSupported($connection);
-        $this->locked($connection, function () use ($connection, $progress, $onComplete): void {
-            // Admit provenance under the same lock before source remapping,
-            // ledger bootstrap or nontransactional canonical DDL can occur.
-            \itsmng\Database\LegacyAdoptionEligibility::assertConnection($connection);
-            (new DomainsPluginAdoption())->apply($connection, fn () => $this->canonicalPlan($connection), $progress);
-            $domainDocuments = new DomainDocuments();
-            // All stored subject spellings are audited before any canonical DDL,
-            // including partial legacy ownership, after the validated source trial.
-            (new ExactDiscriminators())->plan($connection, true, $domainDocuments);
-            // Reject newly constrained subject links before broader
-            // historical audits; every preflight still completes before any DDL.
-            (new ApplianceAssets())->plan($connection);
-            (new ApplianceRecipients())->plan($connection);
-            (new OperatingSystemSubjects())->plan($connection);
-            // Jointly audit both assignment graphs before older nontransactional DDL.
-            (new SoftwareInstallationSubjects())->plan($connection);
-            (new SoftwareLicenseSubjects())->plan($connection);
-            // Optional component ownership is audited before any earlier DDL.
-            (new ProcessorSubjects())->plan($connection);
-            (new MotherboardSubjects())->plan($connection);
-            (new MemorySubjects())->plan($connection);
-            (new HardDriveSubjects())->plan($connection);
-            // Both energy graphs refuse unsupported source/plugin subjects
-            // without writing before older nontransactional adoption DDL.
-            (new BatterySubjects())->plan($connection);
-            (new PowerSupplySubjects())->plan($connection);
-            // Validate every integer flag before MySQL adoption or any PostgreSQL DDL.
-            (new Booleans())->plan($connection);
-            // Unsupported plugin kinds and invalid subjects refuse before
-            // identifier widening or any other nontransactional adoption DDL.
-            (new ProjectAssets())->plan($connection);
-            (new CategoryFlags())->plan($connection);
-            $domainDocuments->plan($connection);
-            (new DomainIntegration())->plan($connection);
-            (new BooleanDomains())->plan($connection, true);
-            (new References())->apply($connection, $progress);
-            (new Booleans())->apply($connection);
-            (new ProjectAssets())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('ProjectAssets: ' . $phase));
-            (new CategoryFlags())->apply($connection);
-            (new ApplianceAssets())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('ApplianceAssets: ' . $phase));
-            (new ApplianceRecipients())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('ApplianceRecipients: ' . $phase));
-            (new OperatingSystemSubjects())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('OperatingSystemSubjects: ' . $phase));
-            $domainDocuments->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('DomainDocuments: ' . $phase));
-            (new DomainIntegration())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('DomainIntegration: ' . $phase));
-            (new IdentifierSequences())->apply($connection, $progress);
-            (new BooleanDomains())->apply($connection, $progress);
-            (new ExactDiscriminators())->apply($connection, $progress);
-            (new SoftwareInstallationSubjects())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('SoftwareInstallationSubjects: ' . $phase));
-            (new SoftwareLicenseSubjects())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('SoftwareLicenseSubjects: ' . $phase));
-            (new ProcessorSubjects())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('ProcessorSubjects: ' . $phase));
-            (new MotherboardSubjects())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('MotherboardSubjects: ' . $phase));
-            (new MemorySubjects())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('MemorySubjects: ' . $phase));
-            (new HardDriveSubjects())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('HardDriveSubjects: ' . $phase));
-            (new BatterySubjects())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('BatterySubjects: ' . $phase));
-            (new PowerSupplySubjects())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('PowerSupplySubjects: ' . $phase));
-            $differences = (new SchemaCheck())->differences($connection);
-            if ($differences) {
-                throw new \RuntimeException("Migration history did not converge:\n" . implode("\n", $differences));
+        // Admit provenance under the same lock before source remapping,
+        // ledger bootstrap or nontransactional canonical DDL can occur.
+        \itsmng\Database\LegacyAdoptionEligibility::assertConnection($connection);
+        $this->assertSource($connection);
+        (new DomainsPluginAdoption())->apply($connection, fn () => $this->canonicalPlan($connection), $progress);
+        $domainDocuments = new DomainDocuments();
+        // All stored subject spellings are audited before any canonical DDL,
+        // including partial legacy ownership, after the validated source trial.
+        (new ExactDiscriminators())->plan($connection, true, $domainDocuments);
+        // Reject newly constrained subject links before broader
+        // historical audits; every preflight still completes before any DDL.
+        (new ApplianceAssets())->plan($connection);
+        (new ApplianceRecipients())->plan($connection);
+        (new OperatingSystemSubjects())->plan($connection);
+        // Jointly audit both assignment graphs before older nontransactional DDL.
+        (new SoftwareInstallationSubjects())->plan($connection);
+        (new SoftwareLicenseSubjects())->plan($connection);
+        // Optional component ownership is audited before any earlier DDL.
+        (new ProcessorSubjects())->plan($connection);
+        (new MotherboardSubjects())->plan($connection);
+        (new MemorySubjects())->plan($connection);
+        (new HardDriveSubjects())->plan($connection);
+        // Both energy graphs refuse unsupported source/plugin subjects
+        // without writing before older nontransactional adoption DDL.
+        (new BatterySubjects())->plan($connection);
+        (new PowerSupplySubjects())->plan($connection);
+        // Validate every integer flag before MySQL adoption or any PostgreSQL DDL.
+        (new Booleans())->plan($connection);
+        // Unsupported plugin kinds and invalid subjects refuse before
+        // identifier widening or any other nontransactional adoption DDL.
+        (new ProjectAssets())->plan($connection);
+        (new CategoryFlags())->plan($connection);
+        $domainDocuments->plan($connection);
+        (new DomainIntegration())->plan($connection);
+        (new BooleanDomains())->plan($connection, true);
+        (new References())->apply($connection, $progress);
+        (new Booleans())->apply($connection);
+        (new ProjectAssets())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('ProjectAssets: ' . $phase));
+        (new CategoryFlags())->apply($connection);
+        (new ApplianceAssets())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('ApplianceAssets: ' . $phase));
+        (new ApplianceRecipients())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('ApplianceRecipients: ' . $phase));
+        (new OperatingSystemSubjects())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('OperatingSystemSubjects: ' . $phase));
+        $domainDocuments->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('DomainDocuments: ' . $phase));
+        (new DomainIntegration())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('DomainIntegration: ' . $phase));
+        (new IdentifierSequences())->apply($connection, $progress);
+        (new BooleanDomains())->apply($connection, $progress);
+        (new ExactDiscriminators())->apply($connection, $progress);
+        (new SoftwareInstallationSubjects())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('SoftwareInstallationSubjects: ' . $phase));
+        (new SoftwareLicenseSubjects())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('SoftwareLicenseSubjects: ' . $phase));
+        (new ProcessorSubjects())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('ProcessorSubjects: ' . $phase));
+        (new MotherboardSubjects())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('MotherboardSubjects: ' . $phase));
+        (new MemorySubjects())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('MemorySubjects: ' . $phase));
+        (new HardDriveSubjects())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('HardDriveSubjects: ' . $phase));
+        (new BatterySubjects())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('BatterySubjects: ' . $phase));
+        (new PowerSupplySubjects())->apply($connection, $progress === null ? null : static fn (string $phase) => $progress('PowerSupplySubjects: ' . $phase));
+        foreach ([Baseline::PHASE, Seeds::PHASE] as $version) {
+            if (Ledger::state($connection, $version) === null) {
+                Ledger::save($connection, $version, ['complete' => true, 'origin' => 'adopted', 'data' => 'preserved']);
             }
-            SequenceSynchronizer::synchronize($connection);
-            foreach ([Baseline::PHASE, Seeds::PHASE] as $version) {
-                if (Ledger::state($connection, $version) === null) {
-                    Ledger::save($connection, $version, ['complete' => true, 'origin' => 'adopted', 'data' => 'preserved']);
-                }
-            }
-            // MySQL can commit DDL before release publication. Keep the completed
-            // phase journals on failure and publish only the single release receipt
-            // with its configuration changes. A retry never replays successful DDL.
-            $connection->transactional(static function () use ($connection, $onComplete): void {
-                if ($onComplete !== null) {
-                    $onComplete();
-                }
-                // Close the installer with the release receipt, so a crash cannot
-                // strand a fresh MySQL install between two completion markers.
-                $baseline = Ledger::state($connection, Baseline::PHASE);
-                if (($baseline['origin'] ?? null) === 'installed' && ($baseline['installation_complete'] ?? false) !== true) {
-                    $baseline['installation_complete'] = true;
-                    Ledger::save($connection, Baseline::PHASE, $baseline);
-                }
-                if ((Ledger::state($connection, self::VERSION)['complete'] ?? false) !== true) {
-                    Ledger::save($connection, self::VERSION, ['complete' => true]);
-                }
-            });
-        });
+        }
     }
 
-    private function locked(Connection $connection, callable $operation): void
+    /** Frozen physical postconditions ignore completion flags and current entities. */
+    public function verify(Connection $connection): void
     {
-        if ($connection->getDatabasePlatform() instanceof PostgreSQLPlatform) {
-            $connection->transactional(static function () use ($connection, $operation): void {
-                $connection->executeStatement("SELECT pg_advisory_xact_lock(hashtext('itsmng_migration_history'))");
-                $operation();
-            });
-            return;
-        }
-        if ($connection->isTransactionActive()) {
-            throw new \RuntimeException('Run migration history outside a MySQL application transaction.');
-        }
-        $lock = 'itsmng_history_' . sha1($connection->getDatabase());
-        if ((int)$connection->fetchOne('SELECT GET_LOCK(?, 0)', [$lock]) !== 1) {
-            throw new \RuntimeException('Another migration history operation is running.');
-        }
-        try {
-            $operation();
-        } finally {
-            $connection->fetchOne('SELECT RELEASE_LOCK(?)', [$lock]);
-        }
+        V220\Postconditions::assert($connection);
     }
 }

@@ -8,7 +8,6 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Table;
-use itsmng\Database\Mapping\ReferenceKey;
 
 final class DashboardOwnership
 {
@@ -28,7 +27,7 @@ final class DashboardOwnership
         foreach (self::KEYS as $key => $column) {
             $table->getColumn($column)->setNotnull(false)->setDefault(null);
             if (!$table->hasColumn($key)) {
-                $table->addColumn($key, 'bigint', ['notnull' => false, 'columnDefinition' => (new ReferenceKey($column))->declaration($platform)]);
+                $table->addColumn($key, 'bigint', ['notnull' => false, 'columnDefinition' => 'BIGINT GENERATED ALWAYS AS (COALESCE(' . $platform->quoteIdentifier($column) . ', 0)) STORED']);
             }
         }
         if (!$table->hasIndex('dashboard_owners')) {
