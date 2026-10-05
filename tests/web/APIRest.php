@@ -863,34 +863,154 @@ class APIRest extends APIBaseClass
         ];
     }
 
+    /** Run a CRUD assertion with parents owned by this invocation and unconditional cleanup. */
+    private function withDeprecatedFixture(string $provider, callable $test): void
+    {
+        $fixture = [
+            'add' => $provider::getCurrentAddInput(),
+            'create' => $provider::getDeprecatedAddInput(),
+            'update' => $provider::getDeprecatedUpdateInput(),
+            'inserted' => $provider::getExpectedAfterInsert(),
+            'updated' => $provider::getExpectedAfterUpdate(),
+        ];
+        $itemtype = $provider::getCurrentType();
+        $item = new $itemtype();
+        $parents = [];
+        $computers = [];
+        $failure = null;
+        $name = 'deprecated-api-' . bin2hex(random_bytes(12));
+
+        try {
+            if ($provider === TicketFollowup::class) {
+                $fixture['add']['content'] .= " [$name]";
+                $fixture['create']['content'] .= " [$name]";
+                $fixture['inserted']['content'] = $fixture['create']['content'];
+                $fixture['updated']['content'] = $fixture['add']['content'];
+            }
+            if ($provider === Computer_SoftwareVersion::class || $provider === Computer_SoftwareLicense::class) {
+                $source = new \Computer();
+                $this->boolean($source->getFromDB($fixture['add']['items_id']))->isTrue();
+                $entity = $source->fields['entities_id'];
+                foreach (['source', 'target'] as $role) {
+                    $computer = new \Computer();
+                    $id = $computer->add(['name' => "$name-$role", 'entities_id' => $entity]);
+                    if (!is_int($id) || $id <= 0) {
+                        throw new \RuntimeException('Cannot create the owned deprecated API computer');
+                    }
+                    $parents[] = $computer;
+                    $computers[] = $id;
+                }
+                $fixture['add']['items_id'] = $computers[0];
+                $fixture['create']['computers_id'] = $computers[0];
+                $fixture['update']['computers_id'] = $computers[1];
+                $fixture['inserted']['items_id'] = $computers[0];
+                $fixture['updated']['items_id'] = $computers[1];
+
+                if ($provider === Computer_SoftwareVersion::class) {
+                    $source_version = new \SoftwareVersion();
+                    $this->boolean($source_version->getFromDB($fixture['add']['softwareversions_id']))->isTrue();
+                    $version = new \SoftwareVersion();
+                    $id = $version->add([
+                        'name' => $name,
+                        'softwares_id' => $source_version->fields['softwares_id'],
+                        'entities_id' => $source_version->fields['entities_id'],
+                    ]);
+                    if (!is_int($id) || $id <= 0) {
+                        throw new \RuntimeException('Cannot create the owned deprecated API software version');
+                    }
+                    $parents[] = $version;
+                    $fixture['add']['softwareversions_id'] = $id;
+                    $fixture['create']['softwareversions_id'] = $id;
+                    $fixture['inserted']['softwareversions_id'] = $id;
+                    $fixture['updated']['softwareversions_id'] = $id;
+                } else {
+                    $source_license = new \SoftwareLicense();
+                    $this->boolean($source_license->getFromDB($fixture['add']['softwarelicenses_id']))->isTrue();
+                    $license = new \SoftwareLicense();
+                    $id = $license->add([
+                        'name' => $name,
+                        'softwares_id' => $source_license->fields['softwares_id'],
+                        'entities_id' => $source_license->fields['entities_id'],
+                        'is_recursive' => $source_license->fields['is_recursive'],
+                        'number' => $source_license->fields['number'],
+                    ]);
+                    if (!is_int($id) || $id <= 0) {
+                        throw new \RuntimeException('Cannot create the owned deprecated API software license');
+                    }
+                    $parents[] = $license;
+                    $fixture['add']['softwarelicenses_id'] = $id;
+                    $fixture['create']['softwarelicenses_id'] = $id;
+                    $fixture['inserted']['softwarelicenses_id'] = $id;
+                    $fixture['updated']['softwarelicenses_id'] = $id;
+                }
+            }
+            $test($fixture, $item);
+        } catch (\Throwable $error) {
+            $failure = $error;
+            throw $error;
+        } finally {
+            $cleanup_error = null;
+            try {
+                // A failed HTTP assertion can hide a newly inserted relation's ID. Both
+                // endpoints are owned here, so this lookup cannot select shared rows.
+                if ($computers !== []) {
+                    $rows = $item->find(['itemtype' => 'Computer', 'items_id' => $computers]);
+                } elseif ($item->getID() > 0) {
+                    $rows = $item->find(['id' => $item->getID()]);
+                } elseif ($provider === TicketFollowup::class) {
+                    // Recover only this invocation's followup if POST inserted it before
+                    // query() threw; the shared Ticket itself is never a cleanup target.
+                    $rows = $item->find([
+                        'itemtype' => 'Ticket', 'items_id' => $fixture['add']['items_id'],
+                        'content' => [$fixture['add']['content'], $fixture['create']['content']],
+                    ]);
+                } else {
+                    $rows = [];
+                }
+                foreach ($rows as $row) {
+                    $this->boolean($item->delete(['id' => $row['id']], true))->isTrue();
+                }
+            } catch (\Throwable $error) {
+                $cleanup_error = $error;
+            }
+            foreach (array_reverse($parents) as $parent) {
+                try {
+                    $this->boolean($parent->delete(['id' => $parent->getID()], true))->isTrue();
+                } catch (\Throwable $error) {
+                    $cleanup_error ??= $error;
+                }
+            }
+            if ($cleanup_error !== null && $failure === null) {
+                throw $cleanup_error;
+            }
+        }
+    }
+
     /**
      * @dataProvider deprecatedProvider
      */
     public function testDeprecatedGetItem(string $provider)
     {
-        // Get params from provider
-        $deprecated_itemtype = $provider::getDeprecatedType();
-        $itemtype            = $provider::getCurrentType();
-        $deprecated_fields   = $provider::getDeprecatedFields();
-        $add_input           = $provider::getCurrentAddInput();
+        $this->withDeprecatedFixture($provider, function (array $fixture, $item) use ($provider): void {
+            // Get params from provider
+            $deprecated_itemtype = $provider::getDeprecatedType();
+            $deprecated_fields   = $provider::getDeprecatedFields();
+            $add_input           = $fixture['add'];
 
-        $headers = ['Session-Token' => $this->session_token];
+            $headers = ['Session-Token' => $this->session_token];
 
-        // Insert data for tests
-        $item = new $itemtype();
-        $item_id = $item->add($add_input);
-        $this->integer($item_id);
+            // Insert data for tests
+            $item_id = $item->add($add_input);
+            $this->integer($item_id);
 
-        // Call API
-        $data = $this->query("$deprecated_itemtype/$item_id", [
-           'headers' => $headers,
-        ], 200);
-        $this->array($data)
-           ->hasSize(count($deprecated_fields) + 1) // + 1 for headers
-           ->hasKeys($deprecated_fields);
-
-        // Clean db to prevent unicity failure on next run
-        $item->delete(['id' => $item_id], true);
+            // Call API
+            $data = $this->query("$deprecated_itemtype/$item_id", [
+               'headers' => $headers,
+            ], 200);
+            $this->array($data)
+               ->hasSize(count($deprecated_fields) + 1) // + 1 for headers
+               ->hasKeys($deprecated_fields);
+        });
     }
 
     /**
@@ -898,34 +1018,31 @@ class APIRest extends APIBaseClass
      */
     public function testDeprecatedGetItems(string $provider)
     {
-        // Get params from provider
-        $deprecated_itemtype = $provider::getDeprecatedType();
-        $itemtype            = $provider::getCurrentType();
-        $deprecated_fields   = $provider::getDeprecatedFields();
-        $add_input           = $provider::getCurrentAddInput();
+        $this->withDeprecatedFixture($provider, function (array $fixture, $item) use ($provider): void {
+            // Get params from provider
+            $deprecated_itemtype = $provider::getDeprecatedType();
+            $deprecated_fields   = $provider::getDeprecatedFields();
+            $add_input           = $fixture['add'];
 
-        $headers = ['Session-Token' => $this->session_token];
+            $headers = ['Session-Token' => $this->session_token];
 
-        // Insert data for tests (we need at least one item)
-        $item = new $itemtype();
-        $item_id = $item->add($add_input);
-        $this->integer($item_id);
+            // Insert data for tests (we need at least one item)
+            $item_id = $item->add($add_input);
+            $this->integer($item_id);
 
-        // Call API
-        $data = $this->query("$deprecated_itemtype", [
-           'headers' => $headers,
-        ], [200, 206]);
-        $this->array($data);
-        unset($data["headers"]);
+            // Call API
+            $data = $this->query("$deprecated_itemtype", [
+               'headers' => $headers,
+            ], [200, 206]);
+            $this->array($data);
+            unset($data["headers"]);
 
-        foreach ($data as $row) {
-            $this->array($row)
-               ->hasSize(count($deprecated_fields))
-               ->hasKeys($deprecated_fields);
-        }
-
-        // Clean db to prevent unicity failure on next run
-        $item->delete(['id' => $item_id], true);
+            foreach ($data as $row) {
+                $this->array($row)
+                   ->hasSize(count($deprecated_fields))
+                   ->hasKeys($deprecated_fields);
+            }
+        });
     }
 
     /**
@@ -933,32 +1050,28 @@ class APIRest extends APIBaseClass
      */
     public function testDeprecatedCreateItems(string $provider)
     {
-        // Get params from provider
-        $deprecated_itemtype   = $provider::getDeprecatedType();
-        $itemtype              = $provider::getCurrentType();
-        $input                 = $provider::getDeprecatedAddInput();
-        $expected_after_insert = $provider::getExpectedAfterInsert();
+        $this->withDeprecatedFixture($provider, function (array $fixture, $item) use ($provider): void {
+            // Get params from provider
+            $deprecated_itemtype   = $provider::getDeprecatedType();
+            $input                 = $fixture['create'];
+            $expected_after_insert = $fixture['inserted'];
 
-        $headers = ['Session-Token' => $this->session_token];
+            $headers = ['Session-Token' => $this->session_token];
 
-        $item = new $itemtype();
+            // Call API
+            $data = $this->query("$deprecated_itemtype", [
+               'headers' => $headers,
+               'verb'    => "POST",
+               'json'    => ['input' => $input]
+            ], 201);
 
-        // Call API
-        $data = $this->query("$deprecated_itemtype", [
-           'headers' => $headers,
-           'verb'    => "POST",
-           'json'    => ['input' => $input]
-        ], 201);
+            $this->integer($data['id']);
+            $this->boolean($item->getFromDB($data['id']))->isTrue();
 
-        $this->integer($data['id']);
-        $this->boolean($item->getFromDB($data['id']))->isTrue();
-
-        foreach ($expected_after_insert as $field => $value) {
-            $this->variable($item->fields[$field])->isEqualTo($value);
-        }
-
-        // Clean db to prevent unicity failure on next run
-        $item->delete(['id' => $data['id']], true);
+            foreach ($expected_after_insert as $field => $value) {
+                $this->variable($item->fields[$field])->isEqualTo($value);
+            }
+        });
     }
 
     /**
@@ -966,36 +1079,33 @@ class APIRest extends APIBaseClass
      */
     public function testDeprecatedUpdateItems(string $provider)
     {
-        // Get params from provider
-        $deprecated_itemtype   = $provider::getDeprecatedType();
-        $itemtype              = $provider::getCurrentType();
-        $add_input             = $provider::getCurrentAddInput();
-        $update_input          = $provider::getDeprecatedUpdateInput();
-        $expected_after_update = $provider::getExpectedAfterUpdate();
+        $this->withDeprecatedFixture($provider, function (array $fixture, $item) use ($provider): void {
+            // Get params from provider
+            $deprecated_itemtype   = $provider::getDeprecatedType();
+            $add_input             = $fixture['add'];
+            $update_input          = $fixture['update'];
+            $expected_after_update = $fixture['updated'];
 
-        $headers = ['Session-Token' => $this->session_token];
+            $headers = ['Session-Token' => $this->session_token];
 
-        // Insert data for tests
-        $item = new $itemtype();
-        $item_id = $item->add($add_input);
-        $this->integer($item_id);
+            // Insert data for tests
+            $item_id = $item->add($add_input);
+            $this->integer($item_id);
 
-        // Call API
-        $this->query("$deprecated_itemtype/$item_id", [
-           'headers' => $headers,
-           'verb'    => "PUT",
-           'json'    => ['input' => $update_input]
-        ], 200);
+            // Call API
+            $this->query("$deprecated_itemtype/$item_id", [
+               'headers' => $headers,
+               'verb'    => "PUT",
+               'json'    => ['input' => $update_input]
+            ], 200);
 
-        // Check expected values
-        $this->boolean($item->getFromDB($item_id))->isTrue();
+            // Check expected values
+            $this->boolean($item->getFromDB($item_id))->isTrue();
 
-        foreach ($expected_after_update as $field => $value) {
-            $this->variable($item->fields[$field])->isEqualTo($value);
-        }
-
-        // Clean db to prevent unicity failure on next run
-        $item->delete(['id' => $item_id], true);
+            foreach ($expected_after_update as $field => $value) {
+                $this->variable($item->fields[$field])->isEqualTo($value);
+            }
+        });
     }
 
     /**
@@ -1003,25 +1113,25 @@ class APIRest extends APIBaseClass
      */
     public function testDeprecatedDeleteItems(string $provider)
     {
-        // Get params from provider
-        $deprecated_itemtype   = $provider::getDeprecatedType();
-        $itemtype              = $provider::getCurrentType();
-        $add_input             = $provider::getCurrentAddInput();
+        $this->withDeprecatedFixture($provider, function (array $fixture, $item) use ($provider): void {
+            // Get params from provider
+            $deprecated_itemtype   = $provider::getDeprecatedType();
+            $add_input             = $fixture['add'];
 
-        $headers = ['Session-Token' => $this->session_token];
+            $headers = ['Session-Token' => $this->session_token];
 
-        // Insert data for tests
-        $item = new $itemtype();
-        $item_id = $item->add($add_input);
-        $this->integer($item_id);
+            // Insert data for tests
+            $item_id = $item->add($add_input);
+            $this->integer($item_id);
 
-        // Call API
-        $this->query("$deprecated_itemtype/$item_id?force_purge=1", [
-           'headers' => $headers,
-           'verb'    => "DELETE",
-        ], 200, "", true);
+            // Call API
+            $this->query("$deprecated_itemtype/$item_id?force_purge=1", [
+               'headers' => $headers,
+               'verb'    => "DELETE",
+            ], 200, "", true);
 
-        $this->boolean($item->getFromDB($item_id))->isFalse();
+            $this->boolean($item->getFromDB($item_id))->isFalse();
+        });
     }
 
     /**
