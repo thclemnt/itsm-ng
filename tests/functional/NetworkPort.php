@@ -449,6 +449,68 @@ class NetworkPort extends DbTestCase
         $this->integer((int)$wire->getOppositeContact($port_2_id))->isEqualTo($port_1_id);
     }
 
+    public function vlanProjectionFlagProvider(): array
+    {
+        return ['untagged' => [false], 'tagged' => [true]];
+    }
+
+    /** @dataProvider vlanProjectionFlagProvider */
+    public function testVlanProjectionsUseMappedTypesAndTheUncommittedWriter(bool $tagged): void
+    {
+        global $DB;
+
+        $this->login();
+        $this->setEntity('_test_root_entity', false);
+        $savedSession = $_SESSION;
+        $writer = $DB;
+        $connection = $writer->getDoctrineConnection();
+        $depth = $connection->getTransactionNestingLevel();
+        $this->integer($depth)->isGreaterThan(0);
+        $this->boolean($connection->getNativeConnection()->inTransaction())->isTrue();
+        $scope = $connection->captureManagedTransactionScope();
+        $manager = null;
+        try {
+            $entity = (int)$_SESSION['glpiactive_entity'];
+            $computer = $this->createItem('Computer', ['name' => $this->getUniqueString(), 'entities_id' => $entity]);
+            $port = $this->createItem('NetworkPort', ['name' => $this->getUniqueString(), 'entities_id' => $entity,
+                'is_recursive' => 0, 'itemtype' => 'Computer', 'items_id' => $computer->getID()]);
+            $vlan = $this->createItem('Vlan', ['name' => $this->getUniqueString(), 'entities_id' => $entity, 'is_recursive' => 0]);
+            $portId = (int)$port->getID();
+            $vlanId = (int)$vlan->getID();
+            $id = (new \NetworkPort_Vlan())->assignVlan($portId, $vlanId, (int)$tagged);
+            $this->integer($id)->isGreaterThan(0);
+            $manager = \itsmng\Database\Orm::create($writer);
+            $this->variable($manager->getConnection())->isIdenticalTo($connection);
+            $repository = new \itsmng\Database\Repository\NetworkPortVlanRepository($manager);
+            $expected = ['id' => $id, 'networkports_id' => $portId, 'vlans_id' => $vlanId, 'tagged' => $tagged];
+            foreach ([false, true] as $current) {
+                $this->array($repository->membership($id, current: $current))->isIdenticalTo($expected);
+                $this->array($repository->selectedPair($portId, $vlanId, current: $current))->isIdenticalTo($expected);
+            }
+            $this->array($repository->membershipsForPort($portId))->isIdenticalTo([$expected]);
+            $this->array((new \itsmng\Domain\VlanMembershipService($writer))->membershipsForPort($portId))->isIdenticalTo([$expected]);
+            $this->array($repository->currentPort($portId))->isIdenticalTo([
+                'id' => $portId, 'entity' => $entity, 'recursive' => false,
+                'itemtype' => 'Computer', 'items_id' => (int)$computer->getID(),
+            ]);
+            $this->array($repository->currentVlan($vlanId))->isIdenticalTo([
+                'id' => $vlanId, 'entity' => $entity, 'recursive' => false,
+            ]);
+            $this->boolean($repository->containsEntity(0, $entity))->isTrue();
+            // These narrow reads type their projected values without loading
+            // managed entities or relying on a previous identity-map observation.
+            $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
+            $this->variable($DB)->isIdenticalTo($writer);
+            $this->variable($DB->getDoctrineConnection())->isIdenticalTo($connection);
+            $scope->assertActive();
+            $this->boolean($connection->getNativeConnection()->inTransaction())->isTrue();
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+        } finally {
+            $manager?->clear();
+            $_SESSION = $savedSession;
+        }
+    }
+
     public function testVlanAssignAndUnassign()
     {
         $this->login();

@@ -53,7 +53,7 @@ final class NetworkPortVlanRepository
     public function membershipsForPort(int $port): array
     {
         return $this->membershipQuery()->where('m.networkports = :port')->setParameter('port', $port, Types::BIGINT)
-            ->orderBy('m.id')->getQuery()->getScalarResult();
+            ->orderBy('m.id')->getQuery()->getArrayResult();
     }
 
     public function countForPort(int $port): int
@@ -74,7 +74,7 @@ final class NetworkPortVlanRepository
             MySQLConnection::assertCurrentReads($this->em->getConnection());
         }
         $rows = $this->membershipQuery()->where('m.id = :id')->setParameter('id', $id, Types::BIGINT)
-            ->getQuery()->setLockMode($current ? LockMode::PESSIMISTIC_WRITE : LockMode::NONE)->getScalarResult();
+            ->getQuery()->setLockMode($current ? LockMode::PESSIMISTIC_WRITE : LockMode::NONE)->getArrayResult();
         return $rows[0] ?? null;
     }
 
@@ -85,7 +85,7 @@ final class NetworkPortVlanRepository
         }
         $rows = $this->membershipQuery()->where('m.networkports = :port AND m.vlans = :vlan')
             ->setParameter('port', $port, Types::BIGINT)->setParameter('vlan', $vlan, Types::BIGINT)
-            ->getQuery()->setLockMode($current ? LockMode::PESSIMISTIC_WRITE : LockMode::NONE)->getScalarResult();
+            ->getQuery()->setLockMode($current ? LockMode::PESSIMISTIC_WRITE : LockMode::NONE)->getArrayResult();
         return $rows[0] ?? null;
     }
 
@@ -95,7 +95,7 @@ final class NetworkPortVlanRepository
         MySQLConnection::assertCurrentReads($this->em->getConnection());
         $rows = $this->em->createQueryBuilder()->select('p.id, IDENTITY(p.entities) AS entity, p.is_recursive AS recursive, p.itemtype, p.items_id')
             ->from(NetworkPort::class, 'p')->where('p.id = :id')->setParameter('id', $id, Types::BIGINT)
-            ->getQuery()->setLockMode(LockMode::PESSIMISTIC_READ)->getScalarResult();
+            ->getQuery()->setLockMode(LockMode::PESSIMISTIC_READ)->getArrayResult();
         return $rows[0] ?? null;
     }
 
@@ -104,7 +104,7 @@ final class NetworkPortVlanRepository
         MySQLConnection::assertCurrentReads($this->em->getConnection());
         $rows = $this->em->createQueryBuilder()->select('v.id, IDENTITY(v.entities) AS entity, v.is_recursive AS recursive')
             ->from(Vlan::class, 'v')->where('v.id = :id')->setParameter('id', $id, Types::BIGINT)
-            ->getQuery()->setLockMode(LockMode::PESSIMISTIC_READ)->getScalarResult();
+            ->getQuery()->setLockMode(LockMode::PESSIMISTIC_READ)->getArrayResult();
         return $rows[0] ?? null;
     }
 
@@ -122,7 +122,7 @@ final class NetworkPortVlanRepository
             MySQLConnection::assertCurrentReads($this->em->getConnection());
             $rows = $this->em->createQueryBuilder()->select('e.id, IDENTITY(e.parent) AS parent')
                 ->from(Entity::class, 'e')->where('e.id = :id')->setParameter('id', $entity, Types::BIGINT)
-                ->getQuery()->setLockMode(LockMode::PESSIMISTIC_READ)->getScalarResult();
+                ->getQuery()->setLockMode(LockMode::PESSIMISTIC_READ)->getArrayResult();
             if ($assertActive !== null) {
                 $assertActive();
             }
