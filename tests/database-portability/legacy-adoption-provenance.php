@@ -12,8 +12,7 @@ use itsmng\Database\Migration\Seeds20261001;
 
 // Pure admission cases; database refusal/retry is owned by migration-history.
 define('GLPI_ROOT', dirname(__DIR__, 2));
-require GLPI_ROOT . '/vendor/autoload.php';
-require GLPI_ROOT . '/inc/define.php';
+require GLPI_ROOT . '/inc/based_config.php';
 $assertions = 0;
 function verify(bool $ok, string $message): void
 {
