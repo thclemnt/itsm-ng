@@ -96,18 +96,23 @@ notification template `28`, but left these three child rows in `install/empty_da
 The released installer checks SQL execution errors, but these tables have no
 historical foreign keys, so inserting those rows succeeds. A successful genuine
 2.1.3 installation therefore does not prove referential validity. Migration
-preflight correctly refuses these orphaned owners before DDL, giving the source
-field, missing parent, count and up to five row samples. Later development commit
-`01aeb375df` removes the three seed children; it is not part of 2.1.3 and is not
-an authorized data repair for an existing installation. This transition neither
-deletes the children nor invents their missing parents.
+2.2.0 archives the complete original rows in the existing `itsmng_migrations`
+receipt `2.2.0_retired_marketplace_defaults` and retires their invalid live links
+in the same transaction. This applies only when all three complete rows exactly
+match the released literal defaults, no additional child targets either retired
+ID, and both parents are absent. The literal template text is not translated by
+the released installer. Unknown columns, customized text, partial defaults or a
+remaining parent refuse with source and missing-owner samples before archival.
+No parent is invented and no historical release file is changed. Later development
+commit `01aeb375df` independently removed the same three obsolete seed children.
 
-Keep an untouched released-source clone as the refusal fixture. Any separate
-successful-upgrade fixture that adds explicitly synthetic test owners must be
-labelled **released 2.1.3 with a test-only source repair**, with its exact changes
-recorded. It cannot establish an unmodified released-source upgrade or a genuine
-restoration of those retired marketplace objects. Real installations need an
-explicit source-ownership decision based on their own records.
+Preview lists the three archive/retirement actions without writing. Interrupted
+archival rolls back both the receipt and all deletions; retry verifies retained
+original rows against the frozen defaults. Subsequent migration failures on MySQL
+may leave this completed archive in place while canonical DDL remains pending.
+Keep the original database backup and encryption key. Native upgrade fixtures must
+retain and compare all three archived originals; a fixture with synthetic parents
+is not evidence of an unmodified released-source upgrade.
 
 PostgreSQL migration DDL is transactional. MySQL DDL can commit before error;
 retry resumes the existing journal and validates captured state. Never fabricate

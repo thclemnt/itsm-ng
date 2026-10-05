@@ -48,6 +48,14 @@ abstract class AbstractUpgradeCommand extends AbstractCommand implements ForceNo
                 if (!is_array($details)) {
                     continue;
                 }
+                if (($details['kind'] ?? null) === 'archival_prerequisite') {
+                    $output->writeln($details['description'], OutputInterface::OUTPUT_RAW);
+                    foreach ($details['actions'] as $action) {
+                        $output->writeln('Archive and retire: ' . $action['table'] . '.id=' . $action['id']
+                            . '; retained in ' . $details['receipt'], OutputInterface::OUTPUT_RAW);
+                    }
+                    continue;
+                }
                 if (($details['kind'] ?? null) === 'data_prerequisite') {
                     $receipt = $details['receipt'];
                     $output->writeln('Elective data prerequisite: ' . $details['version']);

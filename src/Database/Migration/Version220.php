@@ -26,6 +26,7 @@ use itsmng\Database\Migration\V220\PowerSupplySubjects;
 use itsmng\Database\Migration\V220\ProcessorSubjects;
 use itsmng\Database\Migration\V220\ProjectAssets;
 use itsmng\Database\Migration\V220\References;
+use itsmng\Database\Migration\V220\RetiredMarketplaceDefaults;
 use itsmng\Database\Migration\V220\Seeds;
 use itsmng\Database\Migration\V220\SoftwareInstallationSubjects;
 use itsmng\Database\Migration\V220\SoftwareLicenseSubjects;
@@ -84,6 +85,11 @@ final class Version220 implements ReleaseMigration
         $this->assertSource($connection);
         if ((Ledger::state($connection, ExactDiscriminators::PHASE)['complete'] ?? false) === true) {
             (new ExactDiscriminators())->verify($connection);
+        }
+        $retirement = (new RetiredMarketplaceDefaults())->plan($connection);
+        if ($retirement) {
+            return ['complete' => false, 'retired_marketplace_defaults' => $retirement,
+                'canonical_preflight' => 'Deferred canonical audits: archive the three exact retired marketplace defaults before auditing their remaining owners; this preview is read-only.'];
         }
         $prerequisite = (new DomainsPluginAdoption())->plan($connection);
         if ($prerequisite) {
@@ -230,6 +236,7 @@ final class Version220 implements ReleaseMigration
         if ((Ledger::state($connection, ExactDiscriminators::PHASE)['complete'] ?? false) === true) {
             (new ExactDiscriminators())->verify($connection);
         }
+        (new RetiredMarketplaceDefaults())->apply($connection, $progress);
         (new DomainsPluginAdoption())->apply($connection, fn () => $this->canonicalPlan($connection), $progress);
         $domainDocuments = new DomainDocuments();
         // All stored subject spellings are audited before any canonical DDL,
@@ -291,6 +298,9 @@ final class Version220 implements ReleaseMigration
     /** Frozen physical postconditions ignore completion flags and current entities. */
     public function verify(Connection $connection): void
     {
+        if ((new RetiredMarketplaceDefaults())->plan($connection)) {
+            throw new \RuntimeException('The frozen retired marketplace archival prerequisite is still pending.');
+        }
         V220\Postconditions::assert($connection);
     }
 }

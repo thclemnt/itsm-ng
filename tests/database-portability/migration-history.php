@@ -16,6 +16,7 @@ use itsmng\Database\Migration\History;
 use itsmng\Database\Migration\Version220;
 use itsmng\Database\Migration\Ledger;
 use itsmng\Database\Migration\V220\References;
+use itsmng\Database\Migration\V220\RetiredMarketplaceDefaults;
 use itsmng\Database\Migration\V220\ProjectAssets;
 use itsmng\Database\Migration\V220\OperatingSystemSubjects;
 use itsmng\Database\Migration\V220\Seeds;
@@ -621,19 +622,116 @@ try {
     } finally {
         $postgres ? $connection->fetchOne('SELECT set_config(?, ?, false)', ['TimeZone', $sourceTimezone]) : $connection->executeStatement('SET time_zone = ?', [$sourceTimezone]);
     }
+    // Genuine 5ecdf8e2a29 defaults left by ef30493fad's parent removal.
+    // These complete literal rows are independent test inputs, never synthetic parents.
+    $marketplaceDefaults = [
+        'glpi_notifications_notificationtemplates' => ['id' => 71, 'notifications_id' => 71, 'mode' => 'mailing', 'notificationtemplates_id' => 28],
+        'glpi_notificationtargets' => ['id' => 139, 'items_id' => 1, 'type' => 1, 'notifications_id' => 71],
+        'glpi_notificationtemplatetranslations' => ['id' => 28, 'notificationtemplates_id' => 28, 'language' => '',
+            'subject' => '##lang.plugins_updates_available##',
+            'content_text' => "##lang.plugins_updates_available##\n\n##FOREACHplugins##\n##plugin.name## :##plugin.old_version## -&gt; ##plugin.version##\n##ENDFOREACHplugins##",
+            'content_html' => "&lt;p&gt;##lang.plugins_updates_available##&lt;/p&gt;\n&lt;ul&gt;##FOREACHplugins##\n&lt;li&gt;##plugin.name## :##plugin.old_version## -&gt; ##plugin.version##&lt;/li&gt;\n##ENDFOREACHplugins##&lt;/ul&gt;"],
+    ];
+    $marketplaceRows = [];
+    foreach ($marketplaceDefaults as $table => $row) {
+        $connection->insert($table, $row);
+        $marketplaceRows[$table] = [$connection->fetchAssociative('SELECT * FROM ' . $table . ' WHERE id = ?', [$row['id']])];
+    }
+    $retirement = new RetiredMarketplaceDefaults();
+    $assertMarketplaceRefusal = static function (string $case) use ($connection, $history, $manager, $rawRowbags): void {
+        $before = $rawRowbags();
+        foreach (['preview', 'apply'] as $operation) {
+            try {
+                $operation === 'preview' ? $history->plan($connection) : $history->upgrade($connection);
+                throw new LogicException('Nondefault marketplace source accepted: ' . $case);
+            } catch (RuntimeException $error) {
+                verify(str_contains($error->getMessage(), 'Orphaned retired marketplace ownership')
+                    && str_contains($error->getMessage(), 'source_id') && str_contains($error->getMessage(), 'missing_parent'),
+                    'Nondefault marketplace ' . $case . ' gives bounded owner samples: ' . $error->getMessage());
+            }
+            verify(!$manager->tablesExist([Ledger::TABLE]) && $rawRowbags() === $before,
+                'Nondefault marketplace ' . $case . ' preserves every original row and absent ledger on ' . $operation);
+        }
+    };
+    $connection->update('glpi_notificationtemplatetranslations', ['content_text' => 'Retained customized localized text 日本語'], ['id' => 28]);
+    $assertMarketplaceRefusal('customized translation');
+    $connection->update('glpi_notificationtemplatetranslations', ['content_text' => $marketplaceDefaults['glpi_notificationtemplatetranslations']['content_text']], ['id' => 28]);
+    // An explicitly synthetic owner tests refusal only; it never repairs the positive fixture.
+    $connection->insert('glpi_notifications', ['id' => 71, 'name' => 'Deliberate custom owner for refusal']);
+    $assertMarketplaceRefusal('one existing parent');
+    $connection->delete('glpi_notifications', ['id' => 71]);
+    $connection->insert('glpi_notificationtargets', ['id' => 1999999999, 'items_id' => 1, 'type' => 1, 'notifications_id' => 71]);
+    $assertMarketplaceRefusal('additional child');
+    $connection->delete('glpi_notificationtargets', ['id' => 1999999999]);
+    $connection->executeStatement('ALTER TABLE glpi_notificationtargets ADD customized_archive_field INTEGER DEFAULT 0');
+    $assertMarketplaceRefusal('unknown physical column');
+    $connection->executeStatement('ALTER TABLE glpi_notificationtargets DROP COLUMN customized_archive_field');
+    $connection->delete('glpi_notificationtargets', ['id' => 139]);
+    $assertMarketplaceRefusal('partial default set');
+    $connection->insert('glpi_notificationtargets', $marketplaceDefaults['glpi_notificationtargets']);
+    $beforeArchiveRows = $rawRowbags();
+    $marketplacePreview = $history->plan($connection);
+    verify(count($marketplacePreview['retired_marketplace_defaults']['actions'] ?? []) === 3
+        && $rawRowbags() === $beforeArchiveRows && !$manager->tablesExist([Ledger::TABLE]),
+        'Three exact released defaults produce three read-only archive actions without a receipt');
+    foreach (['Archived three original', 'Retired archived marketplace default: glpi_notifications_notificationtemplates'] as $interruption) {
+        try {
+            $retirement->apply($connection, static function (string $step) use ($interruption): void {
+                if (str_starts_with($step, $interruption)) {
+                    throw new RuntimeException('Injected marketplace archive interruption');
+                }
+            });
+            throw new LogicException('Marketplace archive interruption did not execute');
+        } catch (RuntimeException $error) {
+            verify($error->getMessage() === 'Injected marketplace archive interruption', 'Archive interruption remains retryable');
+        }
+        verify($rawRowbags() === $beforeArchiveRows && Ledger::states($connection) === [],
+            'Archive and every retirement roll back together, including failure after the first deletion');
+        // This disposable fixture restores the ledgerless CLI entry condition.
+        if ($manager->tablesExist([Ledger::TABLE])) {
+            $manager->dropTable(Ledger::TABLE);
+        }
+    }
     // Exercise the supported public updater against populated frozen tables, before
     // any current-only association columns exist. It must never replay legacy scripts.
     $checkpoint('Raw baseline/seeds and invalid-data audits');
     $beforePreviewRows = $connection->fetchAllAssociative('SELECT * FROM glpi_documents_items ORDER BY id');
     [$status, $output] = $cli(['db:update', '--dry-run']);
     $assertOriginalKey();
-    verify($status === 0 && str_contains($output, 'Deferred canonical audits') && str_contains($output, 'No changes.'), 'Actual raw CLI preview retains its read-only deferred canonical plan output: ' . $output);
+    verify($status === 0 && str_contains($output, 'Deferred canonical audits') && str_contains($output, 'No changes.')
+        && substr_count($output, 'Archive and retire: ') === 3, 'Actual raw CLI preview reports three retained-row archival actions and deferred canonical audits: ' . $output);
     verify(!$manager->tablesExist([Ledger::TABLE]) && Ledger::states($connection) === []
         && $connection->fetchAllAssociative('SELECT * FROM glpi_documents_items ORDER BY id') === $beforePreviewRows
         && BooleanDomainSchema::catalog($connection) === $beforeCliCatalog, 'CLI preview preserves raw source rows, schema/check definitions and absent ledger');
     [$status, $output] = $cli(['db:update']);
     $assertOriginalKey();
     verify($status === 0 && str_contains($output, 'Canonical database history complete'), 'Actual db:update adopts populated frozen history without requiring later columns: ' . $output);
+    $marketplaceReceipt = Ledger::state($connection, RetiredMarketplaceDefaults::RECEIPT);
+    verify(($marketplaceReceipt['complete'] ?? false) === true && $marketplaceReceipt['rows'] === $marketplaceRows,
+        'Supported CLI upgrade preserves all three complete genuine original rows in the existing ledger archive');
+    foreach ($marketplaceDefaults as $table => $row) {
+        verify($connection->fetchOne('SELECT id FROM ' . $table . ' WHERE id = ?', [$row['id']]) === false,
+            'Only the archived obsolete live default is retired: ' . $table);
+    }
+    $alteredArchive = $marketplaceReceipt;
+    $alteredArchive['rows']['glpi_notificationtargets'][0]['items_id'] = '19';
+    Ledger::save($connection, RetiredMarketplaceDefaults::RECEIPT, $alteredArchive);
+    try {
+        $retirement->apply($connection);
+        throw new LogicException('Altered marketplace archive accepted');
+    } catch (RuntimeException $error) {
+        verify(str_contains($error->getMessage(), 'archive differs'), 'Retry refuses an archive which no longer proves the original defaults');
+    }
+    verify(Ledger::state($connection, RetiredMarketplaceDefaults::RECEIPT) === $alteredArchive,
+        'Archive refusal preserves the changed receipt for operator reconciliation');
+    Ledger::save($connection, RetiredMarketplaceDefaults::RECEIPT, $marketplaceReceipt);
+    $afterMarketplaceUpgrade = $rawRowbags();
+    $afterMarketplaceLedger = Ledger::states($connection);
+    $retirement->apply($connection, static function (): void {
+        throw new RuntimeException('Completed marketplace archive unexpectedly replayed');
+    });
+    verify($retirement->plan($connection) === [] && $rawRowbags() === $afterMarketplaceUpgrade
+        && Ledger::states($connection) === $afterMarketplaceLedger, 'Completed archive retry is a data-and-ledger no-op');
     $retainedCiphertext = $connection->fetchOne('SELECT value FROM glpi_configs WHERE context = ? AND name = ?', ['core', 'smtp_passwd']);
     verify($retainedCiphertext === $encryptedFixture && Toolbox::sodiumDecrypt($retainedCiphertext) === $encryptedFixtureValue, 'Populated adoption preserves encrypted data which remains decryptable with the unchanged original key');
 } finally {

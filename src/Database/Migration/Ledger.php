@@ -52,7 +52,8 @@ final class Ledger
         return $value === false ? null : json_decode($value, true, flags: JSON_THROW_ON_ERROR);
     }
 
-    public static function save(Connection $connection, string $version, array $state): void
+    /** Bootstrap storage without claiming any data operation has completed. */
+    public static function ensure(Connection $connection): void
     {
         if (!self::assertTransactional($connection)) {
             if ($connection->getDatabasePlatform() instanceof AbstractMySQLPlatform && $connection->isTransactionActive()) {
@@ -67,6 +68,11 @@ final class Ledger
             }
             $connection->createSchemaManager()->createTable($table);
         }
+    }
+
+    public static function save(Connection $connection, string $version, array $state): void
+    {
+        self::ensure($connection);
         $encoded = json_encode($state, JSON_THROW_ON_ERROR);
         if ($connection->fetchOne('SELECT 1 FROM ' . self::TABLE . ' WHERE version = ?', [$version]) === false) {
             $connection->insert(self::TABLE, ['version' => $version, 'state' => $encoded]);
