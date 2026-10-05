@@ -4,15 +4,6 @@
 
 namespace tests\units\itsmng\Database\Mapping;
 
-use Doctrine\DBAL\Connection;
-use Doctrine\DBAL\Driver;
-use Doctrine\DBAL\Driver\Connection as DriverConnection;
-use Doctrine\DBAL\Driver\API\ExceptionConverter;
-use Doctrine\DBAL\Platforms\AbstractPlatform;
-use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
-use Doctrine\DBAL\Schema\AbstractSchemaManager;
-use Doctrine\DBAL\Schema\PostgreSQLSchemaManager;
-use Doctrine\DBAL\ServerVersionProvider;
 use itsmng\Database\BaselineSchema;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\Mapping\SchemaIndex as OwnedIndex;
@@ -20,51 +11,12 @@ use itsmng\Database\Migration\V220\ActorUniqueness;
 use itsmng\Database\Migration\V220\Baseline;
 use itsmng\Database\Migration\V220\TreeUniqueness;
 use itsmng\Database\Orm;
+use tests\fixtures\DisconnectedSchemaConnection;
+
+require_once dirname(__DIR__, 4) . '/fixtures/DisconnectedSchemaConnection.php';
 
 class SchemaIndex extends \atoum\atoum\test
 {
-    private function disconnectedConnection(AbstractPlatform $platform): Connection
-    {
-        $driver = new class ($platform) implements Driver {
-            public function __construct(private AbstractPlatform $platform)
-            {
-            }
-
-            public function connect(#[\SensitiveParameter] array $params): DriverConnection
-            {
-                throw new \LogicException('Metadata ownership tests cannot connect or execute SQL.');
-            }
-
-            public function getDatabasePlatform(ServerVersionProvider $versionProvider): AbstractPlatform
-            {
-                return $this->platform;
-            }
-
-            public function getExceptionConverter(): ExceptionConverter
-            {
-                throw new \LogicException('A disconnected metadata test has no native exceptions to convert.');
-            }
-        };
-
-        return new class ([], $driver) extends Connection {
-            public function createSchemaManager(): AbstractSchemaManager
-            {
-                $platform = $this->getDatabasePlatform();
-                if ($platform instanceof PostgreSQLPlatform) {
-                    return new class ($this, $platform) extends PostgreSQLSchemaManager {
-                        protected function determineCurrentSchemaName(): ?string
-                        {
-                            // DBAL's createSchemaConfig needs this namespace but
-                            // metadata generation must never query current_schema().
-                            return 'public';
-                        }
-                    };
-                }
-                return parent::createSchemaManager();
-            }
-        };
-    }
-
     public function testActorAndTreeGeneratedKeysRetainFrozenOwnershipAcrossPlatforms(): void
     {
         $expectedGeneratedKeys = [];
@@ -78,7 +30,7 @@ class SchemaIndex extends \atoum\atoum\test
         sort($expectedGeneratedKeys, SORT_STRING);
         foreach ([new \Doctrine\DBAL\Platforms\MySQLPlatform(), new \Doctrine\DBAL\Platforms\MariaDBPlatform(),
             new \Doctrine\DBAL\Platforms\PostgreSQLPlatform(), new \Doctrine\DBAL\Platforms\MySQLPlatform()] as $schemaPlatform) {
-            $offlineConnection = $this->disconnectedConnection($schemaPlatform);
+            $offlineConnection = new DisconnectedSchemaConnection($schemaPlatform);
             $this->object($offlineConnection->getDatabasePlatform())->isIdenticalTo($schemaPlatform);
             try {
                 $schemaEm = new \Doctrine\ORM\EntityManager($offlineConnection, Orm::configuration($schemaPlatform));
