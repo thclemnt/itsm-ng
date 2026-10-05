@@ -13,9 +13,14 @@ require GLPI_ROOT . '/inc/includes.php';
 require __DIR__ . '/FixtureRecords.php';
 
 use itsmng\Database\Entity\QueuedNotification as Message;
+use itsmng\Database\CurrentReadUnavailable;
+use itsmng\Database\MySQLConnection;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\NotificationQueueRepository;
 use itsmng\Domain\BrowserNotificationInbox;
 
 $assertions = 0;
+$currentReadCases = 0;
 function verify(bool $condition, string $message): void
 {
     global $assertions;
@@ -50,7 +55,8 @@ try {
     $queue = static fn (array $extra): int => $fixtures->create('glpi_queuednotifications', $extra + [
         'mode' => 'ajax', 'recipient' => (string)$user, 'entities_id' => $entity,
         'itemtype' => 'NotificationAjax', 'name' => "A browser 'title' 日本語", 'body_text' => "Body \\ literal",
-        'send_time' => '2099-01-01 00:00:00', 'sent_try' => 4,
+        // Frozen MySQL queue DDL is native TIMESTAMP, whose older-server range ends in 2038.
+        'send_time' => '2037-01-01 00:00:00', 'sent_try' => 4,
     ]);
     $mine = $queue([]);
     $duplicate = $queue([]);
@@ -116,6 +122,49 @@ try {
     verify(!$inbox->acknowledge($mine, $user) && $native($mine) === $acknowledged, 'Repeated delivery retains the original presentation record');
     verify(in_array($duplicate, array_column(NotificationAjax::getMyNotifications(), 'id'), true), 'One acknowledgement does not consume its duplicate');
 
+    if ($writer->getProvider() === 'mysql' && MySQLConnection::snapshotIsolation($connection) !== null) {
+        $originalCapability = MySQLConnection::snapshotIsolation($connection);
+        $globalCapability = $connection->fetchAllNumeric("SHOW GLOBAL VARIABLES WHERE Variable_name = 'innodb_snapshot_isolation'");
+        $scope = $connection->captureManagedTransactionScope();
+        $depth = $connection->getTransactionNestingLevel();
+        $snapshot = $native($duplicate);
+        $capturedInbox = new BrowserNotificationInbox($writer);
+        // Model a caller callback changing its own physical session after admission.
+        // No GLOBAL change, provider-name/version guess or hidden repair is permitted.
+        $callback = static fn () => $connection->executeStatement('SET SESSION innodb_snapshot_isolation = ON');
+        $callback();
+        try {
+            foreach ([
+                static fn () => (new NotificationQueueRepository(Orm::create($writer)))->browserMessageForAcknowledgement($duplicate, $user),
+                static fn () => $capturedInbox->acknowledge($duplicate, $user),
+            ] as $attempt) {
+                try {
+                    $attempt();
+                    verify(false, 'An incompatible caller-selected snapshot mode must refuse before locking or acknowledgement');
+                } catch (CurrentReadUnavailable $error) {
+                    $scope->assertActive();
+                    verify($connection->getTransactionNestingLevel() === $depth && $connection->getNativeConnection()->inTransaction()
+                        && MySQLConnection::snapshotIsolation($connection) === true && $native($duplicate) === $snapshot,
+                        'Direct locking read and nested command refuse without changing caller depth, physical frame, session mode or payload');
+                    ++$currentReadCases;
+                }
+            }
+        } finally {
+            $connection->executeStatement('SET SESSION innodb_snapshot_isolation = ?', [(int)$originalCapability], [\Doctrine\DBAL\ParameterType::INTEGER]);
+        }
+        $scope->assertActive();
+        $connection->beginTransaction();
+        verify($capturedInbox->acknowledge($duplicate, $user) && (bool)$native($duplicate)['is_deleted'],
+            'The same command retries through the captured writer after the caller explicitly restores its session');
+        $connection->rollBack();
+        $scope->assertActive();
+        verify($native($duplicate) === $snapshot && MySQLConnection::snapshotIsolation($connection) === $originalCapability,
+            'Retry rollback restores every payload cell and preserves the original caller-selected capability');
+        verify($connection->fetchAllNumeric("SHOW GLOBAL VARIABLES WHERE Variable_name = 'innodb_snapshot_isolation'") === $globalCapability,
+            'The shared server capability/default remains unchanged');
+        ++$currentReadCases;
+    }
+
     $connection->beginTransaction();
     NotificationAjax::raisedNotification((string)$duplicate);
     verify((bool)$native($duplicate)['is_deleted'], 'Public acknowledgement participates in the caller savepoint');
@@ -139,7 +188,7 @@ try {
 }
 verify($connection->fetchAllAssociative('SELECT * FROM glpi_queuednotifications ORDER BY id') === $before,
     'All pre-existing queue rows and payloads survive the contract rollback');
-printf("PASS: %d browser inbox assertions\n", $assertions);
+printf("PASS: %d browser inbox assertions; %d available current-read capability cases\n", $assertions, $currentReadCases);
 
 class PluginInboxSubject
 {

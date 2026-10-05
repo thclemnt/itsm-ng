@@ -50,6 +50,7 @@ final class NotificationQueueRepository
         if ($id <= 0 || $recipient <= 0) {
             return null;
         }
+        \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
         return $this->browserSelection($recipient)->andWhere('r.id = :id')->setParameter('id', $id, Types::BIGINT)
             ->getQuery()->setLockMode(LockMode::PESSIMISTIC_WRITE)->getOneOrNullResult();
     }

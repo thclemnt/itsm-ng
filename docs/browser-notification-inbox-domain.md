@@ -1,6 +1,9 @@
 # Recipient-owned browser notification presentation
 
-This is a SOURCE candidate based on `53cf6297473bc31400a0777ff905bd79f1e65698`.
+This successor is a SOURCE candidate based on the accepted combined provider
+composition `4d60504e8be067232f201829a6b7dfbf2e76ab6b`, whose ancestor is
+`53cf6297473bc31400a0777ff905bd79f1e65698`. The original four inbox commits and
+seven path bodies were applied unchanged before this locking-admission follow-up.
 No PHP execution, compiler, database, browser or remote CI validation has run
 for this candidate. It does not complete the modernization objective.
 
@@ -29,6 +32,17 @@ The caller's existing transaction/savepoint owns rollback. A replica-designated
 adapter refuses acknowledgement before persistence. The original direct update
 did not invoke CommonDBTM update hooks, audit history or notifications; this
 operation does not introduce those unrelated effects.
+
+Every repository locking selection calls the accepted
+`MySQLConnection::assertCurrentReads()` admission API. A caller callback can
+change its SESSION snapshot capability after the physical connection and outer
+transaction were admitted; beginning a nested savepoint alone cannot protect
+direct repository locking calls. The guard inspects actual capability and
+managed ownership, refuses incompatible frames, and never repairs the caller's
+transaction or session flag. This successor requires the existing provider470
+composition/API. The retained original standalone53/V3 candidate is HELD and
+must not be treated as independently ready or silently given a method-existence
+fallback. No historical migration or provider policy implementation is copied.
 
 The pending entity predicate is also applied after hydration, so native MySQL
 collation cannot expose a noncanonical channel that the domain refuses to
@@ -62,6 +76,17 @@ ownership, replica designation, idempotency, nested rollback and complete native
 payload preservation. A clone shares the same physical test connection for
 routing-policy assertions; this is explicitly not live replica validation.
 The original notification admission/recipient/template contracts must also run.
+
+When the actual native SESSION capability exists, the contract invokes a caller
+callback that enables it after outer-frame admission, checks direct-repository
+and domain-command refusal, original physical frame/depth, unchanged mode and
+complete native payload, then explicitly restores that caller setting and
+retries with rollback. It reports the capability-case count; unavailable
+capability is not evidence for the MariaDB snapshot behavior. The future queue
+fixture is `2037-01-01`, within the older native MySQL TIMESTAMP range. Frozen
+`Baseline20261001` declares queue `send_time`/`sent_time` as native TIMESTAMP;
+the original2099 fixture assumption was invalid for MySQL and is retained only
+in the held earlier SOURCE origin.
 
 Next validation: independent SOURCE review; parser/style/metadata checks on an
 owned composed worktree; focused inbox and existing notification contracts on
