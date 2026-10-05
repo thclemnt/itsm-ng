@@ -72,7 +72,9 @@ class User extends \DbTestCase
             $DB = $probe;
             $frame = \itsmng\Database\OwnedMutationFrame::begin($connection);
             $manager = \itsmng\Database\Orm::create($probe);
+            $root = $manager->getReference(\itsmng\Database\Entity\Entity::class, 0);
             $locker = new \itsmng\Database\Entity\User();
+            $locker->entities = $root;
             $locker->name = 'lock-display-' . bin2hex(random_bytes(6));
             $locker->firstname = 'Ada';
             $locker->realname = 'Lovelace';
@@ -84,7 +86,7 @@ class User extends \DbTestCase
             $email->is_default = true;
             $manager->persist($email);
             $computer = new \itsmng\Database\Entity\Computer();
-            $computer->entities = $manager->getReference(\itsmng\Database\Entity\Entity::class, 0);
+            $computer->entities = $root;
             $computer->name = 'Locked user display fixture';
             $manager->persist($computer);
             $lock = new \itsmng\Database\Entity\ObjectLock();
@@ -426,9 +428,11 @@ class User extends \DbTestCase
             $this->variable($before[$column])->isIdenticalTo($canonical);
 
             $this->boolean((new \User())->add($input))->isFalse();
+            $this->hasSessionMessages(ERROR, ['Unable to add. The user already exists.']);
             $this->boolean((new \User())->add([
                 'name' => $login, 'authtype' => $type, 'auths_id' => $selection,
             ]))->isFalse();
+            $this->hasSessionMessages(ERROR, ['Unable to add. The user already exists.']);
             $this->boolean($user->getFromDB($id))->isTrue();
             $this->array($user->fields)->isIdenticalTo($before);
         }
