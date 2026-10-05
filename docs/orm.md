@@ -47,6 +47,14 @@ invariants. Moving arbitrary legacy SQL into a helper or using DBAL alone does
 not complete a domain conversion. DBAL remains appropriate for DDL, inspection,
 frozen migrations and unmapped historical exports.
 
+`DBmysql` and `DBpgsql` retain their public compatibility APIs while DBAL owns
+core transport. New repositories accept raw bound values. `MappedStorage` decodes
+pre-escaped legacy input once; `LegacySql` is a lexical bridge, not a dialect
+translator. Supported `RecordCriteria` compiles to DQL; unsupported SQL expressions
+use an explicit legacy route, never a fallback after a database error. Legacy
+scalar rows retain integer flags, nullable values and date strings; decimals remain
+strings to avoid floating-point loss.
+
 `CommonDBTM` retains authorization, validation, plugin hooks, audit, notifications,
 clone and purge behavior. Supported core reads use `RecordRepository`;
 `MappedStorage` and `RecordWriter` persist below the lifecycle. Direct ORM flush
@@ -75,6 +83,18 @@ allocation and VLAN membership preserve endpoint permissions, entity ancestry an
 lifecycle behavior. Calendar closures retain individual links and delegate inclusive
 and annual date semantics to Holiday. These boundaries need provider and public-flow
 validation beyond metadata checks.
+
+Domain's direct commercial Supplier is distinct from `Infocom`'s financial Supplier.
+It must share Domain's owner entity, or be recursive with an owner that is an
+ancestor of Domain's owner. Domain recursion does not authorize sibling, descendant
+or nonrecursive ancestor Suppliers. Entity callbacks and public preparation share
+this predicate; raw DBAL writes and later Supplier/ancestor changes require their
+own validation. No global concurrency guarantee follows from it.
+
+Registered plugin component subjects can be valid extensions that this bounded
+core representation cannot own. Energy-subject adoption refuses unsupported kinds
+before canonical DDL and preserves source/plugin data for a reviewed plugin mapping;
+it must not relabel those rows as invalid or claim all-plugin convergence.
 
 ## Frozen installation and upgrades
 
@@ -109,6 +129,11 @@ diagnostics do not establish readiness for identity adoption. Stable identity
 requires every mutable profile/rule/template/search/integration owner, explicit
 roles, permissions, notifications/dates/history and clone/purge behavior. Problem
 and Change are separate status domains. Preserve historical audit interpretation.
+
+The existing SpecialStatus front/AJAX management paths still lack explicit
+mutation-right admission. Their nontransactional ordinal remapper bypasses Ticket
+hooks and history. These concrete ownership defects remain to be repaired alongside
+stable identity, rather than hidden behind a repository wrapper.
 
 Legacy queries, plugin interfaces and unresolved relationships remain open. Pure
 behavior belongs in the existing unit framework; real provider integration remains
