@@ -28,6 +28,9 @@ CLIs were folded into the existing ItemDeviceProcessor Atoum class: seven method
 1,702 assertions and no skips passed through the normal runtime autoload. Existing
 behavior methods and every native contract remain; review discovery is 226
 contracts, while the running runtime lists 228 (a superset of the retained list).
+The complete disconnected review unit group at `bf415b4986` passed 18 classes,
+65 methods and 30,540 assertions with no skips through the normal runtime
+autoload; exercised application bodies match the frozen runtime.
 The runtime includes software lifecycle admission,
 typed VLAN projections, reviewed positive fixture repairs, native-policy-first
 verification and operation-local reference preflight inspection reuse. Disconnected metadata
