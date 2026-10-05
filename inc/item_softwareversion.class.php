@@ -827,8 +827,15 @@ class Item_SoftwareVersion extends CommonDBRelation
         $showEntity = false;
         $linkUser = User::canView();
 
-        // Process first row to get software info
         $allData = iterator_to_array($iterator);
+        $licenses = (new \itsmng\Database\Repository\SoftwareInstallationRepository(
+            \itsmng\Database\Orm::create($DB)
+        ))->licensesForInstallations(array_map(static fn (array $row): array => [
+            'itemtype' => $row['item_type'],
+            'items_id' => (int)$row['iID'],
+            'softwareversions_id' => (int)$row['vID'],
+        ], $allData));
+        // Process first row to get software info
         if (count($allData) > 0) {
             $firstData = $allData[0];
             $softwares_id = $firstData['sID'];
@@ -921,11 +928,7 @@ class Item_SoftwareVersion extends CommonDBRelation
             );
 
             // Licenses
-            $lics = Item_SoftwareLicense::getLicenseForInstallation(
-                $data['item_type'],
-                $data['iID'],
-                $data['vID']
-            );
+            $lics = $licenses[$data['item_type']][$data['iID']][$data['vID']] ?? [];
             $licenseHtml = '';
             if (count($lics)) {
                 $licParts = [];

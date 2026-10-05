@@ -234,4 +234,164 @@ class Item_SoftwareVersion extends DbTestCase
             (int)\Item_SoftwareVersion::countForSoftware($soft1->fields['id'])
         )->isIdenticalTo(1);
     }
+
+    public function testInstallationLicenseProjectionIsScopedAndBounded(): void
+    {
+        global $DB;
+        $originalLevel = $DB->getDoctrineConnection()->getTransactionNestingLevel();
+        $logger = new class extends \Psr\Log\AbstractLogger {
+            public array $queries = [];
+
+            public function log($level, $message, array $context = []): void
+            {
+                if (isset($context['sql'])) {
+                    $this->queries[] = $context['sql']; // SQL shape only, never credentials or parameters.
+                }
+            }
+        };
+        $configuration = new \Doctrine\DBAL\Configuration();
+        $configuration->setMiddlewares([new \Doctrine\DBAL\Logging\Middleware($logger)]);
+        $parameters = $DB->getDoctrineConnection()->getParams();
+        $connection = $DB->getProvider() === 'pgsql'
+            ? \itsmng\Database\PostgresConnection::create($parameters, $configuration)
+            : \itsmng\Database\MySQLConnection::create($parameters, $configuration);
+        // An independent real writer owns this rolled-back graph, not DbTestCase's caller frame.
+        $frame = \itsmng\Database\OwnedMutationFrame::begin($connection);
+        try {
+            $manager = new \Doctrine\ORM\EntityManager($connection, \itsmng\Database\Orm::configuration($connection->getDatabasePlatform()));
+            $root = $manager->getReference(\itsmng\Database\Entity\Entity::class, 0);
+            $owner = max(
+                (int)$connection->fetchOne('SELECT MAX(id) FROM glpi_computers'),
+                (int)$connection->fetchOne('SELECT MAX(id) FROM glpi_monitors')
+            ) + 1;
+            $subjects = [];
+            foreach (['Computer', 'Monitor'] as $kind) {
+                $class = '\\itsmng\\Database\\Entity\\' . $kind;
+                $metadata = $manager->getClassMetadata($class);
+                $metadata->setIdGeneratorType(\Doctrine\ORM\Mapping\ClassMetadata::GENERATOR_TYPE_NONE);
+                $metadata->setIdGenerator(new \Doctrine\ORM\Id\AssignedGenerator());
+                $subject = new $class();
+                $subject->id = $owner;
+                $subject->entities = $root;
+                $subject->name = 'License projection ' . $kind;
+                $manager->persist($subject);
+                $subjects[$kind] = $subject;
+            }
+            $software = new \itsmng\Database\Entity\Software();
+            $software->entities = $root;
+            $software->name = 'Installation license projection';
+            $manager->persist($software);
+            $type = new \itsmng\Database\Entity\SoftwareLicenseType();
+            $type->entities = $root;
+            $type->name = 'Projection type';
+            $manager->persist($type);
+            $versions = [];
+            $licenses = [];
+            $allocate = static function ($license, string $kind) use ($manager, $subjects): void {
+                $allocation = new \itsmng\Database\Entity\ItemSoftwareLicense();
+                $allocation->itemtype = $kind;
+                $association = $allocation::referenceAssociation($kind);
+                $allocation->{$association} = $subjects[$kind];
+                $allocation->softwarelicenses = $license;
+                $manager->persist($allocation);
+            };
+            // The last real installation is deliberately outside the requested page keys.
+            for ($index = 0; $index < 26; ++$index) {
+                $version = new \itsmng\Database\Entity\SoftwareVersion();
+                $version->entities = $root;
+                $version->softwares = $software;
+                $version->name = 'Projection version ' . $index;
+                $manager->persist($version);
+                $versions[] = $version;
+                $installation = new \itsmng\Database\Entity\ItemSoftwareVersion();
+                $installation->entities = $root;
+                $installation->itemtype = 'Computer';
+                $installation->computer = $subjects['Computer'];
+                $installation->softwareversions = $version;
+                $manager->persist($installation);
+                $license = new \itsmng\Database\Entity\SoftwareLicense();
+                $license->entities = $root;
+                $license->softwares = $software;
+                $license->name = 'Projection license ' . $index;
+                $license->serial = 'serial-' . $index;
+                $license->useVersion = $version;
+                $license->buyVersion = $version;
+                $manager->persist($license);
+                $licenses[] = $license;
+                $allocate($license, 'Computer');
+            }
+            $allocate($licenses[0], 'Computer'); // Duplicate allocation, not another displayed license.
+            $other = new \itsmng\Database\Entity\SoftwareLicense();
+            $other->entities = $root;
+            $other->softwares = $software;
+            $other->name = 'Buy and use on different versions';
+            $other->serial = 'other';
+            $other->buyVersion = $versions[0];
+            $other->useVersion = $versions[1];
+            $other->softwarelicensetypes = $type;
+            $manager->persist($other);
+            $allocate($other, 'Computer');
+            $monitorLicense = new \itsmng\Database\Entity\SoftwareLicense();
+            $monitorLicense->entities = $root;
+            $monitorLicense->softwares = $software;
+            $monitorLicense->name = 'Monitor license';
+            $monitorLicense->buyVersion = $versions[0];
+            $manager->persist($monitorLicense);
+            $allocate($monitorLicense, 'Monitor');
+            $monitorInstallation = new \itsmng\Database\Entity\ItemSoftwareVersion();
+            $monitorInstallation->entities = $root;
+            $monitorInstallation->itemtype = 'Monitor';
+            $monitorInstallation->monitor = $subjects['Monitor'];
+            $monitorInstallation->softwareversions = $versions[0];
+            $manager->persist($monitorInstallation);
+            $manager->flush();
+            $keys = array_map(static fn ($version): array => [
+                'itemtype' => 'Computer', 'items_id' => $owner, 'softwareversions_id' => $version->id,
+            ], array_slice($versions, 0, 25));
+            $manager->clear();
+            $repository = new \itsmng\Database\Repository\SoftwareInstallationRepository($manager);
+            $logger->queries = [];
+            $this->array($repository->licensesForInstallations([]))->isEmpty();
+            $this->array($logger->queries)->isEmpty();
+            foreach ([1, 25] as $size) {
+                $logger->queries = [];
+                $rows = $repository->licensesForInstallations(array_slice($keys, 0, $size));
+                $this->array($logger->queries)->hasSize(1);
+                $this->array(array_keys($rows))->isIdenticalTo(['Computer']);
+                $this->array($rows['Computer'][$owner])->hasSize($size);
+                $this->boolean(isset($rows['Computer'][$owner][$versions[25]->id]))->isFalse();
+                $first = $rows['Computer'][$owner][$versions[0]->id];
+                $expectedIds = [$licenses[0]->id, $other->id];
+                sort($expectedIds);
+                $this->array(array_keys($first))->isIdenticalTo($expectedIds);
+                $this->array($first[$licenses[0]->id])->isIdenticalTo([
+                    'id' => $licenses[0]->id, 'name' => 'Projection license 0', 'serial' => 'serial-0', 'type' => null,
+                ]);
+                $this->string($first[$other->id]['type'])->isIdenticalTo('Projection type');
+                if ($size === 25) {
+                    $this->boolean(isset($rows['Computer'][$owner][$versions[1]->id][$other->id]))->isTrue();
+                }
+                $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
+            }
+            $logger->queries = [];
+            $rows = $repository->licensesForInstallations([$keys[0], $keys[0], [
+                'itemtype' => 'Monitor', 'items_id' => $owner, 'softwareversions_id' => $versions[0]->id,
+            ]]);
+            $this->array($logger->queries)->hasSize(1);
+            $this->array(array_keys($rows['Monitor'][$owner][$versions[0]->id]))->isIdenticalTo([$monitorLicense->id]);
+            $this->array($rows['Computer'][$owner])->hasSize(1);
+            $this->array($rows['Computer'][$owner][$versions[0]->id])->hasSize(2);
+            $connection->update('glpi_softwarelicenses', ['name' => 'Changed on supplied writer'], ['id' => $licenses[0]->id]);
+            $rows = $repository->licensesForInstallations([$keys[0]]);
+            $this->string($rows['Computer'][$owner][$versions[0]->id][$licenses[0]->id]['name'])->isIdenticalTo('Changed on supplied writer');
+            $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
+        } finally {
+            try {
+                $frame->rollBack();
+            } finally {
+                $connection->close();
+            }
+        }
+        $this->integer($DB->getDoctrineConnection()->getTransactionNestingLevel())->isIdenticalTo($originalLevel);
+    }
 }

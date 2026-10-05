@@ -94,13 +94,15 @@ class Item_SoftwareLicense extends DbTestCase
          ])
         )->isTrue();
 
-        $this->array(
-            \Item_SoftwareLicense::getLicenseForInstallation(
-                'Computer',
-                $computer1->fields['id'],
-                $version1->fields['id']
-            )
-        )->hasSize(1);
+        $rows = \Item_SoftwareLicense::getLicenseForInstallation(
+            'Computer',
+            $computer1->fields['id'],
+            $version1->fields['id']
+        );
+        $this->array($rows)->hasSize(1);
+        // The public helper remains a full legacy row for plugins and other callers.
+        $this->array($rows[$lic->fields['id']])->hasKeys(['number', 'comment', 'softwares_id', 'softwareversions_id_use']);
+        $this->integer((int)$rows[$lic->fields['id']]['softwareversions_id_use'])->isIdenticalTo((int)$version1->fields['id']);
 
         //reset license
         $this->boolean(

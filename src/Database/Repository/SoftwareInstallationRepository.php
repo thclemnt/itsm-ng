@@ -172,6 +172,53 @@ final class SoftwareInstallationRepository
         return $rows;
     }
 
+    /**
+     * Display fields for the installation rows already scoped by the caller.
+     *
+     * @param list<array{itemtype: string, items_id: int, softwareversions_id: int}> $installations
+     * @return array<string, array<int, array<int, array<int, array{id: int, name: ?string, serial: ?string, type: ?string}>>>>
+     */
+    public function licensesForInstallations(array $installations): array
+    {
+        if ($installations === []) {
+            return [];
+        }
+        $query = $this->em->createQueryBuilder()
+            ->select('DISTINCT i.itemtype AS itemtype, i.items_id AS owner, v.id AS version')
+            ->addSelect('l.id AS id, l.name AS name, l.serial AS serial, t.name AS type')
+            ->from(Entity\ItemSoftwareLicense::class, 'i')
+            ->innerJoin('i.softwarelicenses', 'l')
+            ->innerJoin(Entity\SoftwareVersion::class, 'v', 'WITH', 'l.useVersion = v.id OR l.buyVersion = v.id')
+            ->leftJoin('l.softwarelicensetypes', 't')
+            ->orderBy('l.id');
+        $requested = [];
+        $predicates = [];
+        foreach ($installations as $installation) {
+            $kind = $installation['itemtype'];
+            $owner = (int)$installation['items_id'];
+            $version = (int)$installation['softwareversions_id'];
+            if (isset($requested[$kind][$owner][$version])) {
+                continue;
+            }
+            $requested[$kind][$owner][$version] = true;
+            $association = Entity\ItemSoftwareLicense::referenceAssociation($kind);
+            $index = count($predicates);
+            $predicates[] = '(IDENTITY(i.' . $association . ') = :owner' . $index . ' AND v.id = :version' . $index . ')';
+            $query->setParameter('owner' . $index, $owner, Types::BIGINT)
+                ->setParameter('version' . $index, $version, Types::BIGINT);
+        }
+        $rows = [];
+        foreach ($query->where(implode(' OR ', $predicates))->getQuery()->getScalarResult() as $row) {
+            $rows[$row['itemtype']][(int)$row['owner']][(int)$row['version']][(int)$row['id']] = [
+                'id' => (int)$row['id'],
+                'name' => $row['name'],
+                'serial' => $row['serial'],
+                'type' => $row['type'],
+            ];
+        }
+        return $rows;
+    }
+
     /** Presentation deduplicates licence IDs while persisted assignments retain multiplicity. */
     public function licensesForInstallation(string $kind, int $id, int $version): array
     {
