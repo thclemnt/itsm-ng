@@ -1980,9 +1980,6 @@ JAVASCRIPT
 
         $twig_vars['profileSelect'] = $mainMenu['args']['profileSelect'] ?? '';
 
-        $user = new User();
-        $user->getFromDB(Session::getLoginUserID());
-
         $twig_vars['username'] = getUserName(Session::getLoginUserID());
         $twig_vars['main_menu']['args']['access'] = Session::getCurrentInterface();
         renderTwigTemplate('headers/header.twig', $twig_vars);

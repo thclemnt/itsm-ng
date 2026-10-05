@@ -222,10 +222,6 @@ class ObjectLock extends CommonDBTM
     {
         global $CFG_GLPI;
 
-        // should get locking user info
-        $user = new User();
-        $user->getFromDB($this->fields['users_id']);
-
         $useremail     = new UserEmail();
         $showAskUnlock = $useremail->getFromDBByCrit([
            'users_id'     => $this->fields['users_id'],
@@ -289,7 +285,7 @@ class ObjectLock extends CommonDBTM
         echo $ret;
 
         $msg = "<strong class='nowrap'>";
-        $msg .= sprintf(__('Locked by %s'), "<a href='" . $user->getLinkURL() . "'>" . $userdata['name'] . "</a>");
+        $msg .= sprintf(__('Locked by %s'), "<a href='" . $userdata['link'] . "'>" . $userdata['name'] . "</a>");
         $msg .= "&nbsp;" . Html::showToolTip($userdata["comment"], ['link' => $userdata['link'], 'display' => false]);
         $msg .= " -> " . Html::convDateTime($this->fields['date_mod']);
         $msg .= "</strong>";

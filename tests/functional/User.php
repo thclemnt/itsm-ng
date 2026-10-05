@@ -37,6 +37,125 @@ namespace tests\units;
 
 class User extends \DbTestCase
 {
+    public function testLockMessageUsesCurrentProjectedUserWithoutReload(): void
+    {
+        global $DB, $CFG_GLPI;
+        $this->login();
+        $original = $DB;
+        $session = $_SESSION;
+        $configurationBefore = $CFG_GLPI;
+        $originalLevel = $original->getDoctrineConnection()->getTransactionNestingLevel();
+        $logger = new class extends \Psr\Log\AbstractLogger {
+            public array $userReads = [];
+
+            public function log($level, $message, array $context = []): void
+            {
+                if (isset($context['sql'])) {
+                    $sql = str_replace(['`', '"'], '', $context['sql']);
+                    if (preg_match('/\bFROM\s+glpi_users\b/i', $sql)) {
+                        $this->userReads[] = $sql; // SQL shape only, never bound data.
+                    }
+                }
+            }
+        };
+        $configuration = new \Doctrine\DBAL\Configuration();
+        $configuration->setMiddlewares([new \Doctrine\DBAL\Logging\Middleware($logger)]);
+        $parameters = $original->getDoctrineConnection()->getParams();
+        $connection = $original->getProvider() === 'pgsql'
+            ? \itsmng\Database\PostgresConnection::create($parameters, $configuration)
+            : \itsmng\Database\MySQLConnection::create($parameters, $configuration);
+        $probe = clone $original;
+        (new \ReflectionProperty(\DBAdapter::class, 'doctrine'))->setValue($probe, $connection);
+        $frame = null;
+        $primary = null;
+        try {
+            $DB = $probe;
+            $frame = \itsmng\Database\OwnedMutationFrame::begin($connection);
+            $manager = \itsmng\Database\Orm::create($probe);
+            $locker = new \itsmng\Database\Entity\User();
+            $locker->name = 'lock-display-' . bin2hex(random_bytes(6));
+            $locker->firstname = 'Ada';
+            $locker->realname = 'Lovelace';
+            $locker->authtype = \Auth::DB_GLPI;
+            $manager->persist($locker);
+            $email = new \itsmng\Database\Entity\UserEmail();
+            $email->users = $locker;
+            $email->email = 'locker@example.test';
+            $email->is_default = true;
+            $manager->persist($email);
+            $computer = new \itsmng\Database\Entity\Computer();
+            $computer->entities = $manager->getReference(\itsmng\Database\Entity\Entity::class, 0);
+            $computer->name = 'Locked user display fixture';
+            $manager->persist($computer);
+            $lock = new \itsmng\Database\Entity\ObjectLock();
+            $lock->itemtype = 'Computer';
+            $lock->subjectComputer = $computer;
+            $lock->users = $locker;
+            $manager->persist($lock);
+            $manager->flush();
+            $manager->clear();
+
+            $_SESSION['glpinames_format'] = \User::FIRSTNAME_BEFORE;
+            $_SESSION['glpiis_ids_visible'] = 0;
+            $_SESSION['glpilock_autolock_mode'] = 1;
+            $CFG_GLPI['lock_use_lock_item'] = 1;
+            $CFG_GLPI['lock_lockprofile_id'] = $_SESSION['glpiactiveprofile']['id'];
+            $CFG_GLPI['lock_lockprofile'] = $_SESSION['glpiactiveprofile'];
+            $CFG_GLPI['lock_item_list'] = ['Computer'];
+            $activeSession = $_SESSION;
+            $this->boolean(\Session::haveRightsOr('computer', [UPDATE, DELETE, PURGE, UPDATENOTE]))->isTrue();
+            foreach ([['Ada', true, true], ['Grace', false, true], ['Grace', true, false]] as [$firstname, $mailing, $hasEmail]) {
+                $_SESSION = $activeSession;
+                $CFG_GLPI['notifications_mailing'] = (int)$mailing;
+                $connection->update('glpi_users', ['firstname' => $firstname], ['id' => $locker->id]);
+                if (!$hasEmail) {
+                    $connection->delete('glpi_useremails', ['id' => $email->id]);
+                }
+                $logger->userReads = [];
+                $options = ['id' => $computer->id];
+                ob_start();
+                try {
+                    \ObjectLock::manageObjectLock('Computer', $options);
+                    $html = ob_get_contents();
+                } finally {
+                    ob_end_clean();
+                    \ObjectLock::revertProfile();
+                }
+                $this->integer($options['locked'])->isIdenticalTo(1);
+                $this->string($html)->contains($firstname . ' Lovelace')
+                    ->contains("href='" . \User::getFormURLWithID($locker->id) . "'");
+                $this->boolean(str_contains($html, 'function askUnlock()'))->isIdenticalTo($mailing && $hasEmail);
+                $this->boolean(str_contains($html, 'locker@example.test'))->isIdenticalTo($hasEmail);
+                $this->array($logger->userReads)->hasSize(1);
+                $this->string($logger->userReads[0])->notContains('password');
+                $frame->assertActive();
+                $this->object($DB)->isIdenticalTo($probe);
+            }
+        } catch (\Throwable $error) {
+            $primary = $error;
+        } finally {
+            $DB = $original;
+            $_SESSION = $session;
+            $CFG_GLPI = $configurationBefore;
+            try {
+                if ($frame !== null) {
+                    $frame->rollBack();
+                }
+            } catch (\Throwable $cleanup) {
+                $primary = $primary === null ? $cleanup : new \itsmng\Database\MutationRollbackFailure($primary, $cleanup);
+            }
+            try {
+                $probe->close();
+            } catch (\Throwable $cleanup) {
+                $primary = $primary === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($primary, $cleanup);
+            }
+        }
+        if ($primary !== null) {
+            throw $primary;
+        }
+        $this->integer($original->getDoctrineConnection()->getTransactionNestingLevel())->isIdenticalTo($originalLevel);
+    }
+
     public function testGenerateUserToken()
     {
         $user = getItemByTypeName('User', TU_USER);
