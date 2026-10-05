@@ -88,6 +88,10 @@ class ITILFollowup extends DbTestCase
             $this->boolean($followup->can($id, \PURGE))->isFalse();
             $this->boolean((new CoreITILFollowup())->can(-1, \CREATE, $input))->isTrue();
             $this->boolean($followup->update($input))->isFalse();
+            $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'][\ERROR])->isIdenticalTo([
+                __('Cannot update item: not enough right on the parent(s) item(s)'),
+            ]);
+            unset($_SESSION['MESSAGE_AFTER_REDIRECT'][\ERROR]);
             $this->boolean($followup->getFromDB($id))->isTrue();
             $this->integer($followup->fields['items_id'])->isIdenticalTo($source);
 
@@ -97,6 +101,10 @@ class ITILFollowup extends DbTestCase
             $this->boolean($followup->can($id, \PURGE))->isTrue();
             $this->boolean((new CoreITILFollowup())->can(-1, \CREATE, $input))->isFalse();
             $this->boolean($followup->update($input))->isFalse();
+            $this->array($_SESSION['MESSAGE_AFTER_REDIRECT'][\ERROR])->isIdenticalTo([
+                __('Cannot update item: not enough right on the parent(s) item(s)'),
+            ]);
+            unset($_SESSION['MESSAGE_AFTER_REDIRECT'][\ERROR]);
             $this->boolean($followup->getFromDB($id))->isTrue();
             $this->integer($followup->fields['items_id'])->isIdenticalTo($source);
 
