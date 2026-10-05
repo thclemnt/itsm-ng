@@ -1152,7 +1152,6 @@ class Migration
             $DB->insertOrDie(
                 'glpi_profilerights',
                 [
-                  'id'           => null,
                   'profiles_id'  => $profile['id'],
                   'name'         => $name,
                   'rights'       => $reqmet ? $rights : 0

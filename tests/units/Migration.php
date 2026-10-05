@@ -576,6 +576,30 @@ class Migration extends \GLPITestCase
         //Test adding a READ right when profile with no requirements
         $this->migration->addRight('testright4', READ, []);
 
+        // The database generates identities on both supported providers. Every
+        // profile receives a row, including profiles whose requirements fail.
+        $registered = iterator_to_array($DB->request([
+           'FROM' => 'glpi_profilerights',
+           'WHERE' => ['name' => ['testright1', 'testright2', 'testright3', 'testright4']],
+           'ORDER' => 'id'
+        ]));
+        $this->array($registered)->hasSize(32);
+        $ids = [];
+        foreach ($registered as $right) {
+            $id = (int) $right['id'];
+            $this->integer($id)->isGreaterThan(0);
+            $ids[] = $id;
+        }
+        $this->array(array_unique($ids))->hasSize(32);
+        // A retry must preserve identities and existing grants, even when the
+        // requested mask changes.
+        $this->migration->addRight('testright4', READ | UPDATE, []);
+        $this->array(iterator_to_array($DB->request([
+           'FROM' => 'glpi_profilerights',
+           'WHERE' => ['name' => ['testright1', 'testright2', 'testright3', 'testright4']],
+           'ORDER' => 'id'
+        ])))->isIdenticalTo($registered);
+
         $right1 = $DB->request([
            'FROM' => 'glpi_profilerights',
            'WHERE'  => [
@@ -613,6 +637,11 @@ class Migration extends \GLPITestCase
         $this->integer(count($right1))->isEqualTo(8);
 
         //Test adding a READ right only on profiles where it has not been set yet
+        $survivors = iterator_to_array($DB->request([
+           'FROM' => 'glpi_profilerights',
+           'WHERE' => ['name' => 'testright4', 'NOT' => ['profiles_id' => [1, 2, 3, 4]]],
+           'ORDER' => 'id'
+        ]));
         $DB->delete('glpi_profilerights', [
            'profiles_id' => [1, 2, 3, 4],
            'name' => 'testright4'
@@ -628,6 +657,11 @@ class Migration extends \GLPITestCase
            ]
         ]);
         $this->integer(count($right4))->isEqualTo(4);
+        $this->array(iterator_to_array($DB->request([
+           'FROM' => 'glpi_profilerights',
+           'WHERE' => ['name' => 'testright4', 'NOT' => ['profiles_id' => [1, 2, 3, 4]]],
+           'ORDER' => 'id'
+        ])))->isIdenticalTo($survivors);
     }
 
     public function testRenameTable()
