@@ -9123,7 +9123,8 @@ abstract class CommonITILObject extends CommonDBTM
             $tasks_crit = [
                $this->getForeignKeyField() => $this->getID(),
             ];
-            if (!$bypass_rights && !Session::haveRight($task_class::$rightname, CommonITILTask::SEEPRIVATE)) {
+            if (!$bypass_rights && (new $task_class())->maybePrivate()
+                && !Session::haveRight($task_class::$rightname, CommonITILTask::SEEPRIVATE)) {
                 $tasks_crit[] = [
                    'OR' => ['is_private' => 0, 'users_id' => Session::getLoginUserID()],
                 ];

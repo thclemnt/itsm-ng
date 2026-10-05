@@ -1972,6 +1972,48 @@ class Ticket extends DbTestCase
         }
     }
 
+    public function testTimelineCountUsesLocalCalendarKeys()
+    {
+        global $DB;
+        $this->login();
+        $connection = $DB->getDoctrineConnection();
+        $postgres = $connection->getDatabasePlatform() instanceof \Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+        $timezone = $connection->fetchOne($postgres ? 'SHOW TIME ZONE' : 'SELECT @@session.time_zone');
+        try {
+            $connection->executeStatement($postgres ? "SET TIME ZONE 'UTC'" : "SET time_zone = '+00:00'");
+            $ticket = new \Ticket();
+            $this->integer((int)$ticket->add(['name' => 'Timeline DST fold', 'content' => 'Count calendar keys']))->isGreaterThan(0);
+            $document = new \Document();
+            $this->integer((int)$document->add(['name' => 'Fold attachment']))->isGreaterThan(0);
+            foreach ([
+                [\CommonITILObject::TIMELINE_LEFT, '2026-10-25 00:30:00'],
+                [\CommonITILObject::TIMELINE_RIGHT, '2026-10-25 01:30:00'],
+            ] as [$position, $date]) {
+                $binding = new \Document_Item();
+                $this->integer((int)$binding->add([
+                    'itemtype' => 'Ticket', 'items_id' => $ticket->getID(),
+                    'documents_id' => $document->getID(), 'timeline_position' => $position,
+                ]))->isGreaterThan(0);
+                $this->boolean($DB->update($binding->getTable(), ['date' => $date], ['id' => $binding->getID()]))->isTrue();
+            }
+            $validation = new \TicketValidation();
+            $this->integer((int)$validation->add([
+                'tickets_id' => $ticket->getID(), 'users_id_validate' => \Session::getLoginUserID(),
+                'comment_submission' => 'Fold validation',
+            ]))->isGreaterThan(0);
+            $this->boolean($DB->update($validation->getTable(), [
+                'submission_date' => '2026-10-25 00:30:00', 'validation_date' => '2026-10-25 01:30:00',
+            ], ['id' => $validation->getID()]))->isTrue();
+            $this->integer($ticket->getTimelineItemCount())->isEqualTo(4)->isEqualTo(count($ticket->getTimelineItems()));
+            // Both instants are 02:30 in Paris's repeated hour. MySQL's fixed-offset
+            // control needs no populated timezone tables and keeps the keys distinct.
+            $connection->executeStatement($postgres ? "SET TIME ZONE 'Europe/Paris'" : "SET time_zone = '+02:00'");
+            $this->integer($ticket->getTimelineItemCount())->isEqualTo($postgres ? 2 : 4)->isEqualTo(count($ticket->getTimelineItems()));
+        } finally {
+            $connection->executeStatement($postgres ? 'SELECT set_config(?, ?, false)' : 'SET time_zone = ?', $postgres ? ['TimeZone', $timezone] : [$timezone]);
+        }
+    }
+
     public function testTimelineCountKeepsCustomTimeline()
     {
         $ticket = new class extends \Ticket {
