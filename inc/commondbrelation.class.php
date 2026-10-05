@@ -457,9 +457,12 @@ abstract class CommonDBRelation extends CommonDBConnexity
     public function canRelationItem($method, $methodNotItem, $check_entity = true, $forceCheckBoth = false)
     {
 
+        // Only equivalent operation roles allow either endpoint to own a write,
+        // as in canRelation(). A VIEW or DONT_CHECK role is not an alternate
+        // operation grant and must not acquire an implicit view requirement.
         $OneWriteIsEnough = (!$forceCheckBoth
                              && ((static::HAVE_SAME_RIGHT_ON_ITEM == static::$checkItem_1_Rights)
-                                 || (static::HAVE_SAME_RIGHT_ON_ITEM == static::$checkItem_2_Rights)));
+                                 && (static::HAVE_SAME_RIGHT_ON_ITEM == static::$checkItem_2_Rights)));
 
         try {
             $item1 = null;

@@ -39,6 +39,49 @@ use DbTestCase;
 
 class Computer extends DbTestCase
 {
+    public function testRelationPermissionsRetainDeclaredViewAndEquivalentOwnerRoles(): void
+    {
+        $savedSession = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            $name = 'relation-rights-' . parent::getUniqueString();
+            $computer = $this->createItem('Computer', ['name' => $name, 'entities_id' => 0]);
+            $monitor = $this->createItem('Monitor', ['name' => $name, 'entities_id' => 0, 'is_global' => true]);
+            $connection = $this->createItem('Computer_Item', ['computers_id' => (int)$computer->getID(), 'itemtype' => 'Monitor', 'items_id' => (int)$monitor->getID()]);
+            $id = (int)$connection->getID();
+            $_SESSION['glpiactiveprofile']['computer'] = READ;
+            $_SESSION['glpiactiveprofile']['monitor'] = READ;
+            $this->boolean($connection->canCreateItem())->isFalse('A secondary VIEW grant cannot replace the primary operation grant');
+            $this->boolean($connection->canUpdateItem())->isFalse();
+            $this->boolean($connection->can($id, UPDATE))->isFalse();
+            $_SESSION['glpiactiveprofile']['computer'] = READ | UPDATE;
+            $_SESSION['glpiactiveprofile']['monitor'] = 0;
+            $this->boolean($connection->canCreateItem())->isFalse('The explicit secondary VIEW role still requires Monitor READ');
+            $this->boolean($connection->can($id, UPDATE))->isFalse();
+            $_SESSION['glpiactiveprofile']['monitor'] = READ;
+            $this->boolean($monitor->can($monitor->getID(), UPDATE))->isFalse();
+            $this->boolean($connection->canCreateItem())->isTrue();
+            $this->boolean($connection->can($id, UPDATE))->isTrue('Secondary READ is sufficient for its declared VIEW role');
+
+            // Certificate_Item declares the same operation role at both ends.
+            // Its existing either-owner fallback and forced-both policy remain.
+            $certificate = $this->createItem('Certificate', ['name' => $name, 'entities_id' => 0]);
+            $membership = $this->createItem('Certificate_Item', ['certificates_id' => (int)$certificate->getID(), 'itemtype' => 'Computer', 'items_id' => (int)$computer->getID()]);
+            $_SESSION['glpiactiveprofile']['certificate'] = READ;
+            $this->boolean($membership->canCreateItem())->isTrue();
+            $this->boolean($membership->canRelationItem('canUpdateItem', 'canUpdate', true, true))->isFalse('Forced-both admission requires both actual owners writable');
+            $_SESSION['glpiactiveprofile']['certificate'] = READ | UPDATE;
+            $_SESSION['glpiactiveprofile']['computer'] = READ;
+            $this->boolean($membership->canCreateItem())->isTrue('The first equivalent owner may also own the write');
+            $this->boolean($membership->canRelationItem('canUpdateItem', 'canUpdate', true, true))->isFalse();
+            $_SESSION['glpiactiveprofile']['computer'] = READ | UPDATE;
+            $this->boolean($membership->canRelationItem('canUpdateItem', 'canUpdate', true, true))->isTrue();
+        } finally {
+            $_SESSION = $savedSession;
+        }
+    }
+
     protected function getUniqueString()
     {
         $string = parent::getUniqueString();

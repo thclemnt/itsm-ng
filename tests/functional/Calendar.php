@@ -39,6 +39,49 @@ use DbTestCase;
 
 class Calendar extends DbTestCase
 {
+    public function testClosurePermissionsFollowTheCalendarOwnerAndDeclaredHolidayRole(): void
+    {
+        $savedSession = $_SESSION;
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            $name = 'closure-rights-' . $this->getUniqueString();
+            $calendar = $this->createItem('Calendar', ['name' => $name, 'entities_id' => 0, 'is_recursive' => false]);
+            $holiday = $this->createItem('Holiday', ['name' => $name, 'begin_date' => '2030-05-01', 'end_date' => '2030-05-02', 'is_perpetual' => false]);
+            $second = $this->createItem('Holiday', ['name' => $name . '-second', 'begin_date' => '2030-06-01', 'end_date' => '2030-06-02', 'is_perpetual' => false]);
+            $link = $this->createItem('Calendar_Holiday', ['calendars_id' => (int)$calendar->getID(), 'holidays_id' => (int)$holiday->getID()]);
+            $id = (int)$link->getID();
+            $input = ['calendars_id' => (int)$calendar->getID(), 'holidays_id' => (int)$second->getID()];
+            $_SESSION['glpiactiveprofile']['calendar'] = READ;
+            $this->boolean($calendar->can($calendar->getID(), READ))->isTrue();
+            $this->boolean($link->canCreateItem())->isFalse('DONT_CHECK is not an alternate write grant when the Calendar is only readable');
+            $this->boolean((new \Calendar_Holiday())->can(-1, CREATE, $input))->isFalse();
+            $this->boolean($link->can($id, PURGE))->isFalse();
+
+            $_SESSION['glpiactiveprofile']['calendar'] = UPDATE;
+            $this->boolean($holiday->can($holiday->getID(), READ))->isFalse();
+            $this->boolean($link->canCreateItem())->isTrue('The declared secondary DONT_CHECK role does not require Holiday READ');
+            $this->boolean((new \Calendar_Holiday())->can(-1, CREATE, $input))->isTrue();
+            $added = $this->createItem('Calendar_Holiday', $input);
+            $addedId = (int)$added->getID();
+            $this->boolean($added->can($addedId, PURGE))->isTrue();
+            $this->boolean($added->delete(['id' => $addedId], true))->isTrue();
+            $this->boolean($added->getFromDB($addedId))->isFalse();
+            $this->boolean($second->getFromDB($second->getID()))->isTrue('Purging a closure does not purge its reusable Holiday');
+            $this->boolean($link->can($id, UPDATE))->isTrue();
+            $this->boolean($link->can($id, PURGE))->isTrue();
+
+            $invalid = ['calendars_id' => (int)$calendar->getID(), 'holidays_id' => -1];
+            $this->boolean((new \Calendar_Holiday())->can(-1, CREATE, $invalid))->isFalse();
+            $_SESSION['glpiactiveentities'] = [];
+            $_SESSION['glpishowallentities'] = false;
+            $this->boolean((new \Calendar_Holiday())->can(-1, CREATE, $input))->isFalse('Calendar entity scope still owns closure admission');
+            $this->boolean($link->can($id, PURGE))->isFalse();
+        } finally {
+            $_SESSION = $savedSession;
+        }
+    }
+
     public function testComputeEndDate()
     {
         $calendar = new \Calendar();
