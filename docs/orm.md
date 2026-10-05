@@ -67,6 +67,8 @@ Entity managers live for one operation: legacy writes do not invalidate Doctrine
 identity map. Mapping configuration and serialized metadata may be cached; managed
 objects and mutable metadata must not leak between operations. Source tracing of
 read routing is not live replica validation.
+An empty authorized entity scope grants no rows; unrestricted scope must be
+explicit and retain the caller's authorization.
 
 Commands preserve the selected writer across preparation and callbacks, refuse
 slaves, and respect physical transaction ownership. Shared DBAL/legacy frames use
