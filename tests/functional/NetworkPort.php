@@ -514,6 +514,7 @@ class NetworkPort extends DbTestCase
     public function testVlanAssignAndUnassign()
     {
         $this->login();
+        $this->setEntity('_test_root_entity', false);
 
         $computer = getItemByTypeName('Computer', '_test_pc01');
         $networkport = new \NetworkPort();
@@ -533,8 +534,13 @@ class NetworkPort extends DbTestCase
         $vlan_id = $vlan->add([
            'name' => 'Functional VLAN',
            'tag'  => 120,
+           'entities_id' => $computer->fields['entities_id'],
         ]);
         $this->integer($vlan_id)->isGreaterThan(0);
+        $this->integer((int)$networkport->fields['entities_id'])->isIdenticalTo((int)$computer->fields['entities_id']);
+        $this->integer((int)$vlan->fields['entities_id'])->isIdenticalTo((int)$computer->fields['entities_id']);
+        $this->boolean($networkport->can($port_id, UPDATE))->isTrue();
+        $this->boolean($vlan->can($vlan_id, UPDATE))->isTrue();
 
         $networkport_vlan = new \NetworkPort_Vlan();
         $relation_id = $networkport_vlan->assignVlan($port_id, $vlan_id, 1);
