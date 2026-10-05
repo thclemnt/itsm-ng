@@ -1655,8 +1655,10 @@ class Search extends DbTestCase
 
     public function testGroupParamAfterMeta()
     {
-        // Try to run this query without warnings
-        $this->doSearch('Ticket', [
+        $this->login();
+        $computerOptions = \itsmng\Search\SearchOption::getOptions('Computer');
+        $ticketOptions = \itsmng\Search\SearchOption::getOptions('Ticket');
+        $params = [
            'reset'      => 'reset',
            'is_deleted' => 0,
            'start'      => 0,
@@ -1688,7 +1690,59 @@ class Search extends DbTestCase
                  ]
               ]
            ]
-        ]);
+        ];
+
+        // Rendering both WHERE and HAVING must leave each item's options intact,
+        // including when a grouped main-item criterion follows a meta criterion.
+        foreach ([$params['criteria'], array_reverse($params['criteria'])] as $criteria) {
+            $params['criteria'] = $criteria;
+            $data = $this->doSearch('Ticket', $params);
+            $this->array(\itsmng\Search\SearchOption::getOptions('Computer'))
+                ->isIdenticalTo($computerOptions);
+            $this->array(\itsmng\Search\SearchOption::getOptions('Ticket'))
+                ->isIdenticalTo($ticketOptions);
+            $this->string($data['sql']['search'])
+                ->notContains('`glpi_tickets_name_Computer`');
+        }
+    }
+
+    public function testJoinConditionOwnsQuotedAliases()
+    {
+        global $DB;
+
+        $this->login();
+        $conditions = [
+            'AND NEWTABLE.id = REFTABLE.entities_id',
+            'AND `NEWTABLE`.`id` = `REFTABLE`.`entities_id`',
+            'AND "NEWTABLE".`id` = "REFTABLE".`entities_id`',
+            \getEntitiesRestrictRequest('AND', 'NEWTABLE', 'id', [$_SESSION['glpiactive_entity']]),
+            [
+                new \QueryExpression('AND 1 = 1'),
+                'NEWTABLE.id' => new \QueryExpression(\DBAdapter::quoteName('REFTABLE.entities_id')),
+            ],
+        ];
+        foreach ($conditions as $condition) {
+            $links = [];
+            $join = \itsmng\Search\Provider\JoinBuilder::addLeftJoin(
+                'Computer',
+                'glpi_computers',
+                $links,
+                'glpi_entities',
+                'entities_id',
+                0,
+                0,
+                ['condition' => $condition]
+            );
+            $alias = \DBAdapter::quoteName($links[0]);
+            $this->string($join)
+                ->contains($alias . '.')
+                ->notContains('NEWTABLE')
+                ->notContains('REFTABLE');
+            // Compile and execute the actual public join on the current provider;
+            // accepting a mixed quoted alias in a string assertion is insufficient.
+            $result = $DB->query('SELECT COUNT(*) FROM `glpi_computers` ' . $join);
+            $this->boolean($result === false)->isFalse();
+        }
     }
 
     /**

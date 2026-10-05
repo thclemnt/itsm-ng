@@ -285,9 +285,20 @@ final class JoinBuilder
                     $it = new \DBmysqlIterator(null);
                     $condition = $it->analyseCrit($condition);
                 }
-                $from = ["`REFTABLE`", "REFTABLE", "`NEWTABLE`", "NEWTABLE"];
-                $to = ["`{$rt}`", "`{$rt}`", "`{$nt}`", "`{$nt}`"];
-                $addcondition = str_replace($from, $to, $condition);
+                // Conditions may already use the provider's identifier quotes (for
+                // example an entity restriction or an iterator criterion). Replace
+                // complete identifiers in one pass so their quotes cannot surround
+                // a second quoted alias, or substitute inside a replacement alias.
+                $reference = \DBAdapter::quoteName($rt);
+                $target = \DBAdapter::quoteName($nt);
+                $addcondition = strtr($condition, [
+                    '`REFTABLE`' => $reference,
+                    '"REFTABLE"' => $reference,
+                    'REFTABLE' => $reference,
+                    '`NEWTABLE`' => $target,
+                    '"NEWTABLE"' => $target,
+                    'NEWTABLE' => $target,
+                ]);
                 $addcondition = $addcondition . " ";
             }
             if (!isset($joinparams['jointype'])) {

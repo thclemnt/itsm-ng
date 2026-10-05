@@ -69,7 +69,9 @@ final class CriteriaBuilder
             if (isset($criterion['meta']) && $criterion['meta'] && isset($criterion['itemtype'])) {
                 $itemtype = $criterion['itemtype'];
                 $meta = true;
-                $meta_searchopt = & SearchOption::getOptions($itemtype);
+                // These options belong to the meta item type. Keeping a reference
+                // here would overwrite its shared cache on the next non-meta criterion.
+                $meta_searchopt = SearchOption::getOptions($itemtype);
             } else {
                 // Not a meta, use the same search option everywhere
                 $meta_searchopt = $searchopt;
