@@ -64,6 +64,7 @@ final class RetiredMarketplaceDefaults
             }
             throw new \RuntimeException('Orphaned retired marketplace ownership does not match all three complete released defaults with both parents absent. Reconcile customized, partial or mixed ownership using original installation records; no rows were archived or removed. Samples: ' . json_encode($samples, JSON_THROW_ON_ERROR));
         }
+        $this->assertIsolatedRetirement($connection);
         $this->assertTransactional($connection);
         return ['kind' => 'archival_prerequisite', 'receipt' => self::RECEIPT,
             'description' => 'Archive and retire exactly three unchanged released marketplace children; both retired parents are absent.',
@@ -158,6 +159,33 @@ final class RetiredMarketplaceDefaults
             }
         }
         return true;
+    }
+
+    /** The released tables have no incoming owners or custom deletion behavior. */
+    private function assertIsolatedRetirement(Connection $connection): void
+    {
+        $mysql = $connection->getDatabasePlatform() instanceof AbstractMySQLPlatform;
+        foreach (array_keys(self::ROWS) as $table) {
+            $owner = $mysql
+                ? $connection->fetchAssociative('SELECT TABLE_SCHEMA AS owner_schema, TABLE_NAME AS owner_table, CONSTRAINT_NAME AS owner_key FROM information_schema.KEY_COLUMN_USAGE WHERE REFERENCED_TABLE_SCHEMA = DATABASE() AND REFERENCED_TABLE_NAME = ? LIMIT 1', [$table])
+                : $connection->fetchAssociative("SELECT conrelid::regclass::text AS owner_table, conname AS owner_key FROM pg_constraint WHERE contype = 'f' AND confrelid = to_regclass(?) LIMIT 1", [$table]);
+            if ($owner !== false) {
+                throw new \RuntimeException('Retired marketplace archival refuses an incoming foreign key to ' . $table
+                    . ': ' . json_encode($owner, JSON_THROW_ON_ERROR) . '. Custom owners may cascade or change on deletion; no rows were archived or removed.');
+            }
+            $trigger = $mysql
+                ? $connection->fetchOne('SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE EVENT_OBJECT_SCHEMA = DATABASE() AND EVENT_OBJECT_TABLE = ? LIMIT 1', [$table])
+                : $connection->fetchOne('SELECT tgname FROM pg_trigger WHERE tgrelid = to_regclass(?) AND NOT tgisinternal LIMIT 1', [$table]);
+            if ($trigger !== false) {
+                throw new \RuntimeException('Retired marketplace archival refuses a custom trigger on ' . $table . ': ' . $trigger
+                    . '. Its effects are outside the frozen archive; no rows were archived or removed.');
+            }
+            // PostgreSQL rules can rewrite a DELETE without using a trigger.
+            if (!$mysql && ($rule = $connection->fetchOne('SELECT rulename FROM pg_rewrite WHERE ev_class = to_regclass(?) LIMIT 1', [$table])) !== false) {
+                throw new \RuntimeException('Retired marketplace archival refuses a custom rewrite rule on ' . $table . ': ' . $rule
+                    . '. Its effects are outside the frozen archive; no rows were archived or removed.');
+            }
+        }
     }
 
     private function assertTransactional(Connection $connection): void

@@ -103,6 +103,9 @@ match the released literal defaults, no additional child targets either retired
 ID, and both parents are absent. The literal template text is not translated by
 the released installer. Unknown columns, customized text, partial defaults or a
 remaining parent refuse with source and missing-owner samples before archival.
+Incoming foreign keys, custom table triggers and PostgreSQL rewrite rules also
+refuse before ledger creation: their deletion effects are outside the three-row
+archive, even when the three defaults themselves are unchanged.
 No parent is invented and no historical release file is changed. Later development
 commit `01aeb375df` independently removed the same three obsolete seed children.
 

@@ -669,6 +669,85 @@ try {
     $connection->delete('glpi_notificationtargets', ['id' => 139]);
     $assertMarketplaceRefusal('partial default set');
     $connection->insert('glpi_notificationtargets', $marketplaceDefaults['glpi_notificationtargets']);
+    // Incoming custom owners must not cascade or become NULL outside the archive.
+    $sideEffectTable = 'itsm_history_marketplace_child';
+    $makeSideEffectTable = static function (?string $deleteAction = null) use ($manager, $connection, $postgres, $sideEffectTable): void {
+        $table = new \Doctrine\DBAL\Schema\Table($sideEffectTable);
+        $table->addColumn('id', 'integer');
+        $table->addColumn('target_id', 'integer', ['notnull' => false]);
+        $table->addColumn('payload', 'string', ['length' => 100]);
+        $table->setPrimaryKey(['id']);
+        if (!$postgres) {
+            $table->addOption('engine', 'InnoDB');
+        }
+        if ($deleteAction !== null) {
+            $table->addForeignKeyConstraint('glpi_notificationtargets', ['target_id'], ['id'], ['onDelete' => $deleteAction], 'history_marketplace_owner');
+        }
+        $manager->createTable($table);
+        $connection->insert($sideEffectTable, ['id' => 1, 'target_id' => 139, 'payload' => 'Keep custom ownership']);
+    };
+    $nativeRetirementPolicies = static function () use ($connection, $postgres): array {
+        return $postgres
+            ? [
+                $connection->fetchAllAssociative("SELECT tgname, pg_get_triggerdef(oid) AS definition FROM pg_trigger WHERE tgrelid = to_regclass('glpi_notificationtargets') ORDER BY tgname"),
+                $connection->fetchAllAssociative("SELECT rulename, pg_get_ruledef(oid) AS definition FROM pg_rewrite WHERE ev_class = to_regclass('glpi_notificationtargets') ORDER BY rulename"),
+            ]
+            : $connection->fetchAllAssociative("SELECT TRIGGER_NAME, ACTION_STATEMENT, EVENT_MANIPULATION, ACTION_TIMING FROM information_schema.TRIGGERS WHERE EVENT_OBJECT_SCHEMA = DATABASE() AND EVENT_OBJECT_TABLE = 'glpi_notificationtargets' ORDER BY TRIGGER_NAME");
+    };
+    $assertSideEffectRefusal = static function (string $diagnostic) use ($connection, $history, $manager, $rawRowbags, $sideEffectTable, $nativeRetirementPolicies): void {
+        $before = $rawRowbags();
+        $customBefore = $connection->fetchAllAssociative('SELECT * FROM ' . $sideEffectTable . ' ORDER BY id');
+        $schemaBefore = $manager->introspectSchema();
+        $policiesBefore = $nativeRetirementPolicies();
+        foreach (['preview', 'apply'] as $operation) {
+            try {
+                $operation === 'preview' ? $history->plan($connection) : $history->upgrade($connection);
+                throw new LogicException('Marketplace deletion side effect was accepted');
+            } catch (RuntimeException $error) {
+                verify(str_contains($error->getMessage(), $diagnostic) && str_contains($error->getMessage(), 'glpi_notificationtargets'),
+                    'Customized deletion policy refuses with its target and owner diagnostic: ' . $error->getMessage());
+            }
+            verify(!$manager->tablesExist([Ledger::TABLE]) && $rawRowbags() === $before
+                && $connection->fetchAllAssociative('SELECT * FROM ' . $sideEffectTable . ' ORDER BY id') === $customBefore
+                && $manager->createComparator()->compareSchemas($schemaBefore, $manager->introspectSchema())->isEmpty()
+                && $nativeRetirementPolicies() === $policiesBefore,
+                'Customized deletion policy preserves every core/custom row, schema, native policy and absent ledger on ' . $operation);
+        }
+    };
+    foreach (['CASCADE', 'SET NULL'] as $deleteAction) {
+        $makeSideEffectTable($deleteAction);
+        try {
+            $assertSideEffectRefusal('incoming foreign key');
+        } finally {
+            $manager->dropTable($sideEffectTable);
+        }
+    }
+    $makeSideEffectTable();
+    try {
+        if ($postgres) {
+            $connection->executeStatement('CREATE FUNCTION history_marketplace_delete() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN UPDATE itsm_history_marketplace_child SET payload = \'Unexpected deletion side effect\' WHERE id = 1; RETURN OLD; END; $$');
+            $connection->executeStatement('CREATE TRIGGER history_marketplace_delete BEFORE DELETE ON glpi_notificationtargets FOR EACH ROW EXECUTE FUNCTION history_marketplace_delete()');
+        } else {
+            $connection->executeStatement("CREATE TRIGGER history_marketplace_delete BEFORE DELETE ON glpi_notificationtargets FOR EACH ROW UPDATE itsm_history_marketplace_child SET payload = 'Unexpected deletion side effect' WHERE id = 1");
+        }
+        $assertSideEffectRefusal('custom trigger');
+    } finally {
+        $connection->executeStatement($postgres ? 'DROP TRIGGER IF EXISTS history_marketplace_delete ON glpi_notificationtargets' : 'DROP TRIGGER IF EXISTS history_marketplace_delete');
+        if ($postgres) {
+            $connection->executeStatement('DROP FUNCTION IF EXISTS history_marketplace_delete()');
+        }
+        $manager->dropTable($sideEffectTable);
+    }
+    if ($postgres) {
+        $makeSideEffectTable();
+        try {
+            $connection->executeStatement("CREATE RULE history_marketplace_delete AS ON DELETE TO glpi_notificationtargets DO ALSO UPDATE itsm_history_marketplace_child SET payload = 'Unexpected rewrite side effect' WHERE id = 1");
+            $assertSideEffectRefusal('custom rewrite rule');
+        } finally {
+            $connection->executeStatement('DROP RULE IF EXISTS history_marketplace_delete ON glpi_notificationtargets');
+            $manager->dropTable($sideEffectTable);
+        }
+    }
     $beforeArchiveRows = $rawRowbags();
     $marketplacePreview = $history->plan($connection);
     verify(count($marketplacePreview['retired_marketplace_defaults']['actions'] ?? []) === 3
