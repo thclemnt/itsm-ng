@@ -29,7 +29,7 @@ use NativeTemporalProbe;
 use ReflectionProperty;
 
 require_once dirname(__DIR__, 3) . '/fixtures/DisconnectedSchemaConnection.php';
-require_once dirname(__DIR__, 3) . '/database-portability/fixtures/NativeTemporalProbe.php';
+require_once dirname(__DIR__, 3) . '/fixtures/NativeTemporalProbe.php';
 
 class NativeTimestampSchema extends \atoum\atoum\test
 {

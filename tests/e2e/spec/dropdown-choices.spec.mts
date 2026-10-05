@@ -9,7 +9,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../.
 const config = process.env.PLAYWRIGHT_DROPDOWN_CONFIG;
 
 function fixture(action: string): Record<string, number> {
-  const output = execFileSync('php', [path.join(root, 'tests/database-portability/dropdown-choices-web-fixture.php'), config!, action], {
+  const output = execFileSync('php', [path.join(root, 'tests/playwright/fixtures/dropdown-choices-web-fixture.php'), config!, action], {
     cwd: root, env: process.env, encoding: 'utf8',
   });
   return action === 'clean' ? {} : JSON.parse(output);

@@ -4,8 +4,8 @@
 
 namespace tests\units;
 
-require_once dirname(__DIR__, 3) . '/database-portability/fixtures/NativeConstraintRefusal.php';
-require_once dirname(__DIR__, 3) . '/database-portability/fixtures/ComponentNativeAdmission.php';
+require_once dirname(__DIR__, 3) . '/fixtures/NativeConstraintRefusal.php';
+require_once dirname(__DIR__, 3) . '/fixtures/ComponentNativeAdmission.php';
 
 use Doctrine\DBAL\Driver\Mysqli\Exception\StatementError;
 use Doctrine\DBAL\Exception\DriverException;

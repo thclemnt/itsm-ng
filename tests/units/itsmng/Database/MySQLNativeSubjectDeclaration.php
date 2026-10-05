@@ -4,7 +4,7 @@
 
 namespace tests\units;
 
-require_once dirname(__DIR__, 3) . '/database-portability/fixtures/MySQLNativeSubjectDeclaration.php';
+require_once dirname(__DIR__, 3) . '/fixtures/MySQLNativeSubjectDeclaration.php';
 
 use MySQLNativeSubjectDeclaration as Declaration;
 

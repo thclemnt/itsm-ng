@@ -30,7 +30,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../.
 const execute = promisify(execFile);
 
 async function fixture<T>(action: string, guard?: Guard): Promise<T> {
-  const args = ['tests/database-portability/fixtures/transfer-web-fixture.php', config!, action];
+  const args = ['tests/playwright/fixtures/transfer-web-fixture.php', config!, action];
   if (guard) args.push(JSON.stringify({ token: guard.token }));
   try {
     const { stdout } = await execute('php', args, { cwd: root });

@@ -19,7 +19,7 @@ let seed: Seed;
 
 async function fixture<T>(action: string, input: Record<string, unknown> = {}): Promise<T> {
   return new Promise((resolve, reject) => {
-    const child = execFile('php', ['tests/database-portability/fixtures/session-token-web-fixture.php', config!, action],
+    const child = execFile('php', ['tests/playwright/fixtures/session-token-web-fixture.php', config!, action],
       { cwd: root }, (error, stdout) => {
         // Capabilities and cookie plaintext travel on stdin, never in argv or errors.
         if (error) return reject(new Error(`Session HTTP CLI fixture ${action} failed (${error.code}).`));

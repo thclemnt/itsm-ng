@@ -19,7 +19,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../.
 const execute = promisify(execFile);
 
 async function fixture<T>(action: string, input?: Record<string, unknown>): Promise<T> {
-  const args = ['tests/database-portability/fixtures/domain-web-fixture.php', config!, action];
+  const args = ['tests/playwright/fixtures/domain-web-fixture.php', config!, action];
   if (input) args.push(JSON.stringify(input));
   try {
     const { stdout } = await execute('php', args, { cwd: root });
