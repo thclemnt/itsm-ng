@@ -1646,7 +1646,16 @@ class Search extends DbTestCase
            ]
         ]);
 
+        $this->integer(count($data['data']['rows']))->isGreaterThan(0);
+        foreach ($data['data']['rows'] as $row) {
+            // The renderer selects the subtype using this exact result alias;
+            // PostgreSQL must not fold it to a lower-case, unknown item type.
+            $this->array($row['raw'])->hasKey('TYPE');
+            $this->string($row['TYPE'])->isIdenticalTo($row['raw']['TYPE']);
+            $this->boolean(is_a($row['TYPE'], \CommonDBTM::class, true))->isTrue();
+        }
         $this->string($data['sql']['search'])
+           ->contains(' AS ' . \DBAdapter::quoteName('TYPE'))
            ->matches("/OR\s*\(" . $this->textSearchPattern('`glpi_entities`.`completename`', '%test%') . "\s*\)/")
            ->matches("/OR\s*\(" . $this->textSearchPattern('`glpi_states`.`completename`', '%test%') . "\s*\)/");
 

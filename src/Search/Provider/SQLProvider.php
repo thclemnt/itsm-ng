@@ -294,7 +294,8 @@ final class SQLProvider implements SearchProviderInterface
                     $tmpquery = "";
                     // AllAssets case
                     if ($data['itemtype'] == 'AllAssets') {
-                        $tmpquery = $SELECT . ", '{$ctype}' AS TYPE " . $FROM . $WHERE;
+                        $tmpquery = $SELECT . ', ' . $dialect->literal($ctype)
+                            . ' AS ' . $dialect->quote('TYPE') . ' ' . $FROM . $WHERE;
                         $tmpquery .= " AND `{$ctable}`.`id` IS NOT NULL ";
                         // Add deleted if item have it
                         if ($citem && $citem->maybeDeleted()) {
@@ -313,9 +314,11 @@ final class SQLProvider implements SearchProviderInterface
                     } else {
                         // Ref table case
                         $reftable = $data['itemtype']::getTable();
-                        $tmpquery = $SELECT . ", '{$ctype}' AS TYPE,
-                                      `{$reftable}`.`id` AS refID, " . "
-                                      `{$ctable}`.`entities_id` AS ENTITY " . $FROM . $WHERE;
+                        $tmpquery = $SELECT . ', ' . $dialect->literal($ctype)
+                            . ' AS ' . $dialect->quote('TYPE') . ', '
+                            . $dialect->quote($reftable . '.id') . ' AS ' . $dialect->quote('refID') . ', '
+                            . $dialect->quote($ctable . '.entities_id') . ' AS ' . $dialect->quote('ENTITY')
+                            . ' ' . $FROM . $WHERE;
                         if ($data['item']->maybeDeleted()) {
                             $tmpquery = str_replace("`" . $CFG_GLPI["union_search_type"][$data['itemtype']] . "`.
                                                 `is_deleted`", "`{$reftable}`.`is_deleted`", $tmpquery);
