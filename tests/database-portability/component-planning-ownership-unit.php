@@ -108,18 +108,22 @@ foreach ($planners as [$plan, $diagnostic]) {
         }
         $verify($rejected, 'An unrelated, case-different or namespace-different inspection cannot enter the frozen planner');
         $verify($connection->reads === 0, 'Wrong table ownership is rejected before platform, ledger or catalogue acquisition');
-        $verify($table->getName() === $name && $table->hasColumn('items_id') && $table->hasIndex('preserved_owned_index')
+        $verify(
+            $table->getName() === $name && $table->hasColumn('items_id') && $table->hasIndex('preserved_owned_index')
             && count($table->getColumns()) === 1 && count($table->getIndexes()) === 1,
-            'Rejected inspection retains its complete fixture shape');
+            'Rejected inspection retains its complete fixture shape'
+        );
     }
 }
 foreach ([ProcessorTypedItemMigration20261012::class, ProcessorStagedTypedItemMigration20261012::class,
     MotherboardSubjects20261013::class, MemorySubjects20261013::class, HardDriveSubjects20261013::class] as $class) {
     $method = new ReflectionMethod($class, 'plan');
     $parameters = $method->getParameters();
-    $verify($method->isPublic() && count($parameters) === 2 && !$parameters[0]->isOptional()
+    $verify(
+        $method->isPublic() && count($parameters) === 2 && !$parameters[0]->isOptional()
         && $parameters[1]->isOptional() && $parameters[1]->getDefaultValue() === null,
-        'Public typed planning retains its connection and optional incoming-context contract');
+        'Public typed planning retains its connection and optional incoming-context contract'
+    );
 }
 foreach ([ProcessorTypedItemMigration20261012::class, ProcessorStagedTypedItemMigration20261012::class] as $class) {
     $verify((new ReflectionMethod($class, 'planInspectedTable'))->isProtected(), 'Borrowed typed inspection remains an internal extension boundary');
