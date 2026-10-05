@@ -122,33 +122,22 @@ class NotificationAjax implements NotificationInterface
 
         $return = [];
         if ($CFG_GLPI['notifications_ajax']) {
-            $iterator = $DB->request([
-               'FROM'   => 'glpi_queuednotifications',
-               'WHERE'  => [
-                  'is_deleted'   => false,
-                  'recipient'    => Session::getLoginUserID(),
-                  'mode'         => Notification_NotificationTemplate::MODE_AJAX
-               ]
-            ]);
-
-            if ($iterator->numrows()) {
-                while ($row = $iterator->next()) {
-                    $url = null;
-                    if (
-                        $row['itemtype'] != 'NotificationAjax' &&
-                        method_exists($row['itemtype'], 'getFormURL')
-                    ) {
-                        $item = new $row['itemtype']();
-                        $url = $item->getFormURL(false) . "?id={$row['items_id']}";
-                    }
-
-                    $return[] = [
-                       'id'     => $row['id'],
-                       'title'  => $row['name'],
-                       'body'   => $row['body_text'],
-                       'url'    => $url
-                    ];
+            foreach ((new \itsmng\Domain\BrowserNotificationInbox($DB))->pending((int)Session::getLoginUserID()) as $message) {
+                $url = null;
+                if (
+                    is_string($message->itemtype) && $message->itemtype !== 'NotificationAjax' &&
+                    method_exists($message->itemtype, 'getFormURL')
+                ) {
+                    $item = new $message->itemtype();
+                    $url = $item->getFormURL(false) . "?id={$message->items_id}";
                 }
+
+                $return[] = [
+                   'id'     => $message->id,
+                   'title'  => $message->name,
+                   'body'   => $message->body_text,
+                   'url'    => $url
+                ];
             }
         }
 
@@ -170,17 +159,9 @@ class NotificationAjax implements NotificationInterface
     {
         global $DB;
 
-        $now = date('Y-m-d H:i:s');
-        $DB->update(
-            'glpi_queuednotifications',
-            [
-              'sent_time'    => $now,
-              'is_deleted'   => 1
-            ],
-            [
-              'id'        => $id,
-              'recipient' => Session::getLoginUserID()
-            ]
-        );
+        if ((!is_int($id) && !is_string($id)) || filter_var($id, FILTER_VALIDATE_INT) === false || (int)$id <= 0) {
+            return;
+        }
+        (new \itsmng\Domain\BrowserNotificationInbox($DB))->acknowledge((int)$id, (int)Session::getLoginUserID());
     }
 }

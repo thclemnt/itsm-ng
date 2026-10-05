@@ -87,4 +87,21 @@ class QueuedNotification
 
     #[ORM\Column(name: '`mode`', type: 'string', length: 20, nullable: false)]
     public string $mode = '';
+
+    /** A rendered browser message belongs to its recipient, independent of active entity. */
+    public function isPendingBrowserMessageFor(int $user): bool
+    {
+        return $user > 0 && $this->mode === 'ajax' && $this->recipient === (string)$user && !$this->is_deleted;
+    }
+
+    /** Repeated acknowledgements retain the first presentation time and delivery counters. */
+    public function acknowledgeBrowserMessage(int $user, \DateTimeImmutable $presentedAt): bool
+    {
+        if (!$this->isPendingBrowserMessageFor($user)) {
+            return false;
+        }
+        $this->sent_time = $presentedAt;
+        $this->is_deleted = true;
+        return true;
+    }
 }

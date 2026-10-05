@@ -6,6 +6,7 @@ namespace itsmng\Database\Repository;
 
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
+use Doctrine\DBAL\LockMode;
 use itsmng\Database\Entity;
 use itsmng\Database\RecordCriteria;
 
@@ -27,6 +28,33 @@ final class NotificationQueueRepository
         $query = $this->em->createQueryBuilder()->select('r.id')->from($class, 'r');
         $query->where((new RecordCriteria($query, $this->em->getClassMetadata($class)))->where(['is_deleted' => false] + $criteria));
         return array_column($query->orderBy('r.id')->getQuery()->getScalarResult(), 'id');
+    }
+
+    /** @return list<Entity\QueuedNotification> */
+    public function browserInbox(int $recipient): array
+    {
+        if ($recipient <= 0) {
+            return [];
+        }
+        return $this->browserSelection($recipient)->orderBy('r.id')->getQuery()->getResult();
+    }
+
+    /** Caller owns a writer transaction; the lock closes a concurrent presentation race. */
+    public function browserMessageForAcknowledgement(int $id, int $recipient): ?Entity\QueuedNotification
+    {
+        if ($id <= 0 || $recipient <= 0) {
+            return null;
+        }
+        return $this->browserSelection($recipient)->andWhere('r.id = :id')->setParameter('id', $id, Types::BIGINT)
+            ->getQuery()->setLockMode(LockMode::PESSIMISTIC_WRITE)->getOneOrNullResult();
+    }
+
+    private function browserSelection(int $recipient): \Doctrine\ORM\QueryBuilder
+    {
+        return $this->em->createQueryBuilder()->select('r')->from(Entity\QueuedNotification::class, 'r')
+            ->where('r.mode = :mode AND r.recipient = :recipient AND r.is_deleted = :deleted')
+            ->setParameter('mode', 'ajax', Types::STRING)->setParameter('recipient', (string)$recipient, Types::STRING)
+            ->setParameter('deleted', false, Types::BOOLEAN);
     }
 
     public function pending(string $kind, string $mode, \DateTimeImmutable $before, int $limit, array $extra = []): array
