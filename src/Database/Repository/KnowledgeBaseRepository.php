@@ -104,22 +104,25 @@ final class KnowledgeBaseRepository
             if ($terms !== '') {
                 $fullText = clone $query;
                 $matches = ['KB_MATCH(k.name, k.answer, :terms) = true'];
-                $scores = ['KB_SCORE(k.name, k.answer, :terms)'];
+                $fullTextScore = 'KB_SCORE(k.name, k.answer, :terms)';
                 if ($translated) {
                     $matches[] = 'EXISTS (SELECT matchingTranslation.id FROM ' . KnowbaseItemTranslation::class
                         . ' matchingTranslation WHERE IDENTITY(matchingTranslation.knowbaseitems) = k.id '
                         . 'AND matchingTranslation.language = :language AND ('
                         . 'KB_MATCH(matchingTranslation.name, :terms) = true OR KB_MATCH(matchingTranslation.answer, :terms) = true))';
-                    $scores[] = 'COALESCE((SELECT MAX(COALESCE(KB_SCORE(rankedTranslation.name, :terms), 0) '
-                        . '+ COALESCE(KB_SCORE(rankedTranslation.answer, :terms), 0)) FROM ' . KnowbaseItemTranslation::class
+                    // DQL accepts a whole scalar subselect, not a subselect inside
+                    // COALESCE/arithmetic. The aggregate returns one row even without translations.
+                    $fullTextScore = 'SELECT KB_SCORE(k.name, k.answer, :terms) '
+                        . '+ COALESCE(MAX(COALESCE(KB_SCORE(rankedTranslation.name, :terms), 0) '
+                        . '+ COALESCE(KB_SCORE(rankedTranslation.answer, :terms), 0)), 0) FROM ' . KnowbaseItemTranslation::class
                         . ' rankedTranslation WHERE IDENTITY(rankedTranslation.knowbaseitems) = k.id '
-                        . 'AND rankedTranslation.language = :language), 0)';
+                        . 'AND rankedTranslation.language = :language';
                 }
                 $fullText->andWhere('(' . implode(' OR ', $matches) . ')')->setParameter('terms', $terms, Types::STRING);
                 $total = (int)(clone $fullText)->select('COUNT(k.id)')->getQuery()->getSingleScalarResult();
                 if ($total > 0) {
                     $query = $fullText;
-                    $score = implode(' + ', $scores);
+                    $score = $fullTextScore;
                     $eligibleTranslation = static fn (string $alias): string =>
                         'KB_MATCH(k.name, k.answer, :terms) = true OR KB_MATCH(' . $alias . '.name, :terms) = true '
                         . 'OR KB_MATCH(' . $alias . '.answer, :terms) = true';
@@ -152,7 +155,7 @@ final class KnowledgeBaseRepository
             }
         }
         $total ??= (int)(clone $query)->select('COUNT(k.id)')->getQuery()->getSingleScalarResult();
-        $query->leftJoin('k.knowbaseitemcategories', 'category');
+        $query->leftJoin('k.knowbaseitemcategories', 'kbCategory');
         if ($translated) {
             // Historical schemas permit duplicates. Choose the first eligible row,
             // after article-level search/count, so a later matching translation survives.
@@ -167,7 +170,7 @@ final class KnowledgeBaseRepository
         }
         $published = str_replace('published', 'visibility', implode(' OR ', $audiences));
         $query->select('k.id', 'k.name', 'k.answer', 'k.is_faq', 'IDENTITY(k.users) AS users_id',
-            'IDENTITY(k.knowbaseitemcategories) AS knowbaseitemcategories_id', 'category.completename AS category',
+            'IDENTITY(k.knowbaseitemcategories) AS knowbaseitemcategories_id', 'kbCategory.completename AS category',
             'CASE WHEN (' . $published . ') THEN 1 ELSE 0 END AS visibility_count');
         if ($translated) {
             $query->addSelect('translation.name AS transname', 'translation.answer AS transanswer');
