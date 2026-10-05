@@ -170,7 +170,13 @@ class CronTask extends DbTestCase
 
         // Deactivate all registered tasks
         $crontask = new \CronTask();
-        $DB->update(\CronTask::getTable(), ['state' => \CronTask::STATE_DISABLE], [1]);
+        $taskIds = $DB->getDoctrineConnection()->fetchFirstColumn('SELECT id FROM glpi_crontasks');
+        $this->array($taskIds)->isNotEmpty();
+        $this->boolean($DB->update(
+            \CronTask::getTable(),
+            ['state' => \CronTask::STATE_DISABLE],
+            ['id' => $taskIds]
+        ))->isTrue();
         $this->boolean($crontask->getNeedToRun())->isFalse();
 
         // Register task for active plugin.

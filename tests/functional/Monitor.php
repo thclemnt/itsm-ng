@@ -48,8 +48,8 @@ class Monitor extends DbTestCase
            'date_mod' => $date,
            'contact' => null,
            'contact_num' => null,
-           'users_id_tech' => 0,
-           'groups_id_tech' => 0,
+           'users_id_tech' => null,
+           'groups_id_tech' => null,
            'comment' => null,
            'serial' => null,
            'otherserial' => null,
@@ -62,17 +62,17 @@ class Monitor extends DbTestCase
            'have_pivot' => 0,
            'have_hdmi' => 0,
            'have_displayport' => 0,
-           'locations_id' => 0,
+           'locations_id' => null,
            'monitortypes_id' => null,
            'monitormodels_id' => null,
-           'manufacturers_id' => 0,
+           'manufacturers_id' => null,
            'is_global' => 0,
            'is_deleted' => 0,
            'is_template' => 0,
            'template_name' => null,
-           'users_id' => 0,
-           'groups_id' => 0,
-           'states_id' => 0,
+           'users_id' => null,
+           'groups_id' => null,
+           'states_id' => null,
            'ticket_tco' => '0.0000',
            'is_dynamic' => 0,
            'date_creation' => $date,
@@ -80,7 +80,7 @@ class Monitor extends DbTestCase
         ];
     }
 
-    private function getNewMonitor()
+    private function getNewMonitor(bool $explicitZeroReferences = false)
     {
         $this->login();
         $this->setEntity('_test_root_entity', true);
@@ -92,6 +92,13 @@ class Monitor extends DbTestCase
            'name'         => '_test_monitor01',
            'entities_id'  => 0
         ];
+
+        if ($explicitZeroReferences) {
+            foreach (['users_id_tech', 'groups_id_tech', 'locations_id', 'monitortypes_id',
+                'monitormodels_id', 'manufacturers_id', 'users_id', 'groups_id', 'states_id'] as $field) {
+                $data[$field] = 0;
+            }
+        }
 
         $monitor = new \Monitor();
         $added = $monitor->add($data);
@@ -113,7 +120,7 @@ class Monitor extends DbTestCase
 
     public function testClone()
     {
-        $monitor = $this->getNewMonitor();
+        $monitor = $this->getNewMonitor(true);
 
         $date = date('Y-m-d H:i:s');
         $_SESSION['glpi_currenttime'] = $date;
