@@ -281,9 +281,11 @@ try {
     }
 
     $connection->insert(Ledger::TABLE, ['version' => $version, 'state' => '{broken']);
+    $brokenReceiptSnapshot = $snapshot();
     $http('broken-ledger');
     [$status, $output] = $cli(['task:unlock', '--all']);
-    verify($status === 129 && str_contains($output, 'ledger could not be validated'), 'Broken receipts deny ordinary CLI requests with actionable diagnostics');
+    verify($status === 129 && str_contains($output, 'ledger could not be validated'), 'Broken receipts deny ordinary CLI requests with actionable diagnostics; status ' . $status . ': ' . $output);
+    verify($snapshot() === $brokenReceiptSnapshot && $keyIsOriginal($key), 'Broken receipt refusal preserves raw ledger, release/customer rows and the original key');
     $pending();
 
     foreach ([['db:update'], ['db:migrate', '--apply'], ['db:legacy_to_orm', '--apply'], ['itsmng:database:update', '--force']] as $args) {

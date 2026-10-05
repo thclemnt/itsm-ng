@@ -501,7 +501,7 @@ class Application extends BaseApplication
                 $this->pendingHistory = \itsmng\Database\Migration\History::pendingVersions($this->db->getDoctrineConnection());
             } catch (\Throwable $error) {
                 $this->historyError = 'Canonical migration ledger could not be validated: ' . $error->getMessage();
-                $this->pendingHistory = \itsmng\Database\Migration\History::VERSIONS;
+                $this->pendingHistory = \itsmng\Database\Migration\History::versions();
             }
         }
         return $this->pendingHistory;
