@@ -13,32 +13,48 @@ ownership rather than expand compatibility workarounds.
 
 ## Current source and evidence
 
-Documentation cleanup starts at `6dfd14c73903791ac5c54e258aa0a71fe5c1459b`, containing
-the independently source-reviewed architecture successor, actor schema ownership
-and read-only Ticket status preflight. Source declares 357 mapped tables and 22
-canonical versions, with an intended 1,087-reference schema. These are source
-expectations, not measured native results. This candidate has no own completed
-provider/full/application/browser acceptance. Original-head parser checks and
-earlier native checkpoints do not validate it.
+The current application checkpoint is `95d983a1f6b233893d64c8ca1cc5f1beee9b023d`.
+The executor reported fresh installation and final schema checks passing on
+PostgreSQL and MariaDB. Existing Atoum coverage on this checkpoint includes:
 
-Published `53cf6297473bc31400a0777ff905bd79f1e65698` has actual independent fresh-install
-and populated-upgrade proofs on PostgreSQL and MariaDB: both converged to 20 complete
-versions and 1,080 foreign keys, without pending history or schema differences.
-Populated proofs retain typed data, physical links, wide IDs, original keys and
-idempotent replay. They do not replace interrupted-DDL retry or full-order acceptance.
-Its latest full validation remains unfinished; remote CI is not green. Partial
-running counts must not become a passing milestone.
+- Isolated units: 8 classes, 34 methods, 1,989 assertions passed.
+- Ordinary MariaDB units: 30 classes, 209 methods, 8,597 assertions passed.
+- Focused statistics, Contract, Transfer and software functional coverage: 26
+  methods passed, with 1,737 PostgreSQL and 1,741 MariaDB assertions.
+- Dictionary functional coverage: 5 methods, 2,892 assertions passed per provider.
+
+Ordinary PostgreSQL units remain open: the recorded run has 35 failures, one error
+and one exception. Provider formatting expectations and Migration::addRight's
+explicit NULL identifier require correction and rerun. These outcomes do not
+establish a passing full application suite. The latest 238 provider contracts,
+browser acceptance, genuine 2.1.3 application performance comparison and public
+remote CI have no completed passing result on the current combined candidate.
+
+Earlier published `53cf6297473bc31400a0777ff905bd79f1e65698` has independent fresh
+installation and populated ORM-checkpoint upgrade results on both providers.
+Those historical results remain evidence for that source only; they do not prove
+an upgrade from the genuine upstream 2.1.3 release.
+
+The release migration redesign is source work pending execution. It exposes one
+2.1.3-to-2.2.0 transition, with frozen conversion helpers under `Migration/V220`.
+Fresh installation replays the frozen DBAL baseline and seeds through that same
+transition. Internal phase keys support recovery of experimental installations;
+they are not public release versions. The 2.2.0 completion receipt requires full
+schema and sequence convergence. Historical install/update scripts, original-key
+checks and provenance gates remain intact. Subsequent ORM schema changes must
+append migrations after this transition. The old count of 22 internal versions
+is not the release architecture or an acceptance criterion for this redesign.
 
 The original handoff failure `Changed column: glpi_certificates_items.items_id`
 remains unreproduced, not diagnosed away. Passing fresh checks and later full-order
 observations do not prove its cause. Do not weaken comparison or original contracts.
 
-Source declarations now own historical native timestamp fields, actor/tree indexes
+Source declarations own historical native timestamp fields, actor/tree indexes
 and generated keys, Calendar closure policy, VLAN intent and recipient-owned browser
-inbox behavior. Migration definitions remain frozen; energy subjects append history.
-These changes require execution on their combined source. Legacy queries, unresolved
-polymorphic relationships, plugin paths and stable Ticket status adoption remain.
-Read-only status preflight covers bounded owners and is not adoption readiness.
+inbox behavior. Legacy queries, unresolved polymorphic relationships, plugin paths
+and stable Ticket status adoption remain. Read-only status preflight covers bounded
+owners and is not adoption readiness. Source-only cleanup and release migration
+changes require validation on their combined source before inheriting any result.
 
 ## Next validated batches
 
