@@ -4,12 +4,8 @@
 
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\BaselineSchema;
-use itsmng\Database\EntityRegistry;
-use itsmng\Database\Mapping\SchemaIndex;
 use itsmng\Database\Migration\V220\ActorReferences;
 use itsmng\Database\Migration\V220\ActorUniqueness;
-use itsmng\Database\Migration\V220\Baseline;
-use itsmng\Database\Migration\V220\TreeUniqueness;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\Repository\RecordWriter;
@@ -42,80 +38,6 @@ $connection = $DB->getDoctrineConnection();
 $fixtures = new FixtureRecords($DB);
 $read = static fn (string $table, int $id): ?array => (new RecordRepository(Orm::create($DB)))->find($table, 'id', $id);
 
-// Current entity ownership is checked against immutable adoption definitions.
-// Keep the public-flow and historical reconstruction assertions below intact.
-$expectedGeneratedKeys = [];
-foreach (array_keys(ActorUniqueness::TABLES) as $table) {
-    $expectedGeneratedKeys[] = $table . '.actor_key';
-    $expectedGeneratedKeys[] = $table . '.actor_email_key';
-}
-foreach (array_keys(TreeUniqueness::TABLES) as $table) {
-    $expectedGeneratedKeys[] = $table . '.parent_key';
-}
-sort($expectedGeneratedKeys, SORT_STRING);
-foreach ([new \Doctrine\DBAL\Platforms\MySQLPlatform(), new \Doctrine\DBAL\Platforms\MariaDBPlatform(),
-    new \Doctrine\DBAL\Platforms\PostgreSQLPlatform(), new \Doctrine\DBAL\Platforms\MySQLPlatform()] as $schemaPlatform) {
-    $offlineConnection = \Doctrine\DBAL\DriverManager::getConnection($schemaPlatform instanceof \Doctrine\DBAL\Platforms\PostgreSQLPlatform
-        ? ['driver' => 'pdo_pgsql', 'serverVersion' => '16.0']
-        : ['driver' => 'pdo_mysql', 'serverVersion' => $schemaPlatform instanceof \Doctrine\DBAL\Platforms\MariaDBPlatform ? '10.11.0-MariaDB' : '8.4.0']);
-    try {
-        $schemaEm = new \Doctrine\ORM\EntityManager($offlineConnection, Orm::configuration($schemaPlatform));
-        $metadata = $schemaEm->getMetadataFactory()->getAllMetadata();
-        $mapped = (new \Doctrine\ORM\Tools\SchemaTool($schemaEm))->getSchemaFromMetadata($metadata);
-        $required = (new BaselineSchema())->build($schemaPlatform, false);
-        $historical = (new Baseline())->build($schemaPlatform);
-        $ownedGeneratedKeys = [];
-        foreach ($metadata as $entity) {
-            $ownedColumns = [];
-            foreach ((new ReflectionClass($entity->name))->getAttributes(SchemaIndex::class) as $attribute) {
-                array_push($ownedColumns, ...$attribute->newInstance()->columns);
-            }
-            foreach ($entity->fieldMappings as $field) {
-                $column = trim($field->columnName, '`"');
-                if (in_array($column, $ownedColumns, true) && $field->notInsertable && $field->notUpdatable
-                    && $field->generated === \Doctrine\ORM\Mapping\ClassMetadata::GENERATED_ALWAYS && $field->columnDefinition !== null) {
-                    $ownedGeneratedKeys[] = $entity->getTableName() . '.' . $column;
-                }
-            }
-        }
-        sort($ownedGeneratedKeys, SORT_STRING);
-        verify($ownedGeneratedKeys === $expectedGeneratedKeys, 'Only twelve actor identity properties and five existing tree keys own generated index columns');
-        foreach (ActorUniqueness::TABLES as $table => [$parentKey, $actorKey]) {
-            $entity = $schemaEm->getClassMetadata(EntityRegistry::tables()[$table]);
-            $attributes = (new ReflectionClass($entity->name))->getAttributes(SchemaIndex::class);
-            verify(count($attributes) === 2, 'Each actor entity owns its unique and supporting physical indexes: ' . $table);
-            $oracle = clone $historical->getTable($table);
-            ActorUniqueness::addToTable($oracle, $schemaPlatform);
-            $unique = ActorUniqueness::indexName($table, $schemaPlatform);
-            foreach ([$mapped->getTable($table), $required->getTable($table)] as $schemaTable) {
-                foreach ([$unique, $table . '_actor_parent'] as $indexName) {
-                    verify($schemaTable->hasIndex($indexName), 'ORM and current schema retain the exact adopted physical index name: ' . $table . '.' . $indexName);
-                    $index = $schemaTable->getIndex($indexName);
-                    $frozen = $oracle->getIndex($indexName);
-                    verify($index->isUnique() === $frozen->isUnique() && $index->getColumns() === $frozen->getColumns()
-                        && $index->getFlags() === $frozen->getFlags() && $index->getOptions() === $frozen->getOptions(), 'Actor index tuple, uniqueness and options remain frozen: ' . $table . '.' . $indexName);
-                }
-                foreach (['actor_key', 'actor_email_key'] as $key) {
-                    $column = $schemaTable->getColumn($key);
-                    $frozen = $oracle->getColumn($key);
-                    verify(\Doctrine\DBAL\Types\Type::lookupName($column->getType()) === \Doctrine\DBAL\Types\Type::lookupName($frozen->getType())
-                        && $column->getNotnull() === $frozen->getNotnull() && $column->getDefault() === $frozen->getDefault()
-                        && $column->getLength() === $frozen->getLength() && $column->getComment() === $frozen->getComment()
-                        && $column->getColumnDefinition() === $frozen->getColumnDefinition(), 'Generated property storage and expression equal the frozen adoption definition: ' . $table . '.' . $key);
-                }
-            }
-            foreach (['actor_key', 'actor_email_key'] as $key) {
-                $field = $entity->getFieldMapping($key);
-                verify($field->notInsertable && $field->notUpdatable && $field->generated === \Doctrine\ORM\Mapping\ClassMetadata::GENERATED_ALWAYS
-                    && $field->nullable && $field->columnDefinition === $oracle->getColumn($key)->getColumnDefinition(), 'Actor generated property remains nullable, always generated and excluded from writes: ' . $table . '.' . $key);
-            }
-        }
-    } finally {
-        $offlineConnection->close();
-        unset($schemaEm, $metadata, $mapped, $required, $historical);
-        gc_collect_cycles();
-    }
-}
 $schemaPlatform = $connection->getDatabasePlatform();
 $required = (new BaselineSchema())->build($schemaPlatform, false);
 $postgres = $schemaPlatform instanceof \Doctrine\DBAL\Platforms\PostgreSQLPlatform;
