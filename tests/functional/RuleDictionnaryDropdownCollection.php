@@ -135,7 +135,7 @@ class RuleDictionnaryDropdownCollection extends DbTestCase
                 }
             }
             $this->integer($calls)->isIdenticalTo($scenario === 'success' ? 2 : 1);
-            $read = new RecordRepository(Orm::create($database), false);
+            $read = new RecordRepository(Orm::create($database));
             $committed = $scenario === 'success' || str_starts_with($scenario, 'commit');
             if ($operation !== 'model' || $scenario !== 'success') {
                 $table = $operation === 'model' ? 'glpi_printermodels' : 'glpi_printers';
@@ -187,7 +187,7 @@ class RuleDictionnaryDropdownCollection extends DbTestCase
                 $fixture = $this->dictionaryFixture($operation);
                 (new \RuleDictionnaryPrinterCollection())->moveDirectConnections($fixture['source']->getID(), $fixture['target']->getID());
                 $caller->assertActive();
-                $read = new RecordRepository(Orm::create($DB), false);
+                $read = new RecordRepository(Orm::create($DB));
                 foreach ($fixture['links'] as $link) {
                     $row = $read->find('glpi_computers_items', 'id', $link->getID());
                     if ($operation === 'remove') {
