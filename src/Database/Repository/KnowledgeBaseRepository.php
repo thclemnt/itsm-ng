@@ -5,6 +5,8 @@
 namespace itsmng\Database\Repository;
 
 use Doctrine\DBAL\Types\Types;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
 use itsmng\Database\Entity\DocumentItem;
@@ -17,12 +19,182 @@ use itsmng\Database\Entity\KnowbaseItemRevision;
 use itsmng\Database\Entity\KnowbaseItemTranslation;
 use itsmng\Database\Entity\KnowbaseItemUser;
 use itsmng\Database\KnowledgeBaseAccess;
+use itsmng\Database\LegacyValues;
 
 /** Mapped article persistence and visibility; model callers retain lifecycle hooks. */
 final class KnowledgeBaseRepository
 {
     public function __construct(private EntityManager $em)
     {
+    }
+
+    /** Prefix terms retain the legacy OR search, without accepting query operators. */
+    public static function fullTextQuery(string $text, AbstractPlatform $platform): string
+    {
+        $words = preg_split('/[^\p{L}\p{N}_]+/u', $text, -1, PREG_SPLIT_NO_EMPTY);
+        if ($words === false || $words === []) {
+            return '';
+        }
+        return $platform instanceof PostgreSQLPlatform
+            ? implode(' | ', array_map(static fn (string $word): string => "'" . $word . "':*", $words))
+            : implode(' ', array_map(static fn (string $word): string => $word . '*', $words));
+    }
+
+    /** The existing fallback removes these search operators before substring matching. */
+    public static function fallbackText(string $text): string
+    {
+        return str_replace(['\\"', '+', '*', '~', '<', '>', '(', ')', '-'], '', $text);
+    }
+
+    /**
+     * A current scalar page, with no managed articles or per-row audience hydration.
+     *
+     * @param array{type:string, contains:string, category:int, faq:bool, language:?string, offset:int, limit:?int} $options
+     * @return array{total:int, rows:array}
+     */
+    public function listPage(KnowledgeBaseAccess $access, array $options): array
+    {
+        $type = $options['type'];
+        $own = in_array($type, ['allmy', 'myunpublished'], true);
+        if ($own || $type === 'allunpublished') {
+            $query = $this->em->createQueryBuilder()->from(KnowbaseItem::class, 'k');
+            if ($own) {
+                $query->where('IDENTITY(k.users) = :author')->setParameter('author', $access->user, Types::BIGINT);
+            } elseif (!$access->administrator) {
+                $query->where('1 = 0');
+            }
+        } else {
+            $query = $this->visible($access);
+        }
+        $audiences = [
+            'EXISTS (SELECT publishedUser.id FROM ' . KnowbaseItemUser::class . ' publishedUser WHERE IDENTITY(publishedUser.knowbaseitems) = k.id)',
+            'EXISTS (SELECT publishedGroup.id FROM ' . GroupKnowbaseItem::class . ' publishedGroup WHERE IDENTITY(publishedGroup.knowbaseitems) = k.id)',
+            'EXISTS (SELECT publishedProfile.id FROM ' . KnowbaseItemProfile::class . ' publishedProfile WHERE IDENTITY(publishedProfile.knowbaseitems) = k.id)',
+            'EXISTS (SELECT publishedEntity.id FROM ' . EntityKnowbaseItem::class . ' publishedEntity WHERE IDENTITY(publishedEntity.knowbaseitems) = k.id)',
+        ];
+        if (in_array($type, ['myunpublished', 'allunpublished'], true)) {
+            $query->andWhere('NOT (' . implode(' OR ', $audiences) . ')');
+        }
+        if ($options['faq']) {
+            $query->andWhere('k.is_faq = true');
+        }
+        if ($type === 'browse') {
+            if ($options['category'] === 0) {
+                $query->andWhere('k.knowbaseitemcategories IS NULL');
+            } else {
+                $query->andWhere('IDENTITY(k.knowbaseitemcategories) = :category')
+                    ->setParameter('category', $options['category'], Types::BIGINT);
+            }
+        }
+        $search = $type === 'search' && $options['contains'] !== '';
+        if ($search || ($type === 'browse' && !$access->administrator)) {
+            $query->andWhere('(k.begin_date IS NULL OR k.begin_date < CURRENT_TIMESTAMP())')
+                ->andWhere('(k.end_date IS NULL OR k.end_date > CURRENT_TIMESTAMP())');
+        }
+        $translated = $options['language'] !== null;
+        if ($translated && $search) {
+            $query->setParameter('language', $options['language'], Types::STRING);
+        }
+        $eligibleTranslation = null;
+        $score = '0';
+        $total = null;
+        if ($search) {
+            $terms = self::fullTextQuery(\Toolbox::unclean_cross_side_scripting_deep($options['contains']),
+                $this->em->getConnection()->getDatabasePlatform());
+            if ($terms !== '') {
+                $fullText = clone $query;
+                $matches = ['KB_MATCH(k.name, k.answer, :terms) = true'];
+                $scores = ['KB_SCORE(k.name, k.answer, :terms)'];
+                if ($translated) {
+                    $matches[] = 'EXISTS (SELECT matchingTranslation.id FROM ' . KnowbaseItemTranslation::class
+                        . ' matchingTranslation WHERE IDENTITY(matchingTranslation.knowbaseitems) = k.id '
+                        . 'AND matchingTranslation.language = :language AND ('
+                        . 'KB_MATCH(matchingTranslation.name, :terms) = true OR KB_MATCH(matchingTranslation.answer, :terms) = true))';
+                    $scores[] = 'COALESCE((SELECT MAX(COALESCE(KB_SCORE(rankedTranslation.name, :terms), 0) '
+                        . '+ COALESCE(KB_SCORE(rankedTranslation.answer, :terms), 0)) FROM ' . KnowbaseItemTranslation::class
+                        . ' rankedTranslation WHERE IDENTITY(rankedTranslation.knowbaseitems) = k.id '
+                        . 'AND rankedTranslation.language = :language), 0)';
+                }
+                $fullText->andWhere('(' . implode(' OR ', $matches) . ')')->setParameter('terms', $terms, Types::STRING);
+                $total = (int)(clone $fullText)->select('COUNT(k.id)')->getQuery()->getSingleScalarResult();
+                if ($total > 0) {
+                    $query = $fullText;
+                    $score = implode(' + ', $scores);
+                    $eligibleTranslation = static fn (string $alias): string =>
+                        'KB_MATCH(k.name, k.answer, :terms) = true OR KB_MATCH(' . $alias . '.name, :terms) = true '
+                        . 'OR KB_MATCH(' . $alias . '.answer, :terms) = true';
+                }
+            }
+            if (!$total) {
+                $pattern = LegacyValues::decode(\Search::makeTextSearchValue(self::fallbackText($options['contains'])));
+                $fields = ['k.name', 'k.answer'];
+                $postgres = $this->em->getConnection()->getDatabasePlatform() instanceof PostgreSQLPlatform;
+                $likes = array_map(static fn (string $field): string => $postgres
+                    ? 'LOWER(' . $field . ') LIKE LOWER(:fallback)'
+                    : $field . ' LIKE :fallback', $fields);
+                $baseLikes = implode(' OR ', $likes);
+                $eligibleTranslation = static function (string $alias) use ($postgres, $baseLikes): string {
+                    $translatedLikes = array_map(static fn (string $field): string => $postgres
+                        ? 'LOWER(' . $alias . '.' . $field . ') LIKE LOWER(:fallback)'
+                        : $alias . '.' . $field . ' LIKE :fallback', ['name', 'answer']);
+                    return $baseLikes . ' OR ' . implode(' OR ', $translatedLikes);
+                };
+                if ($translated) {
+                    $translationLikes = array_map(static fn (string $field): string => $postgres
+                        ? 'LOWER(fallbackTranslation.' . $field . ') LIKE LOWER(:fallback)'
+                        : 'fallbackTranslation.' . $field . ' LIKE :fallback', ['name', 'answer']);
+                    $likes[] = 'EXISTS (SELECT fallbackTranslation.id FROM ' . KnowbaseItemTranslation::class
+                        . ' fallbackTranslation WHERE IDENTITY(fallbackTranslation.knowbaseitems) = k.id '
+                        . 'AND fallbackTranslation.language = :language AND (' . implode(' OR ', $translationLikes) . '))';
+                }
+                $query->andWhere('(' . implode(' OR ', $likes) . ')')->setParameter('fallback', $pattern, Types::STRING);
+                $total = null;
+            }
+        }
+        $total ??= (int)(clone $query)->select('COUNT(k.id)')->getQuery()->getSingleScalarResult();
+        $query->leftJoin('k.knowbaseitemcategories', 'category');
+        if ($translated) {
+            // Historical schemas permit duplicates. Choose the first eligible row,
+            // after article-level search/count, so a later matching translation survives.
+            $eligible = $eligibleTranslation === null ? '' : ' AND (' . $eligibleTranslation('translation') . ')';
+            $earlierEligible = $eligibleTranslation === null ? '' : ' AND (' . $eligibleTranslation('earlierTranslation') . ')';
+            $query->leftJoin(KnowbaseItemTranslation::class, 'translation', 'WITH',
+                'IDENTITY(translation.knowbaseitems) = k.id AND translation.language = :language' . $eligible
+                . ' AND NOT EXISTS (SELECT earlierTranslation.id FROM ' . KnowbaseItemTranslation::class . ' earlierTranslation '
+                . 'WHERE IDENTITY(earlierTranslation.knowbaseitems) = k.id AND earlierTranslation.language = :language '
+                . 'AND earlierTranslation.id < translation.id' . $earlierEligible . ')')
+                ->setParameter('language', $options['language'], Types::STRING);
+        }
+        $published = str_replace('published', 'visibility', implode(' OR ', $audiences));
+        $query->select('k.id', 'k.name', 'k.answer', 'k.is_faq', 'IDENTITY(k.users) AS users_id',
+            'IDENTITY(k.knowbaseitemcategories) AS knowbaseitemcategories_id', 'category.completename AS category',
+            'CASE WHEN (' . $published . ') THEN 1 ELSE 0 END AS visibility_count');
+        if ($translated) {
+            $query->addSelect('translation.name AS transname', 'translation.answer AS transanswer');
+        }
+        if ($search) {
+            $query->addSelect('(' . $score . ') AS HIDDEN relevance')->orderBy('relevance', 'DESC');
+        } elseif ($type === 'browse') {
+            $query->orderBy('k.name', 'ASC');
+        }
+        $query->addOrderBy('k.id', 'ASC')->setFirstResult(max(0, $options['offset']));
+        if ($options['limit'] !== null) {
+            $query->setMaxResults(max(1, $options['limit']));
+        }
+        $rows = $query->getQuery()->getArrayResult();
+        $metadata = $this->em->getClassMetadata(KnowbaseItem::class);
+        foreach ($rows as &$row) {
+            foreach ($row as $field => &$value) {
+                if ($metadata->hasField($field)) {
+                    $value = RecordRepository::legacyScalarValue($value, $metadata->getTypeOfField($field));
+                } elseif (in_array($field, ['users_id', 'knowbaseitemcategories_id'], true)) {
+                    $value = RecordRepository::legacyScalarValue($value, Types::BIGINT);
+                }
+            }
+            unset($value);
+        }
+        unset($row);
+        return ['total' => $total, 'rows' => $rows];
     }
 
     public function publish(int $id): void

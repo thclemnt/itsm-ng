@@ -110,6 +110,197 @@ class KnowbaseItem extends DbTestCase
         }
     }
 
+    public function testSearchPagesUseNativeFullTextAndPreserveVisibility(): void
+    {
+        global $DB, $CFG_GLPI;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $original = $DB;
+        $session = $_SESSION;
+        $config = $CFG_GLPI;
+        $get = $_GET;
+        $level = $original->getDoctrineConnection()->getTransactionNestingLevel();
+        $parameters = $original->getDoctrineConnection()->getParams();
+        $connection = $original->getProvider() === 'pgsql'
+            ? \itsmng\Database\PostgresConnection::create($parameters)
+            : \itsmng\Database\MySQLConnection::create($parameters);
+        $probe = clone $original;
+        (new \ReflectionProperty(\DBAdapter::class, 'doctrine'))->setValue($probe, $connection);
+        $articles = [];
+        $category = null;
+        $primary = null;
+        try {
+            $DB = $probe;
+            $connection->beginTransaction();
+            $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $author = (int)getItemByTypeName('User', 'itsm', true);
+            $this->integer($entity)->isGreaterThan(0);
+            $this->integer($author)->isGreaterThan(0);
+            $this->boolean($author !== (int)\Session::getLoginUserID())->isTrue();
+            $category = $this->createItem(\KnowbaseItemCategory::class, ['name' => 'Native search category']);
+            foreach ([
+                ['Zxquasar alpha', 'First searchable content', $entity, null, null],
+                ['Second visible article', 'Zxquasar second content', $entity, null, null],
+                ['Zxquasar hidden audience', 'Hidden content', 0, null, null],
+                ['Zxquasar future article', 'Future content', $entity, '2037-01-01 00:00:00', null],
+                ['Zxquasar expired article', 'Expired content', $entity, null, '2000-01-01 00:00:00'],
+                ['Original translation title', null, $entity, null, null],
+            ] as [$name, $answer, $audience, $begin, $end]) {
+                $article = $this->createItem(\KnowbaseItem::class, [
+                    'name' => $name, 'answer' => $answer, 'users_id' => $author,
+                    'knowbaseitemcategories_id' => $category->getID(), 'is_faq' => 0,
+                    'begin_date' => $begin, 'end_date' => $end,
+                ]);
+                $this->createItem(\Entity_KnowbaseItem::class, [
+                    'knowbaseitems_id' => $article->getID(), 'entities_id' => $audience, 'is_recursive' => 0,
+                ]);
+                $articles[] = $article;
+            }
+            // Overlapping grants must neither multiply the count nor occupy two page slots.
+            $this->createItem(\KnowbaseItem_Profile::class, [
+                'knowbaseitems_id' => $articles[0]->getID(), 'profiles_id' => $_SESSION['glpiactiveprofile']['id'],
+                'entities_id' => $entity, 'is_recursive' => 0,
+            ]);
+            foreach ([['fr_FR', 'Zxnebula étoile traduite'], ['de_DE', 'Wronglanguage unique result'],
+                ['fr_FR', 'Duplicate Zxduplicate Zxnebula translation']] as [$language, $name]) {
+                $this->createItem(\KnowbaseItemTranslation::class, [
+                    'knowbaseitems_id' => $articles[5]->getID(), 'language' => $language,
+                    'name' => $name, 'answer' => null,
+                ]);
+            }
+            // InnoDB FULLTEXT indexes committed rows, unlike ordinary transactional reads.
+            // Publish only this connection's graph, never the caller's outer test frame.
+            $connection->commit();
+            $_SESSION['glpiactiveprofile']['knowbase'] = READ;
+            $_SESSION['glpilanguage'] = 'fr_FR';
+            $_SESSION['glpilist_limit'] = 20;
+            $_GET = [];
+            $CFG_GLPI['translate_kb'] = 1;
+            $CFG_GLPI['use_slave_for_search'] = 0;
+            $access = \itsmng\Database\KnowledgeBaseAccess::current();
+            $this->boolean($access->administrator)->isFalse();
+            $manager = \itsmng\Database\Orm::create($DB);
+            $repository = new \itsmng\Database\Repository\KnowledgeBaseRepository($manager);
+            $loads = new class {
+                public int $articles = 0;
+                public function postLoad(\Doctrine\ORM\Event\PostLoadEventArgs $event): void
+                {
+                    if ($event->getObject() instanceof \itsmng\Database\Entity\KnowbaseItem) {
+                        ++$this->articles;
+                    }
+                }
+            };
+            $manager->getEventManager()->addEventListener(['postLoad'], $loads);
+            $options = ['type' => 'search', 'contains' => 'zxquas', 'category' => 0,
+                'faq' => false, 'language' => 'fr_FR', 'offset' => 0, 'limit' => 20];
+            $page = $repository->listPage($access, $options);
+            $this->integer($page['total'])->isIdenticalTo(2);
+            $expectedIds = [(int)$articles[0]->getID(), (int)$articles[1]->getID()];
+            $ids = array_column($page['rows'], 'id');
+            $this->array($ids)->hasSize(2)->containsValues($expectedIds);
+            $this->integer($page['rows'][0]['is_faq'])->isIdenticalTo(0);
+            foreach ([0, 1] as $offset) {
+                $part = $repository->listPage($access, array_replace($options, ['limit' => 1, 'offset' => $offset]));
+                $this->integer($part['total'])->isIdenticalTo(2);
+                $this->array(array_column($part['rows'], 'id'))->isIdenticalTo([$ids[$offset]]);
+            }
+            foreach (['quasa', "'zxquas'", 'zxquas / nonexistentword'] as $text) {
+                $result = $repository->listPage($access, array_replace($options, ['contains' => $text]));
+                $this->integer($result['total'])->isIdenticalTo(2);
+                $this->array(array_column($result['rows'], 'id'))->hasSize(2)->containsValues($expectedIds);
+            }
+            foreach (['()<>+*', 'wronglanguage'] as $text) {
+                $this->integer($repository->listPage($access, array_replace($options, ['contains' => $text]))['total'])->isIdenticalTo(0);
+            }
+            foreach (['zxnebu', 'étoile', 'zxduplicate', 'uplicat'] as $text) {
+                $translated = $repository->listPage($access, array_replace($options, ['contains' => $text]));
+                $this->integer($translated['total'])->isIdenticalTo(1);
+                $this->array(array_column($translated['rows'], 'id'))->isIdenticalTo([(int)$articles[5]->getID()]);
+                $this->string($translated['rows'][0]['transname'])->isIdenticalTo(
+                    in_array($text, ['zxduplicate', 'uplicat'], true) ? 'Duplicate Zxduplicate Zxnebula translation' : 'Zxnebula étoile traduite'
+                );
+                $this->variable($translated['rows'][0]['transanswer'])->isNull();
+                $after = $repository->listPage($access, array_replace($options, ['contains' => $text, 'limit' => 1, 'offset' => 1]));
+                $this->integer($after['total'])->isIdenticalTo(1);
+                $this->array($after['rows'])->isEmpty();
+            }
+            // The retained public criteria API preserves later-only full-text and fallback matches.
+            foreach (['zxduplicate', 'uplicat'] as $text) {
+                $criteria = \KnowbaseItem::getListRequest(['contains' => $text, 'faq' => false,
+                    'knowbaseitemcategories_id' => 0], 'search');
+                $legacy = iterator_to_array($DB->request($criteria));
+                $this->array(array_column($legacy, 'id'))->isIdenticalTo([(int)$articles[5]->getID()]);
+                $this->string($legacy[0]['transname'])->isIdenticalTo('Duplicate Zxduplicate Zxnebula translation');
+            }
+            ob_start();
+            try {
+                \KnowbaseItem::showList(['contains' => 'zxnebu', 'faq' => false], 'search');
+                $html = ob_get_contents();
+            } finally {
+                ob_end_clean();
+            }
+            $this->string($html)->contains('Zxnebula étoile traduite')->contains('Native search category')
+                ->notContains('Original translation title')->notContains('Wronglanguage unique result');
+            // FAQ-only and anonymous views retain the existing audience policy.
+            $this->boolean($DB->update('glpi_knowbaseitems', ['is_faq' => 1],
+                ['id' => $articles[1]->getID()]))->isTrue();
+            $faqViewer = new \itsmng\Database\KnowledgeBaseAccess($access->user, false, false,
+                true, $access->multiEntity, $access->groups, $access->profile, $access->entities, $access->ancestors);
+            $this->array(array_column($repository->listPage($faqViewer, $options)['rows'], 'id'))
+                ->isIdenticalTo([(int)$articles[1]->getID()]);
+            foreach ([[true, false, 1], [true, true, 0], [false, false, 0]] as [$publicFaq, $multiEntity, $expected]) {
+                $anonymous = new \itsmng\Database\KnowledgeBaseAccess(0, false, false,
+                    $publicFaq, $multiEntity, [], 0, [], []);
+                $this->integer($repository->listPage($anonymous, $options)['total'])->isIdenticalTo($expected);
+            }
+            $this->integer($loads->articles)->isIdenticalTo(0);
+            $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
+            $this->boolean($DB->update('glpi_knowbaseitems', ['name' => 'Updated unrelated title'],
+                ['id' => $articles[0]->getID()]))->isTrue();
+            $this->array(array_column($repository->listPage($access, $options)['rows'], 'id'))
+                ->isIdenticalTo([(int)$articles[1]->getID()]);
+            $manager->find(\itsmng\Database\Entity\KnowbaseItem::class, (int)$articles[1]->getID());
+            $this->integer($loads->articles)->isIdenticalTo(1, 'The observer detects a real entity load');
+            $manager->clear();
+        } catch (\Throwable $error) {
+            $primary = $error;
+        } finally {
+            // Restore fixture-creation rights for public lifecycle cleanup.
+            $_SESSION = $session;
+            $CFG_GLPI = $config;
+            $_GET = $get;
+            try {
+                if ($connection->isTransactionActive()) {
+                    $connection->rollBack();
+                }
+                foreach ($articles as $article) {
+                    if ($article->getFromDB($article->getID())) {
+                        $this->boolean($article->delete(['id' => $article->getID()], true))->isTrue();
+                    }
+                }
+                if ($category !== null && $category->getFromDB($category->getID())) {
+                    $this->boolean($category->delete(['id' => $category->getID()], true))->isTrue();
+                }
+            } catch (\Throwable $cleanup) {
+                $primary = $primary === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($primary, $cleanup);
+            } finally {
+                $DB = $original;
+                $_SESSION = $session;
+                $CFG_GLPI = $config;
+                $_GET = $get;
+                try {
+                    $probe->close();
+                } catch (\Throwable $cleanup) {
+                    $primary = $primary === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($primary, $cleanup);
+                }
+            }
+        }
+        if ($primary !== null) {
+            throw $primary;
+        }
+        $this->integer($original->getDoctrineConnection()->getTransactionNestingLevel())->isIdenticalTo($level);
+    }
+
     public function testGetTypeName()
     {
         $expected = 'Knowledge base';
