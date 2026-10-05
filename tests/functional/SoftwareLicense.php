@@ -34,6 +34,7 @@
 namespace tests\units;
 
 use DbTestCase;
+use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use Plugin;
 use ReflectionProperty;
 use itsmng\Database\Orm;
@@ -73,7 +74,9 @@ class SoftwareLicense extends DbTestCase
         $connection = $manager->getConnection();
         $depth = $connection->getTransactionNestingLevel();
         $scope = $connection->captureManagedTransactionScope();
-        $flag = MySQLConnection::snapshotIsolation($connection);
+        $flag = $connection->getDatabasePlatform() instanceof AbstractMySQLPlatform
+            ? MySQLConnection::snapshotIsolation($connection)
+            : null;
         try {
             $root = $manager->find(EntityRecord::class, $_SESSION['glpiactive_entity']);
             $computer = $manager->find(ComputerRecord::class, getItemByTypeName('Computer', '_test_pc01', true));
