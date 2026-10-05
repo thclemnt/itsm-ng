@@ -9,7 +9,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Events;
-use Doctrine\ORM\Mapping as ORM;
+use Doctrine\ORM\Mapping as Mapping;
 use Doctrine\Persistence\Mapping\ClassMetadata;
 use Doctrine\Persistence\Mapping\Driver\MappingDriver;
 use itsmng\Database\Entity;
@@ -148,15 +148,15 @@ final class StatisticsMappingDriver implements MappingDriver
     }
 }
 
-#[ORM\Entity]
+#[Mapping\Entity]
 class DuplicateStatisticsTask
 {
-    #[ORM\Id]
-    #[ORM\Column(type: 'integer')]
+    #[Mapping\Id]
+    #[Mapping\Column(type: 'integer')]
     public int $id;
 
-    #[ORM\ManyToOne(targetEntity: Entity\Ticket::class)]
-    #[ORM\JoinColumn(name: 'tickets_id', nullable: false)]
+    #[Mapping\ManyToOne(targetEntity: Entity\Ticket::class)]
+    #[Mapping\JoinColumn(name: 'tickets_id', nullable: false)]
     #[ITILStatisticsRelation(ITILStatisticsRole::Tasks)]
     public ?Entity\Ticket $tickets = null;
 }
