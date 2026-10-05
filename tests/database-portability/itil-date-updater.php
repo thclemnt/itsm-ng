@@ -170,7 +170,7 @@ try {
     }
     $events = [];
     $plugins->setValue(null, [...$savedPlugins, 'itil_updater_fixture']);
-    foreach (['item_add', 'item_update', 'item_delete'] as $event) {
+    foreach (['item_add', 'item_update', 'item_delete', 'item_purge'] as $event) {
         $PLUGIN_HOOKS[$event]['itil_updater_fixture'][ITILFollowup::class] = static function (ITILFollowup $item) use (&$events, $event): void {
             $events[] = $event;
         };
@@ -204,7 +204,7 @@ try {
         verify($followup->delete(['id' => $id, '_disablenotif' => true], true), 'Real public followup cleanup');
         $assertActorDate('glpi_tickets', $ticket, $expected);
         verify(!$connection->fetchOne('SELECT id FROM glpi_itilfollowups WHERE id = ?', [$id]), 'Cleanup removes real child');
-        verify($events === ['item_add', 'item_update', 'item_delete'], 'Actual public delete hook retained');
+        verify($events === ['item_add', 'item_update', 'item_purge'], 'Actual public purge hook retained without soft-delete hook');
         $phase = 'public followup history';
         $actions = $connection->fetchFirstColumn('SELECT linked_action FROM glpi_logs WHERE itemtype = ? AND items_id = ? ORDER BY id', ['Ticket', $ticket]);
         foreach ([Log::HISTORY_ADD_SUBITEM, Log::HISTORY_UPDATE_SUBITEM, Log::HISTORY_DELETE_SUBITEM] as $action) {
@@ -253,7 +253,7 @@ try {
                 $advance();
                 $parentBefore = $read($parentTable, $parentId);
                 $events = [];
-                foreach (['item_add', 'item_delete'] as $event) {
+                foreach (['item_add', 'item_delete', 'item_purge'] as $event) {
                     $PLUGIN_HOOKS[$event]['itil_updater_fixture'][$relationType] = static function (CommonITILActor $item) use (&$events, $event): void {
                         $events[] = $event;
                     };
@@ -275,7 +275,7 @@ try {
                 verify($relation->delete(['id' => $actor, '_disablenotif' => true], true), 'Real actor public cleanup');
                 $assertActorDate($parentTable, $parentId, $expected);
                 verify(!$connection->fetchOne('SELECT id FROM ' . $connection->quoteIdentifier($relationType::getTable()) . ' WHERE id = ?', [$actor]), 'Actual actor row removed by public cleanup');
-                verify($events === ['item_add', 'item_delete'], 'Real actor cleanup hook retained');
+                verify($events === ['item_add', 'item_purge'], 'Real actor purge hook retained without soft-delete hook');
                 $frame->assertActive();
             }
         }

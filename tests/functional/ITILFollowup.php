@@ -116,105 +116,86 @@ class ITILFollowup extends DbTestCase
         $this->boolean((bool) $fup->canPurgeItem())->isTrue();
     }
 
-    public function testUpdateAndDelete()
+    protected function updateAndDeleteProvider(): array
     {
+        return [
+            ['Ticket', false], ['Ticket', true],
+            ['Problem', false], ['Problem', true],
+            ['Change', false], ['Change', true],
+        ];
+    }
+
+    /** @dataProvider updateAndDeleteProvider */
+    public function testUpdateAndDelete(string $itemtype, bool $force)
+    {
+        global $DB, $PLUGIN_HOOKS;
+
         $this->login();
+        $parentId = $this->getNewITILObject($itemtype);
+        $parent = new $itemtype();
+        $this->boolean($parent->can($parentId, \UPDATE))->isTrue();
+        $connection = $DB->getDoctrineConnection();
+        $depth = $connection->getTransactionNestingLevel();
+        $this->integer($depth)->isGreaterThan(0);
+        $savedHooks = $PLUGIN_HOOKS;
+        $activated = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $savedPlugins = $activated->getValue();
+        $savedClock = $_SESSION['glpi_currenttime'];
+        $events = [];
+        $clock = new \DateTimeImmutable('2031-02-03 04:05:06');
+        $assertUpdater = function () use ($connection, $parent, $parentId, &$clock): void {
+            $row = $connection->fetchAssociative('SELECT users_id_lastupdater, date_mod FROM '
+                . $connection->quoteIdentifier($parent->getTable()) . ' WHERE id = ?', [$parentId]);
+            $this->integer((int)$row['users_id_lastupdater'])->isEqualTo((int)\Session::getLoginUserID());
+            $this->integer((new \DateTimeImmutable($row['date_mod']))->getTimestamp())->isEqualTo($clock->getTimestamp());
+        };
+        try {
+            $activated->setValue(null, [...$savedPlugins, 'itil_purge_fixture']);
+            // A non-trashable followup must emit purge hooks even for delete()'s default force.
+            // Register delete hooks too, so the exact vector proves they never fire.
+            foreach (['item_add', 'item_update', 'pre_item_delete', 'item_delete', 'pre_item_purge', 'item_purge'] as $event) {
+                $PLUGIN_HOOKS[$event]['itil_purge_fixture'][CoreITILFollowup::class] = static function (CoreITILFollowup $item) use (&$events, $event): void {
+                    $events[] = $event;
+                };
+            }
+            $_SESSION['glpi_currenttime'] = $clock->format('Y-m-d H:i:s');
+            $fup = new CoreITILFollowup();
+            $fupId = $fup->add(['content' => 'my followup', 'itemtype' => $itemtype, 'items_id' => $parentId]);
+            $this->integer((int)$fupId)->isGreaterThan(0);
+            $this->boolean((bool)$fup->maybeDeleted())->isFalse();
+            $this->boolean((bool)$fup->can($fupId, \PURGE))->isTrue();
+            $this->array($events)->isEqualTo(['item_add']);
+            $assertUpdater();
 
-        $ticketId = $this->getNewITILObject('Ticket');
-        $fup      = new \ITILFollowup();
-        $tmp      = ['itemtype' => 'Ticket', 'items_id' => $ticketId];
+            $clock = $clock->modify('+1 second');
+            $_SESSION['glpi_currenttime'] = $clock->format('Y-m-d H:i:s');
+            $this->boolean($fup->update(['id' => $fupId, 'content' => 'my followup updated',
+                'itemtype' => $itemtype, 'items_id' => $parentId]))->isTrue();
+            $this->boolean($fup->getFromDB($fupId))->isTrue();
+            $this->string((string)$fup->fields['content'])->isEqualTo('my followup updated');
+            $this->array($events)->isEqualTo(['item_add', 'item_update']);
+            $assertUpdater();
 
-        $fup_id = $fup->add([
-           'content'      => "my followup",
-           'itemtype'   => 'Ticket',
-           'items_id'   => $ticketId
-        ]);
-        $this->integer((int)$fup_id)->isGreaterThan(0);
-
-        $this->boolean(
-            $fup->update([
-              'id'         => $fup_id,
-              'content'    => "my followup updated",
-              'itemtype'   => 'Ticket',
-              'items_id'   => $ticketId
-         ])
-        )->isTrue();
-
-        $this->boolean(
-            $fup->getFromDB($fup_id)
-        )->isTrue();
-        $this->string((string) $fup->fields['content'])->isEqualTo('my followup updated');
-
-        $this->boolean(
-            $fup->delete([
-              'id'  => $fup_id
-         ])
-        )->isTrue();
-        $this->boolean((bool) $fup->getFromDB($fup_id))->isFalse();
-
-        $changeId = $this->getNewITILObject('Change');
-        $fup      = new \ITILFollowup();
-        $tmp      = ['itemtype' => 'Change', 'items_id' => $changeId];
-
-        $fup_id = $fup->add([
-           'content'      => "my followup",
-           'itemtype'   => 'Change',
-           'items_id'   => $changeId
-        ]);
-        $this->integer((int)$fup_id)->isGreaterThan(0);
-
-        $this->boolean(
-            $fup->update([
-              'id'         => $fup_id,
-              'content'    => "my followup updated",
-              'itemtype'   => 'Change',
-              'items_id'   => $changeId
-         ])
-        )->isTrue();
-
-        $this->boolean(
-            $fup->getFromDB($fup_id)
-        )->isTrue();
-        $this->string((string) $fup->fields['content'])->isEqualTo('my followup updated');
-
-        $this->boolean(
-            $fup->delete([
-              'id'  => $fup_id
-         ])
-        )->isTrue();
-        $this->boolean((bool) $fup->getFromDB($fup_id))->isFalse();
-
-        $problemId = $this->getNewITILObject('Problem');
-        $fup      = new \ITILFollowup();
-        $tmp      = ['itemtype' => 'Problem', 'items_id' => $problemId];
-
-        $fup_id = $fup->add([
-           'content'      => "my followup",
-           'itemtype'   => 'Problem',
-           'items_id'   => $problemId
-        ]);
-        $this->integer((int)$fup_id)->isGreaterThan(0);
-
-        $this->boolean(
-            $fup->update([
-              'id'         => $fup_id,
-              'content'    => "my followup updated",
-              'itemtype'   => 'Problem',
-              'items_id'   => $problemId
-         ])
-        )->isTrue();
-
-        $this->boolean(
-            $fup->getFromDB($fup_id)
-        )->isTrue();
-        $this->string((string) $fup->fields['content'])->isEqualTo('my followup updated');
-
-        $this->boolean(
-            $fup->delete([
-              'id'  => $fup_id
-         ])
-        )->isTrue();
-        $this->boolean((bool) $fup->getFromDB($fup_id))->isFalse();
+            $clock = $clock->modify('+1 second');
+            $_SESSION['glpi_currenttime'] = $clock->format('Y-m-d H:i:s');
+            $deleted = $force ? $fup->delete(['id' => $fupId], true) : $fup->delete(['id' => $fupId]);
+            $this->boolean($deleted)->isTrue();
+            $this->array($events)->isEqualTo(['item_add', 'item_update', 'pre_item_purge', 'item_purge']);
+            $this->boolean((bool)$fup->getFromDB($fupId))->isFalse();
+            $assertUpdater();
+            $actions = array_map('intval', $connection->fetchFirstColumn('SELECT linked_action FROM glpi_logs '
+                . 'WHERE itemtype = ? AND items_id = ? ORDER BY id', [$itemtype, $parentId]));
+            foreach ([\Log::HISTORY_ADD_SUBITEM, \Log::HISTORY_UPDATE_SUBITEM, \Log::HISTORY_DELETE_SUBITEM] as $action) {
+                $this->boolean(in_array($action, $actions, true))->isTrue();
+            }
+            $this->variable($DB->getDoctrineConnection())->isIdenticalTo($connection);
+            $this->integer($connection->getTransactionNestingLevel())->isEqualTo($depth);
+            $DB->assertManagedTransaction();
+        } finally {
+            $_SESSION['glpi_currenttime'] = $savedClock;
+            $PLUGIN_HOOKS = $savedHooks;
+            $activated->setValue(null, $savedPlugins);
+        }
     }
 
     /**
