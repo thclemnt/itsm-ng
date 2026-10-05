@@ -123,15 +123,15 @@ class NotificationTargetProjectTask extends NotificationTarget
     {
         global $DB;
 
-        $members = (new \itsmng\Database\Repository\ProjectRepository(\itsmng\Database\Orm::create($DB)))
-            ->taskTeamMemberIds((int)$this->obj->fields['id'], 'User');
-
-        $user = new User();
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            $members = (new \itsmng\Database\Repository\ProjectRepository($em))
+                ->taskTeamRecipients((int)$this->obj->fields['id'], 'User');
+        } finally {
+            $em->clear();
+        }
         foreach ($members as $member) {
-            if ($user->getFromDB($member)) {
-                $this->addToRecipientsList(['language' => $user->getField('language'),
-                                                'users_id' => $user->getField('id')]);
-            }
+            $this->addToRecipientsList(['language' => $member['language'], 'users_id' => $member['id']]);
         }
     }
 
@@ -165,17 +165,20 @@ class NotificationTargetProjectTask extends NotificationTarget
     {
         global $DB, $CFG_GLPI;
 
-        $members = (new \itsmng\Database\Repository\ProjectRepository(\itsmng\Database\Orm::create($DB)))
-            ->taskTeamMemberIds((int)$this->obj->fields['id'], 'Contact');
-
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            $members = (new \itsmng\Database\Repository\ProjectRepository($em))
+                ->taskTeamRecipients((int)$this->obj->fields['id'], 'Contact');
+        } finally {
+            $em->clear();
+        }
         $contact = new Contact();
         foreach ($members as $member) {
-            if ($contact->getFromDB($member)) {
-                $this->addToRecipientsList(["email"    => $contact->fields["email"],
-                                                "name"     => $contact->getName(),
-                                                "language" => $CFG_GLPI["language"],
-                                                'usertype' => NotificationTarget::ANONYMOUS_USER]);
-            }
+            // Keep the concrete model's existing name formatting without reloading it.
+            $contact->fields = $member;
+            $this->addToRecipientsList(['email' => $member['email'],
+                'name' => $contact->getName(), 'language' => $CFG_GLPI['language'],
+                'usertype' => NotificationTarget::ANONYMOUS_USER]);
         }
     }
 
@@ -189,17 +192,20 @@ class NotificationTargetProjectTask extends NotificationTarget
     {
         global $DB, $CFG_GLPI;
 
-        $members = (new \itsmng\Database\Repository\ProjectRepository(\itsmng\Database\Orm::create($DB)))
-            ->taskTeamMemberIds((int)$this->obj->fields['id'], 'Supplier');
-
+        $em = \itsmng\Database\Orm::create($DB);
+        try {
+            $members = (new \itsmng\Database\Repository\ProjectRepository($em))
+                ->taskTeamRecipients((int)$this->obj->fields['id'], 'Supplier');
+        } finally {
+            $em->clear();
+        }
         $supplier = new Supplier();
         foreach ($members as $member) {
-            if ($supplier->getFromDB($member)) {
-                $this->addToRecipientsList(["email"    => $supplier->fields["email"],
-                                                "name"     => $supplier->getName(),
-                                                "language" => $CFG_GLPI["language"],
-                                                'usertype' => NotificationTarget::ANONYMOUS_USER]);
-            }
+            // Keep the concrete model's existing name formatting without reloading it.
+            $supplier->fields = $member;
+            $this->addToRecipientsList(['email' => $member['email'],
+                'name' => $supplier->getName(), 'language' => $CFG_GLPI['language'],
+                'usertype' => NotificationTarget::ANONYMOUS_USER]);
         }
     }
 

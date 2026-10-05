@@ -99,6 +99,33 @@ final class ProjectRepository
         return $this->teamIds($query->andWhere('team.' . $association . ' IS NOT NULL'));
     }
 
+    /** Selection only; the notification target still owns recipient admission and delivery hooks. */
+    public function projectTeamRecipients(int $project, string $kind): array
+    {
+        return $this->teamRecipients(ProjectTeam::class, 'projects', $project, $kind);
+    }
+
+    public function taskTeamRecipients(int $task, string $kind): array
+    {
+        return $this->teamRecipients(ProjectTaskTeam::class, 'projecttasks', $task, $kind);
+    }
+
+    private function teamRecipients(string $teamClass, string $parentAssociation, int $parent, string $kind): array
+    {
+        $fields = match ($kind) {
+            'User' => ['id', 'language'],
+            'Contact' => ['id', 'name', 'firstname', 'email'],
+            'Supplier' => ['id', 'name', 'email'],
+            default => throw new \InvalidArgumentException('Unsupported individual project notification recipient'),
+        };
+        return $this->em->createQueryBuilder()
+            ->select(...array_map(static fn (string $field): string => 'member.' . $field . ' AS ' . $field, $fields))
+            ->from($teamClass, 'team')->join('team.' . $teamClass::memberAssociation($kind), 'member')
+            ->where('IDENTITY(team.' . $parentAssociation . ') = :parent')
+            ->setParameter('parent', $parent, Types::BIGINT)->orderBy('team.id')
+            ->getQuery()->getArrayResult();
+    }
+
     private function teamIds(QueryBuilder $query): array
     {
         return array_map('intval', array_column($query->orderBy('team.id')->getQuery()->getScalarResult(), 'member_id'));
