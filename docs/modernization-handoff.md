@@ -20,8 +20,10 @@ failure to tracking properties absent before/after refusal; graph, audit, queue
 and persisted fields were unchanged. At `9567cdf8a9`, Software current reads passed
 in 15.429 seconds on PostgreSQL and 17.638 seconds on MariaDB. The revised compound
 checks exact pre-call lifecycle state including property presence; stored graph,
-audit, queue, caller frame and retry assertions remain. Complete ordered suites
-at this head are **RUNNING** on both providers; their final results are pending.
+audit, queue, caller frame and retry assertions remain. The complete ordered PostgreSQL suite at this head passed **228/228**. Its
+read-only final inspection found 358 tables/1,087 FKs, no pending/installing
+release and no schema differences. MariaDB is **RUNNING**; its final result and
+inspection remain pending.
 The review branch at `5afd9769aa` differs only in documentation and test cleanup;
 application source matches the frozen runtime. Two disconnected component metadata
 CLIs were folded into the existing ItemDeviceProcessor Atoum class: seven methods,
@@ -74,7 +76,7 @@ Results apply to the exact executed source, not subsequent changes:
   **227/228**. Pending-subject diagnostics failed on both; PostgreSQL also failed
   the Software fixture. Both post-run inspections found 358 tables/1,087 FKs,
   no pending history or installation, and no schema differences. Focused repairs
-  passed at the heads above; complete `9567cdf8a9` results remain pending.
+  passed at the heads above; the complete current MariaDB result remains pending.
 - The isolated History class at `976df615ac` passed three methods and 46 assertions
   with no skips through the normal runtime autoload. Its eight new assertions
   check disconnected MySQL/PostgreSQL metadata and frozen DDL independence.
