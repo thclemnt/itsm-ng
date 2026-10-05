@@ -9,6 +9,7 @@ use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
 use itsmng\Database\Entity;
 use itsmng\Database\EntityRegistry;
+use itsmng\Domain\DictionaryMutation;
 
 /** Dynamic dictionary types resolve their real associations through Doctrine metadata. */
 final class DropdownDictionaryRepository
@@ -78,7 +79,7 @@ final class DropdownDictionaryRepository
     {
         $modelProperty = $this->association($owner, $model);
         $manufacturerProperty = $this->association($owner, 'glpi_manufacturers');
-        $this->em->getConnection()->transactional(function () use ($model, $owner, $source, $moves, $modelProperty, $manufacturerProperty, $addCompatibility): void {
+        DictionaryMutation::run($this->em->getConnection(), function (callable $assertActive) use ($model, $owner, $source, $moves, $modelProperty, $manufacturerProperty, $addCompatibility): void {
             $targets = [];
             foreach ($moves as $manufacturer => $target) {
                 $target = (int)$target;
@@ -112,6 +113,7 @@ final class DropdownDictionaryRepository
                 foreach ($links as $link) {
                     foreach (array_unique($targets) as $target) {
                         $added = $addCompatibility === null ? $compatibility->add((int)$link['id'], $target) : $addCompatibility((int)$link['id'], $target);
+                        $assertActive();
                         if (!$added) {
                             throw new \RuntimeException('Unable to move printer model compatibility.');
                         }

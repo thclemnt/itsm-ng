@@ -8,6 +8,7 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
 use itsmng\Database\Entity;
+use itsmng\Domain\DictionaryMutation;
 
 final class PrinterDictionaryRepository
 {
@@ -79,7 +80,7 @@ final class PrinterDictionaryRepository
     /** Keep destination connection metadata and invoke the public relation lifecycle. */
     public function moveConnections(int $source, int $target, callable $move, callable $remove): void
     {
-        $this->em->getConnection()->transactional(function () use ($source, $target, $move, $remove): void {
+        DictionaryMutation::run($this->em->getConnection(), function (callable $assertActive) use ($source, $target, $move, $remove): void {
             $ids = array_values(array_unique([$source, $target]));
             $count = $this->em->createQueryBuilder()->select('COUNT(p.id)')->from(Entity\Printer::class, 'p')
                 ->where('p.id IN (:ids)')->setParameter('ids', $ids)->getQuery()->getSingleScalarResult();
@@ -105,7 +106,9 @@ final class PrinterDictionaryRepository
                     ->where('l.items_id = :target AND l.itemtype = :type AND l.computers = :computer')
                     ->setParameter('target', $target, Types::INTEGER)->setParameter('type', 'Printer', Types::STRING)
                     ->setParameter('computer', (int)$link['computers_id'], Types::INTEGER)->setMaxResults(1)->getQuery()->getScalarResult();
-                if (!($duplicate ? $remove($link) : $move((int)$link['id'], $target))) {
+                $changed = $duplicate ? $remove($link) : $move((int)$link['id'], $target);
+                $assertActive();
+                if (!$changed) {
                     throw new \RuntimeException('Unable to move printer direct connection.');
                 }
             }
