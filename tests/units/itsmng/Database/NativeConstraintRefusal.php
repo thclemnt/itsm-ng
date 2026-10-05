@@ -5,6 +5,7 @@
 namespace tests\units;
 
 require_once dirname(__DIR__, 3) . '/database-portability/fixtures/NativeConstraintRefusal.php';
+require_once dirname(__DIR__, 3) . '/database-portability/fixtures/ComponentNativeAdmission.php';
 
 use Doctrine\DBAL\Driver\Mysqli\Exception\StatementError;
 use Doctrine\DBAL\Exception\DriverException;
@@ -14,6 +15,8 @@ use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\DBAL\Query;
 use NativeConstraintRefusal as Refusal;
 use PDOException;
+use ComponentNativeAdmission;
+use Doctrine\DBAL\ParameterType;
 use RuntimeException;
 
 class NativeConstraintRefusal extends \atoum\atoum\test
@@ -149,6 +152,35 @@ class NativeConstraintRefusal extends \atoum\atoum\test
             $this->boolean(!Refusal::matchesGeneratedProjection($generated, 'another_table', 'INSERT'))->isTrue('PDO generated cause requires selected native table');
             $this->boolean(!Refusal::matchesGeneratedProjection($makePdo(DriverException::class, $text, 3819, 'HY000'), $table, 'INSERT'))->isTrue('An unrelated HY000 code cannot enter generated projection branch');
             $this->boolean(!Refusal::matchesGeneratedProjection($makePdo(DriverException::class, 'Query mentions ' . $text, $code, 'HY000'), $table, 'INSERT'))->isTrue('Rendered/query text cannot enter generated projection branch');
+        }
+    }
+
+    public function testPostgresParentRefusalRequiresExactStateObjectsAndNativeMessage(): void
+    {
+        $nativeError = static function (?string $state, string $message): \Doctrine\DBAL\Driver\PDO\Exception {
+            $pdo = new PDOException($message);
+            $pdo->errorInfo = [$state, 7, $message];
+            return \Doctrine\DBAL\Driver\PDO\Exception::new($pdo);
+        };
+        $converter = (new \itsmng\Database\Driver\Postgres\Driver())->getExceptionConverter();
+        $query = new Query('DELETE FROM owned_parent WHERE id = ?', [1], [ParameterType::INTEGER]);
+        foreach (['23503' => 'violates foreign key constraint', '23001' => 'violates RESTRICT setting of foreign key constraint'] as $state => $phrase) {
+            $primary = 'update or delete on table "parent" ' . $phrase . ' "selected_fk" on table "child"';
+            $error = $converter->convert($nativeError($state, $primary), $query);
+            $this->boolean(ComponentNativeAdmission::matchesPostgresParentForeign($error, $primary, 'child', 'selected_fk', 'parent'))->isTrue('Selected native parent FK cause recognizes this exact server form');
+            foreach ([
+                [$primary, 'other_child', 'selected_fk', 'parent'],
+                [$primary, 'child', 'other_fk', 'parent'],
+                [$primary, 'child', 'selected_fk', 'other_parent'],
+                [$primary, 'child', null, 'parent'],
+                [$primary, 'child', 'selected_fk', null],
+                ['query contains ' . $primary, 'child', 'selected_fk', 'parent'],
+                [str_replace($phrase, $state === '23001' ? 'violates foreign key constraint' : 'violates RESTRICT setting of foreign key constraint', $primary), 'child', 'selected_fk', 'parent'],
+            ] as [$message, $table, $constraint, $parent]) {
+                $this->boolean(!ComponentNativeAdmission::matchesPostgresParentForeign($error, $message, $table, $constraint, $parent))->isTrue('Selected native matcher rejects other objects, absent names, query text and mismatched state/message');
+            }
+            $generic = new DriverException($nativeError($state, $primary), $query);
+            $this->boolean(!ComponentNativeAdmission::matchesPostgresParentForeign($generic, $primary, 'child', 'selected_fk', 'parent'))->isTrue('Native state alone cannot replace the FK exception class');
         }
     }
 }
