@@ -352,6 +352,11 @@ class TicketRecurrent extends CommonDropdown
     }
 
 
+    protected function recurrenceTimestamp(): int
+    {
+        return time();
+    }
+
     /**
      * Compute next creation date of a ticket.
      *
@@ -377,7 +382,7 @@ class TicketRecurrent extends CommonDropdown
         $calendars_id
     ) {
 
-        $now = time();
+        $now = $this->recurrenceTimestamp();
         $periodicity_pattern = '/([0-9]+)(MONTH|YEAR)/';
 
         if (false === DateTime::createFromFormat('Y-m-d H:i:s', $begin_date)) {
@@ -431,38 +436,35 @@ class TicketRecurrent extends CommonDropdown
             // Compute next occurence without using the calendar if calendar is not valid
             // or if periodicity is at least one day.
 
-            // First occurence of creation
-            $occurence_time = strtotime($begin_date);
-            $creation_time  = $occurence_time - $create_before;
-
-            // Add steps while creation time is in past
-            while ($creation_time < $now) {
-                $creation_time  = strtotime("+ $periodicity_as_interval", $creation_time);
-                $occurence_time = $creation_time + $create_before;
-
-                // Stop if end date reached
+            $nominal_creation_time = strtotime($begin_date) - $create_before;
+            while (true) {
+                $occurence_time = $nominal_creation_time + $create_before;
                 if ($has_end_date && $occurence_time > strtotime($end_date)) {
                     return 'NULL';
                 }
-            }
 
-            if ($is_calendar_valid) {
-                // Jump to next working day if occurence is outside working days.
-                while (
-                    $calendar->isHoliday(date('Y-m-d', $occurence_time))
-                    || !$calendar->isAWorkingDay($occurence_time)
-                ) {
-                    $occurence_time = strtotime('+ 1 day', $occurence_time);
+                if ($is_calendar_valid) {
+                    // Apply working days and hours before deciding whether creation is past.
+                    while (
+                        $calendar->isHoliday(date('Y-m-d', $occurence_time))
+                        || !$calendar->isAWorkingDay($occurence_time)
+                    ) {
+                        $occurence_time = strtotime('+ 1 day', $occurence_time);
+                    }
+                    if (!$calendar->isAWorkingHour($occurence_time)) {
+                        $occurence_date = $calendar->computeEndDate(
+                            date('Y-m-d', $occurence_time),
+                            0 // 0 second delay to get the first working "second"
+                        );
+                        $occurence_time = strtotime($occurence_date);
+                    }
                 }
-                // Jump to next working hour if occurence is outside working hours.
-                if (!$calendar->isAWorkingHour($occurence_time)) {
-                    $occurence_date = $calendar->computeEndDate(
-                        date('Y-m-d', $occurence_time),
-                        0 // 0 second delay to get the first working "second"
-                    );
-                    $occurence_time = strtotime($occurence_date);
+                $creation_time = $occurence_time - $create_before;
+                if ($creation_time >= $now) {
+                    break;
                 }
-                $creation_time  = $occurence_time - $create_before;
+                // Keep interval anchoring independent of calendar shifts.
+                $nominal_creation_time = strtotime("+ $periodicity_as_interval", $nominal_creation_time);
             }
         } else {
             // Base computation on calendar if calendar is valid

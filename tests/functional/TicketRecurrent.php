@@ -424,6 +424,48 @@ class TicketRecurrent extends DbTestCase
            'expected_value' => date('Y-m-d H:00:00', $next_time),
         ];
 
+        // Fixed calendar and clock cover the late-evening anticipation boundary.
+        $fixed_calendar = $calendar->add(['name' => 'Fixed recurrent anticipation calendar']);
+        $this->integer($fixed_calendar)->isGreaterThan(0);
+        for ($day = 1; $day <= 5; $day++) {
+            $this->integer($cal_segment->add([
+                'calendars_id' => $fixed_calendar,
+                'day' => $day,
+                'begin' => '09:00:00',
+                'end' => '19:00:00',
+            ]))->isGreaterThan(0);
+        }
+        $fixed_holiday = $holiday->add([
+            'name' => 'Fixed recurrent holiday',
+            'begin_date' => '2026-10-08',
+            'end_date' => '2026-10-08',
+        ]);
+        $this->integer($fixed_holiday)->isGreaterThan(0);
+        $this->integer($cal_holiday->add([
+            'calendars_id' => $fixed_calendar,
+            'holidays_id' => $fixed_holiday,
+        ]))->isGreaterThan(0);
+        foreach ([
+            ['2026-10-05 22:30:00', '2026-10-06 07:00:00', $fixed_calendar],
+            ['2026-10-06 06:59:59', '2026-10-06 07:00:00', $fixed_calendar],
+            ['2026-10-06 07:00:00', '2026-10-06 07:00:00', $fixed_calendar],
+            ['2026-10-06 07:00:01', '2026-10-07 07:00:00', $fixed_calendar],
+            ['2026-10-07 22:30:00', '2026-10-09 07:00:00', $fixed_calendar],
+            ['2026-10-09 23:00:00', '2026-10-12 07:00:00', $fixed_calendar],
+            ['2026-10-05 22:30:00', '2026-10-06 22:00:00', 0],
+        ] as [$now, $expected, $calendar_id]) {
+            $data[] = [
+                'begin_date' => '2026-10-01 00:00:00',
+                'end_date' => '2026-10-31 23:59:59',
+                'periodicity' => DAY_TIMESTAMP,
+                'create_before' => 2 * HOUR_TIMESTAMP,
+                'calendars_id' => $calendar_id,
+                'expected_value' => $expected,
+                'messages' => null,
+                'now' => strtotime($now),
+            ];
+        }
+
         return $data;
     }
 
@@ -435,6 +477,7 @@ class TicketRecurrent extends DbTestCase
      * @param integer        $calendars_id
      * @param string         $expected_value
      * @param array          $messages
+     * @param integer|null   $now Fixed scheduling timestamp, or the real clock.
      *
      * @dataProvider computeNextCreationDateProvider
      */
@@ -445,10 +488,19 @@ class TicketRecurrent extends DbTestCase
         $create_before,
         $calendars_id,
         $expected_value,
-        $messages = null
+        $messages = null,
+        $now = null
     ) {
 
-        $ticketRecurrent = new \TicketRecurrent();
+        $ticketRecurrent = new class extends \TicketRecurrent {
+            public ?int $testTimestamp = null;
+
+            protected function recurrenceTimestamp(): int
+            {
+                return $this->testTimestamp ?? parent::recurrenceTimestamp();
+            }
+        };
+        $ticketRecurrent->testTimestamp = $now;
         $value = $ticketRecurrent->computeNextCreationDate(
             $begin_date,
             $end_date,
