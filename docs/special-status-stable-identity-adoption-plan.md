@@ -73,3 +73,75 @@ The next concrete SOURCE batch is an adoption planner, not executable DDL:
 
 This plan is OPEN. No status association, new migration, scalar registry,
 simulated foreign key or SQL-wrapper service is introduced by this audit.
+
+## Bounded read-only Ticket preflight (SOURCE implementation)
+
+The source batch based on `5611b65a340e46e2c2d3fd8216846c5376ef06e0`
+adds `TicketStatusPreflightRepository`, an injected-EntityManager repository
+reading the actual `SpecialStatus` and `Ticket` owners through scalar ORM
+projections. It neither changes legacy application callers nor creates or marks
+a migration. Scalar hydration deliberately avoids stale managed instances and
+never flushes the caller's pending writes. The supplied connection, read routing
+and transaction remain owned by the caller; no global adapter is acquired.
+
+`LegacyTicketStatusSnapshot` freezes the legacy positional interpretation:
+ascending weight, then ascending real row ID, retaining inactive ordinal gaps.
+Its immutable rows retain nullable labels/colors, raw integer active flags and
+all identities. The SHA-256 configuration fingerprint covers every exact field
+in identity order, independently of input iteration order. Active NULL labels,
+noncanonical flags, an empty table and an all-inactive table produce distinct
+refusals. Duplicate display labels remain valid identity data.
+
+`TicketWorkflowRoleDecisions` accepts explicit domain/operator-confirmed choices
+bound to that fingerprint. It never accepts a label, weight or ordinal as an
+identity shortcut. The six historical English-label matches are suggestions:
+missing/renamed and duplicate interpretations appear in diagnostics and cannot
+confirm a role. Even six unique seeded labels require explicit decisions.
+Missing targets, two roles claiming one target and stale decisions refuse.
+An explicitly confirmed role may point to a retired row, preserving the meaning
+of existing data; this grants no permission to use it for new active tickets.
+
+`TicketStatusPreflight` records each ticket's exact before-code and resolved real
+status identity, including deleted tickets and tickets in other entities. Zero,
+negative sentinels, unknown positions and real IDs accidentally supplied as codes
+remain unknown with owning-ticket diagnostics. Inactive targets remain distinct
+from unknown targets. This global inspection is a trusted adoption tool, not a
+public entity-scoped ticket collection or a business-transition service. There
+is intentionally no HTTP/CLI endpoint granting access to its record-level output.
+When exposed later, admission must require global configuration authority and
+private output handling; ticket content is not collected here.
+
+The repository compares the complete status snapshot before and after reading
+ticket references. A changed fingerprint refuses the result. A matching double
+read is only observed consistency: it does not establish a serializable snapshot,
+exclude ABA changes, detect concurrent ticket-status changes or authorize writes.
+The eventual executing adoption must obtain a maintenance/current-read guard
+and verify every ticket before-value under its admitted writer. No locking,
+transaction creation, DDL, ledger write or status mutation is performed here.
+
+`ticketOwnerHasNoRefusals()` refers only to these bounded Ticket-owner and role
+diagnostics. **It is not adoption readiness.** Profile transition matrices,
+RuleTicket criteria/actions, Ticket-template status fields, structured SavedSearch
+criteria/metacriteria, sessions/defaults, fixed incoming-role visibility callers,
+immutable history and external/plugin input compatibility remain OPEN. Each
+owner must supply its own parser and exact before/after interpretation; this
+batch adds no global owner registry, generic numeric/JSON replacement or guessed
+schema association. A future complete plan must compose those owner results
+before any canonical frozen migration or application status cutover.
+
+Two contracts are added for later ROOT execution. The pure contract independently
+replays the frozen weight scan, tests non-seed IDs/ties/inactive gaps, explicit
+role choices, missing/ambiguous/renamed roles, NULL labels, invalid flags/codes,
+fingerprint changes and malformed decisions. The provider contract reads the
+real installed owners and ledger, preserves an outer caller frame and an
+unflushed ORM insertion, rebinds the global adapter to prove repository capture,
+and compares exact status/ticket/ledger storage and history/notification counts.
+The provider contract intentionally writes no fixture rows and changes no seed
+or migration data. Reordered populated provider fixtures, concurrent admission,
+read replicas, browser requests and complete owner adoption still need future
+validation.
+
+All PHP execution, compiler/style checks, focused provider contracts and broader
+portability/application/browser suites for this batch are **UNRUN** at source
+handoff. Source inspection and native Git checks do not count as runtime evidence.
+The overall modernization goal and stable-status adoption remain OPEN.
