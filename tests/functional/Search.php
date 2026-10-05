@@ -40,6 +40,8 @@ use DbTestCase;
 
 class Search extends DbTestCase
 {
+    private array $criterionColumns = [];
+
     private function doSearch($itemtype, $params, array $forcedisplay = [])
     {
         global $DEBUG_SQL;
@@ -736,8 +738,23 @@ class Search extends DbTestCase
                 break;
             default:
                 if (array_key_exists('table', $so_data) && array_key_exists('field', $so_data)) {
-                    $field = $DB->tableExists($so_data['table']) ? $DB->getField($so_data['table'], $so_data['field']) : null;
-                    if (preg_match('/int(\(\d+\))?$/', $field['Type'] ?? '')) {
+                    $table = $so_data['table'];
+                    if (!array_key_exists($table, $this->criterionColumns)) {
+                        $this->criterionColumns[$table] = $DB->tableExists($table)
+                            ? $DB->getDoctrineConnection()->createSchemaManager()->listTableColumns($table)
+                            : [];
+                    }
+                    $type = isset($this->criterionColumns[$table][$so_data['field']])
+                        ? $this->criterionColumns[$table][$so_data['field']]->getType()
+                        : null;
+                    // Use the actual core or plugin column type, independent of
+                    // provider-specific names such as MySQL int / PostgreSQL integer.
+                    if ($type instanceof \Doctrine\DBAL\Types\IntegerType
+                        || $type instanceof \Doctrine\DBAL\Types\SmallIntType
+                        || $type instanceof \Doctrine\DBAL\Types\BigIntType
+                        || $type instanceof \Doctrine\DBAL\Types\BooleanType
+                        || $type instanceof \Doctrine\DBAL\Types\FloatType
+                        || $type instanceof \Doctrine\DBAL\Types\DecimalType) {
                         $val = 1;
                         break;
                     }
