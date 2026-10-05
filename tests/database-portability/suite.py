@@ -16,7 +16,7 @@ parser.add_argument("--list", action="store_true", help="List contracts without 
 args = parser.parse_args()
 directory = Path(__file__).resolve().parent
 # These are support files or have their own workflow invocation, not CLI contracts.
-support = {"FixtureRecords.php", "sql-inventory.php", "search-benchmark.php", "seed-report-web.php"}
+support = {"FixtureRecords.php", "search-benchmark.php", "seed-report-web.php"}
 contracts = sorted(path for path in directory.glob("*.php")
                    if path.name not in support and not path.name.endswith("-web-fixture.php"))
 # Check the untouched installation before contracts that exercise schema upgrades.
