@@ -266,7 +266,11 @@ abstract class CommonITILCost extends CommonDBChild
            'massiveaction'      => false,
            'joinparams'         => [
               'jointype'           => 'child'
-           ]
+           ],
+           'computation'        =>
+              '(1.0 * SUM(' . $DB->quoteName('TABLE.actiontime') . ') * COUNT(DISTINCT ' .
+              $DB->quoteName('TABLE.id') . ')) / NULLIF(COUNT(' .
+              $DB->quoteName('TABLE.id') . '), 0)'
         ];
 
         $tab[] = [

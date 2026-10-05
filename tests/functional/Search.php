@@ -160,6 +160,65 @@ class Search extends DbTestCase
         }
     }
 
+    public function testCostDurationIsNumericInMainAndMetaSearch(): void
+    {
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)\Session::getActiveEntity();
+        $prefix = 'Cost duration ' . $this->getUniqueString();
+        $appliance = new \Appliance();
+        $applianceId = (int)$appliance->add(['name' => $prefix, 'entities_id' => $entity]);
+        $this->integer($applianceId)->isGreaterThan(0);
+        $change = new \Change();
+        $changeId = (int)$change->add(['name' => $prefix, 'content' => $prefix, 'entities_id' => $entity]);
+        $this->integer($changeId)->isGreaterThan(0);
+        $this->boolean($change->can($changeId, READ))->isTrue();
+        $link = new \Change_Item();
+        $this->integer((int)$link->add([
+            'changes_id' => $changeId, 'itemtype' => 'Appliance', 'items_id' => $applianceId,
+        ]))->isGreaterThan(0);
+        $cost = new \ChangeCost();
+        // Equal durations are separate costs, not values to deduplicate.
+        $costIds = [];
+        foreach ([1800, 1800, 0] as $i => $seconds) {
+            $id = (int)$cost->add([
+                'changes_id' => $changeId, 'name' => $prefix . ' ' . $i,
+                'actiontime' => $seconds, 'cost_time' => 0, 'cost_fixed' => 0, 'cost_material' => 0,
+            ]);
+            $this->integer($id)->isGreaterThan(0);
+            $costIds[] = $id;
+        }
+        foreach ([3600, 3601, 1] as $total) {
+            if ($total === 3601) {
+                $this->boolean($cost->update(['id' => $costIds[1], 'actiontime' => 1801]))->isTrue();
+            }
+            if ($total === 1) {
+                // Multiplication must precede division: (1 / 3) * 3 is lossy.
+                $this->boolean($cost->update(['id' => $costIds[0], 'actiontime' => 1]))->isTrue();
+                $this->boolean($cost->update(['id' => $costIds[1], 'actiontime' => 0]))->isTrue();
+            }
+            foreach (['Change', 'Appliance'] as $type) {
+                foreach ([(string)$total => 1, '>' . ($total - 1) => 1, '1800' => 0] as $duration => $expected) {
+                    $criterion = ['field' => 49, 'searchtype' => 'contains', 'value' => (string)$duration];
+                    if ($type === 'Appliance') {
+                        $criterion += ['meta' => true, 'itemtype' => 'Change', 'link' => 'AND'];
+                    }
+                    $data = $this->doSearch($type, [
+                        'is_deleted' => 0, 'start' => 0, 'criteria' => [
+                            ['field' => 1, 'searchtype' => 'equals', 'value' => $prefix], $criterion,
+                        ],
+                    ], $type === 'Change' ? [49] : []);
+                    $this->integer($data['data']['count'])->isIdenticalTo($expected);
+                    if ($expected) {
+                        $this->array(array_keys($data['data']['items']))
+                            ->isIdenticalTo([$type === 'Change' ? $changeId : $applianceId]);
+                    }
+                }
+            }
+        }
+    }
+
+
     public function testMetaComputerOS()
     {
         $search_params = ['is_deleted'   => 0,
