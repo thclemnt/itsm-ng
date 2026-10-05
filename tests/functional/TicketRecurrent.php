@@ -445,6 +445,16 @@ class TicketRecurrent extends DbTestCase
             'calendars_id' => $fixed_calendar,
             'holidays_id' => $fixed_holiday,
         ]))->isGreaterThan(0);
+        $monday_holiday = $holiday->add([
+            'name' => 'Fixed Monday recurrence closure',
+            'begin_date' => '2026-10-05',
+            'end_date' => '2026-10-05',
+        ]);
+        $this->integer($monday_holiday)->isGreaterThan(0);
+        $this->integer($cal_holiday->add([
+            'calendars_id' => $fixed_calendar,
+            'holidays_id' => $monday_holiday,
+        ]))->isGreaterThan(0);
         foreach ([
             ['2026-10-05 22:30:00', '2026-10-06 07:00:00', $fixed_calendar],
             ['2026-10-06 06:59:59', '2026-10-06 07:00:00', $fixed_calendar],
@@ -476,6 +486,29 @@ class TicketRecurrent extends DbTestCase
             'messages' => null,
             'now' => strtotime('2026-10-05 22:30:00'),
         ];
+
+        // Calendar postponement applies to an unexpired interval; it cannot
+        // revive a weekly/monthly slot whose nominal creation deadline passed.
+        foreach ([
+            ['2026-09-28 12:00:00', 7 * DAY_TIMESTAMP, 0, '2026-10-05 11:59:59', '2026-10-06 12:00:00'],
+            ['2026-09-28 12:00:00', 7 * DAY_TIMESTAMP, 0, '2026-10-05 12:00:00', '2026-10-06 12:00:00'],
+            ['2026-09-28 12:00:00', 7 * DAY_TIMESTAMP, 0, '2026-10-05 12:00:01', '2026-10-12 12:00:00'],
+            ['2026-09-28 12:00:00', 7 * DAY_TIMESTAMP, 2 * HOUR_TIMESTAMP, '2026-10-05 09:59:59', '2026-10-06 10:00:00'],
+            ['2026-09-28 12:00:00', 7 * DAY_TIMESTAMP, 2 * HOUR_TIMESTAMP, '2026-10-05 10:00:01', '2026-10-12 10:00:00'],
+            ['2026-09-03 12:00:00', '1MONTH', 0, '2026-10-03 11:59:59', '2026-10-06 12:00:00'],
+            ['2026-09-03 12:00:00', '1MONTH', 0, '2026-10-03 12:00:01', '2026-11-03 12:00:00'],
+        ] as [$begin, $periodicity, $anticipation, $now, $expected]) {
+            $data[] = [
+                'begin_date' => $begin,
+                'end_date' => '2027-01-31 23:59:59',
+                'periodicity' => $periodicity,
+                'create_before' => $anticipation,
+                'calendars_id' => $fixed_calendar,
+                'expected_value' => $expected,
+                'messages' => null,
+                'now' => strtotime($now),
+            ];
+        }
 
         return $data;
     }

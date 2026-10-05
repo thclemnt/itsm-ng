@@ -456,11 +456,15 @@ class TicketRecurrent extends CommonDropdown
                     return 'NULL';
                 }
 
+                $nominal_occurence_time = $occurence_time;
                 if ($is_calendar_valid) {
                     $occurence_time = $schedule->nextWorkingOccurrence($occurence_time);
                 }
                 $creation_time = $occurence_time - $create_before;
-                if ($creation_time >= $now) {
+                // Opening hours may recover a creation on its nominal occurrence date.
+                // Holidays/weekends must not revive an already expired interval slot.
+                $same_occurrence_date = date('Y-m-d', $occurence_time) === date('Y-m-d', $nominal_occurence_time);
+                if ($creation_time >= $now && ($nominal_creation_time >= $now || $same_occurrence_date)) {
                     break;
                 }
                 // Keep interval anchoring independent of calendar shifts.
