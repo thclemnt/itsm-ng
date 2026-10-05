@@ -50,7 +50,7 @@ class QueuedNotification
 
     #[ORM\Column(name: '`sent_time`', type: 'datetimetz', nullable: true)]
     #[\itsmng\Database\Mapping\NativeTimestamp]
-    public ?\DateTimeInterface $sent_time = null;
+    public ?\DateTime $sent_time = null;
 
     #[ORM\Column(name: '`name`', type: 'text', nullable: true)]
     public ?string $name = null;
@@ -103,7 +103,9 @@ class QueuedNotification
         if (!$this->isPendingBrowserMessageFor($user)) {
             return false;
         }
-        $this->sent_time = $presentedAt;
+        // Native TIMESTAMP retains its mutable datetimetz mapping. Keep the
+        // caller's immutable clock while assigning the mapped PHP value type.
+        $this->sent_time = \DateTime::createFromImmutable($presentedAt);
         $this->is_deleted = true;
         return true;
     }

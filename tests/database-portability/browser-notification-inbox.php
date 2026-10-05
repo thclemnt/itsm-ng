@@ -175,8 +175,13 @@ try {
     $record->mode = 'ajax';
     $first = new DateTimeImmutable('2001-01-01 00:00:00');
     verify($record->acknowledgeBrowserMessage($user, $first)
-        && !$record->acknowledgeBrowserMessage($user, new DateTimeImmutable('2002-01-01 00:00:00'))
-        && $record->sent_time === $first && $record->sent_try === 0, 'Entity transition is independently idempotent across different clock instants');
+        && $record->sent_time instanceof DateTime
+        && $record->sent_time->format('Y-m-d H:i:s.uP') === $first->format('Y-m-d H:i:s.uP'),
+        'Entity copies its immutable clock into the native mapped mutable timestamp without changing the instant');
+    $presentation = $record->sent_time;
+    verify(!$record->acknowledgeBrowserMessage($user, new DateTimeImmutable('2002-01-01 00:00:00'))
+        && $record->sent_time === $presentation && $record->sent_try === 0,
+        'Entity transition is independently idempotent across different clock instants');
 } finally {
     while ($connection->getTransactionNestingLevel() > $level) {
         $connection->rollBack();

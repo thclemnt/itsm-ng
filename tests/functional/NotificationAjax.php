@@ -39,6 +39,71 @@ use DbTestCase;
 
 class NotificationAjax extends DbTestCase
 {
+    public function testAcknowledgementPersistsItsNativeTimestampAndOnlyRecipientOwnedFields(): void
+    {
+        global $DB, $CFG_GLPI;
+
+        $savedSession = $_SESSION;
+        $savedConfig = $CFG_GLPI;
+        try {
+            $this->login();
+            $recipient = (int)\Session::getLoginUserID();
+            $this->integer($recipient)->isGreaterThan(0);
+            $message = $this->createItem('QueuedNotification', [
+                'mode' => 'ajax', 'recipient' => (string)$recipient,
+                'entities_id' => 0, 'itemtype' => 'NotificationAjax',
+                'name' => 'browser-clock-' . $this->getUniqueString(),
+                'body_text' => 'Preserve this rendered body', 'sent_try' => 4,
+                'create_time' => '2010-01-01 00:00:00',
+                'send_time' => '2037-01-01 00:00:00', 'sent_time' => null,
+            ]);
+            $id = (int)$message->getID();
+            $connection = $DB->getDoctrineConnection();
+            $native = static fn (): array => $connection->fetchAssociative('SELECT * FROM glpi_queuednotifications WHERE id = ?', [$id]);
+            $before = $native();
+            // Presentation belongs to the recipient, independent of queue
+            // administration rights, active entity and the scheduled mail clock.
+            $_SESSION['glpiactiveprofile']['queuednotification'] = 0;
+            $_SESSION['glpiactiveentities'] = [];
+            $CFG_GLPI['notifications_ajax'] = true;
+            $inbox = new \itsmng\Domain\BrowserNotificationInbox($DB);
+            $this->boolean($inbox->acknowledge($id, $recipient + 1))->isFalse();
+            $this->array($native())->isIdenticalTo($before);
+            \NotificationAjax::raisedNotification($id);
+            $after = $native();
+            $this->boolean((bool)$after['is_deleted'])->isTrue();
+            $this->variable($after['sent_time'])->isNotNull();
+            $unchanged = $after;
+            $unchanged['sent_time'] = $before['sent_time'];
+            $unchanged['is_deleted'] = $before['is_deleted'];
+            $this->array($unchanged)->isIdenticalTo($before);
+            \NotificationAjax::raisedNotification($id);
+            $this->array($native())->isIdenticalTo($after);
+
+            $em = \itsmng\Database\Orm::create($DB);
+            try {
+                $stored = $em->find(\itsmng\Database\Entity\QueuedNotification::class, $id);
+                $this->object($stored->sent_time)->isInstanceOf(\DateTime::class);
+                $this->integer($stored->sent_try)->isIdenticalTo(4);
+            } finally {
+                $em->clear();
+            }
+            $clock = new \DateTimeImmutable('2001-01-01 00:00:00.123456+03:00');
+            $transition = new \itsmng\Database\Entity\QueuedNotification();
+            $transition->mode = 'ajax';
+            $transition->recipient = (string)$recipient;
+            $this->boolean($transition->acknowledgeBrowserMessage($recipient, $clock))->isTrue();
+            $first = $transition->sent_time;
+            $this->object($first)->isInstanceOf(\DateTime::class);
+            $this->string($first->format('Y-m-d H:i:s.uP'))->isIdenticalTo($clock->format('Y-m-d H:i:s.uP'));
+            $this->boolean($transition->acknowledgeBrowserMessage($recipient, $clock->modify('+1 day')))->isFalse();
+            $this->variable($transition->sent_time)->isIdenticalTo($first);
+        } finally {
+            $_SESSION = $savedSession;
+            $CFG_GLPI = $savedConfig;
+        }
+    }
+
     public function testCheck()
     {
         $instance = new \NotificationAjax();
