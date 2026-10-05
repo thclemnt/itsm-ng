@@ -185,10 +185,6 @@ class Computer_Item extends CommonDBRelation
         global $CFG_GLPI;
 
         if (!isset($this->input['_no_auto_action'])) {
-            //Get the computer name
-            $computer = new Computer();
-            $computer->getFromDB($this->fields['computers_id']);
-
             //Get device fields
             if ($device = getItemForItemtype($this->fields['itemtype'])) {
                 if ($device->getFromDB($this->fields['items_id'])) {

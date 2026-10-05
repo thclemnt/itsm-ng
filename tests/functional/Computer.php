@@ -39,6 +39,73 @@ use DbTestCase;
 
 class Computer extends DbTestCase
 {
+    public function testDisconnectPreservesDeviceAutoCleanAndHooks(): void
+    {
+        global $CFG_GLPI, $PLUGIN_HOOKS;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $savedConfig = $CFG_GLPI;
+        $savedHooks = $PLUGIN_HOOKS;
+        $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $savedPlugins = $plugins->getValue();
+        $updated = [];
+        try {
+            foreach (['contact', 'user', 'group', 'location'] as $field) {
+                $CFG_GLPI['is_' . $field . '_autoupdate'] = 0;
+                $CFG_GLPI['is_' . $field . '_autoclean'] = 1;
+            }
+            $CFG_GLPI['state_autoupdate_mode'] = 0;
+            $CFG_GLPI['state_autoclean_mode'] = -1;
+            $plugins->setValue(null, [...$savedPlugins, 'disconnect_fixture']);
+            $PLUGIN_HOOKS['item_update']['disconnect_fixture'][\Monitor::class] = static function (\Monitor $item) use (&$updated): void {
+                $updated[] = (int)$item->getID();
+            };
+            $computer = $this->createItem(\Computer::class, ['name' => '_disconnect_owner', 'entities_id' => $entity]);
+            $values = [
+                'contact' => 'Assigned contact', 'contact_num' => '12345',
+                'locations_id' => $this->getNewLocationId(), 'users_id' => $this->getNewUserId(),
+                'groups_id' => $this->getNewGroupId(), 'states_id' => $this->getNewStateId(),
+            ];
+            foreach (['ordinary', 'global', 'bypass'] as $mode) {
+                $monitor = $this->createItem(\Monitor::class, [
+                    'name' => '_disconnect_' . $mode, 'entities_id' => $entity,
+                    'is_global' => (int)($mode === 'global'),
+                ] + $values);
+                $link = $this->createItem(\Computer_Item::class, [
+                    'computers_id' => $computer->getID(), 'itemtype' => 'Monitor', 'items_id' => $monitor->getID(),
+                ]);
+                $id = (int)$link->getID();
+                $updated = [];
+                $input = ['id' => $id];
+                if ($mode === 'bypass') {
+                    $input['_no_auto_action'] = true;
+                }
+                $this->boolean($link->delete($input, true))->isTrue();
+                $this->boolean($link->getFromDB($id))->isFalse();
+                $this->boolean($monitor->getFromDB($monitor->getID()))->isTrue();
+                if ($mode === 'ordinary') {
+                    $this->array($updated)->isIdenticalTo([(int)$monitor->getID()]);
+                    $this->string($monitor->getField('contact'))->isEmpty();
+                    $this->string($monitor->getField('contact_num'))->isEmpty();
+                    foreach (['locations_id', 'users_id', 'groups_id', 'states_id'] as $field) {
+                        $this->variable($monitor->getField($field))->isNull();
+                    }
+                } else {
+                    $this->array($updated)->isEmpty();
+                    foreach ($values as $field => $value) {
+                        $this->variable($monitor->getField($field))->isEqualTo($value);
+                    }
+                }
+            }
+            $this->boolean($computer->getFromDB($computer->getID()))->isTrue();
+        } finally {
+            $CFG_GLPI = $savedConfig;
+            $PLUGIN_HOOKS = $savedHooks;
+            $plugins->setValue(null, $savedPlugins);
+        }
+    }
+
     public function testRelationPermissionsRetainDeclaredViewAndEquivalentOwnerRoles(): void
     {
         $savedSession = $_SESSION;
