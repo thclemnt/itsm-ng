@@ -1799,8 +1799,10 @@ class Ticket extends DbTestCase
                 $this->integer((int)$item->add(['name' => 'Timeline count visibility', 'content' => 'Count only']))->isGreaterThan(0);
                 $this->integer($item->getTimelineItemCount())->isEqualTo(0);
                 $task_class = $type . 'Task';
-                $private_ids = [];
-                foreach ([[0, $other], [1, $author], [1, $other], [1, null]] as [$private, $user]) {
+                $private_tasks = (new $task_class())->maybePrivate();
+                $this->boolean($private_tasks)->isTrue();
+                $task_ids_by_role = $followup_ids_by_role = [];
+                foreach (['public' => [0, $other], 'author' => [1, $author], 'other' => [1, $other], 'anonymous' => [1, null]] as $role => [$private, $user]) {
                     $followup = new \ITILFollowup();
                     $this->integer((int)$followup->add([
                         'itemtype' => $type, 'items_id' => $item->getID(),
@@ -1811,13 +1813,10 @@ class Ticket extends DbTestCase
                     $this->integer((int)$task->add([
                         $item->getForeignKeyField() => $item->getID(),
                         'content' => 'Task visibility',
-                    ] + ($task->maybePrivate() ? ['is_private' => $private] : [])))->isGreaterThan(0);
+                    ] + ($private_tasks ? ['is_private' => $private] : [])))->isGreaterThan(0);
                     $this->boolean($DB->update($task->getTable(), ['users_id' => $user], ['id' => $task->getID()]))->isTrue();
-                    if ($private && $user === $author) {
-                        $private_ids['author'] = $task->getID();
-                    } elseif ($private && $user === null) {
-                        $private_ids['anonymous'] = $task->getID();
-                    }
+                    $task_ids_by_role[$role] = $task->getID();
+                    $followup_ids_by_role[$role] = $followup->getID();
                 }
                 $solution = new \ITILSolution();
                 $this->integer((int)$solution->add([
@@ -1831,16 +1830,19 @@ class Ticket extends DbTestCase
                 foreach (['central', 'helpdesk'] as $interface) {
                     $_SESSION['glpiactiveprofile']['interface'] = $interface;
                     $timeline = $item->getTimelineItems();
-                    $this->integer($item->getTimelineItemCount())->isEqualTo($type === 'Ticket' ? 5 : 7)->isEqualTo(count($timeline));
+                    $count = $item->getTimelineItemCount();
+                    $this->integer($count)->isEqualTo(count($timeline));
+                    $this->integer($count)->isEqualTo($private_tasks ? 5 : 7);
                     $task_ids = array_column(array_column(array_filter($timeline, static fn ($event) => $event['type'] === $task_class), 'item'), 'id');
                     $visible_private = $interface === 'central' ? 'author' : 'anonymous';
                     $hidden_private = $interface === 'central' ? 'anonymous' : 'author';
-                    if ($type === 'Ticket') {
-                        $this->array($task_ids)->contains($private_ids[$visible_private])->notContains($private_ids[$hidden_private]);
-                    } else {
-                        // Change/Problem tasks have no private field.
-                        $this->array($task_ids)->contains($private_ids['author'])->contains($private_ids['anonymous']);
-                    }
+                    $this->array($task_ids)->hasSize(2)
+                        ->contains($task_ids_by_role['public'])->contains($task_ids_by_role[$visible_private])
+                        ->notContains($task_ids_by_role['other'])->notContains($task_ids_by_role[$hidden_private]);
+                    $followup_ids = array_column(array_column(array_filter($timeline, static fn ($event) => $event['type'] === 'ITILFollowup'), 'item'), 'id');
+                    $this->array($followup_ids)->hasSize(2)
+                        ->contains($followup_ids_by_role['public'])->contains($followup_ids_by_role['author'])
+                        ->notContains($followup_ids_by_role['other'])->notContains($followup_ids_by_role['anonymous']);
                 }
 
                 foreach (['followup', 'task', 'ticket', 'change', 'problem', 'document', 'ticketvalidation', 'changevalidation'] as $right) {
