@@ -5,6 +5,7 @@
 use Doctrine\DBAL\TransactionIsolationLevel;
 use Doctrine\ORM\EntityManager;
 use itsmng\Database\Orm;
+use itsmng\Database\LifecycleModelJournal;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\Repository\RecordWriter;
 use itsmng\Database\Repository\SoftwareAssignmentRepository;
@@ -444,9 +445,18 @@ try {
                 verify($current->eligibleAllocationCount($g['license']) === 1
                     && !(new SoftwareRepository($manager($connection)))->hasInvalidLicense($g['software'], currentRead: true), 'Factual PostgreSQL strong snapshot control: row locks cannot expose B allocation/invalid-licence phantoms');
                 $_SESSION['MESSAGE_AFTER_REDIRECT'] = [INFO => ['Existing caller feedback']];
+                $unloaded = new CurrentReadSoftwareLicense();
+                $unloadedState = LifecycleModelJournal::state($unloaded);
+                CurrentReadSoftwareLicense::$prepared = CurrentReadSoftwareLicense::$writes = 0;
+                verify($unloaded->update(['id' => $g['license'], 'number' => 2]) === false
+                    && CurrentReadSoftwareLicense::$prepared === 0 && CurrentReadSoftwareLicense::$writes === 0
+                    && LifecycleModelJournal::state($unloaded) === $unloadedState, 'Early isolation refusal preserves an unloaded public model without loading or preparing it');
                 $model = new CurrentReadSoftwareLicense();
-                CurrentReadSoftwareLicense::$writes = 0;
+                verify($model->getFromDB($g['license']) && $model->fields === $before[2], 'Loaded preservation fixture contains the actual persisted licence before the refused command');
+                $loadedState = LifecycleModelJournal::state($model);
+                CurrentReadSoftwareLicense::$prepared = CurrentReadSoftwareLicense::$writes = 0;
                 verify($model->update(['id' => $g['license'], 'number' => 2]) === false && CurrentReadSoftwareLicense::$writes === 0, 'PostgreSQL strong caller isolation refuses before the actual public persistence boundary');
+                verify(CurrentReadSoftwareLicense::$prepared === 0 && LifecycleModelJournal::state($model) === $loadedState, 'Early isolation refusal preserves the complete loaded public model before preparation');
                 $dictionary = new \itsmng\Database\Repository\SoftwareDictionaryRepository($manager($connection));
                 verify($dictionary->moveLicenses($g['software'], $g['otherSoftware']) === false, 'Direct bounded dictionary command also refuses the actual strong physical isolation');
                 verify($snapshot($secondary, $g) === $before && $snapshot($connection, $g)[8] === $before[8]
