@@ -186,7 +186,7 @@ class Search extends DbTestCase
 
         //try to match WHERE clause
         $this->string($data['sql']['search'])
-           ->matches("/(\(`glpi_operatingsystems`\.`name`\s*LIKE\s*'%windows%'\s*\))/im");
+           ->matches('/\(' . $this->textSearchPattern('`glpi_operatingsystems`.`name`', '%windows%') . '\s*\)/im');
     }
 
 
@@ -471,21 +471,21 @@ class Search extends DbTestCase
            ->matches('/LEFT JOIN\s*`glpi_computers_items`\s*AS `glpi_computers_items_Printer`\s*ON\s*\(`glpi_computers_items_Printer`\.`computers_id`\s*=\s*`glpi_computers`\.`id`\s*AND\s*`glpi_computers_items_Printer`.`itemtype`\s*=\s*\'Printer\'\s*AND\s*`glpi_computers_items_Printer`.`is_deleted`\s*=\s*\'0\'\)/im')
            ->matches('/LEFT JOIN\s*`glpi_printers`\s*ON\s*\(`glpi_computers_items_Printer`\.`items_id`\s*=\s*`glpi_printers`\.`id`/im')
            // match where parts
-           ->contains("`glpi_computers`.`is_deleted` = '0'")
-           ->contains("AND `glpi_computers`.`is_template` = '0'")
-           ->contains("`glpi_computers`.`entities_id` IN ('1', '2', '3')")
-           ->contains("OR (`glpi_computers`.`is_recursive`='1'".
-                      " AND `glpi_computers`.`entities_id` IN (0))")
-           ->contains("`glpi_computers`.`name`  LIKE '%test%'")
+           ->contains($this->providerQuotedSQL("`glpi_computers`.`is_deleted` = '0'"))
+           ->contains($this->providerQuotedSQL("AND `glpi_computers`.`is_template` = '0'"))
+           ->contains($this->providerQuotedSQL("`glpi_computers`.`entities_id` IN ('1', '2', '3')"))
+           ->contains($this->providerQuotedSQL("OR (`glpi_computers`.`is_recursive`='1'".
+                      " AND `glpi_computers`.`entities_id` IN (0))"))
+           ->matches('/' . $this->textSearchPattern('`glpi_computers`.`name`', '%test%') . '/im')
            ->contains("(`glpi_softwares`.`id` = '10784')")
-           ->contains("(`glpi_computers`.`id`  LIKE '%test2%'")
+           ->matches('/\(' . $this->textSearchPattern('`glpi_computers`.`id`', '%test2%') . '/im')
            ->contains("(`glpi_locations`.`id` = '11')")
            ->contains("(`glpi_users`.`id` = '2')")
            ->contains("(`glpi_users`.`id` = '3')")
            // match having
-           ->contains("NOT (`glpi_computers`.`id` IN (")
+           ->contains($this->providerQuotedSQL("NOT (`glpi_computers`.`id` IN ("))
            ->contains("`glpi_budgets`.`id` = 5")
-           ->contains("`glpi_printers`.`name`  LIKE '%HP%'");
+           ->matches('/' . $this->textSearchPattern('`glpi_printers`.`name`', '%HP%') . '/im');
     }
 
     public function testViewCriterion()
@@ -508,18 +508,18 @@ class Search extends DbTestCase
         $this->string($data['sql']['search'])
            ->contains("`glpi_computers`.`is_deleted` = '0'")
            ->contains("AND `glpi_computers`.`is_template` = '0'")
-           ->contains("`glpi_computers`.`entities_id` IN ('1', '2', '3')")
-           ->contains("OR (`glpi_computers`.`is_recursive`='1'".
-                      " AND `glpi_computers`.`entities_id` IN (0))")
-           ->matches("/`glpi_computers`\.`name`  LIKE '%test%'/")
-           ->matches("/OR\s*\(`glpi_entities`\.`completename`\s*LIKE '%test%'\s*\)/")
-           ->matches("/OR\s*\(`glpi_states`\.`completename`\s*LIKE '%test%'\s*\)/")
-           ->matches("/OR\s*\(`glpi_manufacturers`\.`name`\s*LIKE '%test%'\s*\)/")
-           ->matches("/OR\s*\(`glpi_computers`\.`serial`\s*LIKE '%test%'\s*\)/")
-           ->matches("/OR\s*\(`glpi_computertypes`\.`name`\s*LIKE '%test%'\s*\)/")
-           ->matches("/OR\s*\(`glpi_computermodels`\.`name`\s*LIKE '%test%'\s*\)/")
-           ->matches("/OR\s*\(`glpi_locations`\.`completename`\s*LIKE '%test%'\s*\)/")
-           ->matches("/OR\s*\(`glpi_computers`\.`date_mod`\s*LIKE '%test%'\s*\)\)/");
+           ->contains($this->providerQuotedSQL("`glpi_computers`.`entities_id` IN ('1', '2', '3')"))
+           ->contains($this->providerQuotedSQL("OR (`glpi_computers`.`is_recursive`='1'".
+                      " AND `glpi_computers`.`entities_id` IN (0))"))
+           ->matches("/" . $this->textSearchPattern('`glpi_computers`.`name`', '%test%') . "/")
+           ->matches("/OR\s*\(" . $this->textSearchPattern('`glpi_entities`.`completename`', '%test%') . "\s*\)/")
+           ->matches("/OR\s*\(" . $this->textSearchPattern('`glpi_states`.`completename`', '%test%') . "\s*\)/")
+           ->matches("/OR\s*\(" . $this->textSearchPattern('`glpi_manufacturers`.`name`', '%test%') . "\s*\)/")
+           ->matches("/OR\s*\(" . $this->textSearchPattern('`glpi_computers`.`serial`', '%test%') . "\s*\)/")
+           ->matches("/OR\s*\(" . $this->textSearchPattern('`glpi_computertypes`.`name`', '%test%') . "\s*\)/")
+           ->matches("/OR\s*\(" . $this->textSearchPattern('`glpi_computermodels`.`name`', '%test%') . "\s*\)/")
+           ->matches("/OR\s*\(" . $this->textSearchPattern('`glpi_locations`.`completename`', '%test%') . "\s*\)/")
+           ->matches("/OR\s*\(" . $this->textSearchPattern('`glpi_computers`.`date_mod`', '%test%') . "\s*\)\)/");
     }
 
     public function testSearchOnRelationTable()
@@ -540,7 +540,7 @@ class Search extends DbTestCase
         ]);
 
         $this->string($data['sql']['search'])
-           ->contains("MIN(`glpi_changes`.`id`) AS `ITEM_Change_Ticket_3`")
+           ->contains($this->providerQuotedSQL("MIN(`glpi_changes`.`id`) AS `ITEM_Change_Ticket_3`"))
            ->contains("`glpi_changes_tickets`.`changes_id` = `glpi_changes`.`id`")
            ->contains("`glpi_changes`.`id` = '1'");
     }
@@ -872,12 +872,12 @@ class Search extends DbTestCase
     {
         $before = \Search::addHaving(' AND ', 0, 'Ticket', 16, 'lessthan', '2999-01-01');
         $this->string($before)
-           ->contains('`ITEM_Ticket_16` <')
+           ->contains(\DBAdapter::quoteName('ITEM_Ticket_16') . ' <')
            ->contains("'2999-01-01");
 
         $after = \Search::addHaving(' AND ', 0, 'Ticket', 16, 'morethan', '1970-01-01');
         $this->string($after)
-           ->contains('`ITEM_Ticket_16` >')
+           ->contains(\DBAdapter::quoteName('ITEM_Ticket_16') . ' >')
            ->contains("'1970-01-01");
     }
 
@@ -1107,7 +1107,7 @@ class Search extends DbTestCase
         $sql_select = \Search::addSelect($provider['itemtype'], $provider['ID']);
 
         $this->string($this->cleanSQL($sql_select))
-           ->isEqualTo($this->cleanSQL($provider['sql']));
+           ->isEqualTo($this->cleanSQL($this->providerQuotedSQL($provider['sql'])));
     }
 
     public function addLeftJoinProvider()
@@ -1182,6 +1182,24 @@ class Search extends DbTestCase
 
         $this->string($this->cleanSQL($sql_join))
              ->isEqualTo($this->cleanSQL($lj_provider['sql']));
+    }
+
+    /** Quote an expected native-dialect fragment without changing the actual SQL. */
+    private function providerQuotedSQL(string $expected): string
+    {
+        return preg_replace_callback('/`([^`]+)`/', static fn (array $identifier): string =>
+            \DBAdapter::quoteName($identifier[1]), $expected);
+    }
+
+    /** Keep the provider's exact text cast/operator and the expected wildcard value. */
+    private function textSearchPattern(string $field, string $value): string
+    {
+        global $DB;
+
+        $postgres = $DB->getProvider() === 'pgsql';
+        $expression = $postgres ? 'CAST(' . $field . ' AS text)' : $field;
+        return preg_quote($expression, '/') . '\s+' . ($postgres ? 'ILIKE' : 'LIKE')
+            . '\s+' . preg_quote("'" . $value . "'", '/');
     }
 
     private function cleanSQL($sql)
@@ -1583,15 +1601,15 @@ class Search extends DbTestCase
            ->contains("LEFT JOIN `glpi_users`  AS `glpi_users_users_id_recipient`")
 
            // Check that SELECT criteria applies on corresponding table alias
-           ->contains("MIN(`glpi_users_users_id_lastupdater`.`realname`) AS `ITEM_Ticket_64_realname`")
-           ->contains("MIN(`glpi_users_users_id_recipient`.`realname`) AS `ITEM_Ticket_22_realname`")
+           ->contains($this->providerQuotedSQL("MIN(`glpi_users_users_id_lastupdater`.`realname`) AS `ITEM_Ticket_64_realname`"))
+           ->contains($this->providerQuotedSQL("MIN(`glpi_users_users_id_recipient`.`realname`) AS `ITEM_Ticket_22_realname`"))
 
            // Check that WHERE criteria applies on corresponding table alias
            ->contains("`glpi_users_users_id_lastupdater`.`id` = '{$user_tech_id}'")
            ->contains("`glpi_users_users_id_recipient`.`id` = '{$user_normal_id}'")
 
            // Check that ORDER applies on corresponding table alias
-           ->contains("MIN(`glpi_users_users_id_recipient`.`name`) AS `__sort_2`");
+           ->contains($this->providerQuotedSQL("MIN(`glpi_users_users_id_recipient`.`name`) AS `__sort_2`"));
     }
 
     public function testSearchAllAssets()
@@ -1612,8 +1630,8 @@ class Search extends DbTestCase
         ]);
 
         $this->string($data['sql']['search'])
-           ->matches("/OR\s*\(`glpi_entities`\.`completename`\s*LIKE '%test%'\s*\)/")
-           ->matches("/OR\s*\(`glpi_states`\.`completename`\s*LIKE '%test%'\s*\)/");
+           ->matches("/OR\s*\(" . $this->textSearchPattern('`glpi_entities`.`completename`', '%test%') . "\s*\)/")
+           ->matches("/OR\s*\(" . $this->textSearchPattern('`glpi_states`.`completename`', '%test%') . "\s*\)/");
 
         $types = [
            \Computer::getTable(),
@@ -1628,10 +1646,10 @@ class Search extends DbTestCase
             $this->string($data['sql']['search'])
                ->contains("`$type`.`is_deleted` = '0'")
                ->contains("AND `$type`.`is_template` = '0'")
-               ->contains("`$type`.`entities_id` IN ('1', '2', '3')")
-               ->contains("OR (`$type`.`is_recursive`='1'".
-                           " AND `$type`.`entities_id` IN (0))")
-               ->matches("/`$type`\.`name`  LIKE '%test%'/");
+               ->contains($this->providerQuotedSQL("`$type`.`entities_id` IN ('1', '2', '3')"))
+               ->contains($this->providerQuotedSQL("OR (`$type`.`is_recursive`='1'".
+                           " AND `$type`.`entities_id` IN (0))"))
+               ->matches("/" . $this->textSearchPattern("`$type`.`name`", '%test%') . "/");
         }
     }
 
@@ -1648,9 +1666,9 @@ class Search extends DbTestCase
         $data = $this->doSearch('SearchTest\\Computer', $search_params);
 
         $this->string($data['sql']['search'])
-           ->contains("MIN(`glpi_computers`.`name`) AS `ITEM_SearchTest\Computer_1`")
-           ->contains("MIN(`glpi_computers`.`id`) AS `ITEM_SearchTest\Computer_1_id`")
-           ->contains("MIN(`__search_page`.`__sort`) ASC, `glpi_computers`.`id` ASC");
+           ->contains($this->providerQuotedSQL("MIN(`glpi_computers`.`name`) AS `ITEM_SearchTest\Computer_1`"))
+           ->contains($this->providerQuotedSQL("MIN(`glpi_computers`.`id`) AS `ITEM_SearchTest\Computer_1_id`"))
+           ->contains($this->providerQuotedSQL("MIN(`__search_page`.`__sort`) ASC, `glpi_computers`.`id` ASC"));
     }
 
     public function testGroupParamAfterMeta()
