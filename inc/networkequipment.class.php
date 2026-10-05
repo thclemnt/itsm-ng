@@ -529,7 +529,7 @@ class NetworkEquipment extends CommonDBTM
            'table'              => $this->getTable(),
            'field'              => 'ram',
            'name'               => sprintf(__('%1$s (%2$s)'), _n('Memory', 'Memories', 1), __('Mio')),
-           'datatype'           => 'number',
+           'datatype'           => 'string',
            'autocomplete'       => true,
         ];
 

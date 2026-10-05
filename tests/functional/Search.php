@@ -223,6 +223,8 @@ class Search extends DbTestCase
 
     public function testSoftwareLinkedToAnyComputer()
     {
+        global $DB;
+
         $search_params = [
            'is_deleted'   => 0,
            'start'        => 0,
@@ -247,8 +249,9 @@ class Search extends DbTestCase
         $data = $this->doSearch('Software', $search_params);
 
         $this->string($data['sql']['search'])
-           ->contains("NOT (`glpi_softwares`.`id` IN (")
-           ->contains("`glpi_computers`.`id` IS NULL");
+           ->contains($this->providerQuotedSQL("NOT (`glpi_softwares`.`id` IN ("))
+           ->contains(($DB->getProvider() === 'pgsql'
+                ? 'CAST(`glpi_computers`.`id` AS text)' : '`glpi_computers`.`id`') . ' IS NULL');
     }
 
     public function testMetaComputerUser()
@@ -577,6 +580,46 @@ class Search extends DbTestCase
         $this->integer($data['data']['totalcount'])->isIdenticalTo(1);
     }
 
+    public function testNetworkEquipmentMemoryUsesTextSearch(): void
+    {
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $prefix = 'Memory label ' . bin2hex(random_bytes(6));
+        $ids = [];
+        foreach (['8 GiB', '128', '', null, '1280'] as $index => $memory) {
+            $equipment = new \NetworkEquipment();
+            $id = $equipment->add([
+                'name' => $prefix . ' ' . $index,
+                'entities_id' => $entity,
+                'ram' => $memory,
+            ]);
+            $this->integer($id)->isGreaterThan(0);
+            $this->boolean($equipment->can($id, READ))->isTrue();
+            $this->variable($equipment->fields['ram'])->isIdenticalTo($memory);
+            $ids[] = $id;
+        }
+        $this->string(\itsmng\Search\SearchOption::getOptions('NetworkEquipment')[14]['datatype'])
+            ->isIdenticalTo('string');
+        foreach ([
+            ['contains', 'GiB', [$ids[0]]],
+            ['contains', '128', [$ids[1], $ids[4]]],
+            ['equals', '128', [$ids[1]]],
+            ['contains', '^$', [$ids[3]]],
+            ['contains', 'NULL', [$ids[2], $ids[3]]],
+        ] as [$operator, $value, $expected]) {
+            $data = $this->doSearch('NetworkEquipment', [
+                'is_deleted' => 0, 'start' => 0, 'sort' => 2, 'order' => 'ASC',
+                'criteria' => [
+                    ['field' => 1, 'searchtype' => 'contains', 'value' => '^' . $prefix],
+                    ['link' => 'AND', 'field' => 14, 'searchtype' => $operator, 'value' => $value],
+                ],
+            ]);
+            $this->array(array_keys($data['data']['items']))->isIdenticalTo($expected);
+            $this->integer($data['data']['totalcount'])->isIdenticalTo(count($expected));
+        }
+    }
+
     /**
      * This test will add all searchoptions in each itemtype and check if the
      * search give a SQL error
@@ -585,6 +628,7 @@ class Search extends DbTestCase
      */
     public function testSearchOptions()
     {
+        $this->login();
         $classes = $this->getSearchableClasses();
         foreach ($classes as $class) {
             if (!in_array($class, ['Accessibility', 'Oidc', 'SpecialStatus'])) {
@@ -636,7 +680,7 @@ class Search extends DbTestCase
      */
     public function testSearchAllMeta()
     {
-
+        $this->login();
         $classes = $this->getSearchableClasses();
 
         // extract metacriteria
