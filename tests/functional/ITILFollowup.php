@@ -44,6 +44,67 @@ use User;
 
 class ITILFollowup extends DbTestCase
 {
+    public function testSearchAuthorVisibilityRequiresAnIdentity(): void
+    {
+        global $DB;
+
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $parent = $this->getNewITILObject(Ticket::class);
+        $ids = [];
+        foreach ([0, 1, 1] as $private) {
+            $followup = new CoreITILFollowup();
+            $id = $followup->add([
+                'itemtype' => Ticket::class, 'items_id' => $parent,
+                'content' => 'Search author visibility ' . $this->getUniqueString(),
+                'is_private' => $private,
+            ]);
+            $this->integer($id)->isGreaterThan(0);
+            $ids[] = $id;
+        }
+        // Purged authors are genuinely nullable history, not user identity zero.
+        $DB->getDoctrineConnection()->update(CoreITILFollowup::getTable(), ['users_id' => null], ['id' => $ids[2]]);
+        $session = $_SESSION;
+        $level = $DB->getDoctrineConnection()->getTransactionNestingLevel();
+        $visible = static function () use ($DB, $parent): array {
+            $options = CoreITILFollowup::rawSearchOptionsToAdd(Ticket::class);
+            foreach ($options as $option) {
+                if (($option['id'] ?? null) === '25') {
+                    $params = $option['joinparams'];
+                    break;
+                }
+            }
+            $links = [];
+            $table = CoreITILFollowup::getTable();
+            $join = \itsmng\Search\Provider\JoinBuilder::addLeftJoin(
+                Ticket::class, Ticket::getTable(), $links, $table,
+                getForeignKeyFieldForTable($table), 0, 0, $params
+            );
+            $alias = $DB->quoteName($links[0]);
+            $result = $DB->query('SELECT ' . $alias . '.`id` AS followup FROM `glpi_tickets` '
+                . $join . ' WHERE `glpi_tickets`.`id` = ' . $parent
+                . ' AND ' . $alias . '.`id` IS NOT NULL ORDER BY ' . $alias . '.`id`');
+            $found = [];
+            while ($row = $DB->fetchAssoc($result)) {
+                $found[] = (int)$row['followup'];
+            }
+            return $found;
+        };
+        try {
+            $_SESSION['glpiactiveprofile'][CoreITILFollowup::$rightname] = 0;
+            $this->array($visible())->isIdenticalTo([$ids[0], $ids[1]]);
+            unset($_SESSION['glpiID']);
+            $this->array($visible())->isIdenticalTo([$ids[0]]);
+            $_SESSION['glpiID'] = 0;
+            $this->array($visible())->isIdenticalTo([$ids[0]]);
+            $_SESSION['glpiactiveprofile'][CoreITILFollowup::$rightname] = CoreITILFollowup::SEEPRIVATE;
+            $this->array($visible())->isIdenticalTo($ids);
+            $this->integer($DB->getDoctrineConnection()->getTransactionNestingLevel())->isIdenticalTo($level);
+        } finally {
+            $_SESSION = $session;
+        }
+    }
+
     /**
      * Create a new ITILObject and return its id
      *
