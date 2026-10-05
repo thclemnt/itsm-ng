@@ -13,19 +13,24 @@ ownership rather than expand compatibility workarounds.
 
 ## Current source and evidence
 
-The current application checkpoint is `95d983a1f6b233893d64c8ca1cc5f1beee9b023d`.
-The executor reported fresh installation and final schema checks passing on
-PostgreSQL and MariaDB. Existing Atoum coverage on this checkpoint includes:
+The application source checkpoint is `95d983a1f6b233893d64c8ca1cc5f1beee9b023d`.
+The executor reported these results during the development checkpoints leading to
+it. Each result applies to its executed source; subsequent fixture and test changes
+have not been relabeled as fresh executions:
 
-- Isolated units: 8 classes, 34 methods, 1,989 assertions passed.
-- Ordinary MariaDB units: 30 classes, 209 methods, 8,597 assertions passed.
-- Focused statistics, Contract, Transfer and software functional coverage: 26
-  methods passed, with 1,737 PostgreSQL and 1,741 MariaDB assertions.
-- Dictionary functional coverage: 5 methods, 2,892 assertions passed per provider.
+- Fresh installation and final schema checks passed on PostgreSQL at `38d0b5949f`
+  and MariaDB at `9cdfdf5413`; these precede the current application checkpoint.
+- Isolated units at `bb18deffe9`: 8 classes, 34 methods, 1,989 assertions passed.
+- Ordinary MariaDB units at `95d983a1f6`: 30 classes, 209 methods, 8,597 assertions passed.
+- Focused statistics, Contract, Transfer and software functional coverage at
+  `9cdfdf5413`: 26 methods passed, with 1,737 PostgreSQL and 1,741 MariaDB assertions.
+- Dictionary functional coverage at `df5c1df33e`: 5 methods, 2,892 assertions passed
+  per provider.
 
 Ordinary PostgreSQL units remain open: the recorded run has 35 failures, one error
 and one exception. Provider formatting expectations and Migration::addRight's
-explicit NULL identifier require correction and rerun. These outcomes do not
+explicit NULL identifier require correction and rerun. The identifier fix is
+source-ready at `bf582478a8`; it has no native result yet. These outcomes do not
 establish a passing full application suite. The latest 238 provider contracts,
 browser acceptance, genuine 2.1.3 application performance comparison and public
 remote CI have no completed passing result on the current combined candidate.
