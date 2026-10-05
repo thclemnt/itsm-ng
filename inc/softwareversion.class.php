@@ -275,7 +275,7 @@ class SoftwareVersion extends CommonDBChild
         }
 
         $rows = (new \itsmng\Database\Repository\SoftwareRepository(\itsmng\Database\Orm::create($DB)))
-            ->versions((int)$p['softwares_id'], $p['used']);
+            ->versionChoices((int)$p['softwares_id'], $p['used']);
 
         $values = [];
         foreach ($rows as $data) {
@@ -285,8 +285,8 @@ class SoftwareVersion extends CommonDBChild
             if (empty($output) || $_SESSION['glpiis_ids_visible']) {
                 $output = sprintf(__('%1$s (%2$s)'), $output, $ID);
             }
-            if (!empty($data['sname'])) {
-                $output = sprintf(__('%1$s - %2$s'), $output, $data['sname']);
+            if (!empty($data['status_name'])) {
+                $output = sprintf(__('%1$s - %2$s'), $output, $data['status_name']);
             }
             $values[$ID] = $output;
         }

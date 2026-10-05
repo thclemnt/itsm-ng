@@ -117,16 +117,29 @@ final class SoftwareRepository
             ->setLockMode($currentRead ? LockMode::PESSIMISTIC_READ : LockMode::NONE)->getScalarResult();
     }
 
-    public function versions(int $software, array $excluded = []): array
+    /** Dropdown choices need labels, not managed version entities and their owners. */
+    public function versionChoices(int $software, array $excluded = []): array
     {
-        $query = $this->em->createQueryBuilder()->select('v', 's.name AS sname')
-            ->from(Entity\SoftwareVersion::class, 'v')
+        return $this->versionSelection($software, $excluded)
+            ->select('v.id AS id', 'v.name AS name', 's.name AS status_name')
+            ->getQuery()->getScalarResult();
+    }
+
+    private function versionSelection(int $software, array $excluded): \Doctrine\ORM\QueryBuilder
+    {
+        $query = $this->em->createQueryBuilder()->from(Entity\SoftwareVersion::class, 'v')
             ->leftJoin('v.states', 's')
             ->where('v.softwares = :software')->setParameter('software', $software, Types::INTEGER)
             ->orderBy('v.name')->addOrderBy('v.id');
         if ($excluded) {
             $query->andWhere('v.id NOT IN (:excluded)')->setParameter('excluded', array_map('intval', $excluded));
         }
+        return $query;
+    }
+
+    public function versions(int $software, array $excluded = []): array
+    {
+        $query = $this->versionSelection($software, $excluded)->select('v', 's.name AS sname');
         $records = new RecordRepository($this->em);
         $rows = [];
         foreach ($query->getQuery()->toIterable() as $result) {
