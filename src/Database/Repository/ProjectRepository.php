@@ -119,8 +119,8 @@ final class ProjectRepository
             default => throw new \InvalidArgumentException('Unsupported individual project notification recipient'),
         };
         return $this->em->createQueryBuilder()
-            ->select(...array_map(static fn (string $field): string => 'member.' . $field . ' AS ' . $field, $fields))
-            ->from($teamClass, 'team')->join('team.' . $teamClass::memberAssociation($kind), 'member')
+            ->select(...array_map(static fn (string $field): string => 'recipient.' . $field . ' AS ' . $field, $fields))
+            ->from($teamClass, 'team')->join('team.' . $teamClass::memberAssociation($kind), 'recipient')
             ->where('IDENTITY(team.' . $parentAssociation . ') = :parent')
             ->setParameter('parent', $parent, Types::BIGINT)->orderBy('team.id')
             ->getQuery()->getArrayResult();
