@@ -217,7 +217,7 @@ class RuleDictionnarySoftwareCollection extends DbTestCase
                   '_system_category' => 'web'
                  ];
         $result = $collection->processAllRules($input);
-        $expected = ['_ignore_import' => '1', '_ruleid' => "$rules_id"];
+        $expected = ['_ignore_import' => '1', '_ruleid' => $rules_id];
         $this->array($result)->isIdenticalTo($expected);
 
         $input = ['name'             => 'Mozilla Firefox 53',
@@ -226,7 +226,7 @@ class RuleDictionnarySoftwareCollection extends DbTestCase
                   '_system_category' => 'web'
                  ];
         $result = $collection->processAllRules($input);
-        $expected = ['_no_rule_matches' => '1', '_rule_process' => ''];
+        $expected = ['_no_rule_matches' => true, '_rule_process' => false];
         $this->array($result)->isIdenticalTo($expected);
 
     }
@@ -274,7 +274,7 @@ class RuleDictionnarySoftwareCollection extends DbTestCase
         $collection->RuleList = new \stdClass();
         $collection->RuleList->load = true;
         $result   = $collection->processAllRules($input);
-        $expected = ['version' => '52', '_ruleid' => "$rules_id"];
+        $expected = ['version' => '52', '_ruleid' => $rules_id];
         $this->array($result)->isIdenticalTo($expected);
     }
 
@@ -333,7 +333,7 @@ class RuleDictionnarySoftwareCollection extends DbTestCase
         $expected = [
            'version' => '52',
            'name'    => 'Mozilla Firefox',
-           '_ruleid' => "$rules_id",
+           '_ruleid' => $rules_id,
         ];
         $this->array($result)->isIdenticalTo($expected);
     }
@@ -395,7 +395,7 @@ class RuleDictionnarySoftwareCollection extends DbTestCase
         $expected = [
            'softwarecategories_id' => "$categories_id",
            'name'                  => 'Mozilla Firefox',
-           '_ruleid'               => "$rules_id"
+           '_ruleid'               => $rules_id
         ];
         $this->array($result)->isIdenticalTo($expected);
     }
@@ -446,7 +446,7 @@ class RuleDictionnarySoftwareCollection extends DbTestCase
         $collection->RuleList->load = true;
         $result   = $collection->processAllRules($input);
         $expected = ['manufacturers_id' => "$manufacturers_id",
-                     '_ruleid'          => "$rules_id"
+                     '_ruleid'          => $rules_id
                     ];
         $this->array($result)->isIdenticalTo($expected);
     }
@@ -490,14 +490,14 @@ class RuleDictionnarySoftwareCollection extends DbTestCase
         $collection->RuleList = new \stdClass();
         $collection->RuleList->load = true;
         $result   = $collection->processAllRules($input);
-        $expected = ['version_append' => 'something', 'version' => 'something', '_ruleid' => "$rules_id"];
+        $expected = ['version_append' => 'something', 'version' => 'something', '_ruleid' => $rules_id];
         $this->array($result)->isIdenticalTo($expected);
 
         $input = ['name'             => 'Soft else'];
         $collection->RuleList = new \stdClass();
         $collection->RuleList->load = true;
         $result   = $collection->processAllRules($input);
-        $expected = ['version_append' => 'else', 'version' => 'else', '_ruleid' => "$rules_id"];
+        $expected = ['version_append' => 'else', 'version' => 'else', '_ruleid' => $rules_id];
         $this->array($result)->isIdenticalTo($expected);
 
     }

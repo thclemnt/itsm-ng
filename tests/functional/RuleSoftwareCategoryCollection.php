@@ -75,7 +75,7 @@ class RuleSoftwareCategoryCollection extends DbTestCase
                   'manufacturer'     => 'My Manufacturer',
                   '_system_category' => 'dev'];
         $result = $categoryCollection->processAllRules(null, null, $input);
-        $this->array($result)->isIdenticalTo(["_no_rule_matches" => '1']);
+        $this->array($result)->isIdenticalTo(["_no_rule_matches" => true]);
     }
 
     public function testRuleMatchImport()
@@ -107,7 +107,7 @@ class RuleSoftwareCategoryCollection extends DbTestCase
         $result = $categoryCollection->processAllRules(null, null, $input);
         $this->array($result)->isIdenticalTo([
            "_import_category" => '1',
-           "_ruleid"          => (string) $myrule['id']
+           "_ruleid"          => $myrule['id']
         ]);
 
         //Set default rule as disabled, as it was before
@@ -174,7 +174,7 @@ class RuleSoftwareCategoryCollection extends DbTestCase
         $result = $categoryCollection->processAllRules(null, null, $input);
         $this->array($result)->isIdenticalTo([
            "softwarecategories_id" => "$categories_id",
-           "_ruleid"               => "$rules_id"
+           "_ruleid"               => $rules_id
         ]);
     }
 
@@ -247,7 +247,7 @@ class RuleSoftwareCategoryCollection extends DbTestCase
         $result = $categoryCollection->processAllRules(null, null, $input);
         $this->array($result)->isIdenticalTo([
            "_ignore_import" => '1',
-           "_ruleid"        => "$rules_id"
+           "_ruleid"        => $rules_id
         ]);
     }
 
@@ -335,7 +335,7 @@ class RuleSoftwareCategoryCollection extends DbTestCase
         $result = $categoryCollection->processAllRules(null, null, $input);
         $this->array($result)->isIdenticalTo([
            'softwarecategories_id' => "$category_a_id",
-           '_ruleid'               => "$rule_a_id",
+           '_ruleid'               => $rule_a_id,
         ]);
 
         $this->boolean($rule->update(['id' => $rule_a_id, 'ranking' => 3]))->isTrue();
@@ -347,7 +347,7 @@ class RuleSoftwareCategoryCollection extends DbTestCase
         $result = $categoryCollection->processAllRules(null, null, $input);
         $this->array($result)->isIdenticalTo([
            'softwarecategories_id' => "$category_b_id",
-           '_ruleid'               => "$rule_b_id",
+           '_ruleid'               => $rule_b_id,
         ]);
     }
 
