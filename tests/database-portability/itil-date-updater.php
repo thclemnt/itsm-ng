@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 use itsmng\Database\ForeignKeys;
+use itsmng\Database\MutationCleanupFailure;
 use itsmng\Database\MutationRollbackFailure;
 use itsmng\Database\OwnedMutationFrame;
 
@@ -15,18 +16,32 @@ define('GLPI_ROOT', dirname(__DIR__, 2));
 define('GLPI_CONFIG_DIR', realpath($directory));
 require GLPI_ROOT . '/inc/includes.php';
 require __DIR__ . '/FixtureRecords.php';
-set_exception_handler(static function (Throwable $error): void {
-    // Native query text and parameters must not be printed by this contract.
+$phase = 'preflight';
+$failureDiagnostics = new WeakMap();
+set_exception_handler(static function (Throwable $error) use (&$phase, $failureDiagnostics): void {
+    // Only contract-owned static labels are safe; native messages, SQL and parameters are not.
+    $failure = $error;
+    while ($failure instanceof MutationCleanupFailure) {
+        $failure = $failure->primary;
+    }
+    $diagnostic = $failureDiagnostics[$failure] ?? $failureDiagnostics[$error] ?? ['phase' => $phase];
     fwrite(STDERR, 'ITIL updater contract failed: ' . $error::class . "\n");
+    fwrite(STDERR, 'Phase: ' . $diagnostic['phase'] . "\n");
+    if (isset($diagnostic['label'])) {
+        fwrite(STDERR, 'Assertion ' . $diagnostic['assertion'] . ': ' . $diagnostic['label'] . "\n");
+    }
     exit(1);
 });
 $assertions = 0;
 function verify(bool $ok, string $message): void
 {
-    global $assertions;
+    global $assertions, $phase, $failureDiagnostics;
     ++$assertions;
     if (!$ok) {
-        throw new RuntimeException($message);
+        $error = new RuntimeException($message);
+        // Every verify() caller in this contract supplies a literal assertion label.
+        $failureDiagnostics[$error] = ['phase' => $phase, 'assertion' => $assertions, 'label' => $message];
+        throw $error;
     }
 }
 verify(str_starts_with($DB->dbdefault, 'itsm_port_'), 'Disposable database required');
@@ -64,6 +79,7 @@ $primary = null;
 $rollbackProven = false;
 $cleanupFailures = 0;
 try {
+    $phase = 'authentication and fixtures';
     $_SESSION['glpiextauth'] = 0;
     unset($_SESSION['glpicronuserrunning']);
     verify((new Auth())->login('itsm', 'itsm', true), 'Real authenticated administrator');
@@ -111,6 +127,7 @@ try {
             foreach ([['absent', 0, $stored], ['zero', 0, $stored], ['cron', 0, $stored], ['absent', $fallback, $fallback],
                 ['authenticated', $fallback, $human], ['authenticated', $missing, $human],
                 ['cron', $fallback, $fallback], ['cron', 0, $fallback]] as [$mode, $supplied, $expected]) {
+                $phase = 'direct updater selection';
                 $selectActor($mode);
                 $advance();
                 $rowBefore = $read($table, $id);
@@ -120,6 +137,7 @@ try {
                     === array_diff_key($rowBefore, ['date_mod' => true, 'users_id_lastupdater' => true]), 'All unrelated native cells remain exact');
                 $frame->assertActive();
             }
+            $phase = 'invalid actor refusal';
             $selectActor('absent');
             $advance();
             $rowBefore = $read($table, $id);
@@ -168,6 +186,7 @@ try {
         $logsBefore = (int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_logs WHERE itemtype = ? AND items_id = ?', ['Ticket', $ticket]);
         $followup = new ITILFollowup();
         $events = [];
+        $phase = 'public followup add';
         $id = $followup->add(['itemtype' => 'Ticket', 'items_id' => $ticket, 'content' => 'Public owner add',
             'users_id' => $fallback, '_do_not_compute_takeintoaccount' => true, '_disablenotif' => true]);
         verify((int)$id > 0, 'Real public followup add');
@@ -176,14 +195,17 @@ try {
         verify((int)$read('glpi_itilfollowups', (int)$id)['users_id'] === $fallback, 'Supplied real followup author remains independent of session updater');
         verify($events === ['item_add'], 'Actual public add hook retained');
         $advance();
+        $phase = 'public followup update';
         verify($followup->update(['id' => $id, 'content' => 'Public owner edit', 'users_id_editor' => $fallback, '_disablenotif' => true]), 'Real public followup content edit');
         $assertActorDate('glpi_tickets', $ticket, $expected);
         verify($events === ['item_add', 'item_update'], 'Actual public edit hook retained');
         $advance();
+        $phase = 'public followup delete';
         verify($followup->delete(['id' => $id, '_disablenotif' => true], true), 'Real public followup cleanup');
         $assertActorDate('glpi_tickets', $ticket, $expected);
         verify(!$connection->fetchOne('SELECT id FROM glpi_itilfollowups WHERE id = ?', [$id]), 'Cleanup removes real child');
         verify($events === ['item_add', 'item_update', 'item_delete'], 'Actual public delete hook retained');
+        $phase = 'public followup history';
         $actions = $connection->fetchFirstColumn('SELECT linked_action FROM glpi_logs WHERE itemtype = ? AND items_id = ? ORDER BY id', ['Ticket', $ticket]);
         foreach ([Log::HISTORY_ADD_SUBITEM, Log::HISTORY_UPDATE_SUBITEM, Log::HISTORY_DELETE_SUBITEM] as $action) {
             verify(in_array($action, array_map('intval', $actions), true), 'Real followup history action retained');
@@ -191,6 +213,7 @@ try {
         verify(count($actions) >= $logsBefore + 3, 'Lifecycle history is not suppressed');
         $frame->assertActive();
     }
+    $phase = 'nullable public followup';
     $selectActor('absent');
     $ticket = $fixtures->create('glpi_tickets', ['name' => $prefix . ' anonymous', 'takeintoaccount_delay_stat' => 1]);
     $advance();
@@ -202,6 +225,7 @@ try {
     verify($child->delete(['id' => $id, '_disablenotif' => true], true), 'Unlogged nullable child public cleanup');
     $assertActorDate('glpi_tickets', $ticket, null);
     $advance();
+    $phase = 'public nested followup';
     $publicTicket = new Ticket();
     $ticket = $publicTicket->add(['name' => $prefix . ' public nested followup', 'content' => 'Public ticket',
         'entities_id' => 0, 'takeintoaccount_delay_stat' => 1,
@@ -235,6 +259,7 @@ try {
                     };
                 }
                 $relation = new $relationType();
+                $phase = 'public actor add';
                 $actor = $relation->add([$parentKey => $parentId, $actorKey => $actorId,
                     'type' => $actorKey === 'groups_id' ? CommonITILActor::ASSIGN : CommonITILActor::OBSERVER,
                     '_disablenotif' => true]);
@@ -246,6 +271,7 @@ try {
                     === array_diff_key($parentBefore, ['date_mod' => true, 'users_id_lastupdater' => true]), 'Public actor add preserves all other parent cells');
                 verify($events === ['item_add'], 'Real actor add hook retained');
                 $advance();
+                $phase = 'public actor delete';
                 verify($relation->delete(['id' => $actor, '_disablenotif' => true], true), 'Real actor public cleanup');
                 $assertActorDate($parentTable, $parentId, $expected);
                 verify(!$connection->fetchOne('SELECT id FROM ' . $connection->quoteIdentifier($relationType::getTable()) . ' WHERE id = ?', [$actor]), 'Actual actor row removed by public cleanup');
@@ -254,6 +280,7 @@ try {
             }
         }
     }
+    $phase = 'public nested group assignment';
     foreach ([Problem::class, Change::class] as $parentType) {
         $selectActor('absent');
         $advance();
@@ -268,23 +295,29 @@ try {
             . ' WHERE ' . $connection->quoteIdentifier($relationType::getItilObjectForeignKey()) . ' = ? AND groups_id = ?', [$id, $group]) === 1, 'Real nested assigned-group actor retained');
         verify($parent->delete(['id' => $id, '_disablenotif' => true], true), 'Original assigned Problem/Change public cleanup');
     }
+    $phase = 'final ownership and notifications';
     verify($allRows('glpi_queuednotifications') === $before['glpi_queuednotifications'], 'Explicit notification-disable retains exact existing queue');
     verify($DB === $adapter && $DB->getDoctrineConnection() === $connection, 'Original configured owner retained');
 } catch (Throwable $error) {
+    $failureDiagnostics[$error] ??= ['phase' => $phase];
     $primary = $error;
 } finally {
+    $phase = 'owned rollback';
     try {
         verify($DB === $adapter && $DB->getDoctrineConnection() === $connection, 'Cleanup owns original supplied connection');
         $frame->rollBack();
         $rollbackProven = true;
     } catch (Throwable $cleanup) {
+        $failureDiagnostics[$cleanup] ??= ['phase' => $phase];
         $primary = $primary === null ? $cleanup : new MutationRollbackFailure($primary, $cleanup);
     }
-    $cleanup = static function (callable $operation) use (&$primary, &$cleanupFailures): void {
+    $phase = 'session and global restoration';
+    $cleanup = static function (callable $operation) use (&$primary, &$cleanupFailures, &$phase, $failureDiagnostics): void {
         try {
             $operation();
         } catch (Throwable $error) {
             if ($primary === null) {
+                $failureDiagnostics[$error] ??= ['phase' => $phase];
                 $primary = $error;
             } else {
                 ++$cleanupFailures;
@@ -315,6 +348,7 @@ try {
         $cleanup(static fn () => Locale::setDefault($savedLocale));
     }
     if ($rollbackProven) {
+        $phase = 'native row restoration';
         foreach ($tables as $table) {
             $cleanup(static fn () => verify($allRows($table) === $before[$table], 'Exact pre-contract native rows restored'));
         }
