@@ -1764,6 +1764,7 @@ class Ticket extends DbTestCase
 
         // test timeline_position from getTimelineItems()
         $timeline_items = $ticket->getTimelineItems();
+        $this->integer($ticket->getTimelineItemCount())->isEqualTo(count($timeline_items));
 
         foreach ($timeline_items as $item) {
             switch ($item['type']) {
@@ -1782,6 +1783,204 @@ class Ticket extends DbTestCase
                     break;
             }
         }
+    }
+
+    public function testTimelineCountVisibility()
+    {
+        global $DB;
+        $this->login();
+        $profile = $_SESSION['glpiactiveprofile'];
+        $author = \Session::getLoginUserID();
+        $other = getItemByTypeName('User', 'normal', true);
+        try {
+            foreach (['Ticket', 'Change', 'Problem'] as $type) {
+                $_SESSION['glpiactiveprofile'] = $profile;
+                $item = new $type();
+                $this->integer((int)$item->add(['name' => 'Timeline count visibility', 'content' => 'Count only']))->isGreaterThan(0);
+                $this->integer($item->getTimelineItemCount())->isEqualTo(0);
+                $task_class = $type . 'Task';
+                $private_ids = [];
+                foreach ([[0, $other], [1, $author], [1, $other], [1, null]] as [$private, $user]) {
+                    $followup = new \ITILFollowup();
+                    $this->integer((int)$followup->add([
+                        'itemtype' => $type, 'items_id' => $item->getID(),
+                        'content' => 'Followup visibility', 'is_private' => $private,
+                    ]))->isGreaterThan(0);
+                    $this->boolean($DB->update($followup->getTable(), ['users_id' => $user], ['id' => $followup->getID()]))->isTrue();
+                    $task = new $task_class();
+                    $this->integer((int)$task->add([
+                        $item->getForeignKeyField() => $item->getID(),
+                        'content' => 'Task visibility',
+                    ] + ($task->maybePrivate() ? ['is_private' => $private] : [])))->isGreaterThan(0);
+                    $this->boolean($DB->update($task->getTable(), ['users_id' => $user], ['id' => $task->getID()]))->isTrue();
+                    if ($private && $user === $author) {
+                        $private_ids['author'] = $task->getID();
+                    } elseif ($private && $user === null) {
+                        $private_ids['anonymous'] = $task->getID();
+                    }
+                }
+                $solution = new \ITILSolution();
+                $this->integer((int)$solution->add([
+                    'itemtype' => $type, 'items_id' => $item->getID(), 'content' => 'Solution count',
+                ]))->isGreaterThan(0);
+                $this->integer($item->getTimelineItemCount())->isEqualTo(9);
+                $this->integer($item->getTimelineItemCount())->isEqualTo(count($item->getTimelineItems()));
+
+                $_SESSION['glpiactiveprofile']['followup'] &= ~\ITILFollowup::SEEPRIVATE;
+                $_SESSION['glpiactiveprofile']['task'] &= ~\CommonITILTask::SEEPRIVATE;
+                foreach (['central', 'helpdesk'] as $interface) {
+                    $_SESSION['glpiactiveprofile']['interface'] = $interface;
+                    $timeline = $item->getTimelineItems();
+                    $this->integer($item->getTimelineItemCount())->isEqualTo($type === 'Ticket' ? 5 : 7)->isEqualTo(count($timeline));
+                    $task_ids = array_column(array_column(array_filter($timeline, static fn ($event) => $event['type'] === $task_class), 'item'), 'id');
+                    $visible_private = $interface === 'central' ? 'author' : 'anonymous';
+                    $hidden_private = $interface === 'central' ? 'anonymous' : 'author';
+                    if ($type === 'Ticket') {
+                        $this->array($task_ids)->contains($private_ids[$visible_private])->notContains($private_ids[$hidden_private]);
+                    } else {
+                        // Change/Problem tasks have no private field.
+                        $this->array($task_ids)->contains($private_ids['author'])->contains($private_ids['anonymous']);
+                    }
+                }
+
+                foreach (['followup', 'task', 'ticket', 'change', 'problem', 'document', 'ticketvalidation', 'changevalidation'] as $right) {
+                    $_SESSION['glpiactiveprofile'][$right] = 0;
+                }
+                // Existing rendering always includes solutions, even without event READ rights.
+                $this->integer($item->getTimelineItemCount())->isEqualTo(1)->isEqualTo(count($item->getTimelineItems()));
+                if ($type !== 'Ticket') {
+                    $this->string($item->getTabNameForItem($item))->isEmpty();
+                }
+            }
+        } finally {
+            $_SESSION['glpiactiveprofile'] = $profile;
+        }
+    }
+
+    public function testTimelineCountEventKeys()
+    {
+        global $DB;
+        $this->login();
+        foreach (['Ticket', 'Change', 'Problem'] as $type) {
+            $item = new $type();
+            $this->integer((int)$item->add(['name' => 'Timeline event keys', 'content' => 'Count only']))->isGreaterThan(0);
+            $document = new \Document();
+            $this->integer((int)$document->add(['name' => 'Timeline count attachment']))->isGreaterThan(0);
+            $bindings = [];
+            foreach ([\CommonITILObject::TIMELINE_LEFT, \CommonITILObject::TIMELINE_RIGHT] as $position) {
+                $binding = new \Document_Item();
+                $this->integer((int)$binding->add([
+                    'itemtype' => $type, 'items_id' => $item->getID(),
+                    'documents_id' => $document->getID(), 'timeline_position' => $position,
+                ]))->isGreaterThan(0);
+                $bindings[] = $binding->getID();
+            }
+            // NULL date falls back to date_creation; duplicate event keys collapse.
+            $this->boolean($DB->update('glpi_documents_items', [
+                'date' => null, 'date_creation' => '2020-01-01 12:00:00', 'users_id' => null,
+            ], ['id' => $bindings]))->isTrue();
+            $this->integer($item->getTimelineItemCount())->isEqualTo(1)->isEqualTo(count($item->getTimelineItems()));
+            $this->boolean($DB->update('glpi_documents_items', ['date' => '2020-01-02 12:00:00'], ['id' => $bindings[1]]))->isTrue();
+            $this->integer($item->getTimelineItemCount())->isEqualTo(2)->isEqualTo(count($item->getTimelineItems()));
+            $this->boolean($DB->update('glpi_documents_items', ['date' => null, 'date_creation' => null], ['id' => $bindings]))->isTrue();
+            $this->integer($item->getTimelineItemCount())->isEqualTo(1)->isEqualTo(count($item->getTimelineItems()));
+            $this->boolean($DB->update('glpi_documents_items', ['timeline_position' => \CommonITILObject::NO_TIMELINE], ['id' => $bindings[1]]))->isTrue();
+            $this->integer($item->getTimelineItemCount())->isEqualTo(1)->isEqualTo(count($item->getTimelineItems()));
+
+            if ($type !== 'Problem') {
+                $validation_class = $type . 'Validation';
+                $validation = new $validation_class();
+                $this->integer((int)$validation->add([
+                    $item->getForeignKeyField() => $item->getID(),
+                    'users_id_validate' => \Session::getLoginUserID(),
+                    'comment_submission' => 'Timeline count validation',
+                ]))->isGreaterThan(0);
+                foreach ([
+                    ['2020-01-01 12:00:00', null, 2],
+                    ['2020-01-01 12:00:00', '2020-01-02 12:00:00', 3],
+                    ['2020-01-01 12:00:00', '2020-01-01 12:00:00', 2],
+                    [null, '2020-01-02 12:00:00', 3],
+                    [null, null, 2],
+                ] as [$submitted, $answered, $expected]) {
+                    $this->boolean($DB->update($validation->getTable(), [
+                        'submission_date' => $submitted, 'validation_date' => $answered,
+                    ], ['id' => $validation->getID()]))->isTrue();
+                    $timeline = $item->getTimelineItems();
+                    $this->integer($item->getTimelineItemCount())->isEqualTo($expected)->isEqualTo(count($timeline));
+                    if ($answered === null) {
+                        $request = array_values(array_filter($timeline, static fn ($event) => $event['type'] === $validation_class))[0];
+                        $this->boolean($request['item']['can_answer'])->isTrue();
+                    }
+                }
+                $this->boolean($DB->update($validation->getTable(), ['users_id' => null, 'users_id_validate' => null], ['id' => $validation->getID()]))->isTrue();
+                $this->integer($item->getTimelineItemCount())->isEqualTo(2)->isEqualTo(count($item->getTimelineItems()));
+                $profile = $_SESSION['glpiactiveprofile'];
+                try {
+                    $_SESSION['glpiactiveprofile'][$validation_class::$rightname] = 0;
+                    $this->integer($item->getTimelineItemCount())->isEqualTo(1)->isEqualTo(count($item->getTimelineItems()));
+                } finally {
+                    $_SESSION['glpiactiveprofile'] = $profile;
+                }
+            }
+        }
+    }
+
+    public function testTimelineCountAssociatedDocumentVisibility()
+    {
+        global $DB;
+        $this->login();
+        $profile = $_SESSION['glpiactiveprofile'];
+        $show_count = $_SESSION['glpishow_count_on_tabs'];
+        try {
+            $ticket = new \Ticket();
+            $this->integer((int)$ticket->add(['name' => 'Timeline private attachments', 'content' => 'Count only']))->isGreaterThan(0);
+            foreach ([\Session::getLoginUserID(), getItemByTypeName('User', 'normal', true)] as $author) {
+                $followup = new \ITILFollowup();
+                $this->integer((int)$followup->add([
+                    'itemtype' => 'Ticket', 'items_id' => $ticket->getID(), 'content' => 'Private attachment', 'is_private' => 1,
+                ]))->isGreaterThan(0);
+                $this->boolean($DB->update($followup->getTable(), ['users_id' => $author], ['id' => $followup->getID()]))->isTrue();
+                $document = new \Document();
+                $this->integer((int)$document->add(['name' => 'Private followup attachment']))->isGreaterThan(0);
+                $binding = new \Document_Item();
+                $this->integer((int)$binding->add([
+                    'itemtype' => 'ITILFollowup', 'items_id' => $followup->getID(),
+                    'documents_id' => $document->getID(), 'timeline_position' => \CommonITILObject::TIMELINE_LEFT,
+                ]))->isGreaterThan(0);
+            }
+            $document = new \Document();
+            $this->integer((int)$document->add(['name' => 'Direct attachment']))->isGreaterThan(0);
+            $binding = new \Document_Item();
+            $this->integer((int)$binding->add([
+                'itemtype' => 'Ticket', 'items_id' => $ticket->getID(), 'documents_id' => $document->getID(),
+            ]))->isGreaterThan(0);
+            $this->integer($ticket->getTimelineItemCount())->isEqualTo(5)->isEqualTo(count($ticket->getTimelineItems()));
+            $_SESSION['glpiactiveprofile']['followup'] &= ~\ITILFollowup::SEEPRIVATE;
+            $this->integer($ticket->getTimelineItemCount())->isEqualTo(3)->isEqualTo(count($ticket->getTimelineItems()));
+            foreach ([0, 1] as $enabled) {
+                $_SESSION['glpishow_count_on_tabs'] = $enabled;
+                $this->string($ticket->getTabNameForItem($ticket)[1])->contains("<sup class='tab_nb'>3</sup>");
+            }
+            foreach (['followup', 'task', 'ticket', 'change', 'problem', 'document'] as $right) {
+                $_SESSION['glpiactiveprofile'][$right] = 0;
+            }
+            $_SESSION['glpiactiveprofile']['ticket'] = \Ticket::READDOCUMENT;
+            $this->integer($ticket->getTimelineItemCount())->isEqualTo(1)->isEqualTo(count($ticket->getTimelineItems()));
+        } finally {
+            $_SESSION['glpiactiveprofile'] = $profile;
+            $_SESSION['glpishow_count_on_tabs'] = $show_count;
+        }
+    }
+
+    public function testTimelineCountKeepsCustomTimeline()
+    {
+        $ticket = new class extends \Ticket {
+            public function getTimelineItems()
+            {
+                return ['plugin-event' => ['type' => 'custom']];
+            }
+        };
+        $this->integer($ticket->getTimelineItemCount())->isEqualTo(1);
     }
 
     public function inputProvider()

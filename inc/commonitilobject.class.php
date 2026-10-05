@@ -7626,7 +7626,6 @@ abstract class CommonITILObject extends CommonDBTM
     {
 
         $objType = static::getType();
-        $foreignKey = static::getForeignKeyField();
         $supportsValidation = $objType === "Ticket" || $objType === "Change";
 
         $timeline = [];
@@ -7643,34 +7642,11 @@ abstract class CommonITILObject extends CommonDBTM
             $valitation_obj     = new $validation_class();
         }
 
-        //checks rights
-        $restrict_fup = $restrict_task = [];
-        if (!Session::haveRight("followup", ITILFollowup::SEEPRIVATE)) {
-            $restrict_fup = [
-               'OR' => [
-                  'is_private'   => 0,
-                  'users_id'     => Session::getLoginUserID()
-               ]
-            ];
-        }
-
-        $restrict_fup['itemtype'] = static::getType();
-        $restrict_fup['items_id'] = $this->getID();
-
-        if ($task_obj->maybePrivate() && !Session::haveRight("task", CommonITILTask::SEEPRIVATE)) {
-            $restrict_task = [
-               'OR' => [
-                  'is_private'   => 0,
-                  'users_id'     => Session::getCurrentInterface() == "central"
-                                       ? Session::getLoginUserID()
-                                       : 0
-               ]
-            ];
-        }
+        $selection = $this->getTimelineSelection();
 
         //add followups to timeline
-        if ($followup_obj->canview()) {
-            $followups = $followup_obj->find(['items_id'  => $this->getID()] + $restrict_fup, ['date DESC', 'id DESC']);
+        if ($selection['followups'] !== null) {
+            $followups = $followup_obj->find($selection['followups'], ['date DESC', 'id DESC']);
             foreach ($followups as $followups_id => $followup) {
                 $followup_obj->getFromDB($followups_id);
                 $followup['can_edit']                                   = $followup_obj->canUpdateItem();
@@ -7682,8 +7658,8 @@ abstract class CommonITILObject extends CommonDBTM
         }
 
         //add tasks to timeline
-        if ($task_obj->canview()) {
-            $tasks = $task_obj->find([$foreignKey => $this->getID()] + $restrict_task, 'date DESC');
+        if ($selection['tasks'] !== null) {
+            $tasks = $task_obj->find($selection['tasks'], 'date DESC');
             foreach ($tasks as $tasks_id => $task) {
                 $task_obj->getFromDB($tasks_id);
                 $task['can_edit']                           = $task_obj->canUpdateItem();
@@ -7695,11 +7671,8 @@ abstract class CommonITILObject extends CommonDBTM
 
         //add documents to timeline
         $document_obj   = new Document();
-        if ($document_item_obj->canView() || Session::haveRight(Ticket::$rightname, Ticket::READDOCUMENT)) {
-            $document_items = $document_item_obj->find([
-               $this->getAssociatedDocumentsCriteria(),
-               'timeline_position'  => ['>', self::NO_TIMELINE]
-            ]);
+        if ($selection['documents'] !== null) {
+            $document_items = $document_item_obj->find($selection['documents']);
 
             foreach ($document_items as $document_item) {
                 $document_obj->getFromDB($document_item['documents_id']);
@@ -7721,10 +7694,7 @@ abstract class CommonITILObject extends CommonDBTM
         }
 
         $solution_obj = new ITILSolution();
-        $solution_items = $solution_obj->find([
-           'itemtype'  => static::getType(),
-           'items_id'  => $this->getID()
-        ]);
+        $solution_items = $solution_obj->find($selection['solutions']);
         foreach ($solution_items as $solution_item) {
             // fix trouble with html_entity_decode who skip accented characters (on windows browser)
             $solution_content = preg_replace_callback("/(&#[0-9]+;)/", function ($m) {
@@ -7750,8 +7720,8 @@ abstract class CommonITILObject extends CommonDBTM
             ];
         }
 
-        if ($supportsValidation and $validation_class::canView()) {
-            $validations = $valitation_obj->find([$foreignKey => $this->getID()]);
+        if ($selection['validations'] !== null) {
+            $validations = $valitation_obj->find($selection['validations']);
             foreach ($validations as $validations_id => $validation) {
                 $canedit = $valitation_obj->can($validations_id, UPDATE);
                 $cananswer = ($validation['users_id_validate'] === Session::getLoginUserID() &&
@@ -7801,6 +7771,88 @@ abstract class CommonITILObject extends CommonDBTM
         return $timeline;
     }
 
+
+    /** The same visibility predicates serve the rendered timeline and its tab count. */
+    private function getTimelineSelection(): array
+    {
+        $task_class = static::getType() . 'Task';
+        $task_obj = new $task_class();
+        $validation_class = static::getType() . 'Validation';
+        $restrict_fup = $restrict_task = [];
+        if (!Session::haveRight("followup", ITILFollowup::SEEPRIVATE)) {
+            $restrict_fup = [
+               'OR' => [
+                  'is_private'   => 0,
+                  'users_id'     => Session::getLoginUserID()
+               ]
+            ];
+        }
+
+        $restrict_fup['itemtype'] = static::getType();
+        $restrict_fup['items_id'] = $this->getID();
+
+        if ($task_obj->maybePrivate() && !Session::haveRight("task", CommonITILTask::SEEPRIVATE)) {
+            $restrict_task = [
+               'OR' => [
+                  'is_private'   => 0,
+                  'users_id'     => Session::getCurrentInterface() == "central"
+                                       ? Session::getLoginUserID()
+                                       : 0
+               ]
+            ];
+        }
+
+        return [
+            'followups' => ITILFollowup::canView() ? $restrict_fup : null,
+            'tasks' => $task_obj->canView()
+                ? [static::getForeignKeyField() => $this->getID()] + $restrict_task : null,
+            'documents' => Document_Item::canView() || Session::haveRight(Ticket::$rightname, Ticket::READDOCUMENT)
+                ? [$this->getAssociatedDocumentsCriteria(), 'timeline_position' => ['>', self::NO_TIMELINE]] : null,
+            'solutions' => ['itemtype' => static::getType(), 'items_id' => $this->getID()],
+            'validations' => in_array(static::getType(), ['Ticket', 'Change'], true) && $validation_class::canView()
+                ? [static::getForeignKeyField() => $this->getID()] : null,
+        ];
+    }
+
+    /** Count event keys without building content, edit controls or author links. */
+    public function getTimelineItemCount(): int
+    {
+        global $DB;
+
+        // Plugins may provide additional events or an entirely different timeline.
+        if (!in_array(static::getType(), ['Ticket', 'Change', 'Problem'], true)
+            || (new ReflectionMethod($this, 'getTimelineItems'))->getDeclaringClass()->getName() !== self::class) {
+            return count($this->getTimelineItems());
+        }
+
+        $selection = $this->getTimelineSelection();
+        $manager = \itsmng\Database\Orm::create($DB);
+        try {
+            $records = new \itsmng\Database\Repository\RecordRepository($manager);
+            $events = new \itsmng\Database\Repository\TimelineRepository($manager);
+            $task_class = static::getType() . 'Task';
+            $validation_class = static::getType() . 'Validation';
+            $count = $records->countMatching(ITILSolution::getTable(), $selection['solutions']);
+            if ($selection['followups'] !== null) {
+                $count += $records->countMatching(ITILFollowup::getTable(), $selection['followups']);
+            }
+            if ($selection['tasks'] !== null) {
+                $count += $records->countMatching($task_class::getTable(), $selection['tasks']);
+            }
+            if ($selection['documents'] !== null) {
+                $count += $events->countDocuments($selection['documents']);
+            }
+            if ($selection['validations'] !== null) {
+                $count += $events->countValidations($validation_class::getTable(), $selection['validations']);
+            }
+            return $count;
+        } catch (\itsmng\Database\UnsupportedCriteria $unsupported) {
+            // Keep custom document selectors supported by the model's existing fallback.
+            return count($this->getTimelineItems());
+        } finally {
+            $manager->clear();
+        }
+    }
 
     /**
      * Displays the timeline of items for this ITILObject

@@ -797,8 +797,7 @@ class Ticket extends CommonITILObject
             case __CLASS__:
                 $ong    = [];
 
-                $timeline    = $item->getTimelineItems();
-                $nb_elements = count($timeline);
+                $nb_elements = $item->getTimelineItemCount();
                 $ong[1]      = __("Processing ticket") . " <sup class='tab_nb'>$nb_elements</sup>";
 
                 // enquete si statut clos

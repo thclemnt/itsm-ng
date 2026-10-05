@@ -176,8 +176,7 @@ class Problem extends CommonITILObject
         if (static::canView()) {
             switch ($item->getType()) {
                 case __CLASS__:
-                    $timeline    = $item->getTimelineItems();
-                    $nb_elements = count($timeline);
+                    $nb_elements = $item->getTimelineItemCount();
 
                     $ong = [
                        5 => __("Processing problem") . " <sup class='tab_nb'>$nb_elements</sup>",
