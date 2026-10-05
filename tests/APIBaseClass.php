@@ -39,6 +39,7 @@ abstract class APIBaseClass extends atoum
     protected $http_client;
     protected $base_uri = "";
     protected $last_error;
+    private array $ownedComputers = [];
 
     abstract protected function query(
         $resource = "",
@@ -48,7 +49,55 @@ abstract class APIBaseClass extends atoum
 
     public function beforeTestMethod($method)
     {
+        $this->ownedComputers = [];
         $this->initSessionCredentials();
+    }
+
+    public function afterTestMethod($method)
+    {
+        $errors = [];
+        foreach ($this->ownedComputers as $name => $id) {
+            try {
+                $computer = new Computer();
+                // Resolve only this invocation's marker if an HTTP assertion failed
+                // before its response ID was available to the caller.
+                $rows = $id === null ? $computer->find(['name' => $name]) : [['id' => $id]];
+                foreach ($rows as $row) {
+                    if (!$computer->getFromDB($row['id'])) {
+                        continue; // A test may already have exercised public purge.
+                    }
+                    $this->string($computer->fields['name'])->isIdenticalTo($name);
+                    $this->query('deleteItems', [
+                        'itemtype' => 'Computer',
+                        'id' => $computer->getID(),
+                        'verb' => 'DELETE',
+                        'headers' => ['Session-Token' => $this->session_token],
+                        'query' => ['force_purge' => true],
+                    ]);
+                    $this->boolean($computer->getFromDB($row['id']))->isFalse();
+                }
+            } catch (\Throwable $error) {
+                $errors[] = $error;
+            }
+        }
+        $this->ownedComputers = [];
+        if ($errors !== []) {
+            throw new \RuntimeException('Failed to clean ' . count($errors) . ' owned API computer fixture(s).', 0, $errors[0]);
+        }
+    }
+
+    private function reserveComputerFixture(string $prefix): string
+    {
+        $name = $prefix . bin2hex(random_bytes(12));
+        $this->ownedComputers[$name] = null;
+        return $name;
+    }
+
+    private function trackComputerFixture(string $name, mixed $id): void
+    {
+        if (!is_bool($id) && filter_var($id, FILTER_VALIDATE_INT) !== false && (int)$id > 0) {
+            $this->ownedComputers[$name] = (int)$id;
+        }
     }
 
     abstract public function initSessionCredentials();
@@ -573,14 +622,17 @@ abstract class APIBaseClass extends atoum
      */
     protected function createComputer()
     {
+        $name = $this->reserveComputerFixture('My single computer ');
         $data = $this->query(
             'createItems',
             ['verb'     => 'POST',
                               'itemtype' => 'Computer',
                               'headers'  => ['Session-Token' => $this->session_token],
-                              'json'     => ['input' => ['name' => "My single computer "]]],
+                              'json'     => ['input' => ['name' => $name]]],
             201
         );
+
+        $this->trackComputerFixture($name, $data['id'] ?? null);
 
         $this->variable($data)
            ->isNotFalse();
@@ -688,6 +740,10 @@ abstract class APIBaseClass extends atoum
      */
     public function testCreateItems()
     {
+        $names = [];
+        foreach ([2, 3, 4] as $number) {
+            $names[] = $this->reserveComputerFixture('My computer ' . $number . ' ');
+        }
         $data = $this->query(
             'createItems',
             ['verb'     => 'POST',
@@ -695,13 +751,17 @@ abstract class APIBaseClass extends atoum
                               'headers'  => ['Session-Token' => $this->session_token],
                               'json'     => [
                                  'input' => [[
-                                    'name' => "My computer 2"
+                                    'name' => $names[0]
                                  ],[
-                                    'name' => "My computer 3"
+                                    'name' => $names[1]
                                  ],[
-                                    'name' => "My computer 4"]]]],
+                                    'name' => $names[2]]]]],
             201
         );
+
+        foreach ($names as $index => $name) {
+            $this->trackComputerFixture($name, $data[$index]['id'] ?? null);
+        }
 
         $this->variable($data)->isNotFalse();
 

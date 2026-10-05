@@ -75,8 +75,12 @@ class APIRest extends APIBaseClass
     {
         $logfile = $this->getLogFilePath();
 
-        // Check that no errors occured on the test server
-        $this->string(file_get_contents($logfile))->isEmpty();
+        try {
+            parent::afterTestMethod($method);
+        } finally {
+            // Keep the existing error assertion, including cleanup requests.
+            $this->string(file_get_contents($logfile))->isEmpty();
+        }
     }
 
     /**
