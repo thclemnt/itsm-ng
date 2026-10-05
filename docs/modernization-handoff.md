@@ -25,10 +25,10 @@ Each result applies to its executed source; subsequent changes do not inherit it
 - Isolated units at `593d34e90f`: 9 classes, 40 methods and 2,036 assertions passed.
   This checkpoint adds a cache of the immutable, metadata-derived registry using
   the existing application cache. No connection, session or live metadata is cached.
-- Component functional suites at `297787177b` ran all six methods on each provider.
-  New scope, stock, replacement, clone and purge cases passed. The original POST
-  fixture failed its parent ownership guard; a reviewed entity-alignment repair
-  awaits provider retry. The duplicated CLI component contract remains until then.
+- Component functional suites at `60c0d8a809` passed all six methods and 2,956
+  assertions on each provider. The original POST fixture now declares the actual
+  parent entity; production ownership guards and original assertions are intact.
+  The duplicate standalone component contract was subsequently removed.
 
 Earlier executions, retained for their own source only:
 
@@ -51,10 +51,18 @@ were compared through authenticated local HTTP actions on matched MariaDB data:
 rounds included each page's required table JSON. Median ticket list/search/detail/
 history times were 785/779/317/487 ms for ORM versus 120/122/63/36 ms for 2.1.3.
 Tracing identified full metadata discovery (357 entities and tens of thousands of
-attribute conversions) repeated in each request. The cache's controlled rerun is
-pending. This serial local comparison excludes browser rendering and production
+attribute conversions) repeated in each request. With the registry cache at
+`593d34e90f`, the same medians became 587/566/234/317 ms; baseline controls were
+slightly faster too. SQL statement counts stayed identical across all nine read
+flows. Separate cold/warm traces confirm metadata discovery disappears on a cache
+hit, while source hashing and deserialization still have a cost. Search CPU fell
+from 657 to 454 ms and its peak memory from 24 to 14 MiB. Substantial slowdown
+remains; traced DQL compilation, autoload searches and template compilation are
+the next measured targets. This serial local comparison excludes browser rendering and production
 concurrency; shipped dependency versions differ between releases. Retain the
 original 2.1.3 database and encryption key for a separate populated upgrade clone.
+That clone now contains all 355 original tables with identical native row bags and
+the original key; no 2.2.0 upgrade result exists yet.
 
 Earlier published `53cf6297473bc31400a0777ff905bd79f1e65698` has independent fresh
 installation and populated ORM-checkpoint upgrade results on both providers.
@@ -78,7 +86,11 @@ observations do not prove its cause. Do not weaken comparison or original contra
 Source declarations own historical native timestamp fields, actor/tree indexes
 and generated keys, Calendar closure policy, VLAN intent and recipient-owned browser
 inbox behavior. Legacy queries, unresolved polymorphic relationships, plugin paths
-and stable Ticket status adoption remain. Read-only status preflight covers bounded
+and stable Ticket status adoption remain. Forced status purge still shifts ordinal
+interpretation, and reordering is not atomic. Current schema inspection still
+skips existing ordinary mapped columns and excludes general subject CHECK/generated
+definitions. Frozen release postconditions are being hardened separately; these
+runtime inspection gaps remain open. Read-only status preflight covers bounded
 owners and is not adoption readiness. Source-only cleanup and release migration
 changes require validation on their combined source before inheriting any result.
 
