@@ -56,7 +56,7 @@ final class AutoNameRepository
         $predicate = $this->em->getConnection()->getDatabasePlatform() instanceof PostgreSQLPlatform
             ? 'LOWER(' . $fieldExpression . ') LIKE LOWER(:pattern)' : $fieldExpression . ' LIKE :pattern';
         $query = $this->em->createQueryBuilder()->from($class, 'r')
-            ->select('MAX(AUTO_NAME_NUMBER(SUBSTRING(r.' . $field . ', :position, :width)))')
+            ->select('MAX(AUTO_NAME_NUMBER(r.' . $field . ', :position, :width))')
             ->where($predicate . " ESCAPE '!'")
             ->setParameter('position', $position, Types::INTEGER)->setParameter('width', $width, Types::INTEGER)
             ->setParameter('pattern', $pattern, Types::STRING);

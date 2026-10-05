@@ -16,20 +16,45 @@ use Doctrine\ORM\Query\TokenType;
 final class AutoNameNumber extends FunctionNode
 {
     private Node|string $value;
+    private Node|string|null $position = null;
+    private Node|string|null $width = null;
 
     public function parse(Parser $parser): void
     {
         $parser->match(TokenType::T_IDENTIFIER);
         $parser->match(TokenType::T_OPEN_PARENTHESIS);
         $this->value = $parser->StringPrimary();
+        if ($parser->getLexer()->isNextToken(TokenType::T_COMMA)) {
+            $parser->match(TokenType::T_COMMA);
+            $this->position = $parser->SimpleArithmeticExpression();
+            $parser->match(TokenType::T_COMMA);
+            $this->width = $parser->SimpleArithmeticExpression();
+        }
         $parser->match(TokenType::T_CLOSE_PARENTHESIS);
     }
 
     public function getSql(SqlWalker $walker): string
     {
-        // Dispatch each occurrence separately: SUBSTRING's bound positions must
-        // register every SQL placeholder with Doctrine's parameter mapping.
-        return self::expression(fn (): string => $walker->walkStringPrimary($this->value), $walker->getConnection()->getDatabasePlatform());
+        $platform = $walker->getConnection()->getDatabasePlatform();
+        $value = function () use ($walker, $platform): string {
+            $sql = $walker->walkStringPrimary($this->value);
+            if ($this->position === null) {
+                return $sql;
+            }
+            // Walk in emitted SQL order. Doctrine's generic SUBSTRING walks
+            // width before position, reversing positional bindings in this expression.
+            $position = $walker->walkSimpleArithmeticExpression($this->position);
+            $width = $walker->walkSimpleArithmeticExpression($this->width);
+            if ($platform instanceof PostgreSQLPlatform) {
+                // Unresolved PDO parameters otherwise select substring's regex/
+                // escape overload rather than its character-position overload.
+                $position = 'CAST(' . $position . ' AS INTEGER)';
+                $width = 'CAST(' . $width . ' AS INTEGER)';
+            }
+            return $platform->getSubstringExpression($sql, $position, $width);
+        };
+        // Every repeated PostgreSQL prefix expression registers its own bindings.
+        return self::expression($value, $platform);
     }
 
     /** Shared only with the explicitly unmapped plugin numbering query. */

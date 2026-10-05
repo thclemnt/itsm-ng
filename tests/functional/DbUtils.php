@@ -1388,6 +1388,14 @@ class DbUtils extends DbTestCase
         $prefix = 'Number-' . $this->getUniqueString() . '-';
         $record->name = $prefix . $value;
         $em->flush();
+        // A long prefix and a different extraction width expose reversed
+        // placeholder mappings and PostgreSQL's overloaded SUBSTRING resolution.
+        $substring = $em->createQuery('SELECT AUTO_NAME_NUMBER(c.name, :position, :width) FROM '
+            . $record::class . ' c WHERE c.id = :id')
+            ->setParameter('position', \Toolbox::strlen($prefix) + 1, \Doctrine\DBAL\Types\Types::INTEGER)
+            ->setParameter('width', 24, \Doctrine\DBAL\Types\Types::INTEGER)
+            ->setParameter('id', $record->id, \Doctrine\DBAL\Types\Types::BIGINT);
+        $this->string((string)$substring->getSingleScalarResult())->isIdenticalTo($expected);
         if (\Toolbox::strlen($value) === 4) {
             $next = str_pad((string)($expected + 1), 4, '0', STR_PAD_LEFT);
             $this->string((new \DbUtils())->autoName('&lt;' . $prefix . '####&gt;', 'name', true, 'Computer'))
