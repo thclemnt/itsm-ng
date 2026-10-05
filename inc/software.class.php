@@ -39,6 +39,8 @@ if (!defined('GLPI_ROOT')) {
 **/
 class Software extends CommonDBTM
 {
+    use \itsmng\Domain\SoftwareLifecycleAdmission;
+
     use Glpi\Features\Clonable;
 
     protected function executePreparedAdd(callable $operation, array $priorState): mixed
@@ -90,7 +92,7 @@ class Software extends CommonDBTM
         global $DB;
 
         $database = $DB;
-        if ($database->isSlave() || !array_key_exists(static::getIndexName(), $input)) {
+        if (!$this->admitSoftwareLifecycle() || !array_key_exists(static::getIndexName(), $input)) {
             return false;
         }
         $assertOwner = $this->softwareWriterContinuity($database);

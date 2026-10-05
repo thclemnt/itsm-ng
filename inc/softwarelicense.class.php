@@ -40,6 +40,8 @@ if (!defined('GLPI_ROOT')) {
 **/
 class SoftwareLicense extends CommonTreeDropdown
 {
+    use \itsmng\Domain\SoftwareLifecycleAdmission;
+
     use Glpi\Features\Clonable;
 
     protected function executePreparedAdd(callable $operation, array $priorState): mixed
@@ -90,7 +92,7 @@ class SoftwareLicense extends CommonTreeDropdown
     {
         global $DB;
 
-        if ($DB->isSlave() || !array_key_exists(static::getIndexName(), $input)
+        if (!$this->admitSoftwareLifecycle() || !array_key_exists(static::getIndexName(), $input)
             || !$this->getFromDB($input[static::getIndexName()])) {
             return false;
         }

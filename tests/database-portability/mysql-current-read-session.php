@@ -189,6 +189,16 @@ try {
         $connection->rollBack();
         verify((int)$secondary->fetchOne('SELECT COUNT(*) FROM glpi_suppliers WHERE id = ?', [$marker]) === 0, 'Actual caller rollback removes its marker');
         $connection->executeStatement('SET SESSION innodb_snapshot_isolation = OFF');
+        $connection->beginTransaction();
+        try {
+            verify($model->update(['id' => $license, 'number' => 4]) && SessionPolicyLicense::$writes > 0 && $hookCalls > 0,
+                'Restoring the supported session permits the same actual public command and lifecycle');
+            verify((int)$connection->fetchOne('SELECT number FROM glpi_softwarelicenses WHERE id = ?', [$license]) === 4,
+                'Supported public retry persists its actual licence quantity');
+        } finally {
+            $connection->rollBack();
+        }
+        verify($snapshot() === $before, 'Caller rollback removes the accepted retry and its actual history or queue effects');
     }
     verify($originalAdapter->getDoctrineConnection()->fetchAllNumeric("SHOW GLOBAL VARIABLES WHERE Variable_name = 'innodb_snapshot_isolation'") === $globalCapability, 'Shared server capability/default is unchanged');
     // An ordinary DBAL caller cannot acquire a domain frame by reporting depth.

@@ -40,6 +40,8 @@ if (!defined('GLPI_ROOT')) {
  */
 class Item_SoftwareLicense extends CommonDBRelation
 {
+    use \itsmng\Domain\SoftwareLifecycleAdmission;
+
     // From CommonDBRelation
     public static $itemtype_1 = 'itemtype';
     public static $items_id_1 = 'items_id';
@@ -122,7 +124,7 @@ class Item_SoftwareLicense extends CommonDBRelation
     {
         global $DB;
 
-        if ($DB->isSlave() || !array_key_exists(static::getIndexName(), $input)
+        if (!$this->admitSoftwareLifecycle() || !array_key_exists(static::getIndexName(), $input)
             || !$this->getFromDB($input[static::getIndexName()])) {
             return false;
         }

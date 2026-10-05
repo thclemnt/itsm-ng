@@ -34,6 +34,18 @@
 namespace tests\units;
 
 use DbTestCase;
+use Plugin;
+use ReflectionProperty;
+use itsmng\Database\Orm;
+use itsmng\Database\MySQLConnection;
+use itsmng\Database\LifecycleModelJournal;
+use itsmng\Database\Entity\Entity as EntityRecord;
+use itsmng\Database\Entity\Computer as ComputerRecord;
+use itsmng\Database\Entity\Software as SoftwareRecord;
+use itsmng\Database\Entity\SoftwareLicense as SoftwareLicenseRecord;
+use itsmng\Database\Entity\SoftwareVersion as SoftwareVersionRecord;
+use itsmng\Database\Entity\ItemSoftwareLicense as AllocationRecord;
+use itsmng\Database\Entity\ItemSoftwareVersion as InstallationRecord;
 
 /* Test for inc/softwarelicense.class.php */
 
@@ -42,6 +54,134 @@ use DbTestCase;
  */
 class SoftwareLicense extends DbTestCase
 {
+    public function softwareAdmissionProvider(): array
+    {
+        return [['Software'], ['SoftwareLicense'], ['Item_SoftwareLicense'], ['Item_SoftwareVersion']];
+    }
+
+    /** @dataProvider softwareAdmissionProvider */
+    public function testSessionAdmissionPrecedesLifecycle(string $class): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+        $this->login();
+        $this->setEntity('_test_root_entity', false);
+        $session = $_SESSION;
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new ReflectionProperty(Plugin::class, 'activated_plugins');
+        $activePlugins = $plugins->getValue();
+        $manager = Orm::create($DB);
+        $connection = $manager->getConnection();
+        $depth = $connection->getTransactionNestingLevel();
+        $scope = $connection->captureManagedTransactionScope();
+        $flag = MySQLConnection::snapshotIsolation($connection);
+        try {
+            $root = $manager->find(EntityRecord::class, $_SESSION['glpiactive_entity']);
+            $computer = $manager->find(ComputerRecord::class, getItemByTypeName('Computer', '_test_pc01', true));
+            $this->object($root)->isInstanceOf(EntityRecord::class);
+            $this->object($computer)->isInstanceOf(ComputerRecord::class);
+            $owner = new SoftwareRecord();
+            $owner->entities = $root;
+            $owner->name = 'Session admission ' . $this->getUniqueString();
+            $license = new SoftwareLicenseRecord();
+            $license->softwares = $owner;
+            $license->entities = $root;
+            $license->number = 3;
+            $license->name = $owner->name;
+            $version = new SoftwareVersionRecord();
+            $version->softwares = $owner;
+            $version->entities = $root;
+            $version->name = $owner->name;
+            $allocation = new AllocationRecord();
+            $allocation->softwarelicenses = $license;
+            $allocation->itemtype = 'Computer';
+            $allocation->computer = $computer;
+            $installation = new InstallationRecord();
+            $installation->softwareversions = $version;
+            $installation->entities = $root;
+            $installation->itemtype = 'Computer';
+            $installation->computer = $computer;
+            foreach ([$owner, $license, $version, $allocation, $installation] as $record) {
+                $manager->persist($record);
+            }
+            $manager->flush();
+            $record = ['Software' => $owner, 'SoftwareLicense' => $license,
+                'Item_SoftwareLicense' => $allocation, 'Item_SoftwareVersion' => $installation][$class];
+            $model = new $class();
+            $this->boolean($model->can($record->id, UPDATE))->isTrue();
+            $hookCalls = 0;
+            $plugins->setValue(null, [...$activePlugins, 'software_session_admission_fixture']);
+            foreach (['pre_item_add', 'pre_item_update', 'pre_item_restore', 'pre_item_delete', 'pre_item_purge'] as $event) {
+                $PLUGIN_HOOKS[$event]['software_session_admission_fixture'][$class] = static function () use (&$hookCalls): void {
+                    ++$hookCalls;
+                };
+            }
+            $changes = match ($class) {
+                'Software' => ['name' => $owner->name . ' accepted'],
+                'SoftwareLicense' => ['number' => 4],
+                default => ['is_dynamic' => 1],
+            };
+            $input = ['id' => $record->id] + $changes;
+            $this->boolean($model->update($input))->isTrue();
+            $this->integer($hookCalls)->isGreaterThan(0);
+            $this->boolean($model->getFromDB($record->id))->isTrue();
+            if ($flag === null) {
+                // PostgreSQL/MySQL without this MariaDB flag retain the supported public flow.
+                $scope->assertActive();
+                $this->integer($connection->getTransactionNestingLevel())->isEqualTo($depth);
+                return;
+            }
+            $this->boolean($flag)->isFalse();
+            $stored = LifecycleModelJournal::state($model);
+            $snapshot = static function () use ($connection, $owner, $license, $version, $allocation, $installation): array {
+                $rows = [];
+                foreach (['glpi_softwares' => $owner->id, 'glpi_softwarelicenses' => $license->id,
+                    'glpi_softwareversions' => $version->id, 'glpi_items_softwarelicenses' => $allocation->id,
+                    'glpi_items_softwareversions' => $installation->id] as $table => $id) {
+                    $rows[] = $connection->fetchAllAssociative('SELECT * FROM ' . $connection->quoteIdentifier($table) . ' WHERE id = ?', [$id]);
+                }
+                return [$rows, $connection->fetchAllAssociative('SELECT * FROM glpi_logs ORDER BY id'),
+                    $connection->fetchAllAssociative('SELECT * FROM glpi_queuednotifications ORDER BY id'),
+                    $connection->fetchAllAssociative('SELECT * FROM itsmng_migrations ORDER BY version')];
+            };
+            $before = $snapshot();
+            $hookCalls = 0;
+            $refusedInput = ['id' => $record->id] + match ($class) {
+                'Software' => ['name' => $owner->name . ' retry'],
+                'SoftwareLicense' => ['number' => 5],
+                default => ['is_dynamic' => 0],
+            };
+            $connection->executeStatement('SET SESSION innodb_snapshot_isolation = ON');
+            $this->boolean($model->update($refusedInput))->isFalse();
+            $this->boolean($model->restore(['id' => $record->id]))->isFalse();
+            $this->boolean($model->delete(['id' => $record->id], true))->isFalse();
+            $copy = $model->fields;
+            unset($copy['id']);
+            $this->boolean($model->add($copy))->isFalse();
+            $this->integer($hookCalls)->isEqualTo(0);
+            $this->array(LifecycleModelJournal::state($model))->isIdenticalTo($stored);
+            $this->array($snapshot())->isIdenticalTo($before);
+            $this->boolean(MySQLConnection::snapshotIsolation($connection))->isTrue();
+            $scope->assertActive();
+            $this->boolean($connection->getNativeConnection()->inTransaction())->isTrue();
+            $this->integer($connection->getTransactionNestingLevel())->isEqualTo($depth);
+            $connection->executeStatement('SET SESSION innodb_snapshot_isolation = OFF');
+            $this->boolean($model->update($refusedInput))->isTrue();
+            $this->integer($hookCalls)->isGreaterThan(0);
+            $this->boolean($model->getFromDB($record->id))->isTrue();
+            foreach ($refusedInput as $field => $value) {
+                $this->variable($model->fields[$field])->isEqualTo($value);
+            }
+        } finally {
+            if ($flag !== null) {
+                $connection->executeStatement('SET SESSION innodb_snapshot_isolation = ' . ($flag ? 'ON' : 'OFF'));
+            }
+            $plugins->setValue(null, $activePlugins);
+            $PLUGIN_HOOKS = $hooks;
+            $_SESSION = $session;
+            $manager->clear();
+        }
+    }
+
     public function testTypeName()
     {
         $this->string(\SoftwareLicense::getTypeName(1))->isIdenticalTo('License');
