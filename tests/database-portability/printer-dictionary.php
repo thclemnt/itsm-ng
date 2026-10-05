@@ -32,7 +32,7 @@ $DB->beginTransaction();
 try {
     $fixtures = new FixtureRecords($DB);
     $repo = fn (): PrinterDictionaryRepository => new PrinterDictionaryRepository(Orm::create($DB));
-    $read = fn (string $table, int $id): ?array => (new RecordRepository(Orm::create($DB), false))->find($table, 'id', $id);
+    $read = fn (string $table, int $id): ?array => (new RecordRepository(Orm::create($DB)))->find($table, 'id', $id);
     $prefix = 'Printer dictionary ' . bin2hex(random_bytes(5));
     $entity = $fixtures->create('glpi_entities', ['name' => $prefix]);
     $_SESSION['glpiactiveentities'][] = $entity;

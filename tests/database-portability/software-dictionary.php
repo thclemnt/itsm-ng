@@ -33,7 +33,7 @@ $DB->beginTransaction();
 try {
     $fixtures = new FixtureRecords($DB);
     $repository = fn (): SoftwareDictionaryRepository => new SoftwareDictionaryRepository(Orm::create($DB));
-    $read = fn (string $table, int $id): ?array => (new RecordRepository(Orm::create($DB), false))->find($table, 'id', $id);
+    $read = fn (string $table, int $id): ?array => (new RecordRepository(Orm::create($DB)))->find($table, 'id', $id);
     $prefix = 'Dictionary ' . bin2hex(random_bytes(5));
     $manufacturer = $fixtures->create('glpi_manufacturers', ['name' => $prefix]);
     $entity = $fixtures->create('glpi_entities', ['name' => $prefix]);

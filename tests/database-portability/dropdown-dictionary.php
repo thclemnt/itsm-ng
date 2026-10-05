@@ -33,7 +33,7 @@ $DB->beginTransaction();
 try {
     $fixtures = new FixtureRecords($DB);
     $repo = fn (): DropdownDictionaryRepository => new DropdownDictionaryRepository(Orm::create($DB));
-    $read = fn (string $table, int $id): ?array => (new RecordRepository(Orm::create($DB), false))->find($table, 'id', $id);
+    $read = fn (string $table, int $id): ?array => (new RecordRepository(Orm::create($DB)))->find($table, 'id', $id);
     $prefix = 'Dropdown dictionary ' . bin2hex(random_bytes(5));
     $source = $fixtures->create('glpi_printermodels', ['name' => $prefix . ' old', 'comment' => "O'Reilly \\ 日本語"]);
     $targetA = $fixtures->create('glpi_printermodels', ['name' => $prefix . ' A']);
@@ -65,7 +65,7 @@ try {
     verify($compatibility->addCompatibleType($cartridge, $source) && $compatibility->addCompatibleType($cartridge, $targetA), 'Mapped cartridge compatibility inserts');
     verify($compatibility->addCompatibleType($cartridge, $targetA), 'Already-present compatibility is idempotent');
     verify(!$compatibility->addCompatibleType(0, $targetA) && !$compatibility->addCompatibleType($cartridge, 2147483647), 'Invalid compatibility target rejected without orphan');
-    $compatibilities = static fn (): array => array_map('intval', array_column((new RecordRepository(Orm::create($DB), false))->matching('glpi_cartridgeitems_printermodels', ['cartridgeitems_id' => $cartridge], ['printermodels_id']), 'printermodels_id'));
+    $compatibilities = static fn (): array => array_map('intval', array_column((new RecordRepository(Orm::create($DB)))->matching('glpi_cartridgeitems_printermodels', ['cartridgeitems_id' => $cartridge], ['printermodels_id']), 'printermodels_id'));
     $rejected = false;
     try {
         $repo()->replaceModel('glpi_printermodels', 'glpi_printers', $source, [$makerA => $targetB], static function (int $cartridge, int $model): bool {

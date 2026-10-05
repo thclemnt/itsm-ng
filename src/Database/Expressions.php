@@ -28,15 +28,6 @@ final class Expressions
         return $this->platform->{'getDateAdd' . $suffix . 'Expression'}($date, (string)$amount);
     }
 
-    public function datePart(string $date, string $part): string
-    {
-        $part = strtoupper($part);
-        if (!in_array($part, ['YEAR', 'MONTH', 'DAY', 'HOUR', 'MINUTE', 'SECOND'], true)) {
-            throw new \InvalidArgumentException('Unsupported date part');
-        }
-        return $this->platform instanceof PostgreSQLPlatform ? "EXTRACT($part FROM $date)" : "$part($date)";
-    }
-
     public function yearMonth(string $date): string
     {
         return $this->platform instanceof PostgreSQLPlatform
@@ -46,11 +37,6 @@ final class Expressions
     public function epoch(string $date = 'CURRENT_TIMESTAMP'): string
     {
         return $this->platform instanceof PostgreSQLPlatform ? "EXTRACT(EPOCH FROM $date)" : "UNIX_TIMESTAMP($date)";
-    }
-
-    public function dateDiff(string $end, string $start): string
-    {
-        return $this->platform->getDateDiffExpression($end, $start);
     }
 
     public function secondsBetween(string $end, string $start): string

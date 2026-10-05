@@ -40,7 +40,7 @@ try {
     $ldap = $fixtures->create('glpi_authldaps', ['name' => 'Authentication source LDAP']);
     $mail = $fixtures->create('glpi_authmails', ['name' => 'Authentication source mail']);
     $storage = new MappedStorage($DB);
-    $read = fn (int $id): array => (new RecordRepository(Orm::create($DB), false))->find('glpi_users', 'id', $id);
+    $read = fn (int $id): array => (new RecordRepository(Orm::create($DB)))->find('glpi_users', 'id', $id);
     $connection->insert('glpi_users', ['name' => 'default-pending-authentication']);
     $pending = $connection->fetchAssociative('SELECT authtype, auths_id, auth_source_code, authldaps_id, authmails_id FROM glpi_users WHERE name = ?', ['default-pending-authentication']);
     verify((int)$pending['authtype'] === Auth::NOT_YET_AUTHENTIFIED && (int)$pending['auths_id'] === 0
