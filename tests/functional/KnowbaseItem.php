@@ -39,6 +39,77 @@ use DbTestCase;
 
 class KnowbaseItem extends DbTestCase
 {
+    public function testShowListPreservesAudienceCategoryAndCurrentContent(): void
+    {
+        global $DB, $CFG_GLPI;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $this->integer($entity)->isGreaterThan(0);
+        $this->boolean(in_array(0, $_SESSION['glpiactiveentities'], false))->isFalse();
+        $author = (int)getItemByTypeName('User', 'itsm', true);
+        $this->integer($author)->isGreaterThan(0);
+        $this->boolean($author !== (int)\Session::getLoginUserID())->isTrue();
+        $category = $this->createItem(\KnowbaseItemCategory::class, ['name' => 'Visible article category']);
+        $otherCategory = $this->createItem(\KnowbaseItemCategory::class, ['name' => 'Other article category']);
+        $articles = [];
+        foreach ([
+            ['Visible article alpha', 'Original alpha content', $category->getID(), $entity],
+            ['Visible article beta', 'Original beta content', $category->getID(), $entity],
+            ['Hidden article audience', 'Hidden audience content', $category->getID(), 0],
+            ['Other category article', 'Other category content', $otherCategory->getID(), $entity],
+        ] as [$name, $answer, $categoryId, $audience]) {
+            $article = $this->createItem(\KnowbaseItem::class, [
+                'name' => $name, 'answer' => $answer, 'users_id' => $author,
+                'knowbaseitemcategories_id' => $categoryId, 'is_faq' => 0,
+            ]);
+            $this->createItem(\Entity_KnowbaseItem::class, [
+                'knowbaseitems_id' => $article->getID(), 'entities_id' => $audience, 'is_recursive' => 0,
+            ]);
+            $articles[] = $article;
+        }
+        $session = $_SESSION;
+        $get = $_GET;
+        $readRouting = $CFG_GLPI['use_slave_for_search'];
+        try {
+            // Exercise entity audience filtering, without administrator/author bypasses.
+            $_SESSION['glpiactiveprofile']['knowbase'] = READ;
+            $_SESSION['glpilist_limit'] = 20;
+            $_GET = [];
+            $CFG_GLPI['use_slave_for_search'] = 0;
+            $this->boolean(\Session::haveRight('knowbase', \KnowbaseItem::KNOWBASEADMIN))->isFalse();
+            $this->object(\DBConnection::getReadConnection())->isIdenticalTo($DB);
+            $render = static function () use ($category): string {
+                ob_start();
+                try {
+                    \KnowbaseItem::showList(['knowbaseitemcategories_id' => $category->getID()], 'browse');
+                    return ob_get_contents();
+                } finally {
+                    ob_end_clean();
+                }
+            };
+            $html = $render();
+            $this->string($html)->contains('Visible article alpha')->contains('Original alpha content')
+                ->contains('Visible article beta')->contains('Original beta content')
+                ->contains('Visible article category')
+                ->notContains('Hidden article audience')->notContains('Hidden audience content')
+                ->notContains('Other category article');
+            foreach (array_slice($articles, 0, 2) as $article) {
+                $this->string($html)->contains(\KnowbaseItem::getFormURLWithID($article->getID()));
+            }
+            $this->boolean($DB->update('glpi_knowbaseitems', [
+                'name' => 'Updated article alpha', 'answer' => 'Updated alpha content',
+            ], ['id' => $articles[0]->getID()]))->isTrue();
+            $this->string($render())->contains('Updated article alpha')->contains('Updated alpha content')
+                ->notContains('Visible article alpha')->notContains('Original alpha content')
+                ->notContains('Hidden article audience')->notContains('Other category article');
+        } finally {
+            $_SESSION = $session;
+            $_GET = $get;
+            $CFG_GLPI['use_slave_for_search'] = $readRouting;
+        }
+    }
+
     public function testGetTypeName()
     {
         $expected = 'Knowledge base';

@@ -1694,8 +1694,6 @@ class KnowbaseItem extends CommonDBVisible implements ExtraVisibilityCriteria
                 echo Search::showNewLine($output_type, ($row_num - 1) % 2);
                 $row_num++;
 
-                $item = new self();
-                $item->getFromDB($data["id"]);
                 $name   = $data["name"];
                 $answer = $data["answer"];
                 // Manage translations
