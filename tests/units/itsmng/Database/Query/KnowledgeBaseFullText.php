@@ -45,6 +45,88 @@ class KnowledgeBaseFullText extends \atoum\atoum\test
         }
     }
 
+    public function testActualRepositoryPageQueriesCompileWithoutConnecting(): void
+    {
+        if (!defined('GLPI_ROOT')) {
+            define('GLPI_ROOT', dirname(__DIR__, 5));
+        }
+        require_once GLPI_ROOT . '/inc/toolbox.class.php';
+        require_once GLPI_ROOT . '/inc/search.class.php';
+
+        foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
+            foreach ([['browse', '', null, [1]], ['browse', '', 'fr_FR', [1]],
+                ['search', 'article', null, [1]], ['search', 'article', 'fr_FR', [1]],
+                ['search', 'interior', 'fr_FR', [0, 1]]] as [$type, $text, $language, $counts]) {
+                $strict = new DisconnectedSchemaConnection($platform);
+                // Only the driver boundary is synthetic. The actual repository,
+                // parser, SQL walker, parameter mapping and hydrators execute.
+                $connection = new class ([], $strict->getDriver()) extends \Doctrine\DBAL\Connection {
+                    public array $counts = [];
+                    public array $statements = [];
+
+                    public function executeQuery(string $sql, array $params = [], array $types = [],
+                        ?\Doctrine\DBAL\Cache\QueryCacheProfile $qcp = null): \Doctrine\DBAL\Result
+                    {
+                        $this->statements[] = [$sql, $params];
+                        $rows = [];
+                        if (preg_match('/^SELECT COUNT\(/i', $sql)) {
+                            if ($this->counts === [] || !preg_match('/\bAS\s+(sclr_\d+)/i', $sql, $alias)) {
+                                throw new \LogicException('Unexpected repository count projection.');
+                            }
+                            $rows = [[$alias[1] => array_shift($this->counts)]];
+                        }
+                        // Counts select the production branch; the empty page
+                        // supplies no fake application data or native proof.
+                        return new class ($rows) extends \Doctrine\DBAL\Result {
+                            public function __construct(private array $rows)
+                            {
+                            }
+                            public function fetchAllAssociative(): array
+                            {
+                                return $this->rows;
+                            }
+                            public function fetchAssociative(): array|false
+                            {
+                                return array_shift($this->rows) ?? false;
+                            }
+                            public function free(): void
+                            {
+                                $this->rows = [];
+                            }
+                        };
+                    }
+                };
+                $connection->counts = $counts;
+                $manager = new EntityManager($connection, Orm::configuration($platform));
+                $access = new \itsmng\Database\KnowledgeBaseAccess(3, false, true, true, true, [4], 2, [1], [0]);
+                $page = (new \itsmng\Database\Repository\KnowledgeBaseRepository($manager))->listPage($access, [
+                    'type' => $type, 'contains' => $text, 'category' => 1, 'faq' => false,
+                    'language' => $language, 'offset' => 1, 'limit' => 2,
+                ]);
+                $this->array($page)->isIdenticalTo(['total' => 1, 'rows' => []]);
+                $this->array($connection->counts)->isEmpty();
+                $this->array($connection->statements)->hasSize(count($counts) + 1);
+                foreach ($connection->statements as [$sql, $params]) {
+                    $this->integer(substr_count($sql, '?'))->isIdenticalTo(count($params));
+                    if ($text !== '') {
+                        $this->string($sql)->notContains("'" . $text . "'");
+                    }
+                }
+                $pageSql = $connection->statements[array_key_last($connection->statements)][0];
+                $this->string($pageSql)->contains('LIMIT 2')->contains('OFFSET 1');
+                if ($language !== null) {
+                    $this->string($pageSql)->contains('NOT EXISTS')->contains('glpi_knowbaseitemtranslations');
+                }
+                if ($type === 'search' && $language !== null && count($counts) === 1) {
+                    $this->string($pageSql)->contains('MAX(')->contains('COALESCE(')->contains('ORDER BY');
+                }
+                $this->boolean($strict->isConnected())->isFalse();
+                $this->boolean($connection->isConnected())->isFalse();
+                $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
+            }
+        }
+    }
+
     public function testCompatibilitySqlRetainsIndexedVectorAndBooleanMatch(): void
     {
         $platform = new PostgreSQLPlatform();

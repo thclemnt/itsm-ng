@@ -113,10 +113,12 @@ final class KnowledgeBaseRepository
                         . 'AND matchingTranslation.language = :language AND ('
                         . 'KB_MATCH(matchingTranslation.name, :terms) = true OR KB_MATCH(matchingTranslation.answer, :terms) = true))';
                     // DQL accepts a whole scalar subselect, not a subselect inside
-                    // COALESCE/arithmetic. The aggregate returns one row even without translations.
-                    $fullTextScore = 'SELECT KB_SCORE(k.name, k.answer, :terms) '
+                    // COALESCE/arithmetic. Parenthesize its full arithmetic expression so the
+                    // subselect parser does not stop after the leading custom function.
+                    // The aggregate returns one row even without translations.
+                    $fullTextScore = 'SELECT (KB_SCORE(k.name, k.answer, :terms) '
                         . '+ COALESCE(MAX(COALESCE(KB_SCORE(rankedTranslation.name, :terms), 0) '
-                        . '+ COALESCE(KB_SCORE(rankedTranslation.answer, :terms), 0)), 0) FROM ' . KnowbaseItemTranslation::class
+                        . '+ COALESCE(KB_SCORE(rankedTranslation.answer, :terms), 0)), 0)) FROM ' . KnowbaseItemTranslation::class
                         . ' rankedTranslation WHERE IDENTITY(rankedTranslation.knowbaseitems) = k.id '
                         . 'AND rankedTranslation.language = :language';
                 }
