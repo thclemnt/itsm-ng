@@ -103,8 +103,10 @@ of existing data; this grants no permission to use it for new active tickets.
 
 `TicketStatusPreflight` records each ticket's exact before-code and resolved real
 status identity, including deleted tickets and tickets in other entities. Zero,
-negative sentinels, unknown positions and real IDs accidentally supplied as codes
-remain unknown with owning-ticket diagnostics. Inactive targets remain distinct
+negative sentinels and values outside the captured ordinal range, including
+accidental real IDs outside that range, remain unknown with owning-ticket
+diagnostics. A real ID numerically overlapping a valid ordinal is indistinguishable
+from that ordinal; the snapshot cannot reveal input provenance. Inactive targets remain distinct
 from unknown targets. This global inspection is a trusted adoption tool, not a
 public entity-scoped ticket collection or a business-transition service. There
 is intentionally no HTTP/CLI endpoint granting access to its record-level output.
@@ -132,16 +134,30 @@ before any canonical frozen migration or application status cutover.
 Two contracts are added for later ROOT execution. The pure contract independently
 replays the frozen weight scan, tests non-seed IDs/ties/inactive gaps, explicit
 role choices, missing/ambiguous/renamed roles, NULL labels, invalid flags/codes,
-fingerprint changes and malformed decisions. The provider contract reads the
-real installed owners and ledger, preserves an outer caller frame and an
-unflushed ORM insertion, rebinds the global adapter to prove repository capture,
-and compares exact status/ticket/ledger storage and history/notification counts.
-The provider contract intentionally writes no fixture rows and changes no seed
-or migration data. Reordered populated provider fixtures, concurrent admission,
-read replicas, browser requests and complete owner adoption still need future
-validation.
+fingerprint changes and malformed decisions. The provider contract creates real typed status and FK-valid Ticket data fixtures
+inside a rollback-owned caller frame. It covers tied weights, an inactive gap,
+nullable/empty labels/colors, a noncanonical integer flag, and stored valid,
+inactive, zero, negative-sentinel and out-of-range ticket codes. An independent
+native `ORDER BY weight, id` vector compares every snapshot field and each exact
+owner target/unknown diagnostic. The contract preserves a separate unflushed ORM
+insertion, rebinds the global adapter to prove repository capture, and compares
+whole raw status/ticket/ledger/history/notification rows before and after the
+read-only preflight, then original rows again after rollback. Fixtures are
+separate data controls; they neither invoke business transitions nor change
+existing rows, schema, seed definitions, history or migration receipts. Ordinary
+allocator advancement on rollback is not reset or described as invariance.
+Concurrent adoption, actual reordered upgrade execution, read replicas, browser
+requests and complete owner adoption still need future validation.
 
 All PHP execution, compiler/style checks, focused provider contracts and broader
 portability/application/browser suites for this batch are **UNRUN** at source
 handoff. Source inspection and native Git checks do not count as runtime evidence.
 The overall modernization goal and stable-status adoption remain OPEN.
+
+An additive SOURCE contract review repair followed the initial `466703d307` batch.
+The original provider test could inspect zero tickets and compared target
+resolution against the same snapshot implementation. Its source review was held;
+the successor adds the nonempty actual fixtures and independent all-field native
+oracle described above. The initial freeze and held review remain preserved as
+historical source evidence, not a passing provider result. All corrected contract
+execution is still UNRUN at source handoff.
