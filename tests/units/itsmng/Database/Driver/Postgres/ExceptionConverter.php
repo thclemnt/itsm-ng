@@ -6,7 +6,7 @@ namespace tests\units\itsmng\Database\Driver\Postgres;
 
 use Doctrine\DBAL\Driver\API\ExceptionConverter as Converter;
 use Doctrine\DBAL\Driver\Exception as NativeException;
-use Doctrine\DBAL\Driver\PDO\Exception as PdoException;
+use Doctrine\DBAL\Driver\PDO\Exception as DbalPdoException;
 use Doctrine\DBAL\Exception\DriverException;
 use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
 use Doctrine\DBAL\ParameterType;
@@ -18,11 +18,11 @@ use RuntimeException;
 
 class ExceptionConverter extends \atoum\atoum\test
 {
-    private function nativeError(?string $state, string $message = 'Native diagnostic'): PdoException
+    private function nativeError(?string $state, string $message = 'Native diagnostic'): DbalPdoException
     {
         $pdo = new PDOException($message);
         $pdo->errorInfo = [$state, 7, $message];
-        return PdoException::new($pdo);
+        return DbalPdoException::new($pdo);
     }
 
     public function testRestrictPreservesNativeProvenanceAndOtherStatesDelegateExactlyOnce(): void
