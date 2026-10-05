@@ -918,8 +918,14 @@ final class DbUtils
         if ($use_cache) {
             $iterator = $this->getTreeRows($table, ['id', 'ancestors_cache', $parentIDfield], ['id' => $items_id]);
 
+            // An IN predicate does not preserve the caller's selection order.
+            $rowsById = [];
             foreach ($iterator as $row) {
-                if ($row['id'] > 0) {
+                $rowsById[(int)$row['id']] = $row;
+            }
+            foreach (array_unique(array_map('intval', $items_id)) as $id) {
+                $row = $rowsById[$id] ?? null;
+                if ($row !== null && $row['id'] > 0) {
                     $rancestors = $row['ancestors_cache'];
                     $parent     = $row[$parentIDfield];
 

@@ -929,6 +929,19 @@ class DbUtils extends DbTestCase
         if ($cache === true) {
             $this->boolean($GLPI_CACHE->has($ckey_new_all))->isFalse();
         }
+
+        // Reversing the selected branches reverses only their distinct ancestors.
+        $expectedReversed = [0 => 0, $ent0 => $ent0, $ent2 => $ent2, $ent1 => $ent1];
+        $reverseKey = 'ancestors_cache_glpi_entities_' . md5($new_id2 . '|' . $new_id);
+        if ($cache === true) {
+            $GLPI_CACHE->set($reverseKey, [$ent1 => $ent1]);
+            $this->boolean($GLPI_CACHE->has($reverseKey))->isTrue();
+        }
+        $this->array(getAncestorsOf('glpi_entities', [$new_id2, $new_id]))->isIdenticalTo($expectedReversed);
+        $this->array(getAncestorsOf('glpi_entities', [(string)$new_id2, $new_id, $new_id2]))->isIdenticalTo($expectedReversed);
+        if ($cache === true) {
+            $this->boolean($GLPI_CACHE->has($reverseKey))->isFalse();
+        }
     }
 
     public function testGetAncestorsOf()
