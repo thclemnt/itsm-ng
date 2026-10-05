@@ -112,6 +112,15 @@ final class EntityRegistry
         if (self::$model !== null) {
             return self::$model;
         }
+        $cache = $GLOBALS['GLPI_CACHE'] ?? null;
+        if ($cache instanceof \Psr\SimpleCache\CacheInterface) {
+            return self::$model = (new EntityRegistryCache($cache, dirname(__DIR__, 2)))->load(self::buildModel(...));
+        }
+        return self::$model = self::buildModel();
+    }
+
+    private static function buildModel(): array
+    {
         // Mapping inspection must also work before installation. The explicit
         // server version prevents platform discovery from opening a connection.
         $connection = DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
@@ -247,6 +256,6 @@ final class EntityRegistry
         // Only immutable lookup projections survive bootstrap, not the offline unit of work.
         unset($em, $metadata, $record);
         gc_collect_cycles();
-        return self::$model = ['tables' => $tables, 'types' => $types, 'booleans' => $booleans, 'boolean_fields' => $booleanFields, 'relations' => $relations, 'references' => $references, 'discriminators' => $discriminators, 'lifecycle' => $lifecycle, 'read_only' => $readOnly, 'scope_owners' => $scopeOwners, 'native_timestamps' => $nativeTimestamps];
+        return ['tables' => $tables, 'types' => $types, 'booleans' => $booleans, 'boolean_fields' => $booleanFields, 'relations' => $relations, 'references' => $references, 'discriminators' => $discriminators, 'lifecycle' => $lifecycle, 'read_only' => $readOnly, 'scope_owners' => $scopeOwners, 'native_timestamps' => $nativeTimestamps];
     }
 }
