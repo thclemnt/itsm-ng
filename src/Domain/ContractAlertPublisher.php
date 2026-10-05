@@ -4,9 +4,17 @@
 
 namespace itsmng\Domain;
 
+use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\LockMode;
 use itsmng\Database\Entity\Contract;
+use itsmng\Database\LifecycleModelJournal;
+use itsmng\Database\LifecycleNotifications;
+use itsmng\Database\MutationCleanupFailure;
+use itsmng\Database\MutationRollbackFailure;
 use itsmng\Database\Orm;
+use itsmng\Database\OwnedMutationFrame;
+use itsmng\Database\TransactionOwnership;
+use itsmng\Database\TransactionOwnershipMismatch;
 
 /** Public dispatch and Alert lifecycle share the active writer transaction; transport stays queued. */
 final class ContractAlertPublisher
@@ -26,7 +34,14 @@ final class ContractAlertPublisher
             return ContractAlertOutcome::Refused;
         }
         $connection = $this->database->getDoctrineConnection();
-        $level = $connection->getTransactionNestingLevel();
+        TransactionOwnership::assertManaged($connection);
+        $frame = null;
+        $rolledBack = false;
+        $rollbackAttempted = false;
+        $journal = new LifecycleModelJournal();
+        $delivery = LifecycleNotifications::begin($connection);
+        $failure = null;
+        $outcome = ContractAlertOutcome::Refused;
         $session = $_SESSION;
         $restoreFeedback = static function () use ($session): void {
             $feedback = $_SESSION['MESSAGE_AFTER_REDIRECT'] ?? [];
@@ -39,65 +54,127 @@ final class ContractAlertPublisher
         };
         $accepted = false;
         try {
-            $connection->beginTransaction();
-            $manager = Orm::create($this->database);
-            try {
-                $ids = array_keys($contracts);
-                sort($ids, SORT_NUMERIC);
-                foreach ($ids as $id) {
-                    $contract = $manager->find(Contract::class, (int)$id, LockMode::PESSIMISTIC_WRITE);
-                    if ($contract === null || $contract->entities?->id !== $entity) {
+            $frame = OwnedMutationFrame::begin($connection);
+            $outcome = $journal->observe($connection, function () use ($frame, $connection, $event, $alertType, $entity, $contracts, $replacePrevious): ContractAlertOutcome {
+                $manager = Orm::create($this->database);
+                try {
+                    $ids = array_keys($contracts);
+                    sort($ids, SORT_NUMERIC);
+                    foreach ($ids as $id) {
+                        $contract = $manager->find(Contract::class, (int)$id, LockMode::PESSIMISTIC_WRITE);
+                        if ($contract === null || $contract->entities?->id !== $entity) {
+                            return ContractAlertOutcome::Refused;
+                        }
+                        $selected = $contracts[$id];
+                        $current = (new \itsmng\Database\Repository\RecordRepository($manager))->toRow($contract);
+                        foreach (['begin_date', 'duration', 'notice', 'periodicity', 'alert', 'is_deleted'] as $field) {
+                            if (($selected[$field] ?? null) !== $current[$field]) {
+                                return ContractAlertOutcome::Skipped;
+                            }
+                        }
+                        $previous = $manager->createQueryBuilder()->select('a')->from(\itsmng\Database\Entity\Alert::class, 'a')
+                            ->where('a.contract = :contract AND a.type = :type')->setParameter('contract', $contract)
+                            ->setParameter('type', $alertType)->getQuery()->setLockMode(LockMode::PESSIMISTIC_WRITE)->getOneOrNullResult();
+                        if (!$replacePrevious && $previous !== null) {
+                            return ContractAlertOutcome::Skipped;
+                        }
+                        if ($replacePrevious) {
+                            $expected = $contracts[$id][$alertType === \Alert::NOTICE ? 'last_notice' : 'last_period'] ?? null;
+                            $expected = $expected instanceof \DateTimeInterface ? $expected->format('Y-m-d H:i:s') : $expected;
+                            if ($previous?->date?->format('Y-m-d H:i:s') !== $expected) {
+                                return ContractAlertOutcome::Skipped;
+                            }
+                        }
+                    }
+                } finally {
+                    $manager->clear();
+                }
+                $this->assertActive($frame, $connection);
+                $notified = \NotificationEvent::raiseEvent($event, new \Contract(), ['entities_id' => $entity, 'items' => $contracts]);
+                // Refusal is not permission to unwind a replacement callback frame.
+                $this->assertActive($frame, $connection);
+                if (!$notified) {
+                    return ContractAlertOutcome::Refused;
+                }
+                foreach ($contracts as $id => $contract) {
+                    $alert = new \Alert();
+                    $this->assertActive($frame, $connection);
+                    if ($replacePrevious) {
+                        $cleared = $alert->clear('Contract', $id, $alertType);
+                        $this->assertActive($frame, $connection);
+                        if (!$cleared) {
+                            return ContractAlertOutcome::Refused;
+                        }
+                    }
+                    $added = $alert->add(['itemtype' => 'Contract', 'items_id' => $id, 'type' => $alertType]);
+                    $this->assertActive($frame, $connection);
+                    if (!$added) {
                         return ContractAlertOutcome::Refused;
                     }
-                    $selected = $contracts[$id];
-                    $current = (new \itsmng\Database\Repository\RecordRepository($manager))->toRow($contract);
-                    foreach (['begin_date', 'duration', 'notice', 'periodicity', 'alert', 'is_deleted'] as $field) {
-                        if (($selected[$field] ?? null) !== $current[$field]) {
-                            return ContractAlertOutcome::Skipped;
-                        }
-                    }
-                    $previous = $manager->createQueryBuilder()->select('a')->from(\itsmng\Database\Entity\Alert::class, 'a')
-                        ->where('a.contract = :contract AND a.type = :type')->setParameter('contract', $contract)
-                        ->setParameter('type', $alertType)->getQuery()->setLockMode(LockMode::PESSIMISTIC_WRITE)->getOneOrNullResult();
-                    if (!$replacePrevious && $previous !== null) {
-                        return ContractAlertOutcome::Skipped;
-                    }
-                    if ($replacePrevious) {
-                        $expected = $contracts[$id][$alertType === \Alert::NOTICE ? 'last_notice' : 'last_period'] ?? null;
-                        $expected = $expected instanceof \DateTimeInterface ? $expected->format('Y-m-d H:i:s') : $expected;
-                        if ($previous?->date?->format('Y-m-d H:i:s') !== $expected) {
-                            return ContractAlertOutcome::Skipped;
-                        }
-                    }
                 }
-            } finally {
-                $manager->clear();
+                return ContractAlertOutcome::Published;
+            });
+            $this->assertActive($frame, $connection);
+            if ($outcome === ContractAlertOutcome::Published) {
+                $frame->commit();
+                $accepted = true;
+            } else {
+                $rollbackAttempted = true;
+                $frame->rollBack();
+                $rolledBack = true;
             }
-            if (!\NotificationEvent::raiseEvent($event, new \Contract(), ['entities_id' => $entity, 'items' => $contracts])) {
-                return ContractAlertOutcome::Refused;
-            }
-            foreach ($contracts as $id => $contract) {
-                $alert = new \Alert();
-                if ($replacePrevious && !$alert->clear('Contract', $id, $alertType)) {
-                    return ContractAlertOutcome::Refused;
-                }
-                if (!$alert->add(['itemtype' => 'Contract', 'items_id' => $id, 'type' => $alertType])) {
-                    return ContractAlertOutcome::Refused;
+        } catch (\Throwable $primary) {
+            $failure = $primary;
+            if ($frame !== null && !$rollbackAttempted) {
+                try {
+                    $rollbackAttempted = true;
+                    $frame->rollBack();
+                    $rolledBack = true;
+                } catch (\Throwable $cleanup) {
+                    $failure = new MutationRollbackFailure($primary, $cleanup);
                 }
             }
-            if ($connection->getTransactionNestingLevel() !== $level + 1) {
-                throw new \LogicException('A contract notification hook changed transaction ownership');
-            }
-            $connection->commit();
-            $accepted = true;
-            return ContractAlertOutcome::Published;
         } finally {
-            if (!$accepted) {
-                while ($connection->getTransactionNestingLevel() > $level) {
-                    $connection->rollBack();
+            try {
+                // Contract alarms retain queue-only transport, including when
+                // this frame released a savepoint in a caller-owned transaction.
+                $delivery->finish($accepted);
+            } catch (\Throwable $cleanup) {
+                $failure = self::preserveFailure($failure, $cleanup);
+            }
+            if ($rolledBack) {
+                try {
+                    $journal->restore();
+                } catch (\Throwable $cleanup) {
+                    $failure = self::preserveFailure($failure, $cleanup);
                 }
-                $restoreFeedback();
+                try {
+                    $restoreFeedback();
+                } catch (\Throwable $cleanup) {
+                    $failure = self::preserveFailure($failure, $cleanup);
+                }
             }
         }
+        if ($failure !== null) {
+            throw $failure;
+        }
+        return $outcome;
+    }
+
+    private function assertActive(OwnedMutationFrame $frame, Connection $connection): void
+    {
+        if (($GLOBALS['DB'] ?? null) !== $this->database || $this->database->getDoctrineConnection() !== $connection) {
+            throw new TransactionOwnershipMismatch('A contract notification hook changed the supplied active writer.');
+        }
+        $frame->assertActive();
+    }
+
+    private static function preserveFailure(?\Throwable $primary, \Throwable $cleanup): \Throwable
+    {
+        return $primary === null ? $cleanup : new MutationCleanupFailure(
+            $primary,
+            $cleanup,
+            $primary instanceof MutationCleanupFailure && $primary->rollbackUnproven
+        );
     }
 }
