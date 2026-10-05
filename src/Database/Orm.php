@@ -16,6 +16,7 @@ final class Orm
     /** Mapping configuration and serialized metadata are shared, managed records are not. */
     private static array $configurations = [];
     private static int $unitsOfWork = 0;
+    private static ?\WeakMap $queryCaches = null;
     /**
      * A unit of work never outlives an application operation: legacy writers do
      * not notify Doctrine's identity map. The connection and transaction are shared.
@@ -29,7 +30,14 @@ final class Orm
         if (++self::$unitsOfWork % 8 === 0) {
             gc_collect_cycles();
         }
-        return new EntityManager($db->getDoctrineConnection(), self::configuration($db->getDoctrineConnection()->getDatabasePlatform()));
+        $configuration = self::configuration($db->getDoctrineConnection()->getDatabasePlatform());
+        // Cache compiled DQL, never rows or managed entities. Only this owned
+        // configuration participates: public configurations may replace mapping
+        // drivers/listeners and must not inherit a different mapping's SQL.
+        self::$queryCaches ??= new \WeakMap();
+        $driver = $configuration->getMetadataDriverImpl();
+        $configuration->setQueryCache(self::$queryCaches[$driver] ??= new ArrayAdapter(storeSerialized: true));
+        return new EntityManager($db->getDoctrineConnection(), $configuration);
     }
 
     public static function configuration(AbstractPlatform $platform): Configuration

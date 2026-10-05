@@ -396,6 +396,47 @@ class Config extends DbTestCase
         $this->array($report)->isIdenticalTo($expected);
     }
 
+    public function testOwnedQueryCacheRetainsFreshManagersAndLiveValues(): void
+    {
+        global $DB;
+        $context = 'query-cache-' . bin2hex(random_bytes(6));
+        \Config::setConfigurationValues($context, ['first' => 'before', 'second' => 'other']);
+        ConfigQueryCacheWalker::$compilations = 0;
+        $first = \itsmng\Database\Orm::create($DB);
+        $second = \itsmng\Database\Orm::create($DB);
+        $cache = $first->getConfiguration()->getQueryCache();
+        $this->object($cache)->isIdenticalTo($second->getConfiguration()->getQueryCache());
+        $this->object($first)->isNotIdenticalTo($second);
+        $this->object($first->getConnection())->isIdenticalTo($DB->getDoctrineConnection());
+        $this->object($second->getConnection())->isIdenticalTo($DB->getDoctrineConnection());
+        $this->variable(\itsmng\Database\Orm::configuration($DB->getDoctrineConnection()->getDatabasePlatform())->getQueryCache())->isNull();
+        $original = $first->getClassMetadata(\itsmng\Database\Entity\Config::class)->generatorType;
+        $first->getClassMetadata(\itsmng\Database\Entity\Config::class)->setIdGeneratorType(\Doctrine\ORM\Mapping\ClassMetadata::GENERATOR_TYPE_NONE);
+        $this->integer($second->getClassMetadata(\itsmng\Database\Entity\Config::class)->generatorType)->isIdenticalTo($original);
+        $read = static function (\Doctrine\ORM\EntityManager $manager, string $name) use ($context): string {
+            return $manager->createQuery('SELECT c.value FROM ' . \itsmng\Database\Entity\Config::class . ' c WHERE c.context = :context AND c.name = :name')
+                ->setParameter('context', $context, \Doctrine\DBAL\Types\Types::STRING)
+                ->setParameter('name', $name, \Doctrine\DBAL\Types\Types::STRING)
+                ->setHint(\Doctrine\ORM\Query::HINT_CUSTOM_OUTPUT_WALKER, ConfigQueryCacheWalker::class)
+                ->getSingleScalarResult();
+        };
+        try {
+            $cache->clear();
+            $this->string($read($first, 'first'))->isIdenticalTo('before');
+            $this->integer(ConfigQueryCacheWalker::$compilations)->isIdenticalTo(1);
+            $this->string($read($second, 'second'))->isIdenticalTo('other');
+            $this->integer(ConfigQueryCacheWalker::$compilations)->isIdenticalTo(1);
+            \Config::setConfigurationValues($context, ['first' => 'after']);
+            $this->string($read(\itsmng\Database\Orm::create($DB), 'first'))->isIdenticalTo('after');
+            $this->integer(ConfigQueryCacheWalker::$compilations)->isIdenticalTo(1);
+            $cache->clear();
+            $this->string($read(\itsmng\Database\Orm::create($DB), 'first'))->isIdenticalTo('after');
+            $this->integer(ConfigQueryCacheWalker::$compilations)->isIdenticalTo(2);
+        } finally {
+            \Config::deleteConfigurationValues($context, ['first', 'second']);
+        }
+    }
+
     public function testGetConfigurationValues()
     {
         $conf = \Config::getConfigurationValues('core');
@@ -980,5 +1021,17 @@ class Config extends DbTestCase
                 unset($CFG_GLPI['auto_create_infocoms']);
             }
         }
+    }
+}
+
+/** Count real SQL compilation while retaining Doctrine's standard finalizer. */
+final class ConfigQueryCacheWalker extends \Doctrine\ORM\Query\SqlOutputWalker
+{
+    public static int $compilations = 0;
+
+    public function getFinalizer(\Doctrine\ORM\Query\AST\DeleteStatement|\Doctrine\ORM\Query\AST\UpdateStatement|\Doctrine\ORM\Query\AST\SelectStatement $AST): \Doctrine\ORM\Query\Exec\SqlFinalizer
+    {
+        ++self::$compilations;
+        return parent::getFinalizer($AST);
     }
 }
