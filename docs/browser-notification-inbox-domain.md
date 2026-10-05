@@ -30,7 +30,13 @@ adapter refuses acknowledgement before persistence. The original direct update
 did not invoke CommonDBTM update hooks, audit history or notifications; this
 operation does not introduce those unrelated effects.
 
-Two behavior corrections are explicit. A browser acknowledgement cannot cancel
+The pending entity predicate is also applied after hydration, so native MySQL
+collation cannot expose a noncanonical channel that the domain refuses to
+consume. The public browser producer already writes the canonical `ajax` value.
+This makes manually populated `AJAX` and other collation variants ineligible for
+browser presentation on both providers without altering their stored rows.
+
+Behavior corrections are explicit. A browser acknowledgement cannot cancel
 a numeric-recipient mailing row. Repeating an acknowledgement retains the first
 presentation time instead of overwriting it. Malformed, boolean, array and
 out-of-range public identifiers no longer coerce into another message ID.

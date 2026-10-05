@@ -36,7 +36,12 @@ final class NotificationQueueRepository
         if ($recipient <= 0) {
             return [];
         }
-        return $this->browserSelection($recipient)->orderBy('r.id')->getQuery()->getResult();
+        // Native collations may treat a malformed mode as "ajax". The entity
+        // owns the same exact recipient/channel policy for reading and consuming.
+        return array_values(array_filter(
+            $this->browserSelection($recipient)->orderBy('r.id')->getQuery()->getResult(),
+            static fn (Entity\QueuedNotification $message): bool => $message->isPendingBrowserMessageFor($recipient)
+        ));
     }
 
     /** Caller owns a writer transaction; the lock closes a concurrent presentation race. */
