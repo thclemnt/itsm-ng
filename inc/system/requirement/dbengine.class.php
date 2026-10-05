@@ -57,9 +57,21 @@ class DbEngine extends AbstractRequirement
 
     protected function check()
     {
-        $version = preg_replace('/^((\d+\.?)+).*$/', '$1', $this->db->getVersion());
+        $rawVersion = $this->db->getVersion();
+        $version = preg_replace('/^((\d+\.?)+).*$/', '$1', $rawVersion);
+        if ($this->db->getProvider() === 'pgsql') {
+            $supported = version_compare($version, '14', '>=');
+        } else {
+            $maria = stripos($rawVersion, 'MariaDB') !== false;
+            try {
+                $version = \itsmng\Database\CheckConstraintSupport::version($rawVersion, $maria);
+                $supported = \itsmng\Database\CheckConstraintSupport::supportsVersion($rawVersion, $maria);
+            } catch (\RuntimeException) {
+                $supported = false;
+            }
+        }
 
-        if (version_compare($version, $this->db->getProvider() === 'pgsql' ? '14' : '5.6', '>=')) {
+        if ($supported) {
             $this->validated = true;
             $this->validation_messages[] = sprintf(
                 __('Database version seems correct (%s) - Perfect!'),
