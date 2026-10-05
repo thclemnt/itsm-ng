@@ -55,6 +55,12 @@ class Contact extends CommonDBTM
         return _n('Contact', 'Contacts', $nb);
     }
 
+    public function getDropdownNameFields(bool $tooltip = true): array
+    {
+        return array_merge(parent::getDropdownNameFields($tooltip), ['firstname'],
+            $tooltip ? ['phone', 'phone2', 'mobile', 'fax', 'email'] : []);
+    }
+
 
     public function cleanDBonPurge()
     {

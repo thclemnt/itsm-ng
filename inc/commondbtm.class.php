@@ -4206,6 +4206,12 @@ class CommonDBTM extends CommonGLPI
         return 'name';
     }
 
+    /** Fields consumed by Dropdown::getDropdownName, including its optional tooltip. */
+    public function getDropdownNameFields(bool $tooltip = true): array
+    {
+        return [$this->getNameField(), 'comment'];
+    }
+
 
     /**
      * @since 0.84

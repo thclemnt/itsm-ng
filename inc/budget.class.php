@@ -62,6 +62,12 @@ class Budget extends CommonDropdown
         return _n('Budget', 'Budgets', $nb);
     }
 
+    public function getDropdownNameFields(bool $tooltip = true): array
+    {
+        return array_merge(parent::getDropdownNameFields($tooltip),
+            $tooltip ? ['locations_id', 'budgettypes_id', 'begin_date', 'end_date'] : []);
+    }
+
     public function title()
     {
         return '';

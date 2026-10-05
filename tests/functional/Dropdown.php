@@ -40,6 +40,133 @@ use Generator;
 
 class Dropdown extends DbTestCase
 {
+    public function testDropdownNameProjectionAvoidsHydration(): void
+    {
+        global $DB;
+        $em = \itsmng\Database\Orm::create($DB);
+        $repository = new \itsmng\Database\Repository\DropdownTranslationRepository($em);
+        $listener = new class {
+            public int $loaded = 0;
+
+            public function postLoad(): void
+            {
+                ++$this->loaded;
+            }
+        };
+        $em->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+        try {
+            foreach ([
+                'Computer' => '_test_pc01', 'Contact' => '_contact01_name',
+                'Supplier' => '_suplier01_name', 'Netpoint' => '_netpoint01', 'Budget' => '_budget01',
+            ] as $type => $name) {
+                $item = getItemByTypeName($type, $name);
+                $id = (int)$item->getID();
+                $em->clear();
+                $listener->loaded = 0;
+                $full = $repository->dropdownRow($item->getTable(), $id, $type, 'en_GB', []);
+                // Positive control: the existing full-row API really loads an entity.
+                $this->integer($listener->loaded)->isGreaterThan(0);
+                foreach ([true, false] as $tooltip) {
+                    $em->clear();
+                    $listener->loaded = 0;
+                    $columns = $item->getDropdownNameFields($tooltip);
+                    $row = $repository->dropdownRow($item->getTable(), $id, $type, 'en_GB', [], $columns);
+                    $expected = [];
+                    foreach ($columns as $column) {
+                        $expected[$column] = $full[$column];
+                    }
+                    $this->array($row)->isIdenticalTo($expected + ['transname' => '', 'transcomment' => '']);
+                    $this->integer($listener->loaded)->isIdenticalTo(0);
+                    $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+                }
+            }
+        } finally {
+            $em->getEventManager()->removeEventListener([\Doctrine\ORM\Events::postLoad], $listener);
+            $em->clear();
+        }
+    }
+
+    public function testDropdownNameProjectionLegacyValues(): void
+    {
+        global $DB;
+        $budget = (int)getItemByTypeName('Budget', '_budget01', true);
+        $location = (int)getItemByTypeName('Location', '_location01', true);
+        $connection = $DB->getDoctrineConnection();
+        $connection->update('glpi_budgets', [
+            'name' => "O'Reilly\\budget", 'comment' => null, 'is_deleted' => false,
+            'begin_date' => '2026-02-03', 'end_date' => null, 'locations_id' => $location,
+        ], ['id' => $budget], ['is_deleted' => \Doctrine\DBAL\Types\Types::BOOLEAN]);
+        $repository = new \itsmng\Database\Repository\DropdownTranslationRepository(\itsmng\Database\Orm::create($DB));
+        $columns = ['id', 'name', 'comment', 'is_deleted', 'begin_date', 'end_date', 'locations_id'];
+        $expected = [
+            'id' => $budget, 'name' => "O'Reilly\\budget", 'comment' => null, 'is_deleted' => 0,
+            'begin_date' => '2026-02-03', 'end_date' => null, 'locations_id' => $location,
+            'transname' => '', 'transcomment' => '',
+        ];
+        $this->array($repository->dropdownRow('glpi_budgets', $budget, 'Budget', 'en_GB', [], $columns))
+            ->isIdenticalTo($expected);
+        $connection->update('glpi_budgets', ['is_deleted' => true, 'locations_id' => null], ['id' => $budget],
+            ['is_deleted' => \Doctrine\DBAL\Types\Types::BOOLEAN]);
+        $expected['is_deleted'] = 1;
+        $expected['locations_id'] = null;
+        $this->array($repository->dropdownRow('glpi_budgets', $budget, 'Budget', 'en_GB', [], $columns))
+            ->isIdenticalTo($expected);
+        $this->variable($repository->dropdownRow('glpi_budgets', -1, 'Budget', 'en_GB', [], $columns))->isNull();
+
+        $customName = new class extends \Computer {
+            public static function getNameField()
+            {
+                return 'serial';
+            }
+        };
+        $this->array($customName->getDropdownNameFields())->isIdenticalTo(['serial', 'comment']);
+    }
+
+    public function testDropdownNameProjectedTranslationsAndMissing(): void
+    {
+        global $DB;
+        $computer = (int)getItemByTypeName('Computer', '_test_pc01', true);
+        $connection = $DB->getDoctrineConnection();
+        $connection->update('glpi_computers', ['name' => '', 'comment' => 'Original comment'], ['id' => $computer]);
+        $language = $_SESSION['glpilanguage'] ?? null;
+        $translations = $_SESSION['glpi_dropdowntranslations'] ?? null;
+        try {
+            $_SESSION['glpilanguage'] = 'en_GB';
+            $_SESSION['glpi_dropdowntranslations'] = ['Computer' => ['name' => 'name', 'comment' => 'comment']];
+            foreach (['name' => 'Translated computer', 'comment' => "Translated O'Reilly\\comment"] as $field => $value) {
+                $key = ['itemtype' => 'Computer', 'items_id' => $computer, 'language' => 'en_GB', 'field' => $field];
+                $connection->delete('glpi_dropdowntranslations', $key);
+                $connection->insert('glpi_dropdowntranslations', $key + ['value' => $value]);
+            }
+            $this->array(\Dropdown::getDropdownName('glpi_computers', $computer, true))->isIdenticalTo([
+                'name' => 'Translated computer', 'comment' => "Translated O'Reilly\\comment",
+            ]);
+            // The existing formatter ignores translated comments when the source is NULL.
+            $connection->update('glpi_computers', ['comment' => null], ['id' => $computer]);
+            $this->array(\Dropdown::getDropdownName('glpi_computers', $computer, true))->isIdenticalTo([
+                'name' => 'Translated computer', 'comment' => '',
+            ]);
+            $this->array(\Dropdown::getDropdownName('glpi_computers', $computer, true, false))->isIdenticalTo([
+                'name' => '(' . $computer . ')', 'comment' => '',
+            ]);
+            $this->string(\Dropdown::getDropdownName('glpi_computers', -1))->isIdenticalTo('&nbsp;');
+            $this->array(\Dropdown::getDropdownName('glpi_computers', -1, true))->isIdenticalTo([
+                'name' => '&nbsp;', 'comment' => '',
+            ]);
+        } finally {
+            if ($language === null) {
+                unset($_SESSION['glpilanguage']);
+            } else {
+                $_SESSION['glpilanguage'] = $language;
+            }
+            if ($translations === null) {
+                unset($_SESSION['glpi_dropdowntranslations']);
+            } else {
+                $_SESSION['glpi_dropdowntranslations'] = $translations;
+            }
+        }
+    }
+
     public function testGetItemActionButtonsHonorsItemRights()
     {
         $_SESSION['glpiactiveprofile'][\RequestType::$rightname] = READ | CREATE;

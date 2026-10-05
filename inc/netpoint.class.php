@@ -68,6 +68,11 @@ class Netpoint extends CommonDropdown
         return _n('Network outlet', 'Network outlets', $nb);
     }
 
+    public function getDropdownNameFields(bool $tooltip = true): array
+    {
+        return array_merge(parent::getDropdownNameFields($tooltip), ['locations_id']);
+    }
+
 
     public function rawSearchOptions()
     {

@@ -56,6 +56,9 @@ final class DropdownTranslationRepository
         if ($columns === null) {
             $query->select('r');
         } else {
+            // Keep one result for this root, as object hydration did even when
+            // historical translation rows duplicated a joined key.
+            $query->select('r.id AS dropdownRecordId')->indexBy('r', 'r.id');
             $compiler = new RecordCriteria($query, $metadata, false);
             foreach ($columns as $index => $column) {
                 $query->addSelect($compiler->column($column) . ' AS column' . $index);
@@ -81,7 +84,8 @@ final class DropdownTranslationRepository
         } else {
             $row = [];
             foreach ($columns as $index => $column) {
-                $row[$column] = $result['column' . $index];
+                $mapping = $metadata->fieldMappings[$metadata->getFieldName($column)] ?? null;
+                $row[$column] = RecordRepository::legacyScalarValue($result['column' . $index], $mapping?->type ?? Types::BIGINT);
             }
         }
         $row += ['transname' => '', 'transcomment' => ''];
