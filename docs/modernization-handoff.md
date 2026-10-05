@@ -168,8 +168,36 @@ type registry. A second change lazily loads the Ticket status catalogue once per
 search formatting pass, after plugin hooks, preserving subclass dispatch and
 observing writes on the next pass. Existing ordinary Entity and Search test
 classes cover the new cases; native tests and isolated paired timings for these
-candidates are pending. These changes do not resolve stable status identity or
-claim a Software dropdown performance gain.
+candidates were run against both engines. Initial failures came from new fixtures
+writing legacy sentinels without canonical reference modes and creating tickets
+without explicit visible entity/requester ownership. Corrected fixtures retain
+the original constraints, sentinel expectations and exact two-row search result.
+At `16b2cd5134`, the ordinary unit suite passed 30 classes, 216 methods and 8,821
+assertions on each provider, with no skips. At `0935573b5f`, the focused application
+suite passed all 46 methods across five classes and 9,374 assertions on MariaDB.
+PostgreSQL passed the new Entity, Search, Ticket and Notification cases but failed
+the existing multi-selection ancestor-order assertion in DbUtils. The reviewed
+repair restores caller-selected branch order after an unordered IN query and adds
+reversed/duplicate/string-ID controls; native validation is pending. The original
+relation-endpoint contract passed on clean PostgreSQL C at `0935573b5f`, including
+anonymous NULL/zero email links and rejection of dangling nonzero attachments.
+Native Entity/Status paired timings are underway independently of those repairs.
+These changes do not resolve stable status identity or claim a Software dropdown
+performance gain.
+
+Read-only migration attribution at `ca81467c1f` measured PostgreSQL plan/verify/
+schema at 1.16/7.46/0.99 seconds and MariaDB at 10.87/31.34/4.35 seconds. MariaDB
+verification issued 7,494 SELECTs; repeated declaration inspection dominated its
+profile, including 14.48 seconds of nullable-reference table inspection. The
+reviewed changes share a fresh local DBAL Schema only within reference verification
+and omit unused DDL/preservation planning during exact-policy verification. They
+retain live data audits, native FK/CHECK/collation checks and authoritative policy
+comparison; apply/retry paths still inspect afresh after DDL. At `57b49e3577`,
+verification took 4.71 seconds on PostgreSQL and 19.33 on MariaDB, the latter with
+4,806 SELECTs. Both runs preserved the ledger in read-only transactions, with
+zero MariaDB DDL/DML. This focused comparison does not prove the 300-second
+interruption contracts pass. PostgreSQL C's post-full inspection at `ca81467c1f`
+found 358 tables, 1,087 FKs, no pending history and no schema differences.
 
 A separate genuine 2.1.3 populated clone was verified against all 355 original
 table row bags and its original encryption key before adoption. Public `db:update`
