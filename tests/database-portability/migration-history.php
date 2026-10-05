@@ -657,7 +657,8 @@ try {
     $assertMarketplaceRefusal('customized translation');
     $connection->update('glpi_notificationtemplatetranslations', ['content_text' => $marketplaceDefaults['glpi_notificationtemplatetranslations']['content_text']], ['id' => 28]);
     // An explicitly synthetic owner tests refusal only; it never repairs the positive fixture.
-    $connection->insert('glpi_notifications', ['id' => 71, 'name' => 'Deliberate custom owner for refusal']);
+    $connection->insert('glpi_notifications', ['id' => 71, 'name' => 'Deliberate custom owner for refusal',
+        'itemtype' => 'Ticket', 'event' => 'update']);
     $assertMarketplaceRefusal('one existing parent');
     $connection->delete('glpi_notifications', ['id' => 71]);
     $connection->insert('glpi_notificationtargets', ['id' => 1999999999, 'items_id' => 1, 'type' => 1, 'notifications_id' => 71]);
