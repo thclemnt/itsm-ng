@@ -2,10 +2,11 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-use itsmng\Database\Migration\ReferenceHistory;
+use itsmng\Database\Migration\V220\NullableReferences;
+use itsmng\Database\Migration\V220\ReferenceHistory;
+
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\MappedStorage;
-use itsmng\Database\Migration\AssetClassification;
 
 $directory = $argv[1] ?? '';
 if (!is_file($directory . '/config_db.php')) {
@@ -114,7 +115,7 @@ try {
 // Exercise a real old-schema upgrade, including refusal before any DDL.
 $platform = $connection->getDatabasePlatform();
 $quote = $platform->quoteIdentifier(...);
-$migration = new AssetClassification();
+$migration = new NullableReferences(ReferenceHistory::get('optional', 'ASSET_CLASSIFICATION'), 'asset classification');
 $legacyId = null;
 try {
     foreach (ReferenceHistory::get('optional', 'ASSET_CLASSIFICATION') as $table => $relations) {

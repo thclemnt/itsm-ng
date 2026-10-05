@@ -2,7 +2,7 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-use itsmng\Database\Migration\ReferenceHistory;
+use itsmng\Database\Migration\V220\ReferenceHistory;
 
 /** Valid dependency graphs for FK tests; never catch fixture failures as rejection proof. */
 final class FixtureRecords

@@ -9,7 +9,7 @@ use itsmng\Database\Entity as Record;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\MappedStorage;
-use itsmng\Database\Migration\TicketAssets;
+use itsmng\Database\Migration\V220\TicketAssets;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\Repository\TicketAssetRepository;

@@ -5,8 +5,8 @@
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Table;
 use itsmng\Database\Migration\Ledger;
-use itsmng\Database\Migration\SoftwareInstallationSubjects20261011;
-use itsmng\Database\Migration\SoftwareLicenseSubjects20261011;
+use itsmng\Database\Migration\V220\SoftwareInstallationSubjects;
+use itsmng\Database\Migration\V220\SoftwareLicenseSubjects;
 
 $directory = $argv[1] ?? '';
 if (!is_file($directory . '/config_db.php')) {
@@ -88,7 +88,7 @@ try {
     foreach ($subjects as $subject) {
         $connection->insert('glpi_' . $subject, ['id' => $sameId]);
     }
-    $migrations = ['glpi_items_softwareversions' => new SoftwareInstallationSubjects20261011(), 'glpi_items_softwarelicenses' => new SoftwareLicenseSubjects20261011()];
+    $migrations = ['glpi_items_softwareversions' => new SoftwareInstallationSubjects(), 'glpi_items_softwarelicenses' => new SoftwareLicenseSubjects()];
     foreach ($migrations as $table => $migration) {
         $parent = $table === 'glpi_items_softwareversions' ? 'softwareversions_id' : 'softwarelicenses_id';
         foreach ([['itemtype' => 'PluginInventoryAsset', 'items_id' => $sameId], ['itemtype' => 'computer', 'items_id' => $sameId],
@@ -101,7 +101,7 @@ try {
             } catch (RuntimeException $error) {
                 verify(str_contains($error->getMessage(), $table), 'Concrete table/row diagnostic');
             }
-            verify(Ledger::state($connection, $migration::VERSION) === null && !$manager->introspectTable($table)->hasColumn('computers_id'), 'Read-only preflight leaves columns and ledger untouched');
+            verify(Ledger::state($connection, $migration::PHASE) === null && !$manager->introspectTable($table)->hasColumn('computers_id'), 'Read-only preflight leaves columns and ledger untouched');
             $connection->delete($table, ['id' => 701]);
         }
         // Sibling ends and wrong installation owner state are not repaired silently.
@@ -131,7 +131,7 @@ try {
                     verify(str_contains($error->getMessage(), substr(json_encode($diagnostic, JSON_THROW_ON_ERROR), 1, -1)), 'Historical scope diagnostic ' . $diagnostic);
                 }
             }
-            verify(Ledger::state($connection, $migration::VERSION) === null, 'Historical scope preflight creates no ledger');
+            verify(Ledger::state($connection, $migration::PHASE) === null, 'Historical scope preflight creates no ledger');
         };
         if (!$postgres) {
             // Historical MySQL BOOLEAN is physically TINYINT and can contain non-boolean values.
@@ -201,14 +201,14 @@ try {
             } catch (RuntimeException $error) {
                 verify($error->getMessage() === 'Injected assignment ' . $phase . ' interruption', 'Phase fault is surfaced');
             }
-            verify((Ledger::state($connection, $migration::VERSION)['complete'] ?? false) !== true, 'Interrupted migration is not complete');
+            verify((Ledger::state($connection, $migration::PHASE)['complete'] ?? false) !== true, 'Interrupted migration is not complete');
             // PG retains all-or-nothing state; Maria resumes committed phases.
             if ($postgres) {
                 verify(!$manager->introspectTable($table)->hasColumn('computers_id'), 'PostgreSQL interruption rolls back DDL and rows');
             }
         }
         $migration->apply($connection);
-        verify($migration->plan($connection) === [] && Ledger::state($connection, $migration::VERSION)['complete'], 'Retry converges and becomes idempotent');
+        verify($migration->plan($connection) === [] && Ledger::state($connection, $migration::PHASE)['complete'], 'Retry converges and becomes idempotent');
         $after = $connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id');
         verify(count($after) === count($before), 'Every source assignment, including duplicate licences, survives');
         foreach ($before as $offset => $row) {

@@ -4,12 +4,12 @@
 
 use Doctrine\DBAL\Platforms\AbstractMySQLPlatform;
 use itsmng\Database\BooleanDomainSchema;
-use itsmng\Database\Migration\ExactDiscriminators20261010;
-use itsmng\Database\Migration\BooleanDomains20261008;
+use itsmng\Database\Migration\V220\ExactDiscriminators;
+use itsmng\Database\Migration\V220\BooleanDomains;
 use itsmng\Database\Migration\History;
 use itsmng\Database\Migration\Ledger;
-use itsmng\Database\Migration\LegacyToOrm;
-use itsmng\Database\Migration\IncomingProjectionReferences;
+use itsmng\Database\Migration\V220\References;
+use itsmng\Database\Migration\V220\IncomingProjectionReferences;
 use itsmng\Database\SchemaCheck;
 
 $directory = $argv[1] ?? '';
@@ -42,8 +42,8 @@ verify((new SchemaCheck())->differences($connection) === [], 'Canonical schema b
 $platform = $connection->getDatabasePlatform();
 $mysql = $platform instanceof AbstractMySQLPlatform;
 $quote = $platform->quoteIdentifier(...);
-$scope = ExactDiscriminators20261010::definitions()['tables'];
-$rawLedger = static fn (): array => $connection->fetchAllAssociative('SELECT version, state FROM ' . $quote(LegacyToOrm::LEDGER) . ' ORDER BY version');
+$scope = ExactDiscriminators::definitions()['tables'];
+$rawLedger = static fn (): array => $connection->fetchAllAssociative('SELECT version, state FROM ' . $quote(Ledger::TABLE) . ' ORDER BY version');
 $ledgerBefore = $rawLedger();
 $sessionBefore = $_SESSION;
 $configurationBefore = $CFG_GLPI;
@@ -53,8 +53,8 @@ $fixtures = new FixtureRecords($DB, static function (string $table, int $id) use
     $created[] = [$table, $id];
 });
 $historical = new ExactSubjectHistoricalFixture($connection);
-$migration = new ExactDiscriminators20261010();
-$preservationMethod = new ReflectionMethod(ExactDiscriminators20261010::class, 'preservation');
+$migration = new ExactDiscriminators();
+$preservationMethod = new ReflectionMethod(ExactDiscriminators::class, 'preservation');
 $facts = static function () use ($connection, $scope, $preservationMethod, $quote, $mysql): array {
     $result = [];
     $catalog = $mysql ? BooleanDomainSchema::catalog($connection) : null;
@@ -145,12 +145,12 @@ try {
         }
         verify($facts() === $fixtureNative && $rawLedger() === $fixtureLedger && $rowHashes() === $invalidRows, 'Refusal retains exact spelling, data, native schema and raw ledger');
     }
-    $priorReceipt = $connection->fetchAssociative('SELECT version, state FROM ' . $quote(LegacyToOrm::LEDGER) . ' WHERE version=?', [BooleanDomains20261008::VERSION]);
+    $priorReceipt = $connection->fetchAssociative('SELECT version, state FROM ' . $quote(Ledger::TABLE) . ' WHERE version=?', [BooleanDomains::PHASE]);
     verify(is_array($priorReceipt), 'Capture the exact existing prerequisite receipt');
     $priorDetached = false;
     $prerequisiteError = $prerequisiteRestoreError = null;
     try {
-        $connection->delete($quote(LegacyToOrm::LEDGER), ['version' => BooleanDomains20261008::VERSION]);
+        $connection->delete($quote(Ledger::TABLE), ['version' => BooleanDomains::PHASE]);
         $priorDetached = true;
         $diagnostic = null;
         try {
@@ -168,7 +168,7 @@ try {
     } finally {
         if ($priorDetached) {
             try {
-                $connection->insert($quote(LegacyToOrm::LEDGER), $priorReceipt);
+                $connection->insert($quote(Ledger::TABLE), $priorReceipt);
             } catch (Throwable $error) {
                 $prerequisiteRestoreError = $error;
                 $cleanupErrors[] = $error;
@@ -251,14 +251,14 @@ try {
     // A NULL processed snapshot must not bypass the exact key-set guards on
     // either provider. PostgreSQL rolled its genuine journal back; its owned
     // malformed receipt below is incomplete diagnostic input, never completion.
-    $retryReceipt = $connection->fetchAssociative('SELECT version, state FROM ' . $quote(LegacyToOrm::LEDGER) . ' WHERE version=?', [ExactDiscriminators20261010::VERSION]);
+    $retryReceipt = $connection->fetchAssociative('SELECT version, state FROM ' . $quote(Ledger::TABLE) . ' WHERE version=?', [ExactDiscriminators::PHASE]);
     $retryLedger = $rawLedger();
     $retryNative = $facts();
     $retryRows = $rowHashes();
-    $retryTemplate = Ledger::state($connection, ExactDiscriminators20261010::VERSION);
+    $retryTemplate = Ledger::state($connection, ExactDiscriminators::PHASE);
     if (($retryTemplate['next'] ?? 0) === 0) {
         $first = array_key_first($scope);
-        $nativePolicyMethod = new ReflectionMethod(ExactDiscriminators20261010::class, 'nativePolicy');
+        $nativePolicyMethod = new ReflectionMethod(ExactDiscriminators::class, 'nativePolicy');
         $retryTemplate = ['complete' => false, 'next' => 1, 'preservation' => $preserved,
             'policy' => [$first => $nativePolicyMethod->invoke(null, $connection, $first, $scope[$first])]];
     }
@@ -270,7 +270,7 @@ try {
             $malformed[$cache][$entry] = null;
             verify(array_keys($malformed['preservation']) === array_keys($scope)
                 && array_keys($malformed['policy']) === array_slice(array_keys($scope), 0, $malformed['next']), 'Malformed NULL fixture retains otherwise valid full and processed-prefix key sets');
-            Ledger::save($connection, ExactDiscriminators20261010::VERSION, $malformed);
+            Ledger::save($connection, ExactDiscriminators::PHASE, $malformed);
             $malformedLedger = $rawLedger();
             foreach (['plan', 'apply'] as $method) {
                 $refused = false;
@@ -287,9 +287,9 @@ try {
         } finally {
             try {
                 if ($retryReceipt === false) {
-                    $connection->delete($quote(LegacyToOrm::LEDGER), ['version' => ExactDiscriminators20261010::VERSION]);
+                    $connection->delete($quote(Ledger::TABLE), ['version' => ExactDiscriminators::PHASE]);
                 } else {
-                    $connection->update($quote(LegacyToOrm::LEDGER), ['state' => $retryReceipt['state']], ['version' => $retryReceipt['version']]);
+                    $connection->update($quote(Ledger::TABLE), ['state' => $retryReceipt['state']], ['version' => $retryReceipt['version']]);
                 }
                 verify($rawLedger() === $retryLedger, 'Restore exact raw retry receipt or its original absence after owned malformed-cache control');
             } catch (Throwable $error) {
@@ -305,10 +305,10 @@ try {
         }
     }
     if ($mysql) {
-        $journal = Ledger::state($connection, ExactDiscriminators20261010::VERSION);
+        $journal = Ledger::state($connection, ExactDiscriminators::PHASE);
         verify(($journal['complete'] ?? null) === false && $journal['preservation'] === $preserved, 'Nontransactional DDL has an exact preservation journal');
         verify(array_keys($journal['policy']) === array_slice(array_keys($scope), 0, $journal['next']), 'Native policy snapshots exactly cover successful processed checkpoints');
-        $journalReceipt = $connection->fetchAssociative('SELECT version, state FROM ' . $quote(LegacyToOrm::LEDGER) . ' WHERE version=?', [ExactDiscriminators20261010::VERSION]);
+        $journalReceipt = $connection->fetchAssociative('SELECT version, state FROM ' . $quote(Ledger::TABLE) . ' WHERE version=?', [ExactDiscriminators::PHASE]);
         verify(is_array($journalReceipt), 'Capture the actual post-DDL raw retry receipt');
         $processed = array_key_first($journal['policy']);
         if ($processed !== null) {
@@ -380,14 +380,14 @@ try {
         $connection->beginTransaction();
         try {
             $migration->apply($connection);
-            verify($connection->getTransactionNestingLevel() === 1 && (Ledger::state($connection, ExactDiscriminators20261010::VERSION)['complete'] ?? false) === true, 'Nested PostgreSQL migration leaves caller transaction active');
+            verify($connection->getTransactionNestingLevel() === 1 && (Ledger::state($connection, ExactDiscriminators::PHASE)['complete'] ?? false) === true, 'Nested PostgreSQL migration leaves caller transaction active');
         } finally {
             $connection->rollBack();
         }
         verify($facts() === $beforeFault && $rawLedger() === $beforeFaultLedger, 'Caller rollback restores the full pre-migration native schema and receipt');
     }
-    (new ExactDiscriminators20261010())->apply($connection);
-    verify((Ledger::state($connection, ExactDiscriminators20261010::VERSION)['complete'] ?? false) === true, 'Fresh migration instance resumes and records actual completion');
+    (new ExactDiscriminators())->apply($connection);
+    verify((Ledger::state($connection, ExactDiscriminators::PHASE)['complete'] ?? false) === true, 'Fresh migration instance resumes and records actual completion');
     foreach (array_keys($scope) as $table) {
         verify($preservationMethod->invoke(null, $connection, $connection->createSchemaManager()->introspectTable($table)) === $preserved[$table], 'Final indexes, comments, TIMESTAMP/native storage, incoming/outgoing FKs and auto-increment facts preserved');
     }

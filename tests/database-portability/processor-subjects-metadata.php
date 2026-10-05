@@ -12,9 +12,9 @@ use itsmng\Database\Entity\ItemDeviceProcessor;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Mapping\DiscriminatorKey;
-use itsmng\Database\Migration\Baseline20261001;
-use itsmng\Database\Migration\ProcessorSubjects20261012;
-use itsmng\Database\Migration\TypedItemMigration;
+use itsmng\Database\Migration\V220\Baseline;
+use itsmng\Database\Migration\V220\ProcessorSubjects;
+use itsmng\Database\Migration\V220\TypedItemMigration;
 use itsmng\Database\Orm;
 
 // This control never loads application bootstrap or database configuration.
@@ -50,7 +50,7 @@ foreach ([new MySQLPlatform(), new PostgreSQLPlatform()] as $platform) {
     $em = new EntityManager($connection, Orm::configuration($platform));
     $metadata = $em->getMetadataFactory()->getAllMetadata();
     $current = (new BaselineSchema())->build($platform);
-    $legacy = (new Baseline20261001())->build($platform);
+    $legacy = (new Baseline())->build($platform);
     foreach ($metadata as $record) {
         foreach ($record->fieldMappings as $property => $field) {
             $attributes = (new ReflectionProperty($record->name, $property))->getAttributes(DiscriminatorKey::class);
@@ -87,8 +87,8 @@ foreach ([new MySQLPlatform(), new PostgreSQLPlatform()] as $platform) {
     }
     // Frozen required projection declarations exercise the late-static dispatch
     // separately from current metadata; only the new optional stage is excluded.
-    foreach (glob($source . '/src/Database/Migration/*.php') as $file) {
-        $class = 'itsmng\\Database\\Migration\\' . basename($file, '.php');
+    foreach (glob($source . '/src/Database/Migration/V220/*.php') as $file) {
+        $class = 'itsmng\\Database\\Migration\\V220\\' . basename($file, '.php');
         if (!class_exists($class) || !is_subclass_of($class, TypedItemMigration::class)) {
             continue;
         }
@@ -112,7 +112,7 @@ foreach ([new MySQLPlatform(), new PostgreSQLPlatform()] as $platform) {
         $key = (new ReflectionProperty(ItemDeviceProcessor::class, 'items_id'))->getAttributes(DiscriminatorKey::class)[0]->newInstance();
         $table = $current->getTable('glpi_items_deviceprocessors');
         $frozen = clone $legacy->getTable($table->getName());
-        ProcessorSubjects20261012::configureTable($frozen, $platform);
+        ProcessorSubjects::configureTable($frozen, $platform);
         // Quoting belongs to the provider; the CASE structure must match exactly.
         $unquote = static fn ($sql) => str_replace(['`', '"'], '', $sql);
         verify($unquote($frozen->getColumn('items_id')->getColumnDefinition()) === $unquote($key->declaration($platform, $record, 'items_id')), 'Frozen and current optional identity have identical CASE structure');

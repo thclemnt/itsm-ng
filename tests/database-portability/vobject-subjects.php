@@ -10,7 +10,7 @@ use itsmng\Database\Entity as Record;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\MappedStorage;
-use itsmng\Database\Migration\VObjectSubjects;
+use itsmng\Database\Migration\V220\VObjectSubjects;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\CalendarObjectRepository;
 use itsmng\Database\Repository\RecordRepository;

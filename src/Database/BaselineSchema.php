@@ -22,42 +22,42 @@ final class BaselineSchema
     public function build(AbstractPlatform $platform, bool $foreignKeys = true): Schema
     {
         $this->extraSql = [];
-        $baseline = new Migration\Baseline20261001();
+        $baseline = new Migration\V220\Baseline();
         $schema = $baseline->build($platform);
         $this->extraSql['baseline'] = $baseline->extraSql($platform);
         // Adoption retains this redundant historical index on old installations.
         // It is optional beside the current numeric dashboard primary key.
         $schema->getTable('glpi_dashboards')->dropIndex('dashboard_legacy_id');
         foreach (['glpi_slms', 'glpi_slas', 'glpi_olas'] as $tableName) {
-            Migration\ServiceLevelCalendars::configureTable($schema->getTable($tableName));
+            Migration\V220\ServiceLevelCalendars::configureTable($schema->getTable($tableName));
         }
         foreach ([...EntityRegistry::relationsByPolicy(Mapping\ReferenceKind::Audience), ...EntityRegistry::relationsByPolicy(Mapping\ReferenceKind::GlobalScope)] as $name => $relations) {
             $schema->getTable($name)->getColumn('entities_id')->setNotnull(false)->setDefault(null);
         }
-        Migration\DashboardOwnership::configureTable($schema->getTable('glpi_dashboards'), $platform);
-        Migration\OidcReferences::configureTable($schema->getTable('glpi_oidc_users'));
+        Migration\V220\DashboardOwnership::configureTable($schema->getTable('glpi_dashboards'), $platform);
+        Migration\V220\OidcReferences::configureTable($schema->getTable('glpi_oidc_users'));
         $this->configureInheritedReferences($schema, $platform);
-        Migration\EntityParents::configureTable($schema->getTable('glpi_entities'));
-        Migration\NotificationRecipients::configureTable($schema->getTable('glpi_notificationtargets'));
-        Migration\UserAuthenticationSources::configureTable($schema->getTable('glpi_users'));
-        Migration\NetworkPortAggregateOrigins::configureSchema($schema);
-        Migration\PlanningEventGuests::configureSchema($schema);
-        Migration\UnusedProjectTemplateReference::configureTable($schema->getTable('glpi_projects'));
+        Migration\V220\EntityParents::configureTable($schema->getTable('glpi_entities'));
+        Migration\V220\NotificationRecipients::configureTable($schema->getTable('glpi_notificationtargets'));
+        Migration\V220\UserAuthenticationSources::configureTable($schema->getTable('glpi_users'));
+        Migration\V220\NetworkPortAggregateOrigins::configureSchema($schema);
+        Migration\V220\PlanningEventGuests::configureSchema($schema);
+        Migration\V220\UnusedProjectTemplateReference::configureTable($schema->getTable('glpi_projects'));
         $this->configurePropertyColumns($schema, $platform);
         $this->configureRequiredSubjects($schema, $platform);
-        $this->extraSql['glpi_users'][] = Migration\UserAuthenticationSources::checkSql();
-        $this->extraSql['glpi_notificationtargets'][] = Migration\NotificationRecipients::checkSql();
-        $this->extraSql['glpi_entities'][] = Migration\EntityParents::checkSql();
-        $this->extraSql['glpi_slms'][] = Migration\ServiceLevelCalendars::checkSql();
+        $this->extraSql['glpi_users'][] = Migration\V220\UserAuthenticationSources::checkSql();
+        $this->extraSql['glpi_notificationtargets'][] = Migration\V220\NotificationRecipients::checkSql();
+        $this->extraSql['glpi_entities'][] = Migration\V220\EntityParents::checkSql();
+        $this->extraSql['glpi_slms'][] = Migration\V220\ServiceLevelCalendars::checkSql();
         foreach (EntityRegistry::relationsByPolicy(Mapping\ReferenceKind::EmptySelection) as $tableName => $relations) {
             foreach ($relations as $column => $target) {
                 $schema->getTable($tableName)->getColumn($column)->setNotnull(false)->setDefault(null);
             }
         }
-        Migration\DisplayPreferenceOwnership::addToTable($schema->getTable('glpi_displaypreferences'), $platform);
-        Migration\KanbanOwnership::addToTable($schema->getTable('glpi_items_kanbans'), $platform);
-        Migration\InventoryUniqueness::addToTable($schema->getTable('glpi_items_operatingsystems'), Migration\InventoryUniqueness::indexName($platform));
-        Migration\IdentifierColumns::configureSchema($schema);
+        Migration\V220\DisplayPreferenceOwnership::addToTable($schema->getTable('glpi_displaypreferences'), $platform);
+        Migration\V220\KanbanOwnership::addToTable($schema->getTable('glpi_items_kanbans'), $platform);
+        Migration\V220\InventoryUniqueness::addToTable($schema->getTable('glpi_items_operatingsystems'), Migration\V220\InventoryUniqueness::indexName($platform));
+        Migration\V220\IdentifierColumns::configureSchema($schema);
         if ($foreignKeys) {
             (new ForeignKeys())->addToSchema($schema);
         }

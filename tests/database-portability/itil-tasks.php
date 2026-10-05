@@ -2,7 +2,7 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-use itsmng\Database\Migration\ReferenceHistory;
+use itsmng\Database\Migration\V220\ReferenceHistory;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
@@ -146,7 +146,7 @@ try {
 // MySQL DDL commits implicitly. Only this disposable fixture database is altered.
 $platform = $connection->getDatabasePlatform();
 $quote = $platform->quoteIdentifier(...);
-$migration = new \itsmng\Database\Migration\ITILOriginReferences();
+$migration = new \itsmng\Database\Migration\V220\NullableReferences(\itsmng\Database\Migration\V220\ReferenceHistory::get('optional', 'ITIL_ORIGINS'), 'ITIL origin');
 $relations = ReferenceHistory::get('optional', 'ITIL_ORIGINS');
 $created = [];
 try {

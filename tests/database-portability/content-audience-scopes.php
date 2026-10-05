@@ -5,7 +5,8 @@
 use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\KnowledgeBaseAccess;
-use itsmng\Database\Migration\ContentAudienceScopes as Migration;
+use itsmng\Database\Migration\V220\NullableReferences;
+use itsmng\Database\Migration\V220\ReferenceHistory;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\KnowledgeBaseRepository;
 use itsmng\Database\Repository\RecordRepository;
@@ -158,7 +159,7 @@ try {
 // Rebuild legacy columns in this disposable installation to test upgrade auditing.
 $platform = $connection->getDatabasePlatform();
 $quote = $platform->quoteIdentifier(...);
-$migration = new Migration();
+$migration = new NullableReferences(ReferenceHistory::get('audience', 'RELATIONS'), 'content audience entity', -1);
 $created = [];
 $parents = [];
 $migrationGroup = null;

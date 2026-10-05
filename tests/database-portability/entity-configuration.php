@@ -2,14 +2,14 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-use itsmng\Database\Migration\ReferenceHistory;
+use itsmng\Database\Migration\V220\ReferenceHistory;
 use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
 use Doctrine\DBAL\Exception\DriverException;
 use itsmng\Database\EntityConfigurationReferences as References;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\MappedReads;
 use itsmng\Database\MappedStorage;
-use itsmng\Database\Migration\EntityConfigurationReferences as Migration;
+use itsmng\Database\Migration\V220\EntityConfigurationReferences as Migration;
 use itsmng\Database\Orm;
 use itsmng\Database\ReferenceMode;
 use itsmng\Database\Repository\RecordRepository;

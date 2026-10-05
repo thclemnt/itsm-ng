@@ -6,10 +6,10 @@ use itsmng\Database\ForeignKeys;
 use itsmng\Database\BaselineSchema;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\Mapping\SchemaIndex;
-use itsmng\Database\Migration\ActorReferences;
-use itsmng\Database\Migration\ActorUniqueness;
-use itsmng\Database\Migration\Baseline20261001;
-use itsmng\Database\Migration\TreeUniqueness;
+use itsmng\Database\Migration\V220\ActorReferences;
+use itsmng\Database\Migration\V220\ActorUniqueness;
+use itsmng\Database\Migration\V220\Baseline;
+use itsmng\Database\Migration\V220\TreeUniqueness;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\Repository\RecordWriter;
@@ -63,7 +63,7 @@ foreach ([new \Doctrine\DBAL\Platforms\MySQLPlatform(), new \Doctrine\DBAL\Platf
         $metadata = $schemaEm->getMetadataFactory()->getAllMetadata();
         $mapped = (new \Doctrine\ORM\Tools\SchemaTool($schemaEm))->getSchemaFromMetadata($metadata);
         $required = (new BaselineSchema())->build($schemaPlatform, false);
-        $historical = (new Baseline20261001())->build($schemaPlatform);
+        $historical = (new Baseline())->build($schemaPlatform);
         $ownedGeneratedKeys = [];
         foreach ($metadata as $entity) {
             $ownedColumns = [];
@@ -146,7 +146,7 @@ $DB->beginTransaction();
 try {
     $user = $fixtures->create('glpi_users', ['name' => 'Mapped actor']);
     $supplier = $fixtures->create('glpi_suppliers', ['name' => 'Mapped supplier']);
-    foreach (\itsmng\Database\Migration\ActorUniqueness::TABLES as $table => [$parentKey, $actorKey]) {
+    foreach (\itsmng\Database\Migration\V220\ActorUniqueness::TABLES as $table => [$parentKey, $actorKey]) {
         $model = getItemForItemtype(getItemTypeForTable($table));
         $parentTable = 'glpi_' . substr($parentKey, 0, -3);
         $parent = $fixtures->create($parentTable, ['name' => 'Actor parent ' . $table]);
@@ -228,9 +228,9 @@ $parent = $fixtures->create('glpi_tickets', ['name' => 'Legacy actor host']);
 $user = $fixtures->create('glpi_users', ['name' => 'Legacy actor identity']);
 $legacy = [];
 try {
-    foreach (\itsmng\Database\Migration\ActorUniqueness::TABLES as $table => [$parentKey, $actorKey]) {
+    foreach (\itsmng\Database\Migration\V220\ActorUniqueness::TABLES as $table => [$parentKey, $actorKey]) {
         $connection->executeStatement($platform->getDropForeignKeySQL(ForeignKeys::name($table, $actorKey), $table));
-        $index = \itsmng\Database\Migration\ActorUniqueness::indexName($table, $platform);
+        $index = \itsmng\Database\Migration\V220\ActorUniqueness::indexName($table, $platform);
         $connection->executeStatement($platform->getDropIndexSQL($index, $table));
         $connection->executeStatement('UPDATE ' . $table . ' SET ' . $actorKey . ' = 0 WHERE ' . $actorKey . ' IS NULL');
         $manager = $connection->createSchemaManager();

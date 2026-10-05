@@ -2,8 +2,10 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\V220\NullableReferences;
+use itsmng\Database\Migration\V220\ReferenceHistory;
+
 use itsmng\Database\ForeignKeys;
-use itsmng\Database\Migration\ReservationUserReferences;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ReservationRepository;
 use itsmng\Database\Repository\ReservationItemRepository;
@@ -145,7 +147,7 @@ try {
 
 // Recreate an old optional owner column and verify preflight before any DDL.
 $platform = $connection->getDatabasePlatform();
-$migration = new ReservationUserReferences();
+$migration = new NullableReferences(ReferenceHistory::get('optional', 'RESERVATION_USERS'), 'reservation user');
 $parent = $fixtures->create('glpi_reservationitems');
 $legacy = null;
 try {

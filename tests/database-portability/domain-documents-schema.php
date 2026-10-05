@@ -5,8 +5,8 @@
 use Doctrine\DBAL\Exception\DriverException;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use itsmng\Database\Entity;
-use itsmng\Database\Migration\DocumentSubjects;
-use itsmng\Database\Migration\DomainDocuments20261006;
+use itsmng\Database\Migration\V220\DocumentSubjects;
+use itsmng\Database\Migration\V220\DomainDocuments;
 use itsmng\Database\Migration\Ledger;
 use itsmng\Database\Orm;
 use itsmng\Database\SchemaCheck;
@@ -40,9 +40,9 @@ $connection = $DB->getDoctrineConnection();
 $platform = $connection->getDatabasePlatform();
 $postgres = $platform instanceof PostgreSQLPlatform;
 $manager = $connection->createSchemaManager();
-$migration = new DomainDocuments20261006();
+$migration = new DomainDocuments();
 $table = 'glpi_documents_items';
-verify(Ledger::state($connection, $migration::VERSION)['complete'] ?? false, 'Canonical history includes the appended document stage');
+verify(Ledger::state($connection, $migration::PHASE)['complete'] ?? false, 'Canonical history includes the appended document stage');
 verify((new SchemaCheck())->differences($connection) === [], 'Starting core schema converges');
 $reject = static function (callable $operation, string $message, ?string $expectedCheck = null) use ($connection): void {
     $connection->beginTransaction();
@@ -101,7 +101,7 @@ try {
 verify((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $table) === 0, 'Never reconstruct a populated unrelated document table');
 verify(Ledger::state($connection, $migration::GENERAL_RECEIPT) === null, 'Never overwrite an existing deferred receipt');
 $required = (new \itsmng\Database\BaselineSchema())->build($platform)->getTable($table);
-$savedStage = Ledger::state($connection, $migration::VERSION);
+$savedStage = Ledger::state($connection, $migration::PHASE);
 $nativeBooleans = new NativeBooleanFixture($connection, $table);
 $nativeExact = new ExactSubjectHistoricalFixture($connection, [$table]);
 $domain = $fixtures->create('glpi_domains', ['id' => 4294976101]);
@@ -134,7 +134,7 @@ try {
         $nativeBooleans->restore();
         $connection->executeStatement(DocumentSubjects::checkSql($table));
         $connection->insert($table, ['id' => 4294976202, 'documents_id' => $document, 'itemtype' => 'Computer', 'computers_id' => $computer, 'timeline_position' => 1]);
-        $connection->delete('itsmng_migrations', ['version' => $migration::VERSION]);
+        $connection->delete('itsmng_migrations', ['version' => $migration::PHASE]);
         Ledger::save($connection, $migration::GENERAL_RECEIPT, $receipt);
         $before = $connection->fetchAllAssociative('SELECT version, state FROM itsmng_migrations ORDER BY version');
         $plan = $migration->plan($connection);
@@ -163,7 +163,7 @@ try {
                 } catch (RuntimeException $error) {
                     verify(str_contains($error->getMessage(), 'Domain document'), 'Invalid snapshot receives concrete preflight diagnostics: ' . $problem);
                 }
-                verify(Ledger::state($connection, $migration::VERSION) === null && !$manager->introspectTable($table)->hasColumn('domains_id'), 'Invalid deferred rows change neither stage journal nor DDL');
+                verify(Ledger::state($connection, $migration::PHASE) === null && !$manager->introspectTable($table)->hasColumn('domains_id'), 'Invalid deferred rows change neither stage journal nor DDL');
             }
             Ledger::save($connection, $migration::GENERAL_RECEIPT, $receipt);
         }
@@ -192,7 +192,7 @@ try {
             verify($connection->fetchOne('SELECT @@session.time_zone') === '+02:00', 'Restoration preserves caller timezone');
             verify((int)$connection->fetchOne('SELECT UNIX_TIMESTAMP(date_mod) FROM ' . $table . ' WHERE id = 4294976201') === (new DateTimeImmutable($original['date_mod'], new DateTimeZone('UTC')))->getTimestamp(), 'Deferred native TIMESTAMP retains its original UTC instant under a different retry timezone');
         }
-        verify(Ledger::state($connection, $migration::GENERAL_RECEIPT)['documents_restored'] === true && Ledger::state($connection, $migration::VERSION)['complete'] === true, 'Restored rows and both completion records converge');
+        verify(Ledger::state($connection, $migration::GENERAL_RECEIPT)['documents_restored'] === true && Ledger::state($connection, $migration::PHASE)['complete'] === true, 'Restored rows and both completion records converge');
         $connection->executeStatement("UPDATE $table SET timeline_position = 3 WHERE id = 4294976201");
         verify($migration->apply($connection) === [] && (int)$connection->fetchOne("SELECT timeline_position FROM $table WHERE id = 4294976201") === 3, 'Completed retry preserves later edits instead of replaying frozen rows');
     }
@@ -206,7 +206,7 @@ try {
     $late = $receipt;
     $late['deferred_documents'][] = $second;
     Ledger::save($connection, $migration::GENERAL_RECEIPT, $late);
-    Ledger::save($connection, $migration::VERSION, ['complete' => false, 'phase' => 'constraints', 'projection_expanded' => true, 'items_comment' => $manager->introspectTable($table)->getColumn('items_id')->getComment()]);
+    Ledger::save($connection, $migration::PHASE, ['complete' => false, 'phase' => 'constraints', 'projection_expanded' => true, 'items_comment' => $manager->introspectTable($table)->getColumn('items_id')->getComment()]);
     if ($postgres) {
         $connection->executeStatement("CREATE FUNCTION itsm_domain_document_restore_probe() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN IF NEW.id = 4294976203 THEN RAISE EXCEPTION ''Injected deferred restore failure''; END IF; RETURN NEW; END'");
         $connection->executeStatement('CREATE TRIGGER itsm_domain_document_restore_probe BEFORE INSERT ON ' . $table . ' FOR EACH ROW EXECUTE FUNCTION itsm_domain_document_restore_probe()');
@@ -221,7 +221,7 @@ try {
     }
     verify((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $table . ' WHERE id IN (4294976201, 4294976203)') === 0, 'Late failure rolls back the earlier restored row');
     verify(!(Ledger::state($connection, $migration::GENERAL_RECEIPT)['documents_restored'] ?? false)
-        && Ledger::state($connection, $migration::VERSION)['complete'] === false, 'Late failure rolls back both completion records');
+        && Ledger::state($connection, $migration::PHASE)['complete'] === false, 'Late failure rolls back both completion records');
     if (!$postgres) {
         verify($connection->fetchOne('SELECT @@session.time_zone') === '+02:00', 'Failed restoration also restores caller timezone');
     }
@@ -246,14 +246,14 @@ try {
             $connection->insert($table, $row);
         }
         $beforeRows = $connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id');
-        $connection->delete('itsmng_migrations', ['version' => $migration::VERSION]);
+        $connection->delete('itsmng_migrations', ['version' => $migration::PHASE]);
         try {
             $migration->apply($connection);
             throw new LogicException('Nontransactional document table accepted');
         } catch (RuntimeException $error) {
             verify(str_contains($error->getMessage(), 'InnoDB'), 'Nontransactional storage receives a concrete refusal');
         }
-        verify(Ledger::state($connection, $migration::VERSION) === null
+        verify(Ledger::state($connection, $migration::PHASE) === null
             && $connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id') === $beforeRows
             && $connection->fetchOne("SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='$table'") === 'MyISAM', 'Storage refusal preserves every existing row and changes neither engine nor stage receipt');
     }
@@ -272,7 +272,7 @@ try {
             $manager->createTable($nativeExact->restorationTable($table));
             $nativeBooleans->restore();
             $connection->executeStatement($migration::checkSql($table));
-            Ledger::save($connection, $migration::VERSION, $savedStage);
+            Ledger::save($connection, $migration::PHASE, $savedStage);
             $connection->delete('itsmng_migrations', ['version' => $migration::GENERAL_RECEIPT]);
         }
         foreach (['glpi_domains' => $domain, 'glpi_documents' => $document, 'glpi_computers' => $computer] as $parent => $id) {

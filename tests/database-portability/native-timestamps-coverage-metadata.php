@@ -14,7 +14,7 @@ use Doctrine\ORM\Tools\SchemaTool;
 use itsmng\Database\BaselineSchema;
 use itsmng\Database\Mapping\AttributeDriver;
 use itsmng\Database\Mapping\NativeTimestamp;
-use itsmng\Database\Migration\Baseline20261001;
+use itsmng\Database\Migration\V220\Baseline;
 use itsmng\Database\NativeTimestampSchema;
 use itsmng\Database\Orm;
 
@@ -33,7 +33,7 @@ function verify(bool $ok, string $message): void
 
 // A historical test oracle is legitimate. Runtime declarations never consult it.
 $oracle = [];
-foreach ((new Baseline20261001())->build(new MySQLPlatform())->getTables() as $table) {
+foreach ((new Baseline())->build(new MySQLPlatform())->getTables() as $table) {
     foreach ($table->getColumns() as $column) {
         if (preg_match('/^TIMESTAMP(?:\([0-9]+\))?\s/iD', (string)$column->getColumnDefinition()) === 1) {
             $oracle[$table->getName()][$column->getName()] = $column;
@@ -73,7 +73,7 @@ foreach ([new MySQLPlatform(), new MariaDBPlatform(), new PostgreSQLPlatform()] 
         verify($actualKeys === $expectedKeys, 'The complete property-owned set exactly matches frozen native instants: no omissions or accidental wall-time annotations');
         $mapped = (new SchemaTool($em))->getSchemaFromMetadata($metadata);
         $current = (new BaselineSchema())->build($platform, false);
-        $historical = (new Baseline20261001())->build($platform);
+        $historical = (new Baseline())->build($platform);
         $touchKeys = [];
         foreach ($oracle as $table => $columns) {
             verify(isset($byTable[$table]), 'Every frozen timestamp has a real current entity owner: ' . $table);

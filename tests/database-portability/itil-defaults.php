@@ -2,9 +2,10 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-use itsmng\Database\Migration\ReferenceHistory;
+use itsmng\Database\Migration\V220\NullableReferences;
+use itsmng\Database\Migration\V220\ReferenceHistory;
+
 use itsmng\Database\ForeignKeys;
-use itsmng\Database\Migration\ITILDefaultReferences;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 
@@ -103,7 +104,7 @@ try {
 }
 $platform = $connection->getDatabasePlatform();
 $quote = $platform->quoteIdentifier(...);
-$migration = new ITILDefaultReferences();
+$migration = new NullableReferences(ReferenceHistory::get('optional', 'ITIL_DEFAULTS'), 'ITIL default');
 $legacy = null;
 try {
     foreach (ReferenceHistory::get('optional', 'ITIL_DEFAULTS') as $table => $relations) {

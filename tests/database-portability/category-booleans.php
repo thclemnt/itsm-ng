@@ -7,10 +7,10 @@ use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\DBAL\Types\Type;
 use itsmng\Database\BooleanDomainSchema;
 use itsmng\Database\Entity\ITILCategory as CategoryEntity;
-use itsmng\Database\Migration\Baseline20261001;
-use itsmng\Database\Migration\CategoryFlags20261004;
+use itsmng\Database\Migration\V220\Baseline;
+use itsmng\Database\Migration\V220\CategoryFlags;
 use itsmng\Database\Migration\Ledger;
-use itsmng\Database\Migration\LegacyToOrm;
+use itsmng\Database\Migration\V220\References;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\TicketCategoryRepository;
 use itsmng\Database\SchemaCheck;
@@ -37,22 +37,22 @@ $connection = $DB->getDoctrineConnection();
 $platform = $connection->getDatabasePlatform();
 $postgres = $platform instanceof PostgreSQLPlatform;
 $manager = $connection->createSchemaManager();
-$migration = new CategoryFlags20261004();
+$migration = new CategoryFlags();
 $fields = ['is_incident', 'is_request', 'is_problem'];
 $id = 2147483600;
 verify(!$connection->fetchOne('SELECT COUNT(*) FROM glpi_itilcategories WHERE id = ?', [$id]), 'Fixture identifier is unoccupied');
 $testComment = "Category flag's domain";
 $comment = $manager->listTableColumns('glpi_itilcategories')['is_incident']->getComment();
-$frozen = (new Baseline20261001())->toSql($platform);
+$frozen = (new Baseline())->toSql($platform);
 $metadata = Orm::create($DB)->getClassMetadata(CategoryEntity::class);
 foreach ($fields as $field) {
     verify($metadata->getTypeOfField($field) === 'boolean' && (new ReflectionProperty(CategoryEntity::class, $field))->getType()->getName() === 'bool', 'Property owns boolean semantics: ' . $field);
 }
 $metadata->fieldMappings['is_incident']->type = 'integer';
-verify((new Baseline20261001())->toSql($platform) === $frozen, 'Current category metadata cannot rewrite historical baseline');
+verify((new Baseline())->toSql($platform) === $frozen, 'Current category metadata cannot rewrite historical baseline');
 $connection->insert('glpi_itilcategories', ['id' => $id, 'name' => 'Boolean category', 'completename' => 'Boolean category', 'entities_id' => 0]);
 try {
-    $connection->delete(LegacyToOrm::LEDGER, ['version' => CategoryFlags20261004::VERSION]);
+    $connection->delete(Ledger::TABLE, ['version' => CategoryFlags::PHASE]);
     foreach ($fields as $field) {
         if ($postgres) {
             $connection->executeStatement('ALTER TABLE glpi_itilcategories ALTER COLUMN ' . $field . ' DROP DEFAULT, ALTER COLUMN ' . $field . ' TYPE INTEGER USING (CASE WHEN ' . $field . ' THEN 1 ELSE 0 END), ALTER COLUMN ' . $field . ' SET DEFAULT 1');
@@ -74,7 +74,7 @@ try {
     } catch (RuntimeException $error) {
         verify(str_contains($error->getMessage(), 'Invalid category flag: glpi_itilcategories.is_problem') && str_contains($error->getMessage(), (string)$id), 'Diagnostic names the invalid field and row');
     }
-    verify(Ledger::state($connection, CategoryFlags20261004::VERSION) === null && Type::lookupName($manager->listTableColumns('glpi_itilcategories')['is_incident']->getType()) === Type::lookupName($before['is_incident']->getType()), 'All flags are validated before any DDL or journal');
+    verify(Ledger::state($connection, CategoryFlags::PHASE) === null && Type::lookupName($manager->listTableColumns('glpi_itilcategories')['is_incident']->getType()) === Type::lookupName($before['is_incident']->getType()), 'All flags are validated before any DDL or journal');
     $connection->update('glpi_itilcategories', ['is_problem' => 0], ['id' => $id]);
     if ($postgres) {
         $connection->executeStatement('ALTER TABLE glpi_itilcategories ALTER COLUMN is_problem DROP NOT NULL');
@@ -100,11 +100,11 @@ try {
     } catch (RuntimeException $error) {
         verify($error->getMessage() === 'Injected category DDL interruption', 'Interrupted DDL is surfaced');
     }
-    verify($postgres ? Ledger::state($connection, CategoryFlags20261004::VERSION) === null : !Ledger::state($connection, CategoryFlags20261004::VERSION)['complete'], 'Provider-specific rollback or retry journal survives correctly');
+    verify($postgres ? Ledger::state($connection, CategoryFlags::PHASE) === null : !Ledger::state($connection, CategoryFlags::PHASE)['complete'], 'Provider-specific rollback or retry journal survives correctly');
     $migration->apply($connection);
-    verify($migration->plan($connection) === [] && Ledger::state($connection, CategoryFlags20261004::VERSION)['complete'], 'Interrupted conversion resumes through the canonical ledger');
+    verify($migration->plan($connection) === [] && Ledger::state($connection, CategoryFlags::PHASE)['complete'], 'Interrupted conversion resumes through the canonical ledger');
     if ($platform instanceof MySQLPlatform) {
-        $connection->delete(LegacyToOrm::LEDGER, ['version' => CategoryFlags20261004::VERSION]);
+        $connection->delete(Ledger::TABLE, ['version' => CategoryFlags::PHASE]);
         $connection->executeStatement('ALTER TABLE glpi_itilcategories ALTER CHECK glpi_itilcategories_is_request_boolean NOT ENFORCED');
         $plan = $migration->plan($connection);
         verify(count($plan) === 1 && str_contains($plan[0], ' ENFORCED'), 'MySQL preview detects an existing inactive CHECK');
@@ -136,7 +136,7 @@ try {
         $connection->executeStatement($platform->getCommentOnColumnSQL('glpi_itilcategories', 'is_incident', $comment));
     } else {
         $connection->executeStatement('ALTER TABLE glpi_itilcategories MODIFY COLUMN is_incident INTEGER NOT NULL DEFAULT 1 ' . $platform->getInlineColumnCommentSQL($comment));
-        $connection->delete(LegacyToOrm::LEDGER, ['version' => CategoryFlags20261004::VERSION]);
+        $connection->delete(Ledger::TABLE, ['version' => CategoryFlags::PHASE]);
         $connection->executeStatement('ALTER TABLE glpi_itilcategories DROP CONSTRAINT glpi_itilcategories_is_incident_boolean');
         $connection->executeStatement('ALTER TABLE glpi_itilcategories ADD CONSTRAINT glpi_itilcategories_is_incident_boolean CHECK (1 = 1)');
         try {
@@ -149,13 +149,13 @@ try {
         $migration->apply($connection);
     }
     verify((new SchemaCheck())->differences($connection) === [], 'Converted category schema converges on property-derived inspection');
-    $state = Ledger::state($connection, CategoryFlags20261004::VERSION);
+    $state = Ledger::state($connection, CategoryFlags::PHASE);
     $migration->apply($connection);
-    verify(Ledger::state($connection, CategoryFlags20261004::VERSION) === $state, 'Completed retry is idempotent');
+    verify(Ledger::state($connection, CategoryFlags::PHASE) === $state, 'Completed retry is idempotent');
     if (!$postgres) {
         verify(!$connection->isTransactionActive(), 'ANSI historical CHECK fixture owns an idle DDL connection');
         $originalMode = (string)$connection->fetchOne('SELECT @@SESSION.sql_mode');
-        $originalReceipt = Ledger::state($connection, CategoryFlags20261004::VERSION);
+        $originalReceipt = Ledger::state($connection, CategoryFlags::PHASE);
         $originalChecks = BooleanDomainSchema::catalog($connection)['checks']['glpi_itilcategories'];
         $originalValues = $connection->fetchAssociative('SELECT is_incident, is_request, is_problem FROM glpi_itilcategories WHERE id = ?', [$id]);
         $constraint = 'glpi_itilcategories_is_incident_boolean';
@@ -164,20 +164,20 @@ try {
             $connection->executeStatement('SET SESSION sql_mode = ?', [$originalMode . ',ANSI_QUOTES']);
             $ansiMode = (string)$connection->fetchOne('SELECT @@SESSION.sql_mode');
             $incomplete = ['complete' => false];
-            Ledger::save($connection, CategoryFlags20261004::VERSION, $incomplete);
+            Ledger::save($connection, CategoryFlags::PHASE, $incomplete);
             $ansiChecks = BooleanDomainSchema::catalog($connection)['checks']['glpi_itilcategories'];
-            verify($migration->plan($connection) === [] && Ledger::state($connection, CategoryFlags20261004::VERSION) === $incomplete, 'Incomplete Category receipt previews existing valid ANSI CHECKs without DDL or receipt changes');
+            verify($migration->plan($connection) === [] && Ledger::state($connection, CategoryFlags::PHASE) === $incomplete, 'Incomplete Category receipt previews existing valid ANSI CHECKs without DDL or receipt changes');
             verify(BooleanDomainSchema::catalog($connection)['checks']['glpi_itilcategories'] === $ansiChecks
                 && (string)$connection->fetchOne('SELECT @@SESSION.sql_mode') === $ansiMode, 'Category native inspection retains exact CHECKs and supplied mode');
             $migration->apply($connection);
-            $completed = Ledger::state($connection, CategoryFlags20261004::VERSION);
+            $completed = Ledger::state($connection, CategoryFlags::PHASE);
             verify(($completed['complete'] ?? false) === true && $migration->plan($connection) === [], 'Existing ANSI CHECKs resume through the original canonical Category receipt');
             $migration->apply($connection);
-            verify(Ledger::state($connection, CategoryFlags20261004::VERSION) === $completed, 'ANSI Category completion retry is idempotent');
+            verify(Ledger::state($connection, CategoryFlags::PHASE) === $completed, 'ANSI Category completion retry is idempotent');
 
             // The former parenthesis-stripping inspector mistook this different
             // AST for the generated CHECK; native flag2 really satisfies it.
-            Ledger::save($connection, CategoryFlags20261004::VERSION, $incomplete);
+            Ledger::save($connection, CategoryFlags::PHASE, $incomplete);
             $connection->executeStatement('ALTER TABLE glpi_itilcategories DROP ' . ($platform instanceof MySQLPlatform ? 'CHECK ' : 'CONSTRAINT ') . $platform->quoteIdentifier($constraint));
             $checkChanged = true;
             $connection->executeStatement('ALTER TABLE glpi_itilcategories ADD CONSTRAINT ' . $platform->quoteIdentifier($constraint) . ' CHECK ((is_incident IS NOT NULL AND is_incident) IN (0,1))');
@@ -192,7 +192,7 @@ try {
                 } catch (RuntimeException $error) {
                     verify(str_contains($error->getMessage(), 'Conflicting category flag constraint'), 'Exact Category inspector refuses permissive precedence despite matching stripped tokens');
                 }
-                verify(Ledger::state($connection, CategoryFlags20261004::VERSION) === $incomplete
+                verify(Ledger::state($connection, CategoryFlags::PHASE) === $incomplete
                     && BooleanDomainSchema::catalog($connection)['checks']['glpi_itilcategories'] === $lookalike
                     && $connection->fetchAssociative('SELECT is_incident, is_request, is_problem FROM glpi_itilcategories WHERE id = ?', [$id]) === $originalValues, 'Lookalike refusal preserves values, CHECKs and incomplete receipt before DDL');
             }
@@ -208,10 +208,10 @@ try {
                 $connection->executeStatement('ALTER TABLE glpi_itilcategories ADD CONSTRAINT ' . $platform->quoteIdentifier($constraint) . ' CHECK (' . $check['clause'] . ')'
                     . ($platform instanceof MySQLPlatform ? ' ' . ($check['enforced'] === 'YES' ? 'ENFORCED' : 'NOT ENFORCED') : ''));
             }
-            Ledger::save($connection, CategoryFlags20261004::VERSION, $originalReceipt);
+            Ledger::save($connection, CategoryFlags::PHASE, $originalReceipt);
         }
         verify((string)$connection->fetchOne('SELECT @@SESSION.sql_mode') === $originalMode
-            && Ledger::state($connection, CategoryFlags20261004::VERSION) === $originalReceipt
+            && Ledger::state($connection, CategoryFlags::PHASE) === $originalReceipt
             && BooleanDomainSchema::catalog($connection)['checks']['glpi_itilcategories'] === $originalChecks, 'ANSI historical fixture restores exact native CHECKs, receipt and SESSION mode');
         verify((new SchemaCheck())->differences($connection) === [], 'Restored Category schema retains current property-derived checks');
     }

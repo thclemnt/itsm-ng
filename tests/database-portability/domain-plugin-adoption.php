@@ -4,15 +4,15 @@
 
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Types\Types;
-use itsmng\Database\Migration\Baseline20261001;
-use itsmng\Database\Migration\DomainDocuments20261006;
-use itsmng\Database\Migration\DomainIntegration20261006;
-use itsmng\Database\Migration\DomainsPluginAdoption20261006;
-use itsmng\Database\Migration\DomainsPluginSnapshot20261006;
+use itsmng\Database\Migration\V220\Baseline;
+use itsmng\Database\Migration\V220\DomainDocuments;
+use itsmng\Database\Migration\V220\DomainIntegration;
+use itsmng\Database\Migration\V220\DomainsPluginAdoption;
+use itsmng\Database\Migration\V220\DomainsPluginSnapshot;
 use itsmng\Database\Migration\History;
 use itsmng\Database\Migration\Ledger;
-use itsmng\Database\Migration\LegacyToOrm;
-use itsmng\Database\Migration\Seeds20261001;
+use itsmng\Database\Migration\V220\References;
+use itsmng\Database\Migration\V220\Seeds;
 use itsmng\Database\SchemaCheck;
 
 $directory = $argv[1] ?? '';
@@ -63,12 +63,12 @@ $checkpoint = static function (string $phase) use ($started): void {
     echo $phase . ': elapsed=' . number_format(microtime(true) - $started, 3, '.', '') . "s\n";
 };
 try {
-    $baseline = new Baseline20261001();
+    $baseline = new Baseline();
     foreach ($baseline->toSql($platform) as $sql) {
         $connection->executeStatement($sql);
     }
-    (new Seeds20261001())->apply($connection);
-    $manager->dropTable(LegacyToOrm::LEDGER);
+    (new Seeds())->apply($connection);
+    $manager->dropTable(Ledger::TABLE);
     LegacyReleaseFormat::publish($connection);
     $checkpoint('Raw frozen baseline and seeds, ledger removed');
     // These are raw historical records, deliberately independent of today's
@@ -100,18 +100,18 @@ try {
         }
     }
     verify($connection->fetchOne('SELECT comment FROM glpi_plugin_domains_domains WHERE id=100010') === "UPDATE notes are data; O'Reilly 日本語", 'The pinned UTF-8 export retains exact source text before adoption');
-    $unbound = (new DomainsPluginAdoption20261006())->plan($connection);
-    verify($unbound['version'] === DomainsPluginAdoption20261006::VERSION && $unbound['receipt']['counts'] === ['types' => 2, 'domains' => 3, 'items' => 1, 'configs' => 1]
+    $unbound = (new DomainsPluginAdoption())->plan($connection);
+    verify($unbound['version'] === DomainsPluginAdoption::RECEIPT && $unbound['receipt']['counts'] === ['types' => 2, 'domains' => 3, 'items' => 1, 'configs' => 1]
         && !$unbound['updates'] && !Ledger::assertTransactional($connection), 'An unbound supported export is explicitly planned without writes or a no-source completion marker');
     $connection->executeStatement('ALTER TABLE glpi_plugin_domains_configs RENAME TO glpi_plugin_test_config_hold');
     try {
-        refused(fn () => (new DomainsPluginAdoption20261006())->plan($connection), 'Missing frozen Domains source table: glpi_plugin_domains_configs');
+        refused(fn () => (new DomainsPluginAdoption())->plan($connection), 'Missing frozen Domains source table: glpi_plugin_domains_configs');
         verify(!Ledger::assertTransactional($connection), 'Partial export refuses before ledger bootstrap');
     } finally {
         $connection->executeStatement('ALTER TABLE glpi_plugin_test_config_hold RENAME TO glpi_plugin_domains_configs');
     }
     $connection->insert('glpi_plugin_domains_domaintypes', ['id' => 4294972901, 'entities_id' => 0, 'name' => 'Already-wide historical type', 'is_recursive' => 0]);
-    refused(fn () => (new DomainsPluginAdoption20261006())->plan($connection), 'identifier exceeds native target width');
+    refused(fn () => (new DomainsPluginAdoption())->plan($connection), 'identifier exceeds native target width');
     verify(!Ledger::assertTransactional($connection), 'A wide export cannot silently narrow or create an adoption journal');
     // This models an existing installation whose parent identifier has already
     // been widened, independently of this data prerequisite's production DDL.
@@ -138,10 +138,10 @@ try {
     $instantSql = $postgres ? 'SELECT EXTRACT(EPOCH FROM date_mod) FROM glpi_documents_items WHERE id = 9016' : 'SELECT UNIX_TIMESTAMP(date_mod) FROM glpi_documents_items WHERE id = 9016';
     $instant = $connection->fetchOne($instantSql);
     $connection->executeStatement($postgres ? "SET TIME ZONE '+02:00'" : "SET time_zone = '+02:00'");
-    $migration = new DomainsPluginAdoption20261006();
+    $migration = new DomainsPluginAdoption();
     $history = new History();
-    $snapshot = DomainsPluginSnapshot20261006::read($connection);
-    verify(DomainsPluginSnapshot20261006::fingerprint($snapshot) === (new itsmng\Domain\DomainPluginSource($connection))->read()->fingerprint(), 'Frozen and current source wire formats agree independently');
+    $snapshot = DomainsPluginSnapshot::read($connection);
+    verify(DomainsPluginSnapshot::fingerprint($snapshot) === (new itsmng\Domain\DomainPluginSource($connection))->read()->fingerprint(), 'Frozen and current source wire formats agree independently');
     $preview = $history->plan($connection);
     verify(isset($preview['domain_prerequisite']) && str_contains($preview['canonical_preflight'], 'Deferred'), 'Source-only preview honestly defers canonical unsupported-kind audits');
     verify(!Ledger::assertTransactional($connection) && (int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_domaintypes WHERE id >= 100000') === 0
@@ -165,7 +165,7 @@ try {
         $output = stream_get_contents($pipes[1]);
         fclose($pipes[1]);
         $status = proc_close($process);
-        verify($status === 0 && str_contains($output, 'Elective data prerequisite: ' . DomainsPluginAdoption20261006::VERSION)
+        verify($status === 0 && str_contains($output, 'Elective data prerequisite: ' . DomainsPluginAdoption::RECEIPT)
             && str_contains($output, '"domains":3') && str_contains($output, 'canonical audits') && str_contains($output, 'deferred document rows: 2')
             && !str_contains($output, 'UPDATE notes are data') && str_contains($output, 'No changes.'), 'Actual CLI shows frozen counts/deferred canonical audits without misreading source text as SQL: ' . $output);
         verify(!Ledger::assertTransactional($connection) && $connection->fetchOne('SELECT itemtype FROM glpi_items_tickets WHERE id=9010') === 'PluginDomainsDomain', 'Actual source-only CLI preview creates no ledger or remap');
@@ -296,7 +296,7 @@ try {
     $connection->insert('glpi_items_softwareversions', ['id' => 9033, 'softwareversions_id' => 9031, 'itemtype' => 'Computer', 'items_id' => 9002]);
     $connection->insert('glpi_items_softwarelicenses', ['id' => 9034, 'softwarelicenses_id' => 9032, 'itemtype' => 'Computer', 'items_id' => 9002]);
     $originalDocuments = $connection->fetchAllAssociative('SELECT * FROM glpi_documents_items WHERE id IN (9016,9017) ORDER BY id');
-    $originalPlugin = DomainsPluginSnapshot20261006::fingerprint(DomainsPluginSnapshot20261006::read($connection));
+    $originalPlugin = DomainsPluginSnapshot::fingerprint(DomainsPluginSnapshot::read($connection));
     foreach (['glpi_items_softwareversions' => 9033, 'glpi_items_softwarelicenses' => 9034] as $table => $id) {
         $connection->update($table, ['itemtype' => 'PluginInventoryAsset'], ['id' => $id]);
         $invalidSource = $connection->fetchAssociative('SELECT * FROM ' . $table . ' WHERE id = ?', [$id]);
@@ -311,7 +311,7 @@ try {
         verify(
             $connection->fetchAssociative('SELECT * FROM ' . $table . ' WHERE id = ?', [$id]) === $invalidSource
             && $connection->fetchAllAssociative('SELECT * FROM glpi_documents_items WHERE id IN (9016,9017) ORDER BY id') === $originalDocuments
-            && DomainsPluginSnapshot20261006::fingerprint(DomainsPluginSnapshot20261006::read($connection)) === $originalPlugin
+            && DomainsPluginSnapshot::fingerprint(DomainsPluginSnapshot::read($connection)) === $originalPlugin
             && $connection->fetchOne('SELECT itemtype FROM glpi_items_tickets WHERE id=9010') === 'PluginDomainsDomain'
             && (int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_domains WHERE id >= 100000') === 0,
             'Failed software canonical preflight rolls back the complete Domain remap and preserves invalid source data: ' . $table
@@ -327,7 +327,7 @@ try {
     verify((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_domains WHERE id >= 100000') === 0
         && (int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_documents_items WHERE id IN (9016,9017)') === 2, 'Receipt/DML failure rolls back the remap and document deletion together');
     if (!$postgres) {
-        verify(Ledger::state($connection, DomainsPluginAdoption20261006::VERSION)['phase'] === 'validated', 'Bootstrap journal records validation without claiming data adoption complete');
+        verify(Ledger::state($connection, DomainsPluginAdoption::RECEIPT)['phase'] === 'validated', 'Bootstrap journal records validation without claiming data adoption complete');
     }
     refused(fn () => $history->upgrade($connection, static function (string $step): void {
         if (!str_starts_with($step, 'Frozen Domains identity prerequisite committed')) {
@@ -335,7 +335,7 @@ try {
         }
     }), 'Injected canonical DDL interruption');
     if (!$postgres) {
-        $receipt = Ledger::state($connection, DomainsPluginAdoption20261006::VERSION);
+        $receipt = Ledger::state($connection, DomainsPluginAdoption::RECEIPT);
         verify($receipt['complete'] && !$receipt['documents_restored'] && count($receipt['deferred_documents']) === 2
             && $receipt['timestamp_timezone'] === '+00:00' && $receipt['deferred_documents'][0]['original']['date_mod'] === '2026-01-02 03:04:05', 'MySQL committed prerequisite freezes complete UTC document rows before resumable nontransactional canonical DDL');
         verify((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_documents_items WHERE id IN (9016,9017)') === 0, 'Deferred rows stay outside the historical scalar-to-typed stage');
@@ -350,9 +350,9 @@ try {
     $history->upgrade($connection);
     echo 'Final supported populated history replay: ' . number_format(microtime(true) - $replayStarted, 3, '.', '') . "s\n";
     verify((new SchemaCheck())->differences($connection) === [] && History::pendingVersions($connection) === [], 'Populated frozen source adoption converges through complete canonical history');
-    verify(Ledger::state($connection, Baseline20261001::VERSION)['origin'] === 'adopted'
-        && Ledger::state($connection, Seeds20261001::VERSION)['data'] === 'preserved', 'Upgrade adopts baseline/seeds instead of replaying seeds');
-    $receipt = Ledger::state($connection, DomainsPluginAdoption20261006::VERSION);
+    verify(Ledger::state($connection, Baseline::PHASE)['origin'] === 'adopted'
+        && Ledger::state($connection, Seeds::PHASE)['data'] === 'preserved', 'Upgrade adopts baseline/seeds instead of replaying seeds');
+    $receipt = Ledger::state($connection, DomainsPluginAdoption::RECEIPT);
     verify($receipt['complete'] && $receipt['documents_restored'] && $receipt['source_plugin']['directory'] === 'domains' && $receipt['source_plugin']['state'] === 4, 'Canonical document restoration and source registration provenance use the same ledger');
     verify((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_domains WHERE id BETWEEN 100010 AND 100012') === 3
         && (int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_domaintypes WHERE id BETWEEN 100000 AND 100001') === 2, 'Duplicate names across source rows preserve separate stable IDs');

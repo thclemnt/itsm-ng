@@ -5,7 +5,7 @@
 use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use itsmng\Database\ForeignKeys;
-use itsmng\Database\Migration\DisplayPreferenceOwnership;
+use itsmng\Database\Migration\V220\DisplayPreferenceOwnership;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\DisplayPreferenceRepository;
 use itsmng\Database\Repository\RecordRepository;

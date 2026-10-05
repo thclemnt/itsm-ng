@@ -6,7 +6,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Schema\Table;
 use itsmng\Database\Migration\Ledger;
-use itsmng\Database\Migration\LegacyToOrm;
+use itsmng\Database\Migration\V220\References;
 use itsmng\Database\SchemaCheck;
 
 require_once __DIR__ . '/ProcessorIncomingReferences.php';
@@ -33,8 +33,8 @@ final class ComponentFamilyTable
             throw new LogicException('Complete canonical schema, completed family and empty assignments required.');
         }
         $this->current = clone $expected->getTable($table);
-        $this->ledger = $connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
-        $receipt = $connection->fetchAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' WHERE version = ?', [$version]);
+        $this->ledger = $connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version');
+        $receipt = $connection->fetchAssociative('SELECT * FROM ' . Ledger::TABLE . ' WHERE version = ?', [$version]);
         if ($receipt === false) {
             throw new LogicException('Capture the actual completed family receipt before DDL.');
         }
@@ -55,7 +55,7 @@ final class ComponentFamilyTable
         }
         $this->attempted = true;
         // A completed receipt must never survive destructive fixture DDL.
-        $this->connection->delete(LegacyToOrm::LEDGER, ['version' => $this->version]);
+        $this->connection->delete(Ledger::TABLE, ['version' => $this->version]);
         $this->incoming->detach();
         $manager = $this->connection->createSchemaManager();
         $manager->dropTable($this->table);
@@ -100,7 +100,7 @@ final class ComponentFamilyTable
             return;
         }
         // As in legacy(), no completed receipt may survive restoration DDL.
-        $this->connection->delete(LegacyToOrm::LEDGER, ['version' => $this->version]);
+        $this->connection->delete(Ledger::TABLE, ['version' => $this->version]);
         $manager = $this->connection->createSchemaManager();
         $this->incoming->detach();
         if ($manager->tablesExist([$this->table])) {
@@ -114,13 +114,13 @@ final class ComponentFamilyTable
             throw new RuntimeException('Restore exact native component constraints and schema before its receipt.');
         }
         $unrelated = fn (array $rows): array => array_values(array_filter($rows, fn (array $row): bool => $row['version'] !== $this->version));
-        $actual = $this->connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
+        $actual = $this->connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version');
         if ($unrelated($actual) !== $unrelated($this->ledger)) {
             throw new RuntimeException('Refuse unrelated history changes during component fixture restoration.');
         }
-        $this->connection->delete(LegacyToOrm::LEDGER, ['version' => $this->version]);
-        $this->connection->insert(LegacyToOrm::LEDGER, $this->receipt);
-        if ($this->connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') !== $this->ledger) {
+        $this->connection->delete(Ledger::TABLE, ['version' => $this->version]);
+        $this->connection->insert(Ledger::TABLE, $this->receipt);
+        if ($this->connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version') !== $this->ledger) {
             throw new RuntimeException('Every original raw family receipt must restore exactly.');
         }
         $this->attempted = false;

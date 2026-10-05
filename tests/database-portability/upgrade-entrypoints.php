@@ -4,7 +4,7 @@
 
 use itsmng\Database\Migration\History;
 use itsmng\Database\Migration\Ledger;
-use itsmng\Database\Migration\LegacyToOrm;
+use itsmng\Database\Migration\V220\References;
 use itsmng\Database\Upgrade;
 
 $directory = $argv[1] ?? '';
@@ -47,7 +47,7 @@ $manager = $connection->createSchemaManager();
 $platform = $connection->getDatabasePlatform();
 $upgrade = new Upgrade($DB);
 $version = History::VERSIONS[array_key_last(History::VERSIONS)];
-$originalLedger = $connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
+$originalLedger = $connection->fetchAllAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' ORDER BY version');
 $originalRelease = $upgrade->release();
 $originalLocks = $connection->fetchAllAssociative("SELECT name, value FROM glpi_configs WHERE context = 'core' AND name IN ('lock_use_lock_item', 'lock_lockprofile_id')");
 $originalOidc = $connection->fetchAllAssociative('SELECT * FROM glpi_oidc_config ORDER BY id');
@@ -101,10 +101,10 @@ $user = $profile = $membership = $right = $plugin = $audit = null;
 $beforeColumns = null;
 $cli = static fn (array $args): array => command([PHP_BINARY, GLPI_ROOT . '/bin/console', '--config-dir=' . GLPI_CONFIG_DIR, '--no-interaction', ...$args]);
 $pending = static function () use ($connection, $version): void {
-    $connection->delete(LegacyToOrm::LEDGER, ['version' => $version]);
+    $connection->delete(Ledger::TABLE, ['version' => $version]);
 };
 $snapshot = static fn (): array => [
-    $connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version'),
+    $connection->fetchAllAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' ORDER BY version'),
     $upgrade->release(),
     $connection->fetchAllAssociative('SELECT id, password FROM glpi_users ORDER BY id'),
     $connection->fetchAllAssociative('SELECT id, rights FROM glpi_profilerights ORDER BY id'),
@@ -264,13 +264,13 @@ try {
     }
     verify($snapshot() === $before, 'Historical config bootstrap diagnostics preserve customer data and receipts');
 
-    $baselineRow = $connection->fetchAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' WHERE version = ?', [\itsmng\Database\Migration\Baseline20261001::VERSION]);
+    $baselineRow = $connection->fetchAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' WHERE version = ?', [\itsmng\Database\Migration\V220\Baseline::PHASE]);
     Ledger::save($connection, $baselineRow['version'], ['origin' => 'installed', 'complete' => false]);
     try {
         [$status, $output] = $cli(['db:migrate']);
         verify($status !== 0 && str_contains($output, 'db:install'), 'Interrupted installation routes to its existing baseline/seed resume before schema prerequisites');
     } finally {
-        $connection->update(LegacyToOrm::LEDGER, ['state' => $baselineRow['state']], ['version' => $baselineRow['version']]);
+        $connection->update(Ledger::TABLE, ['state' => $baselineRow['state']], ['version' => $baselineRow['version']]);
     }
     $connection->update('glpi_configs', ['value' => '9.9.9'], ['context' => 'core', 'name' => 'itsmversion']);
     try {
@@ -280,7 +280,7 @@ try {
         $connection->update('glpi_configs', ['value' => '2.1.6'], ['context' => 'core', 'name' => 'itsmversion']);
     }
 
-    $connection->insert(LegacyToOrm::LEDGER, ['version' => $version, 'state' => '{broken']);
+    $connection->insert(Ledger::TABLE, ['version' => $version, 'state' => '{broken']);
     $http('broken-ledger');
     [$status, $output] = $cli(['task:unlock', '--all']);
     verify($status === 129 && str_contains($output, 'ledger could not be validated'), 'Broken receipts deny ordinary CLI requests with actionable diagnostics');
@@ -369,10 +369,10 @@ try {
             $connection->executeStatement($sql);
         }
     }
-    $connection->delete(LegacyToOrm::LEDGER, ['version' => $version]);
+    $connection->delete(Ledger::TABLE, ['version' => $version]);
     foreach ($originalLedger as $row) {
         if ($row['version'] === $version) {
-            $connection->insert(LegacyToOrm::LEDGER, $row);
+            $connection->insert(Ledger::TABLE, $row);
         }
     }
     foreach ($originalRelease as $field => $value) {

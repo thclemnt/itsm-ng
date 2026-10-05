@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 use itsmng\Database\ForeignKeys;
-use itsmng\Database\Migration\NetworkPortAggregateOrigins;
+use itsmng\Database\Migration\V220\NetworkPortAggregateOrigins;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\NetworkPortAggregateRepository;
 use itsmng\Database\Repository\RecordRepository;

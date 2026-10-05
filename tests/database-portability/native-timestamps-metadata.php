@@ -17,7 +17,7 @@ use itsmng\Database\Entity\Domain;
 use itsmng\Database\Entity\ObjectLock;
 use itsmng\Database\Mapping\AttributeDriver;
 use itsmng\Database\Mapping\NativeTimestamp;
-use itsmng\Database\Migration\Baseline20261001;
+use itsmng\Database\Migration\V220\Baseline;
 use itsmng\Database\NativeTimestampSchema;
 use itsmng\Database\Orm;
 
@@ -45,7 +45,7 @@ foreach ([new MySQLPlatform(), new MariaDBPlatform(), new PostgreSQLPlatform()] 
     try {
         $em = new EntityManager($connection, Orm::configuration($platform));
         $current = (new BaselineSchema())->build($platform, false);
-        $historical = (new Baseline20261001())->build($platform);
+        $historical = (new Baseline())->build($platform);
         // This original contract owns its explicit seven-property cohort. The
         // coverage contract independently checks the complete frozen/property set.
         $declarations = NativeTimestampSchema::declarations(array_map($em->getClassMetadata(...), array_keys($cohort)));

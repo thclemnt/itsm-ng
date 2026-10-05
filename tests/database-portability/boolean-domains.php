@@ -7,12 +7,12 @@ use Doctrine\DBAL\Platforms\MySQLPlatform;
 use Doctrine\DBAL\Types\Types;
 use itsmng\Database\BooleanDomainSchema;
 use itsmng\Database\EntityRegistry;
-use itsmng\Database\Migration\BooleanDomains20261008;
-use itsmng\Database\Migration\Booleans20261002;
+use itsmng\Database\Migration\V220\BooleanDomains;
+use itsmng\Database\Migration\V220\Booleans;
 use itsmng\Database\Migration\History;
-use itsmng\Database\Migration\DomainIntegration20261006;
+use itsmng\Database\Migration\V220\DomainIntegration;
 use itsmng\Database\Migration\Ledger;
-use itsmng\Database\Migration\LegacyToOrm;
+use itsmng\Database\Migration\V220\References;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordWriter;
 use itsmng\Database\SchemaCheck;
@@ -93,8 +93,8 @@ $connection = $DB->getDoctrineConnection();
 $platform = $connection->getDatabasePlatform();
 $mysql = $platform instanceof AbstractMySQLPlatform;
 $quote = $platform->quoteIdentifier(...);
-$stage = new BooleanDomains20261008();
-$version = BooleanDomains20261008::VERSION;
+$stage = new BooleanDomains();
+$version = BooleanDomains::PHASE;
 $receipt = Ledger::state($connection, $version);
 verify(($receipt['complete'] ?? false) === true && History::pendingVersions($connection) === [], 'Actually migrate the disposable fixture before ordinary bootstrap');
 verify((new SchemaCheck())->differences($connection) === [], 'Current complete schema passes native boolean inspection');
@@ -246,7 +246,7 @@ $add = 'ALTER TABLE ' . $quote($table) . ' ADD CONSTRAINT ' . $quote($name) . ' 
 $id = (new FixtureRecords($DB))->create($table, ['name' => 'Historical invalid boolean ' . bin2hex(random_bytes(6)), $column => true]);
 $priorStates = Ledger::states($connection);
 try {
-    $connection->delete(LegacyToOrm::LEDGER, ['version' => $version]);
+    $connection->delete(Ledger::TABLE, ['version' => $version]);
     if ($mysql) {
         $connection->executeStatement($drop);
         $connection->executeStatement('UPDATE glpi_suppliers SET is_recursive = 2 WHERE id = ?', [$id]);
@@ -270,7 +270,7 @@ try {
         verify($stage->plan($connection)['sql'] === [], 'Retry re-inspects already committed native CHECK');
         (new History())->upgrade($connection);
         verify(Ledger::state($connection, $version)['complete'] && (new SchemaCheck())->differences($connection) === [], 'Older completed history actually adopts appended boolean domains');
-        $connection->delete(LegacyToOrm::LEDGER, ['version' => $version]);
+        $connection->delete(Ledger::TABLE, ['version' => $version]);
         $connection->executeStatement($drop);
         $connection->executeStatement('ALTER TABLE ' . $quote($table) . ' ADD CONSTRAINT ' . $quote($name) . ' CHECK (is_recursive IS NOT NULL AND (is_recursive IN (0,1) OR is_recursive = 2))');
         try {
@@ -293,7 +293,7 @@ try {
     } else {
         // The earlier conversion is complete: its receipt must not excuse a
         // later integer regression merely because another history is pending.
-        verify(($priorStates[Booleans20261002::VERSION]['complete'] ?? false) === true, 'Old PG conversion genuinely completed');
+        verify(($priorStates[Booleans::PHASE]['complete'] ?? false) === true, 'Old PG conversion genuinely completed');
         $connection->executeStatement('ALTER TABLE glpi_suppliers ALTER COLUMN is_recursive DROP DEFAULT, ALTER COLUMN is_recursive TYPE SMALLINT USING CASE WHEN is_recursive THEN 1 ELSE 0 END, ALTER COLUMN is_recursive SET DEFAULT 0');
         $before = BooleanDomainSchema::catalog($connection);
         try {
@@ -309,11 +309,11 @@ try {
     }
     // A later flag's completed supplying receipt cannot excuse a missing
     // column. Preserve any preceding suite rows while inspecting this drift.
-    verify(($priorStates[DomainIntegration20261006::VERSION]['complete'] ?? false) === true, 'Domain supplying migration actually completed');
+    verify(($priorStates[DomainIntegration::PHASE]['complete'] ?? false) === true, 'Domain supplying migration actually completed');
     $domainValues = $connection->fetchAllAssociative('SELECT id, is_helpdesk_visible FROM glpi_domains ORDER BY id');
     $domainCheck = BooleanDomainSchema::name('glpi_domains', 'is_helpdesk_visible');
     $domainDropCheck = 'ALTER TABLE glpi_domains' . ($platform instanceof MySQLPlatform ? ' DROP CHECK ' : ' DROP CONSTRAINT ') . $quote($domainCheck);
-    $connection->delete(LegacyToOrm::LEDGER, ['version' => $version]);
+    $connection->delete(Ledger::TABLE, ['version' => $version]);
     try {
         if ($mysql) {
             $connection->executeStatement($domainDropCheck);
@@ -375,7 +375,7 @@ foreach ($retryChecks as [$retryTable]) {
     $retryRows[$retryTable] = $connection->fetchAllAssociative('SELECT * FROM ' . $quote($retryTable) . ' ORDER BY id');
 }
 try {
-    $connection->delete(LegacyToOrm::LEDGER, ['version' => $version]);
+    $connection->delete(Ledger::TABLE, ['version' => $version]);
     if ($mysql) {
         foreach ($retryChecks as [$retryTable, $retryColumn]) {
             $connection->executeStatement('ALTER TABLE ' . $quote($retryTable) . ($platform instanceof MySQLPlatform ? ' DROP CHECK ' : ' DROP CONSTRAINT ')
@@ -427,11 +427,11 @@ try {
     }
     (new History())->upgrade($connection);
     verify(BooleanDomainSchema::catalog($connection) === $retryCatalog && Ledger::state($connection, $version)['complete'], 'Actual History retry converges on the exact native boolean schema');
-    $completedLedger = $connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
+    $completedLedger = $connection->fetchAllAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' ORDER BY version');
     (new History())->upgrade($connection);
     $stage->apply($connection);
     verify(BooleanDomainSchema::catalog($connection) === $retryCatalog
-        && $connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $completedLedger, 'Repeated completed History and stage replay change neither native CHECKs nor serialized receipts');
+        && $connection->fetchAllAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' ORDER BY version') === $completedLedger, 'Repeated completed History and stage replay change neither native CHECKs nor serialized receipts');
     foreach ($retryRows as $retryTable => $rows) {
         verify($connection->fetchAllAssociative('SELECT * FROM ' . $quote($retryTable) . ' ORDER BY id') === $rows, 'Interrupted and repeated CHECK adoption preserves every row: ' . $retryTable);
     }

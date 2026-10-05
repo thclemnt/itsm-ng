@@ -8,7 +8,7 @@ use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use itsmng\Database\Entity as Record;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\MappedStorage;
-use itsmng\Database\Migration\ReservationAssets;
+use itsmng\Database\Migration\V220\ReservationAssets;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\Repository\ReservationItemRepository;

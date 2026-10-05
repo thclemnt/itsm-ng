@@ -5,13 +5,13 @@
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use itsmng\Database\BaselineSchema;
 use itsmng\Database\BooleanDomainSchema;
-use itsmng\Database\Migration\DocumentSubjects;
-use itsmng\Database\Migration\DomainDocuments20261006;
-use itsmng\Database\Migration\ExactDiscriminators20261010;
+use itsmng\Database\Migration\V220\DocumentSubjects;
+use itsmng\Database\Migration\V220\DomainDocuments;
+use itsmng\Database\Migration\V220\ExactDiscriminators;
 use itsmng\Database\Migration\History;
 use itsmng\Database\Migration\Ledger;
-use itsmng\Database\Migration\LegacyToOrm;
-use itsmng\Database\Migration\OperatingSystemSubjects20261006;
+use itsmng\Database\Migration\V220\References;
+use itsmng\Database\Migration\V220\OperatingSystemSubjects;
 use itsmng\Database\SchemaCheck;
 
 $directory = $argv[1] ?? '';
@@ -44,7 +44,7 @@ $platform = $connection->getDatabasePlatform();
 $postgres = $platform instanceof PostgreSQLPlatform;
 $table = 'glpi_documents_items';
 $history = new History();
-$migration = new DomainDocuments20261006();
+$migration = new DomainDocuments();
 verify($connection->getTransactionNestingLevel() === 0 && History::pendingVersions($connection) === []
     && (new SchemaCheck())->differences($connection) === [], 'Complete canonical starting history outside caller frames');
 verify((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $table) === 0, 'Refuse to reconstruct unrelated document links');
@@ -53,7 +53,7 @@ $required = (new BaselineSchema())->build($platform)->getTable($table);
 $booleans = new NativeBooleanFixture($connection, $table);
 $nativeExact = new ExactSubjectHistoricalFixture($connection, [$table]);
 $saved = Ledger::states($connection);
-$rawLedger = static fn (): array => $connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
+$rawLedger = static fn (): array => $connection->fetchAllAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' ORDER BY version');
 $originalLedger = $rawLedger();
 $facts = static function () use ($connection, $manager, $platform, $table, $rawLedger): array {
     return [$connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id'),
@@ -73,8 +73,8 @@ $historicalStarted = false;
 $primary = null;
 $cleanup = [];
 $rebuild = static function (string $mode = 'generated') use ($connection, $manager, $table, $required, $booleans, $migration): void {
-    foreach ([$migration::VERSION, ExactDiscriminators20261010::VERSION, $migration::GENERAL_RECEIPT] as $version) {
-        $connection->delete(LegacyToOrm::LEDGER, ['version' => $version]);
+    foreach ([$migration::PHASE, ExactDiscriminators::PHASE, $migration::GENERAL_RECEIPT] as $version) {
+        $connection->delete(Ledger::TABLE, ['version' => $version]);
     }
     $manager->dropTable($table);
     $old = clone $required;
@@ -144,29 +144,29 @@ try {
 
     $rebuild();
     $connection->insert($table, $legacyRow);
-    Ledger::save($connection, $migration::VERSION, $saved[$migration::VERSION]);
-    $connection->delete(LegacyToOrm::LEDGER, ['version' => OperatingSystemSubjects20261006::VERSION]);
+    Ledger::save($connection, $migration::PHASE, $saved[$migration::PHASE]);
+    $connection->delete(Ledger::TABLE, ['version' => OperatingSystemSubjects::PHASE]);
     try {
         $refuse('Incomplete canonical owning subject columns/projection: ' . $table);
     } finally {
-        Ledger::save($connection, OperatingSystemSubjects20261006::VERSION, $saved[OperatingSystemSubjects20261006::VERSION]);
+        Ledger::save($connection, OperatingSystemSubjects::PHASE, $saved[OperatingSystemSubjects::PHASE]);
     }
 
     $rebuild();
     $connection->insert($table, $legacyRow);
-    Ledger::save($connection, $migration::VERSION, ['complete' => false, 'phase' => 'projection', 'items_comment' => '', 'projection_expanded' => true]);
+    Ledger::save($connection, $migration::PHASE, ['complete' => false, 'phase' => 'projection', 'items_comment' => '', 'projection_expanded' => true]);
     $refuse('Incomplete canonical owning subject columns/projection: ' . $table);
 
     foreach (['columns', 'copy', 'projection', 'constraints'] as $impossiblePhase) {
         $rebuild();
         $connection->insert($table, $legacyRow);
-        Ledger::save($connection, $migration::VERSION, ['complete' => false, 'phase' => $impossiblePhase,
+        Ledger::save($connection, $migration::PHASE, ['complete' => false, 'phase' => $impossiblePhase,
             'items_comment' => '', 'projection_expanded' => false]);
         $refuse('Incomplete canonical owning subject columns/projection: ' . $table);
     }
     $rebuild();
     $connection->insert($table, $legacyRow);
-    Ledger::save($connection, $migration::VERSION, ['complete' => false, 'phase' => 'audited',
+    Ledger::save($connection, $migration::PHASE, ['complete' => false, 'phase' => 'audited',
         'items_comment' => '', 'projection_expanded' => null]);
     $refuse('Incomplete canonical owning subject columns/projection: ' . $table);
 
@@ -216,9 +216,9 @@ try {
         $actualOwnerState = null;
         try {
             $history->upgrade($connection, static function (string $step) use ($phase, $connection, &$seen, &$actualOwnerState): void {
-                if ($step === 'DomainDocuments20261006: ' . $phase) {
+                if ($step === 'DomainDocuments: ' . $phase) {
                     $seen = true;
-                    $actualOwnerState = Ledger::state($connection, DomainDocuments20261006::VERSION);
+                    $actualOwnerState = Ledger::state($connection, DomainDocuments::PHASE);
                     throw new RuntimeException('Actual owning document interruption: ' . $phase);
                 }
             });
@@ -234,7 +234,7 @@ try {
         if ($postgres) {
             verify($facts() === $before, 'PostgreSQL canonical transaction rolls back the actual interrupted phase');
         } else {
-            $state = Ledger::state($connection, $migration::VERSION);
+            $state = Ledger::state($connection, $migration::PHASE);
             verify(
                 ($state['complete'] ?? null) === false && ($state['phase'] ?? null) === $previousPhase
                 && !(Ledger::state($connection, $migration::GENERAL_RECEIPT)['documents_restored'] ?? false),
@@ -271,10 +271,10 @@ try {
             $manager->createTable($nativeExact->restorationTable($table));
             $booleans->restore();
             $connection->executeStatement($migration::checkSql($table));
-            foreach ([DomainDocuments20261006::VERSION, OperatingSystemSubjects20261006::VERSION] as $version) {
+            foreach ([DomainDocuments::PHASE, OperatingSystemSubjects::PHASE] as $version) {
                 Ledger::save($connection, $version, $saved[$version]);
             }
-            $connection->delete(LegacyToOrm::LEDGER, ['version' => $migration::GENERAL_RECEIPT]);
+            $connection->delete(Ledger::TABLE, ['version' => $migration::GENERAL_RECEIPT]);
         }
     } catch (Throwable $error) {
         $cleanup[] = $error;

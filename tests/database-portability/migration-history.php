@@ -6,20 +6,21 @@ use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Types\Type;
 use itsmng\Database\Installer;
 use itsmng\Database\BooleanDomainSchema;
-use itsmng\Database\Migration\ApplianceAssets20261005;
-use itsmng\Database\Migration\ApplianceRecipients20261005;
-use itsmng\Database\Migration\Baseline20261001;
-use itsmng\Database\Migration\Booleans20261002;
-use itsmng\Database\Migration\BooleanDomains20261008;
-use itsmng\Database\Migration\DomainDocuments20261006;
+use itsmng\Database\Migration\V220\ApplianceAssets;
+use itsmng\Database\Migration\V220\ApplianceRecipients;
+use itsmng\Database\Migration\V220\Baseline;
+use itsmng\Database\Migration\V220\Booleans;
+use itsmng\Database\Migration\V220\BooleanDomains;
+use itsmng\Database\Migration\V220\DomainDocuments;
 use itsmng\Database\Migration\History;
+use itsmng\Database\Migration\Version220;
 use itsmng\Database\Migration\Ledger;
-use itsmng\Database\Migration\LegacyToOrm;
-use itsmng\Database\Migration\ProjectAssets20261003;
-use itsmng\Database\Migration\OperatingSystemSubjects20261006;
-use itsmng\Database\Migration\Seeds20261001;
-use itsmng\Database\Migration\SoftwareInstallationSubjects20261011;
-use itsmng\Database\Migration\SoftwareLicenseSubjects20261011;
+use itsmng\Database\Migration\V220\References;
+use itsmng\Database\Migration\V220\ProjectAssets;
+use itsmng\Database\Migration\V220\OperatingSystemSubjects;
+use itsmng\Database\Migration\V220\Seeds;
+use itsmng\Database\Migration\V220\SoftwareInstallationSubjects;
+use itsmng\Database\Migration\V220\SoftwareLicenseSubjects;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\Repository\RecordWriter;
@@ -60,15 +61,15 @@ $platform = $connection->getDatabasePlatform();
 $postgres = $platform instanceof PostgreSQLPlatform;
 $manager = $connection->createSchemaManager();
 $history = new History();
-$baseline = new Baseline20261001();
+$baseline = new Baseline();
 $schema = $baseline->build($platform);
 $frozen = $baseline->toSql($platform);
 $metadata = Orm::create($database)->getClassMetadata(itsmng\Database\Entity\Computer::class);
 $metadata->fieldMappings['is_deleted']->type = 'integer';
 verify($baseline->toSql($platform) === $frozen, 'Current entity metadata cannot rewrite historical DDL');
 verify(Orm::create($database)->getClassMetadata(itsmng\Database\Entity\Computer::class)->fieldMappings['is_deleted']->type === 'boolean', 'Historical inspection does not contaminate later entity managers');
-$owned = [...array_map(static fn ($table) => $table->getName(), $schema->getTables()), LegacyToOrm::LEDGER,
-    itsmng\Database\Migration\NetworkPortAggregateOrigins::TABLE, itsmng\Database\Migration\PlanningEventGuests::TABLE];
+$owned = [...array_map(static fn ($table) => $table->getName(), $schema->getTables()), Ledger::TABLE,
+    itsmng\Database\Migration\V220\NetworkPortAggregateOrigins::TABLE, itsmng\Database\Migration\V220\PlanningEventGuests::TABLE];
 verify(array_diff($manager->listTableNames(), $owned) === [], 'Refuse to reset a history fixture containing unrelated tables');
 if ($postgres) {
     foreach ($manager->listTableNames() as $table) {
@@ -103,7 +104,7 @@ try {
 if ($postgres) {
     verify($manager->listTableNames() === [] && !History::isInstalling($connection), 'PostgreSQL failed baseline rolls back schema and ledger');
 } else {
-    verify($manager->tablesExist([$interrupted]) && Ledger::state($connection, Baseline20261001::VERSION)['next'] === 0 && History::isInstalling($connection), 'MySQL committed CREATE retains a pending retry journal');
+    verify($manager->tablesExist([$interrupted]) && Ledger::state($connection, Baseline::PHASE)['next'] === 0 && History::isInstalling($connection), 'MySQL committed CREATE retains a pending retry journal');
     $relation = $platform->quoteIdentifier($interrupted);
     $connection->executeStatement('ALTER TABLE ' . $relation . ' ADD conflicting_fixture INTEGER');
     try {
@@ -120,7 +121,7 @@ verify(count($manager->listTableNames()) === count($schema->getTables()) + 1, 'R
 // Seeds remain raw at this point and their whole transaction can be retried.
 $rows = 0;
 try {
-    (new Seeds20261001())->apply($connection, progress: static function () use (&$rows): void {
+    (new Seeds())->apply($connection, progress: static function () use (&$rows): void {
         if (++$rows === 20) {
             throw new RuntimeException('Injected seed interruption');
         }
@@ -129,17 +130,17 @@ try {
 } catch (RuntimeException $error) {
     verify($error->getMessage() === 'Injected seed interruption', 'Seed failure is surfaced');
 }
-verify((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_apiclients') === 0 && !Ledger::state($connection, Seeds20261001::VERSION)['complete'], 'Failed seed DML rolls back with an incomplete completion record');
-(new Seeds20261001())->apply($connection);
+verify((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_apiclients') === 0 && !Ledger::state($connection, Seeds::PHASE)['complete'], 'Failed seed DML rolls back with an incomplete completion record');
+(new Seeds())->apply($connection);
 verify((int)$connection->fetchOne("SELECT COUNT(*) FROM glpi_rulerightparameters WHERE comment = ''") === 13
     && (int)$connection->fetchOne("SELECT COUNT(*) FROM glpi_ssovariables WHERE comment = ''") === 6, 'Strict raw seed replay supplies the nineteen frozen required comment inputs explicitly');
-$seedReceipt = Ledger::state($connection, Seeds20261001::VERSION);
+$seedReceipt = Ledger::state($connection, Seeds::PHASE);
 $connection->update('glpi_rulerightparameters', ['comment' => 'A retained later seed edit'], ['id' => 1]);
-(new Seeds20261001())->apply($connection, progress: static function (): void {
+(new Seeds())->apply($connection, progress: static function (): void {
     throw new RuntimeException('Completed seeds unexpectedly replayed');
 });
 verify($connection->fetchOne('SELECT comment FROM glpi_rulerightparameters WHERE id = 1') === 'A retained later seed edit'
-    && Ledger::state($connection, Seeds20261001::VERSION) === $seedReceipt, 'Completed seed receipt preserves later values without any replay');
+    && Ledger::state($connection, Seeds::PHASE) === $seedReceipt, 'Completed seed receipt preserves later values without any replay');
 verify((int)$connection->fetchOne('SELECT entities_id FROM glpi_entities WHERE id = 0') === -1, 'Pre-adoption root sentinel is preserved in frozen seed history');
 $legacyId = 2147483640;
 $auditId = 2147483646;
@@ -214,11 +215,11 @@ $connection->update('glpi_users', ['password' => $password], ['id' => 2]);
 
 // Raw populated adoption has no ledger at all, not twelve completed receipts.
 // Reuse this frozen baseline instead of running another installation contract.
-$rawReceipts = $connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
-$rawLedger = $manager->introspectTable(LegacyToOrm::LEDGER);
+$rawReceipts = $connection->fetchAllAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' ORDER BY version');
+$rawLedger = $manager->introspectTable(Ledger::TABLE);
 $rawSuppliers = range(1701, 1707);
 try {
-    $manager->dropTable(LegacyToOrm::LEDGER);
+    $manager->dropTable(Ledger::TABLE);
     // A completed historical installer publishes all four aliases; raw seed
     // placeholders alone do not represent an eligible ledgerless installation.
     LegacyReleaseFormat::publish($connection);
@@ -237,7 +238,7 @@ try {
     $beforeRawRows = $connection->fetchAllAssociative('SELECT * FROM glpi_suppliers ORDER BY id');
     $beforeRawComputer = $connection->fetchAssociative('SELECT * FROM glpi_computers WHERE id = ?', [$legacyId]);
     try {
-        (new BooleanDomains20261008())->plan($connection, true);
+        (new BooleanDomains())->plan($connection, true);
         throw new LogicException('Raw multi-table invalid flags were accepted');
     } catch (RuntimeException $error) {
         $lines = explode("\n", $error->getMessage());
@@ -254,7 +255,7 @@ try {
     } catch (RuntimeException $error) {
         verify(str_contains($error->getMessage(), 'glpi_computers.is_deleted'), 'Actual canonical adoption diagnoses the raw invalid owning property');
     }
-    verify(!$manager->tablesExist([LegacyToOrm::LEDGER]) && Ledger::states($connection) === [], 'Invalid raw adoption does not bootstrap even an empty ledger');
+    verify(!$manager->tablesExist([Ledger::TABLE]) && Ledger::states($connection) === [], 'Invalid raw adoption does not bootstrap even an empty ledger');
     verify(
         BooleanDomainSchema::catalog($connection) === $beforeRawCatalog && $manager->listTableNames() === $beforeRawTables
         && $connection->fetchAllAssociative('SELECT * FROM glpi_suppliers ORDER BY id') === $beforeRawRows
@@ -274,14 +275,14 @@ try {
                 . ' TYPE BOOLEAN USING (' . $column . ' = 1), ALTER COLUMN ' . $column . ' SET DEFAULT FALSE');
         }
     }
-    if (!$manager->tablesExist([LegacyToOrm::LEDGER])) {
+    if (!$manager->tablesExist([Ledger::TABLE])) {
         $manager->createTable($rawLedger);
         foreach ($rawReceipts as $row) {
-            $connection->insert(LegacyToOrm::LEDGER, $row);
+            $connection->insert(Ledger::TABLE, $row);
         }
     }
 }
-verify($connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $rawReceipts, 'Raw refusal fixture restores the prior seed/baseline receipts exactly');
+verify($connection->fetchAllAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' ORDER BY version') === $rawReceipts, 'Raw refusal fixture restores the prior seed/baseline receipts exactly');
 
 // Early PostgreSQL installations used smallint flags. Invalid values refuse first.
 if ($postgres) {
@@ -293,7 +294,7 @@ if ($postgres) {
     } catch (RuntimeException $error) {
         verify(str_contains($error->getMessage(), 'Invalid legacy boolean: glpi_computers.is_deleted') && str_contains($error->getMessage(), (string)$legacyId), 'Boolean diagnostic identifies the field and offending row');
     }
-    verify(Ledger::state($connection, LegacyToOrm::VERSION) === null && Type::lookupName($manager->listTableColumns('glpi_computers')['id']->getType()) === 'integer', 'Boolean refusal occurs before adoption DDL');
+    verify(Ledger::state($connection, References::PHASE) === null && Type::lookupName($manager->listTableColumns('glpi_computers')['id']->getType()) === 'integer', 'Boolean refusal occurs before adoption DDL');
     $connection->update('glpi_computers', ['is_deleted' => 1], ['id' => $legacyId]);
     $connection->executeStatement('ALTER TABLE glpi_users ALTER COLUMN is_ids_visible DROP DEFAULT, ALTER COLUMN is_ids_visible TYPE SMALLINT USING (CASE WHEN is_ids_visible IS NULL THEN NULL WHEN is_ids_visible THEN 1 ELSE 0 END)');
     $connection->update('glpi_users', ['is_ids_visible' => null], ['id' => 2]);
@@ -311,15 +312,15 @@ foreach ([['itemtype' => 'PluginExampleAsset', 'items_id' => $legacyId], ['itemt
         verify(str_contains($error->getMessage(), 'project asset kinds') || str_contains($error->getMessage(), 'Invalid or unsupported legacy typed item references: glpi_items_projects')
             || ($error::class === RuntimeException::class && $error->getMessage() === $exactDiagnostic), 'Project diagnostic identifies the unsupported/invalid relationship before adoption');
     }
-    verify(Ledger::state($connection, LegacyToOrm::VERSION) === null && Ledger::state($connection, ProjectAssets20261003::VERSION) === null
+    verify(Ledger::state($connection, References::PHASE) === null && Ledger::state($connection, ProjectAssets::PHASE) === null
         && Type::lookupName($manager->listTableColumns('glpi_computers')['id']->getType()) === 'integer'
         && !$manager->introspectTable('glpi_items_projects')->hasColumn('computers_id'), 'Project preflight occurs before all nontransactional adoption DDL and journal writes');
     $connection->delete('glpi_items_projects', ['id' => 303]);
 }
 // Both new relationship scopes are validated before the old adoption stage
 // can commit identifier widening or any other MySQL DDL.
-foreach ([['glpi_appliances_items', 'appliances_id', 401, 'Computer', $legacyId, ApplianceAssets20261005::VERSION, 'computers_id'],
-    ['glpi_appliances_items_relations', 'appliances_items_id', 402, 'Location', 601, ApplianceRecipients20261005::VERSION, 'locations_id']] as [$table, $ownerColumn, $ownerId, $kind, $targetId, $version, $column]) {
+foreach ([['glpi_appliances_items', 'appliances_id', 401, 'Computer', $legacyId, ApplianceAssets::PHASE, 'computers_id'],
+    ['glpi_appliances_items_relations', 'appliances_items_id', 402, 'Location', 601, ApplianceRecipients::PHASE, 'locations_id']] as [$table, $ownerColumn, $ownerId, $kind, $targetId, $version, $column]) {
     foreach ([['itemtype' => 'PluginExampleAsset', 'items_id' => $targetId], ['itemtype' => $kind, 'items_id' => 0], ['itemtype' => $kind, 'items_id' => 1999999999]] as $invalid) {
         $connection->insert($table, ['id' => 701, $ownerColumn => $ownerId] + $invalid);
         try {
@@ -333,7 +334,7 @@ foreach ([['glpi_appliances_items', 'appliances_id', 401, 'Computer', $legacyId,
                 || ($error::class === RuntimeException::class && $error->getMessage() === $canonicalDiagnostic), 'Appliance diagnostic identifies invalid relationship before adoption');
         }
         verify(
-            Ledger::state($connection, LegacyToOrm::VERSION) === null && Ledger::state($connection, ApplianceAssets20261005::VERSION) === null && Ledger::state($connection, ApplianceRecipients20261005::VERSION) === null
+            Ledger::state($connection, References::PHASE) === null && Ledger::state($connection, ApplianceAssets::PHASE) === null && Ledger::state($connection, ApplianceRecipients::PHASE) === null
             && Type::lookupName($manager->listTableColumns('glpi_computers')['id']->getType()) === 'integer' && !$manager->introspectTable($table)->hasColumn($column),
             'Appliance preflight refuses before any adoption DDL or stage journal'
         );
@@ -356,7 +357,7 @@ foreach ([['itemtype' => 'PluginInventoryAsset', 'items_id' => $legacyId], ['ite
                 . '. Correct the source assignment explicitly; no spelling or identifier is rewritten.')
         ), 'OS source diagnostic identifies invalid owning subject before adoption');
     }
-    verify(Ledger::state($connection, LegacyToOrm::VERSION) === null && Ledger::state($connection, OperatingSystemSubjects20261006::VERSION) === null
+    verify(Ledger::state($connection, References::PHASE) === null && Ledger::state($connection, OperatingSystemSubjects::PHASE) === null
         && Type::lookupName($manager->listTableColumns('glpi_computers')['id']->getType()) === 'integer'
         && !$manager->introspectTable('glpi_items_operatingsystems')->hasColumn('computers_id'), 'OS preflight occurs before any adoption DDL or stage journal');
     $connection->delete('glpi_items_operatingsystems', ['id' => 804]);
@@ -369,9 +370,9 @@ try {
 } catch (RuntimeException $error) {
     verify(str_contains($error->getMessage(), 'glpi_items_softwarelicenses') && str_contains($error->getMessage(), 'Plugin::registerClass'), 'Plugin extension diagnostic explains missing canonical mapping');
 }
-verify(Ledger::state($connection, LegacyToOrm::VERSION) === null
-    && Ledger::state($connection, SoftwareInstallationSubjects20261011::VERSION) === null
-    && Ledger::state($connection, SoftwareLicenseSubjects20261011::VERSION) === null
+verify(Ledger::state($connection, References::PHASE) === null
+    && Ledger::state($connection, SoftwareInstallationSubjects::PHASE) === null
+    && Ledger::state($connection, SoftwareLicenseSubjects::PHASE) === null
     && !$manager->introspectTable('glpi_items_softwareversions')->hasColumn('computers_id'), 'Both software families are audited before any adoption or assignment DDL');
 $connection->delete('glpi_items_softwarelicenses', ['id' => 907]);
 $connection->insert('glpi_useremails', ['users_id' => 1999999999, 'email' => 'history-orphan@example.invalid']);
@@ -381,7 +382,7 @@ try {
 } catch (RuntimeException $error) {
     verify(str_contains($error->getMessage(), 'Orphaned required reference: glpi_useremails.users_id'), 'Invalid reference reports its concrete owning field');
 }
-verify(Ledger::state($connection, LegacyToOrm::VERSION) === null, 'Invalid data creates no adoption journal');
+verify(Ledger::state($connection, References::PHASE) === null, 'Invalid data creates no adoption journal');
 $connection->delete('glpi_useremails', ['email' => 'history-orphan@example.invalid']);
 $upgradeConfig = sys_get_temp_dir() . '/itsm-history-upgrade-' . bin2hex(random_bytes(6));
 mkdir($upgradeConfig, 0700);
@@ -417,7 +418,7 @@ $assertOriginalKey = static function () use ($key, $upgradeConfig, $originalKeyH
     verify(is_file($childKey) && is_readable($childKey) && hash_file('sha256', $childKey) === $originalKeyHash, 'Historical CLI operations preserve the copied original child encryption key');
 };
 try {
-    $manager->dropTable(LegacyToOrm::LEDGER);
+    $manager->dropTable(Ledger::TABLE);
     verify(Ledger::states($connection) === [] && Type::lookupName($manager->listTableColumns('glpi_computers')['id']->getType()) === 'integer', 'Actual populated updater starts from raw tables with no ledger and legacy identifier widths');
     $rawRowbags = static function () use ($connection, $platform, $schema): array {
         $result = [];
@@ -468,7 +469,7 @@ try {
                         verify(\itsmng\Database\LegacyAdoptionEligibility::release($connection) === $publishedRelease, 'Distinct PostgreSQL configuration key does not replace canonical publication');
                         $history->plan($connection);
                         $assertOriginalKey();
-                        verify(!$manager->tablesExist([LegacyToOrm::LEDGER]) && $rawRowbags() === $ambiguousRows
+                        verify(!$manager->tablesExist([Ledger::TABLE]) && $rawRowbags() === $ambiguousRows
                             && $manager->createComparator()->compareSchemas($ambiguousSchema, $manager->introspectSchema())->isEmpty()
                             && BooleanDomainSchema::catalog($connection) === $ambiguousCatalog, 'Actual PostgreSQL preview preserves distinct configuration keys, all native rows/schema and absent ledger');
                         continue;
@@ -490,13 +491,13 @@ try {
                         verify(!str_contains($error->getMessage(), '"' . $input['value'] . '"'), 'Ambiguity diagnostic does not print actual duplicate values');
                     }
                     $assertOriginalKey();
-                    verify(!$manager->tablesExist([LegacyToOrm::LEDGER]) && $rawRowbags() === $ambiguousRows, $entrypoint . ' preserves every native row and absent ledger on duplicate refusal');
+                    verify(!$manager->tablesExist([Ledger::TABLE]) && $rawRowbags() === $ambiguousRows, $entrypoint . ' preserves every native row and absent ledger on duplicate refusal');
                 }
                 foreach ([['db:update', '--dry-run'], ['db:migrate', '--apply']] as $arguments) {
                     [$status, $output] = $cli($arguments);
                     $assertOriginalKey();
                     verify($status !== 0 && str_contains($output, $duplicateDiagnostic), 'Actual CLI refuses contradictory or same-value duplicate publication');
-                    verify(!$manager->tablesExist([LegacyToOrm::LEDGER]) && $rawRowbags() === $ambiguousRows, 'Actual CLI duplicate refusal preserves every native row and absent ledger');
+                    verify(!$manager->tablesExist([Ledger::TABLE]) && $rawRowbags() === $ambiguousRows, 'Actual CLI duplicate refusal preserves every native row and absent ledger');
                 }
                 verify($manager->createComparator()->compareSchemas($ambiguousSchema, $manager->introspectSchema())->isEmpty()
                     && BooleanDomainSchema::catalog($connection) === $ambiguousCatalog, 'Every duplicate refusal preserves the complete native schema and CHECK definitions');
@@ -553,7 +554,7 @@ try {
         } else {
             $operation();
         }
-        verify(!$manager->tablesExist([LegacyToOrm::LEDGER]) && Ledger::states($connection) === [], $entrypoint . ' creates no ledger or progress receipt');
+        verify(!$manager->tablesExist([Ledger::TABLE]) && Ledger::states($connection) === [], $entrypoint . ' creates no ledger or progress receipt');
         verify($manager->createComparator()->compareSchemas($unsupportedSchema, $manager->introspectSchema())->isEmpty()
             && BooleanDomainSchema::catalog($connection) === $unsupportedCatalog, $entrypoint . ' preserves complete schema/native column and CHECK definitions');
         verify($oldRowbags() === $unsupportedRows, $entrypoint . ' preserves every native row bag, credentials, rights, sentinels and audit record');
@@ -588,7 +589,7 @@ try {
             [$status, $output] = $cli($arguments);
             $assertOriginalKey();
             verify($status !== 0 && str_contains($output, $diagnostic), 'Actual raw CLI apply refuses ' . $refusal . ' with its owning-field diagnostic: ' . $output);
-            verify(!$manager->tablesExist([LegacyToOrm::LEDGER]) && Ledger::states($connection) === [], 'Refused raw CLI ' . $refusal . ' bootstraps no ledger');
+            verify(!$manager->tablesExist([Ledger::TABLE]) && Ledger::states($connection) === [], 'Refused raw CLI ' . $refusal . ' bootstraps no ledger');
             verify($manager->createComparator()->compareSchemas($beforeCliSchema, $manager->introspectSchema())->isEmpty()
                 && BooleanDomainSchema::catalog($connection) === $beforeCliCatalog, 'Refused raw CLI ' . $refusal . ' commits no schema/check changes');
             verify($connection->fetchAssociative('SELECT * FROM ' . ($refusal === 'invalid boolean' ? 'glpi_computers WHERE id = ' . $legacyId : 'glpi_appliances_items WHERE id = 402')) === $invalid, 'Refused raw CLI retains the invalid source row for correction');
@@ -612,8 +613,8 @@ try {
         $documentInstantSql = $postgres ? 'SELECT EXTRACT(EPOCH FROM date_mod) FROM glpi_documents_items WHERE id=803' : 'SELECT UNIX_TIMESTAMP(date_mod) FROM glpi_documents_items WHERE id=803';
         $documentInstant = $connection->fetchOne($documentInstantSql);
         $documentPreview = $history->plan($connection);
-        verify(($documentPreview['domain_prerequisite']['version'] ?? null) === DomainDocuments20261006::GENERAL_RECEIPT
-            && str_contains($documentPreview['canonical_preflight'], 'Deferred') && Ledger::state($connection, DomainDocuments20261006::GENERAL_RECEIPT) === null
+        verify(($documentPreview['domain_prerequisite']['version'] ?? null) === DomainDocuments::GENERAL_RECEIPT
+            && str_contains($documentPreview['canonical_preflight'], 'Deferred') && Ledger::state($connection, DomainDocuments::GENERAL_RECEIPT) === null
             && (int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_documents_items WHERE id=803') === 1, 'No-plugin Domain document preview is read-only and honestly defers canonical audits');
     } finally {
         $postgres ? $connection->fetchOne('SELECT set_config(?, ?, false)', ['TimeZone', $sourceTimezone]) : $connection->executeStatement('SET time_zone = ?', [$sourceTimezone]);
@@ -625,7 +626,7 @@ try {
     [$status, $output] = $cli(['db:update', '--dry-run']);
     $assertOriginalKey();
     verify($status === 0 && str_contains($output, 'Deferred canonical audits') && str_contains($output, 'No changes.'), 'Actual raw CLI preview retains its read-only deferred canonical plan output: ' . $output);
-    verify(!$manager->tablesExist([LegacyToOrm::LEDGER]) && Ledger::states($connection) === []
+    verify(!$manager->tablesExist([Ledger::TABLE]) && Ledger::states($connection) === []
         && $connection->fetchAllAssociative('SELECT * FROM glpi_documents_items ORDER BY id') === $beforePreviewRows
         && BooleanDomainSchema::catalog($connection) === $beforeCliCatalog, 'CLI preview preserves raw source rows, schema/check definitions and absent ledger');
     [$status, $output] = $cli(['db:update']);
@@ -640,7 +641,7 @@ try {
 }
 $checkpoint('Actual populated db:update');
 $database->clearSchemaCache();
-foreach ([Baseline20261001::VERSION, Seeds20261001::VERSION] as $adoptedVersion) {
+foreach ([Baseline::PHASE, Seeds::PHASE] as $adoptedVersion) {
     verify(Ledger::state($connection, $adoptedVersion) === ['complete' => true, 'origin' => 'adopted', 'data' => 'preserved'], 'Actual ledgerless updater records inherited history without replaying seeds: ' . $adoptedVersion);
 }
 verify((new SchemaCheck())->differences($connection) === [], 'Populated historical replay converges to the complete required schema');
@@ -648,7 +649,7 @@ foreach ($retainedCustomRights as $rightId => $mask) {
     verify((int)$connection->fetchOne('SELECT rights FROM glpi_profilerights WHERE id = ?', [$rightId]) === $mask, 'Canonical adoption preserves customized historical rights instead of replaying the old bit grant');
 }
 $document = $connection->fetchAssociative('SELECT id, documents_id, domains_id, items_id, users_id, is_recursive, timeline_position FROM glpi_documents_items WHERE id=803');
-$documentReceipt = Ledger::state($connection, DomainDocuments20261006::GENERAL_RECEIPT);
+$documentReceipt = Ledger::state($connection, DomainDocuments::GENERAL_RECEIPT);
 verify((int)$document['id'] === 803 && (int)$document['documents_id'] === 802 && (int)$document['domains_id'] === 801 && (int)$document['items_id'] === 801
     && $document['users_id'] === null && (bool)$document['is_recursive'] && (int)$document['timeline_position'] === 1
     && (float)$connection->fetchOne($documentInstantSql) === (float)$documentInstant, 'Actual populated db:update preserves core-only Domain document ownership, full-row semantics and native timestamp instant across sessions');
@@ -691,37 +692,45 @@ if ($postgres) {
 
 // A normal legacy installation has no baseline/seed records. Validate and adopt,
 // recording that its seed phase was inherited without inserting default rows.
-foreach ([Baseline20261001::VERSION, Seeds20261001::VERSION] as $version) {
-    $connection->delete(LegacyToOrm::LEDGER, ['version' => $version]);
+foreach ([Baseline::PHASE, Seeds::PHASE] as $version) {
+    $connection->delete(Ledger::TABLE, ['version' => $version]);
 }
-$beforePreview = $connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
+$beforePreview = $connection->fetchAllAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' ORDER BY version');
 $preview = $history->plan($connection);
-verify(!$preview['complete'] && $preview['pending'] === [Baseline20261001::VERSION, Seeds20261001::VERSION] && !$preview['booleans'], 'Preview identifies inherited history records without inventing seed DDL');
-verify($connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $beforePreview, 'Canonical preview leaves the ledger untouched');
+verify(!$preview['complete'] && $preview['pending'] === [Version220::VERSION] && $preview['phases'] === [Baseline::PHASE, Seeds::PHASE] && !$preview['booleans'], 'Preview identifies inherited history records without inventing seed DDL');
+verify($connection->fetchAllAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' ORDER BY version') === $beforePreview, 'Canonical preview leaves the ledger untouched');
 $history->upgrade($connection);
-foreach ([Baseline20261001::VERSION, Seeds20261001::VERSION] as $version) {
+foreach ([Baseline::PHASE, Seeds::PHASE] as $version) {
     verify(Ledger::state($connection, $version) === ['complete' => true, 'origin' => 'adopted', 'data' => 'preserved'], 'Adoption records preserved existing data: ' . $version);
 }
-$before = $connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
+$before = $connection->fetchAllAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' ORDER BY version');
 $history->upgrade($connection);
-verify($connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $before, 'Completed history retry leaves the ledger unchanged');
+verify($connection->fetchAllAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' ORDER BY version') === $before, 'Completed history retry leaves the ledger unchanged');
 verify($connection->fetchOne('SELECT password FROM glpi_users WHERE id = 2') === $password, 'Completed retry does not reapply seed account values');
 foreach (History::VERSIONS as $version) {
     verify(Ledger::state($connection, $version)['complete'], 'Every canonical migration is complete: ' . $version);
 }
-verify(count(History::VERSIONS) === 22
-    && array_slice(History::VERSIONS, 13, 4) === [\itsmng\Database\Migration\ExactDiscriminators20261010::VERSION,
-        SoftwareInstallationSubjects20261011::VERSION, SoftwareLicenseSubjects20261011::VERSION,
-        \itsmng\Database\Migration\ProcessorSubjects20261012::VERSION], 'Exact14, Software15/16 and Processor17 retain one ordered canonical ledger');
-verify(array_slice(History::VERSIONS, 17, 3) === [
-    \itsmng\Database\Migration\MotherboardSubjects20261013::VERSION,
-    \itsmng\Database\Migration\MemorySubjects20261013::VERSION,
-    \itsmng\Database\Migration\HardDriveSubjects20261013::VERSION,
-], 'Motherboard18, Memory19 and HardDrive20 extend the same ordered canonical ledger');
-verify(array_slice(History::VERSIONS, -2) === [
-    \itsmng\Database\Migration\BatterySubjects20261014::VERSION,
-    \itsmng\Database\Migration\PowerSupplySubjects20261014::VERSION,
-], 'Battery21 and PowerSupply22 append to the same ledger without rewriting earlier version order');
+verify(History::VERSIONS === ['2.2.0'] && Version220::pendingPhases(Ledger::states($connection)) === [],
+    'The complete transition publishes one ORM release, with no unfinished internal phases');
+
+// Already experimental installations keep their real phase journals. The release
+// receipt can be earned only by validating the entire transition again.
+$connection->delete(Ledger::TABLE, ['version' => Version220::VERSION]);
+$experimental = Ledger::states($connection);
+$preview = $history->plan($connection);
+verify($preview['pending'] === ['2.2.0'] && $preview['phases'] === [], 'Experimental checkpoints are not a published ORM release');
+verify(Ledger::states($connection) === $experimental, 'Experimental adoption preview is read-only');
+try {
+    $history->upgrade($connection, onComplete: static fn () => throw new RuntimeException('Injected release publication failure'));
+    throw new LogicException('Publication failure was not surfaced');
+} catch (RuntimeException $error) {
+    verify($error->getMessage() === 'Injected release publication failure' && Ledger::states($connection) === $experimental,
+        'Publication failure preserves original phase journals without inventing release completion');
+}
+$history->upgrade($connection);
+verify(Ledger::state($connection, Version220::VERSION) === ['complete' => true]
+    && array_diff_key(Ledger::states($connection), [Version220::VERSION => true]) === $experimental,
+    'Validated experimental adoption adds only the real 2.2.0 receipt and preserves every existing checkpoint');
 foreach ($componentHistorical as $bindingTable => $sourceRows) {
     $reference = \itsmng\Database\EntityRegistry::discriminatedReferences($bindingTable)['items_id'];
     foreach ($sourceRows as $id => $sourceRow) {
@@ -818,7 +827,7 @@ if ($postgres) {
 }
 try {
     $history->install($database, 'en_GB', static function (string $step): void {
-        if ($step === 'OperatingSystemSubjects20261006: columns') {
+        if ($step === 'OperatingSystemSubjects: columns') {
             throw new RuntimeException('Injected fresh OS subject migration interruption');
         }
     });
@@ -830,14 +839,14 @@ if ($postgres) {
     verify($manager->listTableNames() === [] && !History::isInstalling($connection), 'PostgreSQL actual fresh installation rolls back all phases');
 } else {
     verify(
-        History::isInstalling($connection) && !Ledger::state($connection, Baseline20261001::VERSION)['installation_complete']
-        && Ledger::state($connection, LegacyToOrm::VERSION)['complete'] && Ledger::state($connection, ApplianceAssets20261005::VERSION)['complete'] && Ledger::state($connection, ApplianceRecipients20261005::VERSION)['complete']
-        && !Ledger::state($connection, OperatingSystemSubjects20261006::VERSION)['complete'],
+        History::isInstalling($connection) && !Ledger::state($connection, Baseline::PHASE)['installation_complete']
+        && Ledger::state($connection, References::PHASE)['complete'] && Ledger::state($connection, ApplianceAssets::PHASE)['complete'] && Ledger::state($connection, ApplianceRecipients::PHASE)['complete']
+        && !Ledger::state($connection, OperatingSystemSubjects::PHASE)['complete'],
         'MySQL actual fresh installation stays retryable after completed earlier appliance history and incomplete OS subject stage'
     );
 }
 $history->install($database, 'en_GB');
-verify(!History::isInstalling($connection) && Ledger::state($connection, Baseline20261001::VERSION)['installation_complete'], 'Retried real installation closes its explicit installation marker');
+verify(!History::isInstalling($connection) && Ledger::state($connection, Baseline::PHASE)['installation_complete'], 'Retried real installation closes its explicit installation marker');
 verify((new SchemaCheck())->differences($connection) === [], 'Retried actual fresh installation converges on the same required schema');
 foreach (History::VERSIONS as $version) {
     verify(Ledger::state($connection, $version)['complete'], 'Retried actual install completes every appended history version: ' . $version);

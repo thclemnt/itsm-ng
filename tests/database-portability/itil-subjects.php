@@ -7,7 +7,7 @@ use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Platforms\MariaDbPlatform;
 use itsmng\Database\Entity as Record;
 use itsmng\Database\MappedStorage;
-use itsmng\Database\Migration\ITILSubjects;
+use itsmng\Database\Migration\V220\ITILSubjects;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 

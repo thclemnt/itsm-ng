@@ -5,9 +5,9 @@
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Table;
-use itsmng\Database\Migration\IncomingProjectionReferences;
-use itsmng\Database\Migration\LegacyToOrm;
-use itsmng\Database\Migration\TypedItemMigration;
+use itsmng\Database\Migration\V220\IncomingProjectionReferences;
+use itsmng\Database\Migration\V220\References;
+use itsmng\Database\Migration\V220\TypedItemMigration;
 
 $directory = $argv[1] ?? '';
 if (!is_file($directory . '/config_db.php')) {
@@ -47,7 +47,7 @@ final class ProjectionPlanningFixture extends TypedItemMigration
         return ['Computer' => 'computers'];
     }
 
-    public static function checkSql(string $table): string
+    public static function checkSql(string $table, ?\Doctrine\DBAL\Platforms\AbstractPlatform $platform = null): string
     {
         // Native fixture creation installs this declaration before planning.
         // the dynamic fixture always presents an existing owned CHECK.
@@ -276,7 +276,7 @@ try {
     $connection->insert($copyTable, ['id' => 1, 'itemtype' => 'Computer', 'computers_id' => null, 'items_id' => $computers[0]]);
     $beforeCopy = $connection->fetchAssociative('SELECT * FROM ' . $copyTable . ' WHERE id = 1');
     verify($beforeCopy['computers_id'] === null && (int)$beforeCopy['items_id'] === $computers[0] && !$generatedColumn($copyTable), 'The copy control starts with an ordinary nullable BIGINT legacy identity and canonical NULL');
-    $ledgerBefore = $connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
+    $ledgerBefore = $connection->fetchAllAssociative('SELECT version, state FROM ' . \itsmng\Database\Migration\Ledger::TABLE . ' ORDER BY version');
     $copyMigration = new ProjectionCopyPlanningFixture();
     $copyPlan = $copyMigration->plan($connection);
     verify($copyPlan[$copyTable]['copy_legacy'] && $copyPlan[$copyTable]['key_sql'] !== [], 'The populated legacy shape requires real copy and projection phases');
@@ -301,7 +301,7 @@ try {
     $copyRetry = $copyMigration->plan($connection)[$copyTable];
     verify(!$copyRetry['copy_legacy'] && $copyRetry['sql'] === [] && $copyRetry['key_sql'] === [] && $copyRetry['constraint_sql'] === [], 'Same-object and fresh-object apply retries converge without repeated DDL or copying');
     verify($connection->fetchAssociative('SELECT * FROM ' . $copyTable . ' WHERE id = 1') === $copied, 'Apply retries preserve the populated copied link');
-    verify($connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $ledgerBefore, 'Owned base migration controls do not change canonical migration receipts');
+    verify($connection->fetchAllAssociative('SELECT version, state FROM ' . \itsmng\Database\Migration\Ledger::TABLE . ' ORDER BY version') === $ledgerBefore, 'Owned base migration controls do not change canonical migration receipts');
 } catch (Throwable $error) {
     $primaryError = $error;
 } finally {

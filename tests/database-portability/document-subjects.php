@@ -9,8 +9,8 @@ use itsmng\Database\Entity as Record;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\MappedStorage;
-use itsmng\Database\Migration\DocumentSubjects;
-use itsmng\Database\Migration\DomainDocuments20261006;
+use itsmng\Database\Migration\V220\DocumentSubjects;
+use itsmng\Database\Migration\V220\DomainDocuments;
 use itsmng\Database\Migration\Ledger;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ContentRepository;
@@ -172,15 +172,15 @@ foreach ([['Document', 'glpi_documents_items', 'documents_id']] as [$type, $tabl
     $parentTable = (new $type())->getTable();
     $parent = $fixtures->create($parentTable);
     $id = $rootId = null;
-    $domainStage = new DomainDocuments20261006();
-    $domainState = Ledger::state($connection, DomainDocuments20261006::VERSION);
+    $domainStage = new DomainDocuments();
+    $domainState = Ledger::state($connection, DomainDocuments::PHASE);
     $historicalStarted = false;
     $historicalPrimary = null;
     $historicalCleanup = [];
     try {
         $nativeExact->beginOwnedAlteration();
         $historicalStarted = true;
-        $connection->delete('itsmng_migrations', ['version' => DomainDocuments20261006::VERSION]);
+        $connection->delete('itsmng_migrations', ['version' => DomainDocuments::PHASE]);
         $drop = $platform instanceof PostgreSQLPlatform || $platform instanceof MariaDbPlatform ? ' DROP CONSTRAINT ' : ' DROP CHECK ';
         $connection->executeStatement('ALTER TABLE ' . $table . $drop . $table . '_typed_item_kind');
         $before = $manager->introspectTable($table);
@@ -276,7 +276,7 @@ foreach ([['Document', 'glpi_documents_items', 'documents_id']] as [$type, $tabl
             if ($historicalStarted) {
                 $domainStage->apply($connection);
                 if ($domainState !== null) {
-                    Ledger::save($connection, DomainDocuments20261006::VERSION, $domainState);
+                    Ledger::save($connection, DomainDocuments::PHASE, $domainState);
                 }
             }
             $DB->clearSchemaCache();

@@ -2,9 +2,11 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+use itsmng\Database\Migration\V220\NullableReferences;
+use itsmng\Database\Migration\V220\ReferenceHistory;
+
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\KnowledgeBaseAccess;
-use itsmng\Database\Migration\ArticleCategoryReferences;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\KnowledgeBaseRepository;
 
@@ -123,7 +125,7 @@ try {
     $DB->rollBack();
 }
 $platform = $connection->getDatabasePlatform();
-$migration = new ArticleCategoryReferences();
+$migration = new NullableReferences(ReferenceHistory::get('optional', 'ARTICLE_CATEGORIES'), 'article category');
 $legacy = null;
 try {
     $connection->executeStatement($platform->getDropForeignKeySQL(ForeignKeys::name('glpi_knowbaseitems', 'knowbaseitemcategories_id'), 'glpi_knowbaseitems'));

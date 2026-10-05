@@ -7,7 +7,7 @@ use Doctrine\DBAL\Exception\DriverException;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use itsmng\Database\Entity;
 use itsmng\Database\MappedStorage;
-use itsmng\Database\Migration\NotificationRecipients;
+use itsmng\Database\Migration\V220\NotificationRecipients;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\NotificationRecipientRepository;
 use itsmng\Database\Repository\RecordRepository;

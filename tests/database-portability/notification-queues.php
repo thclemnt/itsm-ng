@@ -2,9 +2,10 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-use itsmng\Database\Migration\ReferenceHistory;
+use itsmng\Database\Migration\V220\NullableReferences;
+use itsmng\Database\Migration\V220\ReferenceHistory;
+
 use itsmng\Database\ForeignKeys;
-use itsmng\Database\Migration\QueueTemplateReferences;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 
@@ -132,7 +133,7 @@ try {
 }
 $platform = $connection->getDatabasePlatform();
 $quote = $platform->quoteIdentifier(...);
-$migration = new QueueTemplateReferences();
+$migration = new NullableReferences(ReferenceHistory::get('optional', 'QUEUE_TEMPLATES'), 'queue template');
 $legacy = [];
 try {
     foreach (ReferenceHistory::get('optional', 'QUEUE_TEMPLATES') as $table => $relations) {

@@ -2,9 +2,10 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-use itsmng\Database\Migration\ReferenceHistory;
+use itsmng\Database\Migration\V220\NullableReferences;
+use itsmng\Database\Migration\V220\ReferenceHistory;
+
 use itsmng\Database\ForeignKeys;
-use itsmng\Database\Migration\StockReferences;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\CartridgeRepository;
 
@@ -123,7 +124,7 @@ try {
 
 $platform = $connection->getDatabasePlatform();
 $quote = $platform->quoteIdentifier(...);
-$migration = new StockReferences();
+$migration = new NullableReferences(ReferenceHistory::get('optional', 'STOCK'), 'stock');
 $legacyId = null;
 try {
     foreach (ReferenceHistory::get('optional', 'STOCK') as $table => $relations) {

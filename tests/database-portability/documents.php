@@ -181,7 +181,7 @@ try {
 }
 $platform = $connection->getDatabasePlatform();
 $quote = $platform->quoteIdentifier(...);
-$migration = new \itsmng\Database\Migration\DocumentTicketReferences();
+$migration = new \itsmng\Database\Migration\V220\NullableReferences(\itsmng\Database\Migration\V220\ReferenceHistory::get('optional', 'DOCUMENT_TICKETS'), 'document ticket');
 $table = 'glpi_documents';
 $column = 'tickets_id';
 $ids = [];

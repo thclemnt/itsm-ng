@@ -2,9 +2,10 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-use itsmng\Database\Migration\ReferenceHistory;
+use itsmng\Database\Migration\V220\NullableReferences;
+use itsmng\Database\Migration\V220\ReferenceHistory;
+
 use itsmng\Database\ForeignKeys;
-use itsmng\Database\Migration\ProjectHierarchy;
 
 $directory = $argv[1] ?? '';
 if (!is_file($directory . '/config_db.php')) {
@@ -132,7 +133,7 @@ try {
     $taskId = (int)$connection->fetchOne('SELECT COALESCE(MAX(id), 0) + 100 FROM glpi_projecttasks');
     $connection->insert('glpi_projects', ['id' => $projectId, 'name' => 'Legacy hierarchy', 'projects_id' => 0]);
     $connection->insert('glpi_projecttasks', ['id' => $taskId, 'projects_id' => 0, 'projecttasks_id' => 0]);
-    $migration = new ProjectHierarchy();
+    $migration = new NullableReferences(ReferenceHistory::get('optional', 'PROJECT_HIERARCHY'), 'hierarchy');
     $plan = $migration->plan($connection);
     verify($plan['sql'] !== [] && array_sum($plan['counts']) >= 3, 'Read-only plan reports DDL and zeros');
     verify((int)$connection->fetchOne('SELECT projects_id FROM glpi_projecttasks WHERE id = ?', [$taskId]) === 0, 'Plan preserves legacy data');
@@ -167,7 +168,7 @@ try {
     if ($projectId !== null) {
         $connection->delete('glpi_projects', ['id' => $projectId]);
     }
-    (new ProjectHierarchy())->apply($connection);
+    (new NullableReferences(ReferenceHistory::get('optional', 'PROJECT_HIERARCHY'), 'hierarchy'))->apply($connection);
     (new ForeignKeys())->apply($connection);
 }
 echo $DB->getProvider() . ": project aggregates, hierarchy, Gantt roots, teams, purge and schema migration passed.\n";

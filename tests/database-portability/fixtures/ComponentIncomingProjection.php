@@ -4,8 +4,8 @@
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
-use itsmng\Database\Migration\IncomingProjectionReferences;
-use itsmng\Database\Migration\LegacyToOrm;
+use itsmng\Database\Migration\V220\IncomingProjectionReferences;
+use itsmng\Database\Migration\V220\References;
 
 /** A real second-ordinal incoming FK must refuse destructive projection adoption. */
 final class ComponentIncomingProjection
@@ -36,7 +36,7 @@ final class ComponentIncomingProjection
             $schema = (string)$connection->fetchOne($platform instanceof PostgreSQLPlatform ? 'SELECT current_schema()' : 'SELECT DATABASE()');
             verify($incoming->has($schema, $table), 'Actual composite FK inventory finds compatibility projection in its second ordinal');
             $rows = $connection->fetchAllAssociative('SELECT * FROM ' . $quote($table) . ' ORDER BY id');
-            $receipt = $connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
+            $receipt = $connection->fetchAllAssociative('SELECT * FROM ' . \itsmng\Database\Migration\Ledger::TABLE . ' ORDER BY version');
             $sourceDdl = $platform->getCreateTableSQL($manager->introspectTable($table));
             $consumerDdl = $platform->getCreateTableSQL($manager->introspectTable($consumer));
             try {
@@ -47,7 +47,7 @@ final class ComponentIncomingProjection
             }
             verify(
                 $connection->fetchAllAssociative('SELECT * FROM ' . $quote($table) . ' ORDER BY id') === $rows
-                && $connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $receipt
+                && $connection->fetchAllAssociative('SELECT * FROM ' . \itsmng\Database\Migration\Ledger::TABLE . ' ORDER BY version') === $receipt
                 && $connection->fetchAllAssociative('SELECT * FROM ' . $quote($consumer)) === [['id' => 1, 'binding_id' => $binding, 'subject_id' => $subject]]
                 && $platform->getCreateTableSQL($manager->introspectTable($table)) === $sourceDdl
                 && $platform->getCreateTableSQL($manager->introspectTable($consumer)) === $consumerDdl,

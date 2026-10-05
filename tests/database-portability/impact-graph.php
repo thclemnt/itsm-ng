@@ -2,7 +2,7 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-use itsmng\Database\Migration\ReferenceHistory;
+use itsmng\Database\Migration\V220\ReferenceHistory;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
@@ -138,7 +138,7 @@ try {
 $platform = $connection->getDatabasePlatform();
 $quote = $platform->quoteIdentifier(...);
 $postgres = $platform instanceof \Doctrine\DBAL\Platforms\PostgreSQLPlatform;
-$migration = new \itsmng\Database\Migration\ImpactGraphReferences();
+$migration = new \itsmng\Database\Migration\V220\ImpactGraphReferences();
 $created = [];
 $historicalChecks = new HistoricalBooleanChecks($connection, $migration::FLAGS);
 try {

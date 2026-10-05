@@ -6,8 +6,8 @@ use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Types\Type;
-use itsmng\Database\Migration\LegacyToOrm;
-use itsmng\Database\Migration\WideIdentifiers;
+use itsmng\Database\Migration\V220\References;
+use itsmng\Database\Migration\V220\WideIdentifiers;
 use itsmng\Database\OwnedMutationFrame;
 use itsmng\Database\TransactionOwnership;
 
@@ -63,7 +63,7 @@ $auxiliaryFacts = static function () use ($connection, $postgres, $external, $qu
     return $facts;
 };
 $auxiliaryBefore = $auxiliaryFacts();
-$ledger = $connection->fetchAllAssociative('SELECT version,state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
+$ledger = $connection->fetchAllAssociative('SELECT version,state FROM ' . \itsmng\Database\Migration\Ledger::TABLE . ' ORDER BY version');
 $created = [];
 $namespaceCreated = false;
 $primary = null;
@@ -97,7 +97,7 @@ $facts = static function () use ($connection, $postgres, $qualified, &$created):
             $facts[$table]['definition'] = $connection->fetchAssociative('SHOW CREATE TABLE ' . $table);
         }
     }
-    $facts['ledger'] = $connection->fetchAllAssociative('SELECT version,state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
+    $facts['ledger'] = $connection->fetchAllAssociative('SELECT version,state FROM ' . \itsmng\Database\Migration\Ledger::TABLE . ' ORDER BY version');
     return $facts;
 };
 $refuse = static function (array $scope, string $table, string $constraint) use ($connection, $external, $facts): void {
@@ -267,7 +267,7 @@ try {
         }
     }
     try {
-        verify($connection->fetchAllAssociative('SELECT version,state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $ledger, 'Cleanup leaves the entire original ledger untouched');
+        verify($connection->fetchAllAssociative('SELECT version,state FROM ' . \itsmng\Database\Migration\Ledger::TABLE . ' ORDER BY version') === $ledger, 'Cleanup leaves the entire original ledger untouched');
         verify($auxiliaryFacts() === $auxiliaryBefore, 'All preexisting MySQL history auxiliary table definitions and duplicate native rowbags remain exact');
         $DB->clearSchemaCache();
     } catch (Throwable $error) {

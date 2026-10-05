@@ -15,12 +15,12 @@ use itsmng\Database\Entity\ItemDevicePowerSupply;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Mapping\DiscriminatorKey;
-use itsmng\Database\Migration\Baseline20261001;
-use itsmng\Database\Migration\HardDriveSubjects20261013;
-use itsmng\Database\Migration\MemorySubjects20261013;
-use itsmng\Database\Migration\MotherboardSubjects20261013;
-use itsmng\Database\Migration\BatterySubjects20261014;
-use itsmng\Database\Migration\PowerSupplySubjects20261014;
+use itsmng\Database\Migration\V220\Baseline;
+use itsmng\Database\Migration\V220\HardDriveSubjects;
+use itsmng\Database\Migration\V220\MemorySubjects;
+use itsmng\Database\Migration\V220\MotherboardSubjects;
+use itsmng\Database\Migration\V220\BatterySubjects;
+use itsmng\Database\Migration\V220\PowerSupplySubjects;
 use itsmng\Database\Orm;
 
 $source = realpath($argv[2] ?? dirname(__DIR__, 2));
@@ -39,17 +39,17 @@ function verify(bool $ok, string $message): void
     }
 }
 $families = [
-    [ItemDeviceMotherboard::class, MotherboardSubjects20261013::class, ['Computer']],
-    [ItemDeviceMemory::class, MemorySubjects20261013::class, ['Computer', 'NetworkEquipment', 'Peripheral', 'Printer']],
-    [ItemDeviceHardDrive::class, HardDriveSubjects20261013::class, ['Computer', 'Peripheral', 'NetworkEquipment', 'Printer', 'Phone']],
-    [ItemDeviceBattery::class, BatterySubjects20261014::class, ['Computer', 'Peripheral', 'Phone', 'Printer']],
-    [ItemDevicePowerSupply::class, PowerSupplySubjects20261014::class, ['Computer', 'NetworkEquipment', 'Enclosure']],
+    [ItemDeviceMotherboard::class, MotherboardSubjects::class, ['Computer']],
+    [ItemDeviceMemory::class, MemorySubjects::class, ['Computer', 'NetworkEquipment', 'Peripheral', 'Printer']],
+    [ItemDeviceHardDrive::class, HardDriveSubjects::class, ['Computer', 'Peripheral', 'NetworkEquipment', 'Printer', 'Phone']],
+    [ItemDeviceBattery::class, BatterySubjects::class, ['Computer', 'Peripheral', 'Phone', 'Printer']],
+    [ItemDevicePowerSupply::class, PowerSupplySubjects::class, ['Computer', 'NetworkEquipment', 'Enclosure']],
 ];
 foreach ([new MySQLPlatform(), new PostgreSQLPlatform()] as $platform) {
     $connection = DriverManager::getConnection(['driver' => 'pdo_mysql', 'serverVersion' => '8.4.0']);
     $em = new EntityManager($connection, Orm::configuration($platform));
     $schema = (new BaselineSchema())->build($platform);
-    $historical = (new Baseline20261001())->build($platform);
+    $historical = (new Baseline())->build($platform);
     foreach ($families as [$class, $migration, $kinds]) {
         $metadata = $em->getClassMetadata($class);
         $table = $schema->getTable($metadata->getTableName());

@@ -43,11 +43,11 @@ final class Installer
     public static function resetMysqlCore(Connection $connection): void
     {
         $platform = $connection->getDatabasePlatform();
-        $schema = (new Migration\Baseline20261001())->build($platform);
-        $names = [...array_map(static fn ($table) => $table->getName(), $schema->getTables()), Migration\NetworkPortAggregateOrigins::TABLE, Migration\PlanningEventGuests::TABLE];
+        $schema = (new Migration\V220\Baseline())->build($platform);
+        $names = [...array_map(static fn ($table) => $table->getName(), $schema->getTables()), Migration\V220\NetworkPortAggregateOrigins::TABLE, Migration\V220\PlanningEventGuests::TABLE];
         $manager = $connection->createSchemaManager();
         $existing = array_flip($manager->listTableNames());
-        foreach (array_diff(array_keys($existing), $names, [Migration\LegacyToOrm::LEDGER]) as $name) {
+        foreach (array_diff(array_keys($existing), $names, [Migration\Ledger::TABLE]) as $name) {
             foreach ($manager->listTableForeignKeys($name) as $key) {
                 if (in_array($key->getForeignTableName(), $names, true)) {
                     throw new \RuntimeException('Cannot replace core schema referenced by custom table: ' . $name . '. Use the validated upgrade path.');
@@ -59,8 +59,8 @@ final class Installer
         try {
             // A forced fresh install replaces the core schema and its adoption record.
             // An old completion/journal must never suppress the new seed conversion.
-            if (isset($existing[Migration\LegacyToOrm::LEDGER])) {
-                $connection->executeStatement($platform->getDropTableSQL(Migration\LegacyToOrm::LEDGER));
+            if (isset($existing[Migration\Ledger::TABLE])) {
+                $connection->executeStatement($platform->getDropTableSQL(Migration\Ledger::TABLE));
             }
             foreach ($names as $name) {
                 if (isset($existing[$name])) {

@@ -9,7 +9,7 @@ use itsmng\Database\Entity as Record;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\MappedStorage;
-use itsmng\Database\Migration\PlanningRecallSubjects;
+use itsmng\Database\Migration\V220\PlanningRecallSubjects;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\PlanningRepository;
 use itsmng\Database\Repository\RecordRepository;

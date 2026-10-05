@@ -57,10 +57,16 @@ Preview is read-only. `db:update` without `--dry-run` also applies canonical his
 and publishes release metadata through the lifecycle. Its `--force` retries history,
 never old MySQL scripts. `db:legacy_to_orm` aliases the same migration entrypoint.
 
-Ledgerless adoption requires genuine ITSM-NG 2.1.3 historical data/schema provenance.
-Older releases must complete their matching historical application's upgrade first.
-Changing version labels alone does not convert data or profile rights. Supported
-partial canonical installations retain their journal. Original keys are required;
+The supported upgrade is genuine ITSM-NG 2.1.3 historical data/schema format to
+2.2.0 in one ORM migration. Older releases must complete their matching historical
+application's upgrade to 2.1.3 before switching application files. Later upgrades
+use only ORM migrations.
+Changing version labels alone does not convert data or profile rights. Experimental
+ORM installations, including interrupted ones, retain their original
+internal phase checkpoints in `itsmng_migrations`; these are not public release
+versions. `db:migrate --apply` validates and completes the transition before adding
+the 2.2.0 release receipt. No journal or data is replaced to manufacture provenance.
+Original keys are required;
 missing or invalid key paths never authorize regeneration. Customized accounts,
 rights, plugins, notifications and audit must survive adoption. Current inspection
 does not repair unsupported historical layouts.
@@ -124,7 +130,10 @@ Run migration contracts sequentially per database. Provision a separate
 `itsm_port_*_history` fixture for history replay; `PORT_HISTORY_DB` selects it.
 Never use application or primary portability databases for that fixture.
 Existing Composer application/unit suites use a configured test installation.
-Pure units should avoid the database bootstrap rather than add a custom runner.
+Pure migration provenance and seed-input contracts run in the existing isolated
+Atoum suite (`composer test:units:isolated`), without a database bootstrap.
+The populated frozen-input contract is not a substitute for an independent genuine
+released-2.1.3 MySQL/MariaDB upgrade fixture.
 
 Acceptance requires fresh replay, populated supported adoption, legacy IDs/sentinels,
 nullability/booleans, original-key retention, sequence synchronization, interrupted

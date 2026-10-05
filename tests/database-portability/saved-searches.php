@@ -2,9 +2,10 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-use itsmng\Database\Migration\ReferenceHistory;
+use itsmng\Database\Migration\V220\NullableReferences;
+use itsmng\Database\Migration\V220\ReferenceHistory;
+
 use itsmng\Database\ForeignKeys;
-use itsmng\Database\Migration\SavedSearchReferences;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 
@@ -129,7 +130,7 @@ try {
 }
 $platform = $connection->getDatabasePlatform();
 $quote = $platform->quoteIdentifier(...);
-$migration = new SavedSearchReferences();
+$migration = new NullableReferences(ReferenceHistory::get('optional', 'SAVED_SEARCHES'), 'saved-search owner');
 $legacy = null;
 try {
     foreach (ReferenceHistory::get('optional', 'SAVED_SEARCHES') as $table => $relations) {

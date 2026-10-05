@@ -2,10 +2,11 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-use itsmng\Database\Migration\ReferenceHistory;
+use itsmng\Database\Migration\V220\NullableReferences;
+use itsmng\Database\Migration\V220\ReferenceHistory;
+
 use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
 use itsmng\Database\ForeignKeys;
-use itsmng\Database\Migration\GlobalEntityScopes;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\FieldUnicityRepository;
 use itsmng\Database\Repository\RecordRepository;
@@ -162,7 +163,7 @@ try {
 }
 
 // Reconstruct the old sentinel column in this disposable installation only.
-$migration = new GlobalEntityScopes();
+$migration = new NullableReferences(ReferenceHistory::get('global', 'RELATIONS'), 'global configuration entity', -1);
 $platform = $connection->getDatabasePlatform();
 $manager = $connection->createSchemaManager();
 $quote = $platform->quoteIdentifier(...);

@@ -2,9 +2,9 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-use itsmng\Database\Migration\ReferenceHistory;
+use itsmng\Database\Migration\V220\ReferenceHistory;
 use itsmng\Database\ForeignKeys;
-use itsmng\Database\Migration\TreeParentReferences;
+use itsmng\Database\Migration\V220\TreeParentReferences;
 
 $directory = $argv[1] ?? '';
 if (!is_file($directory . '/config_db.php')) {
@@ -70,7 +70,7 @@ try {
         $child2 = $model->add(['name' => 'Replacement child ' . $type, $column => $root, 'entities_id' => 0]);
         verify($model->delete(['id' => $root, '_replace_by' => $leaf], true), 'Replace root');
         verify($model->getFromDB($child2) && (int)$model->fields[$column] === $leaf, 'Replacement moves descendants');
-        if (isset(\itsmng\Database\Migration\TreeUniqueness::TABLES[$table])) {
+        if (isset(\itsmng\Database\Migration\V220\TreeUniqueness::TABLES[$table])) {
             $connection->beginTransaction();
             try {
                 $rejected = false;
@@ -217,11 +217,11 @@ try {
         $before = $manager->introspectTable($table);
         $after = clone $before;
         $after->getColumn($column)->setNotnull(true)->setDefault(0);
-        if (isset(\itsmng\Database\Migration\TreeUniqueness::TABLES[$table])) {
-            $index = \itsmng\Database\Migration\TreeUniqueness::indexName($table, $platform);
+        if (isset(\itsmng\Database\Migration\V220\TreeUniqueness::TABLES[$table])) {
+            $index = \itsmng\Database\Migration\V220\TreeUniqueness::indexName($table, $platform);
             $after->dropIndex($index);
             $after->dropColumn('parent_key');
-            $after->addUniqueIndex(\itsmng\Database\Migration\TreeUniqueness::TABLES[$table], $index);
+            $after->addUniqueIndex(\itsmng\Database\Migration\V220\TreeUniqueness::TABLES[$table], $index);
         }
         foreach ($platform->getAlterTableSQL($manager->createComparator()->compareTables($before, $after)) as $sql) {
             $connection->executeStatement($sql);
@@ -249,7 +249,7 @@ try {
     $migration->apply($connection);
     verify($connection->fetchOne('SELECT taskcategories_id FROM glpi_taskcategories WHERE id = ?', [$legacyId]) === null, 'Legacy root becomes NULL');
     // Model an interrupted index replacement, then prove duplicate preflight and retry.
-    $index = \itsmng\Database\Migration\TreeUniqueness::indexName('glpi_states', $platform);
+    $index = \itsmng\Database\Migration\V220\TreeUniqueness::indexName('glpi_states', $platform);
     $connection->executeStatement($platform->getDropIndexSQL($index, 'glpi_states'));
     try {
         $connection->insert('glpi_states', ['name' => 'Duplicate tree sibling']);

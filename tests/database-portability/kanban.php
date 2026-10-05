@@ -6,7 +6,7 @@ use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use itsmng\Database\Entity\ItemKanban;
 use itsmng\Database\ForeignKeys;
-use itsmng\Database\Migration\KanbanOwnership;
+use itsmng\Database\Migration\V220\KanbanOwnership;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\KanbanRepository;
 use itsmng\Database\Repository\RecordRepository;

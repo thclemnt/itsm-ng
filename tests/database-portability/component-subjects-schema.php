@@ -7,13 +7,13 @@ use Doctrine\DBAL\Types\Type;
 use itsmng\Database\BaselineSchema;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\ForeignKeys;
-use itsmng\Database\Migration\Booleans20261002;
-use itsmng\Database\Migration\HardDriveSubjects20261013;
+use itsmng\Database\Migration\V220\Booleans;
+use itsmng\Database\Migration\V220\HardDriveSubjects;
 use itsmng\Database\Migration\History;
 use itsmng\Database\Migration\Ledger;
-use itsmng\Database\Migration\LegacyToOrm;
-use itsmng\Database\Migration\MemorySubjects20261013;
-use itsmng\Database\Migration\MotherboardSubjects20261013;
+use itsmng\Database\Migration\V220\References;
+use itsmng\Database\Migration\V220\MemorySubjects;
+use itsmng\Database\Migration\V220\MotherboardSubjects;
 use itsmng\Database\SchemaCheck;
 
 $directory = $argv[1] ?? '';
@@ -48,9 +48,9 @@ $manager = $connection->createSchemaManager();
 $expected = (new BaselineSchema())->build($platform);
 verify((new SchemaCheck())->differences($connection, $expected) === [], 'Canonical complete schema before component reconstruction');
 $families = $componentSchemaFamilies ?? [
-    [Item_DeviceMotherboard::class, MotherboardSubjects20261013::class, []],
-    [Item_DeviceMemory::class, MemorySubjects20261013::class, ['size' => 8192]],
-    [Item_DeviceHardDrive::class, HardDriveSubjects20261013::class, ['capacity' => 1048576]],
+    [Item_DeviceMotherboard::class, MotherboardSubjects::class, []],
+    [Item_DeviceMemory::class, MemorySubjects::class, ['size' => 8192]],
+    [Item_DeviceHardDrive::class, HardDriveSubjects::class, ['capacity' => 1048576]],
 ];
 $fixtures = new FixtureRecords($DB);
 foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
@@ -61,7 +61,7 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
     $reference = EntityRegistry::discriminatedReferences($table)['items_id'];
     $columns = array_column($reference['selections'], 'column');
     $migration = new $migrationClass();
-    $version = $migrationClass::VERSION;
+    $version = $migrationClass::PHASE;
     $flagColumns = array_keys(EntityRegistry::booleanFields($table));
     verify(count($flagColumns) === 3, 'All three component flags come from the owning entity properties');
     $flagStorage = static function () use ($connection, $platform, $postgres, $table, $flagColumns, $expected): array {
@@ -145,7 +145,7 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
             $id = 4294996290;
             $connection->insert($table, array_replace(['id' => $id, $deviceColumn => $device, 'itemtype' => 'Computer', 'items_id' => 4294996001], $invalid));
             $rows = $connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id');
-            $ledger = $connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
+            $ledger = $connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version');
             try {
                 $canonical ? (new History())->upgrade($connection) : $migration->apply($connection);
                 throw new LogicException('Invalid component source was accepted');
@@ -153,7 +153,7 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
                 verify(str_contains($error->getMessage(), $table) && str_contains($error->getMessage(), (string)$id), 'Local source audit identifies its actual table and row before DDL');
             }
             verify($connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id') === $rows
-                && $connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $ledger
+                && $connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version') === $ledger
                 && Ledger::state($connection, $version) === null, 'Invalid source preserves rows and every raw receipt');
             foreach ($columns as $column) {
                 verify(!$manager->introspectTable($table)->hasColumn($column), 'Invalid source creates no owning columns');
@@ -177,7 +177,7 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
             // The invalid final family must refuse the canonical updater
             // before any earlier selected family changes its CHECK or receipt.
             $otherReceipts = [];
-            $beforeJoint = $connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
+            $beforeJoint = $connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version');
             $earlierFamilies = array_slice($families, 0, $familyIndex);
             $firstFamilyChecks = static function () use ($earlierFamilies, $postgres, $connection): array {
                 $checks = [];
@@ -192,11 +192,11 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
             $beforeJointChecks = $firstFamilyChecks();
             try {
                 foreach ($earlierFamilies as [, $earlierMigration]) {
-                    $earlier = $earlierMigration::VERSION;
-                    $receipt = $connection->fetchAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' WHERE version=?', [$earlier]);
+                    $earlier = $earlierMigration::PHASE;
+                    $receipt = $connection->fetchAssociative('SELECT * FROM ' . Ledger::TABLE . ' WHERE version=?', [$earlier]);
                     verify($receipt !== false && (Ledger::state($connection, $earlier)['complete'] ?? false), 'Capture each actual earlier completed family receipt before declaring it pending');
                     $otherReceipts[$earlier] = $receipt;
-                    $connection->delete(LegacyToOrm::LEDGER, ['version' => $earlier]);
+                    $connection->delete(Ledger::TABLE, ['version' => $earlier]);
                 }
                 $rejectLegacy(['items_id' => $subject + 99], canonical: true);
                 verify($firstFamilyChecks() === $beforeJointChecks, 'Joint updater audits all selected pending families before earlier CHECK replacement');
@@ -205,22 +205,22 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
                 }
             } finally {
                 foreach ($otherReceipts as $receipt) {
-                    $connection->insert(LegacyToOrm::LEDGER, $receipt);
+                    $connection->insert(Ledger::TABLE, $receipt);
                 }
             }
-            verify($connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $beforeJoint, 'Joint refusal fixture restores exact original earlier raw receipts');
+            verify($connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version') === $beforeJoint, 'Joint refusal fixture restores exact original earlier raw receipts');
         }
         // Deliberately reconstructed historical drift must not inherit a pass
         // from completed older boolean/reference receipts.
-        $oldBoolean = Ledger::state($connection, Booleans20261002::VERSION);
+        $oldBoolean = Ledger::state($connection, Booleans::PHASE);
         $reconstruction->legacy($comment, integerFlag: 'is_dynamic', nullableOwner: $deviceColumn, relaxFlagCheck: true);
         foreach ([['is_dynamic' => 2], ['is_dynamic' => null], [$deviceColumn => null]] as $invalid) {
             $rejectLegacy($invalid);
-            verify(Ledger::state($connection, Booleans20261002::VERSION) === $oldBoolean, 'New local audit never rewrites the completed older boolean receipt');
+            verify(Ledger::state($connection, Booleans::PHASE) === $oldBoolean, 'New local audit never rewrites the completed older boolean receipt');
         }
         $refuseShape = static function (string $diagnostic) use ($connection, $table, $migration, $manager, $platform): void {
             $rows = $connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id');
-            $ledger = $connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
+            $ledger = $connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version');
             $shape = $platform->getCreateTableSQL($manager->introspectTable($table));
             $nativeForeign = static fn (): array => $platform instanceof PostgreSQLPlatform
                 ? $connection->fetchAllAssociative("SELECT conname, convalidated, condeferrable, condeferred, pg_get_constraintdef(oid) AS definition FROM pg_catalog.pg_constraint WHERE conrelid=to_regclass(?) AND contype='f' ORDER BY conname", [$platform->quoteIdentifier($table)])
@@ -238,7 +238,7 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
             }
             verify(
                 $connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id') === $rows
-                && $connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $ledger
+                && $connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version') === $ledger
                 && $platform->getCreateTableSQL($manager->introspectTable($table)) === $shape && $nativeForeign() === $foreignBefore,
                 'Valid source rows cannot bypass damaged completed core shape; all rows, raw receipts and DBAL DDL remain exact'
             );
@@ -338,16 +338,16 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
             && Type::getType('boolean')->convertToPHPValue($connection->fetchOne('SELECT is_dynamic FROM ' . $table . ' WHERE id=?', [4294996280]), $platform) === false,
             'Actual integer1/0 values become true/false without losing populated identities'
         );
-        verify(Ledger::state($connection, Booleans20261002::VERSION) === $oldBoolean, 'New family conversion retains exact old boolean receipt');
+        verify(Ledger::state($connection, Booleans::PHASE) === $oldBoolean, 'New family conversion retains exact old boolean receipt');
         foreach (['columns', 'stock_normalization', 'copy', 'projection', 'constraints', ...($postgres ? ['missing_projection'] : [])] as $interruption) {
             $reconstruction->legacy($comment);
             $seed();
             if ($interruption === 'columns') {
                 ComponentIncomingProjection::verify($connection, $migration, $table, 4294996200, $subject);
             }
-            $ledger = $connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
+            $ledger = $connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version');
             $preview = (new History())->plan($connection);
-            verify(in_array($version, $preview['pending'], true) && $connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $ledger, 'Canonical joint preview sees the family and remains read-only');
+            verify(in_array($version, $preview['pending'], true) && $connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version') === $ledger, 'Canonical joint preview sees the family and remains read-only');
             try {
                 $migration->apply($connection, static function (string $phase, string $sql) use ($interruption, $postgres, $manager, $table, $migration, $connection, $columns): void {
                     $drop = $interruption === 'missing_projection' && $phase === 'projection' && str_contains($sql, 'DROP items_id');
@@ -427,7 +427,7 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
             $secondValue = $connection->fetchOne('SELECT id FROM ' . $selection['target'] . ' WHERE id=?', [$secondSubject]);
             verify((int)$secondValue === $secondSubject, 'Canonical positive UPDATE has a real second subject');
             $beforeUpdate = $connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id');
-            $beforeUpdateLedger = $connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
+            $beforeUpdateLedger = $connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version');
             $updateFrame = \itsmng\Database\OwnedMutationFrame::begin($connection);
             $updatePrimary = null;
             $updateCleanup = [];
@@ -481,7 +481,7 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
                     );
                     verify(
                         $connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id') === $validUpdateRows
-                        && $connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $beforeUpdateLedger,
+                        && $connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version') === $beforeUpdateLedger,
                         'Selected CHECK/FK UPDATE refusal restores the complete canonical row vector and receipts'
                     );
                 }
@@ -496,7 +496,7 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
                 try {
                     verify(
                         $connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id') === $beforeUpdate
-                        && $connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $beforeUpdateLedger,
+                        && $connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version') === $beforeUpdateLedger,
                         'Owned canonical INSERT/UPDATE controls restore the complete original family graph and ledger'
                     );
                 } catch (Throwable $error) {

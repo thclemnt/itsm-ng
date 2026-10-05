@@ -9,7 +9,7 @@ use itsmng\Database\Entity as Record;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\MappedStorage;
-use itsmng\Database\Migration\ContractAssets;
+use itsmng\Database\Migration\V220\ContractAssets;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\ContractAssetRepository;
 use itsmng\Database\Repository\TransferBindingRepository;

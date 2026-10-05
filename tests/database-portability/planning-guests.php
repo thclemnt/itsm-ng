@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 use itsmng\Database\ForeignKeys;
-use itsmng\Database\Migration\PlanningEventGuests;
+use itsmng\Database\Migration\V220\PlanningEventGuests;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\PlanningGuestRepository;
 use itsmng\Database\Repository\PlanningRepository;

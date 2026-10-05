@@ -5,7 +5,7 @@
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception\DriverException;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
-use itsmng\Database\Migration\LegacyToOrm;
+use itsmng\Database\Migration\V220\References;
 
 /** Rollback-only writes to actual frozen target columns; no version-based capability guess. */
 final class DomainAdoptionTimestampTrial
@@ -23,7 +23,7 @@ final class DomainAdoptionTimestampTrial
         $manager = $this->connection->createSchemaManager();
         $tables = $manager->listTableNames();
         sort($tables, SORT_STRING);
-        verify(!in_array(LegacyToOrm::LEDGER, $tables, true), 'Timestamp trial must not bootstrap the adoption ledger');
+        verify(!in_array(\itsmng\Database\Migration\Ledger::TABLE, $tables, true), 'Timestamp trial must not bootstrap the adoption ledger');
         $bags = [];
         foreach ($tables as $table) {
             $rows = array_map('serialize', $this->connection->fetchAllAssociative('SELECT * FROM ' . $this->connection->quoteIdentifier($table)));

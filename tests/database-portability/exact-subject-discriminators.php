@@ -5,7 +5,7 @@
 use Doctrine\DBAL\Exception\DriverException;
 use Doctrine\DBAL\Types\Types;
 use itsmng\Database\EntityRegistry;
-use itsmng\Database\Migration\ExactDiscriminators20261010;
+use itsmng\Database\Migration\V220\ExactDiscriminators;
 use itsmng\Database\Migration\History;
 use itsmng\Database\Migration\Ledger;
 use itsmng\Database\Orm;
@@ -108,7 +108,7 @@ try {
     $manager = Orm::create($DB);
     verify($manager->getConnection() === $connection, 'Entity metadata and repositories keep supplied writer');
     $branchesTested = 0;
-    foreach (ExactDiscriminators20261010::definitions()['tables'] as $table => $definition) {
+    foreach (ExactDiscriminators::definitions()['tables'] as $table => $definition) {
         $class = EntityRegistry::tables()[$table];
         $metadata = $manager->getClassMetadata($class);
         $key = (new ReflectionProperty($class, $definition['column']))->getAttributes(itsmng\Database\Mapping\DiscriminatorKey::class)[0]->newInstance();

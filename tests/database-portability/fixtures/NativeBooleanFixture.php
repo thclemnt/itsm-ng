@@ -6,7 +6,7 @@ use Doctrine\DBAL\Connection;
 use itsmng\Database\BooleanCheckExpression;
 use itsmng\Database\BooleanDomainSchema;
 use itsmng\Database\EntityRegistry;
-use itsmng\Database\Migration\BooleanDomains20261008;
+use itsmng\Database\Migration\V220\BooleanDomains;
 use itsmng\Database\Migration\Ledger;
 
 /** Preserve only the owning properties' native domains during table reconstruction. */
@@ -23,7 +23,7 @@ final class NativeBooleanFixture
         $catalog = BooleanDomainSchema::catalog($connection);
         $this->mysql = $catalog['mysql'];
         $this->ansiQuotes = $catalog['ansi_quotes'];
-        $this->receipt = Ledger::state($connection, BooleanDomains20261008::VERSION)
+        $this->receipt = Ledger::state($connection, BooleanDomains::PHASE)
             ?? throw new LogicException('Boolean migration receipt required before fixture reconstruction');
         self::ensure($this->receipt['complete'] ?? false, 'Completed boolean domains required before reconstruction');
         foreach (EntityRegistry::booleanFields($table) as $column => $nullable) {
@@ -50,7 +50,7 @@ final class NativeBooleanFixture
     public function restore(): void
     {
         self::ensure(
-            Ledger::state($this->connection, BooleanDomains20261008::VERSION) === $this->receipt,
+            Ledger::state($this->connection, BooleanDomains::PHASE) === $this->receipt,
             'Boolean migration receipt changed before fixture restoration'
         );
         $catalog = BooleanDomainSchema::catalog($this->connection);
@@ -83,7 +83,7 @@ final class NativeBooleanFixture
             );
         }
         self::ensure(
-            Ledger::state($this->connection, BooleanDomains20261008::VERSION) === $this->receipt,
+            Ledger::state($this->connection, BooleanDomains::PHASE) === $this->receipt,
             'Reconstruction must preserve the completed boolean migration receipt exactly'
         );
     }

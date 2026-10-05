@@ -2,7 +2,9 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-use itsmng\Database\Migration\ReferenceHistory;
+use itsmng\Database\Migration\V220\NullableReferences;
+use itsmng\Database\Migration\V220\ReferenceHistory;
+
 
 $directory = $argv[1] ?? '';
 if (!is_file($directory . '/config_db.php')) {
@@ -29,7 +31,6 @@ verify(str_starts_with($DB->dbdefault, 'itsm_port_'), 'Dedicated test database r
 $_SESSION['glpiextauth'] = 0;
 verify((new Auth())->login('itsm', 'itsm', true), 'Login');
 $_SESSION['_glpi_csrf_token'] = Session::getNewCSRFToken();
-use itsmng\Database\Migration\InfrastructureReferences;
 
 $connection = $DB->getDoctrineConnection();
 $DB->beginTransaction();
@@ -100,7 +101,7 @@ try {
 $platform = $connection->getDatabasePlatform();
 $quote = $platform->quoteIdentifier(...);
 $legacyId = $zeroParent = null;
-$migration = new InfrastructureReferences();
+$migration = new NullableReferences(ReferenceHistory::get('optional', 'INFRASTRUCTURE'), 'infrastructure');
 try {
     foreach (ReferenceHistory::get('optional', 'INFRASTRUCTURE') as $table => $relations) {
         foreach ($relations as $column => $target) {

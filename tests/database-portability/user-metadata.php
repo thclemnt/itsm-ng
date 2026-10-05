@@ -2,9 +2,10 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-use itsmng\Database\Migration\ReferenceHistory;
+use itsmng\Database\Migration\V220\NullableReferences;
+use itsmng\Database\Migration\V220\ReferenceHistory;
+
 use itsmng\Database\ForeignKeys;
-use itsmng\Database\Migration\UserMetadataReferences;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\Repository\UserRepository;
@@ -148,7 +149,7 @@ try {
 }
 $platform = $connection->getDatabasePlatform();
 $quote = $platform->quoteIdentifier(...);
-$migration = new UserMetadataReferences();
+$migration = new NullableReferences(ReferenceHistory::get('optional', 'USER_METADATA'), 'user metadata');
 $legacy = null;
 try {
     foreach (ReferenceHistory::get('optional', 'USER_METADATA') as $table => $relations) {

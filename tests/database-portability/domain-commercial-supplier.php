@@ -5,9 +5,9 @@
 use Doctrine\DBAL\Platforms\MySQLPlatform;
 use itsmng\Database\BooleanDomainSchema;
 use itsmng\Database\Entity as Record;
-use itsmng\Database\Migration\BooleanDomains20261008;
+use itsmng\Database\Migration\V220\BooleanDomains;
 use itsmng\Database\Migration\Ledger;
-use itsmng\Database\Migration\LegacyToOrm;
+use itsmng\Database\Migration\V220\References;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\SchemaCheck;
@@ -310,9 +310,9 @@ try {
 if ($DB->getProvider() !== 'pgsql') {
     verify(!$connection->isTransactionActive(), 'Historical CHECK fixture owns an idle disposable connection');
     $platform = $connection->getDatabasePlatform();
-    $definition = BooleanDomains20261008::definitions()['glpi_suppliers']['is_recursive'];
+    $definition = BooleanDomains::definitions()['glpi_suppliers']['is_recursive'];
     $checkName = $definition['check'];
-    $receipt = Ledger::state($connection, BooleanDomains20261008::VERSION);
+    $receipt = Ledger::state($connection, BooleanDomains::PHASE);
     verify(($receipt['complete'] ?? false) === true, 'Current canonical flag history completed before the historical fixture');
     $catalog = BooleanDomainSchema::catalog($connection);
     $check = $catalog['checks']['glpi_suppliers'][$checkName];
@@ -320,7 +320,7 @@ if ($DB->getProvider() !== 'pgsql') {
     $historicalConfiguration = $CFG_GLPI;
     try {
         $connection->executeStatement('ALTER TABLE glpi_suppliers' . ($platform instanceof MySQLPlatform ? ' DROP CHECK ' : ' DROP CONSTRAINT ') . $platform->quoteIdentifier($checkName));
-        $connection->delete(LegacyToOrm::LEDGER, ['version' => BooleanDomains20261008::VERSION]);
+        $connection->delete(Ledger::TABLE, ['version' => BooleanDomains::PHASE]);
         $connection->beginTransaction();
         $fixtures = new FixtureRecords($DB);
         $prefix = 'Historical commercial supplier ' . bin2hex(random_bytes(5));
@@ -357,11 +357,11 @@ if ($DB->getProvider() !== 'pgsql') {
             $connection->executeStatement('ALTER TABLE glpi_suppliers ADD CONSTRAINT ' . $platform->quoteIdentifier($checkName) . ' CHECK (' . $check['clause'] . ')'
                 . ($platform instanceof MySQLPlatform ? ' ENFORCED' : ''));
         }
-        Ledger::save($connection, BooleanDomains20261008::VERSION, $receipt);
+        Ledger::save($connection, BooleanDomains::PHASE, $receipt);
         $_SESSION = $historicalSession;
         $CFG_GLPI = $historicalConfiguration;
     }
-    verify(BooleanDomainSchema::catalog($connection) === $catalog && Ledger::state($connection, BooleanDomains20261008::VERSION) === $receipt, 'Historical malformed fixture restores current native schema and receipt exactly');
+    verify(BooleanDomainSchema::catalog($connection) === $catalog && Ledger::state($connection, BooleanDomains::PHASE) === $receipt, 'Historical malformed fixture restores current native schema and receipt exactly');
 }
 verify((new SchemaCheck())->differences($connection) === [], 'Canonical schema after tests');
 echo $DB->getProvider() . ": authoritative commercial supplier scope, public/REST/native ORM, NULL/absence, clone, retarget and purge passed.\n";

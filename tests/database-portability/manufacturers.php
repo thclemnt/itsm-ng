@@ -2,9 +2,10 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-use itsmng\Database\Migration\ReferenceHistory;
+use itsmng\Database\Migration\V220\NullableReferences;
+use itsmng\Database\Migration\V220\ReferenceHistory;
+
 use itsmng\Database\ForeignKeys;
-use itsmng\Database\Migration\ManufacturerReferences;
 
 $directory = $argv[1] ?? '';
 if (!is_file($directory . '/config_db.php')) {
@@ -95,7 +96,7 @@ try {
 
 $platform = $connection->getDatabasePlatform();
 $quote = $platform->quoteIdentifier(...);
-$migration = new ManufacturerReferences();
+$migration = new NullableReferences(ReferenceHistory::get('optional', 'MANUFACTURERS'), 'manufacturer');
 $legacyId = null;
 try {
     foreach (ReferenceHistory::get('optional', 'MANUFACTURERS') as $table => $relations) {

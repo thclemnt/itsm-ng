@@ -102,21 +102,34 @@ it must not relabel those rows as invalid or claim all-plugin convergence.
 
 ## Frozen installation and upgrades
 
-[Migration/History](../src/Database/Migration/History.php) owns ordered replay and
-the existing `itsmng_migrations` ledger. Fresh installation replays the explicit
-DBAL [Baseline20261001](../src/Database/Migration/Baseline20261001.php), frozen raw
-seeds, adoption and all later migrations. It never installs today's ORM schema
-and marks history complete. The 355-table historical baseline is independent of
-current entities and runtime parsing of the old MySQL dump.
+[Migration/History](../src/Database/Migration/History.php) exposes one release
+transition, [Version220](../src/Database/Migration/Version220.php), from the genuine
+2.1.3 historical data format to 2.2.0. Earlier releases must first complete their
+historical application's upgrade to that format. Subsequent releases add ORM
+migrations; the old MySQL `install/update_*.php` scripts remain historical inputs
+and never run against the ORM schema.
 
-Historical producers, snapshots and seeds are immutable. Their repeated definitions
-preserve replay semantics rather than form runtime registries. Append migrations
-when current ownership changes. `BaselineSchema` projects current requirements
-for read-only inspection, not installation. Its current ordinary-column projection
-still skips existing frozen-baseline columns, and DisplayPreference, Kanban and
-operating-system indexes still use migration builders. Sole entity-derived authority
-for every current column/index is unfinished; schema-check success does not prove it.
-Comparison includes boolean CHECK
+Fresh 2.2.0 installation replays the explicit DBAL
+[baseline](../src/Database/Migration/V220/Baseline.php), frozen raw seeds and the
+same transition. It never installs today's ORM metadata schema and marks history
+complete. The 355-table installation input is independent of current entities and
+runtime parsing of the old MySQL dump. Helpers and snapshots under `Migration/V220`
+belong to this one transition; they are not a sequence of application releases.
+Shared typed/reference producers retain their explicit frozen domain policies.
+
+The existing `itsmng_migrations` ledger stores the release receipt and internal
+checkpoints. Experimental installations retain their original checkpoint keys and
+captured DDL without copying or rewriting journals. They earn the single 2.2.0
+receipt only after the pending conversion, final schema inspection and identifier
+synchronization succeed. Completion and release publication commit together.
+Do not infer genuine historical provenance from mutable rights or version labels.
+
+Frozen definitions and seeds remain independent of future mappings. `BaselineSchema`
+projects current requirements for read-only inspection, not installation. Its current
+ordinary-column projection still skips existing frozen-baseline columns, and
+DisplayPreference, Kanban and operating-system indexes still use frozen builders.
+Sole entity-derived authority for every current column/index is unfinished;
+schema-check success does not prove it. Comparison includes boolean CHECK
 enforcement and declared timestamp touch; other platform expressions, triggers
 and CHECKs have comparison limits. Do not weaken comparison to hide drift.
 

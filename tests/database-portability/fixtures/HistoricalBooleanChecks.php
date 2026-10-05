@@ -5,9 +5,9 @@
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\MySQLPlatform;
 use itsmng\Database\BooleanDomainSchema;
-use itsmng\Database\Migration\BooleanDomains20261008;
+use itsmng\Database\Migration\V220\BooleanDomains;
 use itsmng\Database\Migration\Ledger;
-use itsmng\Database\Migration\LegacyToOrm;
+use itsmng\Database\Migration\V220\References;
 
 /** Current CHECKs must not preempt a historical migration's bad-data audit. */
 final class HistoricalBooleanChecks
@@ -25,7 +25,7 @@ final class HistoricalBooleanChecks
             throw new RuntimeException('Installed disposable historical flag fixture with transactional ledger required');
         }
         $this->catalog = BooleanDomainSchema::catalog($connection);
-        $row = $connection->fetchAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' WHERE version = ?', [BooleanDomains20261008::VERSION]);
+        $row = $connection->fetchAssociative('SELECT * FROM ' . Ledger::TABLE . ' WHERE version = ?', [BooleanDomains::PHASE]);
         if (!$row || !(json_decode($row['state'], true, flags: JSON_THROW_ON_ERROR)['complete'] ?? false)) {
             throw new RuntimeException('Historical flag fixture requires completed current Boolean domain history');
         }
@@ -57,7 +57,7 @@ final class HistoricalBooleanChecks
                     . $platform->quoteIdentifier($name));
             }
         }
-        $this->connection->delete(LegacyToOrm::LEDGER, ['version' => BooleanDomains20261008::VERSION]);
+        $this->connection->delete(Ledger::TABLE, ['version' => BooleanDomains::PHASE]);
     }
 
     public function restore(): void
@@ -78,14 +78,14 @@ final class HistoricalBooleanChecks
             }
         }
         // Retain the original receipt bytes, rather than manufacturing completion.
-        $this->connection->delete(LegacyToOrm::LEDGER, ['version' => BooleanDomains20261008::VERSION]);
-        $this->connection->insert(LegacyToOrm::LEDGER, $this->receipt);
+        $this->connection->delete(Ledger::TABLE, ['version' => BooleanDomains::PHASE]);
+        $this->connection->insert(Ledger::TABLE, $this->receipt);
     }
 
     public function restored(): bool
     {
         return BooleanDomainSchema::catalog($this->connection)['checks'] === $this->catalog['checks']
-            && $this->connection->fetchAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' WHERE version = ?', [BooleanDomains20261008::VERSION]) === $this->receipt;
+            && $this->connection->fetchAssociative('SELECT * FROM ' . Ledger::TABLE . ' WHERE version = ?', [BooleanDomains::PHASE]) === $this->receipt;
     }
 
     private function assertIdle(): void

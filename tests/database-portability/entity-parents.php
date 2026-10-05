@@ -8,7 +8,7 @@ use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use itsmng\Database\Entity\Entity as EntityRecord;
 use itsmng\Database\MappedReads;
 use itsmng\Database\MappedStorage;
-use itsmng\Database\Migration\EntityParents;
+use itsmng\Database\Migration\V220\EntityParents;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 

@@ -10,9 +10,9 @@ use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\DefaultExpression;
 use Doctrine\DBAL\Schema\Table;
 use itsmng\Database\BooleanDomainSchema;
-use itsmng\Database\Migration\ExactDiscriminators20261010;
+use itsmng\Database\Migration\V220\ExactDiscriminators;
 use itsmng\Database\Migration\History;
-use itsmng\Database\Migration\LegacyToOrm;
+use itsmng\Database\Migration\V220\References;
 
 require_once __DIR__ . '/MySQLNativeSubjectDeclaration.php';
 
@@ -34,7 +34,7 @@ final class ExactSubjectHistoricalFixture
         if ($connection->getTransactionNestingLevel() !== 0 || History::pendingVersions($connection) !== []) {
             throw new LogicException('An idle complete disposable history is required before historical fixture setup.');
         }
-        $definitions = ExactDiscriminators20261010::definitions()['tables'];
+        $definitions = ExactDiscriminators::definitions()['tables'];
         if ($tables !== null && (!array_is_list($tables) || $tables === []
             || count(array_unique($tables, SORT_REGULAR)) !== count($tables)
             || array_filter($tables, static fn ($table): bool => !is_string($table) || !isset($definitions[$table])))) {
@@ -47,7 +47,7 @@ final class ExactSubjectHistoricalFixture
         if (!is_string($database) || !str_starts_with($database, 'itsm_port_')) {
             throw new LogicException('Historical subject fixture requires a disposable database.');
         }
-        $this->receipt = $connection->fetchAssociative('SELECT version, state FROM ' . $quote(LegacyToOrm::LEDGER) . ' WHERE version=?', [ExactDiscriminators20261010::VERSION]);
+        $this->receipt = $connection->fetchAssociative('SELECT version, state FROM ' . $quote(\itsmng\Database\Migration\Ledger::TABLE) . ' WHERE version=?', [ExactDiscriminators::PHASE]);
         if ($this->receipt === false) {
             throw new LogicException('Capture a real completed exact-subject receipt; never synthesize one.');
         }
@@ -55,7 +55,7 @@ final class ExactSubjectHistoricalFixture
             if ($tables === null) {
                 throw new LogicException('Complete ledger preservation requires an explicit selected historical scope.');
             }
-            $this->originalLedger = $connection->fetchAllAssociative('SELECT version, state FROM ' . $quote(LegacyToOrm::LEDGER) . ' ORDER BY version');
+            $this->originalLedger = $connection->fetchAllAssociative('SELECT version, state FROM ' . $quote(\itsmng\Database\Migration\Ledger::TABLE) . ' ORDER BY version');
         }
         $catalog = $platform instanceof AbstractMySQLPlatform ? BooleanDomainSchema::catalog($connection) : null;
         if ($platform instanceof MySQLPlatform) {
@@ -267,7 +267,7 @@ final class ExactSubjectHistoricalFixture
     {
         $this->assertSelectedReconstruction();
         $this->detached = true; // A failed receipt deletion remains owned cleanup.
-        $this->connection->delete(LegacyToOrm::LEDGER, ['version' => ExactDiscriminators20261010::VERSION]);
+        $this->connection->delete(\itsmng\Database\Migration\Ledger::TABLE, ['version' => ExactDiscriminators::PHASE]);
     }
 
     private function assertSelectedReconstruction(): void
@@ -297,7 +297,7 @@ final class ExactSubjectHistoricalFixture
         if ($this->restorationFacts !== []) {
             // A tested History replay may have completed the receipt again.
             // Own its removal before any fallible native restoration.
-            $this->connection->delete(LegacyToOrm::LEDGER, ['version' => ExactDiscriminators20261010::VERSION]);
+            $this->connection->delete(\itsmng\Database\Migration\Ledger::TABLE, ['version' => ExactDiscriminators::PHASE]);
         }
         $errors = [];
         foreach ($this->original as $table => $definition) {
@@ -337,15 +337,15 @@ final class ExactSubjectHistoricalFixture
                 throw new RuntimeException('Selected fixture changed native columns, indexes, references or other CHECKs; completion receipt was not restored: ' . $table);
             }
         }
-        $this->connection->delete(LegacyToOrm::LEDGER, ['version' => ExactDiscriminators20261010::VERSION]);
+        $this->connection->delete(\itsmng\Database\Migration\Ledger::TABLE, ['version' => ExactDiscriminators::PHASE]);
         if ($this->originalLedger !== null) {
-            $expected = array_values(array_filter($this->originalLedger, static fn (array $row): bool => $row['version'] !== ExactDiscriminators20261010::VERSION));
-            $actual = $this->connection->fetchAllAssociative('SELECT version, state FROM ' . $quote(LegacyToOrm::LEDGER) . ' ORDER BY version');
+            $expected = array_values(array_filter($this->originalLedger, static fn (array $row): bool => $row['version'] !== ExactDiscriminators::PHASE));
+            $actual = $this->connection->fetchAllAssociative('SELECT version, state FROM ' . $quote(\itsmng\Database\Migration\Ledger::TABLE) . ' ORDER BY version');
             if ($actual !== $expected) {
                 throw new RuntimeException('Historical fixture changed another raw history receipt; Exact completion was not restored.');
             }
         }
-        $this->connection->insert(LegacyToOrm::LEDGER, $this->receipt);
+        $this->connection->insert(\itsmng\Database\Migration\Ledger::TABLE, $this->receipt);
         $this->detached = false;
     }
 
@@ -369,7 +369,7 @@ final class ExactSubjectHistoricalFixture
     /** Actual schema facts; physical column positions and allocator advances are not ownership. */
     private function facts(string $table): array
     {
-        $method = new ReflectionMethod(ExactDiscriminators20261010::class, 'preservation');
+        $method = new ReflectionMethod(ExactDiscriminators::class, 'preservation');
         $facts = $method->invoke(null, $this->connection, $this->connection->createSchemaManager()->introspectTable($table));
         unset($facts['native']['table']['AUTO_INCREMENT']);
         if (isset($facts['native']['columns'])) {

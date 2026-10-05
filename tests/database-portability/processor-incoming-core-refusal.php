@@ -4,7 +4,7 @@
 
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Schema;
-use itsmng\Database\Migration\LegacyToOrm;
+use itsmng\Database\Migration\V220\References;
 
 $directory = $argv[1] ?? '';
 if (!is_file($directory . '/config_db.php')) {
@@ -63,7 +63,7 @@ $cleanup = [];
 // Capture full owned rows and actual native declarations, not a metadata-only
 // replacement. Every refusal must also preserve all raw canonical receipts.
 $facts = static function () use ($connection, $postgres, &$ownedParents, &$ownedChildren, $qualified, $quote): array {
-    $facts = ['ledger' => $connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version')];
+    $facts = ['ledger' => $connection->fetchAllAssociative('SELECT * FROM ' . \itsmng\Database\Migration\Ledger::TABLE . ' ORDER BY version')];
     foreach ([...$ownedParents, ...$ownedChildren] as [$namespace, $name]) {
         $table = $qualified($namespace, $name);
         $native = $postgres

@@ -5,13 +5,13 @@
 namespace itsmng\Database;
 
 use Doctrine\DBAL\Connection;
-use itsmng\Database\Migration\Baseline20261001;
-use itsmng\Database\Migration\DomainDocuments20261006;
-use itsmng\Database\Migration\DomainsPluginAdoption20261006;
-use itsmng\Database\Migration\DomainsPluginSnapshot20261006;
+use itsmng\Database\Migration\V220\Baseline;
+use itsmng\Database\Migration\V220\DomainDocuments;
+use itsmng\Database\Migration\V220\DomainsPluginAdoption;
+use itsmng\Database\Migration\V220\DomainsPluginSnapshot;
 use itsmng\Database\Migration\Ledger;
-use itsmng\Database\Migration\LegacyToOrm;
-use itsmng\Database\Migration\Seeds20261001;
+use itsmng\Database\Migration\V220\References;
+use itsmng\Database\Migration\V220\Seeds;
 
 /** Read-only provenance admission before canonical adoption can change old data. */
 final class LegacyAdoptionEligibility
@@ -72,10 +72,10 @@ final class LegacyAdoptionEligibility
      * Journal recognition only allows the existing owners to validate/resume their work;
      * it does not replace their schema/reference/source-fingerprint preflights.
      */
-    public static function proof(array $release, array $states): string
+    public static function proof(array $release, array $states, string $application = ITSM_VERSION, string $schema = ITSM_SCHEMA_VERSION): string
     {
         $installedHistory = self::installed($states);
-        foreach (['itsmversion' => ITSM_VERSION, 'itsmdbversion' => ITSM_SCHEMA_VERSION] as $field => $target) {
+        foreach (['itsmversion' => $application, 'itsmdbversion' => $schema] as $field => $target) {
             $installed = $release[$field] ?? null;
             $comparableTarget = $target;
             if ($field === 'itsmversion' && is_string($installed)) {
@@ -88,15 +88,15 @@ final class LegacyAdoptionEligibility
                 throw new \RuntimeException('The installed ' . $field . ' (' . $release[$field] . ') is newer than these application files (' . $target . '). Use the matching application release; this updater cannot downgrade it.');
             }
         }
-        $baseline = self::receipt($states, Baseline20261001::VERSION);
-        $seed = self::receipt($states, Seeds20261001::VERSION);
+        $baseline = self::receipt($states, Baseline::PHASE);
+        $seed = self::receipt($states, Seeds::PHASE);
         if ($installedHistory) {
             return 'canonical-installation';
         }
         if (self::adopted($baseline) && self::adopted($seed)) {
             return 'canonical-adoption';
         }
-        $legacy = self::receipt($states, LegacyToOrm::VERSION);
+        $legacy = self::receipt($states, References::PHASE);
         if (($legacy['complete'] ?? false) === true) {
             // This is the established old completion receipt. It never recorded
             // release provenance; do not invent fields or replay history on retry.
@@ -105,8 +105,8 @@ final class LegacyAdoptionEligibility
         if (self::legacyJournal($legacy)) {
             return 'canonical-retry';
         }
-        if (self::domainJournal(self::receipt($states, DomainsPluginAdoption20261006::VERSION), DomainsPluginSnapshot20261006::FORMAT)
-            || self::domainJournal(self::receipt($states, DomainDocuments20261006::GENERAL_RECEIPT), DomainDocuments20261006::GENERAL_FORMAT)) {
+        if (self::domainJournal(self::receipt($states, DomainsPluginAdoption::RECEIPT), DomainsPluginSnapshot::FORMAT)
+            || self::domainJournal(self::receipt($states, DomainDocuments::GENERAL_RECEIPT), DomainDocuments::GENERAL_FORMAT)) {
             return 'canonical-prerequisite-retry';
         }
         foreach (['itsmdbversion', 'dbversion'] as $field) {
@@ -135,11 +135,11 @@ final class LegacyAdoptionEligibility
 
     private static function installed(array $states): bool
     {
-        $baseline = self::receipt($states, Baseline20261001::VERSION);
+        $baseline = self::receipt($states, Baseline::PHASE);
         if (($baseline['origin'] ?? null) !== 'installed') {
             return false;
         }
-        $seed = self::receipt($states, Seeds20261001::VERSION);
+        $seed = self::receipt($states, Seeds::PHASE);
         if (($baseline['complete'] ?? false) !== true || ($seed['complete'] ?? false) !== true || ($seed['origin'] ?? null) !== 'installed') {
             throw new \RuntimeException('Resume the unfinished installation with db:install using this configuration before applying upgrades. Its existing baseline and seed journal will resume without replacing application data.');
         }

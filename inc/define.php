@@ -34,18 +34,12 @@
 // Last version of GLPI only for plugin compatibility
 define('GLPI_VERSION', '9.5.13');
 define('ITSM_MIN_PHP', '8.2.0');
-define('ITSM_VERSION', '2.1.7');
-if (substr(ITSM_VERSION, -4) === '-dev') {
-    //for dev version
-    define('ITSM_PREVER', str_replace('-dev', '', ITSM_VERSION));
-    define(
-        'ITSM_SCHEMA_VERSION',
-        ITSM_PREVER . '@' . sha1_file(GLPI_ROOT . '/install/mysql/glpi-empty.sql')
-    );
-} else {
-    //for stable version
-    define("ITSM_SCHEMA_VERSION", '2.1.3');
+define('ITSM_VERSION', '2.2.0');
+if (str_ends_with(ITSM_VERSION, '-dev')) {
+    define('ITSM_PREVER', substr(ITSM_VERSION, 0, -4));
 }
+// ORM releases own schema versions; the historical MySQL dump is not current schema.
+define('ITSM_SCHEMA_VERSION', '2.2.0');
 
 // Current version of ITSM-NG
 define('ITSM_YEAR', date("Y"));

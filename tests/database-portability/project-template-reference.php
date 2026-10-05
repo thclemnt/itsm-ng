@@ -4,7 +4,7 @@
 
 use Doctrine\DBAL\Types\Types;
 use Doctrine\DBAL\Schema\Table;
-use itsmng\Database\Migration\UnusedProjectTemplateReference;
+use itsmng\Database\Migration\V220\UnusedProjectTemplateReference;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 use itsmng\Database\Repository\RecordWriter;

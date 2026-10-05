@@ -77,10 +77,10 @@ try {
         }
         verify($connection->fetchOne('SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', ['itsmng_migrations']) === 'InnoDB', 'Ledger creation is transactional even when the server defaults to MyISAM');
         $connection->executeStatement('ALTER TABLE itsmng_migrations ENGINE = MyISAM');
-        rejected(fn () => Ledger::state($connection, \itsmng\Database\Migration\Baseline20261001::VERSION), 'must use InnoDB');
+        rejected(fn () => Ledger::state($connection, \itsmng\Database\Migration\V220\Baseline::PHASE), 'must use InnoDB');
         rejected(fn () => Ledger::save($connection, 'invalid-engine-write', ['complete' => true]), 'must use InnoDB');
         rejected(fn () => (new \itsmng\Database\Migration\History())->upgrade($connection), 'must use InnoDB');
-        rejected(fn () => (new \itsmng\Database\Migration\LegacyToOrm())->apply($connection), 'must use InnoDB');
+        rejected(fn () => (new \itsmng\Database\Migration\V220\References())->apply($connection), 'must use InnoDB');
         rejected(fn () => (new AppliancePluginImport($DB))->import(), 'must use InnoDB');
         verify($connection->fetchAllAssociative('SELECT version, state FROM itsmng_migrations ORDER BY version') === $connection->fetchAllAssociative('SELECT version, state FROM ' . $ledgerBackup . ' ORDER BY version'), 'Existing nontransactional receipts are never trusted, written or silently repaired');
         // This disposable ledger was copied from the preserved, validated fixture.

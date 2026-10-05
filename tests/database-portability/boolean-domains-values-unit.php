@@ -8,10 +8,10 @@ require_once dirname(__DIR__, 2) . '/src/Database/LegacyValues.php';
 require_once dirname(__DIR__, 2) . '/src/Database/BooleanCheckExpression.php';
 require_once dirname(__DIR__, 2) . '/src/Database/CheckConstraintSupport.php';
 require_once dirname(__DIR__, 2) . '/src/Database/BooleanDomainSchema.php';
-require_once dirname(__DIR__, 2) . '/src/Database/Migration/Booleans20261002.php';
-require_once dirname(__DIR__, 2) . '/src/Database/Migration/CategoryFlags20261004.php';
-require_once dirname(__DIR__, 2) . '/src/Database/Migration/DomainIntegration20261006.php';
-require_once dirname(__DIR__, 2) . '/src/Database/Migration/LegacyToOrm.php';
+require_once dirname(__DIR__, 2) . '/src/Database/Migration/V220/Booleans.php';
+require_once dirname(__DIR__, 2) . '/src/Database/Migration/V220/CategoryFlags.php';
+require_once dirname(__DIR__, 2) . '/src/Database/Migration/V220/DomainIntegration.php';
+require_once dirname(__DIR__, 2) . '/src/Database/Migration/V220/References.php';
 
 use itsmng\Database\BooleanValue;
 use itsmng\Database\BooleanCheckExpression;
@@ -89,13 +89,13 @@ try {
 verify(BooleanDomainSchema::name('glpi_itilcategories', 'is_incident') === 'glpi_itilcategories_is_incident_boolean', 'Existing category check name is preserved');
 verify(strlen(BooleanDomainSchema::name(str_repeat('table_', 15), 'flag')) <= 63, 'Owned check name fits both providers');
 
-$snapshot = json_decode(file_get_contents(dirname(__DIR__, 2) . '/src/Database/Migration/history/20261008-boolean-domains.json'), true, flags: JSON_THROW_ON_ERROR)['tables'];
+$snapshot = json_decode(file_get_contents(dirname(__DIR__, 2) . '/src/Database/Migration/V220/history/20261008-boolean-domains.json'), true, flags: JSON_THROW_ON_ERROR)['tables'];
 verify(array_sum(array_map(count(...), $snapshot)) === 402, 'Frozen historical milestone contains its original 402 flags');
 verify(count(array_filter($snapshot['glpi_users'], static fn ($definition) => $definition['nullable'])) === 11, 'Historical User inheritance retains eleven nullable flags');
 verify(!$snapshot['glpi_slms']['use_ticket_calendar']['baseline'] && !$snapshot['glpi_domains']['is_helpdesk_visible']['baseline'], 'Later fields are not prerequisites of the legacy baseline');
-verify($snapshot['glpi_suppliers']['is_recursive']['conversion_version'] === \itsmng\Database\Migration\Booleans20261002::VERSION, 'Existing PG flags defer integer conversion only to their actual predecessor');
+verify($snapshot['glpi_suppliers']['is_recursive']['conversion_version'] === \itsmng\Database\Migration\V220\Booleans::PHASE, 'Existing PG flags defer integer conversion only to their actual predecessor');
 verify($snapshot['glpi_slms']['use_ticket_calendar']['conversion_version'] === null, 'SLM creation does not imply existing integer conversion');
-verify($snapshot['glpi_slms']['use_ticket_calendar']['creation_version'] === \itsmng\Database\Migration\LegacyToOrm::VERSION, 'Missing SLM flag requires pending adoption');
-verify($snapshot['glpi_domains']['is_helpdesk_visible']['creation_version'] === \itsmng\Database\Migration\DomainIntegration20261006::VERSION, 'Missing Domain flag requires its pending supplying phase');
-verify($snapshot['glpi_itilcategories']['is_incident']['nullability_version'] === \itsmng\Database\Migration\CategoryFlags20261004::VERSION && $snapshot['glpi_users']['compact_mode_ui']['nullability_version'] === null, 'Only actual historical nullability repair receives an allowance');
+verify($snapshot['glpi_slms']['use_ticket_calendar']['creation_version'] === \itsmng\Database\Migration\V220\References::PHASE, 'Missing SLM flag requires pending adoption');
+verify($snapshot['glpi_domains']['is_helpdesk_visible']['creation_version'] === \itsmng\Database\Migration\V220\DomainIntegration::PHASE, 'Missing Domain flag requires its pending supplying phase');
+verify($snapshot['glpi_itilcategories']['is_incident']['nullability_version'] === \itsmng\Database\Migration\V220\CategoryFlags::PHASE && $snapshot['glpi_users']['compact_mode_ui']['nullability_version'] === null, 'Only actual historical nullability repair receives an allowance');
 echo 'Pure boolean value, CHECK grammar, engine capability and frozen-history contracts: ' . $assertions . " assertions passed.\n";

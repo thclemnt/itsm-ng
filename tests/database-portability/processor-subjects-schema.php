@@ -10,8 +10,8 @@ use itsmng\Database\BaselineSchema;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\Migration\History;
 use itsmng\Database\Migration\Ledger;
-use itsmng\Database\Migration\LegacyToOrm;
-use itsmng\Database\Migration\ProcessorSubjects20261012;
+use itsmng\Database\Migration\V220\References;
+use itsmng\Database\Migration\V220\ProcessorSubjects;
 use itsmng\Database\SchemaCheck;
 
 $directory = $argv[1] ?? '';
@@ -42,8 +42,8 @@ $platform = $connection->getDatabasePlatform();
 $postgres = $platform instanceof PostgreSQLPlatform;
 $manager = $connection->createSchemaManager();
 $tableName = 'glpi_items_deviceprocessors';
-$version = ProcessorSubjects20261012::VERSION;
-$migration = new ProcessorSubjects20261012();
+$version = ProcessorSubjects::PHASE;
+$migration = new ProcessorSubjects();
 $reference = EntityRegistry::discriminatedReferences($tableName)['items_id'];
 verify($reference['empty_value'] === 0 && array_keys($reference['selections']) === ['Computer'], 'Current metadata declares Computer ownership and zero stock projection');
 verify((new SchemaCheck())->differences($connection) === [], 'Complete current schema before reconstruction');
@@ -54,8 +54,8 @@ $comment = "Processor identity O'Reilly 日本語";
 $expected->getTable($tableName)->getColumn('items_id')->setComment($comment);
 $originalState = Ledger::state($connection, $version);
 verify(($originalState['complete'] ?? false) === true, 'Processor append completed before contract');
-$originalLedger = $connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
-$originalReceipt = $connection->fetchAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' WHERE version = ?', [$version]);
+$originalLedger = $connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version');
+$originalReceipt = $connection->fetchAssociative('SELECT * FROM ' . Ledger::TABLE . ' WHERE version = ?', [$version]);
 verify($originalReceipt !== false && json_decode($originalReceipt['state'], true, flags: JSON_THROW_ON_ERROR) === $originalState, 'Capture the exact completed processor receipt before fixture mutation');
 $nativeChecks = new ProcessorTableChecks($connection, $tableName);
 $coreIncoming = new ProcessorIncomingReferences($connection, $expected, $tableName);
@@ -73,7 +73,7 @@ $rebuild = static function () use ($current, $manager, $connection, $tableName, 
     $dropAttempted = true;
     $manager->dropTable($tableName);
     $tableTouched = true; // Only a completed DROP authorizes table reconstruction in cleanup.
-    $connection->delete(LegacyToOrm::LEDGER, ['version' => $version]);
+    $connection->delete(Ledger::TABLE, ['version' => $version]);
     $legacy = clone $current;
     foreach ($legacy->getForeignKeys() as $foreign) {
         if (array_map(static fn ($column) => trim($column, '`'), $foreign->getLocalColumns()) === ['computers_id']) {
@@ -133,11 +133,11 @@ try {
                 $connection->executeStatement('CREATE TABLE ' . $consumer . ' (id BIGINT NOT NULL PRIMARY KEY, binding_id BIGINT NOT NULL, subject_id BIGINT NOT NULL, CONSTRAINT port_processor_projection_fk FOREIGN KEY (binding_id, subject_id) REFERENCES ' . $tableName . ' (id, items_id))');
                 $consumerOwned = true;
                 $connection->insert($consumer, ['id' => 1, 'binding_id' => 4294990101, 'subject_id' => $computer]);
-                $incoming = new \itsmng\Database\Migration\IncomingProjectionReferences($connection);
+                $incoming = new \itsmng\Database\Migration\V220\IncomingProjectionReferences($connection);
                 $schemaName = (string)$connection->fetchOne($postgres ? 'SELECT current_schema()' : 'SELECT DATABASE()');
                 verify($incoming->has($schemaName, $tableName), 'Native incoming projection inventory finds items_id at second composite ordinal');
                 $beforeIncoming = $connection->fetchAllAssociative('SELECT * FROM ' . $tableName . ' ORDER BY id');
-                $beforeIncomingLedger = $connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
+                $beforeIncomingLedger = $connection->fetchAllAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' ORDER BY version');
                 $foreignVector = static function () use ($manager, $tableName, $consumer): array {
                     $vector = [];
                     foreach ([$tableName, $consumer] as $table) {
@@ -162,7 +162,7 @@ try {
                 verify($graphRejected && $foreignVector() === $beforeForeign, 'Fixture reconstruction refuses the custom projection consumer without detaching any constraints');
                 verify(
                     $connection->fetchAllAssociative('SELECT * FROM ' . $tableName . ' ORDER BY id') === $beforeIncoming
-                    && $connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $beforeIncomingLedger,
+                    && $connection->fetchAllAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' ORDER BY version') === $beforeIncomingLedger,
                     'Fixture graph refusal preserves every processor row and raw receipt'
                 );
                 try {
@@ -172,7 +172,7 @@ try {
                     verify(str_contains($error->getMessage(), 'Incoming typed legacy item foreign key'), 'Frozen processor plan retains supplied incoming-reference context and refuses destructive replacement');
                 }
                 verify($connection->fetchAllAssociative('SELECT * FROM ' . $tableName . ' ORDER BY id') === $beforeIncoming
-                    && $connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $beforeIncomingLedger
+                    && $connection->fetchAllAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' ORDER BY version') === $beforeIncomingLedger
                     && !$manager->introspectTable($tableName)->hasColumn('computers_id'), 'Incoming-FK refusal preserves every fixture row/receipt and performs no DDL');
             } catch (Throwable $error) {
                 $incomingPrimary = $error;
@@ -214,7 +214,7 @@ try {
                 ['itemtype' => null, 'items_id' => $computer],
             ] as $invalid) {
                 $connection->insert($tableName, ['id' => 4294990201, 'deviceprocessors_id' => $device] + $invalid);
-                $ledger = $connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
+                $ledger = $connection->fetchAllAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' ORDER BY version');
                 try {
                     $migration->apply($connection);
                     throw new LogicException('Invalid historical processor subject accepted');
@@ -222,13 +222,13 @@ try {
                     verify(str_contains($error->getMessage(), $tableName) && str_contains($error->getMessage(), '4294990201'), 'Preflight identifies invalid table and source row');
                 }
                 verify(!$manager->introspectTable($tableName)->hasColumn('computers_id') && Ledger::state($connection, $version) === null, 'Invalid source changes neither columns nor append receipt');
-                verify($connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $ledger, 'Invalid source preserves unrelated history receipts');
+                verify($connection->fetchAllAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' ORDER BY version') === $ledger, 'Invalid source preserves unrelated history receipts');
                 $connection->delete($tableName, ['id' => 4294990201]);
             }
-            $ledger = $connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
+            $ledger = $connection->fetchAllAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' ORDER BY version');
             $plan = (new History())->plan($connection);
             verify(isset($plan['processor_subjects'][$tableName]) && count($plan['processor_subjects'][$tableName]['copy']) === 2, 'History preview includes stock normalization and owner backfill');
-            verify($connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $ledger, 'History preview is read-only');
+            verify($connection->fetchAllAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' ORDER BY version') === $ledger, 'History preview is read-only');
             $connection->executeStatement('ALTER TABLE ' . $tableName . ' ADD computers_id BIGINT NULL');
             $connection->executeStatement('UPDATE ' . $tableName . ' SET computers_id = ? WHERE id = ?', [$computer + 1, 4294990101]);
             try {
@@ -256,7 +256,7 @@ try {
                 && $connection->fetchAllAssociative('SELECT * FROM ' . $tableName . ' ORDER BY id') === $legacyRows,
                 'Owned partial-column control returns to genuine historical absence without changing any legacy row'
             );
-            verify($connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $ledger
+            verify($connection->fetchAllAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' ORDER BY version') === $ledger
                 && Ledger::state($connection, $version) === null, 'Removing the owned partial column preserves every adoption receipt');
             verify($migration->plan($connection)[$tableName]['columns'] !== [], 'Actual missing canonical column requires real columns-phase DDL before interruption');
 
@@ -315,7 +315,7 @@ try {
     // Invalid partial states fail before stock normalization or any new receipt.
     $connection->executeStatement('ALTER TABLE ' . $platform->quoteIdentifier($tableName) . ' DROP '
         . ($platform instanceof MySQLPlatform ? 'CHECK ' : 'CONSTRAINT ') . $platform->quoteIdentifier($tableName . '_typed_item_kind'));
-    $connection->delete(LegacyToOrm::LEDGER, ['version' => $version]);
+    $connection->delete(Ledger::TABLE, ['version' => $version]);
     foreach ([
         ['itemtype' => '', 'computers_id' => null],
         ['itemtype' => 'Computer', 'computers_id' => null],
@@ -371,13 +371,13 @@ try {
             verify($coreIncoming->restored(), 'All original incoming processor FKs and consumer rows restore exactly');
             verify((new SchemaCheck())->differences($connection) === [], 'Structural/native schema restored before completed processor receipt');
             $unrelated = static fn (array $rows): array => array_values(array_filter($rows, static fn (array $row): bool => $row['version'] !== $version));
-            verify($unrelated($connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version')) === $unrelated($originalLedger), 'Refuse unrelated ledger changes before restoring the owned raw processor receipt');
-            if ($connection->fetchOne('SELECT 1 FROM ' . LegacyToOrm::LEDGER . ' WHERE version = ?', [$version]) === false) {
-                $connection->insert(LegacyToOrm::LEDGER, $originalReceipt);
+            verify($unrelated($connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version')) === $unrelated($originalLedger), 'Refuse unrelated ledger changes before restoring the owned raw processor receipt');
+            if ($connection->fetchOne('SELECT 1 FROM ' . Ledger::TABLE . ' WHERE version = ?', [$version]) === false) {
+                $connection->insert(Ledger::TABLE, $originalReceipt);
             } else {
-                $connection->update(LegacyToOrm::LEDGER, ['state' => $originalReceipt['state']], ['version' => $version]);
+                $connection->update(Ledger::TABLE, ['state' => $originalReceipt['state']], ['version' => $version]);
             }
-            verify($connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $originalLedger, 'Every original raw receipt restores exactly after full native proof');
+            verify($connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version') === $originalLedger, 'Every original raw receipt restores exactly after full native proof');
         } catch (Throwable $error) {
             $cleanupErrors[] = $error;
         }
@@ -387,7 +387,7 @@ try {
             $coreIncoming->restore();
             verify($coreIncoming->restored() && $nativeChecks->restored(), 'Failed setup restores only its owned incoming constraint changes');
             verify((new SchemaCheck())->differences($connection) === [], 'Failed setup leaves the original processor schema intact');
-            verify($connection->fetchAllAssociative('SELECT * FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $originalLedger, 'Failed setup leaves every raw receipt intact');
+            verify($connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version') === $originalLedger, 'Failed setup leaves every raw receipt intact');
         } catch (Throwable $error) {
             $cleanupErrors[] = $error;
         }

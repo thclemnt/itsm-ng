@@ -7,10 +7,10 @@ use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Types\Type;
 use itsmng\Database\Migration\History;
-use itsmng\Database\Migration\IdentifierSequences20261007;
+use itsmng\Database\Migration\V220\IdentifierSequences;
 use itsmng\Database\Migration\Ledger;
-use itsmng\Database\Migration\LegacyToOrm;
-use itsmng\Database\Migration\WideIdentifiers;
+use itsmng\Database\Migration\V220\References;
+use itsmng\Database\Migration\V220\WideIdentifiers;
 use itsmng\Database\SchemaCheck;
 use itsmng\Database\SequenceSynchronizer;
 
@@ -39,12 +39,12 @@ verify(str_starts_with($DB->dbdefault, 'itsm_port_'), 'Disposable database requi
 $connection = $DB->getDoctrineConnection();
 $platform = $connection->getDatabasePlatform();
 $manager = $connection->createSchemaManager();
-$stage = new IdentifierSequences20261007();
-$version = IdentifierSequences20261007::VERSION;
+$stage = new IdentifierSequences();
+$version = IdentifierSequences::PHASE;
 $originalReceipt = Ledger::state($connection, $version);
 verify(($originalReceipt['complete'] ?? false) === true, 'Install or actually migrate this fixture before ordinary application bootstrap');
-$originalLegacyReceipt = Ledger::state($connection, LegacyToOrm::VERSION);
-verify((new LegacyToOrm())->plan($connection)['complete'], 'Original adoption receipt completed');
+$originalLegacyReceipt = Ledger::state($connection, References::PHASE);
+verify((new References())->plan($connection)['complete'], 'Original adoption receipt completed');
 verify(!$connection->isTransactionActive(), 'Exercise actual migration transactions');
 
 if (!$platform instanceof PostgreSQLPlatform) {
@@ -58,7 +58,7 @@ if (!$platform instanceof PostgreSQLPlatform) {
     try {
         $connection->insert($tableName, ['id' => 4294967401, 'label' => 'assigned wide ID']);
         $before = $connection->fetchAssociative('SHOW CREATE TABLE ' . $tableName);
-        $connection->delete(LegacyToOrm::LEDGER, ['version' => $version]);
+        $connection->delete(Ledger::TABLE, ['version' => $version]);
         verify($stage->plan($connection) === [] && WideIdentifiers::planOwnedSequences($connection, [$tableName => ['id']]) === [], 'MySQL sequence planning is a true no-op');
         verify(History::pendingVersions($connection) === [$version] && Ledger::state($connection, $version) === null, 'Read-only no-op preview retains pending receipt');
         $connection->beginTransaction();
@@ -257,11 +257,11 @@ if (!$platform instanceof PostgreSQLPlatform) {
         $connection->executeStatement('ALTER SEQUENCE ' . $qualified($computer['schema'], $computer['name']) . ' AS integer RESTART WITH 2147483646');
         $narrow = $state($computer);
         verify(Type::lookupName($manager->introspectTable('glpi_computers')->getColumn('id')->getType()) === 'bigint' && $narrow['type'] === 'integer', 'Regression: BIGINT column remains backed by narrow SERIAL');
-        $legacy = (new LegacyToOrm())->plan($connection);
+        $legacy = (new References())->plan($connection);
         verify($legacy['complete'] && $legacy['identifiers'] === [] && $legacy['stages'] === [], 'Completed old ledger has an empty plan despite the real generator defect');
         $operations = (new WideIdentifiers(['glpi_computers' => ['id']]))->plan($connection);
         verify(count($operations) === 1 && $operations[0]['sql'] === 'ALTER SEQUENCE ' . $qualified($computer['schema'], $computer['name']) . ' AS bigint', 'Width planner independently repairs a narrow sequence without a column transition');
-        $connection->delete(LegacyToOrm::LEDGER, ['version' => $version]);
+        $connection->delete(Ledger::TABLE, ['version' => $version]);
         $receipts = Ledger::states($connection);
         $preview = (new History())->plan($connection);
         verify($preview['pending'] === [$version] && count($preview['identifier_sequences']) === 2, 'Actual canonical history discovers new repair after completed old adoption, including real core-FK identity');
@@ -316,16 +316,16 @@ if (!$platform instanceof PostgreSQLPlatform) {
         ];
         $connection->executeStatement($captured[0]['sql']);
         $olderJournal = ['complete' => false, 'identifiers' => $captured, 'next' => 1];
-        Ledger::save($connection, LegacyToOrm::VERSION, $olderJournal);
-        $preview = (new LegacyToOrm())->plan($connection);
+        Ledger::save($connection, References::PHASE, $olderJournal);
+        $preview = (new References())->plan($connection);
         verify(count($preview['identifiers']) === 2 && $preview['identifiers'][0] === $captured[1]
             && $preview['identifiers'][1]['sql'] === 'ALTER SEQUENCE ' . $qualified($computer['schema'], $computer['name']) . ' AS bigint', 'Older incomplete preview retains captured pending operation and appends only the omitted owned generator');
-        verify(Ledger::state($connection, LegacyToOrm::VERSION) === $olderJournal && $state($computer) === $computerNarrow && $state($child) === $childNarrow, 'Older journal preview preserves captured prefix, next position, receipt and generators');
+        verify(Ledger::state($connection, References::PHASE) === $olderJournal && $state($computer) === $computerNarrow && $state($child) === $childNarrow, 'Older journal preview preserves captured prefix, next position, receipt and generators');
         $sawAppend = false;
         try {
             (new History())->upgrade($connection, static function (string $step) use ($connection, $captured, $state, $computer, $child, &$sawAppend): void {
                 if ($step === 'Widening identifiers and preserving existing constraints') {
-                    $journal = Ledger::state($connection, LegacyToOrm::VERSION);
+                    $journal = Ledger::state($connection, References::PHASE);
                     verify(array_slice($journal['identifiers'], 0, 2) === $captured && count($journal['identifiers']) === 3 && $journal['next'] === 1, 'Actual retry journals the append without rewriting original prefix or progress');
                     $sawAppend = true;
                 }
@@ -338,9 +338,9 @@ if (!$platform instanceof PostgreSQLPlatform) {
         } catch (RuntimeException $error) {
             verify($error->getMessage() === 'Injected older sequence journal interruption', 'Actual older-journal retry surfaces its post-DDL interruption');
         }
-        verify($sawAppend && Ledger::state($connection, LegacyToOrm::VERSION) === $olderJournal && $state($computer) === $computerNarrow && $state($child) === $childNarrow, 'PostgreSQL rolls back the appended journal, old progress and both sequence changes together');
+        verify($sawAppend && Ledger::state($connection, References::PHASE) === $olderJournal && $state($computer) === $computerNarrow && $state($child) === $childNarrow, 'PostgreSQL rolls back the appended journal, old progress and both sequence changes together');
         (new History())->upgrade($connection);
-        verify((new LegacyToOrm())->plan($connection)['complete'] && $state($computer)['type'] === 'bigint' && $state($child)['type'] === 'bigint', 'Older omitted-sequence journal resumes through strict canonical convergence');
+        verify((new References())->plan($connection)['complete'] && $state($computer)['type'] === 'bigint' && $state($child)['type'] === 'bigint', 'Older omitted-sequence journal resumes through strict canonical convergence');
         $receipt = Ledger::state($connection, $version);
         $stage->apply($connection, static fn () => throw new LogicException('Completed replay executed sequence DDL'));
         verify($stage->plan($connection) === [] && Ledger::state($connection, $version) === $receipt && (new WideIdentifiers())->plan($connection) === [], 'Completed receipt and full width planner converge without repeated DDL');
@@ -358,7 +358,7 @@ if (!$platform instanceof PostgreSQLPlatform) {
         // Fixture cleanup restores its pre-test allocation state, not production
         // synchronization behavior: the owned disposable database has no writers.
         $connection->executeStatement('SELECT setval(?::regclass, ?, ?)', [$qualified($computer['schema'], $computer['name']), $computerBefore['value'], $computerBefore['called']], [\Doctrine\DBAL\ParameterType::STRING, \Doctrine\DBAL\ParameterType::STRING, \Doctrine\DBAL\ParameterType::BOOLEAN]);
-        Ledger::save($connection, LegacyToOrm::VERSION, $originalLegacyReceipt);
+        Ledger::save($connection, References::PHASE, $originalLegacyReceipt);
         Ledger::save($connection, $version, $originalReceipt);
     }
 }

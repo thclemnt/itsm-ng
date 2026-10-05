@@ -6,8 +6,8 @@
 // The same real reconstruction/native/refusal/retry assertions apply to the
 // energy subjects, with Battery date payload and the joint21/22 preflight.
 $componentSchemaFamilies = [
-    [Item_DeviceBattery::class, \itsmng\Database\Migration\BatterySubjects20261014::class, ['manufacturing_date' => '2020-02-29']],
-    [Item_DevicePowerSupply::class, \itsmng\Database\Migration\PowerSupplySubjects20261014::class, []],
+    [Item_DeviceBattery::class, \itsmng\Database\Migration\V220\BatterySubjects::class, ['manufacturing_date' => '2020-02-29']],
+    [Item_DevicePowerSupply::class, \itsmng\Database\Migration\V220\PowerSupplySubjects::class, []],
 ];
 $componentSchemaExtensionProbe = static function ($connection, string $table, string $deviceColumn, int $device, int $subject, object $migration, string $linkClass): void {
     global $CFG_GLPI;

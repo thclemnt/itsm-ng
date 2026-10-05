@@ -7,9 +7,9 @@ use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Types\Type;
 use itsmng\Database\MappedStorage;
-use itsmng\Database\Migration\IdentifierColumns;
-use itsmng\Database\Migration\LegacyToOrm;
-use itsmng\Database\Migration\WideIdentifiers;
+use itsmng\Database\Migration\V220\IdentifierColumns;
+use itsmng\Database\Migration\V220\References;
+use itsmng\Database\Migration\V220\WideIdentifiers;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\RecordRepository;
 
@@ -35,7 +35,7 @@ verify(str_starts_with($DB->dbdefault, 'itsm_port_'), 'Dedicated database requir
 $connection = $DB->getDoctrineConnection();
 $platform = $connection->getDatabasePlatform();
 $manager = $connection->createSchemaManager();
-$migration = new LegacyToOrm();
+$migration = new References();
 verify($migration->plan($connection)['complete'], 'Installer records master completion');
 $migration->apply($connection);
 verify($migration->plan($connection)['complete'], 'Completed rerun is a no-op');
@@ -49,12 +49,12 @@ foreach ($metadata as $mapping) {
 }
 
 // Required orphan rejection must happen before widening or creating a journal.
-$originalState = $connection->fetchOne('SELECT state FROM ' . LegacyToOrm::LEDGER . ' WHERE version = ?', [LegacyToOrm::VERSION]);
+$originalState = $connection->fetchOne('SELECT state FROM ' . \itsmng\Database\Migration\Ledger::TABLE . ' WHERE version = ?', [References::PHASE]);
 $key = $manager->introspectTable('glpi_useremails')->getForeignKey('fk_useremails_users_id');
 $connection->executeStatement($platform->getDropForeignKeySQL($key->getQuotedName($platform), 'glpi_useremails'));
 $orphan = null;
 try {
-    $connection->delete(LegacyToOrm::LEDGER, ['version' => LegacyToOrm::VERSION]);
+    $connection->delete(\itsmng\Database\Migration\Ledger::TABLE, ['version' => References::PHASE]);
     $connection->insert('glpi_useremails', ['users_id' => 4294967302, 'email' => 'master-orphan@example.invalid']);
     $orphan = $connection->fetchOne("SELECT id FROM glpi_useremails WHERE email = 'master-orphan@example.invalid'");
     try {
@@ -63,13 +63,13 @@ try {
     } catch (RuntimeException $error) {
         verify(str_contains($error->getMessage(), 'Orphaned required reference'), 'Master rejects required orphan during preflight');
     }
-    verify(!$connection->fetchOne('SELECT COUNT(*) FROM ' . LegacyToOrm::LEDGER . ' WHERE version = ?', [LegacyToOrm::VERSION]), 'Failed preflight records no migration state');
+    verify(!$connection->fetchOne('SELECT COUNT(*) FROM ' . \itsmng\Database\Migration\Ledger::TABLE . ' WHERE version = ?', [References::PHASE]), 'Failed preflight records no migration state');
 } finally {
     if ($orphan !== null) {
         $connection->delete('glpi_useremails', ['id' => $orphan]);
     }
-    $connection->delete(LegacyToOrm::LEDGER, ['version' => LegacyToOrm::VERSION]);
-    $connection->insert(LegacyToOrm::LEDGER, ['version' => LegacyToOrm::VERSION, 'state' => $originalState]);
+    $connection->delete(\itsmng\Database\Migration\Ledger::TABLE, ['version' => References::PHASE]);
+    $connection->insert(\itsmng\Database\Migration\Ledger::TABLE, ['version' => References::PHASE, 'state' => $originalState]);
     $connection->executeStatement($platform->getCreateForeignKeySQL($key, 'glpi_useremails'));
 }
 
@@ -145,7 +145,7 @@ try {
         }
     }
     verify($interrupted > 0, 'Fixture interrupts after generated identity recreation');
-    $connection->update(LegacyToOrm::LEDGER, ['state' => json_encode(['complete' => false, 'identifiers' => $plan, 'next' => $interrupted], JSON_THROW_ON_ERROR)], ['version' => LegacyToOrm::VERSION]);
+    $connection->update(\itsmng\Database\Migration\Ledger::TABLE, ['state' => json_encode(['complete' => false, 'identifiers' => $plan, 'next' => $interrupted], JSON_THROW_ON_ERROR)], ['version' => References::PHASE]);
     $migration->apply($connection);
     verify($migration->plan($connection)['complete'], 'Master resumes interrupted journal and records completion');
     verify($manager->introspectTable($partial)->hasForeignKey('port_master_support_fk') && $manager->introspectTable($partial)->hasIndex('port_master_support'), 'FK supporting index preserved when only the child ID is widened');

@@ -4,7 +4,7 @@
 
 namespace itsmng\Database;
 
-use itsmng\Database\Migration\Baseline20261001;
+use itsmng\Database\Migration\V220\Baseline;
 use itsmng\Database\Migration\History;
 
 /** Supported upgrade entrypoints share canonical history and release publication. */
@@ -115,7 +115,7 @@ final class Upgrade
         $connection = $this->database->getDoctrineConnection();
         LegacyAdoptionEligibility::assertConnection($connection);
         $platform = $connection->getDatabasePlatform();
-        $historical = (new Baseline20261001())->build($platform);
+        $historical = (new Baseline())->build($platform);
         $required = (new BaselineSchema())->build($platform, false);
         $actual = $connection->createSchemaManager()->introspectSchema();
         $missing = [];

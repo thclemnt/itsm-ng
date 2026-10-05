@@ -5,7 +5,7 @@
 use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
 use Doctrine\DBAL\Exception\DriverException;
 use itsmng\Database\ForeignKeys;
-use itsmng\Database\Migration\IPNetworkParentReferences;
+use itsmng\Database\Migration\V220\IPNetworkParentReferences;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\IPNetworkRepository;
 use itsmng\Database\Repository\RecordRepository;

@@ -5,10 +5,10 @@
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\Migration\History;
-use itsmng\Database\Migration\InventoryUniqueness;
+use itsmng\Database\Migration\V220\InventoryUniqueness;
 use itsmng\Database\Migration\Ledger;
-use itsmng\Database\Migration\LegacyToOrm;
-use itsmng\Database\Migration\OperatingSystemSubjects20261006;
+use itsmng\Database\Migration\V220\References;
+use itsmng\Database\Migration\V220\OperatingSystemSubjects;
 use itsmng\Database\SchemaCheck;
 
 $directory = $argv[1] ?? '';
@@ -41,8 +41,8 @@ try {
     $postgres = $platform instanceof PostgreSQLPlatform;
     $manager = $connection->createSchemaManager();
     $tableName = 'glpi_items_operatingsystems';
-    $version = OperatingSystemSubjects20261006::VERSION;
-    $migration = new OperatingSystemSubjects20261006();
+    $version = OperatingSystemSubjects::PHASE;
+    $migration = new OperatingSystemSubjects();
     $subjects = EntityRegistry::discriminatedReferences($tableName)['items_id']['selections'];
     verify((new SchemaCheck())->differences($connection) === [], 'Current schema converges before reconstruction');
     verify((int)$connection->fetchOne('SELECT COUNT(*) FROM ' . $tableName) === 0, 'Only reconstruct an empty disposable assignment table');
@@ -75,7 +75,7 @@ try {
         $legacy->getColumn('itemtype')->setNotnull(false); // Actual nullable legacy drift must be diagnosed before DDL.
         $manager->createTable($legacy);
         $nativeBooleans->restore();
-        $connection->delete(LegacyToOrm::LEDGER, ['version' => $version]);
+        $connection->delete(Ledger::TABLE, ['version' => $version]);
     };
     try {
         foreach (['columns', 'copy', 'projection', 'missing_projection', 'constraints'] as $interruption) {
@@ -113,14 +113,14 @@ try {
                 verify(Ledger::state($connection, $version) === null && !$manager->introspectTable($tableName)->hasColumn('computers_id'), 'Duplicate source changes neither columns nor journal');
                 $connection->delete($tableName, ['id' => 4294972201]);
                 $connection->executeStatement($platform->getCreateIndexSQL($required->getIndex($unique), $tableName));
-                $ledger = $connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
+                $ledger = $connection->fetchAllAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' ORDER BY version');
                 $plan = (new History())->plan($connection);
                 verify(isset($plan['operating_system_subjects'][$tableName]) && str_contains(implode("\n", $plan['operating_system_subjects'][$tableName]['copy']), 'UPDATE ' . $tableName), 'Canonical preview includes frozen OS data conversion');
-                verify($connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $ledger, 'Preview leaves ledger untouched');
+                verify($connection->fetchAllAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' ORDER BY version') === $ledger, 'Preview leaves ledger untouched');
                 $output = [];
                 exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(GLPI_ROOT . '/bin/console') . ' db:migrate --no-interaction --config-dir=' . escapeshellarg(GLPI_CONFIG_DIR) . ' 2>&1', $output, $status);
                 verify($status === 0 && str_contains(implode("\n", $output), 'Migration plan: operating_system_subjects') && str_contains(implode("\n", $output), 'No changes.'), 'Real pending-history CLI safely previews OS migration');
-                verify($connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $ledger && !$manager->introspectTable($tableName)->hasColumn('computers_id'), 'Real preview changes neither schema nor ledger');
+                verify($connection->fetchAllAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' ORDER BY version') === $ledger && !$manager->introspectTable($tableName)->hasColumn('computers_id'), 'Real preview changes neither schema nor ledger');
                 $connection->executeStatement('ALTER TABLE ' . $tableName . ' ADD computers_id BIGINT NULL');
                 $connection->executeStatement('UPDATE ' . $tableName . ' SET computers_id = ?', [$computer + 1]);
                 try {
@@ -163,7 +163,7 @@ try {
         $manager->dropTable($tableName);
         $manager->createTable($nativeExact->restorationTable($tableName));
         $nativeBooleans->restore();
-        $connection->executeStatement(OperatingSystemSubjects20261006::checkSql($tableName));
+        $connection->executeStatement(OperatingSystemSubjects::checkSql($tableName));
         Ledger::save($connection, $version, $originalState);
         $connection->delete('glpi_computers', ['id' => $computer]);
         $connection->delete('glpi_operatingsystems', ['id' => $os]);

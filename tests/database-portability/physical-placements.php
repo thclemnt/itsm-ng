@@ -9,7 +9,7 @@ use itsmng\Database\Entity as Record;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\MappedStorage;
-use itsmng\Database\Migration\PhysicalPlacements;
+use itsmng\Database\Migration\V220\PhysicalPlacements;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\PlacementRepository;
 use itsmng\Database\Repository\RecordRepository;

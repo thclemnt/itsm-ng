@@ -2,9 +2,9 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-use itsmng\Database\Migration\ReferenceHistory;
+use itsmng\Database\Migration\V220\ReferenceHistory;
 use itsmng\Database\ForeignKeys;
-use itsmng\Database\Migration\InventoryMetadataReferences;
+use itsmng\Database\Migration\V220\InventoryMetadataReferences;
 
 $directory = $argv[1] ?? '';
 if (!is_file($directory . '/config_db.php')) {
@@ -166,7 +166,7 @@ try {
             $connection->executeStatement($sql);
         }
     }
-    $index = \itsmng\Database\Migration\InventoryUniqueness::indexName($platform);
+    $index = \itsmng\Database\Migration\V220\InventoryUniqueness::indexName($platform);
     $connection->executeStatement($platform->getDropIndexSQL($index, 'glpi_items_operatingsystems'));
     $connection->insert('glpi_computers', ['id' => 2147483500, 'name' => 'Valid inventory duplicate owner']);
     try {

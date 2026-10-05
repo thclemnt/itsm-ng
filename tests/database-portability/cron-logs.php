@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 use itsmng\Database\ForeignKeys;
-use itsmng\Database\Migration\CronLogReferences;
+use itsmng\Database\Migration\V220\CronLogReferences;
 use itsmng\Database\Orm;
 use itsmng\Database\Repository\CronLogRepository;
 use itsmng\Database\Repository\RecordRepository;

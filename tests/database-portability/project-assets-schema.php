@@ -8,11 +8,11 @@ use Doctrine\DBAL\Types\Type;
 use itsmng\Database\Entity as Record;
 use itsmng\Database\EntityRegistry;
 use itsmng\Database\ForeignKeys;
-use itsmng\Database\Migration\Baseline20261001;
+use itsmng\Database\Migration\V220\Baseline;
 use itsmng\Database\Migration\History;
 use itsmng\Database\Migration\Ledger;
-use itsmng\Database\Migration\LegacyToOrm;
-use itsmng\Database\Migration\ProjectAssets20261003;
+use itsmng\Database\Migration\V220\References;
+use itsmng\Database\Migration\V220\ProjectAssets;
 use itsmng\Database\Orm;
 use itsmng\Database\SchemaCheck;
 
@@ -45,8 +45,8 @@ try {
     $postgres = $platform instanceof PostgreSQLPlatform;
     $manager = $connection->createSchemaManager();
     $table = 'glpi_items_projects';
-    $migration = new ProjectAssets20261003();
-    verify(Ledger::state($connection, ProjectAssets20261003::VERSION)['complete'], 'Fresh installation replays the appended project migration');
+    $migration = new ProjectAssets();
+    verify(Ledger::state($connection, ProjectAssets::PHASE)['complete'], 'Fresh installation replays the appended project migration');
     verify((new SchemaCheck())->differences($connection) === [], 'Fresh project schema converges');
     $branches = EntityRegistry::discriminatedReferences($table)['items_id']['selections'];
     $expected = $CFG_GLPI['contract_types'];
@@ -110,21 +110,21 @@ try {
 
     // A completed former installation remains an installation, not an empty-db retry,
     // when a newly appended history version is pending.
-    $oldVersion = Ledger::state($connection, ProjectAssets20261003::VERSION);
-    $baselineState = Ledger::state($connection, Baseline20261001::VERSION);
+    $oldVersion = Ledger::state($connection, ProjectAssets::PHASE);
+    $baselineState = Ledger::state($connection, Baseline::PHASE);
     try {
-        $connection->delete(LegacyToOrm::LEDGER, ['version' => ProjectAssets20261003::VERSION]);
+        $connection->delete(Ledger::TABLE, ['version' => ProjectAssets::PHASE]);
         verify(!History::isInstalling($connection), 'Appended migration does not reopen a completed installation');
         $formerState = $baselineState;
         unset($formerState['installation_complete']);
-        Ledger::save($connection, Baseline20261001::VERSION, $formerState);
+        Ledger::save($connection, Baseline::PHASE, $formerState);
         verify(!History::isInstalling($connection), 'Former four-version installation remains complete without a newer marker');
         $command = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(GLPI_ROOT . '/bin/console') . ' db:install --no-interaction --config-dir=' . escapeshellarg(GLPI_CONFIG_DIR) . ($postgres ? ' --force' : '') . ' 2>&1';
         exec($command, $output, $status);
         verify($status !== 0 && (str_contains(implode("\n", $output), 'requires an empty schema') || str_contains(implode("\n", $output), 'already contains')), 'Actual installer refuses the existing schema with only the new migration pending');
     } finally {
-        Ledger::save($connection, ProjectAssets20261003::VERSION, $oldVersion);
-        Ledger::save($connection, Baseline20261001::VERSION, $baselineState);
+        Ledger::save($connection, ProjectAssets::PHASE, $oldVersion);
+        Ledger::save($connection, Baseline::PHASE, $baselineState);
     }
 
     // Reconstruct this empty owned fixture as a populated, already widened legacy
@@ -139,24 +139,24 @@ try {
     try {
         foreach (['columns', 'copy', 'projection', 'constraints'] as $interruptPhase) {
             $manager->dropTable($table);
-            $legacy = (new Baseline20261001())->build($platform)->getTable($table);
+            $legacy = (new Baseline())->build($platform)->getTable($table);
             foreach (['id', 'projects_id', 'items_id'] as $field) {
                 $legacy->getColumn($field)->setType(Type::getType('bigint'));
             }
             $legacy->getColumn('items_id')->setComment($comment);
             $legacy->addForeignKeyConstraint('glpi_projects', ['projects_id'], ['id'], ['onDelete' => 'RESTRICT', 'onUpdate' => 'RESTRICT'], 'fk_items_projects_projects_id');
             $manager->createTable($legacy);
-            $connection->delete(LegacyToOrm::LEDGER, ['version' => ProjectAssets20261003::VERSION]);
+            $connection->delete(Ledger::TABLE, ['version' => ProjectAssets::PHASE]);
             $connection->insert($table, ['id' => 501, 'projects_id' => $owner, 'itemtype' => 'Computer', 'items_id' => $computer]);
             $connection->insert($table, ['id' => 502, 'projects_id' => $owner, 'itemtype' => 'Project', 'items_id' => $subjectProject]);
             if ($interruptPhase === 'columns') {
-                $journal = $connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version');
+                $journal = $connection->fetchAllAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' ORDER BY version');
                 $output = [];
                 exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(GLPI_ROOT . '/bin/console') . ' db:migrate --no-interaction --config-dir=' . escapeshellarg(GLPI_CONFIG_DIR) . ' 2>&1', $output, $status);
                 $preview = implode("\n", $output);
                 verify($status === 0 && str_contains($preview, 'Migration plan: project_assets') && str_contains($preview, 'subject_projects_id')
                     && str_contains($preview, 'UPDATE glpi_items_projects SET') && str_contains($preview, 'No changes.'), 'Actual CLI previews appended owning columns, data conversion and constraints');
-                verify($connection->fetchAllAssociative('SELECT version, state FROM ' . LegacyToOrm::LEDGER . ' ORDER BY version') === $journal
+                verify($connection->fetchAllAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' ORDER BY version') === $journal
                     && !$manager->introspectTable($table)->hasColumn('computers_id'), 'Actual appended migration preview changes neither ledger nor schema');
             }
             foreach ([['itemtype' => 'PluginExampleAsset', 'items_id' => $computer], ['itemtype' => 'Computer', 'items_id' => 999999999], ['itemtype' => 'Computer', 'items_id' => 0], ['itemtype' => null, 'items_id' => 0]] as $invalid) {
@@ -170,7 +170,7 @@ try {
                         verify(str_contains($error->getMessage(), '503') && str_contains($error->getMessage(), 'canonical ORM importer requires completed migration history'), 'Plugin diagnostic identifies the row and distinguishes historical legacy import from the canonical importer');
                     }
                 }
-                verify(Ledger::state($connection, ProjectAssets20261003::VERSION) === null && !$manager->introspectTable($table)->hasColumn('computers_id'), 'Invalid preflight changes neither schema nor migration journal');
+                verify(Ledger::state($connection, ProjectAssets::PHASE) === null && !$manager->introspectTable($table)->hasColumn('computers_id'), 'Invalid preflight changes neither schema nor migration journal');
                 $connection->delete($table, ['id' => 503]);
             }
             if ($interruptPhase === 'columns') {
@@ -182,7 +182,7 @@ try {
                 } catch (RuntimeException $error) {
                     verify(str_contains($error->getMessage(), 'Canonical and legacy typed item references disagree: glpi_items_projects.subject_projects_id'), 'Partial canonical subject disagreement reports the separate Project role');
                 }
-                verify(Ledger::state($connection, ProjectAssets20261003::VERSION) === null && !$manager->introspectTable($table)->hasColumn('computers_id'), 'Partial Project subject disagreement refuses before further DDL or journal creation');
+                verify(Ledger::state($connection, ProjectAssets::PHASE) === null && !$manager->introspectTable($table)->hasColumn('computers_id'), 'Partial Project subject disagreement refuses before further DDL or journal creation');
                 $connection->update($table, ['subject_projects_id' => $subjectProject], ['id' => 502]);
             }
             try {
@@ -195,7 +195,7 @@ try {
             } catch (RuntimeException $error) {
                 verify($error->getMessage() === 'Injected project phase interruption', 'The real migration surfaces interruption: ' . $interruptPhase);
             }
-            verify($postgres ? Ledger::state($connection, ProjectAssets20261003::VERSION) === null : !Ledger::state($connection, ProjectAssets20261003::VERSION)['complete'], 'Interrupted PostgreSQL rolls back; MySQL retains the owned incomplete journal');
+            verify($postgres ? Ledger::state($connection, ProjectAssets::PHASE) === null : !Ledger::state($connection, ProjectAssets::PHASE)['complete'], 'Interrupted PostgreSQL rolls back; MySQL retains the owned incomplete journal');
             $migration->apply($connection);
             $rows = $connection->fetchAllAssociative('SELECT id, projects_id, itemtype, computers_id, subject_projects_id, items_id FROM ' . $table . ' ORDER BY id');
             verify(count($rows) === 2 && (int)$rows[0]['computers_id'] === $computer && (int)$rows[0]['items_id'] === $computer && (int)$rows[1]['subject_projects_id'] === $subjectProject && (int)$rows[1]['items_id'] === $subjectProject && (int)$rows[1]['projects_id'] === $owner, 'Every retry preserves independent populated identities: ' . $interruptPhase);
@@ -207,8 +207,8 @@ try {
     } finally {
         $manager->dropTable($table);
         $manager->createTable($nativeExact->restorationTable($table));
-        $connection->executeStatement(ProjectAssets20261003::checkSql($table));
-        Ledger::save($connection, ProjectAssets20261003::VERSION, $oldVersion);
+        $connection->executeStatement(ProjectAssets::checkSql($table));
+        Ledger::save($connection, ProjectAssets::PHASE, $oldVersion);
         $connection->delete('glpi_projects', ['id' => $owner]);
         $connection->delete('glpi_projects', ['id' => $subjectProject]);
         $connection->delete('glpi_computers', ['id' => $computer]);

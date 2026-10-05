@@ -7,10 +7,10 @@ use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 use itsmng\Database\EntityRegistry;
-use itsmng\Database\Migration\Baseline20261001;
-use itsmng\Database\Migration\DomainIntegration20261006;
+use itsmng\Database\Migration\V220\Baseline;
+use itsmng\Database\Migration\V220\DomainIntegration;
 use itsmng\Database\Migration\Ledger;
-use itsmng\Database\Migration\LegacyToOrm;
+use itsmng\Database\Migration\V220\References;
 use itsmng\Database\SchemaCheck;
 
 $directory = $argv[1] ?? '';
@@ -36,7 +36,7 @@ $connection = $DB->getDoctrineConnection();
 $platform = $connection->getDatabasePlatform();
 $postgres = $platform instanceof PostgreSQLPlatform;
 verify((new SchemaCheck())->differences($connection) === [], 'Current core converges with property-declared Domain fields');
-verify(Ledger::state($connection, DomainIntegration20261006::VERSION)['complete'], 'Canonical installation/adoption replays Domain stage');
+verify(Ledger::state($connection, DomainIntegration::PHASE)['complete'], 'Canonical installation/adoption replays Domain stage');
 verify(EntityRegistry::relations()['glpi_domains']['suppliers_id'] === 'glpi_suppliers'
     && EntityRegistry::isBoolean('glpi_domains', 'is_helpdesk_visible'), 'Supplier ownership and flag belong to Domain properties');
 $reject = static function (callable $operation, string $message, ?string $expectedCheck = null) use ($connection): void {
@@ -70,7 +70,7 @@ verify($adapter->connected, 'Historical fixture connection');
 $fixture = $adapter->getDoctrineConnection();
 try {
     $manager = $fixture->createSchemaManager();
-    $historical = (new Baseline20261001())->build($platform);
+    $historical = (new Baseline())->build($platform);
     foreach (['glpi_domains', 'glpi_suppliers', 'glpi_profiles', 'glpi_profilerights'] as $name) {
         $table = clone $historical->getTable($name);
         $table->getColumn('id')->setType(Type::getType(Types::BIGINT));
@@ -87,7 +87,7 @@ try {
     $fixture->insert('glpi_profilerights', ['profiles_id' => 2, 'name' => 'dropdown', 'rights' => 31]);
     $fixture->insert('glpi_profilerights', ['profiles_id' => 2, 'name' => 'domaintype', 'rights' => 1]);
     $fixture->insert('glpi_domains', ['id' => 91, 'name' => 'Keep name and history', 'suppliers_id' => 0, 'is_helpdesk_visible' => 2]);
-    $migration = new DomainIntegration20261006();
+    $migration = new DomainIntegration();
     $rejectPlan = static function (string $message) use ($fixture, $migration): void {
         $failed = false;
         try {
@@ -131,7 +131,7 @@ try {
         $interrupted = $error->getMessage() === 'Intentional stage interruption';
     }
     verify($interrupted, 'Interrupt the stage after real DDL');
-    verify((Ledger::state($fixture, DomainIntegration20261006::VERSION)['complete'] ?? false) !== true, 'Interrupted stage is not complete');
+    verify((Ledger::state($fixture, DomainIntegration::PHASE)['complete'] ?? false) !== true, 'Interrupted stage is not complete');
     $migration->apply($fixture);
     $table = $manager->introspectTable('glpi_domains');
     verify(Type::lookupName($table->getColumn('suppliers_id')->getType()) === Types::BIGINT

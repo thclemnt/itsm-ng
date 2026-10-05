@@ -11,7 +11,7 @@ use itsmng\Database\EntityRegistry;
 use itsmng\Database\ForeignKeys;
 use itsmng\Database\Mapping\ReferenceKind;
 use itsmng\Database\Mapping\UserReferenceAction;
-use itsmng\Database\Migration\ReferenceHistory;
+use itsmng\Database\Migration\V220\ReferenceHistory;
 use itsmng\Database\Orm;
 use itsmng\Database\ReferenceValues;
 use itsmng\Database\Repository\RecordWriter;
