@@ -72,6 +72,19 @@ class Autoload extends DbTestCase
         }
     }
 
+    public function testComposerNamespacesAreLeftToTheirOwningLoader(): void
+    {
+        foreach ([\Doctrine\ORM\Query\AST\Functions\BitAndFunction::class, \itsmng\Database\Entity\Ticket::class] as $class) {
+            $this->boolean(glpi_autoload($class))->isFalse();
+            $this->boolean(class_exists($class))->isTrue();
+        }
+        $this->boolean(glpi_autoload('UnknownVendor\\MissingClass'))->isFalse();
+        $this->boolean(glpi_autoload('GlpiPlugin\\Unloadedperf\\Missing'))->isFalse();
+        $this->boolean(glpi_autoload('PluginUnloadedperfMissing'))->isFalse();
+        $this->boolean(class_exists('Computer'))->isTrue();
+        $this->boolean(class_exists('Glpi\\Event'))->isTrue();
+    }
+
     /**
      * Checks autoload of some class located in Glpi namespace.
      */

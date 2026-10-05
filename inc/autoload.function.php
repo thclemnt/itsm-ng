@@ -295,6 +295,17 @@ function glpi_autoload($classname)
         return false;
     }
 
+    // Namespaced application/vendor classes use Composer's PSR loaders. The
+    // legacy paths below only translate Glpi and GlpiPlugin namespaces; other
+    // backslash-qualified names cannot resolve to their .class.php layout.
+    if (
+        str_contains($classname, '\\')
+        && !str_starts_with($classname, NS_GLPI)
+        && !str_starts_with($classname, NS_PLUG)
+    ) {
+        return false;
+    }
+
     if (
         $classname === 'phpCAS'
         && file_exists(stream_resolve_include_path("CAS.php"))
