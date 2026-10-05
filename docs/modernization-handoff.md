@@ -1,3 +1,130 @@
+# 2026-10-05: current installation and upgrade proofs; full validation open
+
+The modernization goal remains **OPEN**. Native persistent goals are unavailable;
+this tracked plan and private execution checkpoints retain the objective: cover
+representable relationships with foreign keys, place types/booleans/nullability
+and ownership with Doctrine entities, replace legacy application SQL with domain
+persistence, preserve PostgreSQL and MySQL/MariaDB, and maintain immutable DBAL
+baseline/seeds plus canonical replay and validated adoption in the existing ledger.
+
+The published modernization head is `53cf6297473bc31400a0777ff905bd79f1e65698`.
+The earlier sections below are dated historical checkpoints, not its current
+validation status. Direct native Git 2.52 at `/usr/local/bin/git` is an ELF binary;
+normal cloud fetch/push and remote inspection work without an activation-script
+workaround. Remote verification preserves the original handoff `897c5c9b` and
+newer experimental head `01aee6a7` as ancestors. The experimental branch's newer
+changes remain intact. The isolated application/provider successor described
+below has not been published or substituted for the running `53cf` checkout.
+
+Both genuinely absent disposable PostgreSQL and MariaDB installations passed all
+13 ordered phases, including ordinary CLI installation, the original installed
+schema/run and frozen seed controls, allocator synchronization, idempotent replay,
+expected repeat-install refusal and protected-parent comparisons. Final native
+inspection found **20 complete canonical versions, 1,080 foreign keys, no pending
+versions and no schema differences** on both engines. Each installation has an
+independent complete-data review. These are actual current-`53cf` fresh proofs,
+not inherited results from an older producer or full-suite passes.
+
+Both genuine populated upgrades also passed all **15 ordered phases**. The
+historical producer was the physically separate canonical-17 checkout `9e7e3d16`,
+using its own dependencies and normal installation, followed by ordinary current
+preview/apply. Independent reviews compared all 358 typed table bags and raw
+historical receipts, including physical duplicate links, unassigned stock,
+nullable payloads and exact expected additions. Legacy identifiers and allocator
+primes above 2^32 were retained; real public post-upgrade allocations exceeded
+existing maxima. Final inspection converged from 17/1,070 to 20/1,080, with no
+pending versions or schema differences. Complete replay idempotency and original
+protected-parent rows, receipts and catalogue checks passed. No migration receipt
+was fabricated. These results establish populated replay/idempotency; separate
+interrupted nontransactional-DDL retry contracts and full-order acceptance remain
+required.
+
+The current PostgreSQL **226-contract full suite is active after a restart**.
+Its first attempt retained four passed contracts, then the environment tool
+connection's broken stdout pipe raised `BrokenPipeError` while reporting the
+actors child. Its failed terminal receipt has `report_complete=false`; **4/226
+is not a full pass**. The restarted run uses durable console output and the
+unchanged ordered contracts, 300-second limits, owned child cleanup, final native
+inspection and protected-parent comparisons. It has no final result yet. The
+current MariaDB full suite remains pending. Older `76cd` PostgreSQL 223/223 results
+stay attached to that older source and retained installation.
+
+The original handoff `glpi_certificates_items.items_id` schema mismatch remains
+**unreproduced**, not diagnosed away. Fresh current schema checks pass both
+providers, and full-order historical cloud and six non-MySQL remote checks pass;
+those observations do not establish the original failure's cause. MySQL 8.4's
+newer historical-fixture declaration failure and MariaDB's earlier interrupted
+Memory fixture are separate evidence. No schema assertion or comparison is weakened.
+
+Remote CI for the published `53cf` head is **not green**. Its actual PR checkout
+was merge `87bfe010`, whose tree equals `53cf`. All eight portability jobs reached
+226 dynamically discovered contracts:
+
+| Engine | PHP 8.2 | PHP 8.3 |
+| --- | --- | --- |
+| MariaDB 11.8 | 222/226 | 222/226 |
+| MySQL 8.4 | 20/226 | 20/226 |
+| PostgreSQL 18 | 222/226 | 222/226 |
+| PostgreSQL 14 | 224/226 | 223/226 |
+
+The pure provenance contract fails missing legacy `Appliance` autoload in every
+job. MySQL's first historical generated-column restoration raises syntax 1064,
+withholds Exact completion and causes later readiness refusals; its failures
+cannot be described as independent application defects. MariaDB additionally
+exposes the 2040-range fixture assumption and two current-read conflicts.
+PostgreSQL 18 exposes native RESTRICT 23001 classification, all four PostgreSQL
+jobs retain the original software-atomicity 300-second timeout, and PostgreSQL 14
+PHP 8.3 additionally times out migration history. The original component schema
+contract passes both MariaDB and PostgreSQL 14 jobs within the original limit;
+that is remote evidence, not a local timing or single-change causal claim.
+
+Remote lint, installation, unit and migration workflows passed. Functional, API,
+LDAP, IMAP, E2E and portability workflows failed. Their source diagnoses and
+candidate corrections remain separate from rerun acceptance. In particular,
+API updater/log ownership, LDAP authentication-owner fixtures, stale IMAP ticket
+references and E2E readiness observation have no passing application rerun for
+the successor; E2E failure occurred before browser acceptance.
+
+The isolated source successor `eb0aeb269fd8091d92e71d495bc6abbf7f05e423`
+retains 16 reviewed candidate commits and one composition note. Independent
+SOURCE review verifies all complete original/composed bodies, stage inverses,
+whole base inverse and unchanged historical inputs. Its faithful static runner
+inventory finds **233 contracts**, retaining every base contract and exclusion.
+ROOT passed 40 PHP/bash/diff parser checks. This successor has no own installed
+runtime, compiler/style, pure-contract, focused native, fresh/upgrade, full-suite,
+application/API/LDAP/IMAP, browser or remote-CI acceptance. User preparation and
+ITIL adapter repairs are not completion of ORM persistence migration.
+
+Normal own-dependency installation, optimized autoload and real asset builds
+previously succeeded for current `53cf`. Its `node_modules` is now temporarily
+held in a byte-verified private archive to reserve disk for CLI validation.
+Restore its exact recorded contents before any web/API/browser/DOM/npm or asset
+execution. Compiled assets and the guarded CLI runtime are retained; historical
+build success does not establish present web readiness. No archived dependency
+alias, failed-database deletion or protected-parent reset is used.
+
+Next: complete the active PostgreSQL and sequential MariaDB full suites and
+inspect final native schemas. Validate the coherent application/provider
+successor using its own runtime, actual official MySQL 8.4/PostgreSQL 18 windows,
+caller/current-read refusal controls and real application services. Continue
+entity-owned tree/index/native-clock and Calendar/VLAN domain batches, then the
+seven Battery/PowerSupply associations with frozen append-only versions 21/22.
+The temporal source cohort owns seven of 472 inventoried timestamp properties;
+465 still require individually justified ownership. Valid plugin energy subjects,
+remaining polymorphic modeling, legacy queries, lifecycle boundaries and live
+replica routing remain open. Coherent full suites on both supported providers
+are required before claiming each milestone complete.
+
+Private immutable receipt keys: full source-bound fresh/upgrade packet
+`7cc445f9`; PostgreSQL fresh `7d8f5039` and review `133b138e`; MariaDB fresh
+`d97d27c1` and review `e597fd91`; PostgreSQL populated upgrade `75361dae` and
+review `d81e42c6`; MariaDB populated upgrade `873b25bb` and review `85ceb4ed`;
+interrupted full attempt `7a1068fd`; ROOT successor parsers `1bb23719`;
+successor SOURCE freeze `f32630ea` and independent review `962bf719`;
+remote portability analysis `ad8dc8d6`. The active restarted console is
+`next-53cf-pg-full-reconnected-root-console-20261005T0431.log`; it is a changing
+progress record, not an immutable passing receipt.
+
 # 2026-10-05: native Git, validated recovery and measured planning work
 
 The modernization goal remains **OPEN**. Native persistent goals are unavailable; this implementation record and private execution checkpoints carry the durable plan. The objective is to cover representable relationships with foreign keys, use entity-owned Doctrine mappings and domain persistence, eliminate unowned native-driver application calls, support PostgreSQL and MySQL/MariaDB, and maintain reproducible frozen baseline, seeds and canonical migration replay/adoption.
