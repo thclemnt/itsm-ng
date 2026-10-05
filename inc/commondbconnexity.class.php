@@ -99,8 +99,14 @@ abstract class CommonDBConnexity extends CommonDBTM
         try {
             return \itsmng\Database\ConnexityInput::normalize($this, $input);
         } catch (\InvalidArgumentException) {
+            $this->reportInvalidLifecycleEndpointInput($input);
             return false;
         }
+    }
+
+    /** Report model-owned diagnostics without admitting an invalid endpoint. */
+    protected function reportInvalidLifecycleEndpointInput(array $input): void
+    {
     }
 
     final protected function authorizeLifecycleUpdate(array $input): array|false

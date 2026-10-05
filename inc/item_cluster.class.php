@@ -265,6 +265,11 @@ class Item_Cluster extends CommonDBRelation
         renderTwigForm($form, '', $this->fields);
     }
 
+    protected function reportInvalidLifecycleEndpointInput(array $input): void
+    {
+        $this->validateLifecycleEndpoints($input);
+    }
+
     public function prepareInputForAdd($input)
     {
         return $this->validateLifecycleEndpoints($input);
