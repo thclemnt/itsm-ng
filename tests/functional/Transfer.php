@@ -581,6 +581,7 @@ class Transfer extends DbTestCase
                 $manager->persist($version);
                 $installation = new \itsmng\Database\Entity\ItemSoftwareVersion();
                 $installation->itemtype = 'Computer';
+                $installation->entities = $root;
                 $installation->computer = $computer;
                 $installation->softwareversions = $version;
                 $manager->persist($installation);
@@ -626,6 +627,7 @@ class Transfer extends DbTestCase
             $manager->persist($version);
             $installation = new \itsmng\Database\Entity\ItemSoftwareVersion();
             $installation->itemtype = 'Computer';
+            $installation->entities = $root;
             $installation->computer = $computer;
             $installation->softwareversions = $version;
             $manager->persist($installation);
