@@ -6,6 +6,7 @@ namespace itsmng\Database\Migration\V220;
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\DBAL\Schema\Schema;
 
 /** Audited nullable-reference migration; run with application writers stopped. */
 final class NullableReferences
@@ -17,7 +18,8 @@ final class NullableReferences
         }
     }
 
-    public function plan(Connection $connection): array
+    /** A supplied inspection belongs only to the caller's current read-only pass. */
+    public function plan(Connection $connection, ?Schema $inspection = null): array
     {
         $manager = $connection->createSchemaManager();
         $platform = $connection->getDatabasePlatform();
@@ -27,7 +29,7 @@ final class NullableReferences
         $empty = $this->emptySelection === -1 ? '< 0' : '= 0';
         $present = $this->emptySelection === -1 ? '>= 0' : '<> 0';
         foreach ($this->relations as $table => $relations) {
-            $before = $manager->introspectTable($table);
+            $before = $inspection?->getTable($table) ?? $manager->introspectTable($table);
             $after = clone $before;
             foreach ($relations as $column => $target) {
                 if ($connection->fetchOne('SELECT COUNT(*) FROM ' . $quote($target) . ' WHERE id = ' . $this->emptySelection)) {

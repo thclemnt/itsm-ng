@@ -6,6 +6,7 @@ namespace itsmng\Database\Migration\V220;
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\DBAL\Schema\Schema;
 use Doctrine\DBAL\Types\Type;
 
 /** Widen in place, preserving data, sequences and all existing constraint definitions. */
@@ -16,7 +17,7 @@ final class WideIdentifiers
     }
 
     /** The returned operations are journaled before MySQL's first implicit DDL commit. */
-    public function plan(Connection $connection): array
+    public function plan(Connection $connection, ?Schema $inspection = null): array
     {
         if (PHP_INT_SIZE < 8) {
             throw new \RuntimeException('The ORM schema requires 64-bit PHP integers.');
@@ -31,7 +32,7 @@ final class WideIdentifiers
         $tables = $foreignKeys = [];
         // One catalogue snapshot retains core and custom FK edges without
         // repeating columns/indexes/FKs/options introspection for every table.
-        foreach ($manager->introspectSchema()->getTables() as $table) {
+        foreach (($inspection ?? $manager->introspectSchema())->getTables() as $table) {
             $name = $table->getName();
             $tables[$name] = $table;
             foreach ($table->getForeignKeys() as $foreign) {

@@ -92,10 +92,20 @@ try {
     }
     $legacyId = (int)$connection->fetchOne('SELECT COALESCE(MAX(id), 0) + 100 FROM glpi_contracts');
     $connection->insert('glpi_contracts', ['id' => $legacyId, 'name' => 'Legacy financial']);
-    $plan = $migration->plan($connection);
+    $inspection = $connection->createSchemaManager()->introspectSchema();
+    $plan = $migration->plan($connection, $inspection);
     verify($plan['sql'] !== [] && array_sum($plan['counts']) > 0, 'Financial migration plans DDL and normalization');
+    verify($inspection->getTable('glpi_contracts')->getColumn('contracttypes_id')->getNotnull(),
+        'Planning desired nullability does not mutate its shared physical inspection');
     verify((int)$connection->fetchOne('SELECT contracttypes_id FROM glpi_contracts WHERE id = ?', [$legacyId]) === 0, 'Plan preserves data');
     $connection->update('glpi_contracts', ['contracttypes_id' => 2147483647], ['id' => $legacyId]);
+    $snapshotRejected = false;
+    try {
+        $migration->plan($connection, $inspection);
+    } catch (RuntimeException $error) {
+        $snapshotRejected = str_contains($error->getMessage(), 'Nonzero orphaned financial');
+    }
+    verify($snapshotRejected, 'Shared schema inspection still audits the current orphaned data');
     $rejected = false;
     try {
         $migration->apply($connection);
@@ -106,6 +116,9 @@ try {
     $connection->update('glpi_contracts', ['contracttypes_id' => 0], ['id' => $legacyId]);
     $migration->apply($connection);
     verify($connection->fetchOne('SELECT contracttypes_id FROM glpi_contracts WHERE id = ?', [$legacyId]) === null, 'Legacy empty type becomes NULL');
+    verify($inspection->getTable('glpi_contracts')->getColumn('contracttypes_id')->getNotnull()
+        && !$connection->createSchemaManager()->listTableColumns('glpi_contracts')['contracttypes_id']->getNotnull(),
+        'Apply obtains fresh declarations and never retains the earlier physical snapshot across DDL');
     verify($migration->plan($connection) === ['sql' => [], 'counts' => []] && $migration->apply($connection) === [], 'Financial migration is idempotent');
 } finally {
     if ($legacyId !== null) {

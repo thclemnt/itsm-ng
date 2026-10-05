@@ -184,7 +184,11 @@ final class References
     public function verify(Connection $connection): void
     {
         $this->auditRequiredReferences($connection);
-        if ((new WideIdentifiers())->plan($connection)
+        // This entire pass is read-only: share its fresh physical declarations,
+        // never its data audits, with the owners that would otherwise reread each
+        // table. Nothing retains this inspection across apply, DDL or callbacks.
+        $inspection = $connection->createSchemaManager()->introspectSchema();
+        if ((new WideIdentifiers())->plan($connection, $inspection)
             || (new ForeignKeys(IdentifierColumns::history()['relations']))->plan($connection)) {
             throw new \RuntimeException('Frozen identifier/reference conversion did not converge.');
         }
@@ -200,7 +204,9 @@ final class References
             } elseif ($stage instanceof TypedItemMigration) {
                 $stage->verify($connection);
             } else {
-                $plan = $stage->plan($connection);
+                $plan = $stage instanceof NullableReferences
+                    ? $stage->plan($connection, $inspection)
+                    : $stage->plan($connection);
                 $pending = $stage instanceof OidcReferences ? (bool)$plan : false;
                 foreach ($plan as $key => $value) {
                     if (is_string($key) && ($key === 'sql' || str_ends_with($key, '_sql')
