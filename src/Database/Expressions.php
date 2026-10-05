@@ -45,9 +45,4 @@ final class Expressions
             ? "EXTRACT(EPOCH FROM ($end - $start))"
             : "TIMESTAMPDIFF(SECOND, $start, $end)";
     }
-
-    public function concat(string ...$parts): string
-    {
-        return $this->platform->getConcatExpression(...$parts);
-    }
 }
