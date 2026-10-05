@@ -3589,12 +3589,6 @@ class Transfer extends CommonDBTM
                'id' => 'dropdown_id'.$rand,
                'name' => 'id',
                'values' => getOptionForItems(Transfer::class),
-               'hooks' => [
-                   'change' => <<<JS
-                    var value = document.getElementById('dropdown_id$rand').value;
-                    $('#transfer_form').load('$CFG_GLPI[root_doc]/ajax/transfers.php', {action: 'showform', id: value});
-                JS,
-               ]
             ]);
             echo '</th></tr>';
 

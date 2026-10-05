@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page, type Request } from '@playwright/test';
 import { closeApiSession, getItem, initApiSession, login, type ApiSession } from '../helpers.mjs';
 
 interface Guard { token: string; prefix: string; }
@@ -67,32 +67,60 @@ async function addActualTransferList(page: Page, seed: Seed): Promise<void> {
 }
 
 async function actualTransferForm(page: Page, seed: Seed, preserve: boolean): Promise<Locator> {
-  const mode = page.locator('table[aria-label="Items to transfer"] select[name="id"]');
-  await expect(mode).toHaveCount(1);
-  const loaded = page.waitForResponse(response => response.url().includes('/ajax/transfers.php')
-    && response.request().method() === 'POST');
-  await mode.selectOption(String(seed.mode));
-  expect((await loaded).ok()).toBe(true);
-  await page.waitForLoadState('networkidle');
-  const form = page.locator('#transfer_form form').filter({ has: page.locator('select[name="to_entity"]') });
-  await expect(form).toHaveCount(1);
-  await expect(form.locator('input[name="_glpi_csrf_token"]')).not.toHaveValue('');
-  const destination = form.locator('select[name="to_entity"]');
-  // Use the real Entity dropdown's options; never insert fixture-created DOM options.
-  await expect(destination.locator(`option[value="${seed.destination}"]`)).toHaveCount(1);
-  await destination.selectOption(String(seed.destination));
-  for (const name of ['keep_infocom', 'keep_document', 'keep_contract', 'keep_history']) {
-    await form.locator(`select[name="${name}"]`).selectOption(preserve ? '1' : '0');
+  let modeRequests = 0;
+  const countModeRequest = (request: Request) => {
+    if (new URL(request.url()).pathname === '/ajax/transfers.php' && request.method() === 'POST') ++modeRequests;
+  };
+  page.on('request', countModeRequest);
+  try {
+    const mode = page.locator('table[aria-label="Items to transfer"] select[name="id"]');
+    await expect(mode).toHaveCount(1);
+    const loaded = page.waitForResponse(response => response.url().includes('/ajax/transfers.php')
+      && response.request().method() === 'POST');
+    await mode.selectOption(String(seed.mode));
+    const refreshed = await loaded;
+    expect(refreshed.ok()).toBe(true);
+    expect(new URLSearchParams(refreshed.request().postData() || '').get('id'),
+      'The actual mode refresh uses the freshly selected transfer mode.').toBe(String(seed.mode));
+    await page.waitForLoadState('networkidle');
+    const form = page.locator('#transfer_form form').filter({ has: page.locator('select[name="to_entity"]') });
+    await expect(form).toHaveCount(1);
+    await expect(form.locator('input[name="_glpi_csrf_token"]')).not.toHaveValue('');
+    const destination = form.locator('select[name="to_entity"]');
+    // Use the real Entity dropdown's options; never insert fixture-created DOM options.
+    await expect(destination.locator(`option[value="${seed.destination}"]`)).toHaveCount(1);
+    await destination.selectOption(String(seed.destination));
+    for (const name of ['keep_infocom', 'keep_document', 'keep_contract', 'keep_history']) {
+      await form.locator(`select[name="${name}"]`).selectOption(preserve ? '1' : '0');
+    }
+    await form.locator('select[name="keep_supplier"]').selectOption('1');
+    expect(modeRequests, 'Each actual mode selection sends exactly one form refresh request.').toBe(1);
+    await expect(destination, 'The rendered transfer form retains the selected destination after option changes.').toHaveValue(String(seed.destination));
+    return form;
+  } finally {
+    page.off('request', countModeRequest);
   }
-  await form.locator('select[name="keep_supplier"]').selectOption('1');
-  return form;
 }
 
-async function executeTransfer(page: Page, form: Locator): Promise<void> {
+async function executeTransfer(page: Page, form: Locator, destination: number, preserve: boolean): Promise<void> {
+  await expect(form.locator('select[name="to_entity"]'),
+    'The effective form still targets the intended entity immediately before submission.').toHaveValue(String(destination));
   const sent = page.waitForResponse(response => response.url().includes('/front/transfer.action.php')
     && response.request().method() === 'POST');
   await form.locator('input[name="transfer"]').click();
-  expect((await sent).status()).toBeLessThan(400);
+  const completed = await sent;
+  expect(completed.status()).toBeLessThan(400);
+  // Decode only the actual submitted form; assertions expose numeric controls,
+  // never its CSRF capability or other private request fields.
+  const submitted = completed.request();
+  const fields = await new Response(submitted.postData(), {
+    headers: { 'Content-Type': submitted.headers()['content-type'] },
+  }).formData();
+  expect(fields.get('to_entity'), 'The actual transfer POST retains the intended destination.').toBe(String(destination));
+  for (const name of ['keep_infocom', 'keep_document', 'keep_contract', 'keep_history']) {
+    expect(fields.get(name), `The actual transfer POST retains ${name}.`).toBe(preserve ? '1' : '0');
+  }
+  expect(fields.get('keep_supplier'), 'The actual transfer POST retains its supplier policy.').toBe('1');
   await page.waitForLoadState('networkidle');
 }
 
@@ -124,7 +152,7 @@ test('Transfer refuses incompatible commercial ownership, retains its real list 
     // Normal authorized entity switching supplies the actual multi-entity session.
     await page.goto('/front/central.php?active_entity=0&is_recursive=1');
     await addActualTransferList(page, seed);
-    await executeTransfer(page, await actualTransferForm(page, seed, false));
+    await executeTransfer(page, await actualTransferForm(page, seed, false), seed.destination, false);
     const refused = transferResult(page);
     await expect(refused).toHaveCount(1);
     await expect(refused).toBeVisible();
@@ -151,7 +179,7 @@ test('Transfer refuses incompatible commercial ownership, retains its real list 
     expect(afterEdit.contracts).toEqual(before.contracts);
     expect(afterEdit.targets).toEqual(before.targets);
 
-    await executeTransfer(page, await actualTransferForm(page, seed, true));
+    await executeTransfer(page, await actualTransferForm(page, seed, true), seed.destination, true);
     const accepted = transferResult(page);
     await expect(accepted).toHaveCount(1);
     await expect(accepted).toBeVisible();
