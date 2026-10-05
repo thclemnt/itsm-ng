@@ -109,6 +109,11 @@ try {
     foreach ($cases as [$class, $parent]) {
         $entity = $em->getClassMetadata($class);
         $name = $entity->getTableName();
+        $parentAssociations = array_filter($entity->associationMappings, static fn ($association): bool =>
+            $association->isToOneOwningSide() && $association->targetEntity === $class
+            && count($association->joinColumns) === 1 && $association->joinColumns[0]->name === $parent);
+        verify(count($parentAssociations) === 1, 'The native parent column has one mapped owning self association: ' . $name);
+        $parentProperty = array_key_first($parentAssociations);
         $hasOwner = $entity->hasAssociation('entities');
         $label = 'Owned tree key ' . bin2hex(random_bytes(8));
         $root = new $class();
@@ -135,7 +140,7 @@ try {
         if ($hasOwner) {
             $child->entities = $em->getReference(Entity::class, 0);
         }
-        $child->$parent = $root;
+        $child->$parentProperty = $em->getReference($class, $root->id);
         $em->persist($child);
         $em->flush();
         verify((int)$read($child->id)['parent_key'] === $root->id, 'Equal names under a different parent remain valid: ' . $name);
