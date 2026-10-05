@@ -27,12 +27,11 @@ final class LinkRepository
 
     public function forItem(string $type, array $scope): array
     {
-        $query = $this->visible($type, $scope)->select('r')->orderBy('r.name')->addOrderBy('r.id');
-        $records = new RecordRepository($this->em);
-        $rows = [];
-        foreach ($query->getQuery()->toIterable() as $link) {
-            $rows[] = array_intersect_key($records->toRow($link), array_flip(['id', 'link', 'name', 'data', 'open_window']));
-            $this->em->detach($link);
+        $rows = $this->visible($type, $scope)->select('r.id, r.name, r.link, r.data, r.open_window')
+            ->orderBy('r.name')->addOrderBy('r.id')->getQuery()->getArrayResult();
+        foreach ($rows as &$row) {
+            $row['id'] = RecordRepository::legacyScalarValue($row['id'], Types::BIGINT);
+            $row['open_window'] = (int)$row['open_window'];
         }
         return $rows;
     }
