@@ -537,6 +537,12 @@ final class SQLProvider implements SearchProviderInterface
             $data['data']['rows'] = [];
             $data['data']['items'] = [];
             \Search::$output_type = $data['display_type'];
+            // This snapshot lives only for this result's formatting pass and is
+            // first read by a core ticket-status cell, after its plugin hook.
+            $ticketStatusCatalogue = null;
+            $ticketStatuses = static function () use (&$ticketStatusCatalogue): array {
+                return $ticketStatusCatalogue ??= \Ticket::getAllStatusArray(true, true);
+            };
             while ($i < $data['data']['end']) {
                 $row = $DBread->fetchAssoc($result);
                 $newrow = [];
@@ -611,7 +617,7 @@ final class SQLProvider implements SearchProviderInterface
                     }
                 }
                 foreach ($data['data']['cols'] as $val) {
-                    $newrow[$val['itemtype'] . '_' . $val['id']]['displayname'] = LegacyOutput::giveItem($val['itemtype'], $val['id'], $newrow);
+                    $newrow[$val['itemtype'] . '_' . $val['id']]['displayname'] = LegacyOutput::giveItem($val['itemtype'], $val['id'], $newrow, ticketStatuses: $ticketStatuses);
                 }
                 $data['data']['rows'][$i] = $newrow;
                 $i++;

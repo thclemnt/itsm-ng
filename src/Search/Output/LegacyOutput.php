@@ -616,10 +616,11 @@ final class LegacyOutput
      * @param boolean $meta            is a meta item ? (default 0)
      * @param array   $addobjectparams array added parameters for union search
      * @param string  $orig_itemtype   Original itemtype, used for union_search_type
+     * @param callable|null $ticketStatuses Lazy catalogue owned by this result-formatting pass
      *
      * @return string String to print
      **/
-    public static function giveItem($itemtype, $ID, array $data, $meta = 0, array $addobjectparams = [], $orig_itemtype = null)
+    public static function giveItem($itemtype, $ID, array $data, $meta = 0, array $addobjectparams = [], $orig_itemtype = null, ?callable $ticketStatuses = null)
     {
         global $CFG_GLPI;
         $searchopt = & SearchOption::getOptions($itemtype);
@@ -634,7 +635,7 @@ final class LegacyOutput
             if (!array_key_exists($ID, $subtype_so)) {
                 return '';
             }
-            return LegacyOutput::giveItem($data["TYPE"], $ID, $data, $meta, $oparams, $itemtype);
+            return LegacyOutput::giveItem($data["TYPE"], $ID, $data, $meta, $oparams, $itemtype, $ticketStatuses);
         }
         $so = $searchopt[$ID];
         $orig_id = $ID;
@@ -1030,6 +1031,10 @@ final class LegacyOutput
                     $status = \Problem::getStatus($data[$ID][0]['name']);
                     return "<span class='no-wrap'>" . \Problem::getStatusIcon($data[$ID][0]['name']) . "&nbsp;{$status}" . "</span>";
                 case 'glpi_tickets.status':
+                    if ($ticketStatuses !== null) {
+                        $presentation = \Ticket::getStatusPresentationFromCatalogue($data[$ID][0]['name'], $ticketStatuses());
+                        return "<span class='no-wrap'>" . $presentation['icon'] . "&nbsp;{$presentation['label']}</span>";
+                    }
                     $status = \Ticket::getStatus($data[$ID][0]['name']);
                     return "<span class='no-wrap'>" . \Ticket::getStatusIcon($data[$ID][0]['name']) . "&nbsp;{$status}" . "</span>";
                 case 'glpi_projectstates.name':

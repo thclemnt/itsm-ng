@@ -83,6 +83,69 @@ class Search extends DbTestCase
         return $data;
     }
 
+    public function testTicketStatusCataloguePresentation(): void
+    {
+        global $DB;
+        $this->login();
+        $catalogue = \Ticket::getAllStatusArray(true, true);
+        $customStatus = (int)$_SESSION['INCOMING'];
+        $this->boolean($DB->update('glpi_specialstatuses', [
+            'name' => 'Custom catalogue status', 'color' => '#123abc',
+        ], ['id' => $catalogue['id'][$customStatus]]))->isTrue();
+        $catalogue = \Ticket::getAllStatusArray(true, true);
+        foreach ([...array_keys($catalogue['name_translate']), PHP_INT_MAX] as $status) {
+            $presentation = \Ticket::getStatusPresentationFromCatalogue($status, $catalogue);
+            $this->variable($presentation['label'])->isIdenticalTo(\Ticket::getStatus($status));
+            $this->string($presentation['icon'])->isIdenticalTo(\Ticket::getStatusIcon($status));
+        }
+        $custom = \Ticket::getStatusPresentationFromCatalogue($customStatus, $catalogue);
+        $this->string($custom['label'])->isIdenticalTo('Custom catalogue status');
+        $this->string($custom['icon'])->contains("style='color:#123abc'");
+        // Catalogue labels are already translated; formatting must not translate them again.
+        $catalogue['name_translate'][$customStatus] = 'Translated catalogue label';
+        $translated = \Ticket::getStatusPresentationFromCatalogue($customStatus, $catalogue);
+        $this->string($translated['label'])->isIdenticalTo('Translated catalogue label');
+        $this->string($translated['icon'])->contains("title='Translated catalogue label'");
+        $subclass = new class extends \Ticket {
+            public static function getStatus($status) { return 'Subclass label'; }
+            public static function getStatusIcon($status) { return '<i>Subclass icon</i>'; }
+        };
+        $this->array($subclass::getStatusPresentationFromCatalogue($customStatus, $catalogue))
+            ->isIdenticalTo(['label' => 'Subclass label', 'icon' => '<i>Subclass icon</i>']);
+    }
+
+    public function testSearchTicketStatusCatalogueScope(): void
+    {
+        global $DB;
+        $this->login();
+        $name = 'Catalogue scope ' . $this->getUniqueString();
+        $ticket = new \Ticket();
+        for ($i = 0; $i < 2; $i++) {
+            $this->integer((int)$ticket->add(['name' => $name . ' ' . $i, 'content' => $name]))->isGreaterThan(0);
+        }
+        $params = ['criteria' => [['field' => 1, 'searchtype' => 'contains', 'value' => $name]]];
+        $before = $this->doSearch('Ticket', $params, [12]);
+        $this->integer($before['data']['count'])->isIdenticalTo(2);
+        foreach ($before['data']['rows'] as $row) {
+            $this->string($row['Ticket_12']['displayname'])->isIdenticalTo(
+                \itsmng\Search\Output\LegacyOutput::giveItem('Ticket', 12, $row)
+            );
+        }
+        $status = $before['data']['rows'][0]['Ticket_12'][0]['name'];
+        $catalogue = \Ticket::getAllStatusArray(true, true);
+        $this->boolean($DB->update('glpi_specialstatuses', [
+            'name' => 'Changed catalogue status', 'color' => '#abc123',
+        ], ['id' => $catalogue['id'][$status]]))->isTrue();
+        // A second formatting pass on the same request observes current writes.
+        $after = $this->doSearch('Ticket', $params, [12]);
+        $this->integer($after['data']['count'])->isIdenticalTo(2);
+        foreach ($after['data']['rows'] as $row) {
+            $this->string($row['Ticket_12']['displayname'])
+                ->isIdenticalTo(\itsmng\Search\Output\LegacyOutput::giveItem('Ticket', 12, $row))
+                ->contains('Changed catalogue status')->contains("style='color:#abc123'");
+        }
+    }
+
     public function testMetaComputerOS()
     {
         $search_params = ['is_deleted'   => 0,

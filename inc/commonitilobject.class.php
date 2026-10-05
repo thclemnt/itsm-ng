@@ -4379,10 +4379,17 @@ abstract class CommonITILObject extends CommonDBTM
         if (empty($class)) {
             $tab = Ticket::getAllStatusArray(false, true);
             $color = $tab["color"][$status] ?? 'Default';
-            return "<i style='color:" . $color . "' class='itilstatus fas fa-circle new' title='$label'></i>";
-        } else {
-            return "<i class='$class' title='$label'></i>";
         }
+        return static::formatStatusIcon($class, $label, $color ?? 'Default');
+    }
+
+    /** Format the same icon from either live lookups or a caller-owned catalogue. */
+    protected static function formatStatusIcon($class, $label, $color)
+    {
+        if (empty($class)) {
+            return "<i style='color:" . $color . "' class='itilstatus fas fa-circle new' title='$label'></i>";
+        }
+        return "<i class='$class' title='$label'></i>";
     }
 
     /**
@@ -4394,7 +4401,11 @@ abstract class CommonITILObject extends CommonDBTM
      */
     public static function getStatusClass($status)
     {
-        $statusKey = static::getStatusKey($status);
+        return static::getStatusClassFromKey(static::getStatusKey($status));
+    }
+
+    protected static function getStatusClassFromKey($statusKey)
+    {
         $icon = static::getStatusIconClassMap()[$statusKey] ?? null;
 
         if ($icon === null) {
@@ -4419,8 +4430,12 @@ abstract class CommonITILObject extends CommonDBTM
             return $statusKeyMap[$status];
         }
 
-        $tab = Ticket::getAllStatusArray(false, true);
-        $statusName = $tab["name"][$status] ?? '';
+        return static::getStatusKeyFromCatalogue($status, Ticket::getAllStatusArray(false, true));
+    }
+
+    protected static function getStatusKeyFromCatalogue($status, array $catalogue)
+    {
+        $statusName = $catalogue["name"][$status] ?? '';
         $statusNameMap = static::getStatusNameKeyMap();
 
         return $statusNameMap[$statusName] ?? '';
