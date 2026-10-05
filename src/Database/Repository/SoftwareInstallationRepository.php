@@ -183,16 +183,8 @@ final class SoftwareInstallationRepository
         if ($installations === []) {
             return [];
         }
-        $query = $this->em->createQueryBuilder()
-            ->select('DISTINCT i.itemtype AS itemtype, i.items_id AS owner, v.id AS version')
-            ->addSelect('l.id AS id, l.name AS name, l.serial AS serial, t.name AS type')
-            ->from(Entity\ItemSoftwareLicense::class, 'i')
-            ->innerJoin('i.softwarelicenses', 'l')
-            ->innerJoin(Entity\SoftwareVersion::class, 'v', 'WITH', 'l.useVersion = v.id OR l.buyVersion = v.id')
-            ->leftJoin('l.softwarelicensetypes', 't')
-            ->orderBy('l.id');
         $requested = [];
-        $predicates = [];
+        $tuples = [];
         foreach ($installations as $installation) {
             $kind = $installation['itemtype'];
             $owner = (int)$installation['items_id'];
@@ -201,20 +193,34 @@ final class SoftwareInstallationRepository
                 continue;
             }
             $requested[$kind][$owner][$version] = true;
-            $association = Entity\ItemSoftwareLicense::referenceAssociation($kind);
-            $index = count($predicates);
-            $predicates[] = '(IDENTITY(i.' . $association . ') = :owner' . $index . ' AND v.id = :version' . $index . ')';
-            $query->setParameter('owner' . $index, $owner, Types::BIGINT)
-                ->setParameter('version' . $index, $version, Types::BIGINT);
+            $tuples[] = [Entity\ItemSoftwareLicense::referenceAssociation($kind), $owner, $version];
         }
         $rows = [];
-        foreach ($query->where(implode(' OR ', $predicates))->getQuery()->getScalarResult() as $row) {
-            $rows[$row['itemtype']][(int)$row['owner']][(int)$row['version']][(int)$row['id']] = [
-                'id' => (int)$row['id'],
-                'name' => $row['name'],
-                'serial' => $row['serial'],
-                'type' => $row['type'],
-            ];
+        // This view has no row limit. Bound both the parameter count and OR expression size.
+        foreach (array_chunk($tuples, 250) as $batch) {
+            $query = $this->em->createQueryBuilder()
+                ->select('DISTINCT i.itemtype AS itemtype, i.items_id AS owner, v.id AS version')
+                ->addSelect('l.id AS id, l.name AS name, l.serial AS serial, t.name AS type')
+                ->from(Entity\ItemSoftwareLicense::class, 'i')
+                ->innerJoin('i.softwarelicenses', 'l')
+                ->innerJoin(Entity\SoftwareVersion::class, 'v', 'WITH', 'l.useVersion = v.id OR l.buyVersion = v.id')
+                ->leftJoin('l.softwarelicensetypes', 't')
+                ->orderBy('l.id');
+            $predicates = [];
+            foreach ($batch as $index => [$association, $owner, $version]) {
+                $predicates[] = '(IDENTITY(i.' . $association . ') = :owner' . $index . ' AND v.id = :version' . $index . ')';
+                $query->setParameter('owner' . $index, $owner, Types::BIGINT)
+                    ->setParameter('version' . $index, $version, Types::BIGINT);
+            }
+            foreach ($query->where(implode(' OR ', $predicates))->getQuery()->getScalarResult() as $row) {
+                // Each unique tuple belongs to one batch, retaining its license-ID order.
+                $rows[$row['itemtype']][(int)$row['owner']][(int)$row['version']][(int)$row['id']] = [
+                    'id' => (int)$row['id'],
+                    'name' => $row['name'],
+                    'serial' => $row['serial'],
+                    'type' => $row['type'],
+                ];
+            }
         }
         return $rows;
     }

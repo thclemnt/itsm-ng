@@ -381,6 +381,29 @@ class Item_SoftwareVersion extends DbTestCase
             $this->array(array_keys($rows['Monitor'][$owner][$versions[0]->id]))->isIdenticalTo([$monitorLicense->id]);
             $this->array($rows['Computer'][$owner])->hasSize(1);
             $this->array($rows['Computer'][$owner][$versions[0]->id])->hasSize(2);
+            // Match real graph rows on opposite sides of the provider-safe batch boundary.
+            $boundaryKeys = [$keys[0]];
+            $absentVersion = (int)$connection->fetchOne('SELECT MAX(id) FROM glpi_softwareversions') + 1;
+            for ($index = 0; $index < 249; ++$index) {
+                $boundaryKeys[] = [
+                    'itemtype' => 'Computer', 'items_id' => $owner, 'softwareversions_id' => $absentVersion + $index,
+                ];
+            }
+            $logger->queries = [];
+            $boundary = $repository->licensesForInstallations($boundaryKeys);
+            $this->array($logger->queries)->hasSize(1);
+            $this->array($boundary)->isIdenticalTo(['Computer' => $rows['Computer']]);
+            $boundaryKeys[] = [
+                'itemtype' => 'Monitor', 'items_id' => $owner, 'softwareversions_id' => $versions[0]->id,
+            ];
+            $boundaryKeys[] = $keys[0]; // Duplicate tuples must not consume another batch slot.
+            $logger->queries = [];
+            $boundary = $repository->licensesForInstallations($boundaryKeys);
+            $this->array($logger->queries)->hasSize(2);
+            $this->array($boundary)->hasSize(2);
+            $this->array($boundary['Computer'])->isIdenticalTo($rows['Computer']);
+            $this->array($boundary['Monitor'])->isIdenticalTo($rows['Monitor']);
+            $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
             $connection->update('glpi_softwarelicenses', ['name' => 'Changed on supplied writer'], ['id' => $licenses[0]->id]);
             $rows = $repository->licensesForInstallations([$keys[0]]);
             $this->string($rows['Computer'][$owner][$versions[0]->id][$licenses[0]->id]['name'])->isIdenticalTo('Changed on supplied writer');
