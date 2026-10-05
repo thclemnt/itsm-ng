@@ -53,19 +53,16 @@ final class SoftwareAssignmentService
         $subjects = [[$kind, $id]];
         $installations = new \itsmng\Database\Repository\SoftwareInstallationRepository(Orm::create($this->database));
         $versions = $installations->installationsForTransfer($kind, $id, []);
-        $software = [];
-        foreach ($versions as $version) {
-            $software[] = $this->assignments->softwareForVersion((int)$version['softwareversions_id']);
-        }
+        $software = $this->assignments->softwareIdsForVersions(array_column($versions, 'softwareversions_id'));
         $licenses = $this->assignments->licensesForSubject($kind, $id, current: false);
         $this->lockAllocations($licenses, [\Item_SoftwareVersion::getTable()], $subjects, $software);
         if ($this->assignments->licensesForSubject($kind, $id) !== $licenses) {
             throw new SoftwareAssignmentCancelled('Transfer allocation membership changed before locking; retry the command.');
         }
-        foreach ($installations->installationsForTransfer($kind, $id, [], currentRead: true) as $version) {
-            if (!in_array($this->assignments->softwareForVersion((int)$version['softwareversions_id'], current: true), $software, true)) {
-                throw new SoftwareAssignmentCancelled('Transfer installation membership changed before locking; retry the command.');
-            }
+        $currentVersions = $installations->installationsForTransfer($kind, $id, [], currentRead: true);
+        $currentSoftware = $this->assignments->softwareIdsForVersions(array_column($currentVersions, 'softwareversions_id'), current: true);
+        if (array_diff($currentSoftware, $software) !== []) {
+            throw new SoftwareAssignmentCancelled('Transfer installation membership changed before locking; retry the command.');
         }
         return $licenses;
     }
@@ -78,9 +75,6 @@ final class SoftwareAssignmentService
         $source = new \SoftwareLicense();
         if (!$assignment->getFromDB($assignmentId) || !$source->getFromDB($assignment->fields['softwarelicenses_id'])) {
             throw new SoftwareAssignmentCancelled('A selected software allocation or licence is missing.');
-        }
-        if (!$assignment->getFromDB($assignmentId) || !$source->getFromDB($assignment->fields['softwarelicenses_id'])) {
-            throw new SoftwareAssignmentCancelled('The allocation changed before its subject lock.');
         }
         $sourceFields = $source->fields;
         $targetSoftware = SoftwareAssignmentCancelled::requireIdentifier($copySoftware($sourceFields['softwares_id']), 'Software allocation destination');

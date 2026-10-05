@@ -333,6 +333,25 @@ final class SoftwareAssignmentRepository
         return SoftwareAssignmentCancelled::requireIdentifier($rows[0]['id'], 'Owning software version');
     }
 
+    /** Preserve separate version-row locks while resolving the installation owner graph in bulk. */
+    public function softwareIdsForVersions(array $versions, bool $current = false): array
+    {
+        $versions = self::identifiers(array_map(static fn (mixed $id): int => SoftwareAssignmentCancelled::requireIdentifier($id, 'Owning software version'), $versions));
+        if ($versions === []) {
+            return [];
+        }
+        if ($current) {
+            \itsmng\Database\MySQLConnection::assertCurrentReads($this->em->getConnection());
+        }
+        $rows = $this->em->createQueryBuilder()->select('v.id AS id, IDENTITY(v.softwares) AS software')
+            ->from(Entity\SoftwareVersion::class, 'v')->where('v.id IN (:ids)')->setParameter('ids', $versions)
+            ->orderBy('v.id')->getQuery()->setLockMode($current ? LockMode::PESSIMISTIC_READ : LockMode::NONE)->getScalarResult();
+        if (count($rows) !== count($versions)) {
+            throw new SoftwareAssignmentCancelled('A required owning software version is missing.');
+        }
+        return self::identifiers(array_map(static fn (array $row): int => SoftwareAssignmentCancelled::requireIdentifier($row['software'], 'Owning software version'), $rows));
+    }
+
     public static function identifiers(array $ids): array
     {
         $ids = array_values(array_unique(array_map('intval', $ids)));

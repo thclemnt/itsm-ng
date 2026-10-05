@@ -484,4 +484,169 @@ class Transfer extends DbTestCase
             }
         }
     }
+
+    /** A separate real session keeps DbTestCase's caller frame completely untouched. */
+    private function withSoftwareOwnerQueryProbe(callable $operation): void
+    {
+        global $DB;
+        $original = $DB;
+        $session = $_SESSION;
+        $originalLevel = $original->getDoctrineConnection()->getTransactionNestingLevel();
+        $logger = new class extends \Psr\Log\AbstractLogger {
+            public array $queries = [];
+            public ?\Closure $beforeCurrentInstallations = null;
+
+            public function log($level, $message, array $context = []): void
+            {
+                if (!isset($context['sql'])) {
+                    return; // Never retain connection credentials or bound application data.
+                }
+                $sql = str_replace(['`', '"'], '', $context['sql']);
+                $this->queries[] = $sql;
+                if ($this->beforeCurrentInstallations !== null
+                    && preg_match('/\bFROM\s+glpi_items_softwareversions\b/i', $sql)
+                    && preg_match('/FOR (?:SHARE|UPDATE)|LOCK IN SHARE MODE/i', $sql)) {
+                    $change = $this->beforeCurrentInstallations;
+                    $this->beforeCurrentInstallations = null;
+                    $change();
+                }
+            }
+
+            public function ownerReads(): int
+            {
+                return count(array_filter($this->queries, static fn (string $sql): bool => (bool)preg_match('/\bFROM\s+glpi_softwareversions\b/i', $sql)));
+            }
+        };
+        $configuration = new \Doctrine\DBAL\Configuration();
+        $configuration->setMiddlewares([new \Doctrine\DBAL\Logging\Middleware($logger)]);
+        $parameters = $original->getDoctrineConnection()->getParams();
+        $connection = $original->getProvider() === 'pgsql'
+            ? \itsmng\Database\PostgresConnection::create($parameters, $configuration)
+            : \itsmng\Database\MySQLConnection::create($parameters, $configuration);
+        // Test-only adapter admission: a real canonical connection, never the
+        // original adapter's physical owner or a mock transaction implementation.
+        $probe = clone $original;
+        (new \ReflectionProperty(\DBAdapter::class, 'doctrine'))->setValue($probe, $connection);
+        $frame = null;
+        $primary = null;
+        try {
+            $DB = $probe;
+            $frame = \itsmng\Database\OwnedMutationFrame::begin($connection);
+            $operation($probe, $connection, $logger);
+        } catch (\Throwable $error) {
+            $primary = $error;
+        } finally {
+            $DB = $original;
+            $_SESSION = $session;
+            try {
+                if ($frame !== null) {
+                    $frame->rollBack();
+                }
+            } catch (\Throwable $cleanup) {
+                $primary = $primary === null ? $cleanup : new \itsmng\Database\MutationRollbackFailure($primary, $cleanup);
+            }
+            try {
+                $probe->close();
+            } catch (\Throwable $cleanup) {
+                $primary = $primary === null ? $cleanup : new \itsmng\Database\MutationCleanupFailure($primary, $cleanup);
+            }
+        }
+        if ($primary !== null) {
+            throw $primary;
+        }
+        $this->integer($original->getDoctrineConnection()->getTransactionNestingLevel())->isIdenticalTo($originalLevel);
+    }
+
+    public function testManyInstalledVersionsUseBoundedOwnerReads(): void
+    {
+        $this->login();
+        $this->withSoftwareOwnerQueryProbe(function ($database, $connection, $logger): void {
+            $manager = \itsmng\Database\Orm::create($database);
+            $root = $manager->getReference(\itsmng\Database\Entity\Entity::class, (int)getItemByTypeName('Entity', '_test_root_entity', true));
+            $software = new \itsmng\Database\Entity\Software();
+            $software->entities = $root;
+            $software->name = 'Bounded installation owners';
+            $manager->persist($software);
+            $computer = new \itsmng\Database\Entity\Computer();
+            $computer->entities = $root;
+            $computer->name = 'Bounded installation subject';
+            $manager->persist($computer);
+            $manager->flush();
+            $counts = [];
+            for ($index = 1; $index <= 25; ++$index) {
+                $version = new \itsmng\Database\Entity\SoftwareVersion();
+                $version->entities = $root;
+                $version->softwares = $software;
+                $version->name = 'Owner version ' . $index;
+                $manager->persist($version);
+                $installation = new \itsmng\Database\Entity\ItemSoftwareVersion();
+                $installation->itemtype = 'Computer';
+                $installation->computer = $computer;
+                $installation->softwareversions = $version;
+                $manager->persist($installation);
+                $manager->flush();
+                if (in_array($index, [1, 25], true)) {
+                    $before = $connection->fetchAllAssociative('SELECT id, softwareversions_id, computers_id FROM glpi_items_softwareversions WHERE computers_id=? ORDER BY id', [$computer->id]);
+                    $logger->queries = [];
+                    (new \itsmng\Domain\SoftwareAssignmentService($database))->lockTransferSubject('Computer', $computer->id);
+                    $counts[] = $logger->ownerReads();
+                    $this->integer($logger->ownerReads())->isIdenticalTo(2);
+                    $model = new Computer();
+                    $this->boolean($model->can($computer->id, UPDATE))->isTrue();
+                    $logger->queries = [];
+                    $this->boolean($model->update(['id' => $computer->id, 'is_template' => $index === 1 ? 1 : 0]))->isTrue();
+                    $this->integer($logger->ownerReads())->isIdenticalTo(2);
+                    $this->array($connection->fetchAllAssociative('SELECT id, softwareversions_id, computers_id FROM glpi_items_softwareversions WHERE computers_id=? ORDER BY id', [$computer->id]))->isIdenticalTo($before);
+                }
+            }
+            $this->array($counts)->isIdenticalTo([2, 2]);
+        });
+    }
+
+    public function testInstalledVersionOwnerRecheckedAfterGraphLock(): void
+    {
+        $this->login();
+        $this->withSoftwareOwnerQueryProbe(function ($database, $connection, $logger): void {
+            $manager = \itsmng\Database\Orm::create($database);
+            $root = $manager->getReference(\itsmng\Database\Entity\Entity::class, (int)getItemByTypeName('Entity', '_test_root_entity', true));
+            $owners = [];
+            foreach (['Initially selected owner', 'Changed owner'] as $name) {
+                $owner = new \itsmng\Database\Entity\Software();
+                $owner->entities = $root;
+                $owner->name = $name;
+                $manager->persist($owner);
+                $owners[] = $owner;
+            }
+            $computer = new \itsmng\Database\Entity\Computer();
+            $computer->entities = $root;
+            $manager->persist($computer);
+            $version = new \itsmng\Database\Entity\SoftwareVersion();
+            $version->entities = $root;
+            $version->softwares = $owners[0];
+            $manager->persist($version);
+            $installation = new \itsmng\Database\Entity\ItemSoftwareVersion();
+            $installation->itemtype = 'Computer';
+            $installation->computer = $computer;
+            $installation->softwareversions = $version;
+            $manager->persist($installation);
+            $manager->flush();
+            $changeFrame = \itsmng\Database\OwnedMutationFrame::begin($connection);
+            try {
+                // Deterministic actual writer interleaving before the second
+                // observation. This is not claimed as a two-session race test.
+                $logger->beforeCurrentInstallations = static function () use ($connection, $version, $owners): void {
+                    $connection->update('glpi_softwareversions', ['softwares_id' => $owners[1]->id], ['id' => $version->id]);
+                };
+                $this->exception(static fn () => (new \itsmng\Domain\SoftwareAssignmentService($database))->lockTransferSubject('Computer', $computer->id))
+                    ->isInstanceOf(\itsmng\Domain\SoftwareAssignmentCancelled::class)
+                    ->hasMessage('Transfer installation membership changed before locking; retry the command.');
+                $this->variable($logger->beforeCurrentInstallations)->isNull();
+                $this->integer((int)$connection->fetchOne('SELECT softwares_id FROM glpi_softwareversions WHERE id=?', [$version->id]))->isIdenticalTo($owners[1]->id);
+            } finally {
+                $changeFrame->rollBack();
+            }
+            $this->integer((int)$connection->fetchOne('SELECT softwares_id FROM glpi_softwareversions WHERE id=?', [$version->id]))->isIdenticalTo($owners[0]->id);
+        });
+    }
+
 }

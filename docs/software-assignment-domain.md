@@ -45,3 +45,46 @@ Before integration or a green milestone: validate the composed source and preser
 A separate patch for the pinned `b66ec2f4` dropdown fixture is source preparation outside the repository. Doctrine metadata inspection of that proposed main-plus-software combination finds 357 classes, twelve typed software subjects and one remaining polymorphic declaration (managed Kanban), with no unmanaged core polymorphic declarations and zero native connections. The patch preserves genuine unmanaged service-level/mail associations and Kanban collision checks; software coverage uses actual public assignments, typed discriminator/identity queries and model-owned asset purge. It must be reviewed and applied after the software feature, then verified against actual integrated metadata and both providers. Neither main nor its fixture was edited by this preparation.
 
 A whole Computer clone still needs a separate model-owned command: its generic parent clone currently does not require every relation clone outcome. Assignment child atomicity is not whole-clone rollback. Whole dictionary replay, arbitrary plugin/external effects, and PostgreSQL stronger-isolation support remain distinct architectural work. Exact14 native proof is still pending for this composition. No native persistent goal has been created by this batch; the main durable modernization plan remains authoritative.
+
+
+## Bulk installation-owner discovery (SOURCE, validation pending)
+
+A bounded review of `6dfd14c73903791ac5c54e258aa0a71fe5c1459b`
+found two per-installation version-owner query loops in
+`SoftwareAssignmentService::lockSubjectAssignments()`. Both subject lifecycle
+changes and transfer admission traverse that method. The successor replaces
+those loops with one initial and one post-lock scalar ORM batch over the real
+`SoftwareVersion.softwares` ownership. Duplicate installed versions are resolved
+once per observation. Missing versions and invalid required owner identities
+still refuse; owner IDs are deduplicated and sorted before aggregate locking.
+The repository retains the admitted manager's connection and performs fresh
+current-read policy admission before its `PESSIMISTIC_READ` query.
+
+Installation reads and their lock scope stay separate from version-row locks.
+The graph still acquires Software, licence and subject locks before current
+installation/version observations. A version that now belongs to an unreserved
+Software still refuses the command. No current observation, caller frame,
+identity refresh, scope/quantity check, hook, notification or retry boundary is
+removed. No global manager cache or replica lookup is introduced. The exact
+consecutive allocation/licence `getFromDB()` pair before any lock or callback is
+also reduced to one pair; post-callback/post-lock ownership and quantity reads
+remain. The actual involved model/parent classes have no custom
+`post_getFromDB()` work that requires that duplicate pair.
+
+Coverage belongs to existing functional Atoum `Transfer` and
+`Item_SoftwareLicense` tests, rather than another portability contract. The
+source tests create actual FK-valid installations at 1 and 25 versions and use a
+small test-owned canonical DBAL session/logger to assert two owner queries for
+each graph observation pair, including a real authorized Computer template
+change through its public lifecycle. They check duplicate inputs, missing
+versions, invalid identities, current-read reassignment despite a managed old
+entity, and session policy refusal on providers exposing the MariaDB snapshot
+flag. A deterministic real writer interleaving before the second observation
+checks graph-owner refusal and rollback. It is not a two-session concurrency
+proof. Probe sessions and data frames are separately owned and closed; the
+original Atoum adapter, session and caller frame are preserved.
+
+All PHP/compiler checks, query counts, focused Atoum execution, two-session races,
+provider timings and full suites for this successor remain UNRUN at source
+handoff. The reduction from two per-version loops to two bulk projections is a
+source query-shape finding, not a measured throughput or full-suite speed claim.
