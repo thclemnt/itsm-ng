@@ -25,6 +25,11 @@ Each result applies to its executed source; subsequent changes do not inherit it
   found 358 tables (including the
   ledger), 1,087 enforced foreign keys, no pending history and no schema differences
   on PostgreSQL 15.19 and MariaDB 10.11.18.
+- Separate clean public installations at `08b92212c5` completed on both engines,
+  with 358 tables, 1,087 enforced foreign keys, no pending history and no schema
+  differences. The existing schema-check contract also passed on each. These
+  targets have not loaded the ordinary unit dataset. The supplied historical
+  certificate-column failure remains unreproduced; its cause is unresolved.
 - The full native suites at `ecaa1c1190` discover 230 contracts. MariaDB completed
   with 32 passing contracts: a component reconstruction exceeded the unchanged
   300-second limit and left history pending, so subsequent application contracts
@@ -111,12 +116,60 @@ production concurrency and PostgreSQL throughput; shipped dependency versions
 differ between releases.
 
 Broader profiles found Ticket/Change/Problem tab counts constructing timelines
-whose content is immediately discarded. A reviewed scalar-count implementation
-preserves visibility, duplicate document keys, validation events, local timestamp
-collisions and custom overrides; native tests and matched timing are pending.
-Dropdown choices, non-tree labels and inherited entity settings are the next
-profiling targets. Full reads used for permissions or hooks are not automatically
-projection candidates. Profiled inclusive durations are not request latency.
+whose content is immediately discarded. The first controlled candidate added
+three SQL statements and still rendered the full timeline: unsupported document
+subqueries triggered a compatibility fallback. Detail/history medians changed
+from 162.32/241.44 to 180.01/245.27 ms. Parity tests alone concealed this failed
+optimization. The repair reuses the mapped document repository's existing access
+selector and removes fallback for core query errors; custom overrides fall back
+before issuing count queries. At `ca81467c1f`, all seven explicitly selected
+ordinary timeline methods passed on each engine, with 691 assertions and no skips.
+They exercise document DQL directly, visibility, duplicate/null/local DST keys,
+validation events and custom selectors. The initial anonymous-selector fixture
+failure and failed timing pair are retained. The isolated repaired candidate
+`276d35e5bd` against unchanged `a2b17786a6` reduced detail/history medians to
+144.92/217.74 ms, CPU to 89.47/130.56 ms and SQL counts from 93/104 to 66/77.
+Detail peak memory fell from 14 to 12 MiB; history stayed at 12 MiB. All read/login
+body, JSON and tab-count checks passed; 121 tickets, 100 matches and 970 history
+rows stayed unchanged. Separate profiles confirmed no full timeline-render calls
+in either count path. Genuine-release controls were slower in the repaired phase
+(detail/history 60.15/34.51 to 66.59/39.71 ms); this local serial comparison is
+bounded evidence, not a production throughput claim. The complete discovered
+228-contract suites at `ca81467c1f` finished with PostgreSQL 226/228 and MariaDB
+36/228 passing. PostgreSQL failed `migration-history.php` at its unchanged
+300-second limit and `relation-endpoint-rights.php` on anonymous-email attachment
+admission. MariaDB's component reconstruction exceeded the same limit after the
+motherboard family completed at 276 seconds. The interrupted memory family left
+the 2.2.0 history pending; subsequent application admission failures share that
+cause and are not independent subsystem diagnoses. Its final read-only inspection
+found 358 tables, 1,082 foreign keys and memory-subject schema differences.
+The failed database, original assertions and execution evidence are retained.
+Neither full suite is green. Migration cost attribution and the attachment
+boundary repair must precede another complete run on clean disposable databases.
+
+The wider profiling review also confirms full Software-row hydration in the
+software tab: four choice calls hydrate 60 rows, with 60.85 ms inclusive profiled
+cost. Configuration reads hydrate full Entity records for a few settings and
+parent references. A separate successful Software AJAX profile returned the
+20 expected software rows. Choice processing used 46.78 ms inclusive under
+Xdebug: entity hydration was 9.16 ms, while initial query setup was 35.05 ms;
+bootstrap dominated the full request. Projection alone cannot remove that setup
+cost. An extra software-version form probe lacked the expected body marker and
+is unverified. Non-tree Computer/Contact/Supplier/
+Budget/Netpoint labels, Group actor links, Link outputs and notification name
+lookups remain source-level candidates. Full reads used for permissions or hooks
+are not automatically projection candidates. Profiled inclusive durations are
+not request latency.
+
+Broader source candidates at `0c348b7d68` project only requested inherited Entity
+settings, their metadata-declared mode columns and the parent identifier. They
+share the existing scalar serialization contract rather than introduce a second
+type registry. A second change lazily loads the Ticket status catalogue once per
+search formatting pass, after plugin hooks, preserving subclass dispatch and
+observing writes on the next pass. Existing ordinary Entity and Search test
+classes cover the new cases; native tests and isolated paired timings for these
+candidates are pending. These changes do not resolve stable status identity or
+claim a Software dropdown performance gain.
 
 A separate genuine 2.1.3 populated clone was verified against all 355 original
 table row bags and its original encryption key before adoption. Public `db:update`
