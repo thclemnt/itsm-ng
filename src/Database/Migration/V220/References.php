@@ -152,14 +152,21 @@ final class References
             return ['complete' => false, 'identifiers' => array_slice($state['identifiers'], $state['next']), 'stages' => array_keys(self::stages())];
         }
         $this->auditRequiredReferences($connection);
-        $identifiers = (new WideIdentifiers())->plan($connection);
+        // Share declarations only within this fresh, read-only preflight.
+        // Stage application and retries obtain their own inspections after DDL.
+        $inspection = $connection->createSchemaManager()->introspectSchema();
+        $identifiers = (new WideIdentifiers())->plan($connection, $inspection);
         $stages = [];
         $incomingReferences = new IncomingProjectionReferences($connection);
         // Audit all supported conversions before starting nontransactional MySQL DDL.
         foreach (self::stages() as $name => $stage) {
-            $stages[$name] = $stage instanceof TypedItemMigration
-                ? $stage->plan($connection, $incomingReferences)
-                : $stage->plan($connection);
+            if ($stage instanceof TypedItemMigration) {
+                $stages[$name] = $stage->plan($connection, $incomingReferences);
+            } elseif ($stage instanceof NullableReferences) {
+                $stages[$name] = $stage->plan($connection, $inspection);
+            } else {
+                $stages[$name] = $stage->plan($connection);
+            }
         }
         return ['complete' => false, 'identifiers' => $identifiers, 'stages' => $stages];
     }
