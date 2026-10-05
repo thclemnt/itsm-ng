@@ -1204,6 +1204,31 @@ abstract class API extends CommonGLPI
             } finally {
                 $em->clear();
             }
+        } elseif ($itemtype === User::class
+            && ($parent_item === null || isset(\itsmng\Database\EntityRegistry::tables()[$parent_item::getTable()]))
+        ) {
+            $em = \itsmng\Database\Orm::create($DB);
+            try {
+                $entities = $_SESSION['glpiactiveentities'] ?? [0];
+                $scope = $entities !== [] && (Session::canViewAllEntities() || !empty($_SESSION['glpishowallentities'])) ? null : [
+                    'entities' => $entities,
+                    'ancestors' => $_SESSION['glpiparententities'] ?? [],
+                ];
+                $parent = $parent_item === null ? null : [
+                    'table' => $parent_item::getTable(),
+                    'id' => (int)$this->parameters['parent_id'],
+                    'foreignKey' => getForeignKeyFieldForItemType($this->parameters['parent_itemtype']),
+                    'userForeignKey' => getForeignKeyFieldForItemType($itemtype),
+                    'kind' => $itemtype,
+                ];
+                $page = (new \itsmng\Database\Repository\UserRepository($em))->apiPage($params, $scope, $parent);
+                $found = $page['rows'];
+                $totalcount = $page['total'];
+            } catch (\InvalidArgumentException | \itsmng\Database\UnsupportedCriteria $error) {
+                return $this->returnError($error->getMessage());
+            } finally {
+                $em->clear();
+            }
         } else {
             //specific case for restriction
             $already_linked_table = [];

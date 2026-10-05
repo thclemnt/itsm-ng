@@ -19,6 +19,141 @@ final class UserRepository
     {
     }
 
+    /**
+     * Complete API records for visible account identities. EXISTS avoids grant
+     * fan-out in both pages and totals; null scope also admits ungranted accounts.
+     */
+    public function apiPage(array $params, ?array $scope, ?array $parent = null): array
+    {
+        $metadata = $this->em->getClassMetadata(User::class);
+        $query = $this->em->createQueryBuilder()->from(User::class, 'r');
+        $compiler = new RecordCriteria($query, $metadata, legacyValues: false);
+        $deleted = \itsmng\Database\BooleanValue::normalize($params['is_deleted'] ?? false, false, 'is_deleted');
+        $query->where($compiler->where(['is_deleted' => $deleted]));
+        if ($scope !== null) {
+            $entities = array_values(array_unique(array_map('intval', $scope['entities'])));
+            $ancestors = array_values(array_unique(array_map('intval', $scope['ancestors'])));
+            $visible = [];
+            if ($entities !== []) {
+                $visible[] = 'IDENTITY(grant.entities) IN (:visibleEntities)';
+                $query->setParameter('visibleEntities', $entities, \Doctrine\DBAL\ArrayParameterType::INTEGER);
+            }
+            if ($entities !== [] && $ancestors !== []) {
+                $visible[] = '(grant.is_recursive = :recursive AND IDENTITY(grant.entities) IN (:ancestorEntities))';
+                $query->setParameter('recursive', true, Types::BOOLEAN)
+                    ->setParameter('ancestorEntities', $ancestors, \Doctrine\DBAL\ArrayParameterType::INTEGER);
+            }
+            $query->andWhere($visible === [] ? '1 = 0' : 'EXISTS (SELECT grant.id FROM '
+                . ProfileUser::class . ' grant WHERE grant.users = r AND (' . implode(' OR ', $visible) . '))');
+        }
+        if ($parent !== null) {
+            $this->apiParent($query, $compiler, $parent);
+        }
+        $filters = $params['searchText'] ?? [];
+        if (is_array($filters)) {
+            if (array_keys($filters) === ['all']) {
+                // The existing API combines name and comment with AND.
+                $filters = ['name' => $filters['all'], 'comment' => $filters['all']];
+            }
+            foreach ($filters as $field => $value) {
+                // Preserve the API's empty-value treatment, including "0".
+                if (empty($value)) {
+                    continue;
+                }
+                if (!is_scalar($value)) {
+                    throw new \InvalidArgumentException('Collection text filters must be scalar.');
+                }
+                $pattern = \Search::makeTextSearchValue(str_replace('\\', '\\\\', (string)$value));
+                $property = $metadata->fieldNames[$field] ?? null;
+                if ($property !== null && $metadata->getTypeOfField($property) === Types::BOOLEAN) {
+                    // searchText describes the public zero/one presentation, including
+                    // anchors/wildcards/NULL; it is not a boolean assignment.
+                    $column = $compiler->column($field);
+                    if ($pattern === null || $pattern === '') {
+                        $query->andWhere($column . ' IS NULL');
+                    } else {
+                        $parameter = 'booleanText' . count($query->getParameters());
+                        $text = 'CASE WHEN ' . $column . ' IS NULL THEN NULL WHEN '
+                            . $column . " = true THEN '1' ELSE '0' END";
+                        $query->andWhere('LOWER(' . $text . ') LIKE :' . $parameter)
+                            ->setParameter($parameter, $pattern, Types::STRING);
+                    }
+                    continue;
+                }
+                if ($property !== null && $metadata->getTypeOfField($property) === Types::JSON) {
+                    // The API accepts text patterns over JSON's public serialized
+                    // representation, not JSON equality or containment predicates.
+                    $column = $compiler->column($field);
+                    if ($pattern === null || $pattern === '') {
+                        $query->andWhere($column . ' IS NULL');
+                    } else {
+                        $parameter = 'jsonText' . count($query->getParameters());
+                        $text = "CONCAT('', " . $column . ')';
+                        if ($this->em->getConnection()->getDatabasePlatform() instanceof \Doctrine\DBAL\Platforms\PostgreSQLPlatform) {
+                            $predicate = 'LOWER(' . $text . ') LIKE LOWER(:' . $parameter . ')';
+                        } else {
+                            // Preserve the JSON column's MySQL/MariaDB collation.
+                            $predicate = $text . ' LIKE :' . $parameter;
+                        }
+                        $query->andWhere($predicate)->setParameter($parameter, $pattern, Types::STRING);
+                    }
+                    continue;
+                }
+                $query->andWhere($compiler->where([$field => $pattern === null || $pattern === '' ? null : ['LIKE', $pattern]]));
+            }
+        }
+        $total = (int)(clone $query)->select('COUNT(r.id)')->getQuery()->getSingleScalarResult();
+        $query->select('r');
+        $sort = $params['sort'] ?? 'id';
+        $compiler->order([$sort . ' ' . strtoupper($params['order'] ?? 'ASC')]);
+        if ($sort !== 'id') {
+            $query->addOrderBy('r.id');
+        }
+        $query->setFirstResult(max(0, (int)($params['start'] ?? 0)))
+            ->setMaxResults(max(1, (int)($params['list_limit'] ?? 50)));
+        $rows = [];
+        $records = new RecordRepository($this->em);
+        foreach ($query->getQuery()->toIterable() as $record) {
+            $rows[] = $records->toRow($record);
+            $this->em->detach($record);
+        }
+        return ['rows' => $rows, 'total' => $total];
+    }
+
+    /** Preserve the API's exact direct-FK, then reverse-FK/polymorphic precedence. */
+    private function apiParent(\Doctrine\ORM\QueryBuilder $query, RecordCriteria $compiler, array $parent): void
+    {
+        $metadata = $this->em->getClassMetadata(User::class);
+        foreach ($metadata->associationMappings as $mapping) {
+            if ($mapping->isToOneOwningSide() && $mapping->joinColumns[0]->name === $parent['foreignKey']) {
+                $query->andWhere($compiler->where([$parent['foreignKey'] => $parent['id']]));
+                return;
+            }
+        }
+        if ($metadata->hasField($parent['foreignKey'])) {
+            $query->andWhere($compiler->where([$parent['foreignKey'] => $parent['id']]));
+            return;
+        }
+        $class = \itsmng\Database\EntityRegistry::tables()[$parent['table']]
+            ?? throw new \InvalidArgumentException('Parent collection requires a mapped record.');
+        $parentMetadata = $this->em->getClassMetadata($class);
+        foreach ($parentMetadata->associationMappings as $field => $mapping) {
+            if ($mapping->isToOneOwningSide() && $mapping->joinColumns[0]->name === $parent['userForeignKey']) {
+                $query->andWhere('EXISTS (SELECT parent.id FROM ' . $class
+                    . ' parent WHERE parent.id = :parentId AND parent.' . $field . ' = r)')
+                    ->setParameter('parentId', $parent['id'], Types::BIGINT);
+                return;
+            }
+        }
+        if ($parentMetadata->hasField('itemtype') && $parentMetadata->hasField('items_id')) {
+            $query->andWhere('EXISTS (SELECT parent.id FROM ' . $class
+                . ' parent WHERE parent.id = :parentId AND parent.itemtype = :parentKind AND parent.items_id = r.id)')
+                ->setParameter('parentId', $parent['id'], Types::BIGINT)
+                ->setParameter('parentKind', $parent['kind'], Types::STRING);
+        }
+        // Historically an unrelated admitted parent added no further User filter.
+    }
+
     /** Display-only values, without hydrating unrelated account fields or associations. */
     public function displayData(int $user): ?array
     {

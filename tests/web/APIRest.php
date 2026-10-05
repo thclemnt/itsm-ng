@@ -421,6 +421,8 @@ class APIRest extends APIBaseClass
      */
     public function testUserCollectionDeletionSelectors()
     {
+        global $DB;
+
         $name = '_api_deleted_selector_' . bin2hex(random_bytes(6));
         $headers = ['Session-Token' => $this->session_token];
         $created = $this->query('createItems', [
@@ -437,7 +439,113 @@ class APIRest extends APIBaseClass
         ], 201);
         $this->integer((int)$created['id'])->isGreaterThan(0);
         $id = (int)$created['id'];
+        $fixture = Orm::create($DB);
+        $owned = null;
+        $grants = [];
         try {
+            // Real mapped JSON/native date values must not be compared by SQL DISTINCT.
+            $root = $fixture->getReference(OrmEntity\Entity::class, (int)getItemByTypeName('Entity', '_test_root_entity', true));
+            $owned = new OrmEntity\User();
+            $owned->name = $name . '_grant_visibility';
+            $owned->entities = $root;
+            $owned->access_custom_shortcuts = ['quoted' => 'native "JSON" value'];
+            $owned->date_creation = new \DateTime('2026-10-05 12:34:56');
+            $fixture->persist($owned);
+            $fixture->flush();
+            $read = Orm::create($DB);
+            try {
+                $repository = new \itsmng\Database\Repository\UserRepository($read);
+                $options = ['is_deleted' => false, 'searchText' => ['id' => '^' . $owned->id . '$'],
+                    'sort' => 'id', 'order' => 'ASC', 'start' => 0, 'list_limit' => 1];
+                $all = $repository->apiPage($options, null);
+                $this->integer($all['total'])->isIdenticalTo(1);
+                $this->array($all['rows'])->hasSize(1);
+                $this->string($all['rows'][0]['access_custom_shortcuts'])->isIdenticalTo(json_encode($owned->access_custom_shortcuts));
+                $this->string($all['rows'][0]['date_creation'])->isIdenticalTo('2026-10-05 12:34:56');
+                $this->integer($all['rows'][0]['is_deleted'])->isIdenticalTo(0);
+                foreach (['native' => 1, 'not present' => 0, 'NULL' => 0] as $pattern => $total) {
+                    $jsonFilter = $options;
+                    $jsonFilter['searchText']['access_custom_shortcuts'] = $pattern;
+                    $this->integer($repository->apiPage($jsonFilter, null)['total'])->isIdenticalTo($total);
+                }
+                foreach (['^0$', '^', '%0%', 'true'] as $booleanPattern) {
+                    $filtered = $options;
+                    $filtered['searchText']['is_deleted'] = $booleanPattern;
+                    $this->integer($repository->apiPage($filtered, null)['total'])
+                        ->isIdenticalTo($booleanPattern === 'true' ? 0 : 1);
+                }
+                $scope = ['entities' => [$root->id], 'ancestors' => [0]];
+                $this->integer($repository->apiPage($options, $scope)['total'])->isIdenticalTo(0);
+                foreach ([2, 4] as $profile) {
+                    $grant = new OrmEntity\ProfileUser();
+                    $grant->users = $owned;
+                    $grant->profiles = $fixture->getReference(OrmEntity\Profile::class, $profile);
+                    $grant->entities = $root;
+                    $grant->is_recursive = false;
+                    $fixture->persist($grants[] = $grant);
+                }
+                $fixture->flush();
+                $page = $repository->apiPage($options, $scope);
+                $this->integer($page['total'])->isIdenticalTo(1);
+                $this->array(array_column($page['rows'], 'id'))->isIdenticalTo([$owned->id]);
+                $parent = ['table' => 'glpi_entities', 'id' => $root->id,
+                    'foreignKey' => 'entities_id', 'userForeignKey' => 'users_id', 'kind' => 'User'];
+                $this->integer($repository->apiPage($options, $scope, $parent)['total'])->isIdenticalTo(1);
+                $parent['id'] = 0;
+                $this->integer($repository->apiPage($options, $scope, $parent)['total'])->isIdenticalTo(0);
+                $parent = ['table' => 'glpi_profiles_users', 'id' => $grants[0]->id,
+                    'foreignKey' => 'profiles_users_id', 'userForeignKey' => 'users_id', 'kind' => 'User'];
+                $this->integer($repository->apiPage($options, $scope, $parent)['total'])->isIdenticalTo(1);
+                $otherGrant = $fixture->getRepository(OrmEntity\ProfileUser::class)
+                    ->findOneBy(['users' => $fixture->getReference(OrmEntity\User::class, $id)]);
+                $this->object($otherGrant)->isInstanceOf(OrmEntity\ProfileUser::class);
+                $parent['id'] = $otherGrant->id;
+                $this->integer($repository->apiPage($options, $scope, $parent)['total'])->isIdenticalTo(0);
+                $this->integer($repository->apiPage($options, ['entities' => [], 'ancestors' => [$root->id]])['total'])->isIdenticalTo(0);
+                $this->array($repository->apiPage($options, ['entities' => [], 'ancestors' => [$root->id]])['rows'])->isEmpty();
+                $options['start'] = 1;
+                $this->integer($repository->apiPage($options, $scope)['total'])->isIdenticalTo(1);
+                $this->array($repository->apiPage($options, $scope)['rows'])->isEmpty();
+                $options['start'] = 0;
+
+                // A recursive ancestor grant is allowed only within a nonempty active scope.
+                foreach ($grants as $grant) {
+                    $grant->entities = $fixture->getReference(OrmEntity\Entity::class, 0);
+                }
+                $fixture->flush();
+                $this->integer($repository->apiPage($options, $scope)['total'])->isIdenticalTo(0);
+                $grants[0]->is_recursive = true;
+                $fixture->flush();
+                $this->integer($repository->apiPage($options, $scope)['total'])->isIdenticalTo(1);
+                $this->integer($repository->apiPage($options, ['entities' => [0], 'ancestors' => []])['total'])->isIdenticalTo(1);
+                $this->integer($repository->apiPage($options, ['entities' => [$root->id], 'ancestors' => []])['total'])->isIdenticalTo(0);
+                $this->integer($repository->apiPage($options, ['entities' => [], 'ancestors' => [0]])['total'])->isIdenticalTo(0);
+
+                $owned->name = 'Current "committed" name ' . $name;
+                $owned->access_custom_shortcuts = null;
+                $fixture->flush();
+                $options['sort'] = 'name';
+                $options['order'] = 'DESC';
+                $fresh = $repository->apiPage($options, $scope);
+                $this->string($fresh['rows'][0]['name'])->isIdenticalTo($owned->name);
+                $this->variable($fresh['rows'][0]['access_custom_shortcuts'])->isNull();
+                $jsonFilter['searchText']['access_custom_shortcuts'] = 'NULL';
+                $this->integer($repository->apiPage($jsonFilter, $scope)['total'])->isIdenticalTo(1);
+                $jsonFilter['searchText']['access_custom_shortcuts'] = 'native';
+                $this->integer($repository->apiPage($jsonFilter, $scope)['total'])->isIdenticalTo(0);
+                $this->array($read->getUnitOfWork()->getIdentityMap()[OrmEntity\User::class] ?? [])->isEmpty();
+
+                $public = $this->query('getItems', [
+                    'itemtype' => 'User', 'headers' => $headers,
+                    'query' => ['searchText' => ['id' => '^' . $owned->id . '$'],
+                        'range' => '0-0', 'only_id' => true, 'get_hateoas' => false],
+                ]);
+                $this->string($public['headers']['Content-Range'][0])->isIdenticalTo('0-0/1');
+                unset($public['headers']);
+                $this->array($public)->isIdenticalTo([['id' => $owned->id]]);
+            } finally {
+                $read->clear();
+            }
             $params = [
                 'itemtype' => 'User',
                 'headers' => $headers,
@@ -470,6 +578,15 @@ class APIRest extends APIBaseClass
             $params['query']['is_deleted'] = 2;
             $this->query('getItems', $params, 400, 'ERROR');
         } finally {
+            foreach ($grants as $grant) {
+                $fixture->remove($grant);
+            }
+            $fixture->flush();
+            if ($owned !== null && $owned->id !== null) {
+                $fixture->remove($owned);
+                $fixture->flush();
+            }
+            $fixture->clear();
             $this->query('deleteItems', [
                 'itemtype' => 'User',
                 'id' => $id,
