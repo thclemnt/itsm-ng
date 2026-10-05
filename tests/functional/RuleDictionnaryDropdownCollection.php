@@ -44,7 +44,7 @@ class RuleDictionnaryDropdownCollection extends DbTestCase
             $visited = [];
             $witness = null;
             $primary = new \RuntimeException('Dictionary callback primary failure');
-            $callback = function (callable $change) use ($connection, $tracked, $scenario, $primary, &$replacement, &$calls, &$witness): bool {
+            $callback = function (callable $change) use ($connection, $tracked, $fixture, $scenario, $primary, &$replacement, &$calls, &$witness): bool {
                 ++$calls;
                 $this->boolean($tracked->update(['id' => $tracked->getID(), 'comment' => 'Dictionary callback mutation']))->isTrue();
                 $this->boolean((bool)$change())->isTrue();
@@ -57,7 +57,7 @@ class RuleDictionnaryDropdownCollection extends DbTestCase
                         $connection->rollBack();
                     }
                     $replacement = OwnedMutationFrame::begin($connection);
-                    $witness = $this->createItem(\Printer::class, ['name' => 'Dictionary replacement witness', 'entities_id' => 0]);
+                    $witness = $this->createItem(\Printer::class, ['name' => 'Dictionary replacement witness', 'entities_id' => $fixture['entity']]);
                 }
                 if ($scenario === 'writer') {
                     $GLOBALS['DB'] = clone $GLOBALS['DB'];
@@ -208,24 +208,33 @@ class RuleDictionnaryDropdownCollection extends DbTestCase
     private function dictionaryFixture(string $operation): array
     {
         $name = $this->getUniqueString();
+        $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
         $class = $operation === 'model' ? \PrinterModel::class : \Printer::class;
-        $values = $operation === 'model' ? [] : ['entities_id' => 0, 'is_global' => 1];
+        $values = $operation === 'model' ? [] : ['entities_id' => $entity, 'is_global' => 1];
         $fixture = [
+            'entity' => $entity,
             'source' => $this->createItem($class, ['name' => $name . ' source', 'comment' => 'Before callback'] + $values),
             'target' => $this->createItem($class, ['name' => $name . ' target'] + $values),
         ];
+        $this->boolean($fixture['source']->can($fixture['source']->getID(), UPDATE))->isTrue();
+        $this->boolean($fixture['target']->can($fixture['target']->getID(), UPDATE))->isTrue();
         if ($operation === 'model') {
-            $fixture['printer'] = $this->createItem(\Printer::class, ['name' => $name, 'entities_id' => 0, 'printermodels_id' => $fixture['source']->getID()]);
+            $fixture['printer'] = $this->createItem(\Printer::class, ['name' => $name, 'entities_id' => $entity, 'printermodels_id' => $fixture['source']->getID()]);
+            $this->boolean($fixture['printer']->can($fixture['printer']->getID(), UPDATE))->isTrue();
             for ($i = 0; $i < 2; ++$i) {
-                $cartridge = $this->createItem(\CartridgeItem::class, ['name' => $name . ' cartridge ' . $i, 'entities_id' => 0]);
+                $cartridge = $this->createItem(\CartridgeItem::class, ['name' => $name . ' cartridge ' . $i, 'entities_id' => $entity]);
+                $this->boolean($cartridge->can($cartridge->getID(), UPDATE))->isTrue();
                 $this->boolean($cartridge->addCompatibleType($cartridge->getID(), $fixture['source']->getID()))->isTrue();
                 $fixture['cartridges'][] = $cartridge;
             }
         } else {
             for ($i = 0; $i < 2; ++$i) {
-                $computer = $this->createItem(\Computer::class, ['name' => $name . ' computer ' . $i, 'entities_id' => 0]);
+                $computer = $this->createItem(\Computer::class, ['name' => $name . ' computer ' . $i, 'entities_id' => $entity]);
+                $this->boolean($computer->can($computer->getID(), UPDATE))->isTrue();
                 $values = ['computers_id' => $computer->getID(), 'itemtype' => 'Printer'];
-                $fixture['links'][] = $this->createItem(\Computer_Item::class, $values + ['items_id' => $fixture['source']->getID()]);
+                $link = $this->createItem(\Computer_Item::class, $values + ['items_id' => $fixture['source']->getID()]);
+                $this->boolean($link->can($link->getID(), UPDATE))->isTrue();
+                $fixture['links'][] = $link;
                 if ($operation === 'remove') {
                     $this->createItem(\Computer_Item::class, $values + ['items_id' => $fixture['target']->getID()]);
                 }
@@ -290,9 +299,10 @@ class RuleDictionnaryDropdownCollection extends DbTestCase
 
         $input = array_merge(['name' => $name], $extra_input);
         $result = $collection->processAllRules($input);
+        // RuleCollection returns the mapped ID; input escaping preserves integers.
         $this->array($result)->isIdenticalTo([
            'name'    => $target_name,
-           '_ruleid' => (string)$rules_id,
+           '_ruleid' => $rules_id,
         ]);
     }
 
