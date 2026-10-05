@@ -128,4 +128,4 @@ vendor/bin/atoum \
   --no-code-coverage \
   --fail-if-skipped-methods \
   --max-children-number 1 \
-  -d tests/database
+  -f tests/database/DBmysql.php

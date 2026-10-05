@@ -1,0 +1,115 @@
+name: Database application tests
+
+on: [pull_request, workflow_dispatch]
+
+jobs:
+  isolated:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.3']
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mysqli, pdo_mysql, pgsql, pdo_pgsql, dom, curl, mbstring, zip, pcntl, intl, gd, ldap, exif
+          coverage: none
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: php bin/console dependencies install
+      - name: Test isolated Doctrine and domain units
+        run: composer test:units:isolated
+
+  application:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.3']
+        database:
+          - image: mariadb:11.8
+            provider: mysql
+            port: 3306
+            health: mariadb-admin ping
+            client: mariadb
+            tzinfo: mariadb-tzinfo-to-sql
+          - image: mysql:8.4
+            provider: mysql
+            port: 3306
+            health: mysqladmin ping
+            client: mysql
+            tzinfo: mysql_tzinfo_to_sql
+          - image: postgres:14
+            provider: pgsql
+            port: 5432
+            health: pg_isready -U test -d itsm_test_application
+          - image: postgres:18
+            provider: pgsql
+            port: 5432
+            health: pg_isready -U test -d itsm_test_application
+    env:
+      GLPI_CONFIG_DIR: ${{ github.workspace }}/tests/config
+      ITSM_TEST_MIGRATION_DB: itsm_test_ci_migration
+    services:
+      database:
+        image: ${{ matrix.database.image }}
+        env:
+          MYSQL_DATABASE: itsm_test_application
+          MYSQL_USER: test
+          MYSQL_PASSWORD: test
+          MYSQL_ROOT_PASSWORD: test
+          MYSQL_ROOT_HOST: '%'
+          POSTGRES_DB: itsm_test_application
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        ports:
+          - 3306:3306
+          - 5432:5432
+        options: >-
+          --health-cmd "${{ matrix.database.health }}"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mysqli, pdo_mysql, pgsql, pdo_pgsql, dom, curl, mbstring, zip, pcntl, intl, gd, ldap, exif, soap, bcmath
+          coverage: none
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: php bin/console dependencies install
+      - name: Prepare MySQL timezone data and separate migration target
+        if: matrix.database.provider == 'mysql'
+        run: |
+          docker exec "${{ job.services.database.id }}" sh -c '${{ matrix.database.tzinfo }} /usr/share/zoneinfo | ${{ matrix.database.client }} -uroot -ptest mysql'
+          docker exec "${{ job.services.database.id }}" ${{ matrix.database.client }} -uroot -ptest -e "GRANT SELECT ON mysql.time_zone_name TO 'test'@'%'; CREATE DATABASE $ITSM_TEST_MIGRATION_DB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL ON $ITSM_TEST_MIGRATION_DB.* TO 'test'@'%';"
+      - name: Prepare PostgreSQL migration lock budget and separate target
+        if: matrix.database.provider == 'pgsql'
+        run: |
+          docker exec "${{ job.services.database.id }}" psql -U test -d itsm_test_application --set=ON_ERROR_STOP=1 -c 'ALTER SYSTEM SET max_locks_per_transaction = 512'
+          docker restart "${{ job.services.database.id }}"
+          ready=false
+          for attempt in $(seq 1 30); do
+            if docker exec "${{ job.services.database.id }}" pg_isready -U test -d itsm_test_application; then ready=true; break; fi
+            sleep 1
+          done
+          test "$ready" = true
+          docker exec "${{ job.services.database.id }}" psql -U test -d itsm_test_application --set=ON_ERROR_STOP=1 -c "CREATE DATABASE $ITSM_TEST_MIGRATION_DB"
+      - name: Install through the public command
+        run: >-
+          php bin/console db:install --config-dir="$GLPI_CONFIG_DIR"
+          --db-type=${{ matrix.database.provider }}
+          --db-host=127.0.0.1 --db-port=${{ matrix.database.port }}
+          --db-name=itsm_test_application --db-user=test --db-password=test --no-interaction
+      - name: Test native installation and populated migration boundaries
+        run: timeout --signal=TERM --kill-after=10s 300s composer test:migration
+      - name: Test ordinary units
+        run: composer test:units -- --fail-if-skipped-methods
+      - name: Test application behavior
+        run: composer test:function -- --fail-if-skipped-methods
