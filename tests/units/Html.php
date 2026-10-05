@@ -86,6 +86,32 @@ class Html extends \GLPITestCase
         }
     }
 
+    public function testTwigOptionalMacroArgumentsKeepTheirNullDefaults(): void
+    {
+        require_once GLPI_ROOT . '/src/twig/twig.class.php';
+        $twig = \Twig::load(GLPI_ROOT . '/templates', false);
+        $deprecations = [];
+        set_error_handler(static function ($severity, $message) use (&$deprecations) {
+            if ($severity === E_USER_DEPRECATED) {
+                $deprecations[] = $message;
+                return true;
+            }
+            return false;
+        });
+        try {
+            $input = $twig->createTemplate('{% from "macros.twig" import input %}{{ input("field", "<value>") }}')->render([]);
+            $checked = $twig->createTemplate('{% from "macros.twig" import input %}{{ input(name: "named", value: "yes", required: true, checked: true) }}')->render([]);
+            $button = $twig->createTemplate('{% from "macros.twig" import button %}{{ button("submit", "Continue") }}')->render([]);
+        } finally {
+            restore_error_handler();
+        }
+        $this->array($deprecations)->isEmpty();
+        $this->string($input)->contains('type="text"')->contains('name="field"')
+            ->contains('value="&lt;value&gt;"')->notContains('required')->notContains('checked');
+        $this->string($checked)->contains('name="named"')->contains('required')->contains('checked');
+        $this->string($button)->contains('type="submit"')->contains('name=""')->contains('Continue');
+    }
+
     public function testTwigClearRemovesOnlyCompiledTemplates(): void
     {
         require_once GLPI_ROOT . '/src/twig/twig.class.php';
