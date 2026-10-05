@@ -7,6 +7,7 @@ use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Types\Type;
 use itsmng\Database\Migration\History;
+use itsmng\Database\Migration\Version220;
 use itsmng\Database\Migration\V220\IdentifierSequences;
 use itsmng\Database\Migration\Ledger;
 use itsmng\Database\Migration\V220\References;
@@ -48,6 +49,7 @@ verify((new References())->plan($connection)['complete'], 'Original adoption rec
 verify(!$connection->isTransactionActive(), 'Exercise actual migration transactions');
 
 if (!$platform instanceof PostgreSQLPlatform) {
+    $originalLedger = $connection->fetchAllAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' ORDER BY version');
     $tableName = 'port_identifier_autoincrement';
     verify(!$manager->tablesExist([$tableName]), 'Own auto-increment fixture is absent');
     $table = new Table($tableName);
@@ -59,8 +61,15 @@ if (!$platform instanceof PostgreSQLPlatform) {
         $connection->insert($tableName, ['id' => 4294967401, 'label' => 'assigned wide ID']);
         $before = $connection->fetchAssociative('SHOW CREATE TABLE ' . $tableName);
         $connection->delete(Ledger::TABLE, ['version' => $version]);
+        $pendingStates = Ledger::states($connection);
         verify($stage->plan($connection) === [] && WideIdentifiers::planOwnedSequences($connection, [$tableName => ['id']]) === [], 'MySQL sequence planning is a true no-op');
-        verify(History::pendingVersions($connection) === [$version] && Ledger::state($connection, $version) === null, 'Read-only no-op preview retains pending receipt');
+        $pendingReleases = History::pendingVersions($connection);
+        $pendingPhases = Version220::pendingPhases(Ledger::states($connection));
+        verify($pendingReleases === [Version220::VERSION] && $pendingPhases === [$version]
+            && Ledger::state($connection, $version) === null, 'Read-only no-op preview retains its pending release and internal phase: '
+                . json_encode(['releases' => $pendingReleases, 'phases' => $pendingPhases], JSON_THROW_ON_ERROR));
+        verify(Ledger::states($connection) === $pendingStates && $connection->fetchAssociative('SHOW CREATE TABLE ' . $tableName) === $before,
+            'Read-only native-provider preview changes no receipt or AUTO_INCREMENT definition');
         $connection->beginTransaction();
         try {
             $stage->apply($connection);
@@ -81,6 +90,8 @@ if (!$platform instanceof PostgreSQLPlatform) {
     } finally {
         $manager->dropTable($tableName);
         Ledger::save($connection, $version, $originalReceipt);
+        verify($connection->fetchAllAssociative('SELECT version, state FROM ' . Ledger::TABLE . ' ORDER BY version') === $originalLedger,
+            'Native-provider fixture restores every original raw receipt');
     }
 } else {
     $quote = $platform->quoteSingleIdentifier(...);
