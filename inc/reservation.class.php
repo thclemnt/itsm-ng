@@ -1246,7 +1246,8 @@ class Reservation extends CommonDBChild
         $rows = (new \itsmng\Database\Repository\ReservationRepository(\itsmng\Database\Orm::create($DB)))
             ->forUser((int)$ID, $now, false, \itsmng\Reporting\Criteria::entities());
 
-        $ri = new ReservationItem();
+        $entityNames = [];
+        $userName = null;
         echo "<table class='tab_cadre_fixehov' aria-label='Current and future reservations'>";
         echo "<tr><th colspan='6'>" . __('Current and future reservations') . "</th></tr>\n";
 
@@ -1262,26 +1263,25 @@ class Reservation extends CommonDBChild
             echo "<th>" . __('Comments') . "</th><th>&nbsp;</th></tr>\n";
 
             foreach ($rows as $data) {
-                $data['completename'] = Dropdown::getDropdownName('glpi_entities', $data['entities_id']);
+                $entityId = (int)$data['entities_id'];
+                if (!array_key_exists($entityId, $entityNames)) {
+                    $entityNames[$entityId] = Dropdown::getDropdownName('glpi_entities', $entityId);
+                }
+                $userName ??= getUserName($data['users_id']);
                 echo "<tr class='tab_bg_2'>";
                 echo "<td class='center'>" . Html::convDateTime($data["begin"]) . "</td>";
                 echo "<td class='center'>" . Html::convDateTime($data["end"]) . "</td>";
 
-                if ($ri->getFromDB($data["reservationitems_id"])) {
-                    $link = "&nbsp;";
-
-                    if ($item = getItemForItemtype($ri->fields['itemtype'])) {
-                        if ($item->getFromDB($ri->fields['items_id'])) {
-                            $link = $item->getLink();
-                        }
+                $link = "&nbsp;";
+                if ($item = getItemForItemtype($data['itemtype'])) {
+                    if ($item->getFromDB($data['items_id'])) {
+                        $link = $item->getLink();
                     }
-                    echo "<td class='center'>$link</td>";
-                    echo "<td class='center'>" . $data['completename'] . "</td>";
-                } else {
-                    echo "<td class='center'>&nbsp;</td>";
                 }
+                echo "<td class='center'>$link</td>";
+                echo "<td class='center'>" . $entityNames[$entityId] . "</td>";
 
-                echo "<td class='center'>" . getUserName($data["users_id"]) . "</td>";
+                echo "<td class='center'>" . $userName . "</td>";
                 echo "<td class='center'>" . nl2br((string) $data["comment"]) . "</td>";
                 echo "<td class='center'>";
                 list($annee, $mois, $jour) = explode("-", (string) $data["begin"]);
@@ -1315,26 +1315,25 @@ class Reservation extends CommonDBChild
             echo "<th>" . __('Comments') . "</th><th>&nbsp;</th></tr>\n";
 
             foreach ($rows as $data) {
-                $data['completename'] = Dropdown::getDropdownName('glpi_entities', $data['entities_id']);
+                $entityId = (int)$data['entities_id'];
+                if (!array_key_exists($entityId, $entityNames)) {
+                    $entityNames[$entityId] = Dropdown::getDropdownName('glpi_entities', $entityId);
+                }
+                $userName ??= getUserName($data['users_id']);
                 echo "<tr class='tab_bg_2'>";
                 echo "<td class='center'>" . Html::convDateTime($data["begin"]) . "</td>";
                 echo "<td class='center'>" . Html::convDateTime($data["end"]) . "</td>";
 
-                if ($ri->getFromDB($data["reservationitems_id"])) {
-                    $link = "&nbsp;";
-
-                    if ($item = getItemForItemtype($ri->fields['itemtype'])) {
-                        if ($item->getFromDB($ri->fields['items_id'])) {
-                            $link = $item->getLink();
-                        }
+                $link = "&nbsp;";
+                if ($item = getItemForItemtype($data['itemtype'])) {
+                    if ($item->getFromDB($data['items_id'])) {
+                        $link = $item->getLink();
                     }
-                    echo "<td class='center'>$link</td>";
-                    echo "<td class='center'>" . $data['completename'] . "</td>";
-                } else {
-                    echo "<td class='center'>&nbsp;</td>";
                 }
+                echo "<td class='center'>$link</td>";
+                echo "<td class='center'>" . $entityNames[$entityId] . "</td>";
 
-                echo "<td class='center'>" . getUserName($data["users_id"]) . "</td>";
+                echo "<td class='center'>" . $userName . "</td>";
                 echo "<td class='center'>" . nl2br((string) $data["comment"]) . "</td>";
                 echo "<td class='center'>";
                 list($annee, $mois, $jour) = explode("-", (string) $data["begin"]);

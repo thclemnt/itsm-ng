@@ -19,7 +19,7 @@ final class ReservationRepository
     public function forUser(int $user, string $now, bool $past, ?array $entities): array
     {
         $query = $this->em->createQueryBuilder()
-            ->select('r.begin, r.end, IDENTITY(r.users) AS users_id, r.comment, i.id AS reservationitems_id, i.items_id, IDENTITY(i.entities) AS entities_id')
+            ->select('r.begin, r.end, IDENTITY(r.users) AS users_id, r.comment, i.id AS reservationitems_id, i.itemtype, i.items_id, IDENTITY(i.entities) AS entities_id')
             ->from(Reservation::class, 'r')->join('r.reservationitems', 'i')
             ->where('IDENTITY(r.users) = :user')->setParameter('user', $user, Types::INTEGER)
             ->andWhere('r.end ' . ($past ? '<=' : '>') . ' :now')->setParameter('now', new \DateTime($now), Types::DATETIMETZ_MUTABLE)
