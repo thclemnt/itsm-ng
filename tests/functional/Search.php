@@ -887,14 +887,16 @@ class Search extends DbTestCase
 
     public function testDateAddHaving()
     {
+        global $DB;
+
         $before = \Search::addHaving(' AND ', 0, 'Ticket', 16, 'lessthan', '2999-01-01');
         $this->string($before)
-           ->contains(\DBAdapter::quoteName('ITEM_Ticket_16') . ' <')
+           ->contains($DB->quoteName('ITEM_Ticket_16') . ' <')
            ->contains("'2999-01-01");
 
         $after = \Search::addHaving(' AND ', 0, 'Ticket', 16, 'morethan', '1970-01-01');
         $this->string($after)
-           ->contains(\DBAdapter::quoteName('ITEM_Ticket_16') . ' >')
+           ->contains($DB->quoteName('ITEM_Ticket_16') . ' >')
            ->contains("'1970-01-01");
     }
 
@@ -1204,8 +1206,10 @@ class Search extends DbTestCase
     /** Quote an expected native-dialect fragment without changing the actual SQL. */
     private function providerQuotedSQL(string $expected): string
     {
+        global $DB;
+
         return preg_replace_callback('/`([^`]+)`/', static fn (array $identifier): string =>
-            \DBAdapter::quoteName($identifier[1]), $expected);
+            $DB->quoteName($identifier[1]), $expected);
     }
 
     /** Keep the provider's exact text cast/operator and the expected wildcard value. */
@@ -1631,6 +1635,8 @@ class Search extends DbTestCase
 
     public function testSearchAllAssets()
     {
+        global $DB;
+
         $data = $this->doSearch('AllAssets', [
            'reset'      => 'reset',
            'is_deleted' => 0,
@@ -1655,7 +1661,7 @@ class Search extends DbTestCase
             $this->boolean(is_a($row['TYPE'], \CommonDBTM::class, true))->isTrue();
         }
         $this->string($data['sql']['search'])
-           ->contains(' AS ' . \DBAdapter::quoteName('TYPE'))
+           ->contains(' AS ' . $DB->quoteName('TYPE'))
            ->matches("/OR\s*\(" . $this->textSearchPattern('`glpi_entities`.`completename`', '%test%') . "\s*\)/")
            ->matches("/OR\s*\(" . $this->textSearchPattern('`glpi_states`.`completename`', '%test%') . "\s*\)/");
 
@@ -1762,7 +1768,7 @@ class Search extends DbTestCase
             \getEntitiesRestrictRequest('AND', 'NEWTABLE', 'id', [$_SESSION['glpiactive_entity']]),
             [
                 new \QueryExpression('AND 1 = 1'),
-                'NEWTABLE.id' => new \QueryExpression(\DBAdapter::quoteName('REFTABLE.entities_id')),
+                'NEWTABLE.id' => new \QueryExpression($DB->quoteName('REFTABLE.entities_id')),
             ],
         ];
         foreach ($conditions as $condition) {
@@ -1777,7 +1783,7 @@ class Search extends DbTestCase
                 0,
                 ['condition' => $condition]
             );
-            $alias = \DBAdapter::quoteName($links[0]);
+            $alias = $DB->quoteName($links[0]);
             $this->string($join)
                 ->contains($alias . '.')
                 ->notContains('NEWTABLE')

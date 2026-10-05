@@ -174,6 +174,8 @@ final class JoinBuilder
      **/
     public static function addLeftJoin($itemtype, $ref_table, array &$already_link_tables, $new_table, $linkfield, $meta = 0, $meta_type = 0, $joinparams = [], $field = '')
     {
+        global $DB;
+
         // Rename table for meta left join
         $AS = "";
         $nt = $new_table;
@@ -289,8 +291,8 @@ final class JoinBuilder
                 // example an entity restriction or an iterator criterion). Replace
                 // complete identifiers in one pass so their quotes cannot surround
                 // a second quoted alias, or substitute inside a replacement alias.
-                $reference = \DBAdapter::quoteName($rt);
-                $target = \DBAdapter::quoteName($nt);
+                $reference = $DB->quoteName($rt);
+                $target = $DB->quoteName($nt);
                 $addcondition = strtr($condition, [
                     '`REFTABLE`' => $reference,
                     '"REFTABLE"' => $reference,
