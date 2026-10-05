@@ -76,9 +76,9 @@ class Ticket extends DbTestCase
 
             $_SESSION['glpiactiveprofile']['ticket'] = \Ticket::OWN | \Ticket::READASSIGN;
             $_SESSION['glpiactiveprofile']['user'] = 0;
-            $this->boolean(\Session::haveRight('ticket', UPDATE))->isFalse();
+            $this->boolean((bool)\Session::haveRight('ticket', UPDATE))->isFalse();
             $this->boolean((new \Ticket())->can($parent->id, UPDATE))->isTrue();
-            $this->boolean(\User::canView())->isFalse();
+            $this->boolean((bool)\User::canView())->isFalse();
             $input = ['tickets_id' => $parent->id, 'users_id' => $recipient,
                 'type' => \CommonITILActor::OBSERVER, 'alternative_email' => 'anonymous-' . $parent->id . '@example.invalid',
                 '_disablenotif' => true];
