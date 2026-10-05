@@ -424,6 +424,7 @@ class Contract extends DbTestCase
                 'language' => '',
                 'subject' => 'Contract frame',
                 'content_text' => '##FOREACHcontracts####contract.name####ENDFOREACHcontracts##',
+                'content_html' => '',
             ]);
             $notification = $this->createItem(\Notification::class, [
                 'name' => 'Contract frame notification',

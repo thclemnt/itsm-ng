@@ -39,9 +39,9 @@ class Stat extends \DbTestCase
             $record->name = 'Statistics current data';
             $record->content = 'Functional reporting fixture';
             $record->status = $closed;
-            $record->date = new \DateTimeImmutable($date);
-            $record->solvedate = new \DateTimeImmutable($date);
-            $record->closedate = new \DateTimeImmutable($date);
+            $record->date = new \DateTime($date);
+            $record->solvedate = new \DateTime($date);
+            $record->closedate = new \DateTime($date);
             $record->solve_delay_stat = $delay;
             $record->is_deleted = $deleted;
             $manager->persist($record);
