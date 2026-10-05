@@ -29,6 +29,7 @@ class CronTaskLog
     public ?CronTaskLog $parent = null;
 
     #[ORM\Column(name: '`date`', type: 'datetimetz', nullable: false, options: ['default' => 'CURRENT_TIMESTAMP'])]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date = null;
 
     #[ORM\Column(name: '`state`', type: 'integer', nullable: false)]

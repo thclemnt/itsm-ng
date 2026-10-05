@@ -46,7 +46,8 @@ class CronTask
     #[ORM\Column(name: '`logs_lifetime`', type: 'integer', nullable: false, options: ['default' => '30'])]
     public int $logs_lifetime = 30;
 
-    #[ORM\Column(name: '`lastrun`', type: 'datetimetz', nullable: true)]
+    #[ORM\Column(name: '`lastrun`', type: 'datetimetz', nullable: true, options: ['comment' => 'last run date'])]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $lastrun = null;
 
     #[ORM\Column(name: '`lastcode`', type: 'integer', nullable: true)]

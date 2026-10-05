@@ -29,6 +29,7 @@ class NotImportedEmail
     public ?MailCollector $mailcollectors = null;
 
     #[ORM\Column(name: '`date`', type: 'datetimetz', nullable: false, options: ['default' => 'CURRENT_TIMESTAMP'])]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date = null;
 
     #[ORM\Column(name: '`subject`', type: 'text', nullable: true)]
