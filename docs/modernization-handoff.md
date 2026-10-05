@@ -1,299 +1,187 @@
 # PostgreSQL and Doctrine modernization: implementation plan
 
-The goal is **OPEN**. Native persistent goals are unavailable in this environment;
-this maintained plan and Git history retain the objective:
+The goal is **OPEN**. Native persistent goals are unavailable here; this plan and
+Git history retain the objective:
 
 > Cover all table relationships with foreign keys; use ORM properly for application
 > SQL requests; eliminate direct calls to DBmysql and similar classes that directly
 > call mysqli.
 
-Complete PostgreSQL support while retaining MySQL/MariaDB, keep immutable DBAL
-baseline/seeds and full replay with validated populated adoption, and improve domain
-ownership rather than expand compatibility workarounds.
+Complete PostgreSQL support while retaining MySQL/MariaDB, replay an immutable DBAL
+baseline and seeds through canonical history, validate populated adoption, and
+improve domain ownership rather than expand compatibility workarounds.
 
-## Current source and evidence
+## Current source and validation
 
-The executed application checkpoint is `ecaa1c11908daccd3abebe09d73626452931dc3b`.
-Each result applies to its executed source; subsequent changes do not inherit it:
+The current runtime is `9567cdf8a9`. At `f55d492e14`, PendingSubjectPreflight
+passed 50 assertions in 58.985 seconds on PostgreSQL and 157.295 seconds on
+MariaDB. Private boolean-only probing isolated the remaining Software fixture
+failure to tracking properties absent before/after refusal; graph, audit, queue
+and persisted fields were unchanged. At `9567cdf8a9`, Software current reads passed
+in 15.429 seconds on PostgreSQL and 17.638 seconds on MariaDB. The revised compound
+checks exact pre-call lifecycle state including property presence; stored graph,
+audit, queue, caller frame and retry assertions remain. Complete ordered suites
+at this head are **RUNNING** on both providers; their final results are pending.
+The runtime includes software lifecycle admission,
+typed VLAN projections, reviewed positive fixture repairs, native-policy-first
+verification and operation-local reference preflight inspection reuse. Disconnected metadata
+inspection at `9b5b30d1aa` found 357 mapped tables, 1,087 owning join columns, 35
+discriminated identity fields and 402 boolean fields. These counts do not establish
+complete ORM/domain adoption. Historical `install/update_*.php` files are unchanged.
+Native Git fetch works, and the checked remote branch remains
+`01aee6a7bbd5a3f0301a6f27b329381a12ea8470`.
 
-- Ordinary units at `ecaa1c1190`: PostgreSQL and MariaDB each passed 30 classes,
-  216 methods and 8,821 assertions, with no skipped methods.
-- Isolated units at that checkpoint passed 16 classes, 60 methods and 3,006
-  assertions, with no skipped methods. Five purely unit-level CLI contracts were
-  transferred to the ordinary framework; native integration controls remain.
-- Fresh complete installation and read-only schema inspections at `0b21850674`
-  found 358 tables (including the
-  ledger), 1,087 enforced foreign keys, no pending history and no schema differences
-  on PostgreSQL 15.19 and MariaDB 10.11.18.
-- Separate clean public installations at `08b92212c5` completed on both engines,
-  with 358 tables, 1,087 enforced foreign keys, no pending history and no schema
-  differences. The existing schema-check contract also passed on each. These
-  targets have not loaded the ordinary unit dataset. The supplied historical
-  certificate-column failure remains unreproduced; its cause is unresolved.
-- The full native suites at `ecaa1c1190` discover 230 contracts. MariaDB completed
-  with 32 passing contracts: a component reconstruction exceeded the unchanged
-  300-second limit and left history pending, so subsequent application contracts
-  stopped at the admission guard. This is a failed run, not evidence that every
-  downstream subsystem is defective. PostgreSQL completed with 212 passing
-  contracts and 18 failures. Its ordered schema-check passed, and subsequent
-  read-only inspection found 358 tables, 1,087 foreign keys, no pending release
-  and no schema differences. Both providers
-  also exposed independent timestamp, permission and offline-metadata failures.
-  Source repairs require native reruns; neither full suite is green.
-- Isolated units at `ac2976e68c` passed 18 classes, 63 methods and 30,052 assertions
-  with no skips, including the transferred actor and timestamp metadata controls.
-  This is pure metadata/framework evidence, not native integration evidence.
-- Focused application tests exposed actual numbering-binding defects and a queue
-  fixture that assumed public creation could retain a nonzero retry counter.
-  After correcting that fixture, public acknowledgement passed on both providers.
-  Atoum accepts a whole-method `*`, not a prefix wildcard; the initial filter
-  skipped five new timeline methods. Explicit reruns covered them and exposed
-  an incorrect privacy expectation: Ticket, Change and Problem tasks all declare
-  `is_private`. The source correction checks exact visible/hidden identities;
-  its successful native rerun is the focused candidate below. The preceding
-  failed runs are retained.
-- The reviewed corrective candidate `e3f96eda1d18519744f041716ea1c34e1d0afc7a`
-  passed 9 application test classes, all 44 selected methods and 9,788 assertions
-  on each provider, with no skips. Selection names every new timeline method
-  explicitly. Coverage includes the complete DbUtils class, timeline visibility,
-  documents/validations/DST/overrides, original rendering, recipient acknowledgement,
-  cron selection/status, Calendar/asset relation permissions, new-item plugin
-  vetoes and default/forced ITIL purge lifecycle controls. PHP syntax checks passed.
-  This focused result does not establish passing full native/application suites.
-  Two pure timestamp CLI scripts are now ordinary isolated tests: current source
-  discovers 228 integration contracts, not the 230 executed by the first full run.
+Results apply to the exact executed source, not subsequent changes:
 
-Native reconstruction contracts must use clean installation databases, separately
-from ordinary unit datasets. The latter activate the tester plugin through their
-own bootstrap plugin paths. A focused native run on that dataset instead used the
-ordinary application plugin path, emitted missing-plugin warnings before login
-headers, and failed strict Calendar/HTTP entrypoint controls. Preserve those
-failures, rerun on clean targets, and do not suppress warnings or weaken login
-assertions. The MariaDB missing-subject preflight also exceeded its unchanged
-300-second budget and requires performance attribution independently of this
-setup problem.
-- Component functional suites at `60c0d8a809` passed all six methods and 2,956
-  assertions on each provider. The original POST fixture now declares the actual
-  parent entity; production ownership guards and original assertions are intact.
-  The duplicate standalone component contract was subsequently removed.
+- At `e75c9098fb`, five focused application classes passed all 46 methods and
+  9,398 assertions on each provider, with no skips. Coverage includes inherited
+  Entity settings, Search status presentation, DbUtils ancestor ordering,
+  anonymous Ticket attachments and optional notification attachments.
+- At `16b2cd5134`, the ordinary unit suite passed 30 classes, 216 methods and
+  8,821 assertions on each provider, with no skips. Isolated metadata/framework
+  tests at `ac2976e68c` passed 18 classes, 63 methods and 30,052 assertions.
+- Public fresh installations at `4fba97caa2` passed on PostgreSQL 15.19 and an
+  isolated MariaDB 10.11.18 server. Read-only inspection found 358 tables including
+  the ledger, 1,087 enforced foreign keys, no pending release or installation
+  marker, and no schema differences. Certificate projection storage is nullable
+  BIGINT without a scalar default on both engines; native generated expressions
+  were retained in execution evidence.
+- Financial-reference, incoming-projection and discriminator/upgrade controls
+  passed on both engines at that source. Component reconstruction passed in
+  69.1 seconds on PostgreSQL and 167.6 seconds on isolated MariaDB, within the
+  unchanged 300-second limit. Financial controls prove shared verification
+  snapshots remain unchanged, audit current invalid data, and refresh after DDL.
+- At `7a68639fb7`, four complete Software application classes passed 35 methods
+  with no skips: PostgreSQL 542 assertions; MariaDB 658. At `702ac1a818`, the full
+  NetworkPort class passed eight methods and 289 assertions on each provider,
+  with no skips. These include the new four-owner Software admission and typed
+  VLAN projection cases; older positive fixture repairs preserved assertions.
+- At `702ac1a818`, financial-reference and both discriminator controls passed on
+  both engines. Snapshot reuse retains live orphan audits, immutable inspection
+  input and fresh inspection after DDL. The complete history control passed in
+  **273.164 seconds on PostgreSQL and 250.015 seconds on MariaDB**, within the
+  unchanged 300-second limit, retaining all 158 native assertion sites.
+- Complete suites at `702ac1a818` finished PostgreSQL **226/228** and MariaDB
+  **227/228**. Pending-subject diagnostics failed on both; PostgreSQL also failed
+  the Software fixture. Both post-run inspections found 358 tables/1,087 FKs,
+  no pending history or installation, and no schema differences. Focused repairs
+  passed at the heads above; complete `9567cdf8a9` results remain pending.
+- The isolated History class at `976df615ac` passed three methods and 46 assertions
+  with no skips through the normal runtime autoload. Its eight new assertions
+  check disconnected MySQL/PostgreSQL metadata and frozen DDL independence.
 
-Earlier executions, retained for their own source only:
+Earlier failed fixtures and reconstruction cascades remain in private evidence.
 
-- Fresh installation and final schema checks passed on PostgreSQL at `38d0b5949f`
-  and MariaDB at `9cdfdf5413`; these precede the current application checkpoint.
-- Isolated units at `bb18deffe9`: 8 classes, 34 methods, 1,989 assertions passed.
-- Ordinary MariaDB units at `95d983a1f6`: 30 classes, 209 methods, 8,597 assertions passed.
-- Focused statistics, Contract, Transfer and software functional coverage at
-  `9cdfdf5413`: 26 methods passed, with 1,737 PostgreSQL and 1,741 MariaDB assertions.
-- Dictionary functional coverage at `df5c1df33e`: 5 methods, 2,892 assertions passed
-  per provider.
+The supplied historical `Changed column: glpi_certificates_items.items_id` failure
+remains **unreproduced, not diagnosed away**. Fresh checks at `4fba97caa2` and ordered schema-check contracts at `9b5b30d1aa`
+passed on both engines; newer complete runs remain necessary.
+Do not weaken the comparison or assume a stale fixture.
 
-These outcomes do not establish a passing full application suite. Dynamically
-discovered provider contracts, browser acceptance and public remote CI have no
-completed passing result on the current combined candidate.
+## Controlled performance evidence
 
-The genuine upstream 2.1.3 release (`5ecdf8e2a29`) and ORM checkpoint `297787177b`
-were compared through authenticated local HTTP actions on matched MariaDB data:
-107 tickets, 300 followups, 20 computers and 20 software records. Six warm alternating
-rounds included each page's required table JSON. Median ticket list/search/detail/
-history times were 785/779/317/487 ms for ORM versus 120/122/63/36 ms for 2.1.3.
-Tracing identified full metadata discovery (357 entities and tens of thousands of
-attribute conversions) repeated in each request. With the registry cache at
-`593d34e90f`, the same medians became 587/566/234/317 ms; baseline controls were
-slightly faster too. SQL statement counts stayed identical across all nine read
-flows. Separate cold/warm traces confirm metadata discovery disappears on a cache
-hit, while source hashing and deserialization still have a cost. Search CPU fell
-from 657 to 454 ms and its peak memory from 24 to 14 MiB. Substantial slowdown
-remains. Subsequent controlled pairs optimized DQL parsing, autoload lookup,
-normal Twig compiled-template caching and user-label scalar projections. The
-dataset stayed unchanged within each pair. On the latest
-121-ticket/100-match/970-history fixture, adding only the user-label projection
-(`64a7657534` to `a2b17786a6`) reduced median list/search requests from
-410.32/419.27 ms to 272.63/265.94 ms. SQL counts and peak memory remained identical
-across nine read flows. Other action changes were variable and are not attributed
-to this optimization. This serial local comparison excludes browser rendering,
-production concurrency and PostgreSQL throughput; shipped dependency versions
-differ between releases.
+Normal, unprofiled authenticated serial local MariaDB comparisons used unchanged
+fixtures of 121 Tickets, 100 search matches and 970 history rows, with
+response/JSON/count checks.
+They exclude browser rendering, concurrency and PostgreSQL throughput. Genuine
+2.1.3 controls use shipped dependencies, which differ from the ORM branch.
 
-Broader profiles found Ticket/Change/Problem tab counts constructing timelines
-whose content is immediately discarded. The first controlled candidate added
-three SQL statements and still rendered the full timeline: unsupported document
-subqueries triggered a compatibility fallback. Detail/history medians changed
-from 162.32/241.44 to 180.01/245.27 ms. Parity tests alone concealed this failed
-optimization. The repair reuses the mapped document repository's existing access
-selector and removes fallback for core query errors; custom overrides fall back
-before issuing count queries. At `ca81467c1f`, all seven explicitly selected
-ordinary timeline methods passed on each engine, with 691 assertions and no skips.
-They exercise document DQL directly, visibility, duplicate/null/local DST keys,
-validation events and custom selectors. The initial anonymous-selector fixture
-failure and failed timing pair are retained. The isolated repaired candidate
-`276d35e5bd` against unchanged `a2b17786a6` reduced detail/history medians to
-144.92/217.74 ms, CPU to 89.47/130.56 ms and SQL counts from 93/104 to 66/77.
-Detail peak memory fell from 14 to 12 MiB; history stayed at 12 MiB. All read/login
-body, JSON and tab-count checks passed; 121 tickets, 100 matches and 970 history
-rows stayed unchanged. Separate profiles confirmed no full timeline-render calls
-in either count path. Genuine-release controls were slower in the repaired phase
-(detail/history 60.15/34.51 to 66.59/39.71 ms); this local serial comparison is
-bounded evidence, not a production throughput claim. The complete discovered
-228-contract suites at `ca81467c1f` finished with PostgreSQL 226/228 and MariaDB
-36/228 passing. PostgreSQL failed `migration-history.php` at its unchanged
-300-second limit and `relation-endpoint-rights.php` on anonymous-email attachment
-admission. MariaDB's component reconstruction exceeded the same limit after the
-motherboard family completed at 276 seconds. The interrupted memory family left
-the 2.2.0 history pending; subsequent application admission failures share that
-cause and are not independent subsystem diagnoses. Its final read-only inspection
-found 358 tables, 1,082 foreign keys and memory-subject schema differences.
-The failed database, original assertions and execution evidence are retained.
-Neither full suite is green. Migration cost attribution and the attachment
-boundary repair must precede another complete run on clean disposable databases.
+- User-label scalar projection (`64a7657534` to `a2b17786a6`): list/search medians
+  410.3/419.3 to 272.6/265.9 ms; SQL counts and heap unchanged.
+- Timeline counts (`a2b17786a6` to `276d35e5bd`): detail/history medians
+  162.3/241.4 to 144.9/217.7 ms; SQL 93/104 to 66/77.
+  All seven direct timeline methods passed both providers at `ca81467c1f`.
+- Entity configuration (`276d35e5bd` to `5c9560c315`): full-entity hydration was
+  removed; profiled software-tab lookup fell 22.4 to 3.3 ms. Whole-page results
+  were mixed and SQL counts unchanged. No general Entity speedup is claimed.
+- Status catalogue (`5c9560c315` to `83df7b32bf`): list/search medians
+  305.8/302.2 to 261.2/264.2 ms, with 118 fewer SELECTs per complete flow. Catalogue
+  calls fell 61 to two in profiles. Other read flows and login SQL were unchanged.
 
-The wider profiling review also confirms full Software-row hydration in the
-software tab: four choice calls hydrate 60 rows, with 60.85 ms inclusive profiled
-cost. Configuration reads hydrate full Entity records for a few settings and
-parent references. A separate successful Software AJAX profile returned the
-20 expected software rows. Choice processing used 46.78 ms inclusive under
-Xdebug: entity hydration was 9.16 ms, while initial query setup was 35.05 ms;
-bootstrap dominated the full request. Projection alone cannot remove that setup
-cost. An extra software-version form probe lacked the expected body marker and
-is unverified. Non-tree Computer/Contact/Supplier/
-Budget/Netpoint labels, Group actor links, Link outputs and notification name
-lookups remain source-level candidates. Full reads used for permissions or hooks
-are not automatically projection candidates. Profiled inclusive durations are
-not request latency.
+Wider traces still show 40 user-label calls costing 76.6 ms under profiling. A
+caller-owned batch must preserve anonymization, tooltip data, rights and plugin
+ordering. Under profiling, Software AJAX hydration costs 9.2 ms for 20 rows, versus 35.1 ms query
+setup and 141.7 ms bootstrap: projection alone cannot fix its dominant cost.
+Outside Search, Entity unique-identifier rules hydrate up to two entire entities
+to return one ID; the SoftwareVersion selector consumes three fields from fully
+hydrated records; anonymous notification recipients need only an email from actor
+links. These and Link output/non-tree labels are confirmed source-level candidates,
+not measured gains. Existing tree labels already project their required fields. The retained Software AJAX trace
+attributes most startup cost to configuration: status/registry work, timezone
+setup and duplicate table discovery. Unrestricted adapter-cache reuse is unsafe
+across reconnects/direct DDL; any optimization needs a bounded ownership window.
+Other raw flag projections currently use truthiness and have no proven behavior
+failure; preserve each consumer's integer-flag/date-string boundary. Retain full models for permissions,
+lifecycle hooks and rich item links. The extra SoftwareVersion form probe lacked
+its expected body marker and remains unverified.
 
-Broader source candidates at `0c348b7d68` project only requested inherited Entity
-settings, their metadata-declared mode columns and the parent identifier. They
-share the existing scalar serialization contract rather than introduce a second
-type registry. A second change lazily loads the Ticket status catalogue once per
-search formatting pass, after plugin hooks, preserving subclass dispatch and
-observing writes on the next pass. Existing ordinary Entity and Search test
-classes cover the new cases; native tests and isolated paired timings for these
-candidates were run against both engines. Initial failures came from new fixtures
-writing legacy sentinels without canonical reference modes and creating tickets
-without explicit visible entity/requester ownership. Corrected fixtures retain
-the original constraints, sentinel expectations and exact two-row search result.
-At `16b2cd5134`, the ordinary unit suite passed 30 classes, 216 methods and 8,821
-assertions on each provider, with no skips. At `0935573b5f`, the focused application
-suite passed all 46 methods across five classes and 9,374 assertions on MariaDB.
-PostgreSQL passed the new Entity, Search, Ticket and Notification cases but failed
-the existing multi-selection ancestor-order assertion in DbUtils. The reviewed
-repair restores caller-selected branch order after an unordered IN query and adds
-reversed/duplicate/string-ID controls. At `e75c9098fb`, the complete focused run
-passed all five classes, 46 methods and 9,398 assertions on each provider, with no
-skips. The original
-relation-endpoint contract passed on clean PostgreSQL C at `0935573b5f`, including
-anonymous NULL/zero email links and rejection of dangling nonzero attachments.
-Separate Entity and Status timing pairs completed against unchanged 121-ticket,
-100-match and 970-history fixtures, with response/JSON/count checks passing and
-108 current-application request records per phase reporting no errors. The Entity
-pair `276d35e5bd` to `5c9560c315` removed the full-Entity find edge: profiled
-software-tab configuration lookup fell from 22.39 to 3.32 ms. Whole-page outcomes
-were mixed: software form CPU fell from 93.00 to 85.41 ms, while the software tab
-did not improve and list/search wall times increased slightly. SQL counts stayed
-unchanged; no general Entity speedup is claimed. The independent Status pair
-`5c9560c315` to `83df7b32bf` reduced list/search wall medians from 305.76/302.15 to
-261.15/264.24 ms and CPU from 184.06/179.73 to 151.38/150.81 ms. Each complete flow
-issued 118 fewer SELECTs; other seven read flows and login SQL stayed unchanged.
-Profiled catalogue reads fell from 61 to two (bootstrap plus formatting). List/
-search peak memory stayed at 12/10 MiB. Genuine-release controls changed from
-142.72/142.56 to 137.44/145.34 ms. These serial MariaDB comparisons exclude browser
-rendering, concurrency and PostgreSQL throughput; instrumented durations establish
-call attribution rather than normal request latency.
-These changes do not resolve stable status identity or claim a Software dropdown
-performance gain.
+Migration verification and read-only reference preflight reuse inspection only
+within one operation; apply, DDL, callbacks and retries inspect afresh. Invalid
+rows and native policies are still audited. At `57b49e3577`, verification took
+4.71 seconds on PostgreSQL and 19.33 on MariaDB, with no writes and unchanged
+ledgers. At `4fba97caa2`, the same 4,806 SELECTs took 17.34 seconds on the old
+MariaDB server versus 8.97 on the isolated server. With compared settings equal,
+incoming-catalogue lookup took 1.90 versus 0.012 seconds. This establishes a local
+environment effect, not production latency. The per-target lookup candidate
+remains held because it showed little gain and can regress multi-target plans.
 
-Read-only migration attribution at `ca81467c1f` measured PostgreSQL plan/verify/
-schema at 1.16/7.46/0.99 seconds and MariaDB at 10.87/31.34/4.35 seconds. MariaDB
-verification issued 7,494 SELECTs; repeated declaration inspection dominated its
-profile, including 14.48 seconds of nullable-reference table inspection. The
-reviewed changes share a fresh local DBAL Schema only within reference verification
-and omit unused DDL/preservation planning during exact-policy verification. They
-retain live data audits, native FK/CHECK/collation checks and authoritative policy
-comparison; apply/retry paths still inspect afresh after DDL. At `57b49e3577`,
-verification took 4.71 seconds on PostgreSQL and 19.33 on MariaDB, the latter with
-4,806 SELECTs. Both runs preserved the ledger in read-only transactions, with
-zero MariaDB DDL/DML. This focused comparison does not prove the 300-second
-interruption contracts pass. PostgreSQL C's post-full inspection at `ca81467c1f`
-found 358 tables, 1,087 FKs, no pending history and no schema differences.
+## Supported release architecture and adoption
 
-A separate genuine 2.1.3 populated clone was verified against all 355 original
-table row bags and its original encryption key before adoption. Public `db:update`
-at `0b21850674` completed to 2.2.0 with 358 tables, 1,087 foreign keys, no pending
-history and no schema differences. Selected original ticket/followup fields,
-signed-maximum legacy identifiers, distinct certificate links, nullable stock
-payload and allocator metadata were checked. Per-table counts are not exhaustive
-field-by-field preservation proof. The Domain phase adds exactly one validated
-domaintype right per profile; the original profile-right row bag is unchanged.
-The genuine release's three orphan marketplace defaults are archived losslessly
-in the existing ledger before removal, with strict whole-row and ownership
-admission. A second public update at `ca04024d0a` left all 358 native row bags,
-table definitions, triggers, allocator positions, release keys and the key hash
-unchanged. This positive adoption/retry evidence does not replace adversarial
-interruption and invalid-data contracts, whose full run remains pending.
+`Migration/History` exposes one supported 2.1.3-to-2.2.0 transition. Frozen baseline,
+seeds and conversion phases live under `Migration/V220`; internal phase keys
+support recovery and are not public release versions. Fresh installation replays
+that history. Existing installations must first complete their matching historical
+application's upgrade to genuine 2.1.3, then adopt it. Subsequent ORM releases append
+migrations; current entity changes must never rewrite frozen replay.
 
-Earlier published `53cf6297473bc31400a0777ff905bd79f1e65698` has independent fresh
-installation and populated ORM-checkpoint upgrade results on both providers.
-Those historical results remain evidence for that source only; they do not prove
-an upgrade from the genuine upstream 2.1.3 release.
+A genuine upstream 2.1.3 clone (`5ecdf8e2a29`) was verified against all 355 original
+row bags and its original encryption key before public adoption at `0b21850674`.
+It converged to 358 tables/1,087 FKs with no pending history or schema differences.
+Selected original account/audit fields, signed-maximum identifiers, distinct
+certificate links, nullable stock and allocator metadata survived. The original
+profile-right bag was unchanged; adoption adds one validated Domain right per
+profile. Three original orphan marketplace defaults were archived losslessly
+with strict whole-row and native side-effect admission, without invented parents.
+Public retry at `ca04024d0a` left all 358 row bags, native definitions, triggers,
+allocator positions, release keys and encryption-key hash unchanged. These bounded
+results do not replace current invalid-data/interruption controls or exhaustive
+field-preservation evidence.
 
-The release migration redesign exposes one
-2.1.3-to-2.2.0 transition, with frozen conversion helpers under `Migration/V220`.
-Fresh installation replays the frozen DBAL baseline and seeds through that same
-transition. Internal phase keys support recovery of experimental installations;
-they are not public release versions. The 2.2.0 completion receipt requires full
-schema and sequence convergence. Fresh replay and genuine populated adoption have
-the bounded native evidence above; the full interrupted/corrupted-history suite
-has not passed. Historical install/update scripts, original-key
-checks and provenance gates remain intact. Subsequent ORM schema changes must
-append migrations after this transition. The old count of 22 internal versions
-is not the release architecture or an acceptance criterion for this redesign.
+## Remaining work and next validated batches
 
-The original handoff failure `Changed column: glpi_certificates_items.items_id`
-remains unreproduced, not diagnosed away. Passing fresh checks and later full-order
-observations do not prove its cause. Do not weaken comparison or original contracts.
+1. Close the current ordered suites and post-run native inspection on both
+   providers. Keep the unchanged history budget and all adoption, invalid-data,
+   retry, sequence and native-policy assertions. Consolidate suitable coverage
+   into proper application/integration owners without hiding failures or sharing
+   mutable fixture state between independent cases.
+2. Continue measured caller-owned projections/batching for remaining display-only
+   hot paths, retaining full models where authorization or lifecycle needs them.
+   Test actual values, scope, plugin/subclass behavior and fresh reads between
+   passes, then perform isolated normal A/B comparisons.
+3. Resolve stable Ticket status identity, ordinal purge/reorder and every mutable
+   rule/template/search/API/audit owner before claiming safe status adoption.
+4. Repair current schema authority separately from frozen history. Existing
+   ordinary columns/indexes still inherit old definitions: CronTask length/default
+   edits can be invisible, deleted properties leave old expected columns, and the
+   frozen identifier pass can override current types. Start with a supplied-metadata
+   projector and in-memory mutation/immutability tests; resolve property-local
+   defaults/comments and provider storage before replacing existing columns.
+   Close unresolved polymorphic/plugin relationships and legacy query/domain
+   boundaries while retaining routing, callbacks, audit, cloning and purge.
+5. Validate current genuine populated upgrades and retries, broader original
+   application suites, browser flows, official-engine CI, TLS and live replicas.
+   No passing browser, remote CI or live read-replica result is claimed.
 
-Source declarations own historical native timestamp fields, actor/tree indexes
-and generated keys, Calendar closure policy, VLAN intent and recipient-owned browser
-inbox behavior. Legacy queries, unresolved polymorphic relationships, plugin paths
-and stable Ticket status adoption remain. Forced status purge still shifts ordinal
-interpretation, and reordering is not atomic. Current schema inspection still
-skips existing ordinary mapped columns and excludes general subject CHECK/generated
-definitions. Frozen release postconditions are being hardened separately; these
-runtime inspection gaps remain open. Read-only status preflight covers bounded
-owners and is not adoption readiness. Source-only cleanup and release migration
-changes require validation on their combined source before inheriting any result.
-
-## Next validated batches
-
-1. Review the combined application state, fix demonstrated architecture, correctness
-   and performance defects, and move pure portability checks to the existing unit
-   framework while retaining meaningful provider integration gates.
-2. Prepare isolated dependencies/configurations and disposable PostgreSQL and
-   MySQL/MariaDB databases. Run syntax/units, fresh complete replay and populated
-   supported upgrade with original key/data, invalid-data diagnostics, sequences,
-   interruption/retry and idempotency.
-3. Run dynamically discovered full portability suites and relevant original
-   application suites on both providers. Inspect final native schemas and exercise
-   public authorization, lifecycle, concurrency, plugin and browser flows before
-   publishing a milestone. Official-engine CI and replica/TLS checks remain open
-   until their own results exist.
-4. Continue coherent domain conversions: resolve relationships, replace traced
-   legacy persistence with entities/repositories/services, and complete owner-aware
-   stable Ticket status adoption including policies/rules/templates/searches/API
-   compatibility and audit interpretation. Retain scope, routing, hooks,
-   notifications, history, clone and purge behavior.
-
-Keep reviewable Conventional Commits. Record exact validated source/provider/outcome
-here when a coherent milestone completes; replace superseded status prose rather
-than append batch documents. Historical notes, failures and source reviews remain
-in Git history and immutable execution evidence. Production readiness, all-plugin
-portability and complete ORM adoption are not claimed.
+Ordinary unit datasets activate their tester plugin through special bootstrap
+paths. Native reconstruction/HTTP contracts must use separately installed clean
+targets, not that dataset. Keep coherent Conventional Commits and update this
+checkpoint with exact source/provider/outcomes. The full modernization goal and
+production readiness remain open.
 
 ## Maintained documentation
 
-- [ORM and ownership](orm.md): current architecture and remaining domain boundaries.
-- [Database operations](postgresql.md): installation, adoption, recovery and validation.
-- [Search architecture](search.md): planning, compatibility and measurement.
+- [ORM and ownership](orm.md)
+- [Database operations](postgresql.md)
+- [Search architecture](search.md)
 
-Batch/fixture/composition notes were consolidated here. Existing application manuals
-and external project documentation remain intact.
+Superseded batch narratives remain in Git history and private execution evidence;
+new per-batch documentation is unnecessary.
