@@ -13,14 +13,16 @@ improve domain ownership rather than expand compatibility workarounds.
 
 ## Current source and validation
 
-The current runtime is `9567cdf8a9`. At `f55d492e14`, PendingSubjectPreflight
+Native validation ran at `9567cdf8a9`; later changes contain only documentation
+and the validated unit-test consolidation. At `f55d492e14`, PendingSubjectPreflight
 passed 50 assertions in 58.985 seconds on PostgreSQL and 157.295 seconds on
 MariaDB. Private boolean-only probing isolated the remaining Software fixture
 failure to tracking properties absent before/after refusal; graph, audit, queue
 and persisted fields were unchanged. At `9567cdf8a9`, Software current reads passed
 in 15.429 seconds on PostgreSQL and 17.638 seconds on MariaDB. The revised compound
 checks exact pre-call lifecycle state including property presence; stored graph,
-audit, queue, caller frame and retry assertions remain. The complete ordered suites at this head passed **228/228 on PostgreSQL 15.19
+audit, queue, caller frame and retry assertions remain. The complete ordered
+suites at this head passed **228/228 on PostgreSQL 15.19
 and MariaDB 10.11.18**. Both read-only final inspections found 358 tables/1,087
 FKs, no pending/installing release and no schema differences. The history control
 passed within the unchanged 300-second budget in both full execution orders.
