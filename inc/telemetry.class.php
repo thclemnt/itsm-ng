@@ -123,18 +123,22 @@ class Telemetry extends CommonGLPI
 
         $dbinfos = $DB->getInfo();
 
-        $size_res = $DB->request([
-           'SELECT' => new \QueryExpression("ROUND(SUM(data_length + index_length) / 1024 / 1024, 1) AS dbsize"),
-           'FROM'   => 'information_schema.tables',
-           'WHERE'  => ['table_schema' => $DB->dbdefault]
-        ])->next();
+        $connection = $DB->getDoctrineConnection();
+        if ($connection->getDatabasePlatform() instanceof \Doctrine\DBAL\Platforms\PostgreSQLPlatform) {
+            $size = $connection->fetchOne('SELECT ROUND(pg_database_size(current_database()) / 1048576.0, 1)');
+        } else {
+            $size = $connection->fetchOne(
+                'SELECT ROUND(COALESCE(SUM(data_length + index_length), 0) / 1048576, 1) FROM information_schema.tables WHERE table_schema = ?',
+                [$DB->dbdefault]
+            );
+        }
 
         $db = [
            'engine'    => $dbinfos['Server Software'],
            'version'   => $hide_sensitive_data ? 'REDACTED' : $dbinfos['Server Version'],
-           'size'      => $size_res['dbsize'],
+           'size'      => (string)$size,
            'log_size'  => '',
-           'sql_mode'  => $dbinfos['Server SQL Mode']
+           'sql_mode'  => $dbinfos['Server SQL Mode'] ?? ''
         ];
 
         return $db;
