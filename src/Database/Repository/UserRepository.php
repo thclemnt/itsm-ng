@@ -19,6 +19,17 @@ final class UserRepository
     {
     }
 
+    /** Display-only values, without hydrating unrelated account fields or associations. */
+    public function displayData(int $user): ?array
+    {
+        $rows = $this->em->createQueryBuilder()
+            ->select('u.id, u.name, u.realname, u.firstname, u.phone, u.mobile, u.picture')
+            ->addSelect('IDENTITY(u.locations) AS locations_id, IDENTITY(u.usertitles) AS usertitles_id, IDENTITY(u.usercategories) AS usercategories_id')
+            ->from(User::class, 'u')->where('u.id = :user')->setParameter('user', $user, Types::INTEGER)
+            ->getQuery()->getScalarResult();
+        return $rows[0] ?? null;
+    }
+
     public function profiles(int $user): array
     {
         $rows = $this->em->createQueryBuilder()->select('DISTINCT p.id, p.name')->from(ProfileUser::class, 'a')

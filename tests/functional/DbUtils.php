@@ -53,6 +53,77 @@ class DbUtils extends DbTestCase
         unset($CFG_GLPI['glpitablesitemtype']);
     }
 
+    public function testGetUserNamePreservesModesAndCurrentValues(): void
+    {
+        global $DB;
+        $this->login();
+        $_SESSION['glpinames_format'] = \User::FIRSTNAME_BEFORE;
+        $_SESSION['glpiis_ids_visible'] = 0;
+        $user = new \User();
+        $login = 'display-' . bin2hex(random_bytes(6));
+        $id = (int)$user->add(['name' => $login, 'firstname' => 'Ada', 'realname' => 'Lovelace']);
+        $this->integer($id)->isGreaterThan(0);
+        $utils = new \DbUtils();
+        $this->string($utils->getUserName($id))->isEqualTo('Ada Lovelace');
+        $this->string($utils->getUserName($id, 1))->contains('Ada Lovelace')
+            ->contains(\User::getFormURLWithID($id));
+        $details = $utils->getUserName($id, 2);
+        $this->string($details['name'])->isEqualTo('Ada Lovelace');
+        $this->string($details['link'])->isEqualTo(\User::getFormURLWithID($id));
+        $this->string($details['comment'])->contains($login);
+
+        // These writes are still inside the fixture transaction on the supplied connection.
+        $this->boolean($DB->getDoctrineConnection()->isTransactionActive())->isTrue();
+        $this->boolean($DB->update('glpi_users', ['firstname' => 'Grace'], ['id' => $id]))->isTrue();
+        $this->string($utils->getUserName($id))->isEqualTo('Grace Lovelace');
+        $this->boolean($DB->update('glpi_users', ['realname' => null, 'firstname' => null], ['id' => $id]))->isTrue();
+        $this->string($utils->getUserName($id))->isEqualTo($login);
+        $this->boolean($DB->update('glpi_users', ['is_deleted' => 1, 'is_active' => 0], ['id' => $id]))->isTrue();
+        $this->string($utils->getUserName($id))->isEqualTo($login);
+
+        foreach ([0, -1] as $missing) {
+            $this->string($utils->getUserName($missing))->isEmpty();
+            $this->string($utils->getUserName($missing, 1))->isEmpty();
+            $this->array($utils->getUserName($missing, 2))->isEqualTo(['name' => '', 'comment' => '', 'link' => '']);
+        }
+    }
+
+    public function testGetUserNameKeepsTooltipRelationsAndLoginVisibility(): void
+    {
+        global $DB;
+        $this->login();
+        $_SESSION['glpinames_format'] = \User::FIRSTNAME_BEFORE;
+        $_SESSION['glpiis_ids_visible'] = 0;
+        $suffix = bin2hex(random_bytes(6));
+        $location = (int)(new \Location())->add(['name' => 'Office-' . $suffix, 'entities_id' => 0]);
+        $title = (int)(new \UserTitle())->add(['name' => 'Title-' . $suffix]);
+        $category = (int)(new \UserCategory())->add(['name' => 'Category-' . $suffix]);
+        foreach ([$location, $title, $category] as $reference) {
+            $this->integer($reference)->isGreaterThan(0);
+        }
+        $login = 'tooltip-' . $suffix;
+        $user = new \User();
+        $id = (int)$user->add([
+            'name' => $login, 'firstname' => 'Grace', 'realname' => 'Hopper',
+            'phone' => '0123456', 'mobile' => '0789012',
+            'locations_id' => $location, 'usertitles_id' => $title, 'usercategories_id' => $category,
+            '_useremails' => ['display@example.test'],
+        ]);
+        $this->integer($id)->isGreaterThan(0);
+        $this->boolean($DB->update('glpi_users', ['picture' => 'display.png'], ['id' => $id]))->isTrue();
+        $utils = new \DbUtils();
+        $details = $utils->getUserName($id, 2);
+        foreach ([$login, '0123456', '0789012', 'Office-' . $suffix, 'Title-' . $suffix, 'Category-' . $suffix, 'display@example.test', \User::getThumbnailURLForPicture('display.png')] as $value) {
+            $this->string($details['comment'])->contains($value);
+        }
+        $this->string($details['name'])->isEqualTo('Grace Hopper');
+        $_SESSION['glpiactiveprofile']['user'] = 0;
+        $restricted = $utils->getUserName($id, 2);
+        $this->string($restricted['comment'])->notContains($login)->contains('display@example.test');
+        $this->string($restricted['name'])->isEqualTo('Grace Hopper');
+        $this->string($restricted['link'])->isEqualTo(\User::getFormURLWithID($id));
+    }
+
     protected function dataTableKey()
     {
 

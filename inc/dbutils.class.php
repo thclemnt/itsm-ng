@@ -1591,8 +1591,8 @@ final class DbUtils
         }
 
         if ($ID) {
-            $data = (new \itsmng\Database\Repository\RecordRepository(\itsmng\Database\Orm::create($DB)))
-                ->find('glpi_users', 'id', (int)$ID);
+            $data = (new \itsmng\Database\Repository\UserRepository(\itsmng\Database\Orm::create($DB)))
+                ->displayData((int)$ID);
 
             if ($link == 2) {
                 $user = ["name"    => "",
