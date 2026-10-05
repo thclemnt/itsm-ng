@@ -137,7 +137,10 @@ final class PostgresParameters
                 }
             } else {
                 $kind = $character === '?' ? 'question' : 'other';
-                $offset++;
+                // Ordinary SQL spans are opaque to both consumers. Keep every
+                // potential delimiter for the next iteration, without yielding
+                // a generator value for each byte of names, whitespace or numbers.
+                $offset += $kind === 'question' ? 1 : max(1, strcspn($sql, "'\"-/$?", $offset));
             }
             yield [$kind, substr($sql, $start, $offset - $start)];
         }
