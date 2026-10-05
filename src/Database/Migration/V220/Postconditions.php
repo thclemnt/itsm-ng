@@ -17,12 +17,12 @@ final class Postconditions
         if (Version220::pendingPhases(Ledger::states($connection))) {
             throw new \RuntimeException('The 2.2.0 transition has unfinished internal checkpoints.');
         }
+        (new ExactDiscriminators())->verify($connection);
         (new References())->verify($connection);
         if ((new \itsmng\Database\ForeignKeys(['glpi_domains' => ['suppliers_id' => 'glpi_suppliers']]))->plan($connection)) {
             throw new \RuntimeException('Frozen direct Domain supplier ownership did not converge.');
         }
         (new BooleanDomains())->verify($connection);
-        (new ExactDiscriminators())->verify($connection);
         foreach ([new ProjectAssets(), new ApplianceAssets(), new ApplianceRecipients(),
             new OperatingSystemSubjects(), new DomainDocuments(), new SoftwareInstallationSubjects(),
             new SoftwareLicenseSubjects(), new ProcessorSubjects(), new MotherboardSubjects(),
