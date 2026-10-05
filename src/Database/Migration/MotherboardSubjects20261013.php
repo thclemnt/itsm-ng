@@ -26,8 +26,9 @@ final class MotherboardSubjects20261013 extends ProcessorStagedTypedItemMigratio
         if ((Ledger::state($connection, self::VERSION)['complete'] ?? false) === true) {
             return [];
         }
-        $shape = ComponentData20261013::plan($connection, self::snapshot());
-        $plan = parent::plan($connection, $incomingReferences);
+        $inspection = $connection->createSchemaManager()->introspectTable(self::snapshot()['table']);
+        $shape = ComponentData20261013::planInspectedTable($connection, self::snapshot(), $inspection);
+        $plan = parent::planInspectedTable($connection, $inspection, $incomingReferences);
         $table = self::snapshot()['table'];
         $plan[$table]['columns'] = array_merge($shape, $plan[$table]['columns']);
         $plan[$table]['copy'] = array_merge(ComponentData20261013::normalization($connection, self::snapshot()), $plan[$table]['copy']);

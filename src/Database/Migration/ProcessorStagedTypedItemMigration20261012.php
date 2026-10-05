@@ -29,12 +29,22 @@ abstract class ProcessorStagedTypedItemMigration20261012 extends ProcessorTypedI
 
     public function plan(Connection $connection, ?IncomingProjectionReferences $incomingReferences = null): array
     {
+        return $this->planInspectedTable($connection, null, $incomingReferences);
+    }
+
+    /** Capture once per plan; every apply phase still invokes a new public plan. */
+    protected function planInspectedTable(Connection $connection, ?Table $inspection, ?IncomingProjectionReferences $incomingReferences = null): array
+    {
+        if ($inspection !== null && $inspection->getName() !== $this->table()) {
+            throw new \InvalidArgumentException('Staged typed item inspection belongs to a different table.');
+        }
         if ((Ledger::state($connection, $this->version())['complete'] ?? false) === true) {
             return [];
         }
         $manager = $connection->createSchemaManager();
         $platform = $connection->getDatabasePlatform();
-        $identity = isset($manager->listTableColumns($this->table())['items_id']) ? 'items_id' : 'NULL AS items_id';
+        $inspection ??= $manager->introspectTable($this->table());
+        $identity = $inspection->hasColumn('items_id') ? 'items_id' : 'NULL AS items_id';
         $unsupported = $connection->fetchAllAssociative('SELECT id, itemtype, ' . $identity
             . ' FROM ' . $this->table() . ' WHERE itemtype IS NOT NULL AND ' . static::discriminatorSql($platform) . ' NOT IN (?)'
             . (static::allowsEmptyReference() ? ' AND NOT (' . static::emptyReferenceSql('', $platform) . ')' : '')
@@ -43,7 +53,7 @@ abstract class ProcessorStagedTypedItemMigration20261012 extends ProcessorTypedI
             throw new \RuntimeException('Unsupported typed relationship kinds in ' . $this->table() . '; samples: ' . json_encode($unsupported, JSON_THROW_ON_ERROR)
                 . '. ' . $this->unsupportedKindGuidance());
         }
-        $entry = parent::plan($connection, $incomingReferences)[$this->table()];
+        $entry = parent::planInspectedTable($connection, $inspection, $incomingReferences)[$this->table()];
         // A matching name does not prove the constraint's expression or MySQL
         // enforcement. Reinstall only our owned CHECK from its frozen declaration
         // after the complete data audit, without comparing lossy SQL normalizations.

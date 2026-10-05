@@ -6,6 +6,7 @@ namespace itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\DBAL\Schema\Table;
 use Doctrine\DBAL\Types\Type;
 use Doctrine\DBAL\Types\Types;
 
@@ -14,11 +15,19 @@ final class ComponentData20261013
 {
     public static function plan(Connection $connection, array $snapshot): array
     {
+        return self::planInspectedTable($connection, $snapshot, $connection->createSchemaManager()->introspectTable($snapshot['table']));
+    }
+
+    /** One public planning call may share its actual local table, never across DDL. */
+    public static function planInspectedTable(Connection $connection, array $snapshot, Table $before): array
+    {
+        if ($before->getName() !== $snapshot['table']) {
+            throw new \InvalidArgumentException('Historical component inspection belongs to a different table.');
+        }
         $platform = $connection->getDatabasePlatform();
         $quote = $platform->quoteIdentifier(...);
         $table = $quote($snapshot['table']);
         $manager = $connection->createSchemaManager();
-        $before = $manager->introspectTable($snapshot['table']);
         $after = clone $before;
         // The immutable baseline owns physical flag storage: native BOOLEAN
         // on PostgreSQL, historical integer widths on MySQL/MariaDB.

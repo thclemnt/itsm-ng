@@ -132,13 +132,22 @@ abstract class ProcessorTypedItemMigration20261012
 
     public function plan(Connection $connection, ?IncomingProjectionReferences $incomingReferences = null): array
     {
+        return $this->planInspectedTable($connection, null, $incomingReferences);
+    }
+
+    /** Reuse only the table captured by this call's caller, with frozen target ownership. */
+    protected function planInspectedTable(Connection $connection, ?Table $inspection, ?IncomingProjectionReferences $incomingReferences = null): array
+    {
+        if ($inspection !== null && !in_array($inspection->getName(), $this->tables(), true)) {
+            throw new \InvalidArgumentException('Typed item inspection belongs to a different table.');
+        }
         $manager = $connection->createSchemaManager();
         $platform = $connection->getDatabasePlatform();
         $postgres = $platform instanceof PostgreSQLPlatform;
         $schema = $connection->fetchOne($postgres ? 'SELECT current_schema()' : 'SELECT DATABASE()');
         $plans = [];
         foreach ($this->tables() as $table) {
-            $before = $manager->introspectTable($table);
+            $before = $inspection !== null && $inspection->getName() === $table ? clone $inspection : $manager->introspectTable($table);
             // DBAL synthesizes supporting indexes for FKs during introspection.
             // PostgreSQL does not create them, so they cannot be renamed as real indexes.
             $physicalIndexes = array_map(static fn ($index) => strtolower($index->getName()), $manager->listTableIndexes($table));
