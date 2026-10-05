@@ -27,7 +27,7 @@ Source-only preparation has added two discovered portability contracts. No PHP s
 
 The main worker must run syntax/style checks, both new contracts on both engines, existing timestamps/schema-check/lock contracts, genuine fresh installation and populated/retry migration evidence, then the discovered full suite on both engines and final native schema inspection before claiming this cohort complete. The migration history must remain byte-identical.
 
-The original source inventory counted 472 timestamp properties across 208 mapped tables. This batch selects seven; the other 465 remain open pending individually justified property ownership. This source checkpoint does not establish native inventory counts or finish the modernization goal.
+The original source inventory counted 472 timestamp properties across 208 mapped tables. This seven-property batch originally left 465 open. The additive [complete historical property coverage candidate](native-temporal-property-coverage.md) classifies and declares all remaining properties without changing this original clock behavior. Both remain SOURCE checkpoints requiring native validation; neither establishes installed inventory or finishes the modernization goal.
 
 ## Composition with held tree schema ownership
 

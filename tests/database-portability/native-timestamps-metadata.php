@@ -46,7 +46,9 @@ foreach ([new MySQLPlatform(), new MariaDBPlatform(), new PostgreSQLPlatform()] 
         $em = new EntityManager($connection, Orm::configuration($platform));
         $current = (new BaselineSchema())->build($platform, false);
         $historical = (new Baseline20261001())->build($platform);
-        $declarations = NativeTimestampSchema::declarations($em->getMetadataFactory()->getAllMetadata());
+        // This original contract owns its explicit seven-property cohort. The
+        // coverage contract independently checks the complete frozen/property set.
+        $declarations = NativeTimestampSchema::declarations(array_map($em->getClassMetadata(...), array_keys($cohort)));
         verify(array_sum(array_map('count', $declarations)) === 7, 'Exactly the first seven temporal properties own native storage');
         foreach ($cohort as $class => $properties) {
             $metadata = $em->getClassMetadata($class);
