@@ -36,6 +36,7 @@ class DocumentItem implements \itsmng\Database\Mapping\LegacyInput
     public bool $is_recursive = false;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date_mod = null;
 
     #[ORM\ManyToOne(targetEntity: User::class)]
@@ -47,9 +48,11 @@ class DocumentItem implements \itsmng\Database\Mapping\LegacyInput
     public int $timeline_position = 0;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date_creation = null;
 
     #[ORM\Column(name: '`date`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date = null;
 
     #[ORM\ManyToOne(targetEntity: Budget::class)]

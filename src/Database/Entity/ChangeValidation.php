@@ -52,9 +52,11 @@ class ChangeValidation
     public int $status = 2;
 
     #[ORM\Column(name: '`submission_date`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $submission_date = null;
 
     #[ORM\Column(name: '`validation_date`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $validation_date = null;
 
     #[ORM\Column(name: '`timeline_position`', type: 'smallint', nullable: false, options: ['default' => '0'])]

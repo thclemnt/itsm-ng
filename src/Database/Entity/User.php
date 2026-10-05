@@ -32,6 +32,7 @@ class User implements LegacyInput
     public ?string $password = null;
 
     #[ORM\Column(name: '`password_last_update`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $password_last_update = null;
 
     #[ORM\Column(name: '`phone`', type: 'string', length: 255, nullable: true)]
@@ -93,12 +94,15 @@ class User implements LegacyInput
     public int $authtype = 0;
 
     #[ORM\Column(name: '`last_login`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $last_login = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`date_sync`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date_sync = null;
 
     #[ORM\Column(name: '`is_deleted`', type: 'boolean', nullable: false, options: ['default' => false])]
@@ -178,6 +182,7 @@ class User implements LegacyInput
     public ?string $password_forget_token = null;
 
     #[ORM\Column(name: '`password_forget_token_date`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $password_forget_token_date = null;
 
     #[ORM\Column(name: '`user_dn`', type: 'text', nullable: true)]
@@ -199,18 +204,21 @@ class User implements LegacyInput
     public ?string $personal_token = null;
 
     #[ORM\Column(name: '`personal_token_date`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $personal_token_date = null;
 
     #[ORM\Column(name: '`api_token`', type: 'string', length: 255, nullable: true)]
     public ?string $api_token = null;
 
     #[ORM\Column(name: '`api_token_date`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $api_token_date = null;
 
     #[ORM\Column(name: '`cookie_token`', type: 'string', length: 255, nullable: true)]
     public ?string $cookie_token = null;
 
     #[ORM\Column(name: '`cookie_token_date`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $cookie_token_date = null;
 
     #[ORM\Column(name: '`display_count_on_home`', type: 'integer', nullable: true)]
@@ -253,9 +261,11 @@ class User implements LegacyInput
     public ?string $picture = null;
 
     #[ORM\Column(name: '`begin_date`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $begin_date = null;
 
     #[ORM\Column(name: '`end_date`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $end_date = null;
 
     #[ORM\Column(name: '`keep_devices_when_purging_item`', type: 'boolean', nullable: true)]
@@ -286,6 +296,7 @@ class User implements LegacyInput
     public ?bool $lock_directunlock_notification = null;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date_creation = null;
 
     #[ORM\Column(name: '`highcontrast_css`', type: 'boolean', nullable: true, options: ['default' => false])]

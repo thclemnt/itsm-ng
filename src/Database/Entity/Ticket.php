@@ -27,15 +27,19 @@ class Ticket
     public ?string $name = null;
 
     #[ORM\Column(name: '`date`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date = null;
 
     #[ORM\Column(name: '`closedate`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $closedate = null;
 
     #[ORM\Column(name: '`solvedate`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $solvedate = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date_mod = null;
 
     #[ORM\ManyToOne(targetEntity: User::class)]
@@ -95,12 +99,15 @@ class Ticket
     public ?SlaLevel $slalevels_ttr = null;
 
     #[ORM\Column(name: '`time_to_resolve`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $time_to_resolve = null;
 
     #[ORM\Column(name: '`time_to_own`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $time_to_own = null;
 
     #[ORM\Column(name: '`begin_waiting_date`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $begin_waiting_date = null;
 
     #[ORM\Column(name: '`sla_waiting_duration`', type: 'integer', nullable: false, options: ['default' => '0'])]
@@ -125,12 +132,15 @@ class Ticket
     public ?OlaLevel $olalevels_ttr = null;
 
     #[ORM\Column(name: '`ola_ttr_begin_date`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $ola_ttr_begin_date = null;
 
     #[ORM\Column(name: '`internal_time_to_resolve`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $internal_time_to_resolve = null;
 
     #[ORM\Column(name: '`internal_time_to_own`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $internal_time_to_own = null;
 
     #[ORM\Column(name: '`waiting_duration`', type: 'integer', nullable: false, options: ['default' => '0'])]
@@ -160,5 +170,6 @@ class Ticket
     public int $validation_percent = 0;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date_creation = null;
 }

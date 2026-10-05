@@ -23,9 +23,11 @@ class Reservation
     public ?int $id = null;
 
     #[ORM\Column(name: '`begin`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $begin = null;
 
     #[ORM\Column(name: '`end`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $end = null;
 
     #[ORM\ManyToOne(targetEntity: User::class)]

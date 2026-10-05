@@ -51,21 +51,27 @@ class ProjectTask
     public bool $is_recursive = false;
 
     #[ORM\Column(name: '`date`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`plan_start_date`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $plan_start_date = null;
 
     #[ORM\Column(name: '`plan_end_date`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $plan_end_date = null;
 
     #[ORM\Column(name: '`real_start_date`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $real_start_date = null;
 
     #[ORM\Column(name: '`real_end_date`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $real_end_date = null;
 
     #[ORM\Column(name: '`planned_duration`', type: 'integer', nullable: false, options: ['default' => '0'])]

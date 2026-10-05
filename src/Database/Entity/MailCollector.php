@@ -31,6 +31,7 @@ class MailCollector
     public bool $is_active = true;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`comment`', type: 'text', nullable: true)]
@@ -52,6 +53,7 @@ class MailCollector
     public bool $use_mail_date = false;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date_creation = null;
 
     #[ORM\Column(name: '`requester_field`', type: 'integer', nullable: false, options: ['default' => '0'])]

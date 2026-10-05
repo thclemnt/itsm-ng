@@ -40,6 +40,7 @@ class SLA
 
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`definition_time`', type: 'string', length: 255, nullable: true)]
@@ -49,6 +50,7 @@ class SLA
     public bool $end_of_working_day = false;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date_creation = null;
 
     #[ORM\ManyToOne(targetEntity: SLM::class)]

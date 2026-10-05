@@ -64,5 +64,6 @@ class PlanningRecall implements \itsmng\Database\Mapping\LegacyInput
     public int $before_time = -10;
 
     #[ORM\Column(name: '`when`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $when = null;
 }

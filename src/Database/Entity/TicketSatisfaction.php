@@ -25,9 +25,11 @@ class TicketSatisfaction
     public int $type = 1;
 
     #[ORM\Column(name: '`date_begin`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date_begin = null;
 
     #[ORM\Column(name: '`date_answered`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date_answered = null;
 
     #[ORM\Column(name: '`satisfaction`', type: 'integer', nullable: true)]

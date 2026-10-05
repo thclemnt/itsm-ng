@@ -34,6 +34,7 @@ class TicketTask
     public ?TaskCategory $taskcategories = null;
 
     #[ORM\Column(name: '`date`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date = null;
 
     #[ORM\ManyToOne(targetEntity: User::class)]
@@ -56,9 +57,11 @@ class TicketTask
     public int $actiontime = 0;
 
     #[ORM\Column(name: '`begin`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $begin = null;
 
     #[ORM\Column(name: '`end`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $end = null;
 
     #[ORM\Column(name: '`state`', type: 'integer', nullable: false, options: ['default' => '1'])]
@@ -75,9 +78,11 @@ class TicketTask
     public ?Group $groups_tech = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date_creation = null;
 
     #[ORM\ManyToOne(targetEntity: TaskTemplate::class)]

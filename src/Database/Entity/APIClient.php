@@ -29,6 +29,7 @@ class APIClient
     public ?string $name = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`is_active`', type: 'smallint', nullable: false, options: ['default' => '0'])]
@@ -47,6 +48,7 @@ class APIClient
     public ?string $app_token = null;
 
     #[ORM\Column(name: '`app_token_date`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $app_token_date = null;
 
     #[ORM\Column(name: '`dolog_method`', type: 'smallint', nullable: false, options: ['default' => '0'])]

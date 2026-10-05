@@ -31,6 +31,7 @@ class Log
     public ?string $user_name = null;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`id_search_option`', type: 'integer', nullable: false, options: ['default' => '0'])]

@@ -27,5 +27,6 @@ class OlaLevelTicket
     public ?OlaLevel $olalevels = null;
 
     #[ORM\Column(name: '`date`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date = null;
 }

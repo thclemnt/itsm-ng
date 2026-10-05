@@ -41,12 +41,15 @@ class QueuedNotification
     public int $sent_try = 0;
 
     #[ORM\Column(name: '`create_time`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $create_time = null;
 
     #[ORM\Column(name: '`send_time`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $send_time = null;
 
     #[ORM\Column(name: '`sent_time`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $sent_time = null;
 
     #[ORM\Column(name: '`name`', type: 'text', nullable: true)]

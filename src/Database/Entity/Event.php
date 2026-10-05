@@ -22,6 +22,7 @@ class Event
     public ?string $type = null;
 
     #[ORM\Column(name: '`date`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date = null;
 
     #[ORM\Column(name: '`service`', type: 'string', length: 255, nullable: true)]

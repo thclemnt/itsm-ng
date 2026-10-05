@@ -41,5 +41,6 @@ class KnowbaseItemRevision
     public ?User $users = null;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date_creation = null;
 }

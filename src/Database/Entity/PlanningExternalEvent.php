@@ -35,6 +35,7 @@ class PlanningExternalEvent
     public int $is_recursive = 1;
 
     #[ORM\Column(name: '`date`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date = null;
 
     #[ORM\ManyToOne(targetEntity: User::class)]
@@ -55,9 +56,11 @@ class PlanningExternalEvent
     public ?string $text = null;
 
     #[ORM\Column(name: '`begin`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $begin = null;
 
     #[ORM\Column(name: '`end`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $end = null;
 
     #[ORM\Column(name: '`rrule`', type: 'text', nullable: true)]
@@ -75,8 +78,10 @@ class PlanningExternalEvent
     public int $background = 0;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date_creation = null;
 }

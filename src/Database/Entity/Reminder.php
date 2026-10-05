@@ -48,6 +48,7 @@ class Reminder
     public ?string $uuid = null;
 
     #[ORM\Column(name: '`date`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date = null;
 
     #[ORM\ManyToOne(targetEntity: User::class)]
@@ -63,26 +64,32 @@ class Reminder
     public ?string $text = null;
 
     #[ORM\Column(name: '`begin`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $begin = null;
 
     #[ORM\Column(name: '`end`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $end = null;
 
     #[ORM\Column(name: '`is_planned`', type: 'boolean', nullable: false, options: ['default' => false])]
     public bool $is_planned = false;
 
     #[ORM\Column(name: '`date_mod`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date_mod = null;
 
     #[ORM\Column(name: '`state`', type: 'integer', nullable: false, options: ['default' => '0'])]
     public int $state = 0;
 
     #[ORM\Column(name: '`begin_view_date`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $begin_view_date = null;
 
     #[ORM\Column(name: '`end_view_date`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $end_view_date = null;
 
     #[ORM\Column(name: '`date_creation`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $date_creation = null;
 }

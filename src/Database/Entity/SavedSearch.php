@@ -56,6 +56,7 @@ class SavedSearch
     public int $do_count = 2;
 
     #[ORM\Column(name: '`last_execution_date`', type: 'datetimetz', nullable: true)]
+    #[\itsmng\Database\Mapping\NativeTimestamp]
     public ?\DateTimeInterface $last_execution_date = null;
 
     #[ORM\Column(name: '`counter`', type: 'integer', nullable: false, options: ['default' => '0'])]
