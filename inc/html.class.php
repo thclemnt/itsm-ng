@@ -2040,7 +2040,7 @@ JAVASCRIPT
         $twig_vars["maintenance_mode"] = $CFG_GLPI['maintenance_mode'];
 
         require_once GLPI_ROOT . "/src/twig/twig.class.php";
-        $twig = Twig::load(GLPI_ROOT . "/templates", false, true);
+        $twig = Twig::load(GLPI_ROOT . "/templates", true, true);
         try {
             echo $twig->render('footer.twig', $twig_vars);
         } catch (\Exception $e) {

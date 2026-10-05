@@ -16,7 +16,8 @@ class Twig
 
         $loader = new FilesystemLoader($path);
         $twig = new Environment($loader, [
-            'cache' => $cache ? './cache' : false,
+            'cache' => $cache ? GLPI_CACHE_DIR . '/twig' : false,
+            'auto_reload' => true,
             'debug' => $debug,
         ]);
         self::load_filters($twig);
@@ -28,6 +29,12 @@ class Twig
         $twig->addGlobal('currentRecursive', Session::getIsActiveEntityRecursive());
 
         return $twig;
+    }
+
+    /** Remove compiled templates; rendered content and session globals are never cached. */
+    public static function clearCache(): void
+    {
+        (new \Symfony\Component\Filesystem\Filesystem())->remove(GLPI_CACHE_DIR . '/twig');
     }
 
     public static function load_filters($twig)

@@ -39,6 +39,73 @@ use org\bovigo\vfs\vfsStream;
 
 class Html extends \GLPITestCase
 {
+    public function testTwigCompilationCacheKeepsRenderContextFresh(): void
+    {
+        global $CFG_GLPI;
+        require_once GLPI_ROOT . '/src/twig/twig.class.php';
+        $directory = GLPI_TMP_DIR . '/twig-' . bin2hex(random_bytes(6));
+        mkdir($directory);
+        $template = $directory . '/context.twig';
+        file_put_contents($template, '{{ root_doc }}|{{ currentEntity }}|{{ currentRecursive ? "yes" : "no" }}|{{ value }}');
+        $root = $CFG_GLPI['root_doc'];
+        try {
+            $CFG_GLPI['root_doc'] = '/first';
+            $_SESSION['glpiactive_entity'] = 1;
+            $_SESSION['glpiactive_entity_recursive'] = false;
+            $first = \Twig::load($directory);
+            $this->string($first->getCache())->isEqualTo(GLPI_CACHE_DIR . '/twig');
+            $this->boolean($first->isAutoReload())->isTrue();
+            $this->string($first->render('context.twig', ['value' => '<first>']))
+                ->isEqualTo('/first|1|no|&lt;first&gt;');
+            $key = $first->getCache(false)->generateKey('context.twig', $first->getTemplateClass('context.twig'));
+            $this->boolean(is_file($key))->isTrue();
+
+            $CFG_GLPI['root_doc'] = '/second';
+            $_SESSION['glpiactive_entity'] = 2;
+            $_SESSION['glpiactive_entity_recursive'] = true;
+            $second = \Twig::load($directory);
+            $this->object($second)->isNotIdenticalTo($first);
+            $this->string($second->render('context.twig', ['value' => 'second']))
+                ->isEqualTo('/second|2|yes|second');
+            $this->string($second->getTemplateClass('context.twig'))
+                ->isEqualTo($first->getTemplateClass('context.twig'));
+            $this->boolean($second->isTemplateFresh('context.twig', time() + 1))->isTrue();
+            touch($template, time() + 10);
+            clearstatcache(true, $template);
+            $this->boolean($second->isTemplateFresh('context.twig', time()))->isFalse();
+
+            $uncached = \Twig::load($directory, false, true);
+            $this->boolean($uncached->getCache())->isFalse();
+            $this->boolean($uncached->isDebug())->isTrue();
+            $this->string($uncached->render('context.twig', ['value' => 'uncached']))
+                ->isEqualTo('/second|2|yes|uncached');
+        } finally {
+            $CFG_GLPI['root_doc'] = $root;
+            \Twig::clearCache();
+            (new \Symfony\Component\Filesystem\Filesystem())->remove($directory);
+        }
+    }
+
+    public function testTwigClearRemovesOnlyCompiledTemplates(): void
+    {
+        require_once GLPI_ROOT . '/src/twig/twig.class.php';
+        $sentinel = GLPI_CACHE_DIR . '/twig-unrelated-' . bin2hex(random_bytes(6));
+        file_put_contents($sentinel, 'keep');
+        $directory = GLPI_CACHE_DIR . '/twig/test-clear';
+        if (!is_dir($directory)) {
+            mkdir($directory, 0777, true);
+        }
+        file_put_contents($directory . '/compiled.php', '<?php // compiled template');
+        try {
+            \Twig::clearCache();
+            $this->boolean(is_dir(GLPI_CACHE_DIR . '/twig'))->isFalse();
+            $this->string(file_get_contents($sentinel))->isEqualTo('keep');
+            \Twig::clearCache(); // Clearing an absent directory is harmless.
+        } finally {
+            unlink($sentinel);
+        }
+    }
+
     public function testShowToolTipOnClickUsesNativePopover()
     {
         $output = \Html::showToolTip(

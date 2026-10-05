@@ -59,6 +59,8 @@ class ClearCacheCommand extends Command
 
         global $GLPI_CACHE;
         $GLPI_CACHE->clear();
+        require_once GLPI_ROOT . '/src/twig/twig.class.php';
+        \Twig::clearCache();
 
         $output->writeln('<info>' . __('Cache reset successful') . '</info>');
 

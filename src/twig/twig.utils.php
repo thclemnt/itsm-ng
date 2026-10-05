@@ -316,7 +316,7 @@ function renderTwigTemplate($path, $vars, $root = "/templates")
 {
     global $CFG_GLPI;
     require_once GLPI_ROOT . "/src/twig/twig.class.php";
-    $twig = Twig::load(GLPI_ROOT . $root, false);
+    $twig = Twig::load(GLPI_ROOT . $root);
     if (!isset($vars["root_doc"])) {
         $vars["root_doc"] = $CFG_GLPI["root_doc"];
     }
@@ -344,7 +344,7 @@ function renderTwigForm(
 ) {
     global $CFG_GLPI;
 
-    $twig = Twig::load(GLPI_ROOT . "/templates", false);
+    $twig = Twig::load(GLPI_ROOT . "/templates");
     if (isset($fields["id"]) && $fields["id"] > 0 && !isset($fields["noId"])) {
         $form["content"][array_key_first($form["content"])][
             "inputs"
