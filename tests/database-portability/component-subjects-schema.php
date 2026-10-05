@@ -31,6 +31,18 @@ set_exception_handler(static function (Throwable $error): void {
     fwrite(STDERR, (string)$error . "\n");
     exit(1);
 });
+// Optional phase attribution for the existing contract; assertions and budget are unchanged.
+$timing = getenv('PORT_COMPONENT_TIMING') === '1';
+$timingStart = $timingPrevious = hrtime(true);
+$checkpoint = static function (string $phase) use ($timing, $timingStart, &$timingPrevious): void {
+    if (!$timing) {
+        return;
+    }
+    $now = hrtime(true);
+    fwrite(STDERR, 'component_timing ' . json_encode(['phase' => $phase,
+        'seconds' => ($now - $timingPrevious) / 1e9, 'elapsed_seconds' => ($now - $timingStart) / 1e9], JSON_THROW_ON_ERROR) . PHP_EOL);
+    $timingPrevious = $now;
+};
 $assertions = 0;
 function verify(bool $ok, string $message): void
 {
@@ -55,6 +67,7 @@ $families = $componentSchemaFamilies ?? [
 $fixtures = new FixtureRecords($DB);
 foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
     $table = $linkClass::getTable();
+    $checkpoint($table . ': begin family');
     $deviceClass = $linkClass::getDeviceType();
     $deviceTable = $deviceClass::getTable();
     $deviceColumn = $linkClass::getDeviceForeignKey();
@@ -223,6 +236,7 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
         }
         // Deliberately reconstructed historical drift must not inherit a pass
         // from completed older boolean/reference receipts.
+        $checkpoint($table . ': initial source and joint refusal checks');
         $oldBoolean = Ledger::state($connection, Booleans::PHASE);
         $reconstruction->legacy($comment, integerFlag: 'is_dynamic', nullableOwner: $deviceColumn, relaxFlagCheck: true);
         foreach ([['is_dynamic' => 2], ['is_dynamic' => null], [$deviceColumn => null]] as $invalid) {
@@ -317,6 +331,7 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
                 throw $primaryForeign;
             }
         }
+        $checkpoint($table . ': owner and native-policy refusal checks');
         // A genuinely missing new subject FK is installed normally. It must
         // not be mistaken for the damaged already-completed core constraints.
         $migration->apply($connection);
@@ -350,15 +365,18 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
             'Actual integer1/0 values become true/false without losing populated identities'
         );
         verify(Ledger::state($connection, Booleans::PHASE) === $oldBoolean, 'New family conversion retains exact old boolean receipt');
+        $checkpoint($table . ': valid integer conversion');
         foreach (['columns', 'stock_normalization', 'copy', 'projection', 'constraints', ...($postgres ? ['missing_projection'] : [])] as $interruption) {
             $reconstruction->legacy($comment);
             $seed();
             if ($interruption === 'columns') {
                 ComponentIncomingProjection::verify($connection, $migration, $table, 4294996200, $subject);
             }
+            $checkpoint($table . ': ' . $interruption . ' reconstruction');
             $ledger = $connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version');
             $preview = (new History())->plan($connection);
             verify(in_array($version, $preview['phases'], true) && $connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version') === $ledger, 'Canonical joint preview sees the family and remains read-only');
+            $checkpoint($table . ': ' . $interruption . ' joint preview');
             try {
                 $migration->apply($connection, static function (string $phase, string $sql) use ($interruption, $postgres, $manager, $table, $migration, $connection, $columns): void {
                     $drop = $interruption === 'missing_projection' && $phase === 'projection' && str_contains($sql, 'DROP items_id');
@@ -376,7 +394,9 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
                 verify($error->getMessage() === 'Injected component phase interruption', 'Actual DDL progress interruption remains primary');
             }
             verify($postgres ? Ledger::state($connection, $version) === null : (Ledger::state($connection, $version)['complete'] ?? false) !== true, 'PostgreSQL rolls back; MySQL retains only an incomplete owned journal');
+            $checkpoint($table . ': ' . $interruption . ' interrupted apply');
             $migration->apply($connection);
+            $checkpoint($table . ': ' . $interruption . ' retry');
             $rows = $connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id');
             verify(count($rows) === count($source), 'Retry preserves all duplicates, kinds and stock rows');
             foreach ($rows as $row) {
@@ -406,6 +426,7 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
             verify($flagStorage() === $canonicalFlagStorage, 'Completed replay leaves native flag storage unchanged');
             verify((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_locations WHERE id=0') === 1
                 && (int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_states WHERE id=0') === 1, 'Canonical empty-selection conversion preserves the independent source target rows');
+            $checkpoint($table . ': ' . $interruption . ' convergence and idempotency');
         }
         foreach ($reference['selections'] as $kind => $selection) {
             $valid = [$deviceColumn => $device, 'itemtype' => $kind, $selection['column'] => $subject];
@@ -530,11 +551,13 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
 
         }
         ComponentNativeAdmission::reject($connection, fn () => $connection->executeStatement('UPDATE ' . $table . ' SET items_id=? WHERE id=?', [$subject, 4294996200]), $table, 'generated-update');
+        $checkpoint($table . ': native insertion and update admission');
     } catch (Throwable $error) {
         $primary = $error;
     } finally {
         try {
             $reconstruction?->restore();
+            $checkpoint($table . ': restore canonical table and receipt');
         } catch (Throwable $error) {
             $cleanup[] = $error;
         }
