@@ -64,11 +64,6 @@ $manager = $connection->createSchemaManager();
 $history = new History();
 $baseline = new Baseline();
 $schema = $baseline->build($platform);
-$frozen = $baseline->toSql($platform);
-$metadata = Orm::create($database)->getClassMetadata(itsmng\Database\Entity\Computer::class);
-$metadata->fieldMappings['is_deleted']->type = 'integer';
-verify($baseline->toSql($platform) === $frozen, 'Current entity metadata cannot rewrite historical DDL');
-verify(Orm::create($database)->getClassMetadata(itsmng\Database\Entity\Computer::class)->fieldMappings['is_deleted']->type === 'boolean', 'Historical inspection does not contaminate later entity managers');
 $owned = [...array_map(static fn ($table) => $table->getName(), $schema->getTables()), Ledger::TABLE,
     itsmng\Database\Migration\V220\NetworkPortAggregateOrigins::TABLE, itsmng\Database\Migration\V220\PlanningEventGuests::TABLE];
 verify(array_diff($manager->listTableNames(), $owned) === [], 'Refuse to reset a history fixture containing unrelated tables');

@@ -5,14 +5,43 @@
 namespace tests\units\itsmng\Database\Migration;
 
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\DriverManager;
 use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
+use Doctrine\ORM\EntityManager;
+use itsmng\Database\Entity\Computer;
 use itsmng\Database\Migration\History as Releases;
 use itsmng\Database\Migration\Version220;
 use itsmng\Database\Migration\V220\Baseline;
+use itsmng\Database\Orm;
 
 class History extends \atoum\atoum\test
 {
+    public function testFrozenBaselineIsIndependentOfMutableCurrentMetadata(): void
+    {
+        foreach ([['driver' => 'pdo_mysql', 'serverVersion' => '8.0.0'],
+            ['driver' => 'pdo_pgsql', 'serverVersion' => '15.0']] as $parameters) {
+            $connection = DriverManager::getConnection($parameters);
+            try {
+                $platform = $connection->getDatabasePlatform();
+                $baseline = new Baseline();
+                $frozen = $baseline->toSql($platform);
+                $manager = new EntityManager($connection, Orm::configuration($platform));
+                $metadata = $manager->getClassMetadata(Computer::class);
+                $this->string($metadata->fieldMappings['is_deleted']->type)->isIdenticalTo('boolean');
+                $metadata->fieldMappings['is_deleted']->type = 'integer';
+                $this->array($baseline->toSql($platform))->isIdenticalTo($frozen, 'Current entity metadata cannot rewrite historical DDL');
+                $freshManager = new EntityManager($connection, Orm::configuration($platform));
+                $this->string($freshManager->getClassMetadata(Computer::class)->fieldMappings['is_deleted']->type)
+                    ->isIdenticalTo('boolean', 'Historical inspection does not contaminate later entity managers');
+                $this->boolean($connection->isConnected())->isFalse();
+            } finally {
+                $connection->close();
+                unset($manager, $freshManager, $metadata);
+            }
+        }
+    }
+
     public function testPreviewDefersDependentReleasesAndSkipsAppliedTargets(): void
     {
         $connection = new ReleaseJournalFixtureConnection();
