@@ -435,7 +435,8 @@ class Entity extends DbTestCase
             'admin_email' => 'parent@example.test', 'comment' => 'Parent setting',
         ], ['id' => $parent]))->isTrue();
         $this->boolean($DB->update('glpi_entities', [
-            'admin_email' => '', 'comment' => null, 'max_closedate' => '2026-02-03 04:05:06', 'calendars_id' => -2,
+            'admin_email' => '', 'comment' => null, 'max_closedate' => '2026-02-03 04:05:06',
+            'calendars_id' => null, 'calendar_mode' => 'inherit',
         ], ['id' => $child]))->isTrue();
         $em = \itsmng\Database\Orm::create($DB);
         $settings = new \itsmng\Database\Repository\EntityConfigurationRepository($em);
@@ -468,10 +469,12 @@ class Entity extends DbTestCase
         $calendarId = (int)$calendar->add(['name' => 'Configuration projection ' . $this->getUniqueString()]);
         $this->integer($calendarId)->isGreaterThan(0);
         $this->boolean($DB->update('glpi_entities', [
-            'calendars_id' => $calendarId, 'entities_id_software' => 0,
+            'calendars_id' => $calendarId, 'calendar_mode' => 'explicit',
+            'entities_id_software' => 0, 'software_entity_mode' => 'explicit',
         ], ['id' => $parent]))->isTrue();
         $this->boolean($DB->update('glpi_entities', [
-            'calendars_id' => -2, 'entities_id_software' => -10,
+            'calendars_id' => null, 'calendar_mode' => 'inherit',
+            'entities_id_software' => null, 'software_entity_mode' => 'unchanged',
         ], ['id' => $child]))->isTrue();
         $em = \itsmng\Database\Orm::create($DB);
         $settings = new \itsmng\Database\Repository\EntityConfigurationRepository($em);
@@ -485,7 +488,8 @@ class Entity extends DbTestCase
         $this->integer($settings->usedConfiguration('entities_id_software', $child, 'calendars_id', -2))
             ->isIdenticalTo(-2);
         $this->boolean($DB->update('glpi_entities', [
-            'calendars_id' => 0, 'entities_id_software' => 0,
+            'calendars_id' => null, 'calendar_mode' => 'explicit',
+            'entities_id_software' => 0, 'software_entity_mode' => 'explicit',
         ], ['id' => $child]))->isTrue();
         $this->integer($settings->usedConfiguration('calendars_id', $child, 'calendars_id', -2))->isIdenticalTo(0);
         $this->integer($settings->usedConfiguration('entities_id_software', $child, 'entities_id_software', -2))
