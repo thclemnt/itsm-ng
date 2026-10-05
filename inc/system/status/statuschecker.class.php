@@ -34,12 +34,12 @@
 namespace Glpi\System\Status;
 
 use AuthLDAP;
-use CronTask;
-use DBmysql;
 use MailCollector;
 use Plugin;
 use Toolbox;
 use itsmng\Database\DatabaseHealthProbe;
+use itsmng\Database\Orm;
+use itsmng\Database\Repository\CronTaskRepository;
 
 if (!defined('GLPI_ROOT')) {
     die("Sorry. You can't access this file directly");
@@ -314,6 +314,8 @@ final class StatusChecker
      */
     public static function getCronTaskStatus($public_only = true): array
     {
+        global $DB;
+
         static $status = null;
 
         if ($status === null) {
@@ -322,25 +324,7 @@ final class StatusChecker
                'stuck' => []
             ];
             if (self::isDBAvailable()) {
-                $stuck_crontasks = getAllDataFromTable(
-                    'glpi_crontasks',
-                    [
-                      'state'  => CronTask::STATE_RUNNING,
-                      'OR'     => [
-                         new \QueryExpression(
-                             '(unix_timestamp(' . DBmysql::quoteName('lastrun') . ') + 2 * ' .
-                             DBmysql::quoteName('frequency') . ' < unix_timestamp(now()))'
-                         ),
-                         new \QueryExpression(
-                             '(unix_timestamp(' . DBmysql::quoteName('lastrun') . ') + 2 * ' .
-                             HOUR_TIMESTAMP . ' < unix_timestamp(now()))'
-                         )
-                      ]
-                    ]
-                );
-                foreach ($stuck_crontasks as $ct) {
-                    $status['stuck'][] = $ct['name'];
-                }
+                $status['stuck'] = (new CronTaskRepository(Orm::create($DB)))->overdueNames();
                 $status['status'] = count($status['stuck']) ? self::STATUS_PROBLEM : self::STATUS_OK;
             }
         }

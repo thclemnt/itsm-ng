@@ -83,14 +83,32 @@ final class CronTaskRepository
         return $rows[0] ?? null;
     }
 
-    /** Preserve the existing two-frequency OR two-hour watcher threshold. */
+    /** Preserve the strict two-frequency OR two-hour watcher threshold. */
     public function overdue(?\DateTimeImmutable $now = null): array
     {
-        $query = $this->em->createQueryBuilder()->select('t')->from(CronTask::class, 't')
+        return $this->rows($this->overdueQuery($now)->select('t'));
+    }
+
+    /** Public health needs names only, including independently registered duplicate names. */
+    public function overdueNames(?\DateTimeImmutable $now = null): array
+    {
+        return array_column($this->overdueQuery($now)->select('t.name AS name')
+            ->getQuery()->getScalarResult(), 'name');
+    }
+
+    private function overdueQuery(?\DateTimeImmutable $now): QueryBuilder
+    {
+        // Operational status follows the selected database clock, not the session or PHP clock.
+        $clock = $now === null ? 'CURRENT_EPOCH_SECONDS()' : ':now';
+        $query = $this->em->createQueryBuilder()->from(CronTask::class, 't')
             ->where('t.state = :running')->setParameter('running', \CronTask::STATE_RUNNING, Types::INTEGER)
-            ->andWhere("(EPOCH_SECONDS(t.lastrun) + 2 * t.frequency < :now OR EPOCH_SECONDS(t.lastrun) + 7200 < :now)")
-            ->setParameter('now', ($now ?? new \DateTimeImmutable())->getTimestamp(), Types::BIGINT)->orderBy('t.id');
-        return $this->rows($query);
+            ->andWhere('t.lastrun IS NOT NULL')
+            ->andWhere('(EPOCH_SECONDS(t.lastrun) + 2 * t.frequency < ' . $clock
+                . ' OR EPOCH_SECONDS(t.lastrun) + 7200 < ' . $clock . ')')->orderBy('t.id');
+        if ($now !== null) {
+            $query->setParameter('now', $now->getTimestamp(), Types::BIGINT);
+        }
+        return $query;
     }
 
     /** Decide whether to notify without dispatching notifications or running a task. */

@@ -191,4 +191,57 @@ class CronTask extends DbTestCase
             $this->variable($crontask->fields['name'])->isEqualTo($name);
         }
     }
+
+    public function testOverdueTaskSelection()
+    {
+        global $DB;
+
+        $connection = $DB->getDoctrineConnection();
+        $depth = $connection->getTransactionNestingLevel();
+        $em = \itsmng\Database\Orm::create($DB);
+        $em->createQuery('UPDATE ' . \itsmng\Database\Entity\CronTask::class . ' t SET t.state = :waiting')
+            ->setParameter('waiting', \CronTask::STATE_WAITING)->execute();
+        $prefix = 'Overdue ' . bin2hex(random_bytes(6));
+        $now = new \DateTimeImmutable('2030-01-10 12:00:00', new \DateTimeZone('UTC'));
+        $cases = [
+            ['frequency overdue', 60, 121, \CronTask::STATE_RUNNING, true],
+            ['two-hour overdue', 86400, 7201, \CronTask::STATE_RUNNING, true],
+            ['frequency exact', 60, 120, \CronTask::STATE_RUNNING, false],
+            ['two-hour exact', 86400, 7200, \CronTask::STATE_RUNNING, false],
+            ['one-second overdue', 1, 3, \CronTask::STATE_RUNNING, true],
+            ['one-second exact', 1, 2, \CronTask::STATE_RUNNING, false],
+            ['recent', 1, 1, \CronTask::STATE_RUNNING, false],
+            ['never run', 60, null, \CronTask::STATE_RUNNING, false],
+            ['future', 60, -60, \CronTask::STATE_RUNNING, false],
+            ['waiting', 60, 86400, \CronTask::STATE_WAITING, false],
+            ['disabled', 60, 86400, \CronTask::STATE_DISABLE, false],
+        ];
+        $expected = [];
+        foreach ($cases as [$name, $frequency, $age, $state, $overdue]) {
+            $task = new \itsmng\Database\Entity\CronTask();
+            $task->itemtype = 'CronTask';
+            $task->name = $prefix . ' ' . $name;
+            $task->frequency = $frequency;
+            $task->state = $state;
+            $task->lastrun = $age === null ? null : \DateTime::createFromImmutable($now->modify(sprintf('%+d seconds', -$age)));
+            $em->persist($task);
+            if ($overdue) {
+                $expected[] = $task->name;
+            }
+        }
+        $em->flush();
+        $repository = new \itsmng\Database\Repository\CronTaskRepository($em);
+        $this->array($repository->overdueNames($now))->isEqualTo($expected);
+        $this->array(array_column($repository->overdue($now), 'name'))->isEqualTo($expected);
+        // The operational clock is whole seconds, including an injected fractional-second clock.
+        $this->array($repository->overdueNames($now->modify('+999999 microseconds')))->isEqualTo($expected);
+        $after = $expected;
+        array_splice($after, 2, 0, [$prefix . ' frequency exact', $prefix . ' two-hour exact']);
+        $after[] = $prefix . ' one-second exact';
+        $this->array($repository->overdueNames($now->modify('+1 second')))->isEqualTo($after);
+        $this->variable($em->getConnection())->isIdenticalTo($connection);
+        $this->integer($connection->getTransactionNestingLevel())->isEqualTo($depth);
+        $DB->assertManagedTransaction();
+    }
+
 }
