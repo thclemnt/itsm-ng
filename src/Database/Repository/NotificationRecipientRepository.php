@@ -69,7 +69,12 @@ final class NotificationRecipientRepository
 
     public function anonymousUsers(string $table, string $parentColumn, int $parent, int $role): array
     {
-        return (new RecordRepository($this->em))->matching($table, [$parentColumn => $parent, 'users_id' => 0, 'type' => $role, 'use_notification' => true]);
+        $class = $this->classFor($table);
+        $query = $this->em->createQueryBuilder()->select('r.alternative_email AS alternative_email')->from($class, 'r');
+        $criteria = new RecordCriteria($query, $this->em->getClassMetadata($class));
+        return $query->where($criteria->where([
+            $parentColumn => $parent, 'users_id' => 0, 'type' => $role, 'use_notification' => true,
+        ]))->getQuery()->getScalarResult();
     }
 
     public function linkedGroups(string $table, string $parentColumn, int $parent, int $role): array

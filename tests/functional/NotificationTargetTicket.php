@@ -34,11 +34,109 @@
 namespace tests\units;
 
 use DbTestCase;
+use itsmng\Database\Orm;
+use itsmng\Database\Entity;
+use itsmng\Database\Repository\NotificationRecipientRepository;
 
 /* Test for inc/notificationtargetticket.class.php */
 
 class NotificationTargetTicket extends DbTestCase
 {
+    public function testAnonymousRecipientProjectionKeepsPublicValidation(): void
+    {
+        global $DB, $CFG_GLPI;
+        $this->login();
+        $this->setEntity('_test_root_entity', false);
+        $manager = Orm::create($DB);
+        try {
+            $root = $manager->find(Entity\Entity::class, $_SESSION['glpiactive_entity']);
+            $ticket = new Entity\Ticket();
+            $ticket->entities = $root;
+            $ticket->name = 'Anonymous choices ' . $this->getUniqueString();
+            $peer = new Entity\Ticket();
+            $peer->entities = $root;
+            $peer->name = $ticket->name . ' peer';
+            $user = new Entity\User();
+            $user->entities = $root;
+            $user->name = 'No profile ' . $this->getUniqueString();
+            foreach ([$ticket, $peer, $user] as $record) {
+                $manager->persist($record);
+            }
+            $email = "o'connor@example.test";
+            $actors = [];
+            foreach ([[$ticket, null, \CommonITILActor::REQUESTER, true, $email],
+                [$ticket, null, \CommonITILActor::REQUESTER, true, 'not-an-address'],
+                [$ticket, null, \CommonITILActor::REQUESTER, true, null],
+                [$ticket, null, \CommonITILActor::REQUESTER, false, 'disabled@example.test'],
+                [$ticket, null, \CommonITILActor::OBSERVER, true, 'observer@example.test'],
+                [$peer, null, \CommonITILActor::REQUESTER, true, $email],
+                [$ticket, $user, \CommonITILActor::REQUESTER, true, 'registered@example.test']] as [$parent, $actor, $role, $notify, $address]) {
+                $link = new Entity\TicketUser();
+                $link->tickets = $parent;
+                $link->actor = $actor;
+                $link->type = $role;
+                $link->use_notification = $notify;
+                $link->alternative_email = $address;
+                $manager->persist($link);
+                $actors[] = $link;
+            }
+            $manager->flush();
+            $manager->clear();
+            $loads = new class {
+                public int $count = 0;
+                public function postLoad(\Doctrine\ORM\Event\PostLoadEventArgs $event): void
+                {
+                    ++$this->count;
+                }
+            };
+            $manager->getEventManager()->addEventListener(['postLoad'], $loads);
+            $repository = new NotificationRecipientRepository($manager);
+            $rows = $repository->anonymousUsers('glpi_tickets_users', 'tickets_id', $ticket->id, \CommonITILActor::REQUESTER);
+            $this->array($rows)->hasSize(3);
+            foreach ([['alternative_email' => $email], ['alternative_email' => 'not-an-address'], ['alternative_email' => null]] as $expected) {
+                $this->boolean(in_array($expected, $rows, true))->isTrue();
+            }
+            $this->integer($manager->getUnitOfWork()->size())->isEqualTo(0);
+            $this->array($repository->anonymousUsers('glpi_tickets_users', 'tickets_id', 0, \CommonITILActor::REQUESTER))->isEmpty();
+            $this->array($repository->anonymousUsers('glpi_tickets_users', 'tickets_id', $ticket->id, \CommonITILActor::OBSERVER))
+                ->isIdenticalTo([['alternative_email' => 'observer@example.test']]);
+
+            $model = new \Ticket();
+            $this->boolean($model->getFromDB($ticket->id))->isTrue();
+            $target = new \NotificationTargetTicket($root->id, 'new', $model);
+            $target->setMode(\Notification_NotificationTemplate::MODE_MAIL)->setEvent(\NotificationEventMailing::class);
+            $target->addLinkedUserByType(\CommonITILActor::REQUESTER);
+            $this->array(array_keys($target->target))->isIdenticalTo([$email]);
+            $this->variable($target->target[$email]['users_id'])->isIdenticalTo(-1);
+            $this->string($target->target[$email]['email'])->isIdenticalTo($email);
+            $this->string($target->target[$email]['language'])->isIdenticalTo($CFG_GLPI['language']);
+            $this->integer($target->target[$email]['additionnaloption']['usertype'])->isIdenticalTo(\NotificationTarget::ANONYMOUS_USER);
+            $target->addLinkedUserByType(\CommonITILActor::REQUESTER);
+            $this->array(array_keys($target->target))->isIdenticalTo([$email]);
+
+            $writer = Orm::create($DB);
+            $writer->find(Entity\TicketUser::class, $actors[0]->id)->alternative_email = 'fresh@example.test';
+            $writer->flush();
+            $writer->clear();
+            $fresh = $repository->anonymousUsers('glpi_tickets_users', 'tickets_id', $ticket->id, \CommonITILActor::REQUESTER);
+            $this->boolean(in_array(['alternative_email' => 'fresh@example.test'], $fresh, true))->isTrue();
+            $this->boolean(in_array(['alternative_email' => $email], $fresh, true))->isFalse();
+            $this->integer($manager->getUnitOfWork()->size())->isEqualTo(0);
+            $target->target = [];
+            $target->addLinkedUserByType(\CommonITILActor::REQUESTER);
+            $this->array(array_keys($target->target))->isIdenticalTo(['fresh@example.test']);
+            $nonMail = new \NotificationTargetTicket($root->id, 'new', $model);
+            $nonMail->setMode(\Notification_NotificationTemplate::MODE_AJAX)->setEvent(\NotificationEventAjax::class);
+            $nonMail->addLinkedUserByType(\CommonITILActor::REQUESTER);
+            $this->array($nonMail->target)->isEmpty();
+            $this->integer($loads->count)->isEqualTo(0);
+            $this->object($manager->find(Entity\TicketUser::class, $actors[0]->id))->isInstanceOf(Entity\TicketUser::class);
+            $this->integer($loads->count)->isGreaterThan(0);
+        } finally {
+            $manager->clear();
+        }
+    }
+
     public function testgetDataForObject()
     {
         global $CFG_GLPI;
