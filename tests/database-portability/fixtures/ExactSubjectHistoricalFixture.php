@@ -14,6 +14,8 @@ use itsmng\Database\Migration\ExactDiscriminators20261010;
 use itsmng\Database\Migration\History;
 use itsmng\Database\Migration\LegacyToOrm;
 
+require_once __DIR__ . '/MySQLNativeSubjectDeclaration.php';
+
 /** Disposable native fixture; snapshots real schema/receipt before any alteration. */
 final class ExactSubjectHistoricalFixture
 {
@@ -24,6 +26,8 @@ final class ExactSubjectHistoricalFixture
     private array $restorationFacts = [];
     private array $restorationTables = [];
     private ?array $originalLedger = null;
+    private array $mysqlDeclarations = [];
+    private ?string $mysqlDeclarationMode = null;
 
     public function __construct(private Connection $connection, ?array $tables = null, bool $captureTableDeclarations = true, bool $preserveLedger = false)
     {
@@ -54,6 +58,9 @@ final class ExactSubjectHistoricalFixture
             $this->originalLedger = $connection->fetchAllAssociative('SELECT version, state FROM ' . $quote(LegacyToOrm::LEDGER) . ' ORDER BY version');
         }
         $catalog = $platform instanceof AbstractMySQLPlatform ? BooleanDomainSchema::catalog($connection) : null;
+        if ($platform instanceof MySQLPlatform) {
+            $this->mysqlDeclarationMode = (string)$connection->fetchOne('SELECT @@SESSION.sql_mode');
+        }
         foreach ($this->definitions as $table => $definition) {
             $comment = (string)$connection->createSchemaManager()->introspectTable($table)->getColumn('items_id')->getComment();
             if ($platform instanceof AbstractMySQLPlatform) {
@@ -79,6 +86,25 @@ final class ExactSubjectHistoricalFixture
             }
             if ($tables !== null) {
                 $this->restorationFacts[$table] = $this->facts($table);
+            }
+            if ($platform instanceof MySQLPlatform) {
+                $generated = ['items_id'];
+                foreach ($this->restorationFacts[$table]['native']['columns'] ?? [] as $name => $column) {
+                    if (($column['GENERATION_EXPRESSION'] ?? '') !== '' && $name !== 'items_id') {
+                        $generated[] = $name;
+                    }
+                }
+                $create = $connection->fetchAssociative('SHOW CREATE TABLE ' . $quote($table));
+                if (!is_array($create) || !is_string($create['Create Table'] ?? null)) {
+                    throw new LogicException('Capture actual executable native subject declarations before alteration.');
+                }
+                $this->mysqlDeclarations[$table] = MySQLNativeSubjectDeclaration::capture(
+                    $create['Create Table'], $table, $generated, $definition['constraint'],
+                    !in_array('NO_BACKSLASH_ESCAPES', explode(',', $this->mysqlDeclarationMode), true),
+                    in_array('ANSI_QUOTES', explode(',', $this->mysqlDeclarationMode), true)
+                );
+            }
+            if ($tables !== null) {
                 if ($captureTableDeclarations) {
                     $this->restorationTables[$table] = $this->captureRestorationTable($table);
                 }
@@ -93,6 +119,7 @@ final class ExactSubjectHistoricalFixture
         if (!$this->detached || !isset($this->restorationTables[$table])) {
             throw new LogicException('A selected owned reconstruction is required before requesting its cleanup declaration.');
         }
+        $this->assertNativeDeclarationMode();
         return clone $this->restorationTables[$table];
     }
 
@@ -196,6 +223,10 @@ final class ExactSubjectHistoricalFixture
             // loses generation entirely. Retain each actual stored owner once.
             $projection->setDefault(null);
             $projection->setAutoincrement(false);
+            if ($platform instanceof MySQLPlatform) {
+                $projection->setColumnDefinition($this->mysqlDeclarations[$table]['columns'][$name]);
+                continue;
+            }
             $declaration = $projection->getType()->getSQLDeclaration($projection->toArray(), $platform)
                 . ' GENERATED ALWAYS AS (' . $expression . ') STORED'
                 . ($projection->getNotnull() ? ' NOT NULL' : '');
@@ -271,7 +302,7 @@ final class ExactSubjectHistoricalFixture
         $errors = [];
         foreach ($this->original as $table => $definition) {
             try {
-                $this->replace($table, $definition['projection'] ?? null, $definition['check'], $definition['comment']);
+                $this->replace($table, $definition['projection'] ?? null, $definition['check'], $definition['comment'], true);
             } catch (Throwable $error) {
                 $errors[] = $error;
             }
@@ -358,14 +389,17 @@ final class ExactSubjectHistoricalFixture
         return $facts;
     }
 
-    private function replace(string $table, ?string $projection, string $check, ?string $comment): void
+    private function replace(string $table, ?string $projection, string $check, ?string $comment, bool $restoreNative = false): void
     {
         $platform = $this->connection->getDatabasePlatform();
         $quote = $platform->quoteIdentifier(...);
         $name = $this->definitions[$table]['constraint'];
         $sql = 'ALTER TABLE ' . $quote($table) . ' DROP ' . ($platform instanceof MySQLPlatform ? 'CHECK ' : 'CONSTRAINT ') . $quote($name);
         $indexes = [];
-        if ($projection !== null && $platform instanceof AbstractMySQLPlatform) {
+        if ($restoreNative && $platform instanceof MySQLPlatform) {
+            $this->assertNativeDeclarationMode();
+            $sql .= ', MODIFY COLUMN ' . $quote('items_id') . ' ' . $this->mysqlDeclarations[$table]['columns']['items_id'];
+        } elseif ($projection !== null && $platform instanceof AbstractMySQLPlatform) {
             $sql .= ', MODIFY COLUMN ' . $quote('items_id') . ' BIGINT GENERATED ALWAYS AS (' . $projection . ') STORED';
             if ($comment !== '') {
                 $sql .= ' ' . $platform->getInlineColumnCommentSQL($comment);
@@ -395,13 +429,23 @@ final class ExactSubjectHistoricalFixture
                     . ' BIGINT GENERATED ALWAYS AS (' . $projection . ') STORED';
             }
         }
-        $sql .= ', ADD CONSTRAINT ' . $quote($name) . ' ' . $check . ($platform instanceof MySQLPlatform ? ' ENFORCED' : '');
+        $sql .= $restoreNative && $platform instanceof MySQLPlatform
+            ? ', ADD ' . $this->mysqlDeclarations[$table]['check']
+            : ', ADD CONSTRAINT ' . $quote($name) . ' ' . $check . ($platform instanceof MySQLPlatform ? ' ENFORCED' : '');
         $this->connection->executeStatement($sql);
         foreach ($indexes as $index) {
             $this->connection->executeStatement($index);
         }
         if (!$platform instanceof AbstractMySQLPlatform) {
             $this->connection->executeStatement('COMMENT ON COLUMN ' . $quote($table) . '.' . $quote('items_id') . ' IS ' . ($comment === null ? 'NULL' : $platform->quoteStringLiteral($comment)));
+        }
+    }
+
+    private function assertNativeDeclarationMode(): void
+    {
+        if ($this->mysqlDeclarationMode !== null
+            && (string)$this->connection->fetchOne('SELECT @@SESSION.sql_mode') !== $this->mysqlDeclarationMode) {
+            throw new LogicException('Native subject declaration SQL mode changed; completion receipt remains withheld.');
         }
     }
 }
