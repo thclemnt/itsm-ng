@@ -40,6 +40,30 @@ use Generator;
 
 class Dropdown extends DbTestCase
 {
+    public function testReadonlyArrayDropdownRetainsOnlyHiddenSelection(): void
+    {
+        foreach ([false, true] as $multiple) {
+            $options = ['readonly' => true, 'multiple' => $multiple, 'noselect2' => true,
+                'display' => false, 'rand' => 313, 'values' => $multiple ? [7, 9] : [7]];
+            $html = \Dropdown::showFromArray('readonly_choice', [7 => 'First label', 9 => 'Second label'], $options);
+            $field = $multiple ? 'readonly_choice[]' : 'readonly_choice';
+            $this->string($html)->contains("<input type='hidden' name='$field' value='7'>")
+                ->contains('First label')->notContains('<select');
+            if ($multiple) {
+                $this->string($html)->contains("<input type='hidden' name='$field' value='9'>")
+                    ->contains('First label<br>Second label');
+            } else {
+                $this->string($html)->notContains('Second label');
+            }
+            $result = null;
+            $options['display'] = true;
+            $this->output(function () use ($options, &$result): void {
+                $result = \Dropdown::showFromArray('readonly_choice', [7 => 'First label', 9 => 'Second label'], $options);
+            })->isIdenticalTo($html);
+            $this->integer($result)->isIdenticalTo(313);
+        }
+    }
+
     public function testDropdownNameProjectionAvoidsHydration(): void
     {
         global $DB;

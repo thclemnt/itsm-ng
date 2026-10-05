@@ -2166,9 +2166,11 @@ class Dropdown
 
         $output .= Ajax::commonDropdownUpdateItem($param, false);
 
-        ob_start();
-        renderTwigTemplate('macros/input.twig', $input);
-        $output .= ob_get_clean();
+        if (!$param['readonly']) {
+            ob_start();
+            renderTwigTemplate('macros/input.twig', $input);
+            $output .= ob_get_clean();
+        }
 
         if ($param['display']) {
             echo $output;
