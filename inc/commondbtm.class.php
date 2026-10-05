@@ -3546,6 +3546,10 @@ class CommonDBTM extends CommonGLPI
                 $this->input = $input;
             }
 
+            if (!$this->retainItemPermission($right)) {
+                return false;
+            }
+
             if (
                 $this->isPrivate()
                 && ($this->fields['users_id'] == Session::getLoginUserID())

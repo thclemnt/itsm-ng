@@ -76,6 +76,7 @@ $cleanup = [];
 $bulk = null;
 $events = [];
 $blockedRight = null;
+$deniedHooks = 0;
 $records = static fn (): RecordRepository => new RecordRepository(Orm::create($DB));
 $read = static fn (int $id): ?array => $records()->find(NetworkPort_Vlan::getTable(), 'id', $id);
 try {
@@ -97,8 +98,9 @@ try {
     $api = new VlanMembershipApi();
     $api->initialize($apiToken);
     $plugins->setValue(null, [...$savedPlugins, 'vlan_membership_callers']);
-    $PLUGIN_HOOKS['item_can']['vlan_membership_callers'][NetworkPort_Vlan::class] = static function (NetworkPort_Vlan $model) use (&$blockedRight): void {
+    $PLUGIN_HOOKS['item_can']['vlan_membership_callers'][NetworkPort_Vlan::class] = static function (NetworkPort_Vlan $model) use (&$blockedRight, &$deniedHooks): void {
         if ($model->right === $blockedRight) {
+            ++$deniedHooks;
             $model->right = false;
         }
     };
@@ -177,7 +179,17 @@ try {
     $_SESSION = $savedSession;
     $blockedRight = CREATE;
     $restricted = ['networkports_id' => $port, 'vlans_id' => $bulkVlan, 'tagged' => 1];
+    $beforeHookRows = $roleFacts();
+    $beforeHookEvents = $events;
     verify(!(new NetworkPort_Vlan())->can(-1, CREATE, $restricted), 'Actual restrictive item_can hook remains authoritative');
+    $response = null;
+    try {
+        $api->createMembership($restricted);
+    } catch (VlanMembershipApiResponse $error) {
+        $response = $error;
+    }
+    verify($response !== null && $response->getCode() === 400 && $deniedHooks === 2, 'Real framework and API invoke the restrictive creation hook before mutation');
+    verify($roleFacts() === $beforeHookRows && $events === $beforeHookEvents, 'Plugin creation refusals preserve every membership and lifecycle callback');
     $blockedRight = null;
 
     // Run the genuine constructor stages and processor; no supplied specific_actions or overridden getters.

@@ -41,6 +41,83 @@ use TicketTask;
 
 class CommonDBTM extends DbTestCase
 {
+    public function testNewItemPermissionHooksRetainNormalizedInputsAndCannotGrantRights(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+
+        $savedSession = $_SESSION;
+        $savedHooks = $PLUGIN_HOOKS;
+        $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $savedPlugins = $plugins->getValue();
+        try {
+            $this->login();
+            $this->setEntity(0, true);
+            $computer = $this->createItem('Computer', ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+            $port = $this->createItem('NetworkPort', ['name' => $this->getUniqueString(), 'entities_id' => 0,
+                'itemtype' => 'Computer', 'items_id' => $computer->getID()]);
+            $vlan = $this->createItem('Vlan', ['name' => $this->getUniqueString(), 'entities_id' => 0]);
+            $_SESSION['glpiactiveprofile']['computer'] = READ | CREATE | UPDATE;
+            $_SESSION['glpiactiveprofile']['networking'] = READ | UPDATE;
+            $_SESSION['glpiactiveprofile']['dropdown'] = READ;
+            $connection = $DB->getDoctrineConnection();
+            $rows = static fn (): array => [
+                $connection->fetchAllAssociative('SELECT * FROM glpi_computers ORDER BY id'),
+                $connection->fetchAllAssociative('SELECT * FROM glpi_networkports_vlans ORDER BY id'),
+            ];
+            $before = $rows();
+            $decision = null;
+            $calls = [];
+            $callback = static function (\CommonDBTM $model) use (&$decision, &$calls): void {
+                $calls[] = ['right' => $model->right, 'fields' => $model->fields, 'input' => $model->input];
+                if ($decision !== null) {
+                    $model->right = $decision;
+                }
+            };
+            $plugins->setValue(null, [...$savedPlugins, 'new_item_permission_fixture']);
+            foreach ([\Computer::class, \NetworkPort_Vlan::class, \SavedSearch::class] as $type) {
+                $PLUGIN_HOOKS['item_can']['new_item_permission_fixture'][$type] = $callback;
+            }
+            foreach ([
+                [\Computer::class, ['name' => $this->getUniqueString(), 'entities_id' => 0]],
+                [\NetworkPort_Vlan::class, ['networkports_id' => $port->getID(), 'vlans_id' => $vlan->getID(), 'tagged' => 0]],
+            ] as [$type, $input]) {
+                foreach ([null, false, UPDATE] as $decision) {
+                    $calls = [];
+                    $model = new $type();
+                    $this->boolean($model->can(-1, CREATE, $input))->isIdenticalTo($decision === null);
+                    $this->array($calls)->hasSize(1);
+                    $this->integer($calls[0]['right'])->isIdenticalTo(CREATE);
+                    $this->array($calls[0]['input'])->isIdenticalTo($input);
+                    foreach (array_keys($input) as $field) {
+                        $this->variable($calls[0]['fields'][$field])->isIdenticalTo($input[$field]);
+                    }
+                }
+            }
+            // A hook which leaves the requested right cannot manufacture a
+            // missing global right or a missing loaded-owner operation right.
+            $decision = CREATE;
+            $_SESSION['glpiactiveprofile']['computer'] = READ;
+            $input = ['name' => $this->getUniqueString(), 'entities_id' => 0];
+            $this->boolean((new \Computer())->can(-1, CREATE, $input))->isFalse();
+            $input = ['networkports_id' => $port->getID(), 'vlans_id' => $vlan->getID(), 'tagged' => 0];
+            $this->boolean((new \NetworkPort_Vlan())->can(-1, CREATE, $input))->isFalse();
+
+            // Restrictive callbacks also precede the new personal-item shortcut.
+            $_SESSION['glpiactiveprofile']['bookmark_public'] = 0;
+            $input = ['name' => $this->getUniqueString(), 'itemtype' => 'Computer',
+                'users_id' => (int)\Session::getLoginUserID(), 'is_private' => 1];
+            $decision = false;
+            $this->boolean((new \SavedSearch())->can(-1, CREATE, $input))->isFalse();
+            $decision = null;
+            $this->boolean((new \SavedSearch())->can(-1, CREATE, $input))->isTrue();
+            $this->array($rows())->isIdenticalTo($before);
+        } finally {
+            $_SESSION = $savedSession;
+            $PLUGIN_HOOKS = $savedHooks;
+            $plugins->setValue(null, $savedPlugins);
+        }
+    }
+
     public function testgetIndexNameOtherThanID()
     {
 
