@@ -1,3 +1,16 @@
+# Complete native timestamp SOURCE composition
+
+The architecture successor now also retains the three independently reviewed
+timestamp stages ending `35afde6be0de869f67764a34b1dc4f54a09eb6b9`. All 472
+historical native timestamp properties in 208 tables own their current policy;
+the earlier 465-property gap below is historical. Exact application method
+additions in Holiday, User and QueuedNotification are preserved. Static CLI
+discovery is now 245; the 22-version/1,087-FK schema remains an unmeasured source
+expectation. See [architecture-successor-source.md](architecture-successor-source.md)
+for the complete-source inverse projections, original seven-clock test seam and
+all open execution gates. This final checkout has no PHP/compiler/native/full
+application/browser/CI result, and the overall modernization objective is OPEN.
+
 # Architecture successor SOURCE checkpoint
 
 The separately composed architecture successor retains accepted base

@@ -9,8 +9,10 @@ to their pinned producer checkout. They do not validate this successor.
 
 ## Included source and ownership
 
-All original commits are retained through `cherry-pick -x`, with exact changed
-file bodies and modes at every original before/after boundary:
+The first 18 original commits are retained through `cherry-pick -x`, with exact
+changed file bodies and modes at every original before/after boundary. Three
+additional reviewed timestamp commits are retained with explicit whole-file
+projections for three overlapping entity method additions:
 
 - Domain adoption date-range fixture `17b6a08c62c5f19e7cd6ea6de2087e616924d522`:
   probe the supplied engine's actual native TIMESTAMP acceptance in an owned
@@ -94,14 +96,17 @@ measured successor schema count or successful replay is claimed.
 ## Exact static discovery and validation required
 
 The unchanged suite.py discovery rules yield 234 CLI contracts at the accepted
-base and 243 at this source composition. This was determined from tracked
+base, 243 at the first architecture freeze, and 245 after the complete timestamp
+ownership extension. This was determined from tracked
 filenames without importing or running the runner. FixtureRecords.php,
 sql-inventory.php, search-benchmark.php, seed-report-web.php and
 *-web-fixture.php stay excluded; run.php and initial-data.php remain first.
-Nine new CLI contracts are calendar-closures, energy-component-subjects-schema,
+The first nine new CLI contracts are calendar-closures, energy-component-subjects-schema,
 lifecycle-writer-capture, native-timestamps-metadata, native-timestamps,
 tree-schema-ownership, vlan-current-read-admission, vlan-membership-callers and
-vlan-membership-ownership. Existing contracts and the 300-second limit remain.
+vlan-membership-ownership. The timestamp extension adds
+native-timestamps-coverage-metadata and native-timestamps-coverage. Existing
+contracts and the 300-second limit remain.
 
 No PHP parsing, style, compiler, database, native driver, application, browser
 or remote CI job has run against this combined source checkout. Independent
@@ -112,7 +117,7 @@ isolated disposable databases after freezing this composition:
    Compare complete schemas, named indexes, nullability/defaults/comments,
    compatibility expressions, FKs/CHECKs and native touch definitions; exercise
    provider metadata order in one process. Confirm all prior historical outputs.
-2. Run the nine new contracts and existing clock/UOW, locks, tree cache/parents,
+2. Run the eleven new contracts and existing clock/UOW, locks, tree cache/parents,
    lifecycle callbacks, inbox, component definition/ownership, scoped reads,
    clone/purge/keep_devices, schema-check and upgrade-entrypoint controls. Use
    actual native invalid targets, exact discriminator/duplicate behavior and
@@ -144,16 +149,47 @@ DBmysql/mysqli application calls; retain PostgreSQL and MySQL/MariaDB behavior;
 replay frozen DBAL baseline/seeds/full history for installations and upgrades;
 preserve authorization, hooks, notifications, history, cloning, purge and routing.
 
-The frozen-baseline source inventory has 472 TIMESTAMP properties. This accepted
-property batch owns seven, leaving 465 for a separately reviewed entity-local
-conversion. The concurrent expansion of those properties is deliberately absent
-from this freeze. Other runtime schema catalogues, plugin owning affinities and
+The frozen-baseline source inventory has 472 TIMESTAMP properties across 208
+mapped tables. After the initial seven-property composition, the independently
+reviewed three-stage extension ending
+`35afde6be0de869f67764a34b1dc4f54a09eb6b9` supplies the other 465 entity-local
+markers. CronTask.lastrun additionally owns its frozen missing comment; the two
+nonnullable CURRENT_TIMESTAMP fields retain their existing default options.
+Current source declaration coverage is complete for that historical cohort;
+provider type, range, timezone, hydration and schema behavior still need actual
+validation. No migration version, runtime catalogue or inference is added.
+Other runtime schema catalogues, plugin owning affinities and
 plugin installation/upgrade convergence, remaining polymorphic relationships,
 legacy query/write paths and broader application boundaries remain open. Valid
 registered plugin data must be preserved with an explicit unsupported ownership
 boundary, not reclassified as an orphan to obtain a clean migration.
 
 Next: validate this coherent combined ownership/history batch, diagnose actual
-failures without weakening contracts, then integrate the independently reviewed
-remaining timestamp ownership batch and continue finite relationship/domain
-conversions. SOURCE proofs and original accepted evidence remain immutable.
+failures without weakening contracts, then continue finite relationship/domain conversions
+and remove the remaining runtime schema catalogues and legacy persistence paths. SOURCE proofs and original accepted evidence remain immutable.
+
+## Additive timestamp composition proof
+
+The first architecture freeze is immutable at
+`5b1dfc933e375d2cb84fcf5814ec558aa078f98d`. Its source inventory of seven owned
+clocks and 243 contracts is an earlier checkpoint. The three later timestamp
+stages preserve the original commit subjects/authors and provenance, all prior
+clock/index drivers and outcomes, and all old installation/migration inputs.
+Holiday.containsDay, User.prepareAuthenticationInput and both QueuedNotification
+browser methods remain complete, byte-exact accepted additions. Removing those
+method blocks reproduces the entire corresponding original timestamp file body.
+Reversing the whole accepted pre-timestamp scope patch from the composed temporal
+tree reproduces the complete original 35afde6 Git tree; reversing the whole new
+extension reproduces the complete actual prior architecture tree.
+
+The initial three-context private-index projection refused Holiday's legitimately
+changed marker context and did not alter source. The complete zero-context scope
+patch retains exact removed bytes and requires final whole-tree identity; its
+result is separately pinned. This is not a suppressed database assertion.
+The original seven-clock metadata contract retains its literal seven-count verify
+call and every original assertion; its disclosed test seam selects its existing
+seven-property class cohort. The new exhaustive contract independently requires
+all 472 declarations with no extras against the frozen historical oracle.
+Original native runtime clock/probe controls remain exact. The extension's
+independent source acceptance and ROOT's isolated parser-only receipt are
+references for their own producer, not execution results for this final checkout.
