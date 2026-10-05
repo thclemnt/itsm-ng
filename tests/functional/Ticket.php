@@ -1982,6 +1982,14 @@ class Ticket extends DbTestCase
                 {
                     return 'Ticket';
                 }
+                public static function getTable($classname = null)
+                {
+                    return \Ticket::getTable($classname);
+                }
+                public static function getForeignKeyField()
+                {
+                    return \Ticket::getForeignKeyField();
+                }
                 public function getAssociatedDocumentsCriteria($bypass_rights = false): array
                 {
                     return ['id' => 0];
