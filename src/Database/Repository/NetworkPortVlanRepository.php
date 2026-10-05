@@ -12,6 +12,7 @@ use itsmng\Database\Entity\Entity;
 use itsmng\Database\Entity\NetworkPort;
 use itsmng\Database\Entity\NetworkPortVlan;
 use itsmng\Database\Entity\Vlan;
+use itsmng\Database\MySQLConnection;
 
 /** Membership identity and the two distinct endpoint projections belong to this aggregate. */
 final class NetworkPortVlanRepository
@@ -69,6 +70,9 @@ final class NetworkPortVlanRepository
 
     public function membership(int $id, bool $current = false): ?array
     {
+        if ($current) {
+            MySQLConnection::assertCurrentReads($this->em->getConnection());
+        }
         $rows = $this->membershipQuery()->where('m.id = :id')->setParameter('id', $id, Types::BIGINT)
             ->getQuery()->setLockMode($current ? LockMode::PESSIMISTIC_WRITE : LockMode::NONE)->getScalarResult();
         return $rows[0] ?? null;
@@ -76,6 +80,9 @@ final class NetworkPortVlanRepository
 
     public function selectedPair(int $port, int $vlan, bool $current = false): ?array
     {
+        if ($current) {
+            MySQLConnection::assertCurrentReads($this->em->getConnection());
+        }
         $rows = $this->membershipQuery()->where('m.networkports = :port AND m.vlans = :vlan')
             ->setParameter('port', $port, Types::BIGINT)->setParameter('vlan', $vlan, Types::BIGINT)
             ->getQuery()->setLockMode($current ? LockMode::PESSIMISTIC_WRITE : LockMode::NONE)->getScalarResult();
@@ -85,6 +92,7 @@ final class NetworkPortVlanRepository
     /** Scalar locking reads never inherit managed endpoint state or lock nullable joins. */
     public function currentPort(int $id): ?array
     {
+        MySQLConnection::assertCurrentReads($this->em->getConnection());
         $rows = $this->em->createQueryBuilder()->select('p.id, IDENTITY(p.entities) AS entity, p.is_recursive AS recursive, p.itemtype, p.items_id')
             ->from(NetworkPort::class, 'p')->where('p.id = :id')->setParameter('id', $id, Types::BIGINT)
             ->getQuery()->setLockMode(LockMode::PESSIMISTIC_READ)->getScalarResult();
@@ -93,6 +101,7 @@ final class NetworkPortVlanRepository
 
     public function currentVlan(int $id): ?array
     {
+        MySQLConnection::assertCurrentReads($this->em->getConnection());
         $rows = $this->em->createQueryBuilder()->select('v.id, IDENTITY(v.entities) AS entity, v.is_recursive AS recursive')
             ->from(Vlan::class, 'v')->where('v.id = :id')->setParameter('id', $id, Types::BIGINT)
             ->getQuery()->setLockMode(LockMode::PESSIMISTIC_READ)->getScalarResult();
@@ -110,6 +119,7 @@ final class NetworkPortVlanRepository
             if ($assertActive !== null) {
                 $assertActive();
             }
+            MySQLConnection::assertCurrentReads($this->em->getConnection());
             $rows = $this->em->createQueryBuilder()->select('e.id, IDENTITY(e.parent) AS parent')
                 ->from(Entity::class, 'e')->where('e.id = :id')->setParameter('id', $entity, Types::BIGINT)
                 ->getQuery()->setLockMode(LockMode::PESSIMISTIC_READ)->getScalarResult();
