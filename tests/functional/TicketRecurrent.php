@@ -466,6 +466,17 @@ class TicketRecurrent extends DbTestCase
             ];
         }
 
+        $data[] = [
+            'begin_date' => '2025-10-01 00:00:00',
+            'end_date' => '2026-10-31 23:59:59',
+            'periodicity' => DAY_TIMESTAMP,
+            'create_before' => 2 * HOUR_TIMESTAMP,
+            'calendars_id' => $fixed_calendar,
+            'expected_value' => '2026-10-06 07:00:00',
+            'messages' => null,
+            'now' => strtotime('2026-10-05 22:30:00'),
+        ];
+
         return $data;
     }
 
@@ -492,15 +503,7 @@ class TicketRecurrent extends DbTestCase
         $now = null
     ) {
 
-        $ticketRecurrent = new class extends \TicketRecurrent {
-            public ?int $testTimestamp = null;
-
-            protected function recurrenceTimestamp(): int
-            {
-                return $this->testTimestamp ?? parent::recurrenceTimestamp();
-            }
-        };
-        $ticketRecurrent->testTimestamp = $now;
+        $ticketRecurrent = $this->clockedRecurrence($now);
         $value = $ticketRecurrent->computeNextCreationDate(
             $begin_date,
             $end_date,
@@ -510,11 +513,79 @@ class TicketRecurrent extends DbTestCase
         );
 
         $this->string($value)->isIdenticalTo($expected_value);
+        if ($now !== null) {
+            $this->integer($ticketRecurrent->calendarEntityManager->queryCount)->isIdenticalTo($calendars_id ? 2 : 0);
+        }
         if ($messages === null) {
             $this->hasNoSessionMessage(ERROR);
         } else {
             $this->hasSessionMessages(ERROR, $messages);
         }
+    }
+
+    private function clockedRecurrence(?int $now): \TicketRecurrent
+    {
+        $ticketRecurrent = new class extends \TicketRecurrent {
+            public ?int $testTimestamp = null;
+            public ?\Doctrine\ORM\EntityManager $calendarEntityManager = null;
+
+            protected function recurrenceTimestamp(): int
+            {
+                return $this->testTimestamp ?? parent::recurrenceTimestamp();
+            }
+
+            protected function recurrenceSchedule(int $calendar): \itsmng\Domain\CalendarSchedule
+            {
+                return $this->calendarEntityManager === null ? parent::recurrenceSchedule($calendar)
+                    : (new \itsmng\Database\Repository\CalendarRepository($this->calendarEntityManager))->schedule($calendar);
+            }
+        };
+        $ticketRecurrent->testTimestamp = $now;
+        if ($now !== null) {
+            global $DB;
+            $ticketRecurrent->calendarEntityManager = new class($DB->getDoctrineConnection(), \itsmng\Database\Orm::configuration()) extends \Doctrine\ORM\EntityManager {
+                public int $queryCount = 0;
+
+                public function createQuery(string $dql = ''): \Doctrine\ORM\Query
+                {
+                    $this->queryCount++;
+                    return parent::createQuery($dql);
+                }
+            };
+        }
+        return $ticketRecurrent;
+    }
+
+    public function testRecurrenceReadsFreshCalendarValues()
+    {
+        $calendar = new \Calendar();
+        $calendarId = $calendar->add(['name' => 'Fresh recurrence calendar']);
+        $this->integer($calendarId)->isGreaterThan(0);
+        $segment = new \CalendarSegment();
+        $segmentId = $segment->add([
+            'calendars_id' => $calendarId, 'day' => 2, 'begin' => '09:00:00', 'end' => '19:00:00',
+        ]);
+        $this->integer($segmentId)->isGreaterThan(0);
+        $recurrent = $this->clockedRecurrence(strtotime('2026-10-05 22:30:00'));
+        $calculate = static fn () => $recurrent->computeNextCreationDate(
+            '2025-10-01 00:00:00', '2026-10-31 23:59:59', DAY_TIMESTAMP, 2 * HOUR_TIMESTAMP, $calendarId
+        );
+        $this->string($calculate())->isIdenticalTo('2026-10-06 07:00:00');
+        $this->integer($recurrent->calendarEntityManager->queryCount)->isIdenticalTo(2);
+
+        $this->boolean($segment->update(['id' => $segmentId, 'begin' => '10:00:00']))->isTrue();
+        $this->string($calculate())->isIdenticalTo('2026-10-06 08:00:00');
+        $this->integer($recurrent->calendarEntityManager->queryCount)->isIdenticalTo(4);
+
+        $holiday = new \Holiday();
+        $holidayId = $holiday->add([
+            'name' => 'Fresh recurrence closure', 'begin_date' => '2026-10-06', 'end_date' => '2026-10-06',
+        ]);
+        $this->integer($holidayId)->isGreaterThan(0);
+        $link = new \Calendar_Holiday();
+        $this->integer($link->add(['calendars_id' => $calendarId, 'holidays_id' => $holidayId]))->isGreaterThan(0);
+        $this->string($calculate())->isIdenticalTo('2026-10-13 08:00:00');
+        $this->integer($recurrent->calendarEntityManager->queryCount)->isIdenticalTo(6);
     }
 
     /**

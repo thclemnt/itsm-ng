@@ -357,6 +357,13 @@ class TicketRecurrent extends CommonDropdown
         return time();
     }
 
+    protected function recurrenceSchedule(int $calendar): \itsmng\Domain\CalendarSchedule
+    {
+        global $DB;
+        return (new \itsmng\Database\Repository\CalendarRepository(\itsmng\Database\Orm::create($DB)))
+            ->schedule($calendar);
+    }
+
     /**
      * Compute next creation date of a ticket.
      *
@@ -429,8 +436,14 @@ class TicketRecurrent extends CommonDropdown
             return 'NULL';
         }
 
-        $calendar = new Calendar();
-        $is_calendar_valid = $calendars_id && $calendar->getFromDB($calendars_id) && $calendar->hasAWorkingDay();
+        $schedule = null;
+        if ($calendars_id && $periodicity_in_seconds >= DAY_TIMESTAMP) {
+            $schedule = $this->recurrenceSchedule((int)$calendars_id);
+            $is_calendar_valid = $schedule->hasAWorkingDay();
+        } else {
+            $calendar = new Calendar();
+            $is_calendar_valid = $calendars_id && $calendar->getFromDB($calendars_id) && $calendar->hasAWorkingDay();
+        }
 
         if (!$is_calendar_valid || $periodicity_in_seconds >= DAY_TIMESTAMP) {
             // Compute next occurence without using the calendar if calendar is not valid
@@ -444,20 +457,7 @@ class TicketRecurrent extends CommonDropdown
                 }
 
                 if ($is_calendar_valid) {
-                    // Apply working days and hours before deciding whether creation is past.
-                    while (
-                        $calendar->isHoliday(date('Y-m-d', $occurence_time))
-                        || !$calendar->isAWorkingDay($occurence_time)
-                    ) {
-                        $occurence_time = strtotime('+ 1 day', $occurence_time);
-                    }
-                    if (!$calendar->isAWorkingHour($occurence_time)) {
-                        $occurence_date = $calendar->computeEndDate(
-                            date('Y-m-d', $occurence_time),
-                            0 // 0 second delay to get the first working "second"
-                        );
-                        $occurence_time = strtotime($occurence_date);
-                    }
+                    $occurence_time = $schedule->nextWorkingOccurrence($occurence_time);
                 }
                 $creation_time = $occurence_time - $create_before;
                 if ($creation_time >= $now) {

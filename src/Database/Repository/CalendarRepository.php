@@ -9,6 +9,8 @@ use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\QueryBuilder;
 use itsmng\Database\Entity\CalendarHoliday;
 use itsmng\Database\Entity\CalendarSegment;
+use itsmng\Database\Entity\Holiday;
+use itsmng\Domain\CalendarSchedule;
 
 final class CalendarRepository
 {
@@ -38,40 +40,21 @@ final class CalendarRepository
 
     public function between(int $calendar, int $firstDay, string $begin, int $lastDay, string $end): array
     {
-        $start = self::seconds($begin);
-        $stop = self::seconds($end);
+        $start = CalendarSchedule::seconds($begin);
+        $stop = CalendarSchedule::seconds($end);
         return array_filter($this->segments($calendar, $firstDay, $lastDay), static fn ($row) =>
-            ($row['day'] < $lastDay || ($row['begin'] !== null && self::seconds($row['begin']) < $stop))
-            && ($row['day'] > $firstDay || ($row['end'] !== null && self::seconds($row['end']) >= $start)));
+            ($row['day'] < $lastDay || ($row['begin'] !== null && CalendarSchedule::seconds($row['begin']) < $stop))
+            && ($row['day'] > $firstDay || ($row['end'] !== null && CalendarSchedule::seconds($row['end']) >= $start)));
     }
 
     public function activeSeconds(int $calendar, int $day, string $begin, string $end): int
     {
-        $sum = 0;
-        foreach ($this->segments($calendar, $day, $day) as $row) {
-            if ($row['begin'] !== null && $row['end'] !== null) {
-                $sum += max(0, min(self::seconds($end), self::seconds($row['end'])) - max(self::seconds($begin), self::seconds($row['begin'])));
-            }
-        }
-        return $sum;
+        return (new CalendarSchedule($this->segments($calendar, $day, $day)))->activeSeconds($day, $begin, $end);
     }
 
     public function addDelay(int $calendar, int $day, string $begin, int $delay): string|false
     {
-        $start = self::seconds($begin);
-        foreach ($this->segments($calendar, $day, $day) as $row) {
-            if ($row['begin'] === null || $row['end'] === null || self::seconds($row['end']) <= $start) {
-                continue;
-            }
-            $segmentStart = max($start, self::seconds($row['begin']));
-            $available = self::seconds($row['end']) - $segmentStart;
-            if ($delay <= $available) {
-                $time = $segmentStart + $delay;
-                return sprintf('%02d:%02d:%02d', intdiv($time, 3600), intdiv($time % 3600, 60), $time % 60);
-            }
-            $delay -= $available;
-        }
-        return false;
+        return (new CalendarSchedule($this->segments($calendar, $day, $day)))->addDelay($day, $begin, $delay);
     }
 
     public function boundary(int $calendar, int $day, bool $last): ?string
@@ -83,15 +66,34 @@ final class CalendarRepository
 
     public function contains(int $calendar, int $day, string $time): bool
     {
-        $time = self::seconds($time);
-        foreach ($this->segments($calendar, $day, $day) as $row) {
-            if ($row['begin'] !== null && $row['end'] !== null && self::seconds($row['begin']) <= $time && self::seconds($row['end']) >= $time) {
-                return true;
-            }
-        }
-        return false;
+        return (new CalendarSchedule($this->segments($calendar, $day, $day)))->contains($day, $time);
     }
 
+    /** Read both native value sets once; never retain managed entity state between calculations. */
+    public function schedule(int $calendar): CalendarSchedule
+    {
+        $rows = $this->em->createQueryBuilder()
+            ->select('s.day AS dayNumber', 's.begin AS startTime', 's.end AS endTime')
+            ->from(CalendarSegment::class, 's')->where('IDENTITY(s.calendars) = :calendar')
+            ->setParameter('calendar', $calendar, Types::INTEGER)
+            ->orderBy('s.day')->addOrderBy('s.begin')->addOrderBy('s.end')->addOrderBy('s.id')
+            ->getQuery()->getArrayResult();
+        $segments = array_map(static fn ($row) => [
+            'day' => $row['dayNumber'], 'begin' => $row['startTime'], 'end' => $row['endTime'],
+        ], $rows);
+        $rows = $this->closureQuery($calendar)
+            ->select('holiday.begin_date AS startDate', 'holiday.end_date AS endDate', 'holiday.is_perpetual AS perpetual')
+            ->getQuery()->getArrayResult();
+        $holidays = [];
+        foreach ($rows as $row) {
+            $holiday = new Holiday();
+            $holiday->begin_date = $row['startDate'];
+            $holiday->end_date = $row['endDate'];
+            $holiday->is_perpetual = $row['perpetual'];
+            $holidays[] = $holiday;
+        }
+        return new CalendarSchedule($segments, $holidays);
+    }
 
     /** @return list<CalendarHoliday> Every owning membership retains its individual link identity. */
     public function closures(int $calendar): array
@@ -124,9 +126,4 @@ final class CalendarRepository
         return false;
     }
 
-    private static function seconds(string $time): int
-    {
-        $parts = explode(':', $time);
-        return (int)$parts[0] * 3600 + (int)($parts[1] ?? 0) * 60 + (int)($parts[2] ?? 0);
-    }
 }
