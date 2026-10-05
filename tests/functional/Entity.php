@@ -426,6 +426,103 @@ class Entity extends DbTestCase
     }
 
 
+    public function testGetUsedConfigProjectionValues(): void
+    {
+        global $DB;
+        $parent = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $child = (int)getItemByTypeName('Entity', '_test_child_1', true);
+        $this->boolean($DB->update('glpi_entities', [
+            'admin_email' => 'parent@example.test', 'comment' => 'Parent setting',
+        ], ['id' => $parent]))->isTrue();
+        $this->boolean($DB->update('glpi_entities', [
+            'admin_email' => '', 'comment' => null, 'max_closedate' => '2026-02-03 04:05:06', 'calendars_id' => -2,
+        ], ['id' => $child]))->isTrue();
+        $em = \itsmng\Database\Orm::create($DB);
+        $settings = new \itsmng\Database\Repository\EntityConfigurationRepository($em);
+        $this->string($settings->usedConfiguration('admin_email', $child, 'comment', 'fallback'))
+            ->isIdenticalTo('Parent setting');
+        // A numeric default considers an empty string explicit; a string default inherits it.
+        $this->variable($settings->usedConfiguration('admin_email', $child, 'comment', -2))->isNull();
+        $this->integer($settings->usedConfiguration('id', $child, 'id', -2))->isIdenticalTo($child);
+        $this->integer($settings->usedConfiguration('id', $child, 'entities_id', -2))->isIdenticalTo($parent);
+        $this->string($settings->usedConfiguration('id', $child, 'max_closedate', -2))
+            ->isIdenticalTo('2026-02-03 04:05:06');
+        $this->string($settings->usedConfiguration('id', $child, 'calendar_mode', -2))->isIdenticalTo('inherit');
+        $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+
+        // Reusing the repository must see writes on its supplied connection, including NULL.
+        $this->boolean($DB->update('glpi_entities', ['admin_email' => 'child@example.test'], ['id' => $child]))->isTrue();
+        $this->variable($settings->usedConfiguration('admin_email', $child, 'comment', 'fallback'))->isNull();
+        $this->boolean($DB->update('glpi_entities', ['comment' => 'Changed setting'], ['id' => $child]))->isTrue();
+        $this->string($settings->usedConfiguration('admin_email', $child, 'comment', 'fallback'))
+            ->isIdenticalTo('Changed setting');
+        $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+    }
+
+    public function testGetUsedConfigProjectionReferences(): void
+    {
+        global $DB;
+        $parent = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $child = (int)getItemByTypeName('Entity', '_test_child_1', true);
+        $calendar = new \Calendar();
+        $calendarId = (int)$calendar->add(['name' => 'Configuration projection ' . $this->getUniqueString()]);
+        $this->integer($calendarId)->isGreaterThan(0);
+        $this->boolean($DB->update('glpi_entities', [
+            'calendars_id' => $calendarId, 'entities_id_software' => 0,
+        ], ['id' => $parent]))->isTrue();
+        $this->boolean($DB->update('glpi_entities', [
+            'calendars_id' => -2, 'entities_id_software' => -10,
+        ], ['id' => $child]))->isTrue();
+        $em = \itsmng\Database\Orm::create($DB);
+        $settings = new \itsmng\Database\Repository\EntityConfigurationRepository($em);
+        $this->integer($settings->usedConfiguration('calendars_id', $child, 'calendars_id', -2))
+            ->isIdenticalTo($calendarId);
+        $this->integer($settings->usedConfiguration('entities_id_software', $child, 'entities_id_software', -2))
+            ->isIdenticalTo(-10);
+        // Both the gate and value need their own mode when they are different references.
+        $this->integer($settings->usedConfiguration('calendars_id', $child, 'entities_id_software', -2))
+            ->isIdenticalTo(0);
+        $this->integer($settings->usedConfiguration('entities_id_software', $child, 'calendars_id', -2))
+            ->isIdenticalTo(-2);
+        $this->boolean($DB->update('glpi_entities', [
+            'calendars_id' => 0, 'entities_id_software' => 0,
+        ], ['id' => $child]))->isTrue();
+        $this->integer($settings->usedConfiguration('calendars_id', $child, 'calendars_id', -2))->isIdenticalTo(0);
+        $this->integer($settings->usedConfiguration('entities_id_software', $child, 'entities_id_software', -2))
+            ->isIdenticalTo(0);
+        $this->string($settings->usedConfiguration('id', $child, 'calendar_mode', -2))->isIdenticalTo('explicit');
+        $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+    }
+
+    public function testGetUsedConfigProjectionMissingAndCycles(): void
+    {
+        global $DB;
+        $parent = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $child = (int)getItemByTypeName('Entity', '_test_child_1', true);
+        $em = \itsmng\Database\Orm::create($DB);
+        $settings = new \itsmng\Database\Repository\EntityConfigurationRepository($em);
+        foreach ([-1, PHP_INT_MAX, 0, $child] as $id) {
+            $this->string($settings->usedConfiguration('unknown_setting', $id, 'comment', 'fallback'))
+                ->isIdenticalTo('fallback');
+        }
+        $this->string($settings->usedConfiguration('id', $child, 'unknown_setting', 'fallback'))
+            ->isIdenticalTo('fallback');
+        $this->string($settings->usedConfiguration('id', $child, 'name) FROM invalid', 'fallback'))
+            ->isIdenticalTo('fallback');
+        $this->variable($settings->usedConfiguration('id', 0, 'entities_id', -2))->isNull();
+        $this->integer($settings->usedConfiguration('id', 0, 'id', -2))->isIdenticalTo(0);
+        $this->string($settings->usedConfiguration('id', 0, 'id', 'fallback'))->isIdenticalTo('fallback');
+        // Valid foreign keys can still form a cycle. Missing fields must not bypass its diagnostic.
+        $this->boolean($DB->update('glpi_entities', ['entities_id' => $child], ['id' => $parent]))->isTrue();
+        try {
+            $this->exception(static fn () => $settings->usedConfiguration('unknown_setting', $child, 'comment', 'fallback'))
+                ->isInstanceOf(\RuntimeException::class)->hasMessage('Cyclic entity configuration inheritance');
+        } finally {
+            $this->boolean($DB->update('glpi_entities', ['entities_id' => 0], ['id' => $parent]))->isTrue();
+        }
+        $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
+    }
+
     protected function customCssProvider()
     {
 
