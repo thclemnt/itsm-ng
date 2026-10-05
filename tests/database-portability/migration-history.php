@@ -435,8 +435,10 @@ try {
     $publishedRelease = \itsmng\Database\LegacyAdoptionEligibility::release($connection);
     $configBefore = $manager->introspectTable('glpi_configs');
     $configRowsBefore = $connection->fetchAllAssociative('SELECT * FROM glpi_configs ORDER BY id');
-    $configIndexes = array_values(array_filter($configBefore->getIndexes(),
-        static fn ($index): bool => $index->isUnique() && $index->getColumns() === ['context', 'name']));
+    $configIndexes = array_values(array_filter(
+        $configBefore->getIndexes(),
+        static fn ($index): bool => $index->isUnique() && $index->getColumns() === ['context', 'name']
+    ));
     verify(count($configIndexes) === 1, 'Actual historical Config has one context/name uniqueness index');
     $configIndex = $configIndexes[0];
     $manager->dropIndex($configIndex->getName(), 'glpi_configs');
@@ -503,9 +505,11 @@ try {
     } finally {
         $manager->createIndex($configIndex, 'glpi_configs');
     }
-    verify($connection->fetchAllAssociative('SELECT * FROM glpi_configs ORDER BY id') === $configRowsBefore
+    verify(
+        $connection->fetchAllAssociative('SELECT * FROM glpi_configs ORDER BY id') === $configRowsBefore
         && $manager->createComparator()->compareTables($configBefore, $manager->introspectTable('glpi_configs'))->isEmpty(),
-        'Duplicate fixture restores every original single-valued publication row and native uniqueness definition');
+        'Duplicate fixture restores every original single-valued publication row and native uniqueness definition'
+    );
     // The actual 2.1.2 and 2.1.3 dumps are byte-identical. Reconstruct its
     // missing terminal DML on existing default right rows, without fake DDL.
     LegacyReleaseFormat::publish($connection, '2.1.2', '2.1.2');
