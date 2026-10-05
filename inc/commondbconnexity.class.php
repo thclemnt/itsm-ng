@@ -422,7 +422,7 @@ abstract class CommonDBConnexity extends CommonDBTM
             unset($new_item->fields);
             if (
                 !$new_item->can(-1, CREATE, $input)
-                 || !$this->can($this->getID(), DELETE)
+                 || ($this->maybeDeleted() && !$this->can($this->getID(), DELETE))
                  || !$this->can($this->getID(), PURGE)
             ) {
                 Session::addMessageAfterRedirect(

@@ -66,6 +66,52 @@ class ITILFollowup extends DbTestCase
         return (int)$itilobject->getID();
     }
 
+    public function testReparentingRequiresApplicableRemovalRights()
+    {
+        $this->login();
+        $source = $this->getNewITILObject(Ticket::class);
+        $target = $this->getNewITILObject(Ticket::class);
+        $followup = new CoreITILFollowup();
+        $id = $followup->add([
+            'itemtype' => Ticket::class,
+            'items_id' => $source,
+            'content' => 'Followup parent permission regression',
+        ]);
+        $this->integer($id)->isGreaterThan(0);
+        $this->boolean($followup->maybeDeleted())->isFalse();
+        $this->boolean($followup->can($id, \DELETE))->isFalse();
+        $this->boolean($followup->can($id, \PURGE))->isTrue();
+        $profile = $_SESSION['glpiactiveprofile'];
+        $input = ['id' => $id, 'itemtype' => Ticket::class, 'items_id' => $target];
+        try {
+            $_SESSION['glpiactiveprofile'][CoreITILFollowup::$rightname] &= ~\PURGE;
+            $this->boolean($followup->can($id, \PURGE))->isFalse();
+            $this->boolean((new CoreITILFollowup())->can(-1, \CREATE, $input))->isTrue();
+            $this->boolean($followup->update($input))->isFalse();
+            $this->boolean($followup->getFromDB($id))->isTrue();
+            $this->integer($followup->fields['items_id'])->isIdenticalTo($source);
+
+            $_SESSION['glpiactiveprofile'] = $profile;
+            $_SESSION['glpiactiveprofile'][CoreITILFollowup::$rightname] = \PURGE;
+            $_SESSION['glpiactiveprofile'][Ticket::$rightname] &= ~Ticket::OWN;
+            $this->boolean($followup->can($id, \PURGE))->isTrue();
+            $this->boolean((new CoreITILFollowup())->can(-1, \CREATE, $input))->isFalse();
+            $this->boolean($followup->update($input))->isFalse();
+            $this->boolean($followup->getFromDB($id))->isTrue();
+            $this->integer($followup->fields['items_id'])->isIdenticalTo($source);
+
+            $_SESSION['glpiactiveprofile'] = $profile;
+            $this->boolean($followup->update($input))->isTrue();
+            $this->boolean($followup->getFromDB($id))->isTrue();
+            $this->integer($followup->fields['items_id'])->isIdenticalTo($target);
+            $this->integer($followup->fields['tickets_id'])->isIdenticalTo($target);
+            $this->variable($followup->fields['problems_id'])->isNull();
+            $this->variable($followup->fields['changes_id'])->isNull();
+        } finally {
+            $_SESSION['glpiactiveprofile'] = $profile;
+        }
+    }
+
     public function testACL()
     {
         $this->login();
