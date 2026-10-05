@@ -57,6 +57,8 @@ try {
     $theirs = $queue(['recipient' => (string)$other]);
     $mail = $queue(['mode' => 'mailing']);
     $nonCanonicalMode = $queue(['mode' => 'AJAX']);
+    $paddedMode = $queue(['mode' => 'ajax ']);
+    $paddedRecipient = $queue(['recipient' => $user . ' ']);
     $deleted = $queue(['is_deleted' => true, 'sent_time' => '2010-01-01 00:00:00']);
     $nullRecipient = $queue(['recipient' => null]);
     $plugin = $queue(['itemtype' => 'PluginInboxSubject', 'items_id' => 73]);
@@ -81,10 +83,10 @@ try {
     $CFG_GLPI['notifications_ajax'] = true;
 
     $native = static fn (int $id): array => $connection->fetchAssociative('SELECT * FROM glpi_queuednotifications WHERE id = ?', [$id]);
-    foreach ([$theirs, $mail, $nonCanonicalMode, $deleted, $nullRecipient] as $denied) {
+    foreach ([$theirs, $mail, $nonCanonicalMode, $paddedMode, $paddedRecipient, $deleted, $nullRecipient] as $denied) {
         $snapshot = $native($denied);
         verify(!$inbox->acknowledge($denied, $user) && $native($denied) === $snapshot,
-            'Other recipient, other/noncanonical channel, already deleted and NULL recipient remain byte-for-byte unchanged');
+            'Other/noncanonical recipient or channel, already deleted and NULL recipient remain byte-for-byte unchanged');
     }
     verify(!$inbox->acknowledge(0, $user) && !$inbox->acknowledge($mine, 0), 'Invalid acknowledgement fails closed');
     $snapshot = $native($mine);

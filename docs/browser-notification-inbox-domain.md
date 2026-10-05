@@ -33,8 +33,12 @@ operation does not introduce those unrelated effects.
 The pending entity predicate is also applied after hydration, so native MySQL
 collation cannot expose a noncanonical channel that the domain refuses to
 consume. The public browser producer already writes the canonical `ajax` value.
-This makes manually populated `AJAX` and other collation variants ineligible for
-browser presentation on both providers without altering their stored rows.
+This makes manually populated `AJAX`, padded channel/recipient strings and other
+noncanonical collation variants ineligible for browser presentation on both
+providers without altering their stored rows. Recipient IDs must be the exact
+decimal string produced by the public browser admission path. The query has no
+pagination; a future page limit must account for eligibility before limiting
+visible results, rather than underfilling pages after this predicate.
 
 Behavior corrections are explicit. A browser acknowledgement cannot cancel
 a numeric-recipient mailing row. Repeating an acknowledgement retains the first
