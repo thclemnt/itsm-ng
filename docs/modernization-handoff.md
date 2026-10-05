@@ -178,10 +178,27 @@ suite passed all 46 methods across five classes and 9,374 assertions on MariaDB.
 PostgreSQL passed the new Entity, Search, Ticket and Notification cases but failed
 the existing multi-selection ancestor-order assertion in DbUtils. The reviewed
 repair restores caller-selected branch order after an unordered IN query and adds
-reversed/duplicate/string-ID controls; native validation is pending. The original
+reversed/duplicate/string-ID controls. At `e75c9098fb`, the complete focused run
+passed all five classes, 46 methods and 9,398 assertions on each provider, with no
+skips. The original
 relation-endpoint contract passed on clean PostgreSQL C at `0935573b5f`, including
 anonymous NULL/zero email links and rejection of dangling nonzero attachments.
-Native Entity/Status paired timings are underway independently of those repairs.
+Separate Entity and Status timing pairs completed against unchanged 121-ticket,
+100-match and 970-history fixtures, with response/JSON/count checks passing and
+108 current-application request records per phase reporting no errors. The Entity
+pair `276d35e5bd` to `5c9560c315` removed the full-Entity find edge: profiled
+software-tab configuration lookup fell from 22.39 to 3.32 ms. Whole-page outcomes
+were mixed: software form CPU fell from 93.00 to 85.41 ms, while the software tab
+did not improve and list/search wall times increased slightly. SQL counts stayed
+unchanged; no general Entity speedup is claimed. The independent Status pair
+`5c9560c315` to `83df7b32bf` reduced list/search wall medians from 305.76/302.15 to
+261.15/264.24 ms and CPU from 184.06/179.73 to 151.38/150.81 ms. Each complete flow
+issued 118 fewer SELECTs; other seven read flows and login SQL stayed unchanged.
+Profiled catalogue reads fell from 61 to two (bootstrap plus formatting). List/
+search peak memory stayed at 12/10 MiB. Genuine-release controls changed from
+142.72/142.56 to 137.44/145.34 ms. These serial MariaDB comparisons exclude browser
+rendering, concurrency and PostgreSQL throughput; instrumented durations establish
+call attribution rather than normal request latency.
 These changes do not resolve stable status identity or claim a Software dropdown
 performance gain.
 
