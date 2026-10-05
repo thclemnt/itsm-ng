@@ -368,6 +368,9 @@ try {
         verify($migration->plan($connection) === [] && $migration->apply($connection) === [], 'Completed append is a no-op');
         verify((new SchemaCheck())->differences($connection, $expected) === [], 'Populated optional adoption converges to current metadata');
     }
+    $completedPolicy = Ledger::state($connection, $version)['policy'] ?? null;
+    verify(is_string($completedPolicy['projection'] ?? null) && is_array($completedPolicy['check'] ?? null),
+        'Canonical-only retry retains native projection proof from the actual completed producer');
     // A generated projection is not proof of a completed canonical adoption.
     // Invalid partial states fail before stock normalization or any new receipt.
     $connection->executeStatement('ALTER TABLE ' . $platform->quoteIdentifier($tableName) . ' DROP '
@@ -390,7 +393,34 @@ try {
             && Ledger::state($connection, $version) === null, 'Invalid generated partial adoption changes neither row nor receipt');
     }
     $connection->update($tableName, ['itemtype' => null, 'computers_id' => null], ['id' => 4294990104]);
+    $partialFacts = static fn (): array => [
+        $connection->fetchAllAssociative('SELECT * FROM ' . $tableName . ' ORDER BY id'),
+        $connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version'),
+        $platform->getCreateTableSQL($manager->introspectTable($tableName)),
+        \itsmng\Database\Migration\V220\ExactDiscriminators::nativePolicy($connection, $tableName,
+            ['column' => 'items_id', 'constraint' => $tableName . '_typed_item_kind']),
+    ];
+    $withoutProof = $partialFacts();
+    foreach ([fn () => $migration->plan($connection), fn () => $migration->apply($connection)] as $attempt) {
+        try {
+            $attempt();
+            throw new LogicException('Valid generated source without retained proof was accepted');
+        } catch (RuntimeException $error) {
+            verify(str_contains($error->getMessage(), 'no retained authoritative projection proof')
+                && str_contains($error->getMessage(), $tableName), 'Valid rows cannot replace authentic projection proof: ' . $error->getMessage());
+        }
+        verify($partialFacts() === $withoutProof, 'Missing-proof refusal retains all rows, native definitions and raw receipts');
+    }
+    // Reconstruct a legitimate pending projection checkpoint from its original
+    // owned output. The missing CHECK is rebuilt by the producer, never trusted
+    // from a fresh native snapshot or a fabricated completed receipt.
+    $pending = ['complete' => false, 'phase' => 'projection', 'items_comment' => $comment,
+        'policy' => ['projection' => $completedPolicy['projection']]];
+    Ledger::save($connection, $version, $pending);
+    $beforePendingPlan = $partialFacts();
     verify(count($migration->plan($connection)[$tableName]['copy']) === 1, 'Canonical-only retry retains stock normalization without recopying the generated identity');
+    verify($partialFacts() === $beforePendingPlan && Ledger::state($connection, $version) === $pending,
+        'Authentic pending projection preview is read-only before owned CHECK restoration');
     $migration->apply($connection);
     verify((new SchemaCheck())->differences($connection, $expected) === [], 'Valid canonical-only retry reinstalls the owned CHECK');
 } catch (Throwable $error) {
