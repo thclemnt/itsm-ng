@@ -150,7 +150,7 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
                 $canonical ? (new History())->upgrade($connection) : $migration->apply($connection);
                 throw new LogicException('Invalid component source was accepted');
             } catch (RuntimeException $error) {
-                verify(str_contains($error->getMessage(), $table) && str_contains($error->getMessage(), (string)$id), 'Local source audit identifies its actual table and row before DDL');
+                verify(str_contains($error->getMessage(), $table) && str_contains($error->getMessage(), (string)$id), 'Local source audit identifies its actual table and row before DDL: ' . $error->getMessage());
             }
             verify($connection->fetchAllAssociative('SELECT * FROM ' . $table . ' ORDER BY id') === $rows
                 && $connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version') === $ledger
@@ -176,7 +176,7 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
             // Earlier selected family receipts are deliberately pending too.
             // The invalid final family must refuse the canonical updater
             // before any earlier selected family changes its CHECK or receipt.
-            $otherReceipts = [];
+            $otherReceipts = $pendingReceipts = [];
             $beforeJoint = $connection->fetchAllAssociative('SELECT * FROM ' . Ledger::TABLE . ' ORDER BY version');
             $earlierFamilies = array_slice($families, 0, $familyIndex);
             $firstFamilyChecks = static function () use ($earlierFamilies, $postgres, $connection): array {
@@ -191,20 +191,31 @@ foreach ($families as $familyIndex => [$linkClass, $migrationClass, $payload]) {
             };
             $beforeJointChecks = $firstFamilyChecks();
             try {
-                foreach ($earlierFamilies as [, $earlierMigration]) {
+                foreach ($earlierFamilies as [$earlierLink, $earlierMigration]) {
                     $earlier = $earlierMigration::PHASE;
                     $receipt = $connection->fetchAssociative('SELECT * FROM ' . Ledger::TABLE . ' WHERE version=?', [$earlier]);
                     verify($receipt !== false && (Ledger::state($connection, $earlier)['complete'] ?? false), 'Capture each actual earlier completed family receipt before declaring it pending');
                     $otherReceipts[$earlier] = $receipt;
-                    $connection->delete(Ledger::TABLE, ['version' => $earlier]);
+                    $completed = json_decode($receipt['state'], true, flags: JSON_THROW_ON_ERROR);
+                    verify(is_string($completed['policy']['projection'] ?? null) && is_array($completed['policy']['check'] ?? null),
+                        'Pending generated-family fixture retains authentic proof from its completed owner');
+                    // A generated projection cannot be admitted without its owned
+                    // native proof. Simulate an interrupted final checkpoint using
+                    // that actual receipt, never certify a fresh native snapshot.
+                    $earlierTable = $earlierLink::getTable();
+                    $pendingReceipts[$earlier] = ['complete' => false, 'phase' => 'constraints',
+                        'items_comment' => $manager->introspectTable($earlierTable)->getColumn('items_id')->getComment() ?? '',
+                        'policy' => $completed['policy']];
+                    Ledger::save($connection, $earlier, $pendingReceipts[$earlier]);
                 }
                 $rejectLegacy(['items_id' => $subject + 99], canonical: true);
                 verify($firstFamilyChecks() === $beforeJointChecks, 'Joint updater audits all selected pending families before earlier CHECK replacement');
                 foreach (array_keys($otherReceipts) as $earlier) {
-                    verify(Ledger::state($connection, $earlier) === null, 'Invalid later source creates no earlier family receipt');
+                    verify(Ledger::state($connection, $earlier) === $pendingReceipts[$earlier], 'Invalid later source preserves every earlier authentic pending policy and incomplete receipt');
                 }
             } finally {
                 foreach ($otherReceipts as $receipt) {
+                    $connection->delete(Ledger::TABLE, ['version' => $receipt['version']]);
                     $connection->insert(Ledger::TABLE, $receipt);
                 }
             }
