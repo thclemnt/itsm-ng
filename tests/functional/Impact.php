@@ -43,6 +43,109 @@ use Ticket;
 
 class Impact extends \DbTestCase
 {
+    public function testListPriorityColorsUseCurrentAccountOverrides(): void
+    {
+        global $DB, $CFG_GLPI;
+
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+        $em = \itsmng\Database\Orm::create($DB);
+        $connection = $em->getConnection();
+        $level = $connection->getTransactionNestingLevel();
+        $savedConfig = $CFG_GLPI;
+        $user = (int)\Session::getLoginUserID();
+        $observer = new class {
+            public int $loads = 0;
+            public function postLoad(\Doctrine\ORM\Event\PostLoadEventArgs $event): void
+            {
+                ++$this->loads;
+            }
+        };
+        $em->getEventManager()->addEventListener(['postLoad'], $observer);
+        try {
+            $computers = [];
+            for ($i = 0; $i < 3; ++$i) {
+                $computer = new Computer();
+                $this->integer($computer->add([
+                    'name' => 'Impact priority ' . $i . '-' . bin2hex(random_bytes(6)),
+                    'entities_id' => $entity,
+                ]))->isGreaterThan(0);
+                $this->boolean($computer->can($computer->getID(), READ))->isTrue();
+                $computers[] = $computer;
+            }
+            $connection->update('glpi_users', [
+                'priority_3' => null, 'priority_4' => '', 'priority_5' => '#123456', 'priority_6' => '0',
+            ], ['id' => $user]);
+            $CFG_GLPI['priority_3'] = '#abcdef';
+            $repository = new \itsmng\Database\Repository\UserRepository($em);
+            $colors = $repository->priorityColors($user);
+            $this->array($colors)->hasSize(6);
+            $this->variable($colors['priority_3'])->isNull();
+            $this->string($colors['priority_4'])->isIdenticalTo('');
+            $this->string($colors['priority_5'])->isIdenticalTo('#123456');
+            $this->string($colors['priority_6'])->isIdenticalTo('0');
+            $this->array($repository->priorityColors(-1))->isEmpty();
+            $this->integer($observer->loads)->isIdenticalTo(0);
+            $this->integer($em->getUnitOfWork()->size())->isIdenticalTo(0);
+            $managed = $em->find(\itsmng\Database\Entity\User::class, $user);
+            $this->integer($observer->loads)->isGreaterThan(0);
+
+            // The renderer consumes an already built graph; keep its counters and
+            // priorities explicit so maximum-priority and empty-cell behavior are tested.
+            $graph = ['nodes' => [], 'edges' => []];
+            foreach ($computers as $computer) {
+                $node = \Impact::getNodeID($computer);
+                $graph['nodes'][$node] = ['id' => $node, 'label' => $computer->fields['name'],
+                    'ITILObjects' => ['incidents' => [], 'problems' => [], 'changes' => []]];
+            }
+            $root = \Impact::getNodeID($computers[0]);
+            $first = \Impact::getNodeID($computers[1]);
+            $second = \Impact::getNodeID($computers[2]);
+            $graph['nodes'][$first]['ITILObjects'] = [
+                'incidents' => [['priority' => 2], ['priority' => 5]],
+                'problems' => [['priority' => 3]], 'changes' => [['priority' => 4]],
+            ];
+            $graph['nodes'][$second]['ITILObjects']['incidents'] = [['priority' => 6]];
+            foreach ([$first, $second] as $node) {
+                $graph['edges'][] = ['source' => $root, 'target' => $node, 'flag' => \Impact::DIRECTION_FORWARD];
+            }
+            $render = static function () use ($computers, &$graph): string {
+                ob_start();
+                try {
+                    \Impact::displayListView($computers[0], $graph);
+                    return ob_get_contents();
+                } finally {
+                    ob_end_clean();
+                }
+            };
+            $html = $render();
+            foreach (['#123456', '#abcdef', '', '0'] as $color) {
+                $this->string($html)->contains('background-color:' . $color . '; cursor:pointer;');
+            }
+            $this->string($html)->contains('<div>2</div>')->contains('<div></div>');
+            $this->string($html)->contains('itemtype=Ticket')->contains('itemtype=Problem')->contains('itemtype=Change');
+            $this->string($html)->contains($computers[1]->fields['name'])->contains($computers[2]->fields['name']);
+
+            $connection->update('glpi_users', ['priority_5' => '#654321'], ['id' => $user]);
+            $CFG_GLPI['priority_3'] = '#fedcba';
+            $this->string($repository->priorityColors($user)['priority_5'])->isIdenticalTo('#654321');
+            $this->string($managed->priority_5)->isIdenticalTo('#123456');
+            $html = $render();
+            $this->string($html)->contains('background-color:#654321;')->contains('background-color:#fedcba;');
+            $this->string($html)->notContains('background-color:#123456;')->notContains('background-color:#abcdef;');
+            foreach ($graph['nodes'] as &$node) {
+                $node['ITILObjects'] = ['incidents' => [], 'problems' => [], 'changes' => []];
+            }
+            unset($node);
+            $this->string($render())->notContains('background-color:');
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        } finally {
+            $em->clear();
+            $CFG_GLPI = $savedConfig;
+        }
+    }
+
     public function beforeTestMethod($method)
     {
         parent::beforeTestMethod($method);

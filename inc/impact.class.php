@@ -229,7 +229,7 @@ class Impact extends CommonGLPI
         array $graph,
         bool $scripts = false
     ) {
-        global $CFG_GLPI;
+        global $CFG_GLPI, $DB;
 
         $impact_item = ImpactItem::findForItem($item);
         $impact_context = ImpactContext::findForImpactItem($impact_item);
@@ -249,6 +249,7 @@ class Impact extends CommonGLPI
            __("Impacted by") => self::DIRECTION_BACKWARD,
         ];
         $has_impact = false;
+        $priority_colors = null;
 
         foreach ($lists as $label => $direction) {
             $start_node_id = self::getNodeID($item);
@@ -312,20 +313,43 @@ class Impact extends CommonGLPI
 
                     echo '</div></td>';
 
+                    if ($priority_colors === null && (
+                        $itemtype_item['node']['ITILObjects']['incidents']
+                        || $itemtype_item['node']['ITILObjects']['problems']
+                        || $itemtype_item['node']['ITILObjects']['changes']
+                    )) {
+                        $em = \itsmng\Database\Orm::create($DB);
+                        try {
+                            $overrides = (new \itsmng\Database\Repository\UserRepository($em))
+                                ->priorityColors((int)Session::getLoginUserID());
+                        } finally {
+                            $em->clear();
+                        }
+                        // Match User::computePreferences: only NULL inherits a default.
+                        $priority_colors = [];
+                        for ($priority = 1; $priority <= 6; ++$priority) {
+                            $field = 'priority_' . $priority;
+                            $priority_colors[$priority] = $overrides[$field] ?? $CFG_GLPI[$field];
+                        }
+                    }
+
                     self::displayListNumber(
                         $itemtype_item['node']['ITILObjects']['incidents'],
                         Ticket::class,
-                        $itemtype_item['node']['id']
+                        $itemtype_item['node']['id'],
+                        $priority_colors ?? []
                     );
                     self::displayListNumber(
                         $itemtype_item['node']['ITILObjects']['problems'],
                         Problem::class,
-                        $itemtype_item['node']['id']
+                        $itemtype_item['node']['id'],
+                        $priority_colors ?? []
                     );
                     self::displayListNumber(
                         $itemtype_item['node']['ITILObjects']['changes'],
                         Change::class,
-                        $itemtype_item['node']['id']
+                        $itemtype_item['node']['id'],
+                        $priority_colors ?? []
                     );
 
                     echo '<td class="center"><div></div></td>';
@@ -492,13 +516,10 @@ class Impact extends CommonGLPI
      * @param array   $itil_objects
      * @param string  $type
      * @param string  $node_id
+     * @param array   $priority_colors Account/configuration colors for this render
      */
-    private static function displayListNumber($itil_objects, $type, $node_id)
+    private static function displayListNumber($itil_objects, $type, $node_id, array $priority_colors)
     {
-        $user = new User();
-        $user->getFromDB(Session::getLoginUserID());
-        $user->computePreferences();
-
         $count = count($itil_objects) ?: "";
         $extra = "";
         $node_details = explode(self::NODE_ID_DELIMITER, $node_id);
@@ -541,7 +562,7 @@ class Impact extends CommonGLPI
                     $priority = $itil_object['priority'];
                 }
             }
-            $extra = 'id="' . $id . '" style="background-color:' .  $user->fields["priority_$priority"] . '; cursor:pointer;"';
+            $extra = 'id="' . $id . '" style="background-color:' . $priority_colors[$priority] . '; cursor:pointer;"';
 
             echo Html::scriptBlock('
             $(document).on("click", "#' . $id . '", function(e) {

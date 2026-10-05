@@ -19,6 +19,16 @@ final class UserRepository
     {
     }
 
+    /** Nullable account overrides; the caller supplies the current configuration defaults. */
+    public function priorityColors(int $user): array
+    {
+        return $this->em->createQueryBuilder()
+            ->select('u.priority_1', 'u.priority_2', 'u.priority_3', 'u.priority_4', 'u.priority_5', 'u.priority_6')
+            ->from(User::class, 'u')->where('u.id = :user')
+            ->setParameter('user', $user, Types::BIGINT)
+            ->getQuery()->getArrayResult()[0] ?? [];
+    }
+
     /**
      * Complete API records for visible account identities. EXISTS avoids grant
      * fan-out in both pages and totals; null scope also admits ungranted accounts.
