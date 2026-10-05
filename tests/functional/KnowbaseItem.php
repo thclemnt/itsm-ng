@@ -228,7 +228,7 @@ class KnowbaseItem extends DbTestCase
             foreach (['zxduplicate', 'uplicat'] as $text) {
                 $criteria = \KnowbaseItem::getListRequest(['contains' => $text, 'faq' => false,
                     'knowbaseitemcategories_id' => 0], 'search');
-                $legacy = iterator_to_array($DB->request($criteria));
+                $legacy = array_values(iterator_to_array($DB->request($criteria)));
                 $this->array(array_column($legacy, 'id'))->isIdenticalTo([(int)$articles[5]->getID()]);
                 $this->string($legacy[0]['transname'])->isIdenticalTo('Duplicate Zxduplicate Zxnebula translation');
             }
