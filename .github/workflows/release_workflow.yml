@@ -17,7 +17,7 @@ jobs:
       DB_DATABASE_UNIT: unit_db
       DB_USER: test
       DB_PASSWORD: test
-      PORT_HISTORY_DB: itsm_port_release_migration_history
+      ITSM_TEST_MIGRATION_DB: itsm_test_release_migration
       MIGRATION_CONFIG: /tmp/itsm-port-release-migration-config
       TAG: ${{ github.ref_name }}
 
@@ -134,16 +134,18 @@ jobs:
       - name: Setup migration environment
         run: |
           sudo mysql -e "CREATE DATABASE itsm_port_release_migration;"
-          sudo mysql -e "CREATE DATABASE $PORT_HISTORY_DB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+          sudo mysql -e "CREATE DATABASE $ITSM_TEST_MIGRATION_DB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
           sudo mysql -e "CREATE USER IF NOT EXISTS 'itsm_migration'@'localhost' IDENTIFIED BY 'itsm_migration';"
           sudo mysql -e "GRANT ALL PRIVILEGES ON itsm_port_release_migration.* TO 'itsm_migration'@'localhost';"
-          sudo mysql -e "GRANT ALL PRIVILEGES ON $PORT_HISTORY_DB.* TO 'itsm_migration'@'localhost';"
+          sudo mysql -e "GRANT ALL PRIVILEGES ON $ITSM_TEST_MIGRATION_DB.* TO 'itsm_migration'@'localhost';"
           sudo mysql -e "FLUSH PRIVILEGES;"
           mkdir -m 700 "$MIGRATION_CONFIG"
           php bin/console db:install --config-dir="$MIGRATION_CONFIG" --db-host=localhost --db-user=itsm_migration --db-password=itsm_migration --db-name=itsm_port_release_migration --no-interaction
 
       - name: Run migration tests
-        run: timeout --signal=TERM --kill-after=10s 300s php tests/database-portability/migration-history.php "$MIGRATION_CONFIG"
+        env:
+          GLPI_CONFIG_DIR: ${{ env.MIGRATION_CONFIG }}
+        run: timeout --signal=TERM --kill-after=10s 300s composer test:migration
 
       - name: Clean environment
         run: |

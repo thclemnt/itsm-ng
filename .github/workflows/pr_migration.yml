@@ -22,7 +22,7 @@ jobs:
       DB_DATABASE: itsm_port_migration
       DB_USER: itsm_migration
       DB_PASSWORD: itsm_migration
-      PORT_HISTORY_DB: itsm_port_migration_history
+      ITSM_TEST_MIGRATION_DB: itsm_test_pr_migration
       MIGRATION_CONFIG: /tmp/itsm-port-migration-config
 
     services:
@@ -62,7 +62,9 @@ jobs:
 
       - name: Provision the separate populated-history fixture
         run: |
-          docker exec "${{ job.services.db.id }}" ${{ matrix.db.client }} -uroot -p"$DB_PASSWORD" -e "CREATE DATABASE $PORT_HISTORY_DB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL ON $PORT_HISTORY_DB.* TO '$DB_USER'@'%';"
+          docker exec "${{ job.services.db.id }}" ${{ matrix.db.client }} -uroot -p"$DB_PASSWORD" -e "CREATE DATABASE $ITSM_TEST_MIGRATION_DB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL ON $ITSM_TEST_MIGRATION_DB.* TO '$DB_USER'@'%';"
 
       - name: Test populated frozen adoption, original-key preservation and retry
-        run: timeout --signal=TERM --kill-after=10s 300s php tests/database-portability/migration-history.php "$MIGRATION_CONFIG"
+        env:
+          GLPI_CONFIG_DIR: ${{ env.MIGRATION_CONFIG }}
+        run: timeout --signal=TERM --kill-after=10s 300s composer test:migration
