@@ -2,7 +2,7 @@
 
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-use Doctrine\DBAL\Driver\PDO\Exception as PdoException;
+use Doctrine\DBAL\Driver\PDO\Exception as DbalPdoException;
 use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
 use itsmng\Database\Migration\Ledger;
 use itsmng\Database\OwnedMutationFrame;
@@ -90,8 +90,8 @@ try {
                 verify($error !== null && $error->getSQLState() === $restrictState && $error->getCode() === 7,
                     'Actual DBAL and legacy bound RESTRICT operations retain server-native state, code and FK abstraction');
                 $driver = $error->getPrevious();
-                $pdo = $driver instanceof PdoException ? $driver->getPrevious() : null;
-                $information = $pdo instanceof PDOException ? $pdo->errorInfo : null;
+                $pdo = $driver instanceof DbalPdoException ? $driver->getPrevious() : null;
+                $information = $pdo instanceof \PDOException ? $pdo->errorInfo : null;
                 verify(is_array($information) && count($information) === 3
                     && $information[0] === $restrictState && $information[1] === 7 && is_string($information[2]),
                     'Converted refusal retains the actual PDO diagnostic chain');
