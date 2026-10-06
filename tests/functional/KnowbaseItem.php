@@ -139,7 +139,7 @@ class KnowbaseItem extends DbTestCase
             $this->boolean($author !== (int)\Session::getLoginUserID())->isTrue();
             $category = $this->createItem(\KnowbaseItemCategory::class, ['name' => 'Native search category']);
             foreach ([
-                ['Zxquasar alpha', 'First searchable content ZxunderXscoremark', $entity, null, null],
+                ['Zxquasar alpha Zxbasehit', 'First searchable content ZxunderXscoremark', $entity, null, null],
                 ['Second visible article', 'Zxquasar second content Zxunder_scoremark Zxnullmark', $entity, null, null],
                 ['Zxquasar hidden audience', 'Hidden content', 0, null, null],
                 ['Zxquasar future article', 'Future content', $entity, '2037-01-01 00:00:00', null],
@@ -168,7 +168,7 @@ class KnowbaseItem extends DbTestCase
                     'name' => $name, 'answer' => null,
                 ]);
             }
-            foreach (['Base article earlier translation', 'Zxquasar later translation'] as $name) {
+            foreach (['Base article earlier translation', 'Zxbasehit later translation'] as $name) {
                 $this->createItem(\KnowbaseItemTranslation::class, [
                     'knowbaseitems_id' => $articles[0]->getID(), 'language' => 'fr_FR',
                     'name' => $name, 'answer' => null,
@@ -204,17 +204,16 @@ class KnowbaseItem extends DbTestCase
             $expectedIds = [(int)$articles[0]->getID(), (int)$articles[1]->getID()];
             $ids = array_column($page['rows'], 'id');
             $this->array($ids)->hasSize(2)->containsValues($expectedIds);
-            $baseHit = array_values(array_filter($page['rows'],
-                static fn (array $row): bool => $row['id'] === (int)$articles[0]->getID()));
-            $this->string($baseHit[0]['transname'])->isIdenticalTo('Base article earlier translation',
+            $basePage = $repository->listPage($access, array_replace($options, ['contains' => 'zxbasehit']));
+            $this->integer($basePage['total'])->isIdenticalTo(1);
+            $this->array(array_column($basePage['rows'], 'id'))->isIdenticalTo([(int)$articles[0]->getID()]);
+            $this->string($basePage['rows'][0]['transname'])->isIdenticalTo('Base article earlier translation',
                 'An article hit keeps its first translation even when a later translation also matches');
-            $criteria = \KnowbaseItem::getListRequest(['contains' => 'zxquas', 'faq' => false,
+            $criteria = \KnowbaseItem::getListRequest(['contains' => 'zxbasehit', 'faq' => false,
                 'knowbaseitemcategories_id' => 0], 'search');
             $legacyBase = array_values(iterator_to_array($DB->request($criteria)));
-            $this->array(array_column($legacyBase, 'id'))->hasSize(2)->containsValues($expectedIds);
-            $legacyBaseHit = array_values(array_filter($legacyBase,
-                static fn (array $row): bool => $row['id'] === (int)$articles[0]->getID()));
-            $this->string($legacyBaseHit[0]['transname'])->isIdenticalTo('Base article earlier translation');
+            $this->array(array_column($legacyBase, 'id'))->isIdenticalTo([(int)$articles[0]->getID()]);
+            $this->string($legacyBase[0]['transname'])->isIdenticalTo('Base article earlier translation');
             $this->integer($page['rows'][0]['is_faq'])->isIdenticalTo(0);
             foreach ([0, 1] as $offset) {
                 $part = $repository->listPage($access, array_replace($options, ['limit' => 1, 'offset' => $offset]));
