@@ -398,7 +398,7 @@ class Config extends DbTestCase
 
     public function testCacheBackendBootstrapReadsFreshRawConfiguration(): void
     {
-        global $DB;
+        global $DB, $PHP_LOG_HANDLER;
         $connection = $DB->getDoctrineConnection();
         $context = "cache-bootstrap-'" . bin2hex(random_bytes(6));
         $otherContext = $context . '-other';
@@ -440,6 +440,30 @@ class Config extends DbTestCase
             $connection->delete($table, ['context' => $context, 'name' => $name]);
             $this->object(\Config::getCache($name, $context, false))->isInstanceOf(\Laminas\Cache\Storage\Adapter\Filesystem::class);
             $this->array($memory->getValues())->isEmpty('Cache backend construction does not populate the ORM metadata cache');
+
+            // Consume only the four deliberate getCache debug messages, after
+            // checking their complete decoded payloads and order.
+            $expectedPayloads = [];
+            foreach ([['first', 17], ['second', 29]] as [$namespace, $ttl]) {
+                $expectedPayloads[] = 'CACHE CONFIG  cache_db ' . str_replace("\n", "\n  ", print_r([
+                    'adapter' => 'memory',
+                    'options' => ['namespace' => $namespace, 'ttl' => $ttl],
+                ], true));
+            }
+            $expectedPayloads[] = 'CACHE CONFIG  cache_db NULL ';
+            $expectedPayloads[] = 'CACHE CONFIG  cache_db NULL ';
+            $records = $PHP_LOG_HANDLER->getRecords();
+            $this->array($records)->hasSize(4);
+            foreach ($records as $index => $record) {
+                $this->string($record['level_name'])->isIdenticalTo('DEBUG');
+                [$caller, $payload] = explode("\n", $record['message'], 2);
+                $this->integer(preg_match(
+                    '~^' . preg_quote('Config::getCache() in ' . GLPI_ROOT . '/inc/config.class.php line ', '~') . '[0-9]+$~D',
+                    $caller
+                ))->isIdenticalTo(1);
+                $this->string($payload)->isIdenticalTo($expectedPayloads[$index]);
+            }
+            $PHP_LOG_HANDLER->clear();
         } finally {
             $connection->delete($table, ['context' => $context]);
             $connection->delete($table, ['context' => $otherContext]);
