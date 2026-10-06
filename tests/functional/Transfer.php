@@ -678,6 +678,89 @@ class Transfer extends DbTestCase
         }
     }
 
+    public function testOverriddenHistoryCannotContinueIntoTicketMutations(): void
+    {
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $this->withSoftwareOwnerQueryProbe(function ($database, $connection, $logger): void {
+            $source = (int)getItemByTypeName('Entity', '_test_root_entity', true);
+            $target = (int)getItemByTypeName('Entity', '_test_child_2', true);
+            $manager = \itsmng\Database\Orm::create($database);
+            $entity = $manager->getReference(\itsmng\Database\Entity\Entity::class, $source);
+            $computer = new \itsmng\Database\Entity\Computer();
+            $computer->entities = $entity;
+            $computer->name = 'Public related transfer boundary';
+            $ticket = new \itsmng\Database\Entity\Ticket();
+            $ticket->entities = $entity;
+            $ticket->name = 'Ticket must retain its original asset';
+            $manager->persist($computer);
+            $manager->persist($ticket);
+            $manager->flush();
+            $link = new \itsmng\Database\Entity\ItemTicket();
+            $link->itemtype = 'Computer';
+            $link->computer = $computer;
+            $link->tickets = $ticket;
+            $history = new \itsmng\Database\Entity\Log();
+            $history->itemtype = 'Computer';
+            $history->items_id = $computer->id;
+            $history->new_value = 'Retained original history';
+            $manager->persist($link);
+            $manager->persist($history);
+            $manager->flush();
+            $transfer = new class extends \Transfer {
+                public ?\Closure $afterHistory = null;
+                public int $ticketCalls = 0;
+
+                public function transferHistory($itemtype, $ID, $newID)
+                {
+                    parent::transferHistory($itemtype, $ID, $newID);
+                    $callback = $this->afterHistory;
+                    $this->afterHistory = null;
+                    if ($callback !== null) {
+                        $callback();
+                    }
+                }
+
+                public function transferTickets($itemtype, $ID, $newID)
+                {
+                    ++$this->ticketCalls;
+                    parent::transferTickets($itemtype, $ID, $newID);
+                }
+            };
+            $replacement = null;
+            $level = $connection->getTransactionNestingLevel();
+            $transfer->afterHistory = static function () use ($connection, $computer, $logger, &$replacement): void {
+                $connection->rollBack();
+                $replacement = \itsmng\Database\OwnedMutationFrame::begin($connection);
+                $connection->update('glpi_computers', ['comment' => 'Public helper replacement witness'], ['id' => $computer->id]);
+                $logger->queries = [];
+            };
+            try {
+                $this->exception(static fn () => $transfer->moveItems(['Computer' => [$computer->id]], $target, ['keep_ticket' => 1]))
+                    ->isInstanceOf(\itsmng\Database\MutationRollbackFailure::class);
+                $this->object($replacement)->isInstanceOf(\itsmng\Database\OwnedMutationFrame::class);
+                $replacement->assertActive();
+                $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level + 1);
+                $this->integer($transfer->ticketCalls)->isIdenticalTo(0);
+                $this->array(array_values(array_filter($logger->queries, static fn (string $sql): bool =>
+                    preg_match('/^\s*(?:INSERT|UPDATE|DELETE)\b/i', $sql) === 1)))->isEmpty();
+                $this->string($connection->fetchOne('SELECT comment FROM glpi_computers WHERE id=?', [$computer->id]))->isIdenticalTo('Public helper replacement witness');
+                $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_computers WHERE id=?', [$computer->id]))->isIdenticalTo($source);
+                $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_items_tickets WHERE id=? AND computers_id=? AND tickets_id=?', [$link->id, $computer->id, $ticket->id]))->isIdenticalTo(1);
+                $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_logs WHERE id=?', [$history->id]))->isIdenticalTo(1);
+            } finally {
+                $replacement?->rollBack();
+            }
+            // The actual public overrides remain usable with normal ownership.
+            $this->boolean($transfer->moveItems(['Computer' => [$computer->id]], $target, ['keep_ticket' => 1]))->isTrue();
+            $this->integer($transfer->ticketCalls)->isIdenticalTo(1);
+            $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_items_tickets WHERE id=?', [$link->id]))->isIdenticalTo(0);
+            $this->integer((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_logs WHERE id=?', [$history->id]))->isIdenticalTo(0);
+            $this->integer((int)$connection->fetchOne('SELECT entities_id FROM glpi_computers WHERE id=?', [$computer->id]))->isIdenticalTo($target);
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
+        });
+    }
+
     public function testManyInstalledVersionsUseBoundedOwnerReads(): void
     {
         $this->login();

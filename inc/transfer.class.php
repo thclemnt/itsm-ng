@@ -214,7 +214,7 @@ class Transfer extends CommonDBTM
             }
 
             // Simulate transfers To know which items need to be transfer
-            $this->simulateTransfer($items);
+            $this->checkedTransferResult($this->simulateTransfer($items));
 
             // Inventory Items : MONITOR....
             $INVENTORY_TYPES = [
@@ -262,7 +262,7 @@ class Transfer extends CommonDBTM
 
             // Clean unused
             // FIXME: only if Software or SoftwareLicense has been changed?
-            $this->cleanSoftwareVersions();
+            $this->checkedTransferResult($this->cleanSoftwareVersions());
 
         } // $to >= 0
     }
@@ -347,6 +347,14 @@ class Transfer extends CommonDBTM
         }
         $this->transferCoordinator->assertTransactionalStorage($model->getTable());
         $model->validateEntityTransfer($destination);
+        $this->transferCoordinator->assertActive();
+    }
+
+    /** Public related helpers are extension points, including those returning void. */
+    private function checkedTransferResult(mixed $result): mixed
+    {
+        $this->transferCoordinator?->assertActive();
+        return $result;
     }
 
     private function requireTransfer(mixed $result): void
@@ -465,7 +473,7 @@ class Transfer extends CommonDBTM
         foreach ($items as $key => $tab) {
             if (count($tab)) {
                 foreach ($tab as $ID) {
-                    $this->addToBeTransfer($key, $ID);
+                    $this->checkedTransferResult($this->addToBeTransfer($key, $ID));
                 }
             }
         }
@@ -529,9 +537,9 @@ class Transfer extends CommonDBTM
                     if ($item->getFromDB($data['items_id'])
                           && $item->isRecursive()
                           && in_array($item->getEntityID(), $to_entity_ancestors)) {
-                        $this->addNotToBeTransfer($itemtype, $data['items_id']);
+                        $this->checkedTransferResult($this->addNotToBeTransfer($itemtype, $data['items_id']));
                     } else {
-                        $this->addToBeTransfer($itemtype, $data['items_id']);
+                        $this->checkedTransferResult($this->addToBeTransfer($itemtype, $data['items_id']));
                     }
                 }
             }
@@ -612,9 +620,9 @@ class Transfer extends CommonDBTM
                         while ($data = $iterator->next()) {
                             if ($data['is_recursive']
                                && in_array($data['entities_id'], $to_entity_ancestors)) {
-                                $this->addNotToBeTransfer('SoftwareVersion', $data['vID']);
+                                $this->checkedTransferResult($this->addNotToBeTransfer('SoftwareVersion', $data['vID']));
                             } else {
-                                $this->addToBeTransfer('SoftwareVersion', $data['vID']);
+                                $this->checkedTransferResult($this->addToBeTransfer('SoftwareVersion', $data['vID']));
                             }
                         }
                     }
@@ -632,14 +640,14 @@ class Transfer extends CommonDBTM
             ]);
 
             while ($lic = $iterator->next()) {
-                $this->addToBeTransfer('SoftwareLicense', $lic['id']);
+                $this->checkedTransferResult($this->addToBeTransfer('SoftwareLicense', $lic['id']));
 
                 // Force version transfer
                 if ($lic['softwareversions_id_buy'] > 0) {
-                    $this->addToBeTransfer('SoftwareVersion', $lic['softwareversions_id_buy']);
+                    $this->checkedTransferResult($this->addToBeTransfer('SoftwareVersion', $lic['softwareversions_id_buy']));
                 }
                 if ($lic['softwareversions_id_use'] > 0) {
-                    $this->addToBeTransfer('SoftwareVersion', $lic['softwareversions_id_use']);
+                    $this->checkedTransferResult($this->addToBeTransfer('SoftwareVersion', $lic['softwareversions_id_use']));
                 }
             }
         }
@@ -679,10 +687,10 @@ class Transfer extends CommonDBTM
                         while ($data = $iterator->next()) {
                             if ($data['is_recursive']
                                 && in_array($data['entities_id'], $to_entity_ancestors)) {
-                                $this->addNotToBeTransfer($devicetype, $data[$fk]);
+                                $this->checkedTransferResult($this->addNotToBeTransfer($devicetype, $data[$fk]));
                             } else {
                                 if (!isset($this->needtobe_transfer[$devicetype][$data[$fk]])) {
-                                    $this->addToBeTransfer($devicetype, $data[$fk]);
+                                    $this->checkedTransferResult($this->addToBeTransfer($devicetype, $data[$fk]));
                                     $iterator2 = $DB->request([
                                        'SELECT' => 'id',
                                        'FROM'   => $itemdevicetable,
@@ -693,7 +701,7 @@ class Transfer extends CommonDBTM
                                        ]
                                     ]);
                                     while ($data2 = $iterator2->next()) {
-                                        $this->addToBeTransfer($itemdevicetype, $data2['id']);
+                                        $this->checkedTransferResult($this->addToBeTransfer($itemdevicetype, $data2['id']));
                                     }
                                 }
                             }
@@ -725,7 +733,7 @@ class Transfer extends CommonDBTM
                     ]);
 
                     while ($data = $iterator->next()) {
-                        $this->addToBeTransfer('Ticket', $data['id']);
+                        $this->checkedTransferResult($this->addToBeTransfer('Ticket', $data['id']));
                     }
                 }
             }
@@ -793,9 +801,9 @@ class Transfer extends CommonDBTM
                     while ($data = $iterator->next()) {
                         if ($data['is_recursive']
                               && in_array($data['entities_id'], $to_entity_ancestors)) {
-                            $this->addNotToBeTransfer('Contract', $data['contracts_id']);
+                            $this->checkedTransferResult($this->addNotToBeTransfer('Contract', $data['contracts_id']));
                         } else {
-                            $this->addToBeTransfer('Contract', $data['contracts_id']);
+                            $this->checkedTransferResult($this->addToBeTransfer('Contract', $data['contracts_id']));
                         }
                     }
                 }
@@ -853,9 +861,9 @@ class Transfer extends CommonDBTM
                 while ($data = $iterator->next()) {
                     if ($data['is_recursive']
                           && in_array($data['entities_id'], $to_entity_ancestors)) {
-                        $this->addNotToBeTransfer('Supplier', $data['suppliers_id']);
+                        $this->checkedTransferResult($this->addNotToBeTransfer('Supplier', $data['suppliers_id']));
                     } else {
-                        $this->addToBeTransfer('Supplier', $data['suppliers_id']);
+                        $this->checkedTransferResult($this->addToBeTransfer('Supplier', $data['suppliers_id']));
                     }
                 }
             }
@@ -892,9 +900,9 @@ class Transfer extends CommonDBTM
                 while ($data = $iterator->next()) {
                     if ($data['is_recursive']
                           && in_array($data['entities_id'], $to_entity_ancestors)) {
-                        $this->addNotToBeTransfer('Supplier', $data['suppliers_id']);
+                        $this->checkedTransferResult($this->addNotToBeTransfer('Supplier', $data['suppliers_id']));
                     } else {
-                        $this->addToBeTransfer('Supplier', $data['suppliers_id']);
+                        $this->checkedTransferResult($this->addToBeTransfer('Supplier', $data['suppliers_id']));
                     }
 
                 }
@@ -932,9 +940,9 @@ class Transfer extends CommonDBTM
                 while ($data = $iterator->next()) {
                     if ($data['is_recursive']
                           && in_array($data['entities_id'], $to_entity_ancestors)) {
-                        $this->addNotToBeTransfer('Supplier', $data['suppliers_id']);
+                        $this->checkedTransferResult($this->addNotToBeTransfer('Supplier', $data['suppliers_id']));
                     } else {
-                        $this->addToBeTransfer('Supplier', $data['suppliers_id']);
+                        $this->checkedTransferResult($this->addToBeTransfer('Supplier', $data['suppliers_id']));
                     }
                 }
             }
@@ -971,9 +979,9 @@ class Transfer extends CommonDBTM
                 while ($data = $iterator->next()) {
                     if ($data['is_recursive']
                           && in_array($data['entities_id'], $to_entity_ancestors)) {
-                        $this->addNotToBeTransfer('Supplier', $data['suppliers_id']);
+                        $this->checkedTransferResult($this->addNotToBeTransfer('Supplier', $data['suppliers_id']));
                     } else {
-                        $this->addToBeTransfer('Supplier', $data['suppliers_id']);
+                        $this->checkedTransferResult($this->addToBeTransfer('Supplier', $data['suppliers_id']));
                     }
                 }
             }
@@ -1028,9 +1036,9 @@ class Transfer extends CommonDBTM
                         while ($data = $iterator->next()) {
                             if ($data['is_recursive']
                                   && in_array($data['entities_id'], $to_entity_ancestors)) {
-                                $this->addNotToBeTransfer('Supplier', $data['suppliers_id']);
+                                $this->checkedTransferResult($this->addNotToBeTransfer('Supplier', $data['suppliers_id']));
                             } else {
-                                $this->addToBeTransfer('Supplier', $data['suppliers_id']);
+                                $this->checkedTransferResult($this->addToBeTransfer('Supplier', $data['suppliers_id']));
                             }
                         }
                     }
@@ -1091,9 +1099,9 @@ class Transfer extends CommonDBTM
                 while ($data = $iterator->next()) {
                     if ($data['is_recursive']
                           && in_array($data['entities_id'], $to_entity_ancestors)) {
-                        $this->addNotToBeTransfer('Contact', $data['contacts_id']);
+                        $this->checkedTransferResult($this->addNotToBeTransfer('Contact', $data['contacts_id']));
                     } else {
-                        $this->addToBeTransfer('Contact', $data['contacts_id']);
+                        $this->checkedTransferResult($this->addToBeTransfer('Contact', $data['contacts_id']));
                     }
                 }
             }
@@ -1150,9 +1158,9 @@ class Transfer extends CommonDBTM
                     while ($data = $iterator->next()) {
                         if ($data['is_recursive']
                               && in_array($data['entities_id'], $to_entity_ancestors)) {
-                            $this->addNotToBeTransfer('Document', $data['documents_id']);
+                            $this->checkedTransferResult($this->addNotToBeTransfer('Document', $data['documents_id']));
                         } else {
-                            $this->addToBeTransfer('Document', $data['documents_id']);
+                            $this->checkedTransferResult($this->addToBeTransfer('Document', $data['documents_id']));
                         }
                     }
                 }
@@ -1169,7 +1177,7 @@ class Transfer extends CommonDBTM
                 ]);
 
                 while ($data = $iterator->next()) {
-                    $this->addToBeTransfer('CartridgeItem', $data['cartridgeitems_id']);
+                    $this->checkedTransferResult($this->addToBeTransfer('CartridgeItem', $data['cartridgeitems_id']));
                 }
             }
         }
@@ -1224,51 +1232,51 @@ class Transfer extends CommonDBTM
 
                 // Network connection ? keep connected / keep_disconnected / delete
                 if (in_array($itemtype, $CFG_GLPI['networkport_types'])) {
-                    $this->transferNetworkLink($itemtype, $ID, $newID);
+                    $this->checkedTransferResult($this->transferNetworkLink($itemtype, $ID, $newID));
                 }
 
                 // Device : keep / delete : network case : delete if net connection delete in import case
                 if (in_array($itemtype, Item_Devices::getConcernedItems())) {
-                    $this->transferDevices($itemtype, $ID, $newID);
+                    $this->checkedTransferResult($this->transferDevices($itemtype, $ID, $newID));
                 }
 
                 // Reservation : keep / delete
                 if (in_array($itemtype, $CFG_GLPI["reservation_types"])) {
-                    $this->transferReservations($itemtype, $ID, $newID);
+                    $this->checkedTransferResult($this->transferReservations($itemtype, $ID, $newID));
                 }
 
                 // History : keep / delete
-                $this->transferHistory($itemtype, $ID, $newID);
+                $this->checkedTransferResult($this->transferHistory($itemtype, $ID, $newID));
                 // Ticket : delete / keep and clean ref / keep and move
-                $this->transferTickets($itemtype, $ID, $newID);
+                $this->checkedTransferResult($this->transferTickets($itemtype, $ID, $newID));
                 // Infocoms : keep / delete
 
                 if (Infocom::canApplyOn($itemtype)) {
-                    $this->transferInfocoms($itemtype, $ID, $newID);
+                    $this->checkedTransferResult($this->transferInfocoms($itemtype, $ID, $newID));
                 }
 
                 if ($itemtype == 'Software') {
-                    $this->transferSoftwareLicensesAndVersions($ID);
+                    $this->checkedTransferResult($this->transferSoftwareLicensesAndVersions($ID));
                 }
 
                 // Connected item is transfered
                 if (in_array($itemtype, $CFG_GLPI["directconnect_types"])) {
-                    $this->manageConnectionComputer($itemtype, $ID);
+                    $this->checkedTransferResult($this->manageConnectionComputer($itemtype, $ID));
                 }
 
                 // Contract : keep / delete + clean unused / keep unused
                 if (in_array($itemtype, $CFG_GLPI["contract_types"])) {
-                    $this->transferContracts($itemtype, $ID, $newID);
+                    $this->checkedTransferResult($this->transferContracts($itemtype, $ID, $newID));
                 }
 
                 // Contact / Supplier : keep / delete + clean unused / keep unused
                 if ($itemtype == 'Supplier') {
-                    $this->transferSupplierContacts($ID, $newID);
+                    $this->checkedTransferResult($this->transferSupplierContacts($ID, $newID));
                 }
 
                 // Document : keep / delete + clean unused / keep unused
                 if (Document::canApplyOn($itemtype)) {
-                    $this->transferDocuments($itemtype, $ID, $newID);
+                    $this->checkedTransferResult($this->transferDocuments($itemtype, $ID, $newID));
 
                     if (is_a($itemtype, CommonITILObject::class, true)) {
                         // Transfer ITIL childs documents too
@@ -1279,23 +1287,23 @@ class Transfer extends CommonDBTM
                             $itil_item->getAssociatedDocumentsCriteria(true)
                         );
                         foreach ($document_items as $document_item) {
-                            $this->transferDocuments(
+                            $this->checkedTransferResult($this->transferDocuments(
                                 $document_item['itemtype'],
                                 $document_item['items_id'],
                                 $document_item['items_id']
-                            );
+                            ));
                         }
                     }
                 }
 
                 // Transfer compatible printers
                 if ($itemtype == 'CartridgeItem') {
-                    $this->transferCompatiblePrinters($ID, $newID);
+                    $this->checkedTransferResult($this->transferCompatiblePrinters($ID, $newID));
                 }
 
                 // Cartridges  and cartridges items linked to printer
                 if ($itemtype == 'Printer') {
-                    $this->transferPrinterCartridges($ID, $newID);
+                    $this->checkedTransferResult($this->transferPrinterCartridges($ID, $newID));
                 }
 
                 // Transfer Item
@@ -1307,31 +1315,31 @@ class Transfer extends CommonDBTM
 
                 // Manage Location dropdown
                 if (isset($item->fields['locations_id'])) {
-                    $input['locations_id'] = $this->transferDropdownLocation($item->fields['locations_id']);
+                    $input['locations_id'] = $this->checkedTransferResult($this->transferDropdownLocation($item->fields['locations_id']));
                 }
 
                 if (in_array($itemtype, ['Ticket', 'Problem', 'Change'])) {
-                    $input2 = $this->transferHelpdeskAdditionalInformations($item->fields);
+                    $input2 = $this->checkedTransferResult($this->transferHelpdeskAdditionalInformations($item->fields));
                     $input  = array_merge($input, $input2);
-                    $this->transferTaskCategory($itemtype, $ID, $newID);
-                    $this->transferLinkedSuppliers($itemtype, $ID, $newID);
+                    $this->checkedTransferResult($this->transferTaskCategory($itemtype, $ID, $newID));
+                    $this->checkedTransferResult($this->transferLinkedSuppliers($itemtype, $ID, $newID));
                 }
 
                 $this->updateForTransfer($item, $input);
-                $this->addToAlreadyTransfer($itemtype, $ID, $newID);
+                $this->checkedTransferResult($this->addToAlreadyTransfer($itemtype, $ID, $newID));
 
                 // Do it after item transfer for entity checks
                 if ($itemtype == 'Computer') {
                     // Monitor Direct Connect : keep / delete + clean unused / keep unused
-                    $this->transferDirectConnection($itemtype, $ID, 'Monitor');
+                    $this->checkedTransferResult($this->transferDirectConnection($itemtype, $ID, 'Monitor'));
                     // Peripheral Direct Connect : keep / delete + clean unused / keep unused
-                    $this->transferDirectConnection($itemtype, $ID, 'Peripheral');
+                    $this->checkedTransferResult($this->transferDirectConnection($itemtype, $ID, 'Peripheral'));
                     // Phone Direct Connect : keep / delete + clean unused / keep unused
-                    $this->transferDirectConnection($itemtype, $ID, 'Phone');
+                    $this->checkedTransferResult($this->transferDirectConnection($itemtype, $ID, 'Phone'));
                     // Printer Direct Connect : keep / delete + clean unused / keep unused
-                    $this->transferDirectConnection($itemtype, $ID, 'Printer');
+                    $this->checkedTransferResult($this->transferDirectConnection($itemtype, $ID, 'Printer'));
                     // Computer Disks :  delete them or not ?
-                    $this->transferItem_Disks($itemtype, $ID);
+                    $this->checkedTransferResult($this->transferItem_Disks($itemtype, $ID));
                 }
 
                 if (in_array($itemtype, $CFG_GLPI['software_types'])) {
@@ -1396,7 +1404,7 @@ class Transfer extends CommonDBTM
                     $newID = $this->importForTransfer($location, $input);
                 }
 
-                $this->addToAlreadyTransfer('locations_id', $locID, $newID);
+                $this->checkedTransferResult($this->addToAlreadyTransfer('locations_id', $locID, $newID));
                 return $newID;
             }
         }
@@ -1424,7 +1432,7 @@ class Transfer extends CommonDBTM
             $netpoint = new Netpoint();
             if ($netpoint->getFromDB($netpoints_id)) {
                 $data  = Toolbox::addslashes_deep($netpoint->fields);
-                $locID = $this->transferDropdownLocation($netpoint->fields['locations_id']);
+                $locID = $this->checkedTransferResult($this->transferDropdownLocation($netpoint->fields['locations_id']));
 
                 // Search if the locations_id already exists in the destination entity
                 $iterator = $DB->request([
@@ -1441,7 +1449,7 @@ class Transfer extends CommonDBTM
                     // Found : -> use it
                     $row = $iterator->next();
                     $newID = $row['id'];
-                    $this->addToAlreadyTransfer('netpoints_id', $netpoints_id, $newID);
+                    $this->checkedTransferResult($this->addToAlreadyTransfer('netpoints_id', $netpoints_id, $newID));
                     return $newID;
                 }
 
@@ -1452,7 +1460,7 @@ class Transfer extends CommonDBTM
                                                  'entities_id'  => $this->to,
                                                  'locations_id' => $locID]);
 
-                $this->addToAlreadyTransfer('netpoints_id', $netpoints_id, $newID);
+                $this->checkedTransferResult($this->addToAlreadyTransfer('netpoints_id', $netpoints_id, $newID));
                 return $newID;
             }
         }
@@ -1655,7 +1663,7 @@ class Transfer extends CommonDBTM
 
             }
 
-            $this->addToAlreadyTransfer('Software', $ID, $newsoftID);
+            $this->checkedTransferResult($this->addToAlreadyTransfer('Software', $ID, $newsoftID));
             return $newsoftID;
         }
 
@@ -1680,7 +1688,7 @@ class Transfer extends CommonDBTM
 
         $vers = new SoftwareVersion();
         if ($vers->getFromDB($ID)) {
-            $newsoftID = TransferCancelled::requireIdentifier($this->copySingleSoftware($vers->fields['softwares_id']), 'Required version owning Software');
+            $newsoftID = TransferCancelled::requireIdentifier($this->checkedTransferResult($this->copySingleSoftware($vers->fields['softwares_id'])), 'Required version owning Software');
 
             if ($newsoftID == $vers->fields['softwares_id']) {
                 // no need to copy
@@ -1709,7 +1717,7 @@ class Transfer extends CommonDBTM
 
             }
 
-            $this->addToAlreadyTransfer('SoftwareVersion', $ID, $newversID);
+            $this->checkedTransferResult($this->addToAlreadyTransfer('SoftwareVersion', $ID, $newversID));
             return $newversID;
         }
 
@@ -1743,7 +1751,7 @@ class Transfer extends CommonDBTM
     public function transferComputerSoftwares($ID)
     {
         Toolbox::deprecated('Use transferItemSoftwares()');
-        return $this->transferItemSoftwares('Computer', $ID);
+        return $this->checkedTransferResult($this->transferItemSoftwares('Computer', $ID));
     }
 
     /**
@@ -1761,7 +1769,7 @@ class Transfer extends CommonDBTM
             foreach ($repository->installationsForTransfer($itemtype, (int)$ID, $this->noneedtobe_transfer['SoftwareVersion'] ?? [], currentRead: true) as $data) {
                 $installation = new Item_SoftwareVersion();
                 if ($this->options['keep_software']) {
-                    $version = TransferCancelled::requireIdentifier($this->copySingleVersion($data['softwareversions_id']), 'Required installation version');
+                    $version = TransferCancelled::requireIdentifier($this->checkedTransferResult($this->copySingleVersion($data['softwareversions_id'])), 'Required installation version');
                     if ($version !== (int)$data['softwareversions_id']) {
                         $this->updateForTransfer($installation, ['id' => $data['id'], 'softwareversions_id' => $version]);
                     }
@@ -1791,8 +1799,8 @@ class Transfer extends CommonDBTM
             (new \itsmng\Domain\SoftwareAssignmentService($DB))->transferAllocation(
                 (int)$ID,
                 (int)$this->to,
-                fn ($id) => $this->copySingleSoftware($id),
-                fn ($id) => $this->copySingleVersion($id),
+                fn ($id) => $this->checkedTransferResult($this->copySingleSoftware($id)),
+                fn ($id) => $this->checkedTransferResult($this->copySingleVersion($id)),
                 fn (CommonDBTM $model, array $input) => $this->addForTransfer($model, $input),
                 function (CommonDBTM $model, array $input): bool {
                     $this->updateForTransfer($model, $input);
@@ -1822,7 +1830,7 @@ class Transfer extends CommonDBTM
         }
         foreach ($repository->versionsForTransfer((int)$ID) as $version) {
             // Just Store the info.
-            $this->addToAlreadyTransfer('SoftwareVersion', $version, $version);
+            $this->checkedTransferResult($this->addToAlreadyTransfer('SoftwareVersion', $version, $version));
         }
     }
 
@@ -1909,7 +1917,7 @@ class Transfer extends CommonDBTM
                     $contract->getFromDB($item_ID);
                     $newcontractID = $repository->destination((int)$this->to, (string)$contract->fields['name']);
                     if ($newcontractID !== null) {
-                        $this->addToAlreadyTransfer('Contract', $item_ID, $newcontractID);
+                        $this->checkedTransferResult($this->addToAlreadyTransfer('Contract', $item_ID, $newcontractID));
                     } else {
                         $this->checkpointTransferModel($contract);
                         unset($contract->fields['id']);
@@ -1984,7 +1992,7 @@ class Transfer extends CommonDBTM
                     $document->getFromDB($item_ID);
                     $newdocID = $repository->destination((int)$this->to, (string)$document->fields['name']);
                     if ($newdocID !== null) {
-                        $this->addToAlreadyTransfer('Document', $item_ID, $newdocID);
+                        $this->checkedTransferResult($this->addToAlreadyTransfer('Document', $item_ID, $newdocID));
                     } else {
                         $this->checkpointTransferModel($document);
                         unset($document->fields['id']);
@@ -2126,7 +2134,7 @@ class Transfer extends CommonDBTM
                                 if (count($type_iterator)) {
                                     $result = $type_iterator->next();
                                     $newID = $result['id'];
-                                    $this->addToAlreadyTransfer($link_type, $item_ID, $newID);
+                                    $this->checkedTransferResult($this->addToAlreadyTransfer($link_type, $item_ID, $newID));
                                 }
 
                                 // Not found -> transfer copy
@@ -2294,7 +2302,7 @@ class Transfer extends CommonDBTM
                 case 2:
                     // Same Item / Copy Item -> update entity
                     foreach ($rows as $data) {
-                        $input                = $this->transferHelpdeskAdditionalInformations($data);
+                        $input                = $this->checkedTransferResult($this->transferHelpdeskAdditionalInformations($data));
                         $input['id']          = $data['id'];
                         $input['entities_id'] = $this->to;
 
@@ -2307,8 +2315,8 @@ class Transfer extends CommonDBTM
 
                         $this->updateForTransfer($rel, $input);
 
-                        $this->addToAlreadyTransfer('Ticket', $data['id'], $data['id']);
-                        $this->transferTaskCategory('Ticket', $data['id'], $data['id']);
+                        $this->checkedTransferResult($this->addToAlreadyTransfer('Ticket', $data['id'], $data['id']));
+                        $this->checkedTransferResult($this->transferTaskCategory('Ticket', $data['id'], $data['id']));
                     }
                     break;
 
@@ -2317,7 +2325,7 @@ class Transfer extends CommonDBTM
                     // Same Item / Copy Item : keep and clean ref
                     foreach ($rows as $data) {
                         $this->deleteForTransfer($rel, ['id'       => $data['_relid']]);
-                        $this->addToAlreadyTransfer('Ticket', $data['id'], $data['id']);
+                        $this->checkedTransferResult($this->addToAlreadyTransfer('Ticket', $data['id'], $data['id']));
                     }
                     break;
 
@@ -2495,7 +2503,7 @@ class Transfer extends CommonDBTM
         $suppliers_id_assign = 0;
 
         // if ($data['suppliers_id_assign'] > 0) {
-        //   $suppliers_id_assign = $this->transferSingleSupplier($data['suppliers_id_assign']);
+        //   $suppliers_id_assign = $this->checkedTransferResult($this->transferSingleSupplier($data['suppliers_id_assign']));
         // }
 
         // Transfer ticket category
@@ -2639,7 +2647,7 @@ class Transfer extends CommonDBTM
                     // transfer enterprise
                     $suppliers_id = 0;
                     if ($ic->fields['suppliers_id'] > 0) {
-                        $suppliers_id = $this->transferSingleSupplier($ic->fields['suppliers_id']);
+                        $suppliers_id = $this->checkedTransferResult($this->transferSingleSupplier($ic->fields['suppliers_id']));
                     }
 
                     // Copy : copy infocoms
@@ -2753,7 +2761,7 @@ class Transfer extends CommonDBTM
                 if (count($iterator)) {
                     $result = $iterator->next();
                     $newID = $result['id'];
-                    $this->addToAlreadyTransfer('Supplier', $ID, $newID);
+                    $this->checkedTransferResult($this->addToAlreadyTransfer('Supplier', $ID, $newID));
                 }
 
                 // Not found -> transfer copy
@@ -2861,7 +2869,7 @@ class Transfer extends CommonDBTM
                         if (count($contact_iterator)) {
                             $result = $contact_iterator->next();
                             $newcontactID = $result['id'];
-                            $this->addToAlreadyTransfer('Contact', $item_ID, $newcontactID);
+                            $this->checkedTransferResult($this->addToAlreadyTransfer('Contact', $item_ID, $newcontactID));
                         }
 
                         // found : use it
@@ -3140,7 +3148,7 @@ class Transfer extends CommonDBTM
                                         if (count($device_iterator)) {
                                             $result = $device_iterator->next();
                                             $newdeviceID = $result['id'];
-                                            $this->addToAlreadyTransfer($devicetype, $item_ID, $newdeviceID);
+                                            $this->checkedTransferResult($this->addToAlreadyTransfer($devicetype, $item_ID, $newdeviceID));
                                         }
 
                                         // found : use it
@@ -3256,7 +3264,7 @@ class Transfer extends CommonDBTM
                                 $this->deleteForTransfer($nn, $data);
                             }
                             if ($data['netpoints_id']) {
-                                $netpointID  = $this->transferDropdownNetpoint($data['netpoints_id']);
+                                $netpointID  = $this->checkedTransferResult($this->transferDropdownNetpoint($data['netpoints_id']));
                                 $input['id']           = $data['id'];
                                 $input['netpoints_id'] = $netpointID;
                                 $this->updateForTransfer($np, $input);
@@ -3268,7 +3276,7 @@ class Transfer extends CommonDBTM
                             unset($data['id']);
                             $data['items_id'] = $newID;
                             $data['netpoints_id']
-                                              = $this->transferDropdownNetpoint($data['netpoints_id']);
+                                              = $this->checkedTransferResult($this->transferDropdownNetpoint($data['netpoints_id']));
                             $this->checkpointTransferModel($np);
                             unset($np->fields);
                             $this->addForTransfer($np, Toolbox::addslashes_deep($data));
@@ -3284,7 +3292,7 @@ class Transfer extends CommonDBTM
                             unset($data['id']);
                             $data['items_id'] = $newID;
                             $data['netpoints_id']
-                                              = $this->transferDropdownNetpoint($data['netpoints_id']);
+                                              = $this->checkedTransferResult($this->transferDropdownNetpoint($data['netpoints_id']));
                             $this->checkpointTransferModel($np);
                             unset($np->fields);
                             $this->addForTransfer($np, Toolbox::addslashes_deep($data));
@@ -3293,7 +3301,7 @@ class Transfer extends CommonDBTM
                         while ($data = $iterator->next()) {
                             // Not a copy -> only update netpoint
                             if ($data['netpoints_id']) {
-                                $netpointID  = $this->transferDropdownNetpoint($data['netpoints_id']);
+                                $netpointID  = $this->checkedTransferResult($this->transferDropdownNetpoint($data['netpoints_id']));
                                 $input['id']           = $data['id'];
                                 $input['netpoints_id'] = $netpointID;
                                 $this->updateForTransfer($np, $input);
