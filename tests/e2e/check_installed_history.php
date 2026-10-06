@@ -26,6 +26,12 @@ if (!$database->connected || $database->isSlave()) {
     throw new RuntimeException('The configured installation writer is required.');
 }
 $connection = $database->getDoctrineConnection();
+if (($argv[2] ?? null) === '--without-application-fixtures') {
+    if ((int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_configs WHERE context = ? AND name = ?', ['phpunit', 'dataset']) !== 0
+        || (int)$connection->fetchOne('SELECT COUNT(*) FROM glpi_plugins WHERE directory = ?', ['tester']) !== 0) {
+        throw new RuntimeException('Migration tests require a public installation before ordinary application fixtures; preserve this database.');
+    }
+}
 $pending = History::pendingVersions($connection);
 if ($pending || History::isInstalling($connection)) {
     throw new RuntimeException('Canonical installation history is incomplete: ' . implode(', ', $pending));

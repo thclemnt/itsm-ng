@@ -166,8 +166,7 @@ do
       || LAST_EXIT_CODE=$?
       ;;
     "update")
-         $APPLICATION_ROOT/.github/actions/init_initialize-old-dbs.sh \
-      && "$COMPOSE_CMD" exec -T app .github/actions/test_update-from-older-version.sh \
+         "$COMPOSE_CMD" exec -T app .github/actions/test_update-from-older-version.sh \
       || LAST_EXIT_CODE=$?
       ;;
     "units")
