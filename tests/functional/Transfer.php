@@ -650,8 +650,13 @@ class Transfer extends DbTestCase
                             $this->integer((int)$retained->fields['entities_id'])->isIdenticalTo($mode === 'refused_update' ? $source : $target);
                             $this->string($connection->fetchOne('SELECT comment FROM glpi_contacts WHERE id=?', [$ids[0]]))->isIdenticalTo('Replacement witness');
                         } else {
-                            $this->variable($failure)->isNull();
-                            $this->boolean($result)->isFalse();
+                            // The strict test logger throws when runTransfer logs
+                            // an owned refusal, after its proven rollback/rewind.
+                            $this->object($failure)->isInstanceOf(\RuntimeException::class);
+                            $this->string($failure->getMessage())->contains($mode === 'writer_swap'
+                                ? 'A transfer callback replaced its active writer.'
+                                : 'Refused owned transfer callback');
+                            $this->variable($result)->isNull();
                             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
                             $this->boolean(isset($_SESSION['transfer_frame_fixture']))->isFalse();
                             $this->integer((int)$retained->fields['entities_id'])->isIdenticalTo($source);
