@@ -51,16 +51,6 @@ final class ApplianceAssetRepository
         return $query === null ? 0 : (int)$query->select('COUNT(l.id)')->getQuery()->getSingleScalarResult();
     }
 
-    public function relationBindings(int $binding): array
-    {
-        if ($binding <= 0) {
-            return [];
-        }
-        $query = $this->em->createQueryBuilder()->select('r')->from(ApplianceItemRelation::class, 'r')
-            ->where('IDENTITY(r.appliances_items) = :binding')->setParameter('binding', $binding, Types::BIGINT)->orderBy('r.id');
-        return $this->rows($query);
-    }
-
     /** The reverse view selects appliance owners, never another asset with an overlapping identifier. */
     public function owners(string $kind, int $asset, array $criteria): array
     {

@@ -288,12 +288,6 @@ final class UserRepository
             ->orderBy('m.id')->getQuery()->getScalarResult();
     }
 
-    /** Partial account deletion removes grants only in an authorized entity. */
-    public function removeEntityGrants(int $user, int $entity): void
-    {
-        $this->detachEntityGrants($user, [$entity]);
-    }
-
     /** Explicit scoped detachment keeps the global account and inaccessible grants. */
     public function detachEntityGrants(int $user, array $entities): void
     {
