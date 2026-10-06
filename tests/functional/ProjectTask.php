@@ -84,6 +84,14 @@ class ProjectTask extends DbTestCase
             $this->createItem(\ProjectTaskTeam::class, [
                 'projecttasks_id' => $child->getID(), 'itemtype' => 'User', 'items_id' => \Session::getLoginUserID(),
             ]);
+            $projectless = new \ProjectTask();
+            $this->integer((int)$projectless->add([
+                'name' => $prefix . ' projectless', 'projects_id' => 0, 'entities_id' => $entity,
+                'users_id' => $owner->getID(), 'plan_start_date' => '2030-01-05 09:00:00',
+                'plan_end_date' => '2030-01-06 17:00:00',
+            ]))->isGreaterThan(0);
+            $this->boolean($projectless->getFromDB($projectless->getID()))->isTrue();
+            $this->variable($projectless->fields['projects_id'])->isNull();
             $legacyRoots = static fn(int $id): array => array_map('intval', array_column(
                 (new \ProjectTask())->find(['projects_id' => $id, 'projecttasks_id' => 0], ['plan_start_date', 'real_start_date']),
                 'id'
@@ -91,7 +99,13 @@ class ProjectTask extends DbTestCase
             $repository = new \itsmng\Database\Repository\ProjectTaskRepository($em);
             $roots = $repository->rootIdsForGantt((int)$project->getID());
             $this->array($roots)->isIdenticalTo($legacyRoots((int)$project->getID()))->hasSize(2);
-            $this->array($repository->rootIdsForGantt(0))->isIdenticalTo($legacyRoots(0));
+            $this->array($repository->rootIdsForGantt(0))->isIdenticalTo($legacyRoots(0))
+                ->contains((int)$projectless->getID());
+            $projectlessRows = array_column(\ProjectTask::getDataToDisplayOnGanttForProject(0), null, 'id');
+            $this->array($projectlessRows)->hasKey($projectless->getID());
+            $this->string($projectlessRows[$projectless->getID()]['name'])->isIdenticalTo($prefix . ' projectless');
+            $this->string($projectlessRows[$projectless->getID()]['from'])->isIdenticalTo('2030-01-05 09:00:00');
+            $this->string($projectlessRows[$projectless->getID()]['link'])->notContains('<a ');
             $this->array($repository->rootIdsForGantt(PHP_INT_MAX))->isEmpty();
             $this->integer($listener->loaded)->isIdenticalTo(0);
             $this->array($em->getUnitOfWork()->getIdentityMap())->isEmpty();
