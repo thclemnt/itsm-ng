@@ -352,6 +352,47 @@ class Config extends DbTestCase
         $this->string(\Config::getLibraryDir('getItemByTypeName'))->isIdenticalTo($expected);
     }
 
+    public function testDatabaseConfigurationRequiresSelectedPdoDriver(): void
+    {
+        $command = new \Glpi\Console\Database\InstallCommand();
+        $validate = new \ReflectionMethod($command, 'validateConfigInput');
+        $functions = new \atoum\atoum\php\mocker\funktion('Glpi\\Console\\Database');
+        try {
+            foreach (['mysql' => 'pdo_mysql', 'pgsql' => 'pdo_pgsql'] as $provider => $extension) {
+                $input = new \Symfony\Component\Console\Input\ArrayInput([
+                    '--db-type' => $provider, '--db-name' => 'requirements_only', '--db-user' => 'test',
+                ], $command->getDefinition());
+                $functions->extension_loaded = static fn (string $name): bool => $name === $extension;
+                $this->variable($validate->invoke($command, $input))->isNull();
+                // MySQLi cannot substitute for either actual PDO transport.
+                $functions->extension_loaded = static fn (string $name): bool => $name === 'mysqli';
+                $this->exception(static fn () => $validate->invoke($command, $input))
+                    ->isInstanceOf(\Symfony\Component\Console\Exception\InvalidArgumentException::class)
+                    ->hasMessage('The ' . $extension . ' PHP extension is required for this database provider.');
+            }
+        } finally {
+            unset($functions->extension_loaded);
+        }
+    }
+
+    public function testCoreExtensionsFollowConfiguredPdoProvider(): void
+    {
+        global $DB;
+        $database = $DB;
+        try {
+            foreach ([\DBmysql::class => 'pdo_mysql', \DBpgsql::class => 'pdo_pgsql'] as $adapter => $extension) {
+                // Select the configured provider without opening either transport.
+                $DB = (new \ReflectionClass($adapter))->newInstanceWithoutConstructor();
+                $report = \Config::checkExtensions();
+                $required = $report['good'] + $report['missing'];
+                $this->array($required)->hasKey($extension)->notHasKey('mysqli');
+                $this->array($required)->notHasKey($extension === 'pdo_mysql' ? 'pdo_pgsql' : 'pdo_mysql');
+            }
+        } finally {
+            $DB = $database;
+        }
+    }
+
     public function testCheckExtensions()
     {
         $this->array(\Config::checkExtensions())
@@ -360,7 +401,7 @@ class Config extends DbTestCase
         $expected = [
            'error'     => 0,
            'good'      => [
-              'mysqli' => 'mysqli extension is installed',
+              'json' => 'json extension is installed',
            ],
            'missing'   => [],
            'may'       => []
@@ -368,9 +409,9 @@ class Config extends DbTestCase
 
         //check extension from class name
         $list = [
-           'mysqli' => [
+           'json' => [
               'required'  => true,
-              'class'     => 'mysqli'
+              'class'     => \JsonException::class
            ]
         ];
         $report = \Config::checkExtensions($list);
@@ -378,9 +419,9 @@ class Config extends DbTestCase
 
         //check extension from method name
         $list = [
-           'mysqli' => [
+           'json' => [
               'required'  => true,
-              'function'  => 'mysqli_commit'
+              'function'  => 'json_encode'
            ]
         ];
         $report = \Config::checkExtensions($list);
@@ -388,7 +429,7 @@ class Config extends DbTestCase
 
         //check extension from its name
         $list = [
-           'mysqli' => [
+           'json' => [
               'required'  => true
            ]
         ];
@@ -403,7 +444,7 @@ class Config extends DbTestCase
         $expected = [
            'error'     => 2,
            'good'      => [
-              'mysqli' => 'mysqli extension is installed',
+              'json' => 'json extension is installed',
            ],
            'missing'   => [
               'notantext' => 'notantext extension is missing'
@@ -419,7 +460,7 @@ class Config extends DbTestCase
         $expected = [
            'error'     => 1,
            'good'      => [
-              'mysqli' => 'mysqli extension is installed',
+              'json' => 'json extension is installed',
            ],
            'missing'   => [],
            'may'       => [

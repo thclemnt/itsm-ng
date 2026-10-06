@@ -2689,8 +2689,11 @@ class Config extends CommonDBTM
     public static function checkExtensions($list = null)
     {
         if ($list === null) {
+            global $DB;
+            $postgres = ($DB ?? null) instanceof DBpgsql
+                || (!isset($DB) && !extension_loaded('pdo_mysql') && extension_loaded('pdo_pgsql'));
             $extensions_to_check = [
-               'mysqli'   => [
+               ($postgres ? 'pdo_pgsql' : 'pdo_mysql') => [
                   'required'  => true
                ],
                'ctype'    => [

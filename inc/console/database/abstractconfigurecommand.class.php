@@ -307,7 +307,7 @@ abstract class AbstractConfigureCommand extends AbstractCommand implements Force
     {
 
         DBConnection::getAdapterClass($input->getOption('db-type'));
-        $extension = $input->getOption('db-type') === 'pgsql' ? 'pdo_pgsql' : 'mysqli';
+        $extension = $input->getOption('db-type') === 'pgsql' ? 'pdo_pgsql' : 'pdo_mysql';
         if (!extension_loaded($extension)) {
             throw new InvalidArgumentException('The ' . $extension . ' PHP extension is required for this database provider.');
         }

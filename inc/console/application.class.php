@@ -332,7 +332,8 @@ class Application extends BaseApplication
 
         if (
             !class_exists('DB', false)
-            || (is_subclass_of(DB::class, \DBmysql::class) && !class_exists('mysqli', false))
+            || (is_subclass_of(DB::class, \DBmysql::class) && !extension_loaded('pdo_mysql'))
+            || (is_subclass_of(DB::class, \DBpgsql::class) && !extension_loaded('pdo_pgsql'))
         ) {
             return;
         }
