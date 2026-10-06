@@ -39,6 +39,45 @@ use org\bovigo\vfs\vfsStream;
 
 class SimpleCache extends \GLPITestCase
 {
+    public function testFootprintWritesPreserveBytesAndKnownKeys(): void
+    {
+        vfsStream::setup('glpi', null, ['cache' => []]);
+        $namespace = 'footprint-bytes-' . uniqid();
+        $directory = vfsStream::url('glpi/cache');
+        $file = $directory . '/' . $namespace . '.json';
+        file_put_contents($file, '{"retained_null":null}');
+        $storage = new \Laminas\Cache\Storage\Adapter\Memory(['namespace' => $namespace]);
+        $cache = new \Glpi\Cache\SimpleCache($storage, $directory);
+        $this->boolean($cache->setMultiple(['live' => 'value', 'zero' => 0, 'null' => null]))->isTrue();
+        // Known SHA-1 footprints for serialized "value", 0 and null. Existing
+        // null entries and deleted keys are retained by the footprint writer.
+        $expected = [
+            'retained_null' => null,
+            'live' => '6ab0da787d99179b10c9317242ced665d759a579',
+            'zero' => 'c01643a543ddd8516e3cf55eb39c7eb9246aac21',
+            'null' => 'a03e9ce134099d2bd410bdc53e8abb7d3f95c397',
+        ];
+        $this->string(file_get_contents($file))->isIdenticalTo(json_encode($expected, JSON_PRETTY_PRINT));
+        $this->array($cache->getAllKnownCacheKeys())->isIdenticalTo(array_keys($expected));
+        $this->string($cache->get('live'))->isIdenticalTo('value');
+        $this->integer($cache->get('zero'))->isIdenticalTo(0);
+        $this->variable($cache->get('null'))->isNull();
+        $this->string($cache->get('null', 'missing'))->isIdenticalTo('missing');
+        $this->boolean($cache->delete('live'))->isTrue();
+        $expected['live'] = $expected['null'];
+        $this->string(file_get_contents($file))->isIdenticalTo(json_encode($expected, JSON_PRETTY_PRINT));
+        $this->boolean($cache->has('live'))->isFalse();
+        $this->boolean($cache->deleteMultiple(['zero', 'null']))->isTrue();
+        $expected['zero'] = $expected['null'];
+        $this->string(file_get_contents($file))->isIdenticalTo(json_encode($expected, JSON_PRETTY_PRINT));
+        $this->array($cache->getAllKnownCacheKeys())->isIdenticalTo(array_keys($expected));
+        $this->boolean($cache->has('zero'))->isFalse();
+        $this->boolean($cache->has('null'))->isFalse();
+        $this->boolean($cache->clear())->isTrue();
+        $this->string(file_get_contents($file))->isIdenticalTo('[]');
+        $this->array($cache->getAllKnownCacheKeys())->isEmpty();
+    }
+
     public function testRepeatedFootprintReadsObserveExternalChanges(): void
     {
         vfsStream::setup('glpi', null, ['cache' => []]);

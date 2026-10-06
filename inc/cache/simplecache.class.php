@@ -412,14 +412,6 @@ class SimpleCache extends SimpleCacheDecorator implements CacheInterface
     private function setAllCachedFootprints($footprints)
     {
         if (null !== $this->footprint_file) {
-            // Remove null values to prevent storage of deleted footprints
-            array_filter(
-                $footprints,
-                function ($val) {
-                    return null !== $val;
-                }
-            );
-
             $json = json_encode($footprints, JSON_PRETTY_PRINT);
 
             $handle = fopen($this->footprint_file, 'c');
