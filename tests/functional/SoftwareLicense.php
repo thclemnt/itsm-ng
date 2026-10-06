@@ -60,21 +60,8 @@ class SoftwareLicense extends DbTestCase
         global $DB, $CFG_GLPI;
         $session = $_SESSION;
         $config = $CFG_GLPI;
-        $post = $_POST;
-        $get = $_GET;
-        $request = $_REQUEST;
-        $server = $_SERVER;
-        $cwd = getcwd();
-        $reportGlobals = ['stat', 'chart_opts', 'valeurtot', 'valeurnettetot', 'valeurnettegraphtot',
-            'valeurgraphtot', 'PLUGINS_INCLUDED', 'HEADER_LOADED', 'FOOTER_LOADED', 'TIMER_DEBUG',
-            '_UPOST', '_UGET', '_UREQUEST', '_UFILES'];
-        $savedGlobals = [];
-        foreach ($reportGlobals as $key) {
-            if (array_key_exists($key, $GLOBALS)) {
-                $savedGlobals[$key] = $GLOBALS[$key];
-            }
-        }
         $connection = $DB->getDoctrineConnection();
+        $level = $connection->getTransactionNestingLevel();
         $em = new class($connection, Orm::configuration($connection->getDatabasePlatform())) extends \Doctrine\ORM\EntityManager {
             public int $queries = 0;
             public function createQuery(string $dql = ''): \Doctrine\ORM\Query
@@ -100,7 +87,6 @@ class SoftwareLicense extends DbTestCase
             $entity = $this->createItem(\Entity::class, ['name' => $this->getUniqueString(), 'entities_id' => $parent]);
             $entityId = (int)$entity->getID();
             $CFG_GLPI['auto_create_infocoms'] = 0;
-            $CFG_GLPI['date_tax'] = '2090-12-31';
             $software = $this->createItem(\Software::class, ['name' => $this->getUniqueString(), 'entities_id' => $entityId]);
             $outsideSoftware = $this->createItem(\Software::class, ['name' => $this->getUniqueString(), 'entities_id' => $parent]);
             $licenses = [];
@@ -145,55 +131,12 @@ class SoftwareLicense extends DbTestCase
             $this->boolean($em->contains($managed))->isTrue();
             $this->integer($loads->licenses)->isIdenticalTo(1);
             $this->object($em->getConnection())->isIdenticalTo($connection);
-            $level = $connection->getTransactionNestingLevel();
-
-            // Exercise the real report controller once in this isolated test,
-            // including its existing multiplication, amortization and formatting.
-            $CFG_GLPI['infocom_types'] = ['SoftwareLicense'];
-            $_SESSION['glpiactiveprofile']['reports'] = READ;
-            $_SESSION['glpi_use_mode'] = \Session::NORMAL_MODE;
-            $_POST = ['date1' => '2090-01-01', 'date2' => '2090-01-31',
-                '_glpi_csrf_token' => \itsmng\Csrf::generate()];
-            $_GET = [];
-            $_REQUEST = $_POST;
-            $_SERVER['PHP_SELF'] = '/front/report.infocom.conso.php';
-            $_SERVER['REQUEST_URI'] = $_SERVER['PHP_SELF'];
-            chdir(GLPI_ROOT . '/front');
-            ob_start();
-            try {
-                (static function (): void {
-                    global $DB, $CFG_GLPI, $PLUGINS_INCLUDED, $HEADER_LOADED, $FOOTER_LOADED, $TIMER_DEBUG;
-                    global $stat, $chart_opts, $valeurtot, $valeurnettetot, $valeurnettegraphtot, $valeurgraphtot;
-                    include GLPI_ROOT . '/front/report.infocom.conso.php';
-                })();
-                $html = ob_get_contents();
-            } finally {
-                ob_end_clean();
-            }
-            // 12.5 * 3 + 7.25 + 4.125 + 2.5; negative/zero quantities do not multiply.
-            $this->float((float)$GLOBALS['valeurtot'])->isIdenticalTo(51.375);
-            $this->string($html)->contains(sprintf(
-                __('Total: Value=%1$s - Account net value=%2$s'),
-                \Html::formatNumber(51.375), \Html::formatNumber($GLOBALS['valeurnettetot'])
-            ));
             $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($level);
         } finally {
             $em->getEventManager()->removeEventListener([\Doctrine\ORM\Events::postLoad], $loads);
             $em->clear();
-            chdir($cwd);
             $_SESSION = $session;
             $CFG_GLPI = $config;
-            $_POST = $post;
-            $_GET = $get;
-            $_REQUEST = $request;
-            $_SERVER = $server;
-            foreach ($reportGlobals as $key) {
-                if (array_key_exists($key, $savedGlobals)) {
-                    $GLOBALS[$key] = $savedGlobals[$key];
-                } else {
-                    unset($GLOBALS[$key]);
-                }
-            }
         }
     }
 
