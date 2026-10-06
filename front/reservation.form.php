@@ -154,7 +154,11 @@ if (isset($_POST["update"])) {
             $toadd .= "&mois_courant=" . intval($begin_month);
             $toadd .= "&annee_courante=" . intval($begin_year);
         }
-        Html::redirect($CFG_GLPI["root_doc"] . "/front/reservation.php$toadd");
+        $toadd .= ($toadd === "" ? "?" : "&") . "reservation_added=1";
+        $helpdesk = strpos((string)($_SERVER['REQUEST_URI'] ?? ''), '/plugins/formcreator/front/') !== false
+            || ($_SESSION['glpiactiveprofile']['interface'] ?? '') === 'helpdesk';
+        $calendar = $helpdesk ? '/plugins/formcreator/front/reservation.php' : '/front/reservation.php';
+        Html::redirect($CFG_GLPI['root_doc'] . $calendar . $toadd);
     }
 } elseif (isset($_GET["id"])) {
     $rr->check($_GET['id'], READ);

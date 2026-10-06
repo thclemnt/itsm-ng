@@ -11,6 +11,129 @@ use itsmng\Database\Repository\ReservationRepository;
 
 class Reservation extends \DbTestCase
 {
+    public function testPublicAddReturnsAfterLifecycleWithoutControllerNavigation(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $session = $_SESSION;
+        $hooks = $PLUGIN_HOOKS;
+        $hadUri = array_key_exists('REQUEST_URI', $_SERVER);
+        $uri = $_SERVER['REQUEST_URI'] ?? null;
+        $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $activePlugins = $plugins->getValue();
+        $connection = $DB->getDoctrineConnection();
+        $depth = $connection->getTransactionNestingLevel();
+        $this->integer($depth)->isGreaterThan(0);
+        try {
+            $entity = (int)\Session::getActiveEntity();
+            $asset = $this->createItem(\Computer::class, [
+                'name' => 'Reservation lifecycle ' . $this->getUniqueString(), 'entities_id' => $entity,
+            ]);
+            $item = $this->createItem(\ReservationItem::class, [
+                'itemtype' => 'Computer', 'items_id' => $asset->getID(), 'entities_id' => $entity, 'is_active' => 1,
+            ]);
+            $events = [];
+            $observed = [];
+            $plugins->setValue(null, [...$activePlugins, 'reservation_lifecycle_fixture']);
+            $PLUGIN_HOOKS['item_add']['reservation_lifecycle_fixture'][\Reservation::class]
+                = static function (\Reservation $reservation) use (&$events, &$observed, $connection): void {
+                    global $DB;
+                    $id = (int)$reservation->getID();
+                    $events[] = ['hook', $id];
+                    $observed[] = [
+                        'id' => $id,
+                        'rows' => countElementsInTable(\Reservation::getTable(), ['id' => $id]),
+                        'writer' => $DB->getDoctrineConnection() === $connection,
+                        'depth' => $connection->getTransactionNestingLevel(),
+                    ];
+                };
+            $reservation = new \Reservation();
+            $ids = $expectedEvents = [];
+            // Creation is a model operation in every context, including callers
+            // with no HTTP request. The owning form alone performs navigation.
+            foreach ([
+                ['central', '/front/reservation.form.php'],
+                ['helpdesk', '/plugins/formcreator/front/reservation.form.php'],
+                ['central', '/apirest.php/Reservation'],
+                ['central', null],
+            ] as $index => [$interface, $requestUri]) {
+                $_SESSION['glpiactiveprofile']['interface'] = $interface;
+                if ($requestUri === null) {
+                    unset($_SERVER['REQUEST_URI']);
+                } else {
+                    $_SERVER['REQUEST_URI'] = $requestUri;
+                }
+                $day = sprintf('2030-03-%02d', $index + 1);
+                $input = [
+                    'reservationitems_id' => $item->getID(), 'users_id' => (int)\Session::getLoginUserID(),
+                    'begin' => $day . ' 09:00:00', 'end' => $day . ' 10:00:00',
+                    'comment' => 'Completed public booking ' . $index,
+                ];
+                $this->boolean($reservation->can(-1, CREATE, $input))->isTrue();
+                unset($reservation->fields['id']);
+                ob_start();
+                try {
+                    $id = $reservation->add($input);
+                    $output = ob_get_contents();
+                } finally {
+                    ob_end_clean();
+                }
+                $this->integer((int)$id)->isGreaterThan(0);
+                $id = (int)$id;
+                $ids[] = $id;
+                $events[] = ['return', $id];
+                $expectedEvents[] = ['hook', $id];
+                $expectedEvents[] = ['return', $id];
+                $this->string($output)->isEmpty();
+                $this->array($events)->isIdenticalTo($expectedEvents);
+                $this->array($observed[$index])->isIdenticalTo(['id' => $id, 'rows' => 1, 'writer' => true, 'depth' => $depth]);
+                $readback = new \Reservation();
+                $this->boolean($readback->getFromDB($id))->isTrue();
+                foreach (['begin', 'end', 'comment'] as $field) {
+                    $this->string($readback->fields[$field])->isIdenticalTo($input[$field]);
+                }
+                $this->object($DB->getDoctrineConnection())->isIdenticalTo($connection);
+                $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+            }
+            $this->array(array_unique($ids))->hasSize(4);
+            $this->integer(countElementsInTable(\Reservation::getTable(), ['reservationitems_id' => $item->getID()]))->isIdenticalTo(4);
+
+            foreach ([
+                ['2030-03-05 10:00:00', '2030-03-05 09:00:00', __('Error in entering dates. The starting date is later than the ending date')],
+                ['2030-03-01 09:15:00', '2030-03-01 09:45:00', __('The required item is already reserved for this timeframe')],
+            ] as [$begin, $end, $error]) {
+                ob_start();
+                try {
+                    $failed = (new \Reservation())->add([
+                        'reservationitems_id' => $item->getID(), 'users_id' => (int)\Session::getLoginUserID(),
+                        'begin' => $begin, 'end' => $end,
+                    ]);
+                    $output = ob_get_contents();
+                } finally {
+                    ob_end_clean();
+                }
+                $this->boolean($failed)->isFalse();
+                $this->string($output)->contains($error);
+                $this->array($events)->isIdenticalTo($expectedEvents);
+            }
+            $_SESSION['glpiactiveprofile']['reservation'] = 0;
+            $this->boolean((new \Reservation())->can(-1, CREATE, $input))->isFalse();
+            $this->integer(countElementsInTable(\Reservation::getTable(), ['reservationitems_id' => $item->getID()]))->isIdenticalTo(4);
+            $this->object($DB->getDoctrineConnection())->isIdenticalTo($connection);
+            $this->integer($connection->getTransactionNestingLevel())->isIdenticalTo($depth);
+        } finally {
+            $_SESSION = $session;
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $activePlugins);
+            if ($hadUri) {
+                $_SERVER['REQUEST_URI'] = $uri;
+            } else {
+                unset($_SERVER['REQUEST_URI']);
+            }
+        }
+    }
+
     public function testUserTabReusesDisplayLookupsAndKeepsAssetLinksFresh(): void
     {
         global $DB;

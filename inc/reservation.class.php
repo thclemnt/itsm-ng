@@ -233,19 +233,6 @@ class Reservation extends CommonDBChild
         }
 
         parent::post_addItem();
-
-        if (isset($this->fields['reservationitems_id'])) {
-            if (strpos((string) $_SERVER['REQUEST_URI'], '/plugins/formcreator/front/') !== false ||
-                (isset($_SESSION['glpiactiveprofile']['interface']) &&
-                $_SESSION['glpiactiveprofile']['interface'] == 'helpdesk')) {
-
-                $redirect_url = $CFG_GLPI['root_doc'] . '/plugins/formcreator/front/reservation.php?reservationitems_id=' . $this->fields['reservationitems_id'] . '&reservation_added=1';
-            } else {
-                $redirect_url = $CFG_GLPI['root_doc'] . '/front/reservation.php?reservationitems_id=' . $this->fields['reservationitems_id'] . '&reservation_added=1';
-            }
-
-            Html::redirect($redirect_url);
-        }
     }
 
 
