@@ -51,10 +51,20 @@ class User extends \DbTestCase
             $parent = (int)$_SESSION['glpiactive_entity'];
             $allowed = (int)getItemByTypeName('Entity', '_test_child_1', true);
             $denied = (int)getItemByTypeName('Entity', '_test_child_2', true);
-            $first = $this->createItem(\User::class, ['name' => 'scope-a-' . $this->getUniqueString(),
-                '_entities_id' => $allowed, '_is_recursive' => 0, 'comment' => 'Complete permission fields']);
-            $second = $this->createItem(\User::class, ['name' => 'scope-b-' . $this->getUniqueString(),
-                '_entities_id' => $denied, '_is_recursive' => 0, 'comment' => 'Complete permission fields']);
+            $accounts = [];
+            foreach ([['scope-a-', $allowed], ['scope-b-', $denied]] as [$prefix, $entity]) {
+                $stored = ['name' => $prefix . $this->getUniqueString(), 'comment' => 'Complete permission fields'];
+                $account = new \User();
+                $id = $account->add($stored + ['_entities_id' => $entity, '_is_recursive' => 0]);
+                // Form-only inputs create a grant; they are not stored User fields.
+                $this->checkInput($account, $id, $stored);
+                $grant = new \Profile_User();
+                $this->boolean($grant->getFromDBByCrit(['users_id' => $id]))->isTrue();
+                $this->integer((int)$grant->fields['entities_id'])->isIdenticalTo($entity);
+                $this->integer((int)$grant->fields['is_recursive'])->isIdenticalTo(0);
+                $accounts[] = $account;
+            }
+            [$first, $second] = $accounts;
             $model = new \User();
             $scopes = new \ReflectionMethod(\User::class, 'getEntities');
             $this->setEntity('_test_child_1', false);
