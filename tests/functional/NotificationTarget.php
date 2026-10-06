@@ -108,7 +108,7 @@ class NotificationTarget extends DbTestCase
                     $this->array($delivery->recipient_data)->isIdenticalTo(['itemtype' => \User::class, 'items_id' => $id]);
                     if (count($seen) === 1) {
                         $this->boolean($DB->update('glpi_users', ['firstname' => 'After', 'timezone' => 'null',
-                            'authtype' => \Auth::CAS], ['id' => $id]))->isTrue();
+                            'authtype' => \Auth::CAS, 'auth_source_code' => null], ['id' => $id]))->isTrue();
                     } elseif (count($seen) === 2) {
                         $this->boolean($DB->update('glpi_users', ['is_active' => 0], ['id' => $id]))->isTrue();
                     }

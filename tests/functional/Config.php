@@ -458,7 +458,7 @@ class Config extends DbTestCase
                 $this->string($record['level_name'])->isIdenticalTo('DEBUG');
                 [$caller, $payload] = explode("\n", $record['message'], 2);
                 $this->integer(preg_match(
-                    '~^' . preg_quote('Config::getCache() in ' . GLPI_ROOT . '/inc/config.class.php line ', '~') . '[0-9]+$~D',
+                    '~^' . preg_quote('Config::getCache() in ' . realpath(GLPI_ROOT . '/inc/config.class.php') . ' line ', '~') . '[0-9]+$~D',
                     $caller
                 ))->isIdenticalTo(1);
                 $this->string($payload)->isIdenticalTo($expectedPayloads[$index]);
