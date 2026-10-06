@@ -19,6 +19,12 @@ final class UserRepository
     {
     }
 
+    /** Full author fields for the permission-bearing legacy timeline model. */
+    public function timelineAuthor(int $user): ?array
+    {
+        return (new RecordRepository($this->em))->scalarRow(User::class, $user);
+    }
+
     /** Read the current account preference without loading an account graph. */
     public function accessibilityFont(int $user): ?string
     {

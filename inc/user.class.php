@@ -69,6 +69,31 @@ class User extends CommonDBTM
        'cookie_token',
     ];
 
+    /** Load a complete timeline author while retaining legacy permission and hook behavior. */
+    public function getTimelineAuthorFromDB($id): bool
+    {
+        global $DB;
+        // Custom User models retain their own loading/lifecycle dispatch.
+        if (static::class !== self::class) {
+            return $this->getFromDB($id);
+        }
+        if ($id === null || strlen($id) == 0) {
+            return false;
+        }
+        $manager = Orm::create($DB);
+        try {
+            $row = (new UserRepository($manager))->timelineAuthor((int)Toolbox::cleanInteger($id));
+        } finally {
+            $manager->clear();
+        }
+        if ($row === null) {
+            return false;
+        }
+        $this->fields = $row;
+        $this->post_getFromDB();
+        return true;
+    }
+
     public static function getTypeName($nb = 0)
     {
         return _n('User', 'Users', $nb);

@@ -205,6 +205,52 @@ class Ticket extends DbTestCase
         }
     }
 
+    public function testTimelineAuthorFieldsFollowDisplayCallbacks(): void
+    {
+        global $DB, $PLUGIN_HOOKS;
+        $this->login();
+        $hooks = $PLUGIN_HOOKS;
+        $plugins = new \ReflectionProperty(\Plugin::class, 'activated_plugins');
+        $active = $plugins->getValue();
+        try {
+            $user = $this->createItem(\User::class, ['name' => 'timeline-hook-' . $this->getUniqueString(),
+                'comment' => 'Complete author comment', 'phone' => '0123456789']);
+            $ticket = $this->createItem(\Ticket::class, ['name' => 'Timeline author callback',
+                'content' => 'Original content', 'entities_id' => $_SESSION['glpiactive_entity']]);
+            $followup = $this->createItem(\ITILFollowup::class, ['itemtype' => 'Ticket',
+                'items_id' => $ticket->getID(), 'content' => 'Author callback followup', 'is_private' => 0]);
+            $this->boolean($DB->update('glpi_itilfollowups', ['users_id' => $user->getID()], ['id' => $followup->getID()]))->isTrue();
+            $calls = [];
+            $beforeCalls = 0;
+            $plugins->setValue(null, [...$active, 'timeline_author_fixture']);
+            $PLUGIN_HOOKS['pre_show_item'] = ['timeline_author_fixture' =>
+                static function (array $context) use ($DB, $followup, $user, &$beforeCalls): void {
+                    if ($context['item'] instanceof \ITILFollowup && $context['item']->getID() == $followup->getID()) {
+                        ++$beforeCalls;
+                        $DB->update('glpi_users', ['firstname' => 'After display callback'], ['id' => $user->getID()]);
+                    }
+                }];
+            $PLUGIN_HOOKS['item_can'] = ['timeline_author_fixture' => [\User::class =>
+                static function (\User $model) use ($user, &$calls): void {
+                    if ($model->getID() == $user->getID()) {
+                        $calls[] = $model->fields;
+                        $model->fields['firstname'] = 'Plugin author label';
+                        $model->right = false;
+                    }
+                }]];
+            $this->output(fn () => $ticket->showTimeline(745))->contains('Plugin author label');
+            $this->integer($beforeCalls)->isIdenticalTo(1);
+            $this->boolean($user->getFromDB($user->getID()))->isTrue();
+            $this->array($calls)->isNotEmpty();
+            foreach ($calls as $fields) {
+                $this->array($fields)->isIdenticalTo($user->fields);
+            }
+        } finally {
+            $PLUGIN_HOOKS = $hooks;
+            $plugins->setValue(null, $active);
+        }
+    }
+
     public function timelineAccessibilityProvider(): array
     {
         return [[\Ticket::class], [\Change::class], [\Problem::class]];

@@ -125,6 +125,66 @@ class User extends \DbTestCase
         }
     }
 
+    public function testTimelineAuthorPreservesCompleteFreshRowsWithoutHydration(): void
+    {
+        global $DB;
+        $this->login();
+        $database = $DB;
+        $user = $this->createItem(\User::class, ['name' => 'timeline-author-' . $this->getUniqueString(),
+            'comment' => 'Complete author fields', 'authtype' => \Auth::DB_GLPI]);
+        $id = (int)$user->getID();
+        $manager = \itsmng\Database\Orm::create($DB);
+        $repository = new \itsmng\Database\Repository\UserRepository($manager);
+        $loads = new class {
+            public int $count = 0;
+            public function postLoad(): void { ++$this->count; }
+        };
+        $manager->getEventManager()->addEventListener([\Doctrine\ORM\Events::postLoad], $loads);
+        try {
+            $model = new \User();
+            foreach ([[true, '2020-02-03 04:05:06', 'Changed author'], [false, null, null]] as [$active, $date, $firstname]) {
+                $this->boolean($DB->update('glpi_users', ['is_active' => $active, 'last_login' => $date,
+                    'firstname' => $firstname], ['id' => $id]))->isTrue();
+                $this->boolean($user->getFromDB($id))->isTrue();
+                $this->array($repository->timelineAuthor($id))->isIdenticalTo($user->fields);
+                $this->boolean($model->getTimelineAuthorFromDB($id))->isTrue();
+                $this->array($model->fields)->isIdenticalTo($user->fields);
+            }
+            $this->integer($loads->count)->isIdenticalTo(0);
+            $this->array($manager->getUnitOfWork()->getIdentityMap())->isEmpty();
+            // Positive listener control: the same manager's ordinary entity load fires it.
+            $manager->find(\itsmng\Database\Entity\User::class, $id);
+            $this->integer($loads->count)->isGreaterThan(0);
+            $before = $model->fields;
+            foreach ([null, '', PHP_INT_MAX] as $missing) {
+                $this->boolean($model->getTimelineAuthorFromDB($missing))->isFalse();
+                $this->array($model->fields)->isIdenticalTo($before);
+            }
+            $this->variable($repository->timelineAuthor(PHP_INT_MAX))->isNull();
+            $custom = new class extends \User {
+                public int $calls = 0;
+                public function getFromDB($id) { ++$this->calls; return false; }
+            };
+            $this->boolean($custom->getTimelineAuthorFromDB($id))->isFalse();
+            $this->integer($custom->calls)->isIdenticalTo(1);
+            $connection = $database->getDoctrineConnection();
+            $this->mockGenerator->orphanize('__construct');
+            $routed = new \mock\DBmysql();
+            $reads = 0;
+            $this->calling($routed)->getDoctrineConnection = static function () use ($connection, &$reads) {
+                ++$reads;
+                return $connection;
+            };
+            $DB = $routed;
+            $this->boolean($model->getTimelineAuthorFromDB($id))->isTrue();
+            $this->array($model->fields)->isIdenticalTo($before);
+            $this->integer($reads)->isGreaterThan(0);
+        } finally {
+            $DB = $database;
+            $manager->clear();
+        }
+    }
+
     public function testAccessibilityHeaderReadsCurrentFontWithoutUserHydration(): void
     {
         global $DB;

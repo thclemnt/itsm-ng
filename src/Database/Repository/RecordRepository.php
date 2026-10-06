@@ -30,6 +30,57 @@ final class RecordRepository
         return $record === null ? null : $this->toRow($record);
     }
 
+    /** Complete legacy row without creating managed records or association proxies. */
+    public function scalarRow(string $recordClass, int $id): ?array
+    {
+        $metadata = $this->em->getClassMetadata($recordClass);
+        $identifier = $metadata->getSingleIdentifierFieldName();
+        if (!$metadata->hasField($identifier)) {
+            throw new \LogicException('Scalar record reads require a scalar identifier');
+        }
+        $query = $this->em->createQueryBuilder()->from($recordClass, 'r')
+            ->where('r.' . $identifier . ' = :id')
+            ->setParameter('id', $id, $metadata->getTypeOfField($identifier));
+        $columns = [];
+        foreach ($metadata->fieldMappings as $property => $mapping) {
+            $query->addSelect('r.' . $property . ' AS value' . count($columns));
+            $columns[] = [$mapping->columnName, $mapping->type, false];
+        }
+        foreach ($metadata->associationMappings as $property => $mapping) {
+            if (!$mapping->isToOneOwningSide()) {
+                continue;
+            }
+            if (count($mapping->joinColumns) !== 1) {
+                throw new \LogicException('Scalar record reads require single-column owning references');
+            }
+            $target = $this->em->getClassMetadata($mapping->targetEntity);
+            $targetId = $target->getSingleIdentifierFieldName();
+            if (!$target->hasField($targetId) || $target->getColumnName($targetId) !== $mapping->joinColumns[0]->referencedColumnName) {
+                throw new \LogicException('Scalar record references must target a scalar identifier');
+            }
+            $query->addSelect('IDENTITY(r.' . $property . ') AS value' . count($columns));
+            $columns[] = [$mapping->joinColumns[0]->name, $target->getTypeOfField($targetId), true];
+        }
+        // Unlike HYDRATE_SCALAR, scalar-only array hydration applies DBAL types
+        // (including temporal values and enums), without loading any entities.
+        $values = $query->getQuery()->getOneOrNullResult(\Doctrine\ORM\Query::HYDRATE_ARRAY);
+        if ($values === null) {
+            return null;
+        }
+        $row = [];
+        foreach ($columns as $index => [$column, $type, $reference]) {
+            $value = $values['value' . $index];
+            if ($reference) {
+                // IDENTITY is an untyped DQL function; use the referenced ID's type.
+                $value = \Doctrine\DBAL\Types\Type::getType($type)->convertToPHPValue(
+                    $value, $this->em->getConnection()->getDatabasePlatform()
+                );
+            }
+            $row[$column] = self::legacyScalarValue($value, $type);
+        }
+        return $row;
+    }
+
     /** Select complete mapped records with bound criteria and database-side limits. */
     public function matching(string $table, array $criteria = [], array|string $order = [], ?int $limit = null, int $offset = 0, bool $legacyValues = true): array
     {
