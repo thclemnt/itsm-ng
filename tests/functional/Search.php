@@ -443,6 +443,60 @@ class Search extends DbTestCase
     }
 
 
+    public function testMetaCostDurationKeepsEachCostIdentityAcrossActorFanout(): void
+    {
+        $this->login();
+        $this->setEntity('_test_root_entity', true);
+        $entity = (int)\Session::getActiveEntity();
+        $prefix = 'Cost identities ' . $this->getUniqueString();
+        $users = [
+            (int)getItemByTypeName('User', 'itsm', true),
+            (int)getItemByTypeName('User', 'tech', true),
+        ];
+        foreach ($users as $user) {
+            $this->integer($user)->isGreaterThan(0);
+        }
+        $appliance = new \Appliance();
+        $applianceId = (int)$appliance->add(['name' => $prefix, 'entities_id' => $entity]);
+        $this->integer($applianceId)->isGreaterThan(0);
+        $this->boolean($appliance->can($applianceId, READ))->isTrue();
+        foreach ([10, 100] as $index => $seconds) {
+            $change = new \Change();
+            $changeId = (int)$change->add([
+                'name' => $prefix . ' ' . $index, 'content' => $prefix, 'entities_id' => $entity,
+                '_users_id_requester' => array_slice($users, 0, $index + 1),
+            ]);
+            $this->integer($changeId)->isGreaterThan(0);
+            $this->boolean($change->can($changeId, READ))->isTrue();
+            $this->integer(countElementsInTable('glpi_changes_users', [
+                'changes_id' => $changeId, 'type' => \CommonITILActor::REQUESTER,
+            ]))->isIdenticalTo($index + 1);
+            $link = new \Change_Item();
+            $this->integer((int)$link->add([
+                'changes_id' => $changeId, 'itemtype' => 'Appliance', 'items_id' => $applianceId,
+            ]))->isGreaterThan(0);
+            $cost = new \ChangeCost();
+            $this->integer((int)$cost->add([
+                'changes_id' => $changeId, 'name' => $prefix . ' cost ' . $index,
+                'actiontime' => $seconds, 'cost_time' => 0, 'cost_fixed' => 0, 'cost_material' => 0,
+            ]))->isGreaterThan(0);
+            $this->integer($cost->getTotalActionTimeForItem($changeId))->isIdenticalTo($seconds);
+        }
+        $data = $this->doSearch('Appliance', [
+            'is_deleted' => 0, 'start' => 0, 'criteria' => [
+                ['field' => 1, 'searchtype' => 'contains', 'value' => $prefix],
+                ['meta' => true, 'itemtype' => 'Change', 'field' => 49, 'searchtype' => 'contains',
+                    'value' => '110', 'link' => 'AND'],
+                ['meta' => true, 'itemtype' => 'Change', 'field' => 4, 'searchtype' => 'equals',
+                    'value' => (string)$users[0], 'link' => 'AND'],
+            ],
+        ]);
+        $this->integer($data['data']['count'])->isIdenticalTo(1);
+        $this->array(array_keys($data['data']['items']))->isIdenticalTo([$applianceId]);
+        $this->float((float)$data['data']['rows'][0]['Change_49'][0]['name'])->isIdenticalTo(110.0);
+    }
+
+
     public function testMetaComputerOS()
     {
         $search_params = ['is_deleted'   => 0,
