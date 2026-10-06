@@ -1375,7 +1375,7 @@ class CommonGLPI
                 if ($user->getFromDB($uid)) {
                     $user->update(['id' => $uid,
                                         'display_options'
-                                             => exportArrayToDB($_SESSION['glpi_display_options'])]);
+                                             => Toolbox::addslashes_deep(exportArrayToDB($_SESSION['glpi_display_options']))]);
                 }
             }
         }

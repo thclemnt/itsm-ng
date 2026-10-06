@@ -263,6 +263,39 @@ class User extends \DbTestCase
         }
     }
 
+    public function testDisplayOptionsUpdatePreservesSerializedEscapes(): void
+    {
+        global $DB;
+        $this->login();
+        $session = $_SESSION;
+        $user = $this->createItem(\User::class, ['name' => 'display-roundtrip-' . $this->getUniqueString()]);
+        $id = (int)$user->getID();
+        $display = new class extends \CommonGLPI {
+            public static function getAvailableDisplayOptions()
+            {
+                return ['test' => ['show_default' => ['default' => true]]];
+            }
+        };
+        $type = $display::getType();
+        $manager = \itsmng\Database\Orm::create($DB);
+        $repository = new \itsmng\Database\Repository\UserRepository($manager);
+        $expected = ['show_default' => true, 'extra' => 'current "quoted" \\path /'];
+        try {
+            $_SESSION['glpiID'] = $id;
+            $_SESSION['glpi_display_options'] = [$type => $expected];
+            $_SESSION['glpi_display_options'][$type]['show_default'] = false;
+            $display::updateDisplayOptions(['reset' => true]);
+            $raw = json_encode([$type => $expected]);
+            $this->variable($repository->displayOptions($id))->isIdenticalTo($raw);
+            $this->array($_SESSION['glpi_display_options'][$type])->isIdenticalTo($expected);
+            unset($_SESSION['glpi_display_options']);
+            $this->array($display::getDisplayOptions())->isIdenticalTo($expected);
+        } finally {
+            $_SESSION = $session;
+            $manager->clear();
+        }
+    }
+
     public function testDisplayOptionsReadCurrentScalarAtSessionBoundary(): void
     {
         global $DB;
@@ -272,11 +305,6 @@ class User extends \DbTestCase
         $user = $this->createItem(\User::class, ['name' => 'display-options-' . $this->getUniqueString()]);
         $id = (int)$user->getID();
         $display = new class extends \CommonGLPI {
-            public static function getType()
-            {
-                return 'DisplayOptionsFixture';
-            }
-
             public static function getAvailableDisplayOptions()
             {
                 return ['test' => ['show_default' => ['default' => true]]];
