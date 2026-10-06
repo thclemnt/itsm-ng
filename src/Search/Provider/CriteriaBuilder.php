@@ -1144,7 +1144,10 @@ final class CriteriaBuilder
                     // Keep NULL distinct from zero for physical numeric values and
                     // computed ratios, without the empty-text fallback below.
                     if ($val === 'NULL' || $val === 'null') {
-                        $operator = $nott ? 'IS NOT NULL' : 'IS NULL';
+                        // notcontains was normalized above; notequals is normally
+                        // inverted later in the numeric comparison branch.
+                        $negative = $searchtype === 'notequals' ? !$nott : $nott;
+                        $operator = $negative ? 'IS NOT NULL' : 'IS NULL';
                         return " {$link} ({$tocompute} {$operator}) ";
                     }
                     $search = ["/\\&lt;/", "/\\&gt;/"];

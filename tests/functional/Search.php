@@ -412,6 +412,12 @@ class Search extends DbTestCase
                 ]))->isGreaterThan(0);
             }
         }
+        // Direct/fallback callers have not normalized notequals like the
+        // two-phase planner does. Both negative operators must reject NULL.
+        foreach (['notequals', 'notcontains'] as $operator) {
+            $predicate = \itsmng\Search\Provider\CriteriaBuilder::addWhere('', false, 'Computer', 150, $operator, 'NULL');
+            $this->string($predicate)->contains(' IS NOT NULL');
+        }
         foreach (['Computer', 'Appliance'] as $type) {
             foreach ([
                 [150, 'contains', '>3500', 'AND', ['mixed', 'known']],
