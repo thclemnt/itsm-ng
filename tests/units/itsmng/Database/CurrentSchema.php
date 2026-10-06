@@ -49,7 +49,7 @@ class CurrentSchema extends \atoum\atoum\test
             IdentifierColumns::configureSchema($frozen);
             $historical = $frozen->getTable('glpi_crontasks');
             $current = (new BaselineSchema($manager))->build($platform)->getTable('glpi_crontasks');
-            $comparator = $manager->getConnection()->createSchemaManager()->createComparator();
+            $comparator = new \Doctrine\DBAL\Schema\Comparator($platform);
             $this->boolean($comparator->compareTables($historical, $current)->isEmpty())->isTrue();
             $this->integer(count($current->getColumns()))->isIdenticalTo(16);
             $this->integer(count($current->getIndexes()))->isIdenticalTo(5);
