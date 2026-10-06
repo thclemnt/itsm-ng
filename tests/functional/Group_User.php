@@ -71,31 +71,42 @@ class Group_User extends \DbTestCase
             $this->createItem(\Group_User::class, ['groups_id' => $group->getID(), 'users_id' => $outside->getID()]);
             $this->boolean($group->can((int)$group->getID(), READ))->isTrue();
             $this->boolean($users[0]->can((int)$users[0]->getID(), READ))->isTrue();
+            $assertGroupLink = function (string $html, \Group $item, bool $linked = true): void {
+                // Each tooltip owns a random DOM ID; assert its stable presentation
+                // and target instead of comparing independently rendered fragments.
+                $this->string($html)->contains($item->getNameID())->contains($item->fields['comment']);
+                if ($linked) {
+                    $this->string($html)->contains("href='" . $item->getLinkURL() . "'")
+                        ->contains('title="' . htmlentities($item->getName(['complete' => true]), ENT_QUOTES, 'utf-8') . '"');
+                } else {
+                    $this->string($html)->notContains('<a ');
+                }
+            };
             $direct = \Group_User::getPaginatedMembersForGroup($group);
             $this->integer($direct['total'])->isIdenticalTo(1);
             $this->array($direct['rows'])->hasSize(1);
             $this->string($direct['rows'][0]['group'])->isIdenticalTo($users[0]->getLink());
-            $this->string($direct['rows'][0]['parent'])->isIdenticalTo($group->getLink(['comments' => true]));
+            $assertGroupLink($direct['rows'][0]['parent'], $group);
             $tree = \Group_User::getPaginatedMembersForGroup($group, '', 1);
             $this->integer($tree['total'])->isIdenticalTo(2);
             $this->array($tree['rows'])->hasSize(2);
-            $this->array(array_column($tree['rows'], 'group'))->isIdenticalTo([
-                $group->getLink(['comments' => true]), $child->getLink(['comments' => true]),
-            ]);
-            $this->array(array_column($tree['rows'], 'parent'))->isIdenticalTo(array_column($tree['rows'], 'group'));
+            foreach ([$group, $child] as $index => $owner) {
+                $assertGroupLink($tree['rows'][$index]['group'], $owner);
+                $assertGroupLink($tree['rows'][$index]['parent'], $owner);
+            }
             $this->string($tree['rows'][1]['manager'])->contains(__('Manager'));
             $page = \Group_User::getPaginatedMembersForGroup($group, 'is_manager', 1, 0, 1);
             $this->integer($page['total'])->isIdenticalTo(1);
             $this->array($page['rows'])->hasSize(1);
-            $this->string($page['rows'][0]['group'])->isIdenticalTo($child->getLink(['comments' => true]));
+            $assertGroupLink($page['rows'][0]['group'], $child);
 
             $this->boolean($DB->update('glpi_groups', ['comment' => 'Current child tooltip'], ['id' => $child->getID()]))->isTrue();
             $this->boolean($child->getFromDB($child->getID()))->isTrue();
             $fresh = \Group_User::getPaginatedMembersForGroup($group, 'is_manager', 1);
-            $this->string($fresh['rows'][0]['group'])->isIdenticalTo($child->getLink(['comments' => true]))->contains('Current child tooltip');
+            $assertGroupLink($fresh['rows'][0]['group'], $child);
             $_SESSION['glpiactiveprofile']['group'] = 0;
             $denied = \Group_User::getPaginatedMembersForGroup($group, 'is_manager', 1);
-            $this->string($denied['rows'][0]['group'])->isIdenticalTo($child->getLink(['comments' => true]))->notContains('<a ');
+            $assertGroupLink($denied['rows'][0]['group'], $child, false);
         } finally {
             $_SESSION = $session;
         }
