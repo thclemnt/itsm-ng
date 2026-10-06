@@ -14,10 +14,18 @@ final class SubjectPolicyExpression
     {
     }
 
-    public static function equivalent(string $expected, string $actual, bool $postgres, bool $ansiQuotes = false): bool
+    /** $verifiedCheck must independently match an enforced, validated native CHECK. */
+    public static function equivalent(string $expected, string $actual, bool $postgres, bool $ansiQuotes = false, ?string $verifiedCheck = null): bool
     {
         try {
-            return self::parse($expected, $postgres, $ansiQuotes) === self::parse($actual, $postgres, $ansiQuotes);
+            $left = self::parse($expected, $postgres, $ansiQuotes);
+            $right = self::parse($actual, $postgres, $ansiQuotes);
+            if ($verifiedCheck !== null) {
+                $check = self::parse($verifiedCheck, $postgres, $ansiQuotes);
+                $left = self::guardedCoalesce($left, $check, $postgres);
+                $right = self::guardedCoalesce($right, $check, $postgres);
+            }
+            return $left === $right;
         } catch (\UnexpectedValueException) {
             return false;
         }
@@ -59,18 +67,24 @@ final class SubjectPolicyExpression
         if ($parser->position !== count($tokens)) {
             throw new \UnexpectedValueException();
         }
-        return self::canonical($result);
+        return self::canonical($result, $postgres);
     }
 
     /** Distribute the finite subject branches and absorb redundant native null guards. */
-    private static function canonical(array $node): array
+    private static function canonical(array $node, bool $postgres): array
     {
+        if ($node[0] === 'coalesce') {
+            return ['coalesce', self::canonical($node[1], $postgres), self::canonical($node[2], $postgres)];
+        }
+        if ($node[0] === 'case') {
+            return self::canonicalCase($node, $postgres);
+        }
         if (!in_array($node[0], ['and', 'or'], true)) {
             return $node;
         }
         $terms = $node[0] === 'and' ? [[]] : [];
         foreach ($node[1] as $child) {
-            $child = self::canonical($child);
+            $child = self::canonical($child, $postgres);
             $alternatives = $child[0] === 'or' ? $child[1] : [$child];
             $next = [];
             foreach ($alternatives as $alternative) {
@@ -114,6 +128,70 @@ final class SubjectPolicyExpression
             return count($atoms) === 1 ? $atoms[0] : ['and', $atoms];
         }, array_values($sets));
         return count($values) === 1 ? $values[0] : ['or', $values];
+    }
+
+    /** Reorder only disjoint literal choices of one exact discriminator. */
+    private static function canonicalCase(array $node, bool $postgres): array
+    {
+        $branches = [];
+        $discriminator = null;
+        $seen = [];
+        foreach ($node[1] as [$condition, $value]) {
+            $choices = $condition[0] === 'or' ? $condition[1] : [$condition];
+            foreach ($choices as $choice) {
+                if ($choice[0] !== '=' || $choice[2][0] !== 'string'
+                    || !(($postgres && $choice[1][0] === 'identifier')
+                        || ($choice[1][0] === 'binary' && $choice[1][1][0] === 'identifier'))) {
+                    return $node;
+                }
+                $key = json_encode($choice[2], JSON_THROW_ON_ERROR);
+                if (($discriminator !== null && $discriminator !== $choice[1]) || isset($seen[$key])) {
+                    // Overlapping branches retain their first-match ordering.
+                    return $node;
+                }
+                $discriminator = $choice[1];
+                $seen[$key] = true;
+                $branches[$key] = [$choice, self::canonical($value, $postgres)];
+            }
+        }
+        ksort($branches);
+        return ['case', array_values($branches), self::canonical($node[2], $postgres)];
+    }
+
+    /** Native stock COALESCE is equivalent only on rows admitted by its verified CHECK. */
+    private static function guardedCoalesce(array $node, array $check, bool $postgres): array
+    {
+        if ($node[0] !== 'coalesce' || $node[1][0] !== 'case'
+            || $node[1][2][0] !== 'literal_null' || $node[2][0] !== 'integer') {
+            return $node;
+        }
+        $terms = $check[0] === 'or' ? $check[1] : [$check];
+        foreach ($node[1][1] as [$condition, $value]) {
+            if ($condition[0] !== '=' || $condition[2][0] !== 'string' || $value[0] !== 'identifier'
+                || !(($postgres && $condition[1][0] === 'identifier')
+                    || ($condition[1][0] === 'binary' && $condition[1][1][0] === 'identifier'))) {
+                return $node;
+            }
+            $subject = $condition[1][0] === 'binary' ? $condition[1][1] : $condition[1];
+            foreach ($terms as $term) {
+                $proved = false;
+                foreach ($term[0] === 'and' ? $term[1] : [$term] as $atom) {
+                    if ($atom === ['not_null', $value]
+                        || $atom === ['null', $subject]
+                        || ($atom[0] === '=' && $atom[1] === $condition[1]
+                            && $atom[2][0] === 'string' && $atom[2] !== $condition[2])) {
+                        // Either this CHECK alternative requires the result nonnull,
+                        // or it is false for this selected discriminator literal.
+                        $proved = true;
+                        break;
+                    }
+                }
+                if (!$proved) {
+                    return $node;
+                }
+            }
+        }
+        return ['case', $node[1][1], $node[2]];
     }
 
     private function expression(): array
@@ -178,6 +256,9 @@ final class SubjectPolicyExpression
 
     private function value(): array
     {
+        if (++$this->depth > 128) {
+            throw new \UnexpectedValueException();
+        }
         if ($this->take('(')) {
             $value = $this->expression();
             $this->expect(')');
@@ -196,6 +277,13 @@ final class SubjectPolicyExpression
             $fallback = $this->value();
             $this->expect('end');
             $value = ['case', $branches, $fallback];
+        } elseif ($this->take('coalesce')) {
+            $this->expect('(');
+            $source = $this->value();
+            $this->expect(',');
+            $fallback = $this->value();
+            $this->expect(')');
+            $value = ['coalesce', $source, $fallback];
         } elseif ($this->take('cast')) {
             $this->expect('(');
             $source = $this->value();
@@ -246,6 +334,7 @@ final class SubjectPolicyExpression
                 throw new \UnexpectedValueException();
             }
         }
+        --$this->depth;
         return $value;
     }
 

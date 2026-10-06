@@ -313,6 +313,46 @@ class CurrentSchema extends \atoum\atoum\test
         $this->boolean($compare("itemtype = 'Computer'", "itemtype::varchar(1) = 'Computer'", true))->isFalse();
     }
 
+    public function testNativeSubjectCaseOrderingAndStockFallbackRequireProof(): void
+    {
+        $compare = \itsmng\Database\SubjectPolicyExpression::equivalent(...);
+        $expected = "CASE WHEN itemtype = 'User' THEN users_id WHEN itemtype = 'Group' THEN groups_id ELSE 0 END";
+        $reordered = "CASE itemtype WHEN 'Group'::text THEN groups_id WHEN 'User'::text THEN users_id ELSE (0)::bigint END";
+        $this->boolean($compare($expected, $reordered, true))->isTrue();
+        $this->boolean($compare($expected, str_replace("'Group'", "'User'", $reordered), true))->isFalse();
+        $this->boolean($compare($expected, str_replace('groups_id', 'users_id', $reordered), true))->isFalse();
+        $overlap = "CASE WHEN itemtype IN ('User', 'Group') THEN users_id WHEN itemtype = 'User' THEN groups_id ELSE 0 END";
+        $this->boolean($compare($expected, $overlap, true))->isFalse();
+        $caseInsensitive = "CASE WHEN itemtype = 'User' THEN users_id WHEN itemtype = 'user' THEN groups_id ELSE 0 END";
+        $swapped = "CASE WHEN itemtype = 'user' THEN groups_id WHEN itemtype = 'User' THEN users_id ELSE 0 END";
+        $this->boolean($compare($caseInsensitive, $swapped, false))->isFalse();
+        $this->boolean($compare(str_replace('itemtype', 'CAST(itemtype AS BINARY)', $caseInsensitive), str_replace('itemtype', 'CAST(itemtype AS BINARY)', $swapped), false))->isTrue();
+
+        // Actual PostgreSQL consumable shape; CASE and COALESCE differ when a
+        // selected association is NULL, so syntax normalization alone is unsafe.
+        $native = "COALESCE(CASE itemtype WHEN 'User'::text THEN users_id WHEN 'Group'::text THEN groups_id ELSE NULL::bigint END, (0)::bigint)";
+        $guard = "(itemtype IS NOT NULL AND itemtype = 'User' AND users_id IS NOT NULL AND users_id >= 1 AND groups_id IS NULL) OR (itemtype IS NOT NULL AND itemtype = 'Group' AND groups_id IS NOT NULL AND groups_id >= 1 AND users_id IS NULL) OR (itemtype IS NULL AND users_id IS NULL AND groups_id IS NULL AND date_out IS NULL)";
+        $this->boolean($compare($expected, $native, true))->isFalse();
+        $this->boolean($compare($expected, $native, true, false, $guard))->isTrue();
+        foreach ([
+            '1 = 1',
+            str_replace('users_id IS NOT NULL AND ', '', $guard),
+            $guard . ' OR users_id IS NULL',
+        ] as $unproven) {
+            $this->boolean($compare($expected, $native, true, false, $unproven))->isFalse();
+        }
+        foreach ([
+            str_replace('(0)::bigint', '(1)::bigint', $native),
+            str_replace('users_id', 'groups_id', $native),
+            str_replace('NULL::bigint', '(1)::bigint', $native),
+            substr($native, 0, -1) . ', 0)',
+        ] as $changed) {
+            $this->boolean($compare($expected, $changed, true, false, $guard))->isFalse();
+        }
+        $this->boolean($compare('users_id', 'users_id::bigint', true))->isFalse();
+        $this->boolean($compare('0', str_repeat('COALESCE(', 129) . '0' . str_repeat(', 0)', 129), true))->isFalse();
+    }
+
     public function testCurrentSubjectPoliciesInspectNativeEnforcementWithoutReceipts(): void
     {
         foreach ([new PostgreSQLPlatform(), new MySQLPlatform(), new MariaDBPlatform()] as $platform) {
@@ -354,6 +394,33 @@ class CurrentSchema extends \atoum\atoum\test
             $policies[$table]['items_id']['projection'] = str_replace('computers_id', 'peripherals_id', $policy['projection']);
             $this->array(\itsmng\Database\NativeSubjectSchema::compare($policies, $columns, $checks, $postgres))->isIdenticalTo([
                 'Changed or missing native subject projection: ' . $table . '.items_id',
+            ]);
+        }
+    }
+
+    public function testStockCoalesceDependsOnEnforcedCurrentCheck(): void
+    {
+        $builder = new BaselineSchema($this->manager(new PostgreSQLPlatform()));
+        $builder->build(new PostgreSQLPlatform());
+        $table = 'glpi_consumables';
+        $policy = $builder->subjectPolicies()[$table]['items_id'];
+        $columns = [$table => [
+            'items_id' => ['generated' => 's', 'expression' => "COALESCE(CASE itemtype WHEN 'User'::text THEN users_id WHEN 'Group'::text THEN groups_id ELSE NULL::bigint END, (0)::bigint)"],
+            'itemtype' => ['deterministic' => true],
+        ]];
+        $check = ['clause' => $policy['check'], 'enforced' => true, 'validated' => true];
+        $compare = static fn (array $checks): array => \itsmng\Database\NativeSubjectSchema::compare([$table => ['items_id' => $policy]], $columns, $checks, true);
+        $this->array($compare([$table => [$policy['constraint'] => $check]]))->isEmpty();
+        $failures = [$compare([])];
+        foreach (['clause' => '1 = 1', 'enforced' => false, 'validated' => false] as $field => $value) {
+            $changed = $check;
+            $changed[$field] = $value;
+            $failures[] = $compare([$table => [$policy['constraint'] => $changed]]);
+        }
+        foreach ($failures as $differences) {
+            $this->array($differences)->isIdenticalTo([
+                'Changed or missing native subject projection: ' . $table . '.items_id',
+                'Changed, missing or unenforced native subject CHECK: ' . $table . '.' . $policy['constraint'],
             ]);
         }
     }
