@@ -355,6 +355,59 @@ class CurrentSchema extends \atoum\atoum\test
         $this->boolean($compare("itemtype = 'Computer'", "itemtype::varchar(1) = 'Computer'", true))->isFalse();
     }
 
+    public function testMySQL84CatalogLiteralDelimitersPreserveSubjectPolicies(): void
+    {
+        // Byte-for-byte catalog values from MySQL 8.4.11, CI run 37539940295
+        // (both PHP 8.2 and 8.3). Expected policy comes from current metadata.
+        $native = json_decode(file_get_contents(dirname(__DIR__, 3) . '/fixtures/mysql84-subject-certificate.json'), true, 512, JSON_THROW_ON_ERROR);
+        $builder = new BaselineSchema($this->manager(new MySQLPlatform()));
+        $builder->build(new MySQLPlatform());
+        $table = $native['table'];
+        $policy = $builder->subjectPolicies()[$table]['items_id'];
+        $projection = $native['columns'][0]['GENERATION_EXPRESSION'];
+        $check = $native['checks'][0]['CHECK_CLAUSE'];
+        $compare = \itsmng\Database\SubjectPolicyExpression::equivalent(...);
+        $this->boolean($compare($policy['projection'], $projection, false))->isTrue();
+        $this->boolean($compare($policy['check'], $check, false))->isTrue();
+        // This encoding is accepted only in actual MySQL-family catalogs.
+        $this->boolean($compare($projection, $projection, false))->isFalse();
+        $this->boolean($compare($policy['projection'], $projection, true))->isFalse();
+        foreach ([$projection => $policy['projection'], $check => $policy['check']] as $actual => $expected) {
+            foreach ([
+                str_replace('Computer', 'computer', $actual),
+                str_replace('`computers_id`', '`peripherals_id`', $actual),
+                str_replace('cast(`itemtype` as char charset binary)', '`itemtype`', $actual),
+                str_replace("Computer", "Com\\puter", $actual),
+                str_replace("Computer", "Com'puter", $actual),
+                str_replace("Computer", "Com\\'puter", $actual),
+                str_replace("Computer", "Com\\nputer", $actual),
+                str_replace("Computer", "Com\nputer", $actual),
+                str_replace("\\'Computer\\'", "\\'Computer'", $actual),
+                str_replace("\\'Computer\\'", "\\\\'Computer\\\\'", $actual),
+                substr($actual, 0, strpos($actual, 'Computer') + strlen('Computer')),
+            ] as $changed) {
+                $this->boolean($compare($expected, $changed, false))->isFalse();
+            }
+        }
+        $this->boolean($compare($policy['projection'], str_replace('else NULL', 'else 0', $projection), false))->isFalse();
+        $this->boolean($compare($policy['check'], str_replace('>= 1', '>= 0', $check), false))->isFalse();
+
+        $columns = [$table => ['items_id' => ['generated' => $native['columns'][0]['EXTRA'], 'expression' => $projection]]];
+        $checks = [$table => [$policy['constraint'] => ['clause' => $check, 'enforced' => $native['checks'][0]['ENFORCED']]]];
+        $policies = [$table => ['items_id' => $policy]];
+        $nativeCompare = static fn (array $c, array $k): array => \itsmng\Database\NativeSubjectSchema::compare($policies, $c, $k, false);
+        $this->array($nativeCompare($columns, $checks))->isEmpty();
+        $checks[$table][$policy['constraint']]['enforced'] = 'NO';
+        $this->array($nativeCompare($columns, $checks))->isIdenticalTo([
+            'Changed, missing or unenforced native subject CHECK: ' . $table . '.' . $policy['constraint'],
+        ]);
+        $checks[$table][$policy['constraint']]['enforced'] = 'YES';
+        $checks[$table][$policy['constraint']]['clause'] = str_replace('>= 1', '>= 0', $check);
+        $this->array($nativeCompare($columns, $checks))->isIdenticalTo([
+            'Changed, missing or unenforced native subject CHECK: ' . $table . '.' . $policy['constraint'],
+        ]);
+    }
+
     public function testNativeSubjectCaseOrderingAndStockFallbackRequireProof(): void
     {
         $compare = \itsmng\Database\SubjectPolicyExpression::equivalent(...);

@@ -19,7 +19,7 @@ final class SubjectPolicyExpression
     {
         try {
             $left = self::parse($expected, $postgres, $ansiQuotes);
-            $right = self::parse($actual, $postgres, $ansiQuotes);
+            $right = self::parse($actual, $postgres, $ansiQuotes, true);
             if ($verifiedCheck !== null) {
                 $check = self::parse($verifiedCheck, $postgres, $ansiQuotes);
                 $left = self::guardedCoalesce($left, $check, $postgres);
@@ -31,7 +31,7 @@ final class SubjectPolicyExpression
         }
     }
 
-    private static function parse(string $sql, bool $postgres, bool $ansiQuotes): array
+    private static function parse(string $sql, bool $postgres, bool $ansiQuotes, bool $nativeCatalog = false): array
     {
         if (strlen($sql) > 262144) {
             throw new \UnexpectedValueException();
@@ -43,7 +43,18 @@ final class SubjectPolicyExpression
                 $offset += strlen($match[0]);
                 continue;
             }
-            if (!preg_match('/\G(?:\'(?:[^\'\\\\]|\'\')*\'|`(?:[^`]|``)+`|"(?:[^"]|"")+"|[a-zA-Z_][a-zA-Z_0-9]*|[0-9]+|::|>=|[=(),])/A', $sql, $match, 0, $offset)) {
+            // MySQL INFORMATION_SCHEMA escapes the outer literal delimiters
+            // (MySQL bugs #104294/#100607). Decode only that catalog token;
+            // embedded quotes/backslashes remain outside this finite grammar.
+            if ($nativeCatalog && !$postgres && substr($sql, $offset, 2) === "\\'") {
+                $end = strpos($sql, "\\'", $offset + 2);
+                $literal = $end === false ? null : substr($sql, $offset + 2, $end - $offset - 2);
+                if ($literal === null || !preg_match('/\A[\x20-\x26\x28-\x5b\x5d-\x7e]*\z/D', $literal)) {
+                    throw new \UnexpectedValueException();
+                }
+                $match = ["'" . $literal . "'"];
+                $offset += 2; // The two catalog-only backslashes.
+            } elseif (!preg_match('/\G(?:\'(?:[^\'\\\\]|\'\')*\'|`(?:[^`]|``)+`|"(?:[^"]|"")+"|[a-zA-Z_][a-zA-Z_0-9]*|[0-9]+|::|>=|[=(),])/A', $sql, $match, 0, $offset)) {
                 throw new \UnexpectedValueException();
             }
             $token = $match[0];
