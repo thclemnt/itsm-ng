@@ -80,7 +80,7 @@ class Ticket extends DbTestCase
                 $user->entities = $em->getReference(\itsmng\Database\Entity\Entity::class, $child);
                 $user->is_active = $name !== 'inactive';
                 $user->is_deleted = $name === 'deleted';
-                $user->begin_date = $name === 'future' ? new \DateTime('2099-01-01') : null;
+                $user->begin_date = $name === 'future' ? new \DateTime('+1 day') : null;
                 $user->end_date = $name === 'expired' ? new \DateTime('2001-01-01') : null;
                 $em->persist($user);
                 $users[$name] = $user;
