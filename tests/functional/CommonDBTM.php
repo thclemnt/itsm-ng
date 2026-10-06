@@ -161,10 +161,13 @@ class CommonDBTM extends DbTestCase
             $this->setEntity(0, true);
             $first = $this->createItem(\User::class, ['name' => $this->getUniqueString()]);
             $second = $this->createItem(\User::class, ['name' => $this->getUniqueString()]);
-            $ticket = $this->createItem(\Ticket::class, ['name' => $this->getUniqueString(),
+            $ticket = new \Ticket();
+            $this->integer((int)$ticket->add(['name' => $this->getUniqueString(),
                 'content' => 'Before public hook', 'entities_id' => 0,
-                '_users_id_requester' => $first->getID(), '_disablenotif' => true]);
+                '_users_id_requester' => $first->getID(), '_disablenotif' => true]))->isGreaterThan(0);
             $id = (int)$ticket->getID();
+            $this->boolean($ticket->getFromDB($id))->isTrue();
+            $this->string($ticket->fields['content'])->isIdenticalTo('Before public hook');
             $model = new class () extends \Ticket {
                 public array $loadedRows = [];
                 public static function getType()
