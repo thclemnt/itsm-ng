@@ -86,6 +86,11 @@ class Log extends CommonDBTM
         if ($_SESSION['glpishow_count_on_tabs']) {
             $items_id = 0;
             if ($item instanceof CommonDBTM) {
+                // Unsaved items have no history identity. Respect each model's
+                // new-item policy, including Entity's valid root ID zero.
+                if ($item->isNewItem()) {
+                    return self::createTabEntry(self::getTypeName(1), $nb);
+                }
                 $items_id = $item->getID();
             }
             $nb = (new \itsmng\Database\Repository\HistoryRepository(\itsmng\Database\Orm::create(DBConnection::getReadConnection())))->count([

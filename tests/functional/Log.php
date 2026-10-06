@@ -39,6 +39,45 @@ use DbTestCase;
 
 class Log extends DbTestCase
 {
+    public function testHistoryTabCountsOnlySavedItemsIncludingRootEntity(): void
+    {
+        global $DB;
+        $previous = $_SESSION['glpishow_count_on_tabs'] ?? null;
+        $_SESSION['glpishow_count_on_tabs'] = 1;
+        try {
+            $history = new \Log();
+            foreach ([new \AuthLDAP(), new \Computer()] as $item) {
+                foreach (['', -1] as $id) {
+                    $item->fields['id'] = $id;
+                    $this->string($history->getTabNameForItem($item))->isIdenticalTo('Historical');
+                }
+            }
+
+            $computer = $this->createComputer();
+            $this->createLogEntry($computer, []);
+            $this->string($history->getTabNameForItem($computer))
+                ->isIdenticalTo("Historical <sup class='tab_nb'>1</sup>");
+
+            $root = new \Entity();
+            $this->boolean($root->getFromDB(0))->isTrue();
+            $count = (int)$DB->getDoctrineConnection()->fetchOne(
+                'SELECT COUNT(*) FROM glpi_logs WHERE itemtype = ? AND items_id = ?', ['Entity', 0]
+            );
+            $this->createLogEntry($root, []);
+            $this->string($history->getTabNameForItem($root))
+                ->isIdenticalTo("Historical <sup class='tab_nb'>" . ($count + 1) . '</sup>');
+
+            $_SESSION['glpishow_count_on_tabs'] = 0;
+            $this->string($history->getTabNameForItem($computer))->isIdenticalTo('Historical');
+        } finally {
+            if ($previous === null) {
+                unset($_SESSION['glpishow_count_on_tabs']);
+            } else {
+                $_SESSION['glpishow_count_on_tabs'] = $previous;
+            }
+        }
+    }
+
     private function createComputer()
     {
         $computer = new \Computer();
