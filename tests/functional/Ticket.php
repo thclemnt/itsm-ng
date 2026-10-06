@@ -42,6 +42,97 @@ use User;
 
 class Ticket extends DbTestCase
 {
+    public function actorProjectionProvider(): array
+    {
+        return [
+            ['Ticket_User', 'TicketUser', 'Ticket', 'tickets', 'actor', 'User'],
+            ['Group_Ticket', 'GroupTicket', 'Ticket', 'tickets', 'groups', 'Group'],
+            ['Supplier_Ticket', 'SupplierTicket', 'Ticket', 'tickets', 'actor', 'Supplier'],
+            ['Change_User', 'ChangeUser', 'Change', 'changes', 'actor', 'User'],
+            ['Change_Group', 'ChangeGroup', 'Change', 'changes', 'groups', 'Group'],
+            ['Change_Supplier', 'ChangeSupplier', 'Change', 'changes', 'actor', 'Supplier'],
+            ['Problem_User', 'ProblemUser', 'Problem', 'problems', 'actor', 'User'],
+            ['Group_Problem', 'GroupProblem', 'Problem', 'problems', 'groups', 'Group'],
+            ['Problem_Supplier', 'ProblemSupplier', 'Problem', 'problems', 'actor', 'Supplier'],
+        ];
+    }
+
+    /** @dataProvider actorProjectionProvider */
+    public function testActorRowsAvoidAssociatedEntityHydration(string $legacy, string $relationName, string $parentName, string $parentField, string $actorField, string $actorName): void
+    {
+        global $DB;
+        $this->login();
+        $em = \itsmng\Database\Orm::create($DB);
+        $namespace = 'itsmng\\Database\\Entity\\';
+        $parentClass = $namespace . $parentName;
+        $actorClass = $namespace . $actorName;
+        $relationClass = $namespace . $relationName;
+        $parent = new $parentClass();
+        $parent->name = 'Actor projection ' . $this->getUniqueString();
+        $parent->entities = $em->getReference(\itsmng\Database\Entity\Entity::class, 0);
+        $actor = new $actorClass();
+        $actor->name = 'Projection recipient ' . $this->getUniqueString();
+        $actor->entities = $parent->entities;
+        $em->persist($parent);
+        $em->persist($actor);
+        $assign = new $relationClass();
+        $assign->$parentField = $parent;
+        $assign->$actorField = $actor;
+        $assign->type = \CommonITILActor::ASSIGN;
+        $em->persist($assign);
+        $observer = new $relationClass();
+        $observer->$parentField = $parent;
+        $observer->$actorField = $actorName === 'Group' ? $actor : null;
+        $observer->type = \CommonITILActor::OBSERVER;
+        if ($actorName !== 'Group') {
+            $observer->alternative_email = 'projection@example.invalid';
+            $observer->use_notification = false;
+        }
+        $em->persist($observer);
+        $em->flush();
+
+        $model = new $legacy();
+        $expected = array_values($model->find([$legacy::getItilObjectForeignKey() => $parent->id], 'id'));
+        $reader = \itsmng\Database\Orm::create($DB);
+        $repository = new \itsmng\Database\Repository\ITILActorRepository($reader);
+        $rows = $repository->rows($legacy, $parent->id);
+        $this->array($rows)->isIdenticalTo($expected);
+        $this->array($reader->getUnitOfWork()->getIdentityMap())->isEmpty();
+        $this->array($repository->rows($legacy, -1))->isEmpty();
+        $grouped = [];
+        foreach ($expected as $row) {
+            $grouped[$row['type']][] = $row;
+        }
+        $this->array($model->getActors($parent->id))->isIdenticalTo($grouped);
+        $this->integer($rows[0]['id'])->isIdenticalTo($assign->id);
+        $this->integer($rows[1]['id'])->isIdenticalTo($observer->id);
+        if ($actorName !== 'Group') {
+            $this->integer($rows[1]['use_notification'])->isIdenticalTo(0);
+            $this->integer($rows[1]['actor_key'])->isIdenticalTo(0);
+            $this->string($rows[1]['actor_email_key'])->isIdenticalTo('projection@example.invalid');
+        }
+        // A later operation observes writes; no actor rows or managers survive in a cache.
+        $observer->type = \CommonITILActor::REQUESTER;
+        $em->flush();
+        $this->array($model->getActors($parent->id))->hasKey(\CommonITILActor::REQUESTER);
+        $em->remove($observer);
+        $em->flush();
+        $this->array($model->getActors($parent->id))->notHasKey(\CommonITILActor::REQUESTER);
+    }
+
+    public function testCustomActorFinderKeepsDispatch(): void
+    {
+        $relation = new class extends \Ticket_User {
+            public function find($condition = [], $order = [], $limit = null)
+            {
+                return [['id' => 17, 'type' => \CommonITILActor::OBSERVER, 'custom' => $condition['tickets_id']]];
+            }
+        };
+        $this->array($relation->getActors(42))->isIdenticalTo([
+            \CommonITILActor::OBSERVER => [['id' => 17, 'type' => \CommonITILActor::OBSERVER, 'custom' => 42]],
+        ]);
+    }
+
     public function anonymousActorProvider(): array
     {
         return ['nullable recipient' => [null], 'legacy zero recipient' => [0]];
